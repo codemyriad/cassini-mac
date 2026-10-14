@@ -96,7 +96,7 @@ public enum CassiniReader {
         var chunkCount: Int
         var sha256: String
         var rawBytes: Int
-        var gzipBytes: Int?
+        var gzipBytes: Int
         var encoding: String
     }
 
@@ -117,12 +117,17 @@ public enum CassiniReader {
         guard let raw = parseDecimal(tags[p + "RAW_BYTES"]) else {
             return .failure(Finding("payload-descriptor-incomplete", tag: p + "RAW_BYTES", "\(p)RAW_BYTES is missing or malformed"))
         }
-        let gz = tags[p + "GZIP_BYTES"]
-        if gz != nil && parseDecimal(gz) == nil {
-            return .failure(Finding("payload-descriptor-incomplete", tag: p + "GZIP_BYTES", "\(p)GZIP_BYTES is malformed"))
+        guard let gz = parseDecimal(tags[p + "GZIP_BYTES"]) else {
+            return .failure(Finding("payload-descriptor-incomplete", tag: p + "GZIP_BYTES", "\(p)GZIP_BYTES is missing or malformed"))
+        }
+        guard let mime = tags[p + "MIME"], !mime.isEmpty else {
+            return .failure(Finding("payload-descriptor-incomplete", tag: p + "MIME", "\(p)MIME is missing"))
+        }
+        guard let schema = tags[p + "SCHEMA"], !schema.isEmpty else {
+            return .failure(Finding("payload-descriptor-incomplete", tag: p + "SCHEMA", "\(p)SCHEMA is missing"))
         }
         return .success(ChunkDescriptor(prefix: p, chunkCount: count, sha256: sha, rawBytes: raw,
-                                        gzipBytes: parseDecimal(gz), encoding: encoding))
+                                        gzipBytes: gz, encoding: encoding))
     }
 
     static func chunkName(_ prefix: String, _ i: Int) -> String {
@@ -152,9 +157,9 @@ public enum CassiniReader {
         }
         do {
             let compressed = try Base64URL.decode(text)
-            if let gz = d.gzipBytes, gz != compressed.count {
+            if d.gzipBytes != compressed.count {
                 return .failure(Finding("payload-gzip-bytes-mismatch", tag: d.prefix + "GZIP_BYTES",
-                                        "\(d.prefix)GZIP_BYTES says \(gz), the chunks hold \(compressed.count)"))
+                                        "\(d.prefix)GZIP_BYTES says \(d.gzipBytes), the chunks hold \(compressed.count)"))
             }
             let raw = try Gzip.inflate(compressed, limit: d.rawBytes)
             guard raw.count == d.rawBytes else {

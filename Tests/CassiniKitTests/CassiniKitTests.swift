@@ -90,6 +90,18 @@ private func vector(_ name: String) throws -> Data {
         #expect(f.transcripts.count == 2)
     }
 
+    @Test func missingRequiredDescriptorIsInvalid() throws {
+        // Rewrite vector 001 without CASSINI_PAYLOAD_GZIP_BYTES: a required descriptor, so the file is invalid.
+        let data = try vector("001-minimal-v1")
+        let headers = try OpusHeaderReader.read(data)
+        var tags = try TagSet.parse(headers.tags)
+        tags.comments.removeAll { TagSet.fold($0.name) == "CASSINI_PAYLOAD_GZIP_BYTES" }
+        let stripped = TagSet(vendor: tags.vendor, comments: tags.comments)
+        #expect(stripped["CASSINI_PAYLOAD_GZIP_BYTES"] == nil)
+        guard case .failure(let f) = CassiniReader.manifestDescriptor(stripped) else { Issue.record("accepted"); return }
+        #expect(f.code == "payload-descriptor-incomplete")
+    }
+
     @Test func oversizeHeaderIsReadWhole() throws {
         let f = try CassiniReader.read(vector("018-oversize-opustags"), verifyAudio: false)
         #expect(f.state == .unverified)
@@ -169,6 +181,40 @@ private func vector(_ name: String) throws -> Data {
         let v = tl.visibleTurns(hiding: ["a"])
         #expect(v.count == 1)
         #expect(v[0].speaker == "b")
+    }
+
+    @Test func promotedInterjectionIdsAreDisjoint() {
+        let tl = Timeline([w("a", 0, 400, "I"), w("a", 500, 900, "think"), w("b", 600, 900, "Yeah."),
+                           w("c", 700, 900, "Right."), w("a", 1000, 1400, "so."), w("d", 5000, 5400, "Next.")])
+        let real = Set(tl.turns.map(\.id))
+        let v = tl.visibleTurns(hiding: ["a"])
+        let ids = v.map(\.id)
+        #expect(Set(ids).count == ids.count)
+        #expect(Set(ids.filter { v[ids.firstIndex(of: $0)!].speaker != "d" }).isDisjoint(with: real))
+    }
+
+    @Test func heldInterjectionDoesNotJumpToLaterTurn() {
+        // b's "Yeah." is written before a's "Mm.", which folds into x's turn; b must not land in y's turn 17 s later.
+        let tl = Timeline([w("x", 0, 1500, "Long"), w("x", 1600, 3000, "turn."), w("b", 3100, 3400, "Yeah."),
+                           w("a", 3050, 3300, "Mm."), w("y", 20000, 25000, "Much"), w("y", 25100, 30000, "later.")])
+        let y = tl.turns.first { $0.speaker == "y" }!
+        #expect(y.interjections.isEmpty)
+        let bTurn = tl.turns.first { $0.speaker == "b" }
+        let xHasB = tl.turns.first { $0.speaker == "x" }!.interjections.contains { $0.speaker == "b" }
+        #expect(bTurn != nil || xHasB)
+    }
+
+    @Test func hugeTimesDoNotTrap() {
+        let big = (1 << 53) - 1
+        let tl = Timeline([w("a", 0, big, "Hi"), w("b", 10, 20, "yo")])
+        var hint: [String: Int] = [:]
+        _ = tl.currentWords(at: big, hint: &hint)
+        _ = tl.activeTurns(at: big)
+        #expect(throws: ManifestError.self) {
+            try ManifestParser.words(.object([("items", .array([.object([
+                ("speaker", .string("a")), ("startMs", .number("0")), ("endMs", .number(String(Int.max))), ("text", .string("x")),
+            ])]))]))
+        }
     }
 
     @Test func exportsSubtitles() {

@@ -165,7 +165,7 @@ public struct CassiniFile: Sendable {
     public var stateReason: String?
 
     public var defaultTranscript: (entry: TranscriptEntry, load: TranscriptLoad)? {
-        guard let id = manifest?.defaultTranscript?.id else { return nil }
-        return transcripts.first { $0.entry.id == id }
+        guard let entry = manifest?.defaultTranscript else { return nil }
+        return transcripts.first { $0.entry == entry }
     }
 }

@@ -6,6 +6,8 @@ struct ManifestError: Error {
 
 /// Builds the typed manifest from decoded JSON, enforcing the required members (SPEC.md "The manifest").
 enum ManifestParser {
+    /// The largest time this reader accepts, the spec's own ceiling for decimal values (2^53−1).
+    static let maxTimeMs = (1 << 53) - 1
     static let payloadRefKeys: Set<String> = ["prefix", "chunkCount", "sha256", "rawBytes", "gzipBytes", "mime", "encoding"]
     static let integrityKeys: Set<String> = ["matchPolicy", "opusAudioSha256", "sampleRate", "channels", "sampleCount", "durationMs"]
 
@@ -86,6 +88,9 @@ enum ManifestParser {
             )
         }
 
+        let ids = transcripts.map(\.id)
+        guard Set(ids).count == ids.count else { throw ManifestError(message: "transcripts[] ids are not unique") }
+
         var attachments: [Attachment] = []
         for item in json["attachments"]?.array ?? [] {
             guard let name = item["name"]?.string, let b64 = item["contentBase64"]?.string,
@@ -128,7 +133,9 @@ enum ManifestParser {
                   let text = it["text"]?.string else {
                 throw ManifestError(message: "items[\(n)] lacks speaker, startMs, endMs or text")
             }
-            guard start >= 0, start <= end else { throw ManifestError(message: "items[\(n)] has startMs \(start) and endMs \(end)") }
+            guard start >= 0, start <= end, end <= maxTimeMs else {
+                throw ManifestError(message: "items[\(n)] has startMs \(start) and endMs \(end)")
+            }
             items.append(Word(speaker: speaker, startMs: start, endMs: end, text: text,
                               lowConfidenceSpeaker: it["lowConfidenceSpeaker"]?.bool == true,
                               attributionGapDb: it["attributionGapDb"]?.double))

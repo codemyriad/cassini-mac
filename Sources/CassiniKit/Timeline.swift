@@ -25,6 +25,9 @@ public struct Turn: Sendable, Equatable, Identifiable {
 }
 
 /// The words of one transcript arranged for display and for time lookup.
+///
+/// Word times are untrusted input; every comparison keeps the constant on the clock side, so no
+/// addition to a file-supplied value can overflow.
 public struct Timeline: Sendable {
     /// The 300 ms hold that stops a highlight flickering off in short pauses.
     public static let holdMs = 300
@@ -85,6 +88,8 @@ public struct Timeline: Sendable {
             let (s, e) = span(idx)
             return idx.count <= interjectionMaxWords && e - s <= interjectionMaxMs
         }
+        /// Whether a run at (s, e) lies within a host spanning (hs, he), allowing the hold.
+        func fits(_ s: Int, _ e: Int, in hs: Int, _ he: Int) -> Bool { hs <= s && e - holdMs <= he }
         func anchor(in host: [Int], at ms: Int) -> Int {
             var a = -1
             for (k, i) in host.enumerated() where words[i].startMs <= ms { a = k }
@@ -94,16 +99,33 @@ public struct Timeline: Sendable {
             let (s, e) = span(idx)
             return Interjection(speaker: words[idx[0]].speaker, words: idx, anchor: anchor(in: host, at: s), startMs: s, endMs: e)
         }
+        func standalone(_ idx: [Int], id: Int) -> Turn {
+            let (s, e) = span(idx)
+            return Turn(id: id, speaker: words[idx[0]].speaker, words: idx, interjections: [], startMs: s, endMs: e)
+        }
 
         var turns: [Turn] = []
-        var held: [[Int]] = []  // interjections waiting for the turn after them
+        var held: [[Int]] = []  // interjections written before the speech they overlap
+        /// Attaches held runs to `host` where they fit; the rest become turns of their own first.
+        func settleHeld(into host: inout Turn) {
+            for h in held {
+                let (hs, he) = span(h)
+                if words[h[0]].speaker != host.speaker, fits(hs, he, in: host.startMs, host.endMs) {
+                    host.interjections.append(makeInterjection(h, host: host.words))
+                } else {
+                    turns.append(standalone(h, id: turns.count))
+                }
+            }
+            held = []
+        }
+
         var k = 0
         while k < raw.count {
             let r = raw[k]
             let (s, e) = span(r.words)
             // Folds into the previous turn when it lies within that turn's span.
-            if isShort(r.words), var host = turns.last, host.speaker != r.speaker,
-               host.startMs <= s, e <= host.endMs + holdMs {
+            if isShort(r.words), let last = turns.last, last.speaker != r.speaker, fits(s, e, in: last.startMs, last.endMs) {
+                var host = turns.removeLast()
                 host.interjections.append(makeInterjection(r.words, host: host.words))
                 // The host may continue after the interjection: rejoin it.
                 if k + 1 < raw.count, raw[k + 1].speaker == host.speaker {
@@ -115,41 +137,42 @@ public struct Timeline: Sendable {
                         k += 1
                     }
                 }
-                turns[turns.count - 1] = host
+                // Runs held for a next turn that just folded away go here or stand alone.
+                settleHeld(into: &host)
+                host.id = turns.count
+                turns.append(host)
                 k += 1
                 continue
             }
             // Or into the next turn, when it was written before the speech it overlaps.
             if isShort(r.words), k + 1 < raw.count, raw[k + 1].speaker != r.speaker {
                 let (ns, ne) = span(raw[k + 1].words)
-                if ns <= s, e <= ne + holdMs {
+                if fits(s, e, in: ns, ne) {
                     held.append(r.words)
                     k += 1
                     continue
                 }
             }
-            var turn = Turn(id: turns.count, speaker: r.speaker, words: r.words, interjections: [], startMs: s, endMs: e)
-            turn.interjections = held.map { makeInterjection($0, host: r.words) }
-            held = []
+            var turn = Turn(id: 0, speaker: r.speaker, words: r.words, interjections: [], startMs: s, endMs: e)
+            settleHeld(into: &turn)
+            turn.id = turns.count
             turns.append(turn)
             k += 1
         }
         // An interjection held for a turn that never came stands on its own.
-        for h in held {
-            let (s, e) = span(h)
-            turns.append(Turn(id: turns.count, speaker: words[h[0]].speaker, words: h, interjections: [], startMs: s, endMs: e))
-        }
+        for h in held { turns.append(standalone(h, id: turns.count)) }
         return turns
     }
 
-    /// Turns with hidden speakers removed. A visible interjection inside a hidden turn becomes a turn of its own.
+    /// Turns with hidden speakers removed. A visible interjection inside a hidden turn becomes a
+    /// turn of its own, with an id no real turn uses (ids at or above `turns.count`).
     public func visibleTurns(hiding hidden: Set<String>) -> [Turn] {
         guard !hidden.isEmpty else { return turns }
         var out: [Turn] = []
         for t in turns {
             if hidden.contains(t.speaker) {
                 for j in t.interjections where !hidden.contains(j.speaker) {
-                    out.append(Turn(id: t.id * 1000 + out.count, speaker: j.speaker, words: j.words,
+                    out.append(Turn(id: turns.count + out.count, speaker: j.speaker, words: j.words,
                                     interjections: [], startMs: j.startMs, endMs: j.endMs))
                 }
             } else {
@@ -169,7 +192,7 @@ public struct Timeline: Sendable {
             hint[speaker] = pos
             guard let pos else { continue }
             let w = words[idx[pos]]
-            if t < w.endMs + Timeline.holdMs { result[speaker] = idx[pos] }
+            if t - Timeline.holdMs < w.endMs { result[speaker] = idx[pos] }
         }
         return result
     }
@@ -197,6 +220,6 @@ public struct Timeline: Sendable {
     }
 
     public func isActive(_ turn: Turn, at t: Int) -> Bool {
-        t >= turn.startMs && t < turn.endMs + Timeline.holdMs
+        t >= turn.startMs && t - Timeline.holdMs < turn.endMs
     }
 }
