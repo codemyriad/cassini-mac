@@ -15,6 +15,9 @@ final class TranscriptTextView: NSTextView {
     /// not rects: geometry is resolved at draw time so it follows the text through relayouts.
     struct WordHighlight {
         var fromRange: NSRange?
+        /// Where the block was when this tween interrupted a running one. A snapshot used for
+        /// the next 120 ms only, so staleness across a relayout is harmless.
+        var fromRect: NSRect?
         var toRange: NSRange
         var start: CFTimeInterval
     }
@@ -64,10 +67,17 @@ final class TranscriptTextView: NSTextView {
                 if NSEqualRanges(old.toRange, range) {
                     next[speaker] = old
                 } else {
-                    next[speaker] = WordHighlight(fromRange: reduceMotion ? nil : old.toRange, toRange: range, start: now)
+                    var fromRect: NSRect?
+                    let p = progress(since: old.start, at: now)
+                    if !reduceMotion, p < 1, let fr = old.fromRange,
+                       let a = union(rects(for: fr)), let b = union(rects(for: old.toRange)), abs(a.minY - b.minY) <= 1 {
+                        fromRect = lerp(a, b, p)  // continue from where the sweep had got to
+                    }
+                    next[speaker] = WordHighlight(fromRange: reduceMotion ? nil : old.toRange, fromRect: fromRect,
+                                                  toRange: range, start: now)
                 }
             } else {
-                next[speaker] = WordHighlight(fromRange: nil, toRange: range, start: now)
+                next[speaker] = WordHighlight(fromRange: nil, fromRect: nil, toRange: range, start: now)
             }
         }
         wordHighlights = next
@@ -168,7 +178,11 @@ final class TranscriptTextView: NSTextView {
         lm.ensureLayout(for: through)
         needsLayout = true
         layoutSubtreeIfNeeded()
-        guard let anchor, let f = lm.textLayoutFragment(for: anchor.location) else { return 0 }
+        guard let anchor else { return 0 }
+        // The relayout can purge the anchor fragment; textLayoutFragment(for:) then hands back an
+        // empty one (state .none, zero frame) rather than nil. Lay it out again before measuring.
+        lm.ensureLayout(for: NSTextRange(location: anchor.location))
+        guard let f = lm.textLayoutFragment(for: anchor.location), f.state == .layoutAvailable else { return 0 }
         return f.layoutFragmentFrame.minY - anchor.y
     }
 
@@ -307,7 +321,7 @@ final class TranscriptTextView: NSTextView {
             guard mayBeVisible(h.toRange) || h.fromRange.map(mayBeVisible) == true,
                   let to = union(rects(for: h.toRange)) else { continue }
             let p = progress(since: h.start, at: now)
-            if p < 1, let fr = h.fromRange, let from = union(rects(for: fr)) {
+            if p < 1, let fr = h.fromRange, let from = h.fromRect ?? union(rects(for: fr)) {
                 if abs(from.minY - to.minY) > 1 {
                     // A move to another line crossfades instead of sweeping across the column.
                     if from.intersects(rect) { drawWord(from, alpha: wordAlpha * (1 - p)) }

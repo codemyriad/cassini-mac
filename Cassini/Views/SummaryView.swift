@@ -102,7 +102,10 @@ struct SummaryView: View {
             } else if line.hasPrefix("#") {
                 flushList(); flushParagraph()
                 let level = line.prefix { $0 == "#" }.count
-                out.append(.heading(attributed(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)), level))
+                var text = line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
+                // CommonMark's optional closing run of '#', preceded by whitespace or alone.
+                text = text.replacing(/(^|\s+)#+$/, with: "").trimmingCharacters(in: .whitespaces)
+                out.append(.heading(attributed(text), level))
             } else if let item = listItem(line) {
                 flushParagraph()
                 list.append(item)
