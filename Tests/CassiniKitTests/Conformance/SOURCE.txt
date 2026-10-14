@@ -1,0 +1,1 @@
+Vendored from https://github.com/codemyriad/cassini-format/tree/867f68c56292ada9464b8516dc2797003d5af9eb/spec/conformance (CC0-1.0).
