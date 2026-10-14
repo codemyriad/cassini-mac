@@ -1,0 +1,81 @@
+name: Cassini
+options:
+  bundleIdPrefix: com.codemyriad
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  xcodeVersion: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    SWIFT_STRICT_CONCURRENCY: targeted
+packages:
+  CassiniKit:
+    path: .
+targets:
+  Cassini:
+    type: application
+    platform: macOS
+    sources:
+      - path: Cassini
+        excludes:
+          - "Info.plist"
+          - "Cassini.entitlements"
+    dependencies:
+      - package: CassiniKit
+        product: CassiniKit
+    info:
+      path: Cassini/Info.plist
+      properties:
+        CFBundleName: Cassini
+        CFBundleDisplayName: Cassini
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: "15.0"
+        NSHumanReadableCopyright: "© 2026 Code Myriad"
+        NSPrincipalClass: NSApplication
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Ogg Opus Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.xiph.ogg-audio
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.xiph.ogg-audio
+            UTTypeDescription: Ogg Opus Audio
+            UTTypeConformsTo:
+              - public.audio
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - opus
+                - oga
+                - ogg
+              public.mime-type:
+                - audio/ogg
+                - audio/opus
+    entitlements:
+      path: Cassini/Cassini.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac
+        PRODUCT_NAME: Cassini
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        GENERATE_INFOPLIST_FILE: false
+schemes:
+  Cassini:
+    build:
+      targets:
+        Cassini: all
+    run:
+      config: Debug

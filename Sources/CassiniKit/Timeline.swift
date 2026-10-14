@@ -36,12 +36,25 @@ public struct Timeline: Sendable {
 
     public let words: [Word]
     public let turns: [Turn]
+    /// For each word, the id of the turn that displays it (the host turn for an interjection).
+    public let turnOfWord: [Int]
+    /// For each word, whether it is shown as an interjection chip.
+    public let isChipWord: [Bool]
     /// Per speaker id: that speaker's word indices sorted by start.
     let bySpeaker: [String: [Int]]
 
     public init(_ words: [Word]) {
         self.words = words
-        turns = Timeline.buildTurns(words)
+        let turns = Timeline.buildTurns(words)
+        self.turns = turns
+        var tow = [Int](repeating: -1, count: words.count)
+        var chip = [Bool](repeating: false, count: words.count)
+        for t in turns {
+            for i in t.words { tow[i] = t.id }
+            for j in t.interjections { for i in j.words { tow[i] = t.id; chip[i] = true } }
+        }
+        turnOfWord = tow
+        isChipWord = chip
         var by: [String: [Int]] = [:]
         for (i, w) in words.enumerated() { by[w.speaker, default: []].append(i) }
         bySpeaker = by.mapValues { idx in idx.enumerated().sorted { a, b in
@@ -176,6 +189,11 @@ public struct Timeline: Sendable {
             if words[idx[mid]].startMs <= t { lo = mid + 1 } else { hi = mid }
         }
         return lo == 0 ? nil : lo - 1
+    }
+
+    /// Ids of the turns active at `t`: those whose span, plus the hold, contains it.
+    public func activeTurns(at t: Int) -> [Int] {
+        turns.filter { isActive($0, at: t) }.map(\.id)
     }
 
     public func isActive(_ turn: Turn, at t: Int) -> Bool {

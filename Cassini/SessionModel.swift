@@ -1,0 +1,234 @@
+import AppKit
+import CassiniKit
+import Observation
+import SwiftUI
+
+/// Everything one document window shows: the file, its player, and the view state.
+@MainActor
+@Observable
+final class SessionModel {
+    enum Tab: Hashable { case transcript, summary }
+
+    let file: CassiniFile?
+    let readError: String?
+    let fileURL: URL?
+    let player: PlayerController?
+    let manifest: Manifest?
+    /// The manifest's speakers, plus one entry per speaker id the transcript names but the manifest lacks.
+    private(set) var speakers: [Speaker] = []
+
+    var selectedTranscriptId: String? {
+        didSet { if selectedTranscriptId != oldValue { rebuildTimeline() } }
+    }
+    private(set) var timeline: Timeline?
+    /// Why there is no transcript on screen, when there is none.
+    private(set) var transcriptProblem: String?
+
+    var hiddenSpeakers: Set<String> = []
+    var tab: Tab = .transcript
+    var searchText = ""
+    var follow = true
+    /// The user scrolled away while following; a "Jump to current" button offers the way back.
+    var followPaused = false
+    var showInspector = true
+    /// Speakers with a word under the playhead right now.
+    private(set) var speakingNow: Set<String> = []
+
+    // Search state the transcript view reports back.
+    var matchCount = 0
+    var matchIndex = 0
+
+    // Requests to the transcript view, as counters so SwiftUI notices each one.
+    var jumpRequest = 0
+    var matchStep = (serial: 0, direction: 0)
+    var focusSearchRequest = 0
+
+    weak var window: NSWindow?
+    /// The transcript view's frame-rate subscriber: time in ms and the current word per speaker.
+    @ObservationIgnored var transcriptSink: ((Int, [String: Int]) -> Void)?
+    @ObservationIgnored private var lookupHint: [String: Int] = [:]
+    @ObservationIgnored private var lastWords: [String: Int] = [:]
+
+    init(document: CassiniDocument, url: URL?) {
+        file = document.file
+        readError = document.readError
+        fileURL = url
+        manifest = document.file?.manifest
+        let title = manifest?.meeting.title ?? url?.deletingPathExtension().lastPathComponent ?? "Recording"
+        if let url {
+            player = PlayerController(url: url, durationMs: manifest?.meeting.durationMs ?? 0, title: title)
+        } else {
+            player = nil
+        }
+        selectedTranscriptId = manifest?.defaultTranscript?.id
+        rebuildTimeline()
+        player?.tickHandlers.append { [weak self] ms in self?.tick(ms) }
+        SessionRegistry.shared.register(self)
+    }
+
+    // MARK: Derived display
+
+    var title: String {
+        manifest?.meeting.title ?? fileURL?.deletingPathExtension().lastPathComponent ?? "Recording"
+    }
+
+    var subtitle: String {
+        var parts: [String] = []
+        if let date = recordingDateText { parts.append(date) }
+        if let m = manifest {
+            parts.append(m.speakers.count == 1 ? "1 speaker" : "\(m.speakers.count) speakers")
+        }
+        if let d = player?.durationMs, d > 0 { parts.append(formatClock(d)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The recording date for display. `recordedAtLocal` is a label and is never shifted to a zone.
+    var recordingDateText: String? {
+        guard let m = manifest else { return nil }
+        if let local = m.meeting.recordedAtLocal, let date = SessionModel.localLabelDate(local) {
+            var style = SessionModel.dateStyle
+            style.timeZone = TimeZone(identifier: "UTC")!
+            return date.formatted(style)
+        }
+        if let date = SessionModel.parseRFC3339(m.meeting.createdAtUtc) {
+            return date.formatted(SessionModel.dateStyle)
+        }
+        return nil
+    }
+
+    static let dateStyle = Date.FormatStyle(date: .abbreviated, time: .omitted)
+
+    static func parseRFC3339(_ s: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
+
+    /// `YYYY-MM-DDTHH:MM:SS` as a Date in UTC, so formatting in UTC reproduces the label's own day.
+    static func localLabelDate(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f.date(from: s)
+    }
+
+    var hasSummary: Bool { manifest?.summaryMarkdown != nil }
+
+    var fileName: String { fileURL?.lastPathComponent ?? "" }
+
+    var hasQuery: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// Speaker colors: the system orange, indigo, teal, green and pink in manifest order.
+    static let palette: [NSColor] = [.systemOrange, .systemIndigo, .systemTeal, .systemGreen, .systemPink]
+
+    func color(for speakerId: String) -> NSColor {
+        guard let i = speakers.firstIndex(where: { $0.id == speakerId }) else { return .systemGray }
+        return SessionModel.palette[i % SessionModel.palette.count]
+    }
+
+    func label(for speakerId: String) -> String {
+        speakers.first { $0.id == speakerId }?.label ?? "Unknown speaker"
+    }
+
+    // MARK: Transcript
+
+    private func rebuildTimeline() {
+        speakers = manifest?.speakers ?? []
+        timeline = nil
+        transcriptProblem = nil
+        lookupHint = [:]
+        lastWords = [:]
+        guard let file else {
+            transcriptProblem = readError.map { "This file could not be read: \($0)" } ?? "This file could not be read."
+            return
+        }
+        switch file.state {
+        case .plainAudio:
+            transcriptProblem = "No transcript in this file."
+            return
+        case .unknownCassiniFormat, .invalidCassiniMetadata:
+            transcriptProblem = file.stateReason ?? "No transcript in this file."
+            return
+        default:
+            break
+        }
+        guard let id = selectedTranscriptId, let entry = file.transcripts.first(where: { $0.entry.id == id }) else {
+            transcriptProblem = "No transcript in this file."
+            return
+        }
+        switch entry.load {
+        case .available(let t):
+            var known = Set(speakers.map(\.id))
+            for w in t.items where !known.contains(w.speaker) {
+                known.insert(w.speaker)
+                speakers.append(Speaker(id: w.speaker, label: "Unknown speaker"))
+            }
+            timeline = Timeline(t.items)
+        case .unavailable(let f):
+            transcriptProblem = "The transcript could not be loaded: \(f.message)."
+        }
+    }
+
+    /// Transcripts the inspector can switch between.
+    var availableTranscripts: [TranscriptEntry] { file?.transcripts.map(\.entry) ?? [] }
+
+    // MARK: Playback plumbing
+
+    private func tick(_ ms: Int) {
+        guard let timeline else { return }
+        let words = timeline.currentWords(at: ms, hint: &lookupHint)
+        if words != lastWords {
+            lastWords = words
+            let now = Set(words.keys)
+            if now != speakingNow { speakingNow = now }
+        }
+        transcriptSink?(ms, words)
+    }
+
+    /// Seeks and turns following back on, as the design asks of every seek.
+    func seek(toMs ms: Int) {
+        followPaused = false
+        player?.seek(toMs: ms)
+    }
+
+    func seek(toWord index: Int) {
+        guard let w = timeline?.words[index] else { return }
+        seek(toMs: w.startMs)
+    }
+
+    /// From the summary: switch to the transcript and seek.
+    func goToTranscript(ms: Int) {
+        tab = .transcript
+        seek(toMs: ms)
+    }
+
+    func jumpToCurrent() {
+        followPaused = false
+        follow = true
+        jumpRequest += 1
+    }
+
+    func findNext() { matchStep = (matchStep.serial + 1, 1) }
+    func findPrevious() { matchStep = (matchStep.serial + 1, -1) }
+
+    func showInFinder() {
+        guard let fileURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+}
+
+// MARK: - Focused values for menu commands
+
+struct SessionFocusedKey: FocusedValueKey {
+    typealias Value = SessionModel
+}
+
+extension FocusedValues {
+    var session: SessionModel? {
+        get { self[SessionFocusedKey.self] }
+        set { self[SessionFocusedKey.self] = newValue }
+    }
+}

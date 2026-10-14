@@ -26,6 +26,11 @@ public struct Finding: Error, Sendable, Equatable, Codable {
 public struct Speaker: Sendable, Equatable, Identifiable {
     public var id: String
     public var label: String
+
+    public init(id: String, label: String) {
+        self.id = id
+        self.label = label
+    }
 }
 
 public struct PayloadRef: Sendable, Equatable {
