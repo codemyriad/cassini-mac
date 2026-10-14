@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kit:
+    name: CassiniKit tests and conformance
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+      - name: Conformance suite (full profile)
+        working-directory: Tests/CassiniKitTests/Conformance
+        run: |
+          python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect" --profile full | tee full.txt
+          grep -q " 0 fail" full.txt
+          python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect --metadata" --profile metadata | tee metadata.txt
+          grep -q " 0 fail" metadata.txt
+
+  app:
+    name: Build Cassini.app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build
+        run: |
+          xcodebuild -project Cassini.xcodeproj -scheme Cassini -configuration Release \
+            -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES -quiet build
+      - name: Package
+        run: |
+          cd build/Build/Products/Release
+          ditto -c -k --keepParent Cassini.app Cassini.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cassini-${{ github.sha }}
+          path: build/Build/Products/Release/Cassini.zip
