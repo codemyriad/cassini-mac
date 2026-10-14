@@ -8,9 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		137937AE2E3240A6B5CB141C /* TranscriptTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7480882332EEE8C270AB671F /* TranscriptTextView.swift */; };
+		164C9949FF793B6793EF5BC9 /* CassiniQuickLook.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */; };
 		1EF5EE8DD217C7B2C937D7A2 /* DocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E7443641B578BD53031A57 /* DocumentView.swift */; };
 		34F29BC7B0D273489995F825 /* CassiniApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CC5AF01F2B185E4E45B0DF /* CassiniApp.swift */; };
+		398E0A13017E0EA1FECDF436 /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8FED7CB606A482972996CDB5 /* CassiniKit */; };
 		44CFFFC71378B43F6E26F87D /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */; };
 		5A50888A70EF3FF62908C1B5 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88787BACB86B7C8D434EC09F /* TranscriptView.swift */; };
 		5B22C485F9011F2995FB4C70 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09080E2F396E98099308B88B /* InspectorView.swift */; };
@@ -18,17 +20,44 @@
 		68278762F3B55EA7F2FB4B42 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC01E1B7B594D265434100B /* SidebarView.swift */; };
 		73430AD2E1F30C774BD10517 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC82AC94B942EF58DB6679 /* Commands.swift */; };
 		75CD3E441B477E26E2D33504 /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40168E838DC5368995A71BB6 /* SummaryView.swift */; };
+		8F81CB90D10877C15C1C85E4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202F303D76A9CA142F725248 /* PreviewViewController.swift */; };
 		AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128F0DA36A8F1649E4BFACB /* PlayerController.swift */; };
+		CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDC2D28CF9C48F3E7198A41F /* Quartz.framework */; };
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
 		D8B58B15098E7E1417F6CE8D /* TranscriptExportPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFFFBC8704BE23F2A1D6CFF /* TranscriptExportPanel.swift */; };
 		E494989AFB7C975E633A394B /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6A70F100BBB78693556A7214 /* CassiniKit */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		EC77D11D2A696AFE4B9A419C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C39BCFB13CC6F2A45A64A265 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 58C288029757D34E5DB220F9;
+			remoteInfo = CassiniQuickLook;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2D274D122F504037F2C02487 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				164C9949FF793B6793EF5BC9 /* CassiniQuickLook.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0128F0DA36A8F1649E4BFACB /* PlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerController.swift; sourceTree = "<group>"; };
 		0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerBar.swift; sourceTree = "<group>"; };
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
+		202F303D76A9CA142F725248 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -40,7 +69,9 @@
 		BAFFFBC8704BE23F2A1D6CFF /* TranscriptExportPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptExportPanel.swift; sourceTree = "<group>"; };
 		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		E284419A62A77AD5FD73134E /* Cassini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cassini.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CassiniQuickLook.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F6CC5AF01F2B185E4E45B0DF /* CassiniApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniApp.swift; sourceTree = "<group>"; };
+		FDC2D28CF9C48F3E7198A41F /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +80,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				E494989AFB7C975E633A394B /* CassiniKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B82B191826A6C94AA992647C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				398E0A13017E0EA1FECDF436 /* CassiniKit in Frameworks */,
+				CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +110,14 @@
 			path = Cassini;
 			sourceTree = "<group>";
 		};
+		4DEB3EE65094BF4B52C2C032 /* QuickLook */ = {
+			isa = PBXGroup;
+			children = (
+				202F303D76A9CA142F725248 /* PreviewViewController.swift */,
+			);
+			path = QuickLook;
+			sourceTree = "<group>";
+		};
 		68B274567A048794627409BD /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -82,11 +130,21 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		6D343769850BB64F706D7EA4 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				FDC2D28CF9C48F3E7198A41F /* Quartz.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		A21407D313CA8AD78A33135C = {
 			isa = PBXGroup;
 			children = (
 				31AB581C9E11BF19B5E97181 /* Cassini */,
 				F04E817D85F11D039AFB3A19 /* Packages */,
+				4DEB3EE65094BF4B52C2C032 /* QuickLook */,
+				6D343769850BB64F706D7EA4 /* Frameworks */,
 				DFC117ADD93673E5DAC754C8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -95,6 +153,7 @@
 			isa = PBXGroup;
 			children = (
 				E284419A62A77AD5FD73134E /* Cassini.app */,
+				F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -126,10 +185,12 @@
 			buildPhases = (
 				8BD6D6D4143C547CAB428148 /* Sources */,
 				B5AB5C6CC848958B5C12107C /* Frameworks */,
+				2D274D122F504037F2C02487 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0B5079A4FDE148843B092A21 /* PBXTargetDependency */,
 			);
 			name = Cassini;
 			packageProductDependencies = (
@@ -138,6 +199,25 @@
 			productName = Cassini;
 			productReference = E284419A62A77AD5FD73134E /* Cassini.app */;
 			productType = "com.apple.product-type.application";
+		};
+		58C288029757D34E5DB220F9 /* CassiniQuickLook */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 23B83B4BC8B0D9275ECC3401 /* Build configuration list for PBXNativeTarget "CassiniQuickLook" */;
+			buildPhases = (
+				E47158ABA1C76FF1E9A8CE59 /* Sources */,
+				B82B191826A6C94AA992647C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CassiniQuickLook;
+			packageProductDependencies = (
+				8FED7CB606A482972996CDB5 /* CassiniKit */,
+			);
+			productName = CassiniQuickLook;
+			productReference = F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -149,6 +229,10 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					3BC8CB932A66C2EAB5C28E19 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					58C288029757D34E5DB220F9 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
 					};
@@ -172,6 +256,7 @@
 			projectRoot = "";
 			targets = (
 				3BC8CB932A66C2EAB5C28E19 /* Cassini */,
+				58C288029757D34E5DB220F9 /* CassiniQuickLook */,
 			);
 		};
 /* End PBXProject section */
@@ -198,9 +283,44 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E47158ABA1C76FF1E9A8CE59 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8F81CB90D10877C15C1C85E4 /* PreviewViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		0B5079A4FDE148843B092A21 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 58C288029757D34E5DB220F9 /* CassiniQuickLook */;
+			targetProxy = EC77D11D2A696AFE4B9A419C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		169DF8B26BFB147CAD45C350 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = QuickLook/CassiniQuickLook.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = QuickLook/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.quicklook";
+				PRODUCT_NAME = CassiniQuickLook;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 		1DF3C33D7257C4BB2075FBC6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -265,6 +385,25 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = targeted;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		550D0B32AFB73CF252DAB287 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = QuickLook/CassiniQuickLook.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = QuickLook/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.quicklook";
+				PRODUCT_NAME = CassiniQuickLook;
+				SDKROOT = macosx;
 			};
 			name = Debug;
 		};
@@ -369,6 +508,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		23B83B4BC8B0D9275ECC3401 /* Build configuration list for PBXNativeTarget "CassiniQuickLook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				550D0B32AFB73CF252DAB287 /* Debug */,
+				169DF8B26BFB147CAD45C350 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		F6FB9031D1D22E57A3DEB8E9 /* Build configuration list for PBXNativeTarget "Cassini" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -398,6 +546,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		6A70F100BBB78693556A7214 /* CassiniKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CassiniKit;
+		};
+		8FED7CB606A482972996CDB5 /* CassiniKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CassiniKit;
 		};

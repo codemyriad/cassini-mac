@@ -28,6 +28,7 @@ targets:
     dependencies:
       - package: CassiniKit
         product: CassiniKit
+      - target: CassiniQuickLook
     info:
       path: Cassini/Info.plist
       properties:
@@ -71,6 +72,45 @@ targets:
         PRODUCT_NAME: Cassini
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
+        GENERATE_INFOPLIST_FILE: false
+  CassiniQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: QuickLook
+        excludes:
+          - "Info.plist"
+          - "*.entitlements"
+    dependencies:
+      - package: CassiniKit
+        product: CassiniKit
+      - sdk: Quartz.framework
+    info:
+      path: QuickLook/Info.plist
+      properties:
+        CFBundleName: Cassini Transcript Preview
+        CFBundleDisplayName: Cassini Transcript Preview
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NSHumanReadableCopyright: "© 2026 Code Myriad"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.preview
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController
+          NSExtensionAttributes:
+            QLSupportedContentTypes:
+              - org.xiph.ogg-audio
+            QLSupportsSearchableItems: false
+            QLIsDataBasedPreview: false
+    entitlements:
+      path: QuickLook/CassiniQuickLook.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.quicklook
+        PRODUCT_NAME: CassiniQuickLook
+        ENABLE_HARDENED_RUNTIME: true
         GENERATE_INFOPLIST_FILE: false
 schemes:
   Cassini:
