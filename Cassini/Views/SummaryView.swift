@@ -6,8 +6,6 @@ import SwiftUI
 struct SummaryView: View {
     let markdown: String
     let session: SessionModel
-    /// Task items ticked in this window; the file is read-only, so this is session state.
-    @State private var ticked: Set<Int> = []
 
     var body: some View {
         ScrollView {
@@ -47,8 +45,10 @@ struct SummaryView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if let checked = item.checked {
                 Toggle(isOn: Binding(
-                    get: { ticked.contains(key) != checked },
-                    set: { on in if on != checked { ticked.insert(key) } else { ticked.remove(key) } }
+                    get: { session.tickedSummaryItems.contains(key) != checked },
+                    set: { on in
+                        if on != checked { session.tickedSummaryItems.insert(key) } else { session.tickedSummaryItems.remove(key) }
+                    }
                 )) { EmptyView() }
                     .toggleStyle(.checkbox)
                     .labelsHidden()
@@ -84,21 +84,35 @@ struct SummaryView: View {
         var ordinal: Int?
     }
 
+    /// Line-based: a heading is one line and ends the block before it; blank lines end blocks too.
     private var blocks: [Block] {
-        markdown.replacingOccurrences(of: "\r\n", with: "\n")
-            .components(separatedBy: "\n\n")
-            .compactMap { para -> Block? in
-                let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return nil }
-                if trimmed.hasPrefix("#") {
-                    let level = trimmed.prefix { $0 == "#" }.count
-                    return .heading(attributed(trimmed.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)), level)
-                }
-                let lines = trimmed.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-                let items = lines.compactMap(listItem)
-                if !items.isEmpty, items.count == lines.count { return .list(items) }
-                return .paragraph(attributed(trimmed))
+        var out: [Block] = []
+        var paragraph: [String] = []
+        var list: [ListItem] = []
+        func flushParagraph() {
+            if !paragraph.isEmpty { out.append(.paragraph(attributed(paragraph.joined(separator: "\n")))); paragraph = [] }
+        }
+        func flushList() {
+            if !list.isEmpty { out.append(.list(list)); list = [] }
+        }
+        for raw in markdown.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty {
+                flushList(); flushParagraph()
+            } else if line.hasPrefix("#") {
+                flushList(); flushParagraph()
+                let level = line.prefix { $0 == "#" }.count
+                out.append(.heading(attributed(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)), level))
+            } else if let item = listItem(line) {
+                flushParagraph()
+                list.append(item)
+            } else {
+                flushList()
+                paragraph.append(line)
             }
+        }
+        flushList(); flushParagraph()
+        return out
     }
 
     private func listItem(_ line: String) -> ListItem? {

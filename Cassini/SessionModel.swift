@@ -26,6 +26,8 @@ final class SessionModel {
 
     var hiddenSpeakers: Set<String> = []
     var tab: Tab = .transcript
+    /// Summary task items ticked in this window; the file is read-only, so this lives with the window.
+    var tickedSummaryItems: Set<Int> = []
     var searchText = ""
     var follow = true
     /// The user scrolled away while following; a "Jump to current" button offers the way back.

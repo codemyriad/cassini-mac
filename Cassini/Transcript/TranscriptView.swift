@@ -237,10 +237,20 @@ struct TranscriptView: NSViewRepresentable {
         @discardableResult
         private func scroll(toReveal range: NSRange, force: Bool) -> Bool {
             guard let textView, let scrollView else { return false }
-            let boxes = textView.settledRects(for: range)
+            let clip = scrollView.contentView
+            // Settling layout can move estimated text; keep what the user sees where it is.
+            let shift = textView.settleLayout(through: range)
+            if abs(shift) > 0.5 {
+                let maxY = max(0, textView.frame.height - clip.bounds.height)
+                programmaticScroll = true
+                clip.setBoundsOrigin(NSPoint(x: 0, y: min(max(0, clip.bounds.origin.y + shift), maxY)))
+                scrollView.reflectScrolledClipView(clip)
+                programmaticScroll = false
+            }
+            let boxes = textView.rects(for: range)
             guard let first = boxes.first else { return false }
             let target = boxes.dropFirst().reduce(first) { $0.union($1) }
-            let visible = scrollView.contentView.bounds
+            let visible = clip.bounds
             let inBand = target.minY >= visible.minY + 48 && target.maxY <= visible.maxY - 96
             guard force || !inBand else { return false }
             let y = target.midY - visible.height * 0.35
@@ -249,7 +259,6 @@ struct TranscriptView: NSViewRepresentable {
             guard abs(origin.y - visible.origin.y) > 0.5 else { return false }
             let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             programmaticScroll = true
-            let clip = scrollView.contentView
             if reduceMotion {
                 clip.setBoundsOrigin(origin)
                 scrollView.reflectScrolledClipView(clip)

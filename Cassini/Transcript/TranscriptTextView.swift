@@ -11,13 +11,12 @@ final class TranscriptTextView: NSTextView {
 
     var layoutInfo = TranscriptLayout(text: NSAttributedString())
 
-    /// The accent block behind one speaker's current word, tweened between positions.
+    /// The accent block behind one speaker's current word, tweened from the previous word. Ranges,
+    /// not rects: geometry is resolved at draw time so it follows the text through relayouts.
     struct WordHighlight {
-        var from: NSRect
-        var to: NSRect
+        var fromRange: NSRange?
+        var toRange: NSRange
         var start: CFTimeInterval
-        /// A move to another line crossfades instead of sweeping across the column.
-        var crossfade: Bool
     }
 
     /// The soft block behind an active turn, fading in or out.
@@ -61,12 +60,14 @@ final class TranscriptTextView: NSTextView {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         var next: [String: WordHighlight] = [:]
         for (speaker, range) in words {
-            guard let to = union(rects(for: range)) else { continue }
-            if let old = wordHighlights[speaker], !reduceMotion {
-                let from = currentRect(of: old, at: now)
-                next[speaker] = WordHighlight(from: from, to: to, start: now, crossfade: abs(from.minY - to.minY) > 1)
+            if let old = wordHighlights[speaker] {
+                if NSEqualRanges(old.toRange, range) {
+                    next[speaker] = old
+                } else {
+                    next[speaker] = WordHighlight(fromRange: reduceMotion ? nil : old.toRange, toRange: range, start: now)
+                }
             } else {
-                next[speaker] = WordHighlight(from: to, to: to, start: now, crossfade: false)
+                next[speaker] = WordHighlight(fromRange: nil, toRange: range, start: now)
             }
         }
         wordHighlights = next
@@ -95,11 +96,9 @@ final class TranscriptTextView: NSTextView {
         return CGFloat(1 - pow(1 - p, 2))  // ease-out
     }
 
-    private func currentRect(of h: WordHighlight, at now: CFTimeInterval) -> NSRect {
-        if h.crossfade { return h.to }
-        let p = progress(since: h.start, at: now)
-        return NSRect(x: h.from.minX + (h.to.minX - h.from.minX) * p, y: h.from.minY + (h.to.minY - h.from.minY) * p,
-                      width: h.from.width + (h.to.width - h.from.width) * p, height: h.from.height + (h.to.height - h.from.height) * p)
+    private func lerp(_ a: NSRect, _ b: NSRect, _ p: CGFloat) -> NSRect {
+        NSRect(x: a.minX + (b.minX - a.minX) * p, y: a.minY + (b.minY - a.minY) * p,
+               width: a.width + (b.width - a.width) * p, height: a.height + (b.height - a.height) * p)
     }
 
     private func currentAlpha(of h: TurnHighlight, at now: CFTimeInterval) -> CGFloat {
@@ -157,15 +156,20 @@ final class TranscriptTextView: NSTextView {
     }
 
     /// Lays out everything from the start through `range`, so positions and the view's height are
-    /// real rather than TextKit 2's estimates, then returns the range's rects.
-    func settledRects(for range: NSRange) -> [NSRect] {
-        if let lm = textLayoutManager, let tr = textRange(range),
-           let through = NSTextRange(location: lm.documentRange.location, end: tr.endLocation) {
-            lm.ensureLayout(for: through)
-            needsLayout = true
-            layoutSubtreeIfNeeded()
+    /// real rather than TextKit 2's estimates. Returns how far the text at the top of the viewport
+    /// moved, so the caller can keep what the user is looking at in place.
+    func settleLayout(through range: NSRange) -> CGFloat {
+        guard let lm = textLayoutManager, let tr = textRange(range),
+              let through = NSTextRange(location: lm.documentRange.location, end: tr.endLocation) else { return 0 }
+        var anchor: (location: NSTextLocation, y: CGFloat)?
+        if let vr = lm.textViewportLayoutController.viewportRange, let f = lm.textLayoutFragment(for: vr.location) {
+            anchor = (f.rangeInElement.location, f.layoutFragmentFrame.minY)
         }
-        return rects(for: range)
+        lm.ensureLayout(for: through)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        guard let anchor, let f = lm.textLayoutFragment(for: anchor.location) else { return 0 }
+        return f.layoutFragmentFrame.minY - anchor.y
     }
 
     /// The character range TextKit 2 has laid out for the viewport, or nil before the first layout.
@@ -300,13 +304,20 @@ final class TranscriptTextView: NSTextView {
             }
         }
         for h in wordHighlights.values {
-            if h.crossfade {
-                let p = progress(since: h.start, at: now)
-                if p < 1, h.from.intersects(rect) { drawWord(h.from, alpha: wordAlpha * (1 - p)) }
-                if h.to.intersects(rect) { drawWord(h.to, alpha: wordAlpha * p) }
-            } else {
-                let box = currentRect(of: h, at: now)
-                if box.intersects(rect) { drawWord(box, alpha: wordAlpha) }
+            guard mayBeVisible(h.toRange) || h.fromRange.map(mayBeVisible) == true,
+                  let to = union(rects(for: h.toRange)) else { continue }
+            let p = progress(since: h.start, at: now)
+            if p < 1, let fr = h.fromRange, let from = union(rects(for: fr)) {
+                if abs(from.minY - to.minY) > 1 {
+                    // A move to another line crossfades instead of sweeping across the column.
+                    if from.intersects(rect) { drawWord(from, alpha: wordAlpha * (1 - p)) }
+                    if to.intersects(rect) { drawWord(to, alpha: wordAlpha * p) }
+                } else {
+                    let box = lerp(from, to, p)
+                    if box.intersects(rect) { drawWord(box, alpha: wordAlpha) }
+                }
+            } else if to.intersects(rect) {
+                drawWord(to, alpha: wordAlpha)
             }
         }
     }

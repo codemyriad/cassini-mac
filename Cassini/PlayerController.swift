@@ -41,6 +41,9 @@ final class PlayerController {
     @ObservationIgnored private var segmentStart: AVAudioFramePosition = 0
     /// The position while paused.
     @ObservationIgnored private var pausedFrame: AVAudioFramePosition = 0
+    /// The last file frame read from the renderer: the position to resume from when the engine
+    /// has stopped (an output device change) and reports no render time.
+    @ObservationIgnored private var lastFrame: AVAudioFramePosition = 0
     /// Bumped on every schedule or stop, so a stale segment's completion is ignored.
     @ObservationIgnored private var scheduleGeneration = 0
     @ObservationIgnored private var clock: CADisplayLink?
@@ -172,6 +175,7 @@ final class PlayerController {
             return false
         }
         segmentStart = frame
+        lastFrame = frame
         let generation = scheduleGeneration
         node.scheduleSegment(file, startingFrame: frame, frameCount: AVAudioFrameCount(remaining), at: nil,
                              completionCallbackType: .dataPlayedBack) { [weak self] _ in
@@ -214,9 +218,11 @@ final class PlayerController {
     private func frameNow() -> AVAudioFramePosition {
         guard isPlaying else { return pausedFrame }
         guard let nodeTime = node.lastRenderTime, let playerTime = node.playerTime(forNodeTime: nodeTime) else {
-            return segmentStart
+            // No render time while the engine is stopped; the clock read this within a display frame ago.
+            return lastFrame
         }
-        return max(segmentStart, segmentStart + playerTime.sampleTime)
+        lastFrame = max(segmentStart, segmentStart + playerTime.sampleTime)
+        return lastFrame
     }
 
     private func ms(for frame: AVAudioFramePosition) -> Int {
