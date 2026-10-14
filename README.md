@@ -15,7 +15,29 @@ clicking a word seeks to it, and the transcript scrolls to follow playback.
 - `Sources/cassini-inspect` — a CLI that prints a conformance-suite observation for a file
   (`--summary` for a readable report, `--metadata` to skip the audio check).
 - `Tests/CassiniKitTests` — Swift tests plus the vendored CC0 conformance vectors.
-- `Cassini/` — the macOS app (SwiftUI, document-based).
+- `Cassini/` — the macOS app (SwiftUI, document-based; TextKit 2 transcript; AVAudioEngine playback).
+- `QuickLook/` — the Quick Look preview extension (title, speakers, first turns).
+- `docs/implementer-notes.md` — the design reference the app is built against.
+
+## Building
+
+```
+brew install xcodegen
+xcodegen generate
+xcodebuild -project Cassini.xcodeproj -scheme Cassini -configuration Debug -derivedDataPath build build
+open build/Build/Products/Debug/Cassini.app Samples/your-meeting.opus
+```
+
+Requires macOS 15 and Xcode 16. The app is sandboxed and ad-hoc signed for local runs.
+
+## Notes
+
+- Playback uses `AVAudioEngine` + `AVAudioFile`, not `AVPlayer`: CoreMedia's Ogg demuxer seeks
+  by byte estimate and lands up to two seconds away from the time it reports, and its duration
+  is an estimate. `AVAudioFile` decodes Ogg Opus frame-exactly (its `length` equals the spec's
+  playable sample count), so the word highlight follows what is actually heard.
+- The reader is a `full`-profile consumer: it verifies the audio digest on open and ends in one
+  of the spec's six trust states, shown in the inspector's badge.
 
 ## Conformance
 

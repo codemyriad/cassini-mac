@@ -29,7 +29,9 @@ provenance (producer tool, processing notes). Show provenance in the inspector.
 
 Playback: confirm whether AVFoundation decodes Ogg Opus on the minimum macOS version you target.
 If not, decode with libopusfile and feed `AVAudioEngine`. (Checked: AVFoundation decodes Ogg Opus
-on macOS 15+, and `AVAudioFile.length` equals the spec's playable sample count.)
+on macOS 15+, and `AVAudioFile.length` equals the spec's playable sample count. `AVPlayer` is
+not usable for this: its Ogg seeks land up to ~2 s off the reported time and its duration is a
+byte estimate, so the app plays through `AVAudioEngine` fed from `AVAudioFile`.)
 
 Failure modes to handle: a plain `.opus` with no Cassini tags (play it, show "No transcript in this
 file"); a digest mismatch (play it, show a warning badge instead of the check); a corrupt payload
