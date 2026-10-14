@@ -1,8 +1,9 @@
 import AppKit
 
-/// Routes bare-key media shortcuts (Space, ←, →) to the session of the key window, unless the
-/// user is typing in a text field. A menu key equivalent without modifiers would steal those keys
-/// from the search field; a local event monitor can look at the first responder first.
+/// Routes bare-key media shortcuts (Space, ←, →). The Playback menu lists them as key
+/// equivalents so they are discoverable, but a bare key equivalent would steal typing from the
+/// search field: this monitor runs first, hands the key to an editable text view when one has
+/// focus, and otherwise acts on the key window's session, so the menu never sees those keys.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
 
@@ -17,10 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
-              let window = event.window,
-              let session = SessionRegistry.shared.session(for: window),
-              let player = session.player else { return event }
-        if let editor = window.firstResponder as? NSTextView, editor.isEditable { return event }
+              [49, 123, 124].contains(event.keyCode),
+              let window = event.window else { return event }
+        if let editor = window.firstResponder as? NSTextView, editor.isEditable {
+            editor.keyDown(with: event)
+            return nil
+        }
+        guard let session = SessionRegistry.shared.session(for: window) else { return event }
+        guard let player = session.player, player.playbackError == nil else { return nil }
         switch event.keyCode {
         case 49:  // Space
             player.toggle()

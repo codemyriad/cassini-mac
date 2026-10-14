@@ -7,6 +7,22 @@ struct PlayerBar: View {
     @Bindable var player: PlayerController
 
     var body: some View {
+        VStack(spacing: 6) {
+            if let error = player.playbackError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
+            controls
+        }
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private var controls: some View {
         HStack(spacing: 14) {
             HStack(spacing: 4) {
                 Button {
@@ -86,8 +102,7 @@ struct PlayerBar: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
+        .disabled(player.playbackError != nil)
     }
 
     private var speedLabel: String {

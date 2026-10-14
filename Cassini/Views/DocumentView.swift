@@ -53,6 +53,7 @@ struct DocumentView: View {
         .onChange(of: session.focusSearchRequest) { searchFocused = true }
         .focusedSceneValue(\.session, session)
         .background(WindowAccessor { window in session.window = window })
+        .onDisappear { session.close() }
         .frame(minWidth: 760, minHeight: 480)
     }
 }

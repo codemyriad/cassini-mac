@@ -214,6 +214,12 @@ final class SessionModel {
     func findNext() { matchStep = (matchStep.serial + 1, 1) }
     func findPrevious() { matchStep = (matchStep.serial + 1, -1) }
 
+    /// The window is closing: stop the audio for good.
+    func close() {
+        player?.shutDown()
+        transcriptSink = nil
+    }
+
     func showInFinder() {
         guard let fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])

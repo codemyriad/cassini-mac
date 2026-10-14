@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Menu bar commands, so every shortcut is discoverable and remappable in System Settings.
-/// Space, ← and → are handled by the app delegate's key monitor (see there for why) and listed
-/// here without key equivalents.
+/// Space, ← and → reach the app through the app delegate's key monitor (see there for why); the
+/// key equivalents here are what the menu shows.
 struct AppCommands: Commands {
     @FocusedValue(\.session) private var session
 
@@ -30,11 +30,14 @@ struct AppCommands: Commands {
 
         CommandMenu("Playback") {
             Button(session?.player?.isPlaying == true ? "Pause" : "Play") { session?.player?.toggle() }
-                .disabled(session?.player == nil)
+                .keyboardShortcut(.space, modifiers: [])
+                .disabled(session?.player == nil || session?.player?.playbackError != nil)
             Button("Skip Back 15 Seconds") { if let s = session, let p = s.player { s.seek(toMs: p.currentMs - PlayerController.skipMs) } }
-                .disabled(session?.player == nil)
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(session?.player == nil || session?.player?.playbackError != nil)
             Button("Skip Forward 15 Seconds") { if let s = session, let p = s.player { s.seek(toMs: p.currentMs + PlayerController.skipMs) } }
-                .disabled(session?.player == nil)
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(session?.player == nil || session?.player?.playbackError != nil)
             Divider()
             Button("Faster") { session?.player?.stepSpeed(1) }
                 .keyboardShortcut(.upArrow, modifiers: .command)

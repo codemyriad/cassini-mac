@@ -60,8 +60,11 @@ struct TranscriptView: NSViewRepresentable {
         private var seenJump = 0
         private var seenMatchStep = 0
 
+        /// The last time the player published. Seeded from the player, since the view may be
+        /// created mid-session (a tab switch) while playback is paused.
         private var lastMs = 0
         private var lastWords: [String: Int] = [:]
+        private var activeTurnIds: [Int] = []
         /// Turn id → number of body words styled as spoken (the rest are upcoming).
         private var spokenCount: [Int: Int] = [:]
         private var matchWords: [Int] = []
@@ -76,12 +79,20 @@ struct TranscriptView: NSViewRepresentable {
             self.textView = textView
             textView.onSeekWord = { [weak self] i in self?.session.seek(toWord: i) }
             textView.onSeekMs = { [weak self] ms in self?.session.seek(toMs: ms) }
+            textView.wordLabel = { [weak self] i in self?.accessibilityLabel(forWord: i) ?? "" }
+            textView.turnLabel = { [weak self] id in self?.accessibilityLabel(forTurn: id) ?? "" }
             scrollView.onUserScroll = { [weak self] in self?.userScrolled() }
             scrollObserver = NotificationCenter.default.addObserver(
                 forName: NSScrollView.willStartLiveScrollNotification, object: scrollView, queue: .main
             ) { [weak self] _ in MainActor.assumeIsolated { self?.userScrolled() } }
             session.transcriptSink = { [weak self] ms, words in self?.tick(ms: ms, words: words) }
+            lastMs = session.player?.currentMs ?? 0
             sync()
+            // The scroll view has no size yet; bring the playhead on screen once it has.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.session.follow, !self.session.followPaused, let r = self.primaryCurrentRange() else { return }
+                self.scroll(toReveal: r, force: true)
+            }
         }
 
         func detach() {
@@ -91,7 +102,7 @@ struct TranscriptView: NSViewRepresentable {
 
         /// Reconciles the text with the session's observable state.
         func sync() {
-            guard let textView else { return }
+            guard textView != nil else { return }
             if builtHidden != session.hiddenSpeakers || builtTranscriptId != session.selectedTranscriptId {
                 rebuild()
             }
@@ -108,7 +119,6 @@ struct TranscriptView: NSViewRepresentable {
                 seenJump = session.jumpRequest
                 if let r = primaryCurrentRange() { scroll(toReveal: r, force: true) }
             }
-            _ = textView
         }
 
         private func rebuild() {
@@ -121,19 +131,13 @@ struct TranscriptView: NSViewRepresentable {
             textView.layoutInfo = layout
             textView.textStorage?.setAttributedString(layout.text)
             spokenCount = [:]
-            textView.currentWordRanges = []
-            textView.activeTurnIds = []
-            textView.activeChipIndices = []
+            activeTurnIds = []
+            textView.clearHighlights()
             lastWords = [:]
-            applyTime(ms: lastMs, words: lastWordsFromSession())
+            var hint: [String: Int] = [:]
+            applyTime(ms: lastMs, words: timeline.currentWords(at: lastMs, hint: &hint), announce: false)
             if !builtQuery.isEmpty { search(builtQuery) }
             textView.needsDisplay = true
-        }
-
-        private func lastWordsFromSession() -> [String: Int] {
-            guard let tl = session.timeline else { return [:] }
-            var hint: [String: Int] = [:]
-            return tl.currentWords(at: lastMs, hint: &hint)
         }
 
         // MARK: Time
@@ -141,36 +145,38 @@ struct TranscriptView: NSViewRepresentable {
         private func tick(ms: Int, words: [String: Int]) {
             let changed = words != lastWords
             lastMs = ms
-            applyTime(ms: ms, words: words)
+            applyTime(ms: ms, words: words, announce: true)
             if changed, session.follow, !session.followPaused, let r = primaryCurrentRange() {
                 scroll(toReveal: r, force: false)
             }
         }
 
-        private func applyTime(ms: Int, words: [String: Int]) {
+        private func applyTime(ms: Int, words: [String: Int], announce: Bool) {
             guard let textView, let timeline = session.timeline else { return }
-            let visible = Set(layout.visibleTurnIds)
-            let active = timeline.activeTurns(at: ms).filter { visible.contains($0) }
-            var wordRanges: [NSRange] = []
+            let active = layout.visibleTurns.filter { timeline.isActive($0, at: ms) }.map(\.id)
+            var wordRanges: [String: NSRange] = [:]
             var chips = Set<Int>()
-            for (_, idx) in words {
-                guard visible.contains(timeline.turnOfWord[idx]) else { continue }
-                if timeline.isChipWord[idx] {
-                    if let c = layout.chips.firstIndex(where: { $0.words.contains(idx) }) { chips.insert(c) }
+            for (speaker, idx) in words {
+                guard layout.displayTurnOfWord[idx] != nil else { continue }
+                if let c = layout.chipOfWord[idx] {
+                    chips.insert(c)
                 } else if let r = layout.wordRanges[idx] {
-                    wordRanges.append(r)
+                    wordRanges[speaker] = r
                 }
             }
-            let turnsChanged = active != textView.activeTurnIds
-            let wordsChanged = words != lastWords || turnsChanged
+            let turnsChanged = active != activeTurnIds
+            let wordsChanged = words != lastWords
             lastWords = words
-            guard wordsChanged else { return }
-
-            textView.activeTurnIds = active
+            guard wordsChanged || turnsChanged else {
+                // A seek inside a silent stretch still moves the spoken/upcoming boundary.
+                restyleUpcoming(active: active, words: words, timeline: timeline)
+                return
+            }
+            if announce, turnsChanged { announceNewTurns(Set(active).subtracting(activeTurnIds)) }
+            activeTurnIds = active
             textView.activeChipIndices = chips
-            textView.currentWordRanges = wordRanges
+            textView.setHighlights(words: wordRanges, turns: active)
             restyleUpcoming(active: active, words: words, timeline: timeline)
-            textView.needsDisplay = true
         }
 
         /// Later words in an active turn use the secondary color; everything else the primary.
@@ -178,15 +184,15 @@ struct TranscriptView: NSViewRepresentable {
             guard let storage = textView?.textStorage else { return }
             var wanted: [Int: Int] = [:]  // turn → spoken count
             for id in active {
-                guard let body = layout.turnWords[id] else { continue }
-                let speaker = timeline.turns[id].speaker
+                guard let body = layout.turnWords[id], let speaker = layout.turnSpeaker[id] else { continue }
                 if let cur = words[speaker], let pos = body.firstIndex(of: cur) {
                     wanted[id] = pos + 1
                 } else {
-                    // Active with no current word (a pause inside the turn): keep what was spoken.
-                    wanted[id] = spokenCount[id] ?? body.filter { timeline.words[$0].startMs <= lastMs }.count
+                    // Active with no current word (a pause, or a seek into one): spoken = started by now.
+                    wanted[id] = body.filter { timeline.words[$0].startMs <= lastMs }.count
                 }
             }
+            guard wanted != spokenCount else { return }
             var edits: [(NSRange, NSColor)] = []
             for (id, old) in spokenCount where wanted[id] == nil {
                 // Turn left the active set: everything back to primary.
@@ -210,19 +216,15 @@ struct TranscriptView: NSViewRepresentable {
             storage.endEditing()
         }
 
-        /// The word to keep on screen: the latest-starting current word in a visible turn.
+        /// The word to keep on screen: the latest-starting current word that is actually shown.
         private func primaryCurrentRange() -> NSRange? {
             guard let timeline = session.timeline else { return nil }
-            let visible = Set(layout.visibleTurnIds)
-            let best = lastWords.values
-                .filter { visible.contains(timeline.turnOfWord[$0]) }
-                .max { timeline.words[$0].startMs < timeline.words[$1].startMs }
-            if let best {
-                if timeline.isChipWord[best], let c = layout.chips.first(where: { $0.words.contains(best) }) { return c.range }
-                return layout.wordRanges[best]
+            let shown = lastWords.values.compactMap { i in layout.displayRange(of: i).map { (word: i, range: $0) } }
+            if let best = shown.max(by: { timeline.words[$0.word].startMs < timeline.words[$1.word].startMs }) {
+                return best.range
             }
             // Nothing is being said: reveal the turn around the playhead, or the next one.
-            if let turn = timeline.turns.first(where: { visible.contains($0.id) && $0.endMs + Timeline.holdMs > lastMs }) {
+            if let turn = layout.visibleTurns.first(where: { $0.endMs > lastMs - Timeline.holdMs }) {
                 return layout.turnRanges[turn.id].map { NSRange(location: $0.location, length: 1) }
             }
             return nil
@@ -231,18 +233,20 @@ struct TranscriptView: NSViewRepresentable {
         // MARK: Scrolling
 
         /// Scrolls only when the range leaves the band from 48 pt below the top to 96 pt above the
-        /// bottom; then it lands at about 35% of the view height.
-        private func scroll(toReveal range: NSRange, force: Bool) {
-            guard let textView, let scrollView else { return }
-            let boxes = textView.rects(for: range)
-            guard let first = boxes.first else { return }
+        /// bottom; then it lands at about 35% of the view height. Returns whether it scrolled.
+        @discardableResult
+        private func scroll(toReveal range: NSRange, force: Bool) -> Bool {
+            guard let textView, let scrollView else { return false }
+            let boxes = textView.settledRects(for: range)
+            guard let first = boxes.first else { return false }
             let target = boxes.dropFirst().reduce(first) { $0.union($1) }
             let visible = scrollView.contentView.bounds
             let inBand = target.minY >= visible.minY + 48 && target.maxY <= visible.maxY - 96
-            guard force || !inBand else { return }
+            guard force || !inBand else { return false }
             let y = target.midY - visible.height * 0.35
             let maxY = max(0, textView.frame.height - visible.height)
             let origin = NSPoint(x: 0, y: min(max(0, y), maxY))
+            guard abs(origin.y - visible.origin.y) > 0.5 else { return false }
             let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             programmaticScroll = true
             let clip = scrollView.contentView
@@ -263,10 +267,12 @@ struct TranscriptView: NSViewRepresentable {
                     }
                 })
             }
+            return true
         }
 
+        /// Any hand scroll while following pauses it; "Jump to current" offers the way back.
         private func userScrolled() {
-            guard !programmaticScroll, session.follow, !session.followPaused, !lastWords.isEmpty else { return }
+            guard !programmaticScroll, session.follow, !session.followPaused, session.timeline != nil else { return }
             session.followPaused = true
         }
 
@@ -276,21 +282,19 @@ struct TranscriptView: NSViewRepresentable {
             guard let textView else { return }
             matchWords = []
             matchCursor = 0
+            var ranges: [NSRange] = []
             if !query.isEmpty, let timeline = session.timeline {
                 let needle = query.lowercased()
-                let visible = Set(layout.visibleTurnIds)
-                matchWords = timeline.words.indices.filter {
-                    visible.contains(timeline.turnOfWord[$0]) && timeline.words[$0].text.lowercased().contains(needle)
+                for i in timeline.words.indices where timeline.words[i].text.lowercased().contains(needle) {
+                    guard let r = layout.displayRange(of: i) else { continue }  // hidden speaker
+                    matchWords.append(i)
+                    ranges.append(r)
                 }
             }
-            textView.matchRanges = matchWords.compactMap { layout.wordRanges[$0] ?? chipRange(containing: $0) }
+            textView.matchRanges = ranges
             session.matchCount = matchWords.count
             session.matchIndex = matchWords.isEmpty ? 0 : 1
             showMatch()
-        }
-
-        private func chipRange(containing word: Int) -> NSRange? {
-            layout.chips.first { $0.words.contains(word) }?.range
         }
 
         private func stepMatch(_ direction: Int) {
@@ -307,11 +311,38 @@ struct TranscriptView: NSViewRepresentable {
                 textView.needsDisplay = true
                 return
             }
-            let w = matchWords[matchCursor]
-            let range = layout.wordRanges[w] ?? chipRange(containing: w)
+            let range = layout.displayRange(of: matchWords[matchCursor])
             textView.currentMatchRange = range
             textView.needsDisplay = true
-            if let range { scroll(toReveal: range, force: true) }
+            // Showing a match is like a hand scroll: following pauses until a seek or Jump to current.
+            if let range, scroll(toReveal: range, force: true), session.follow, !session.followPaused,
+               session.player?.isPlaying == true {
+                session.followPaused = true
+            }
+        }
+
+        // MARK: Accessibility
+
+        private func accessibilityLabel(forWord i: Int) -> String {
+            guard let timeline = session.timeline, i < timeline.words.count else { return "" }
+            let w = timeline.words[i]
+            return "\(w.text), \(session.label(for: w.speaker)), \(formatClock(w.startMs))"
+        }
+
+        private func accessibilityLabel(forTurn id: Int) -> String {
+            guard let t = layout.visibleTurns.first(where: { $0.id == id }) else { return "" }
+            return "\(session.label(for: t.speaker)), \(formatClock(t.startMs))"
+        }
+
+        /// Tells VoiceOver who started speaking; turn changes, not every word.
+        private func announceNewTurns(_ ids: Set<Int>) {
+            guard !ids.isEmpty, let textView, NSWorkspace.shared.isVoiceOverEnabled else { return }
+            let names = layout.visibleTurns.filter { ids.contains($0.id) }.map { session.label(for: $0.speaker) }
+            guard !names.isEmpty else { return }
+            NSAccessibility.post(element: textView, notification: .announcementRequested, userInfo: [
+                .announcement: names.joined(separator: ", "),
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ])
         }
     }
 }
