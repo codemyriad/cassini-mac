@@ -49,24 +49,38 @@ jobs:
           **Cassini for Mac** opens a Cassini portable meeting `.opus` file, plays it, and shows its
           transcript with word-by-word highlighting, click-to-seek and follow-along scrolling.
 
-          Requires macOS 15 or later.
+          Requires macOS 15 or later. The app is universal (Intel and Apple Silicon).
 
           ### Installing
 
           1. Download `Cassini-*.zip` below and unzip it.
           2. Move `Cassini.app` to your Applications folder.
-          3. This build is ad-hoc signed and not notarized. Try opening it. If macOS blocks it
-             because the developer cannot be verified, open **System Settings → Privacy & Security**,
-             find the Cassini warning, choose **Open Anyway**, and confirm. Only approve the build
-             you intentionally downloaded here. Managed Macs may require administrator approval.
-          4. Open any `.opus` file with Cassini (File › Open, drag onto the icon, or Finder's Open With).
+          3. This build is ad-hoc signed and not notarized, so macOS blocks the first launch.
+             Double-click `Cassini.app`; macOS shows a dialog titled **“Cassini” Not Opened** saying
+             Apple could not verify it is free of malware. Click **Done**, not Move to Trash.
+          4. Right away, open **System Settings → Privacy & Security**, scroll to the Security section,
+             and click **Open Anyway** next to the Cassini notice. The notice only appears after a
+             blocked launch and disappears after a while; if it is missing, open Cassini again and
+             look again.
+          5. Confirm the prompt and enter an administrator password or Touch ID (an admin account
+             on the Mac is needed). On company-managed Macs the button may be hidden by policy;
+             ask IT to allow the app.
+          6. Open any `.opus` file with Cassini (File › Open, drag onto the icon, or Finder's Open With).
+
+          Only approve a build you intentionally downloaded here. The right-click → Open shortcut of
+          older macOS versions no longer works on macOS 15.
 
           ### Updating
 
-          Quit Cassini, download the newer zip, and replace `Cassini.app` in Applications.
-          There is no in-app updater yet. Bookmark the repository's latest release page or
-          enable GitHub notifications with **Watch → Custom → Releases**. This private
-          repository requires GitHub access to download releases.
+          Quit Cassini, download the newer zip, and replace `Cassini.app` in Applications. Each
+          build is a separately signed app, so expect the steps above again. There is no in-app
+          updater yet. Bookmark the [latest release](https://github.com/${{ github.repository }}/releases/latest)
+          or enable GitHub notifications with **Watch → Custom → Releases**.
+          EOF
+          if [ "${{ github.event.repository.private }}" = "true" ]; then
+            echo "This private repository requires GitHub access to download releases." >> notes.md
+          fi
+          cat >> notes.md <<'EOF'
 
           The SHA-256 of the archive is in the `.sha256` file.
           EOF

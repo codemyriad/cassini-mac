@@ -10,24 +10,34 @@ clicking a word seeks to it, and the transcript scrolls to follow playback.
 ## Download
 
 Builds are published on the [Releases page](https://github.com/codemyriad/cassini-mac/releases):
-sign in to GitHub with an account that has access to this private repository, download
-`Cassini-<version>.zip`, unzip, and move `Cassini.app` to Applications. Requires macOS 15
-or later; the v0.1.0 release supports both Intel and Apple Silicon Macs.
+download `Cassini-<version>.zip`, unzip, and move `Cassini.app` to Applications. While the
+repository is private, downloading needs a GitHub account with access to it. Requires macOS 15
+or later; the builds are universal (Intel and Apple Silicon).
 
-These early builds are ad-hoc signed and not notarized. After attempting to open Cassini,
-if macOS blocks it because the developer cannot be verified, open **System Settings →
-Privacy & Security**, find the Cassini warning, and choose **Open Anyway**. Confirm the
-prompt. Only do this for the release you intentionally downloaded from this repository.
-See [Apple's instructions](https://support.apple.com/102445). Managed Macs may require
-an administrator to allow the app.
+These early builds are ad-hoc signed and not notarized, so macOS 15 blocks the first launch.
+The right-click → Open shortcut of older macOS versions no longer works; do this instead:
+
+1. Double-click `Cassini.app`. macOS shows a dialog titled **“Cassini” Not Opened** saying Apple
+   could not verify it is free of malware. Click **Done**, not Move to Trash.
+2. Right away, open **System Settings → Privacy & Security**, scroll to the Security section,
+   and click **Open Anyway** next to the Cassini notice. The notice only appears after a blocked
+   launch and disappears after a while; if it is missing, open Cassini again and look again.
+3. Confirm the prompt and enter an administrator password or Touch ID. This needs an admin
+   account on the Mac. On company-managed Macs the button may be hidden by policy; ask IT to
+   allow the app.
+
+Do this only for a build you downloaded from this repository. See
+[Apple's instructions](https://support.apple.com/102445).
 
 ### Updates for colleagues
 
 Bookmark the [latest release](https://github.com/codemyriad/cassini-mac/releases/latest).
 To update, quit Cassini, download and unzip the newer release, then replace `Cassini.app`
-in Applications and reopen it. There is no in-app updater yet. GitHub's **Watch → Custom →
-Releases** option can notify you when a new build is published. Keep your meeting files;
-updating the app does not require deleting them.
+in Applications and reopen it. Each build is a separately signed app, so expect the steps
+above again. There is no in-app updater yet. GitHub's **Watch → Custom → Releases** option
+can notify you when a new build is published. Updating the app leaves your meeting files alone.
+
+### Cutting a release
 
 Maintainers publish an update by pushing a new `v*` version tag on a tested commit. The
 release workflow runs the package tests, builds the app, and publishes a zip and SHA-256
