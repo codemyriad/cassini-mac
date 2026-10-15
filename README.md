@@ -7,6 +7,13 @@ provenance in their tags.
 Open a file, play it, and read along: the spoken word is highlighted as it is said,
 clicking a word seeks to it, and the transcript scrolls to follow playback.
 
+## Download
+
+Builds are published on the [Releases page](https://github.com/codemyriad/cassini-mac/releases):
+download `Cassini-<version>.zip`, unzip, and move `Cassini.app` to Applications. The builds are
+not notarized yet, so on first launch right-click the app and choose Open (or
+`xattr -d com.apple.quarantine /Applications/Cassini.app`). Requires macOS 15.
+
 ## Layout
 
 - `Sources/CassiniKit` — the format reader (Ogg pages, OpusTags, chunk sets, manifest,

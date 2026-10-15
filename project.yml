@@ -8,6 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
     MACOSX_DEPLOYMENT_TARGET: "15.0"
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
@@ -34,8 +36,8 @@ targets:
       properties:
         CFBundleName: Cassini
         CFBundleDisplayName: Cassini
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: "© 2026 Code Myriad"
@@ -90,8 +92,8 @@ targets:
       properties:
         CFBundleName: Cassini Transcript Preview
         CFBundleDisplayName: Cassini Transcript Preview
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSHumanReadableCopyright: "© 2026 Code Myriad"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.quicklook.preview

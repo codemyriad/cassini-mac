@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Cassini.app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: Test CassiniKit
+        run: swift test
+      - name: Build Release
+        run: |
+          xcodebuild -project Cassini.xcodeproj -scheme Cassini -configuration Release \
+            -derivedDataPath build \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
+      - name: Package
+        id: package
+        run: |
+          cd build/Build/Products/Release
+          ZIP="Cassini-${{ steps.version.outputs.version }}.zip"
+          ditto -c -k --keepParent Cassini.app "$ZIP"
+          shasum -a 256 "$ZIP" > "$ZIP.sha256"
+          echo "zip=build/Build/Products/Release/$ZIP" >> "$GITHUB_OUTPUT"
+          echo "sum=build/Build/Products/Release/$ZIP.sha256" >> "$GITHUB_OUTPUT"
+      - name: Release notes
+        run: |
+          cat > notes.md <<'EOF'
+          **Cassini for Mac** opens a Cassini portable meeting `.opus` file, plays it, and shows its
+          transcript with word-by-word highlighting, click-to-seek and follow-along scrolling.
+
+          Requires macOS 15 or later.
+
+          ### Installing
+
+          1. Download `Cassini-*.zip` below and unzip it.
+          2. Move `Cassini.app` to your Applications folder.
+          3. This build is not notarized. The first time, right-click `Cassini.app`, choose **Open**,
+             and confirm; or run `xattr -d com.apple.quarantine /Applications/Cassini.app`.
+          4. Open any `.opus` file with Cassini (File › Open, drag onto the icon, or Finder's Open With).
+
+          The SHA-256 of the archive is in the `.sha256` file.
+          EOF
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Cassini for Mac ${{ steps.version.outputs.version }}" \
+            --notes-file notes.md --generate-notes \
+            "${{ steps.package.outputs.zip }}" "${{ steps.package.outputs.sum }}"
