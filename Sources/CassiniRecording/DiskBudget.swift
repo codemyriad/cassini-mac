@@ -11,7 +11,8 @@ public struct DiskBudget: Equatable, Sendable {
         shouldStop = free <= reserve
         let usable = free > reserve ? free - reserve : 0
         if bytesPerSecond.isFinite && bytesPerSecond > 0 {
-            minutesLeft = Int(min(Double(Int.max), floor(Double(usable) / bytesPerSecond / 60)))
+            let minutes = floor(Double(usable) / bytesPerSecond / 60)
+            minutesLeft = minutes >= Double(Int.max) ? Int.max : Int(minutes)
         } else { minutesLeft = shouldStop ? 0 : nil }
     }
 }

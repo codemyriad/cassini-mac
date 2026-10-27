@@ -9,5 +9,6 @@ final class DiskBudgetTests: XCTestCase {
         XCTAssertEqual(large.reserve,4_000_000_000); XCTAssertEqual(large.minutesLeft,0); XCTAssertTrue(large.shouldStop)
         XCTAssertTrue(DiskBudget(total: 1, free: 0, bytesPerSecond: 0).shouldStop)
         XCTAssertNil(DiskBudget(total: 100_000_000_000, free: 10_000_000_000, bytesPerSecond: .nan).minutesLeft)
+        XCTAssertEqual(DiskBudget(total: UInt64.max, free: UInt64.max, bytesPerSecond: 1e-300).minutesLeft,Int.max)
     }
 }
