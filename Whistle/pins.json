@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "engine": "needle",
+  "engineVersion": "3.3.0",
+  "engineRevision": "93e88ede867e4311c39151285e74df513e4b835b",
+  "modelRevision": "ca5287601bef25af26dcf2e1b2bdc0843a7c19e5",
+  "artifacts": [
+    {
+      "name": "cactus_needle-3.3.0-py3-none-macosx_11_0_arm64.whl",
+      "url": "https://huggingface.co/Cactus-Compute/needle3/resolve/93e88ede867e4311c39151285e74df513e4b835b/python/cactus_needle-3.3.0-py3-none-macosx_11_0_arm64.whl",
+      "sha256": "4b7e1ab53590fb10718f3e48197ac60160aab62a7d34ab3a2cdd4003f0438d04",
+      "member": "needle/libneedle3.dylib",
+      "memberSha256": "99b9bd363d2e247626118e7ade04a3dc70c60ebe6bbb0e1bca50bc0bce24b0d3",
+      "arch": "arm64"
+    },
+    {
+      "name": "cactus_needle-3.3.0-py3-none-macosx_11_0_x86_64.whl",
+      "url": "https://huggingface.co/Cactus-Compute/needle3/resolve/93e88ede867e4311c39151285e74df513e4b835b/python/cactus_needle-3.3.0-py3-none-macosx_11_0_x86_64.whl",
+      "sha256": "b957061260b121c8f82a2d12a4a2e3162088c9688e40e0aa23010c23cdaaaafb",
+      "member": "needle/libneedle3.dylib",
+      "memberSha256": "0ea5cf58a46145ce146b7e6d9f9d945132a13c1e6eeb0401ce27182e6e2a846a",
+      "arch": "x86_64"
+    },
+    {
+      "name": "whistle.cact",
+      "url": "https://huggingface.co/Cactus-Compute/whistle/resolve/ca5287601bef25af26dcf2e1b2bdc0843a7c19e5/whistle.cact",
+      "sha256": "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb"
+    }
+  ],
+  "licenseSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+  "fixtures": {
+    "jfk.wav": "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e",
+    "jfk.txt": "8d7d44eb38e4e38626c14bbadbc28fc67c6cd8b49b688f6c4da79402eb4bcfce"
+  }
+}

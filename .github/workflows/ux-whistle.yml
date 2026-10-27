@@ -1,0 +1,79 @@
+name: Whistle bundling spike
+on:
+  pull_request:
+    paths: ['Whistle/**', 'Sources/CassiniWhistle/**', 'Sources/cassini-whistle-worker/**', 'Tests/CassiniWhistleTests/**', 'Cassini/WhistleSelfTest.swift', 'Cassini/AppDelegate.swift', 'project.yml', 'Package.swift', 'scripts/*whistle*', '.github/workflows/ux-whistle.yml']
+concurrency:
+  group: ux-whistle-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  worker:
+    name: Whistle worker (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build worker and privacy tests
+        run: |
+          swift build --product cassini-whistle-worker
+          swift test --filter WhistlePrivacyTests
+      - name: Fetch pinned build-time artifacts
+        run: python3 scripts/fetch-whistle.py --output build/Whistle
+      - name: Constructor privacy guard and persistent worker JFK golden
+        run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle --report build/whistle-${{ matrix.runner }}.json
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: whistle-${{ matrix.runner }}
+          path: |
+            build/whistle-*.json
+            build/Whistle/unsigned-sha256.json
+  bundle:
+    name: Universal app and sandboxed Whistle helper
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Build universal app with signed engine and inheriting helper
+        run: |
+          mkdir -p build
+          set -o pipefail
+          xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Debug \
+            -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/whistle-app-build.log
+          codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
+      - name: Verify packaged app starts its sandbox-inheriting worker
+        env:
+          CASSINI_HOSTED_WHISTLE: '1'
+        run: |
+          python3 scripts/check-whistle-bundle.py build/Build/Products/Debug/Cassini.app
+          python3 - <<'PY'
+          import os,subprocess
+          from pathlib import Path
+          result=subprocess.run(['build/Build/Products/Debug/Cassini.app/Contents/MacOS/Cassini','--whistle-self-test'],env=os.environ,capture_output=True,text=True,timeout=60)
+          Path('build/whistle-sandbox.json').write_text(result.stdout)
+          Path('build/whistle-sandbox-stderr.txt').write_text(result.stderr)
+          print(result.stdout);print(result.stderr)
+          assert result.returncode==0,result.returncode
+          PY
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: whistle-universal-bundle
+          path: |
+            build/whistle-*
+            build/Build/Products/Debug/Cassini.app/Contents/Resources/Whistle/bundle-sha256.json
