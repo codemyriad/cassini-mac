@@ -13,9 +13,12 @@ import Observation
     @ObservationIgnored private var pending: [LibraryMeeting] = []
     @ObservationIgnored private var known = Set<String>()
     @ObservationIgnored private var task: Task<Void, Never>?
+    #if DEBUG
+    @ObservationIgnored private var failedFixtureOnce = false
+    #endif
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic else { return }
-        let candidates = meetings.filter { !$0.metadataReadOnly && $0.state.lifecycle == .saved && !$0.audioFiles.isEmpty && ($0.state.origin == .own && $0.state.transcript == .none || [.queued,.running].contains($0.state.transcript)) }
+        let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
         for meeting in candidates { enqueue(meeting) }
     }
@@ -53,7 +56,12 @@ import Observation
             do {
                 struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String }
                 let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"))) + Data([10])
-                let worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                var worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                #if DEBUG
+                if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniFailTranscriptionOnce") == "YES", !failedFixtureOnce {
+                    failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
+                }
+                #endif
                 let result = try await WhistleSubprocess.run(executable: worker, arguments: [], environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
                 struct Response: Decodable { let error: String? }
                 guard result.status == 0, result.inputError == nil else { throw TranscriptionFailure.runtime("worker exited") }

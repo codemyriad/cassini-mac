@@ -129,7 +129,7 @@ public struct LibraryScanner: Sendable {
             if meeting.start == nil { meeting.start = Date(timeIntervalSince1970: Double(receivedMetadata.importedAtMs) / 1000) }
         } else {
             let capture = capture(folder: folder, id: id, seen: &seen)
-            meeting.issues += capture.issues; meeting.captureSource = capture.source
+            meeting.issues += capture.issues; meeting.captureSource = capture.source; meeting.captureFinalized = capture.finalized
             titleCandidates.append(capture.title)
             meeting.start = capture.start; meeting.audioFiles = capture.files; meeting.audioTracks = capture.tracks; meeting.durationMs = capture.endMs
             switch activity {
@@ -216,7 +216,7 @@ public struct LibraryScanner: Sendable {
     private struct Capture {
         var source: String?; var title: String?; var start: Date?; var endMs: Int64?; var files: [URL] = []
         var tracks: [LibraryAudioTrack] = []
-        var unfinalized = false; var interrupted = false; var issues: [LibraryReadIssue] = []
+        var unfinalized = false; var finalized = false; var interrupted = false; var issues: [LibraryReadIssue] = []
     }
     private struct Manifest: Decodable {
         let version: Int; let id: UUID; let title: String?; let createdAt: String?; let state: String; let problemKind: String?
@@ -252,7 +252,7 @@ public struct LibraryScanner: Sendable {
             guard manifest.version == 1, manifest.id == id, manifest.tracks.count <= 64,
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
             result.source = manifest.source; result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
-            result.unfinalized = manifest.state == "recording"
+            result.unfinalized = manifest.state == "recording"; result.finalized = manifest.state != "recording"
             result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains { ($0.gapFrames ?? 0) > 0 }
             var ends: [Int64] = []
             for track in manifest.tracks {

@@ -24,6 +24,7 @@ final class TranscriptionMeetingTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let imported = try ReceivedAudioImport.copy(original, into: root)
         XCTAssertEqual(imported.state.origin,.received); XCTAssertTrue(imported.canWriteDown)
+        XCTAssertFalse(imported.canQueueAutomatically)
         let vad = try VADAssets.forWorker(arguments: ["--assets",assets])
         let detector = try SpeechDetector(assets: vad)
         let engine = try WhistleEngine(assets: WhistleAssets.pinned(directory: URL(fileURLWithPath: assets)))
@@ -51,7 +52,12 @@ final class TranscriptionMeetingTests: XCTestCase {
         let speech = Data(bytes.prefix(16000 * 4 * 2))
         try session.append(id: "mic", pcm: speech, offsetMs: 125)
         try session.append(id: "other", pcm: speech, offsetMs: 0)
+        let stillGrowing = try XCTUnwrap(LibraryScanner(root: root).scan().meetings.first)
+        XCTAssertEqual(stillGrowing.state.lifecycle,.saved) // no live adapter connected
+        XCTAssertFalse(stillGrowing.canQueueAutomatically)
         try session.finish()
+        let finished = try XCTUnwrap(LibraryScanner(root: root).scan().meetings.first)
+        XCTAssertTrue(finished.canQueueAutomatically)
         let manifestURL = session.directory.appendingPathComponent("session.json")
         var manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as! [String:Any]
         var tracks = manifest["tracks"] as! [[String:Any]]; tracks[1]["startOffsetMs"] = NSNull(); manifest["tracks"] = tracks

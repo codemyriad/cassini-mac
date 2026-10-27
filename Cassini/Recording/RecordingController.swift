@@ -142,6 +142,13 @@ enum RecordingFixture {
         return false
         #endif
     }
+    static var transcribes: Bool {
+        #if DEBUG
+        return enabled && LibraryLaunchContext.argument("-CassiniTranscriptionFixture") == "YES"
+        #else
+        return false
+        #endif
+    }
     static var root: URL? {
         #if DEBUG
         guard enabled, let key = LibraryLaunchContext.argument("-CassiniCaptureID"), UUID(uuidString: key) != nil else { return nil }
