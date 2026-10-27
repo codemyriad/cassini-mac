@@ -1,0 +1,2 @@
+# Exact upstream Git commit bytes are a cryptographic proof, not editable prose.
+browser-protocol/UPSTREAM_COMMIT -text -diff
