@@ -12,6 +12,7 @@ private enum LibraryTheme {
 }
 struct LibraryView: View {
     @State private var store = LibraryStore()
+    @State private var sessionPlayback = SessionPlaybackController()
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         GeometryReader { _ in
@@ -40,7 +41,8 @@ struct LibraryView: View {
             LegacyOpening.handler = { url in openWindow(id: "legacy-viewer", value: LegacyRoute(url: url, autoplay: false)) }
             store.start()
         }
-        .onDisappear { store.stop() }
+        .onDisappear { store.stop(); sessionPlayback.stop() }
+        .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
         .onOpenURL { openWindow(id: "legacy-viewer", value: LegacyRoute(url: $0, autoplay: false)) }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
@@ -134,10 +136,10 @@ struct LibraryView: View {
                 }
             }
             HStack(spacing: 10) {
-                Button { play(meeting) } label: { Label(UXText.text("common.play"), systemImage: "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
+                Button { play(meeting) } label: { Label(UXText.text(sessionPlayback.isPlaying ? "player.pause" : "common.play"), systemImage: sessionPlayback.isPlaying ? "pause.fill" : "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
                     .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
-                    .opacity(meeting.state.origin == .own || meeting.audioFiles.isEmpty ? 0.45 : 1)
-                    .disabled(meeting.state.origin == .own || meeting.audioFiles.isEmpty)
+                    .opacity(!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing ? 0.45 : 1)
+                    .disabled(!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing)
                     .accessibilityIdentifier("preview-play")
                 Button { readTranscript(meeting) } label: {
                     Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
@@ -204,7 +206,8 @@ struct LibraryView: View {
         }.buttonStyle(.plain).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
-        guard let audio = meeting.audioFiles.first, meeting.state.origin == .received else { return }
+        if meeting.state.origin == .own { sessionPlayback.toggle(meeting); return }
+        guard let audio = meeting.audioFiles.first else { return }
         openWindow(id: "legacy-viewer", value: LegacyRoute(url: audio, autoplay: true))
     }
     private func readTranscript(_ meeting: LibraryMeeting) {

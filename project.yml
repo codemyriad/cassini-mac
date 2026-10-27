@@ -42,6 +42,8 @@ targets:
       - package: CassiniKit
         product: CassiniLibraryWatchers
       - package: CassiniKit
+        product: CassiniPlayback
+      - package: CassiniKit
         product: CassiniRecording
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
