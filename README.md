@@ -215,8 +215,9 @@ gh workflow run native-recording.yml --ref main -f mode=full
 Both modes test the native writer/session loader and real tabCapture; `full` also attempts an actual Core Audio
 process tap of Cassini's generated 440/880 Hz tone. It never opens the microphone or captures
 other applications. The full mode needs genuine macOS system-audio consent and a working
-output device; runner registration does not grant that permission. Nightly defaults to full
-and remains a failing check if capture cannot be validated. Ad-hoc app updates can require
+output device; runner registration does not grant that permission. Nightly runs sink-only until one manual full dispatch has passed after real audio consent.
+Only then should the schedule be changed back to full. Manual full runs remain nonzero if
+capture cannot be validated. Ad-hoc app updates can require
 renewed consent. Actual microphone validation additionally needs an input device.
 
 Logs and `result.json` are uploaded even on failure. Diagnostic processes have a 45-second

@@ -41,6 +41,8 @@ jobs:
         with:
           node-version: '22'
       - name: Real tab capture with DrMeyers output device
+        env:
+          CASSINI_TEST_PROFILE_ROOT: ${{ runner.temp }}/cassini-browser-profiles-${{ github.run_id }}
         run: |
           npm ci --prefix BrowserExtension/tests
           BrowserExtension/tests/node_modules/.bin/playwright install chromium
@@ -49,11 +51,18 @@ jobs:
           node BrowserExtension/tests/tab-capture.mjs 2>&1 | tee "$RUNNER_TEMP/native-artifacts/tab-capture.log"
       - name: Generated native audio diagnostic
         env:
-          NATIVE_MODE: ${{ inputs.mode || 'full' }}
+          NATIVE_MODE: ${{ github.event_name == 'schedule' && 'sink-only' || inputs.mode || 'full' }}
         run: |
           python3 scripts/run-native-ci.py --mode "$NATIVE_MODE" \
             --artifacts "$RUNNER_TEMP/native-artifacts" \
             --derived-data "$RUNNER_TEMP/cassini-native-build"
+      - name: Clean this job's diagnostic and browser processes
+        if: always()
+        run: |
+          python3 scripts/cleanup-native-ci.py \
+            --native-build "$RUNNER_TEMP/cassini-native-build" \
+            --profiles "$RUNNER_TEMP/cassini-browser-profiles-$GITHUB_RUN_ID" \
+            --report "$RUNNER_TEMP/native-artifacts/cleanup.json"
       - uses: actions/upload-artifact@v5
         if: always()
         with:

@@ -14,7 +14,9 @@ const server = createServer((_request, response) => {
   response.end('<!doctype html><title>Cassini synthetic extension test</title><button>Allow audio</button>');
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const profile = await mkdtemp(path.join(os.tmpdir(), 'cassini-tab-'));
+const profileRoot = process.env.CASSINI_TEST_PROFILE_ROOT || os.tmpdir();
+await mkdir(profileRoot, { recursive: true });
+const profile = await mkdtemp(path.join(profileRoot, 'cassini-tab-'));
 const launch = extra => chromium.launchPersistentContext(profile, {
   channel: 'chromium', headless: true, ignoreDefaultArgs: ['--mute-audio'],
   args: [`--disable-extensions-except=${root}/BrowserExtension`,
