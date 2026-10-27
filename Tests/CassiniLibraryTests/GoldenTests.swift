@@ -38,7 +38,7 @@ private enum Golden {
         }
         #expect(MetadataSchema.bytes == (try Golden.data("meeting.schema")))
         let rules = try #require(Bundle.module.url(forResource: "LIBRARY-RULES", withExtension: "md", subdirectory: "Golden"))
-        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "3b0296cf1defff713c7b1046f3d0d46a271e61c181bbcc9477b6a036b181643a")
+        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "85f52e4ccf4b2681dfc95f4d6f93211954a4b0522edad6924658233fd9d46680")
         #expect(Golden.formats.count == 69)
         #expect(Golden.states.count == 17)
     }

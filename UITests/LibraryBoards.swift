@@ -25,22 +25,33 @@ final class LibraryBoards: XCTestCase {
             let subtitle = window.staticTexts["preview-subtitle"]
             let ready = NSPredicate { _, _ in subtitle.exists && subtitle.isHittable && subtitle.frame.minX >= window.frame.minX + 420 }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: 10), .completed, window.debugDescription)
+            capture(window, name: name)
             XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout: 20), window.debugDescription)
             XCTAssertTrue(window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
             XCTAssertTrue(text("Today, 09:00 · 52 min", in: window), window.debugDescription)
             XCTAssertTrue(text("00:00:04", in: window))
+            XCTAssertTrue(text("Listening inside your browser", in: window))
+            XCTAssertTrue(text("Your microphone and the meeting in your browser", in: window))
             XCTAssertTrue(window.buttons["preview-play"].isEnabled)
+            let title = window.staticTexts["library-toolbar-title"]
+            XCTAssertTrue(title.exists)
+            XCTAssertEqual(title.frame.minX - window.frame.minX, 420, accuracy: 12)
         } else {
+            capture(window, name: name)
             XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), window.debugDescription)
             XCTAssertTrue(text("Your recorded meetings will appear here.", in: window))
             XCTAssertTrue(text("Recordings and transcripts stay on this computer, in Music/Cassini.", in: window))
+            let title = window.staticTexts["library-toolbar-title"]
+            XCTAssertTrue(title.exists)
+            XCTAssertEqual(title.frame.midX, window.frame.midX, accuracy: 20)
         }
-        // Wait for the laid-out preview, not merely a control retained in an
-        // accessibility snapshot while NavigationSplitView changes its columns.
-        let attachment = XCTAttachment(screenshot: window.screenshot())
-        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
+    }
+    private func capture(_ window: XCUIElement, name: String) {
+        // Retain an exact-size, fully laid-out board even if a content check fails.
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
     private func text(_ value: String, in window: XCUIElement) -> Bool {
         window.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", value, value)).firstMatch.exists

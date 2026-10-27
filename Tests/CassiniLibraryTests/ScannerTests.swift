@@ -34,6 +34,22 @@ final class Fixture {
 }
 
 @Suite struct LibraryScannerTests {
+    @Test func captureSourceSurvivesScanningWithoutChangingCaptureValidity() throws {
+        let f = try Fixture()
+        try f.editCapture { $0["source"] = "chromium" }
+        let browser = try #require(LibraryScanner(root: f.root).scan().meetings.first)
+        #expect(browser.captureSource == "chromium" && browser.isBrowserCapture)
+        try f.editCapture { $0["source"] = "gnome" }
+        let native = try #require(LibraryScanner(root: f.root).scan().meetings.first)
+        #expect(native.captureSource == "gnome" && !native.isBrowserCapture)
+        // Source is presentation metadata: an unrecognised representation must
+        // not discard otherwise-readable tracks or create an interruption.
+        try f.editCapture { $0["source"] = 42 }
+        let unknown = try #require(LibraryScanner(root: f.root).scan().meetings.first)
+        #expect(unknown.captureSource == nil && !unknown.isBrowserCapture)
+        #expect(unknown.audioFiles.count == browser.audioFiles.count)
+        #expect(unknown.state.interruptedAtMs == nil)
+    }
     @Test func absentLibraryIsEmptyAndScanNeverCreatesIt() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString.lowercased())
         #expect(try LibraryScanner(root: root).scan().meetings.isEmpty)
