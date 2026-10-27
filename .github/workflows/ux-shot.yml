@@ -1,8 +1,6 @@
 name: UX window screenshot spike
 
 on:
-  push:
-    branches: [ux/shot-spike]
   pull_request:
     paths:
       - 'Cassini/**'
