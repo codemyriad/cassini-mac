@@ -283,3 +283,9 @@ processes have an invalid DEVELOPER_DIR to detect accidental compiler use. The M
 on DrMeyers. Interactive Chrome Load unpacked and downloaded-file Gatekeeper approval remain
 manual checks; command installation and native stdio are the automated clean-account coverage.
 CI/release workflows use the same packager and include the SHA256 sidecar.
+
+The M4 [native manual check](docs/native-audio-manual-check.md) records the consent-dependent
+full-run gate and the tap-only idle/zero-buffer behavior. The diagnostic timeout is bounded;
+the production five-second waiting notice only applies after Core Audio start has returned.
+The SDK's tap auto-start option can wait for the selected process's first audio, so that case
+must be observed explicitly once hardware permission is available.
