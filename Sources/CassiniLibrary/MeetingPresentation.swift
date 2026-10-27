@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
+import CassiniKit
+
+/// R12: sum real item durations; distribute remaining percentage points by
+/// largest remainder, with first-speaking order breaking ties.
+public enum MeetingPresentation {
+    public static func shares(_ meeting: LibraryMeeting) -> [String: Int] {
+        let durations = Dictionary(grouping: meeting.transcriptItems, by: \.speaker)
+            .mapValues { $0.reduce(0.0) { $0 + max(0, Double($1.endMs - $1.startMs)) } }
+        let total = durations.values.reduce(0, +)
+        guard total > 0 else { return Dictionary(uniqueKeysWithValues: meeting.speakers.map { ($0.id, 0) }) }
+        let values = meeting.speakers.map { ($0.id, 100 * durations[$0.id, default: 0] / total) }
+        var result = Dictionary(uniqueKeysWithValues: values.map { ($0.0, Int($0.1.rounded(.down))) })
+        let remainder = max(0, 100 - result.values.reduce(0, +))
+        let order = values.enumerated().sorted {
+            let a = $0.element.1 - floor($0.element.1), b = $1.element.1 - floor($1.element.1)
+            return a == b ? $0.offset < $1.offset : a > b
+        }
+        for value in order.prefix(remainder) { result[value.element.0, default: 0] += 1 }
+        return result
+    }
+    public struct Turn: Identifiable, Sendable {
+        public let id: Int
+        public let speaker: String
+        public var items: [LibraryTranscriptItem]
+        public var startMs: Int64 { items.first?.startMs ?? 0 }
+    }
+    public static func turns(_ items: [LibraryTranscriptItem]) -> [Turn] {
+        var result: [Turn] = []
+        for item in items where !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if result.last?.speaker == item.speaker { result[result.count - 1].items.append(item) }
+            else { result.append(.init(id: result.count, speaker: item.speaker, items: [item])) }
+        }
+        return result
+    }
+    /// Interim external-file reading, without an import or app-owned sidecar.
+    public static func external(_ file: CassiniFile, url: URL) -> LibraryMeeting {
+        let valid = ![.invalidCassiniMetadata, .staleAudio, .unknownCassiniFormat].contains(file.state)
+        let body = valid ? file.defaultTranscript?.load.transcript : nil
+        let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
+            .enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
+        var ids: [String] = []
+        for word in words where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        let speakers = ids.enumerated().map { index, id in
+            MeetingSpeaker(id: id, name: file.manifest?.speaker(id)?.label, provenance: nil, colourIndex: index)
+        }
+        var duration: Int64?
+        if case .success(let digest)? = file.audioDigest { duration = Int64(digest.durationMs) }
+        let title = file.manifest?.meeting.title ?? file.tags?["TITLE"] ?? url.deletingPathExtension().lastPathComponent
+        var result = LibraryMeeting(id: UUID(uuidString: file.manifest?.meeting.id ?? "") ?? UUID(),
+            folder: url.deletingLastPathComponent().appendingPathComponent("External-" + url.lastPathComponent),
+            state: .init(origin: .received, transcript: body != nil ? .done : (file.state == .plainAudio ? .none : .damaged), audioAvailable: duration != nil),
+            title: title, start: file.manifest.flatMap { recordingDate($0.meeting.createdAtUtc) }, durationMs: duration,
+            speakers: speakers, quote: nil, notes: [], audioFiles: [url], issues: [])
+        result.metadataReadOnly = true; result.transcriptItems = words
+        return result
+    }
+}

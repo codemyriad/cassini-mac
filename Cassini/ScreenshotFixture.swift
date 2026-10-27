@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #if DEBUG
 import AppKit
 
@@ -10,7 +11,7 @@ enum ScreenshotFixture {
         guard arguments.contains("-CassiniScreenshot") else { return false }
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting"].contains(name),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
               ISO8601DateFormatter().date(from: clock) != nil else {
@@ -22,6 +23,7 @@ enum ScreenshotFixture {
         // boards; the legacy document capture has no wall-clock labels.
         let fixture = URL(fileURLWithPath: directory, isDirectory: true)
             .appendingPathComponent("meeting.opus")
+        if let path = value("-CassiniOpenFile", in: arguments) { LegacyOpening.openDocument(URL(fileURLWithPath: path)) }
         if name == "window" || name == "sheet" {
             Task { @MainActor in
                 for _ in 0..<100 {
@@ -42,7 +44,7 @@ enum ScreenshotFixture {
 
     private static var prepared = Set<ObjectIdentifier>()
     static func prepareLibrary(_ window: NSWindow) {
-        guard ["library", "first-run"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
+        guard ["library", "first-run", "meeting"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
         guard prepared.insert(ObjectIdentifier(window)).inserted else { return }
         prepare(window, sheet: false, boardSize: true)

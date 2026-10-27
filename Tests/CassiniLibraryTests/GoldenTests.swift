@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CryptoKit
 import Testing
@@ -38,7 +39,7 @@ private enum Golden {
         }
         #expect(MetadataSchema.bytes == (try Golden.data("meeting.schema")))
         let rules = try #require(Bundle.module.url(forResource: "LIBRARY-RULES", withExtension: "md", subdirectory: "Golden"))
-        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "85f52e4ccf4b2681dfc95f4d6f93211954a4b0522edad6924658233fd9d46680")
+        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "47b1d46457a1430e69e5a4f10ca079ec7bf2dda8b39c0e8939541fdbb2599595")
         #expect(Golden.formats.count == 69)
         #expect(Golden.states.count == 17)
     }
