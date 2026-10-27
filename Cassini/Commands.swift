@@ -9,8 +9,8 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Recording…") { openWindow(id: "recording") }
-                .keyboardShortcut("n", modifiers: .command)
+            Button(UXText.text("common.record")) { openWindow(id: "recording") }
+                .keyboardShortcut("r", modifiers: .command)
         }
 
         CommandGroup(after: .saveItem) {

@@ -85,6 +85,7 @@ public struct LibraryMeeting: Sendable {
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
     public var metadataReadOnly: Bool = false
+    public var transcriptItems: [LibraryTranscriptItem] = []
     public var canWriteDown: Bool { state.canWriteDown }
     public var speakerNames: [String] { speakers.map(\.displayName) }
 }

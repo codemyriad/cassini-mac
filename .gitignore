@@ -14,3 +14,4 @@ build-native-ci/
 __pycache__/
 *.pyc
 build-shot/
+UITests/Fixtures/Library/

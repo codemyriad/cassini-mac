@@ -10,7 +10,7 @@ enum ScreenshotFixture {
         guard arguments.contains("-CassiniScreenshot") else { return false }
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet"].contains(name),
+              ["window", "sheet", "library", "first-run"].contains(name),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
               ISO8601DateFormatter().date(from: clock) != nil else {
@@ -18,29 +18,20 @@ enum ScreenshotFixture {
             NSApp.terminate(nil)
             return true
         }
-        // Validate the frozen-clock contract now; the current document UI has no
-        // wall-clock labels. A later Library fixture renderer will consume it.
+        // LibraryLaunchContext consumes the validated frozen clock for Library
+        // boards; the legacy document capture has no wall-clock labels.
         let fixture = URL(fileURLWithPath: directory, isDirectory: true)
             .appendingPathComponent("meeting.opus")
-        NSDocumentController.shared.openDocument(withContentsOf: fixture, display: true) { document, _, error in
+        if name == "window" || name == "sheet" {
             Task { @MainActor in
-                guard error == nil, let document else {
-                    NSLog("Screenshot fixture could not open: %@", String(describing: error))
-                    NSApp.terminate(nil)
-                    return
-                }
-                // SwiftUI creates its window asynchronously after opening the document.
                 for _ in 0..<100 {
-                    if let window = document.windowControllers.compactMap(\.window).first {
-                        prepare(window, sheet: name == "sheet", boardSize: value("-CassiniScreenshotSize", in: arguments) == "1120x720")
-                        return
-                    }
+                    if let open = LegacyOpening.handler { open(fixture); return }
                     try? await Task.sleep(for: .milliseconds(100))
                 }
-                NSLog("Screenshot document did not create a window")
                 NSApp.terminate(nil)
             }
         }
+
         return true
     }
 
@@ -49,6 +40,20 @@ enum ScreenshotFixture {
         return arguments[index + 1]
     }
 
+    private static var prepared = Set<ObjectIdentifier>()
+    static func prepareLibrary(_ window: NSWindow) {
+        guard ["library", "first-run"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
+              ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
+        guard prepared.insert(ObjectIdentifier(window)).inserted else { return }
+        prepare(window, sheet: false, boardSize: true)
+        window.setAccessibilityIdentifier("cassini-library-window")
+    }
+    static func prepareLegacy(_ window: NSWindow) {
+        guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["window", "sheet"].contains(name),
+              ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
+        guard prepared.insert(ObjectIdentifier(window)).inserted else { return }
+        prepare(window, sheet: name == "sheet", boardSize: LibraryLaunchContext.argument("-CassiniScreenshotSize") == "1120x720")
+    }
     private static func prepare(_ window: NSWindow, sheet: Bool, boardSize: Bool) {
         window.setAccessibilityIdentifier("cassini-screenshot-window")
         window.toolbarStyle = .unified

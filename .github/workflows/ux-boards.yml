@@ -1,0 +1,59 @@
+name: UX Library boards
+on:
+  pull_request:
+    paths: ['Cassini/**', 'UITests/**', 'Sources/CassiniLibrary/**', 'project.yml', 'scripts/export-ux-boards.py', '.github/workflows/ux-boards.yml']
+concurrency:
+  group: ux-boards-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  boards:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: brew install xcodegen displayplacer
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 scripts/check-ux-copy.py
+      - name: Prepare shared Library and display
+        run: |
+          python3 scripts/hosted-display.py
+          python3 Tests/CassiniLibraryTests/LibraryVectors/make.py UITests/Fixtures/Library
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          for case in Path('UITests/Fixtures/Library').iterdir():
+              if case.name not in ('main', 'empty'): shutil.rmtree(case)
+          PY
+          xcodegen generate
+      - name: Render Library boards
+        env:
+          TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+          TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+        run: |
+          set -o pipefail
+          xcodebuild test -project Cassini.xcodeproj -scheme CassiniScreenshots -configuration Debug \
+            -destination 'platform=macOS' -parallel-testing-enabled NO -only-testing:CassiniWindowScreenshots/LibraryBoards \
+            -derivedDataPath build -resultBundlePath build/UXBoards.xcresult \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/ux-boards.log
+      - name: Export exact board PNGs
+        if: always()
+        run: |
+          xcrun xcresulttool export attachments --path build/UXBoards.xcresult --output-path build/ux-attachments
+          python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: ux-boards
+          path: build/ux-boards
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: ux-boards-diagnostics
+          path: |
+            build/UXBoards.xcresult
+            build/ux-boards.log
+            build/display-*

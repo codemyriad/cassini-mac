@@ -27,12 +27,20 @@ targets:
         excludes:
           - "Info.plist"
           - "Cassini.entitlements"
+          - "Resources"
+      - path: Cassini/Resources/UX
+        type: folder
+        buildPhase: resources
       - path: UITests/Fixtures
         type: folder
         buildPhase: resources
     dependencies:
       - package: CassiniKit
         product: CassiniKit
+      - package: CassiniKit
+        product: CassiniLibrary
+      - package: CassiniKit
+        product: CassiniLibraryWatchers
       - package: CassiniKit
         product: CassiniRecording
       - target: CassiniQuickLook
@@ -87,6 +95,7 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.device.audio-input: true
+        com.apple.security.assets.music.read-write: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac

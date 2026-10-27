@@ -5,8 +5,10 @@ import SwiftUI
 struct DocumentView: View {
     @State private var session: SessionModel
     @FocusState private var searchFocused: Bool
+    private let autoPlay: Bool
 
-    init(document: CassiniDocument, fileURL: URL?) {
+    init(document: CassiniDocument, fileURL: URL?, autoPlay: Bool = false) {
+        self.autoPlay = autoPlay
         _session = State(initialValue: SessionModel(document: document, url: fileURL))
     }
 
@@ -53,6 +55,7 @@ struct DocumentView: View {
         .onChange(of: session.focusSearchRequest) { searchFocused = true }
         .focusedSceneValue(\.session, session)
         .background(WindowAccessor { window in session.window = window })
+        .onAppear { if autoPlay { session.player?.play() } }
         .onDisappear { session.close() }
         .frame(minWidth: 760, minHeight: 480)
     }
