@@ -1,7 +1,7 @@
-tree 3392b77076244b7185e286bfa94e6c8016d54a51
-parent 59ddafbdeaf114772859e6ae381902d5998490c0
-parent 6fc0266a4fc0e82d9a02019ca2d4c5da0e9a1b1d
-author Silvio Tomatis <silviot@gmail.com> 1793107306 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793107306 +0100
+tree 488c5eab40a09d73a58172153a5084c17732aea0
+parent 3ab56d1fc74e9487648c4d2a750923fedfa3a512
+parent 3bab67b7553925e8603ad3cf9ac2e2b566784020
+author Silvio Tomatis <silviot@gmail.com> 1793108738 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793108738 +0100
 
-Preserve approved copy while merging the lifecycle changes
+M0b review: join cancelled starts, preserve copy and run worker crash scenarios in CI
