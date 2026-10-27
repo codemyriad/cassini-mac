@@ -49,7 +49,10 @@ import AppKit
                 guard let self, let sender else { return }
                 self.asking = false
                 if stop { RecordingConfirmation.stop() }
-                self.approved = true; sender.performClose(nil)
+                self.approved = true
+                // Let AppKit finish detaching the confirmation sheet before
+                // asking SwiftUI's window delegate to close its parent.
+                DispatchQueue.main.async { sender.performClose(nil) }
             }
             return false
         }
