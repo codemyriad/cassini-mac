@@ -1,6 +1,6 @@
-tree 41f6cc90e97d78e5dc9248007c283f653e6d5e0c
-parent b3fa2a3a20b71edd911c485801c9a69496ccbc16
-author Silvio Tomatis <silviot@gmail.com> 1793100652 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793100652 +0100
+tree 62685d35b3a2dfc88e65ac86fcbe3d2198c5524d
+parent 14271ee2118a763325512ec7572a9385ed7709c6
+author Silvio Tomatis <silviot@gmail.com> 1793103212 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793103212 +0100
 
-Run device-dependent tab capture on the dedicated Mac runner
+M2: draft additive DOM label provenance contract and vectors

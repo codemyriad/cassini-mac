@@ -54,8 +54,15 @@ public final class RecordingSession {
         try checkpoint()
     }
 
+    public static let labelSources: Set<String> = ["browser", "dom", "device", "user", "recovered"]
+
     public func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws {
-        guard !finished, !id.isEmpty, id.utf8.count <= 200, writers[id] == nil,
+        try addTrack(id: id, label: label, kind: kind, sampleRate: sampleRate, channels: channels,
+                     labelSource: manifest.source == "chromium" ? "browser" : "device")
+    }
+
+    public func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, labelSource: String) throws {
+        guard Self.labelSources.contains(labelSource), !finished, !id.isEmpty, id.utf8.count <= 200, writers[id] == nil,
               manifest.tracks.count < 64, (8_000...192_000).contains(sampleRate), (1...2).contains(channels),
               ["microphone", "system", "application", "local", "remote", "media", "tab"].contains(kind)
         else { throw RecordingError.invalid("Invalid or duplicate audio source.") }
@@ -66,7 +73,7 @@ public final class RecordingSession {
         manifest.tracks.append(RecordingTrack(id: id, label: Self.cleanLabel(label), kind: kind,
                                               file: filename, sampleRate: sampleRate, channels: channels,
                                               startOffsetMs: nil, frames: 0))
-        manifest.tracks[manifest.tracks.count - 1].labelSource = manifest.source == "chromium" ? "browser" : "device"
+        manifest.tracks[manifest.tracks.count - 1].labelSource = labelSource
         try checkpoint()
     }
 

@@ -86,8 +86,9 @@ public final class BrowserRecordingHost {
                 throw BrowserProtocolError("source", "Missing audio source information.")
             }
             let label = try string("label", code: "source") ?? kind
+            let labelSource = try string("labelSource", code: "source") ?? "browser"
             guard session.manifest.tracks.count < 64 else { throw BrowserProtocolError("limit", "Too many audio sources.") }
-            try write("source") { try session.addTrack(id: id, label: label, kind: kind, sampleRate: rate, channels: channels) }
+            try write("source") { try session.addTrack(id: id, label: label, kind: kind, sampleRate: rate, channels: channels, labelSource: labelSource) }
             sequences[id] = 0
         case "audio":
             guard let session, !stopped else { throw BrowserProtocolError("state", "No active recording.") }
