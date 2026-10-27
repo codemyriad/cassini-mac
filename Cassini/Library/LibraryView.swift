@@ -14,16 +14,18 @@ struct LibraryView: View {
     @State private var store = LibraryStore()
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Group {
-            if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
-            else { split }
+        GeometryReader { _ in
+            Group {
+                if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
+                else { split }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .font(.system(size: 13))
         .frame(minWidth: 760, minHeight: 480)
         .navigationTitle(UXText.text("library.title"))
         .toolbar {
-            if store.loaded && store.meetings.isEmpty {
-                ToolbarItem(placement: .navigation) { toolbarControl }
+            ToolbarItem(placement: .navigation) {
+                toolbarControl.frame(width: store.meetings.isEmpty ? nil : 308, alignment: .leading)
             }
         }
         .background(WindowAccessor { window in
@@ -43,7 +45,7 @@ struct LibraryView: View {
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
     private var split: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             List(selection: $store.selectedKey) {
                 ForEach(store.groups, id: \.title) { group in
                     Section {
@@ -63,16 +65,11 @@ struct LibraryView: View {
             .scrollContentBackground(.hidden)
             .background(LibraryTheme.sidebar)
             .frame(minWidth: 400, maxWidth: 400)
-            .navigationSplitViewColumnWidth(min: 400, ideal: 400, max: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
-            .toolbar(removing: .sidebarToggle)
-            .toolbar { ToolbarItem(placement: .navigation) { toolbarControl } }
-        } detail: {
+            Divider()
             if let meeting = store.selected { preview(meeting) }
             else { Color(nsColor: .textBackgroundColor) }
         }
-        .navigationSplitViewStyle(.balanced)
-        .toolbar(removing: .sidebarToggle)
     }
     private var toolbarControl: some View {
         Group {
