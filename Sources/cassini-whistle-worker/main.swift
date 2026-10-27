@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniWhistle
 import Foundation
 import Darwin
@@ -9,17 +10,11 @@ struct Response: Encodable { let id: String?; var transcript: WhistleTranscript?
 func emit(_ response: Response) throws {
     try WhistleIO.write(JSONEncoder().encode(response) + Data([10]), to: STDOUT_FILENO)
 }
-func argument(_ key: String) -> String? {
-    guard let index = CommandLine.arguments.firstIndex(of: key), index + 1 < CommandLine.arguments.count else { return nil }
-    return CommandLine.arguments[index + 1]
-}
 do {
-    // Fail closed before even considering the library path, not after loading it.
-    try WhistleEnvironment.validate(ProcessInfo.processInfo.environment)
-    guard let library = argument("--library"), let model = argument("--model") else {
-        throw WhistleFailure.library("--library and --model are required")
-    }
-    let engine = try WhistleEngine(library: URL(fileURLWithPath: library), model: URL(fileURLWithPath: model))
+    // The exact C environment is checked before asset verification or dlopen.
+    try WhistleEnvironment.validateLive()
+    let assets = try WhistleAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
+    let engine = try WhistleEngine(assets: assets)
     let lines = WhistleLineReader(fd: STDIN_FILENO)
     while let line = try lines.next() {
         var id: String?

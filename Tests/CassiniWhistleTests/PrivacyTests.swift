@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CryptoKit
 import Testing
@@ -5,9 +6,11 @@ import Testing
 
 @Suite struct WhistlePrivacyTests {
     @Test func workerEnvironmentOverridesUnsafeParentValues() throws {
-        let safe = WhistleEnvironment.worker(["NEEDLE_TELEMETRY": "1", "DO_NOT_TRACK": "0", "ORT_DISABLE_TELEMETRY": "0", "PATH": "/usr/bin"])
+        let safe = WhistleEnvironment.worker(["NEEDLE_TELEMETRY": "1", "DO_NOT_TRACK": "0", "ORT_DISABLE_TELEMETRY": "0", "PATH": "/untrusted", "SECRET_TOKEN": "not-forwarded", "DYLD_INSERT_LIBRARIES": "/untrusted.dylib", "HTTPS_PROXY": "http://untrusted", "TMPDIR": "/tmp"])
         try WhistleEnvironment.validate(safe)
-        #expect(safe["PATH"] == "/usr/bin")
+        #expect(safe["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin")
+        #expect(safe["SECRET_TOKEN"] == nil && safe["DYLD_INSERT_LIBRARIES"] == nil && safe["HTTPS_PROXY"] == nil)
+        #expect(safe["TMPDIR"] == "/tmp")
         for key in WhistleEnvironment.required.keys {
             var invalid = safe; invalid.removeValue(forKey: key)
             #expect(throws: WhistleFailure.self) { try WhistleEnvironment.validate(invalid) }

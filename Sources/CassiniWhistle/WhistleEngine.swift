@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
 
@@ -18,8 +19,17 @@ public enum WhistleEnvironment {
     public static func validate(_ environment: [String: String]) throws {
         for key in required.keys.sorted() where environment[key] != required[key] { throw WhistleFailure.telemetry(key) }
     }
+    public static func validateLive() throws {
+        for key in required.keys.sorted() {
+            guard let value = getenv(key), String(cString: value) == required[key] else { throw WhistleFailure.telemetry(key) }
+        }
+    }
     public static func worker(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-        environment.merging(required) { _, required in required }
+        var result = required
+        result["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        result["LANG"] = "C"; result["LC_ALL"] = "C"
+        if let temporary = environment["TMPDIR"] { result["TMPDIR"] = temporary }
+        return result
     }
 }
 public struct WhistleTranscript: Codable, Sendable {
@@ -38,33 +48,43 @@ public final class WhistleEngine {
     private typealias LastError = @convention(c) () -> UnsafePointer<CChar>?
     private typealias Transcribe = @convention(c) (UnsafePointer<Float>?, Int32, UnsafePointer<CChar>?, UnsafePointer<CChar>?, Int32, UnsafeMutablePointer<CChar>?, Int32) -> Int32
     private let handle: UnsafeMutableRawPointer
-    private let model: Data
+    private let model: UnsafeMutableBufferPointer<UInt8>
+    private let operations = NSLock()
+    private final class Ownership: @unchecked Sendable {
+        private let lock = NSLock()
+        private var loaded = false
+        func acquire() throws { lock.lock(); defer { lock.unlock() }; guard !loaded else { throw WhistleFailure.runtime("only one engine per process is supported") }; loaded = true }
+        func release() { lock.lock(); loaded = false; lock.unlock() }
+    }
+    private static let ownership = Ownership()
     private let transcribeFunction: Transcribe
     private let lastError: LastError
 
-    public init(library: URL, model: URL) throws {
-        try WhistleEnvironment.validate(ProcessInfo.processInfo.environment)
-        guard library.isFileURL, model.isFileURL else { throw WhistleFailure.library("local files required") }
-        guard let handle = dlopen(library.path, RTLD_NOW | RTLD_LOCAL) else {
+    public init(assets: WhistleAssets) throws {
+        try WhistleEnvironment.validateLive()
+        try Self.ownership.acquire()
+        let bytes = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: assets.model.count)
+        _ = assets.model.copyBytes(to: bytes)
+        guard let handle = dlopen(assets.library.path, RTLD_NOW | RTLD_LOCAL) else {
+            bytes.deallocate(); Self.ownership.release()
             throw WhistleFailure.library(dlerror().map { String(cString: $0) } ?? "dlopen failed")
         }
         do {
             let load: Load = try Self.symbol("needle_load", in: handle)
             let transcribe: Transcribe = try Self.symbol("needle_transcribe", in: handle)
             let error: LastError = try Self.symbol("needle_last_error", in: handle)
-            let bytes = try WhistleIO.readRegular(model, maximum: 64 * 1024 * 1024)
-            guard !bytes.isEmpty else { throw WhistleFailure.model("empty weights") }
-            let result = bytes.withUnsafeBytes { load($0.bindMemory(to: UInt8.self).baseAddress, UInt64($0.count)) }
+            let result = load(bytes.baseAddress, UInt64(bytes.count))
             guard result >= 0 else { throw WhistleFailure.model(error().map { String(cString: $0) } ?? "load failed") }
             self.handle = handle; self.model = bytes; self.transcribeFunction = transcribe; self.lastError = error
-        } catch { dlclose(handle); throw error }
+        } catch { dlclose(handle); bytes.deallocate(); Self.ownership.release(); throw error }
     }
-    deinit { dlclose(handle) }
+    deinit { dlclose(handle); model.deallocate(); Self.ownership.release() }
     private static func symbol<T>(_ name: String, in handle: UnsafeMutableRawPointer) throws -> T {
         guard let pointer = dlsym(handle, name) else { throw WhistleFailure.library("missing symbol " + name) }
         return unsafeBitCast(pointer, to: T.self)
     }
     public func transcribe(wav: URL) throws -> WhistleTranscript {
+        operations.lock(); defer { operations.unlock() }
         let pcm = try Self.pcm16(wav)
         var output = [CChar](repeating: 0, count: 1_048_576)
         let result = pcm.withUnsafeBufferPointer { samples in

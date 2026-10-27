@@ -31,6 +31,13 @@ jobs:
         run: python3 scripts/test-whistle-fetch.py
       - name: Fetch pinned build-time artifacts
         run: python3 scripts/fetch-whistle.py --output build/Whistle
+      - name: Verified model memory and process ownership
+        env:
+          CASSINI_WHISTLE_TEST_ASSETS: ${{ github.workspace }}/build/Whistle
+          NEEDLE_TELEMETRY: '0'
+          DO_NOT_TRACK: '1'
+          ORT_DISABLE_TELEMETRY: '1'
+        run: swift test --filter WhistleAssetIntegrationTests
       - name: Constructor privacy guard and persistent worker JFK golden
         run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle --report build/whistle-${{ matrix.runner }}.json
       - uses: actions/upload-artifact@v5
