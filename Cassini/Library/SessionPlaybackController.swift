@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import AVFoundation
 import CassiniLibrary
@@ -11,6 +12,7 @@ final class SessionPlaybackController {
     private(set) var isPlaying = false
     private(set) var isPreparing = false
     @ObservationIgnored private var player: AVPlayer?
+    @ObservationIgnored private var timeline: SessionTimeline?
     @ObservationIgnored private var key: String?
     @ObservationIgnored private var preparation: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
@@ -32,7 +34,8 @@ final class SessionPlaybackController {
                 let composition = try await SessionComposition.make(tracks: meeting.audioTracks)
                 try Task.checkCancellation()
                 guard let self, current == self.generation else { return }
-                let item = AVPlayerItem(asset: composition)
+                self.timeline = composition
+                let item = AVPlayerItem(asset: composition.asset)
                 let player = AVPlayer(playerItem: item)
                 self.player = player; self.isPreparing = false; self.preparation = nil
                 self.statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
@@ -63,7 +66,7 @@ final class SessionPlaybackController {
         preparation?.cancel(); preparation = nil
         statusObserver?.invalidate(); statusObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }; endObserver = nil
-        player?.pause(); player?.replaceCurrentItem(with: nil); player = nil
+        player?.pause(); player?.replaceCurrentItem(with: nil); player = nil; timeline = nil
         key = nil; isPlaying = false; isPreparing = false
     }
 }

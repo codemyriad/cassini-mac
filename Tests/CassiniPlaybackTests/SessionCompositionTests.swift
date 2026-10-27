@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Testing
 import CassiniLibrary
@@ -5,19 +6,43 @@ import CassiniLibrary
 
 /// Offline reads only: no AVPlayer, audio engine, microphone, or output device.
 @Suite struct SessionCompositionTests {
+    @Test(arguments: [0, 4000]) func repairsStaleHeadersWithoutChangingRecordedBytes(declaredFrames: Int) async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = try capturedWave(root, "stale", frames: 8000, declaredFrames: declaredFrames)
+        let before = try Data(contentsOf: source)
+        var timeline: SessionTimeline? = try await SessionComposition.make(tracks: [.init(url: source, startOffsetMs: 0, frameCount: 8000)])
+        let scratch = try #require(timeline?.temporaryDirectory)
+        #expect(FileManager.default.fileExists(atPath: scratch.path))
+        #expect(abs(CMTimeGetSeconds(timeline!.asset.duration) - 1) < 0.0001)
+        let samples = try read(timeline!.asset, start: 0, duration: 1)
+        #expect(abs(mean(samples, from: 4800, to: 43200) - 5000.0 / 32768) < 0.0002)
+        #expect(try Data(contentsOf: source) == before)
+        timeline = nil
+        #expect(!FileManager.default.fileExists(atPath: scratch.path))
+    }
+    @Test func emptySourceDoesNotBlockAnotherTrack() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let empty = try capturedWave(root, "empty", frames: 0, declaredFrames: 0)
+        let audible = try capturedWave(root, "audible", frames: 800, declaredFrames: 800)
+        let timeline = try await SessionComposition.make(tracks: [.init(url: empty, startOffsetMs: nil, frameCount: 0), .init(url: audible, startOffsetMs: 100, frameCount: 800)])
+        #expect(try await timeline.asset.loadTracks(withMediaType: .audio).count == 1)
+        #expect(abs(CMTimeGetSeconds(timeline.asset.duration) - 0.2) < 0.0001)
+        await #expect(throws: SessionComposition.Failure.noAudio) { try await SessionComposition.make(tracks: [.init(url: empty, startOffsetMs: nil, frameCount: 0)]) }
+        #expect(!SessionComposition.Failure.unreadableAudio.localizedDescription.contains("CassiniPlayback"))
+    }
     @Test func mixesConcurrentSourcesAtTheirOwnOffsets() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let a = try wave(root, "a", rate: 48000, frames: 14400, value: 1000)
         let b = try wave(root, "b", rate: 48000, frames: 9600, value: 2000)
         let timeline = try await SessionComposition.make(tracks: [.init(url: a, startOffsetMs: 0), .init(url: b, startOffsetMs: 100)])
-        let tracks = try await timeline.loadTracks(withMediaType: .audio)
+        let tracks = try await timeline.asset.loadTracks(withMediaType: .audio)
         #expect(tracks.count == 2)
-        #expect(abs(CMTimeGetSeconds(timeline.duration) - 0.3) < 0.00001)
-        let samples = try read(timeline, start: 0, duration: 0.3)
+        #expect(abs(CMTimeGetSeconds(timeline.asset.duration) - 0.3) < 0.00001)
+        let samples = try read(timeline.asset, start: 0, duration: 0.3)
         #expect(abs(mean(samples, from: 480, to: 4320) - 1000.0 / 32768) < 0.0001)
         #expect(abs(mean(samples, from: 5760, to: 13440) - 3000.0 / 32768) < 0.0001)
         // A non-zero reader range exercises seeking on the composed timeline.
-        let seek = try read(timeline, start: 0.2, duration: 0.05)
+        let seek = try read(timeline.asset, start: 0.2, duration: 0.05)
         #expect(abs(mean(seek, from: 100, to: 2000) - 3000.0 / 32768) < 0.0001)
     }
 
@@ -26,8 +51,8 @@ import CassiniLibrary
         let a = try wave(root, "slow", rate: 8000, frames: 800, value: 1000)
         let b = try wave(root, "fast", rate: 48000, frames: 4800, value: 2000)
         let timeline = try await SessionComposition.make(tracks: [.init(url: a, startOffsetMs: 0), .init(url: b, startOffsetMs: 112.5)])
-        #expect(abs(CMTimeGetSeconds(timeline.duration) - 0.2125) < 0.00001)
-        let samples = try read(timeline, start: 0, duration: 0.2125)
+        #expect(abs(CMTimeGetSeconds(timeline.asset.duration) - 0.2125) < 0.00001)
+        let samples = try read(timeline.asset, start: 0, duration: 0.2125)
         #expect(abs(mean(samples, from: 480, to: 4320) - 1000.0 / 32768) < 0.0002)
         #expect(abs(mean(samples, from: 4920, to: 5280)) < 0.0001)
         #expect(abs(mean(samples, from: 6000, to: 9600) - 2000.0 / 32768) < 0.0002)
@@ -54,10 +79,10 @@ import CassiniLibrary
         let meeting = try #require(scan.meetings.first { $0.title == "Budget review" })
         #expect(meeting.canPlaySession)
         let composition = try await SessionComposition.make(tracks: meeting.audioTracks)
-        #expect(abs(CMTimeGetSeconds(composition.duration) - 3120) < 0.001)
-        #expect(try await composition.loadTracks(withMediaType: .audio).count == meeting.audioFiles.count)
+        #expect(abs(CMTimeGetSeconds(composition.asset.duration) - 3120) < 0.001)
+        #expect(try await composition.asset.loadTracks(withMediaType: .audio).count == meeting.audioFiles.count)
         // The fixture's tone survives through the production scanner and mixer.
-        let samples = try read(composition, start: 0, duration: 0.1)
+        let samples = try read(composition.asset, start: 0, duration: 0.1)
         #expect(samples.contains { abs($0) > 0.01 })
         // A missing source timestamp must stay unknown even though Library's
         // display-duration rule substitutes zero for that track.
@@ -75,6 +100,18 @@ import CassiniLibrary
     private func directory() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("cassini-playback-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); return root
+    }
+    private func capturedWave(_ root: URL, _ name: String, frames: Int, declaredFrames: Int) throws -> URL {
+        let url = root.appendingPathComponent(name + ".wav")
+        var data = Data()
+        func text(_ value: String) { data.append(Data(value.utf8)) }
+        func u16(_ value: UInt16) { var value = value.littleEndian; withUnsafeBytes(of: &value) { data.append(contentsOf: $0) } }
+        func u32(_ value: UInt32) { var value = value.littleEndian; withUnsafeBytes(of: &value) { data.append(contentsOf: $0) } }
+        text("RIFF"); u32(UInt32(36 + declaredFrames * 2)); text("WAVEfmt "); u32(16)
+        u16(1); u16(1); u32(8000); u32(16000); u16(2); u16(16)
+        text("data"); u32(UInt32(declaredFrames * 2))
+        for _ in 0..<frames { u16(5000) }
+        try data.write(to: url); return url
     }
     private func wave(_ root: URL, _ name: String, rate: Int, frames: Int, value: Int16) throws -> URL {
         let url = root.appendingPathComponent(name + ".wav")

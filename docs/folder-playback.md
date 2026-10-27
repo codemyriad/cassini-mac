@@ -31,3 +31,17 @@ The regular hosted CI runs these tests with the complete package suite.
 The hosted Library board test additionally requires the Budget preview Play
 button to be enabled. No user desktop, browser or hardware audio tests are used.
 The redesigned Meeting player, transport shortcuts and media keys are UX3 work.
+
+## Recovery WAVs and empty tracks
+
+The scanner exposes physical frame counts separately from display metadata.
+Empty tracks do not enable Play alone or block another non-empty source. For a
+canonical recorder WAV whose header sizes lag physical complete frames, playback
+creates an owned temporary copy with corrected sizes and trims incomplete frames.
+The source WAV and session metadata are never changed. The retained SessionTimeline
+owns that storage until the player releases it, including cancellation/error paths.
+
+Offline regressions reproduce zero/stale data headers and verify full decoded
+audio duration/samples, source-byte preservation, scratch cleanup and mixed empty /
+nonempty tracks. Unknown source offsets are still never fabricated as zero.
+Composition failures use the system's localized file-read error presentation.

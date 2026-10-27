@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
 import CassiniKit
@@ -261,7 +262,7 @@ public struct LibraryScanner: Sendable {
                     let wave = try Self.wave(url)
                     guard wave.rate == track.sampleRate, wave.channels == track.channels else { throw MetadataError.invalid }
                     result.files.append(url)
-                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds))
+                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames))
                     if track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
                     ends.append((track.startOffsetMs ?? .zero).end(frames: wave.frames, rate: wave.rate))
                 } catch { result.issues.append(.invalidAudio) } // R4: a completed session is trusted.
@@ -273,7 +274,7 @@ public struct LibraryScanner: Sendable {
             var lengths: [Int64] = []
             for url in candidates.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where url.lastPathComponent.hasPrefix("track-") && url.pathExtension == "wav" {
                 if let safe = try? safeFile(url.lastPathComponent, in: folder), let wave = try? Self.wave(safe) {
-                    result.files.append(safe); result.tracks.append(.init(url: safe, startOffsetMs: nil)); lengths.append(Int64(wave.frames * 1000 / UInt64(wave.rate)))
+                    result.files.append(safe); result.tracks.append(.init(url: safe, startOffsetMs: nil, frameCount: wave.frames)); lengths.append(Int64(wave.frames * 1000 / UInt64(wave.rate)))
                 }
             }
             result.endMs = lengths.max()
