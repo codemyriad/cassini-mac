@@ -17,6 +17,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.sheets.buttons["record-first-start"].exists)
         XCTAssertTrue(text("macOS asks you to allow this next.", in: window.sheets.firstMatch))
         XCTAssertTrue(text("macOS asks once more, for Screen & System Audio Recording.", in: window.sheets.firstMatch))
+        let explanation = window.sheets.staticTexts["Cassini also records the sound of your meeting apps so the other participants are on the recording."]
+        XCTAssertTrue(explanation.exists)
+        XCTAssertGreaterThan(explanation.frame.height, 28, "The complete explanation must wrap, rather than truncate")
         capture(window, name: "record-first")
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
