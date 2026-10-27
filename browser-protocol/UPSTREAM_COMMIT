@@ -1,7 +1,7 @@
-tree 5562e05b4227e3fffe6c7745bce51153bffcc48f
-parent adcfce17283c02af2cdfca04c5d9cb519cdc29c8
-parent 3ab56d1fc74e9487648c4d2a750923fedfa3a512
-author Silvio Tomatis <silviot@gmail.com> 1793108111 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793108111 +0100
+tree b3b3261a677e1ccea5d033e80ded7800ac413945
+parent 457f2757aed0b70c38cfb655e6256362c9ecaadf
+parent f1c0e650404d5f9718ebbd01801468d7ad2aa591
+author Silvio Tomatis <silviot@gmail.com> 1793109128 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793109128 +0100
 
-Stack native gap clarification after lifecycle recovery
+Update native gap review on the merged browser baseline

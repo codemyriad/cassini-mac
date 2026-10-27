@@ -30,7 +30,7 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) { session.reportLoss(id: id, droppedFrames: droppedFrames, gapFrames: gapFrames) }
 }
 
-@Suite struct NativeSessionTests {
+@Suite struct NativeRecordingSessionTests {
     @Test(arguments: [0.99995, 1.00005]) func tenHoursSmoothDriftIsNotAHostTimeJump(scalar: Double) {
         var previous = 0.0
         var gaps: UInt64 = 0
@@ -91,6 +91,22 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
         #expect(wav[844..<160844].allSatisfy { $0 == 0 })
         #expect(wav[160844...].contains { $0 != 0 })
         #expect(session.manifest.problemKind == "gap")
+    }
+
+    @Test func missingInputStampDoesNotTurnDeliveryTimeIntoACountedGap() throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let session = try RecordingSession(parent: parent, title: "Missing host stamp", source: "macos")
+        let origin = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime)
+        let sink = RecordingSink(session: session, originHostTime: origin) { _ in }
+        let buffer = try nativeBuffer(rate: 8000, frames: 80)
+        for host in [origin, 0, origin + AVAudioTime.hostTime(forSeconds: 10)] {
+            sink.receive(buffer, hostTime: host, id: "mic", label: "Microphone", kind: "microphone")
+            sink.flush()
+        }
+        try sink.finish(problem: nil)
+        #expect(session.manifest.tracks[0].frames == 240)
+        #expect(sink.status().gapMs == 0)
     }
 
     @Test func realSessionStallInsertsSubToleranceSilenceAndReportsIO() throws {

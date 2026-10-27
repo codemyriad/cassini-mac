@@ -109,7 +109,7 @@ public final class RecordingSink: @unchecked Sendable {
         guard source.rate == rate, source.inputChannels == inputChannels else {
             lock.unlock(); fail("The audio device format changed. Start a new recording with the current device."); return
         }
-        if let previous = source.lastHostOffset {
+        if hostTime != 0, let previous = source.lastHostOffset {
             // Detect a jump between callbacks, not accumulated slow device drift. A fixed
             // session-start lag would misclassify 10h at +50ppm (1.8s) as lost input.
             let gap = NativeSourceTimeline.missingFrames(sampleRate: rate, hostOffsetMs: hostOffset,
@@ -120,7 +120,9 @@ public final class RecordingSink: @unchecked Sendable {
                 warnings.insert("\(label): a host-time gap was preserved as counted silence.")
             }
         }
-        source.lastHostOffset = hostOffset
+        // Arrival time can anchor a source with no host stamp, but cannot establish
+        // an input discontinuity. Break the comparison chain until stamps return.
+        source.lastHostOffset = hostTime == 0 ? nil : hostOffset
         source.lastInputFrames = frames
         let offset = source.timeline.advance(frames: frames)
         if abs(hostOffset - offset) >= 250 { warnings.insert("\(label): device time differs from the sample timeline; sample continuity was preserved.") }
