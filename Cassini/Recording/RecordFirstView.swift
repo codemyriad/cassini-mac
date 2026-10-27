@@ -100,7 +100,6 @@ struct LiveRecordingPill: View {
         }.frame(height: 4).accessibilityRepresentation {
             ProgressView(value: Double(max(0, min(1, level))))
                 .accessibilityLabel(UXText.text(label))
-                .accessibilityValue(String(Int(max(0, min(1, level)) * 100)))
         }
     }
 }

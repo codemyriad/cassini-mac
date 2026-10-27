@@ -39,7 +39,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(app.windows.count, 1)
         XCTAssertFalse(app.windows["open-panel"].exists)
         let mic = window.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Your microphone")).firstMatch
-        let meterReady = NSPredicate { _, _ in (mic.value as? String) == "12" }
+        let output = window.progressIndicators["This computer’s sound"]
+        func value(_ meter: XCUIElement) -> Double {
+            (meter.value as? NSNumber)?.doubleValue ?? Double(meter.value as? String ?? "") ?? .nan
+        }
+        let meterReady = NSPredicate { _, _ in abs(value(mic) - 0.12) < 0.005 && abs(value(output) - 0.38) < 0.005 }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: meterReady, object: nil)], timeout: 5), .completed, window.debugDescription)
         window.buttons["recording-stop"].click()
         XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
