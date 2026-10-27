@@ -167,6 +167,7 @@ struct LibraryView: View {
         }.padding(.horizontal, 44).padding(.vertical, 32)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .textBackgroundColor))
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(UXText.text("library.previewPane.a11y"))
     }
     private var autoTag: some View {

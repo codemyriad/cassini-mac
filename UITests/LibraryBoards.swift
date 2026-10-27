@@ -26,7 +26,7 @@ final class LibraryBoards: XCTestCase {
         if name == "library" {
             XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout: 20), window.debugDescription)
             XCTAssertTrue(window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
-            XCTAssertTrue(text("Today, 09:00 · 52 min", in: window))
+            XCTAssertTrue(text("Today, 09:00 · 52 min", in: window), window.debugDescription)
             XCTAssertTrue(text("00:00:04", in: window))
             XCTAssertFalse(window.buttons["preview-play"].isEnabled)
         } else {
