@@ -32,7 +32,7 @@ enum ScreenshotFixture {
                 // SwiftUI creates its window asynchronously after opening the document.
                 for _ in 0..<100 {
                     if let window = document.windowControllers.compactMap(\.window).first {
-                        prepare(window, sheet: name == "sheet")
+                        prepare(window, sheet: name == "sheet", boardSize: value("-CassiniScreenshotSize", in: arguments) == "1120x720")
                         return
                     }
                     try? await Task.sleep(for: .milliseconds(100))
@@ -49,14 +49,14 @@ enum ScreenshotFixture {
         return arguments[index + 1]
     }
 
-    private static func prepare(_ window: NSWindow, sheet: Bool) {
+    private static func prepare(_ window: NSWindow, sheet: Bool, boardSize: Bool) {
         window.setAccessibilityIdentifier("cassini-screenshot-window")
         window.toolbarStyle = .unified
         guard let screen = window.screen ?? NSScreen.main else { NSApp.terminate(nil); return }
-        // Hosted macOS starts with a 1024×768 display. Keep every edge inside its
-        // usable frame so a window screenshot cannot silently clip an offscreen edge.
+        // The board-size job selects a larger display mode before launch. Keep
+        // every edge on screen; never pass by clipping an offscreen window.
         let frame = NSRect(x: screen.visibleFrame.minX + 24, y: screen.visibleFrame.minY + 16,
-                           width: 960, height: 640)
+                           width: boardSize ? 1120 : 960, height: boardSize ? 720 : 640)
         guard screen.visibleFrame.contains(frame) else { NSApp.terminate(nil); return }
         window.setFrame(frame, display: true)
         window.makeKeyAndOrderFront(nil)

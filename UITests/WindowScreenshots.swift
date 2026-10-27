@@ -33,13 +33,15 @@ final class WindowScreenshots: XCTestCase {
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", fixture.path,
                                "-CassiniNow", "2026-10-27T12:00:00Z",
                                "-ApplePersistenceIgnoreState", "YES"]
+        let boardSize = ProcessInfo.processInfo.environment["CASSINI_SCREENSHOT_SIZE"] == "1120x720"
+        if boardSize { app.launchArguments += ["-CassiniScreenshotSize", "1120x720"] }
         app.launch()
         defer { app.terminate() }
         let window = app.windows["cassini-screenshot-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(window.toolbars.firstMatch.waitForExistence(timeout: 5), window.debugDescription)
-        XCTAssertEqual(window.frame.width, 960, accuracy: 2)
-        XCTAssertEqual(window.frame.height, 640, accuracy: 2)
+        XCTAssertEqual(window.frame.width, boardSize ? 1120 : 960, accuracy: 2)
+        XCTAssertEqual(window.frame.height, boardSize ? 720 : 640, accuracy: 2)
         let screen = try XCTUnwrap(NSScreen.main)
         XCTAssertGreaterThanOrEqual(window.frame.minX, 0)
         XCTAssertGreaterThanOrEqual(window.frame.minY, 0)
