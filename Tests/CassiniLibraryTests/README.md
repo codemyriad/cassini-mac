@@ -23,7 +23,7 @@ before this production-scanner adapter ran (coordination REPLIES-MAC.md). It
 compares the complete JSON shape, preserves null fields and array ordering, and
 pins every vendored file with SHA256. Main + each R1–R9 group are required; empty,
 first-record and received-only are also run. CI artifacts retain actual/expected
-JSON per case. The shared Onboarding descriptor issue is recorded upstream; no
-local expected result is changed to make a test pass.
+JSON per case. The shared Onboarding descriptor issue was fixed by its owner in 72862aa;
+all expected JSON remains unchanged. Every case runs against that pinned snapshot.
 No app UI, metadata writer/importer, processing engine or capture protocol changes.
 No test uses the user's Library, browser or audio devices.

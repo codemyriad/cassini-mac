@@ -24,8 +24,8 @@ these rules are superseded. D7 prioritizes visible common-case parity and bugs.
 
 Format v3 / states v2 are vendored unchanged. S-3a's trimmed main + R1–R9 fixtures
 are now vendored with per-file SHA pins and an exact output adapter following
-independent review. An input descriptor defect in Onboarding is reported in
-coordination REPLIES-MAC.md; expected JSON is unchanged. D6.1 resolves the ETA question through the updated schema; no reader exception
+independent review. The Onboarding descriptor defect found by the first run was fixed upstream in
+72862aa; expected JSON is unchanged. The source correction was checked independently. D6.1 resolves the ETA question through the updated schema; no reader exception
 remains. Fractional ends use exact numeric tokens / integer arithmetic, and
 collections key meetings by folder basename when both prefixes share a UUID. The model remains read-only, including unsupported
 metadata. No app scenes, desktop/browser/audio tests or recorder behavior change.

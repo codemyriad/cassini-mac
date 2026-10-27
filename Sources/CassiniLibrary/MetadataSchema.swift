@@ -4,10 +4,11 @@ import CassiniKit
 /// Validates the vocabulary used by the pinned v1 meeting.schema.json. This is
 /// deliberately not advertised as a general JSON Schema implementation.
 enum MetadataSchema {
-    static let schema: JSON = {
+    static let bytes: Data = {
         let url = Bundle.module.url(forResource: "meeting.schema", withExtension: "json", subdirectory: "Schema")!
-        return try! JSONParser.parse(Data(contentsOf: url))
+        return try! Data(contentsOf: url)
     }()
+    static let schema = try! JSONParser.parse(bytes)
     static func validate(_ value: JSON, against schema: JSON = schema) -> Bool {
         if let choices = schema["oneOf"]?.array, choices.filter({ validate(value, against: $0) }).count != 1 { return false }
         if let choices = schema["allOf"]?.array, !choices.allSatisfy({ validate(value, against: $0) }) { return false }

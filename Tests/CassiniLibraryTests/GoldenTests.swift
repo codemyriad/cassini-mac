@@ -31,10 +31,14 @@ private enum Golden {
 @Suite struct LibraryGoldenTests {
     @Test func goldenBytesAndCounts() throws {
         let hashes = ["format-vectors": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
-                      "states-vectors": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415"]
+                      "states-vectors": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
+                      "meeting.schema": "567c20b2a81bdc7bf4e1a5ab18f66e0f2c3ee93dd9cced2d04e973d51853a211"]
         for (name, expected) in hashes {
             #expect(SHA256.hash(data: try Golden.data(name)).map { String(format: "%02x", $0) }.joined() == expected)
         }
+        #expect(MetadataSchema.bytes == (try Golden.data("meeting.schema")))
+        let rules = try #require(Bundle.module.url(forResource: "LIBRARY-RULES", withExtension: "md", subdirectory: "Golden"))
+        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "3b0296cf1defff713c7b1046f3d0d46a271e61c181bbcc9477b6a036b181643a")
         #expect(Golden.formats.count == 69)
         #expect(Golden.states.count == 17)
     }

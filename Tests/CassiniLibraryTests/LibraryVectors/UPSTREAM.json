@@ -1,6 +1,6 @@
 {
-  "commit": "6ed439505e12382223ab3549256d75331712a615",
-  "independentReview": "REPLIES-MAC.md, coordination 2a8864c (13 expectations / 32 rows, no disagreements)",
+  "commit": "72862aab50772ecda3998e72a13a424630b1d784",
+  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged",
   "path": "ux-draft/library-vectors",
   "repository": "cassini-coordination",
   "sha256": {
@@ -11,12 +11,12 @@
     "assets/015-unknown-major-version.opus": "c251ec856dec2683126cc5365151967a014e87f2385023d2945305557413a113",
     "assets/016-two-transcripts.opus": "70378c87ce08edff20c96ba6e2806e205703a29cc77778ad51bcda66a5b8326a",
     "assets/LICENSE-CC0-1.0.txt": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
-    "assets/SHA256.json": "952028bc0bcdb9dae4460a679940df0beb1686ff496f312d534f382fead4e5a1",
-    "assets/build.py": "dc4bedd0559a6dba493d03229ac30f0f4a760b419864c0cfd32bfa26e84caf3c",
-    "assets/onboarding.opus": "05f903e6ba0a306a258019cc9033cfd5411cc4b6a80489061eef6ea936dbe68a",
+    "assets/SHA256.json": "68aea4f4846229acfd6c0fbeaabb5de6fed58cb2d1452ded31795ac6f0628df8",
+    "assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
+    "assets/onboarding.opus": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
     "assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
-    "cases.json": "0ff2a1b6f9bd64512c5dab2b3e62e93d46014b82bb28ca37d79656243f0923bd",
+    "cases.json": "03bdf6112f7c264e27b0fe2c4dc4a671d9b778981098d7e5edd707bd6522c012",
     "expected/empty.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/main.json": "e5cb374351532dbfa9137abf17d24c3ea0362408e0e740b6e65ffbd4a2b5fa39",
@@ -31,6 +31,6 @@
     "expected/r9-received-once.json": "296890651d48b3809b13b5bb59ac4018045cfb3cd642ebdccecbf5c69f5d65b7",
     "expected/received-only.json": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709",
     "make.py": "8a5fe5ecc1fd2c2bab3d1264b6137035b8f67b16fe9bacfe73af36d8b2a7eafb",
-    "verify.py": "36d9a00b72789d68e6e086c7d60f376da33570cfa83a4d8b9e5880392b04679e"
+    "verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da"
   }
 }
