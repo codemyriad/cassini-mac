@@ -62,6 +62,7 @@ struct LibraryView: View {
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(LibraryTheme.sidebar)
+            .frame(minWidth: 400, maxWidth: 400)
             .navigationSplitViewColumnWidth(min: 400, ideal: 400, max: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
             .toolbar(removing: .sidebarToggle)
@@ -125,7 +126,7 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
-                if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim) }
+                if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
             }
             HStack(spacing: 8) {
                 ForEach(meeting.speakers, id: \.id) { speaker in

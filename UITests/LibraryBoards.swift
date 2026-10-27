@@ -21,9 +21,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons[expectedControl].waitForExistence(timeout: 20), window.debugDescription)
         let exactFrame = NSPredicate { _, _ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: exactFrame, object: nil)], timeout: 10), .completed, window.debugDescription)
-        let attachment = XCTAttachment(screenshot: window.screenshot())
-        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         if name == "library" {
+            let subtitle = window.staticTexts["preview-subtitle"]
+            let ready = NSPredicate { _, _ in subtitle.exists && subtitle.isHittable && subtitle.frame.minX >= window.frame.minX + 420 }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: 10), .completed, window.debugDescription)
             XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout: 20), window.debugDescription)
             XCTAssertTrue(window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
             XCTAssertTrue(text("Today, 09:00 · 52 min", in: window), window.debugDescription)
@@ -34,6 +35,10 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(text("Your recorded meetings will appear here.", in: window))
             XCTAssertTrue(text("Recordings and transcripts stay on this computer, in Music/Cassini.", in: window))
         }
+        // Wait for the laid-out preview, not merely a control retained in an
+        // accessibility snapshot while NavigationSplitView changes its columns.
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
     }
