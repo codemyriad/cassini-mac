@@ -27,7 +27,7 @@ struct LibraryLaunchContext {
             context.scansLibrary = false
         }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting"].contains(name),
+           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
             context.root = URL(fileURLWithPath: path).appendingPathComponent("root")
@@ -37,6 +37,9 @@ struct LibraryLaunchContext {
                 for (id, phase) in phases { if let id = UUID(uuidString: id) { context.activity[id] = phase == "saving" ? .saving : .recording } }
             }
         }
+        #endif
+        #if DEBUG
+        if let root = RecordingFixture.root { context.root = root; context.screenshot = false; context.now = nil }
         #endif
         return context
     }
@@ -113,13 +116,16 @@ final class LibraryStore {
         let recorder = RecordingController.shared
         var phases: [UUID: CaptureActivity] = [:]
         withObservationTracking {
-            if recorder.isRecording, let folder = recorder.directory,
-               let id = UUID(uuidString: String(folder.lastPathComponent.dropFirst("Recording-".count))) { phases[id] = .recording }
+            if recorder.isRecording || recorder.isSaving, let folder = recorder.directory,
+               let id = UUID(uuidString: String(folder.lastPathComponent.dropFirst("Recording-".count))) { phases[id] = recorder.isSaving ? .saving : .recording }
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.started else { return }
                 self.observeNativeRecorder()
             }
+        }
+        if recorder.isRecording, let folder = recorder.directory, !activity.snapshot().keys.contains(where: { $0.uuidString.lowercased() == String(folder.lastPathComponent.dropFirst("Recording-".count)) }) {
+            selectedKey = folder.lastPathComponent
         }
         let changedIDs = Set(activity.snapshot().keys).union(phases.keys)
         activity.replace(phases)

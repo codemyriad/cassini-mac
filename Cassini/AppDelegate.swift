@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if CommandLine.arguments.contains("--fixture-library-recording"), !RecordingFixture.enabled || RecordingFixture.root == nil { NSApp.terminate(nil); return }
         if ScreenshotFixture.launchIfRequested() { return }
         if CommandLine.arguments.contains("--whistle-self-test") {
             Task { @MainActor in await WhistleSelfTest.run() }
@@ -28,13 +29,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if RecordingController.shared.isSaving {
+            Task { @MainActor in
+                await RecordingController.shared.finishTask?.value
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        }
         guard RecordingConfirmation.active else { return .terminateNow }
         guard !confirmingQuit else { return .terminateLater }; confirmingQuit = true
         DispatchQueue.main.async { [weak self] in
             RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
-                self?.confirmingQuit = false
-                if stop { RecordingConfirmation.stop() }
-                sender.reply(toApplicationShouldTerminate: stop)
+                Task { @MainActor in
+                    if stop { await RecordingConfirmation.stopAndWait() }
+                    self?.confirmingQuit = false
+                    sender.reply(toApplicationShouldTerminate: stop)
+                }
             }
         }
         return .terminateLater
@@ -55,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
               [49, 123, 124].contains(event.keyCode),
               let window = event.window else { return event }
+        if window.attachedSheet != nil || NSApp.modalWindow != nil { return event }
         if let editor = window.firstResponder as? NSTextView, editor.isEditable {
             editor.keyDown(with: event)
             return nil

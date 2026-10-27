@@ -16,6 +16,8 @@ struct LibraryView: View {
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
     @State private var toolbarWidth: CGFloat = 1120
+    @State private var recordCoordinator = RecordCoordinator.shared
+    @State private var recorder = RecordingController.shared
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         GeometryReader { geometry in
@@ -40,7 +42,8 @@ struct LibraryView: View {
                                 .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
                                 .accessibilityIdentifier("meeting-back")
                             Spacer(minLength: 0)
-                            recordButton(big: false)
+                            if recorder.isRecording { Button(UXText.text("common.stop")) { recorder.stop() } }
+                            else { recordButton(big: false) }
                         }.frame(width: 169)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .bold))
@@ -81,6 +84,7 @@ struct LibraryView: View {
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
+        .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .onAppear {
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             let open = openWindow
@@ -94,6 +98,9 @@ struct LibraryView: View {
             sessionPlayback.reconcile(store.selected, offline: store.offline)
             navigation.update(store.meetings, offline: store.offline)
             #if DEBUG
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
+                recordCoordinator.showingFirst = true
+            }
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting", navigation.detail == nil,
                let meeting = store.meetings.first(where: { $0.title == "Client call, Rossi & Partners" }) { navigation.open(meeting, frozen: true) }
             #endif
@@ -136,7 +143,11 @@ struct LibraryView: View {
     }
     private var toolbarControl: some View {
         Group {
-            if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
+            if recorder.isRecording, let started = recorder.startedAt {
+                LiveRecordingPill(started: started, microphone: recorder.levels["microphone", default: 0], output: recorder.levels["output", default: 0])
+            } else if recorder.isSaving {
+                HStack { ProgressView().controlSize(.small); Text(UXText.text("states.badge.saving")) }.frame(height: 34)
+            } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
                 // Read-only header placeholder until UX5 owns transport/levels.
                 HStack(spacing: 8) {
                     Circle().fill(LibraryTheme.red).frame(width: 10, height: 10)
@@ -276,14 +287,14 @@ struct LibraryView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .textBackgroundColor))
     }
     private func recordButton(big: Bool) -> some View {
-        Button { sessionPlayback.stop(); openWindow(id: "recording") } label: {
+        Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
             HStack(spacing: big ? 10 : 8) {
                 Circle().fill(big ? Color.white : LibraryTheme.red).frame(width: big ? 12 : 10, height: big ? 12 : 10)
                 Text(UXText.text("common.record")).fontWeight(.semibold)
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
                 .foregroundStyle(big ? .white : Color(nsColor: .labelColor))
                 .background(big ? LibraryTheme.red : LibraryTheme.chip, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
-        }.buttonStyle(.plain).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+        }.buttonStyle(.plain).disabled(!recorder.canStart).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }

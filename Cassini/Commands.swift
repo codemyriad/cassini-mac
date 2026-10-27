@@ -7,10 +7,10 @@ struct AppCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
-            Button(UXText.text("common.record")) {
+            Button(UXText.text(RecordingController.shared.isRecording ? "common.stop" : "common.record")) {
                 if RecordingConfirmation.active { RecordingConfirmation.stop() }
-                else { SessionPlaybackController.stopAll(); openWindow(id: "recording") }
-            }.keyboardShortcut("r", modifiers: .command)
+                else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryLaunchContext.current.root) }
+            }.keyboardShortcut("r", modifiers: .command).disabled(RecordingController.shared.isSaving)
         }
         CommandGroup(after: .saveItem) {
             Button(UXText.text("common.exportEllipsis")) {}.keyboardShortcut("e", modifiers: [.command, .shift]).disabled(true)
@@ -19,7 +19,7 @@ struct AppCommands: Commands {
             Button(UXText.text("common.backToLibrary")) { MeetingNavigation.shared.back() }
                 .keyboardShortcut("[", modifiers: .command).disabled(detail == nil)
         }
-        CommandMenu(UXText.text("player.a11y")) {
+        CommandMenu("Playback") {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }
                 .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(detail?.canPlay != true)

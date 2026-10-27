@@ -26,7 +26,7 @@ jobs:
           from pathlib import Path
           import shutil
           for case in Path('UITests/Fixtures/Library').iterdir():
-              if case.name not in ('main', 'empty'): shutil.rmtree(case)
+              if case.name not in ('main', 'empty', 'first-record'): shutil.rmtree(case)
           PY
           xcodegen generate
       - name: Render Library boards
