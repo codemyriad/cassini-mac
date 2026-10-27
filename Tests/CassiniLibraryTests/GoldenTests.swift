@@ -30,13 +30,13 @@ private enum Golden {
 
 @Suite struct LibraryGoldenTests {
     @Test func goldenBytesAndCounts() throws {
-        let hashes = ["format-vectors": "915a8cabd8af07c847ac55e479993b4af4bb4223e26ec447ce5e479543883773",
-                      "states-vectors": "1f5cc52920abb8148942d0484e9c67cc734f613d7e90c07968ecf3622cb19702"]
+        let hashes = ["format-vectors": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
+                      "states-vectors": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415"]
         for (name, expected) in hashes {
             #expect(SHA256.hash(data: try Golden.data(name)).map { String(format: "%02x", $0) }.joined() == expected)
         }
-        #expect(Golden.formats.count == 64)
-        #expect(Golden.states.count == 15)
+        #expect(Golden.formats.count == 69)
+        #expect(Golden.states.count == 17)
     }
     @Test(arguments: Golden.formats) private func formatVector(vector: FormatCase) throws {
         let value = try JSONDecoder().decode(FormatInput.self, from: vector.data)

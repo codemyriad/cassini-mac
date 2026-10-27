@@ -10,7 +10,7 @@ struct AppMetadata: Decodable {
     let notes: [MeetingNote]
     let speakers: [Speaker]
     let transcript: Transcript
-    let etaMinutes: Int64?
+    var etaMinutes: Int64?
     let error: MeetingIssue?
     let quoteOverride: MeetingQuote?
     let received: Received?
@@ -31,8 +31,7 @@ struct AppMetadata: Decodable {
             try require(speaker.provenance == .unnamed ? speaker.name == nil : speaker.name?.isEmpty == false)
             try require((speaker.name?.unicodeScalars.count ?? 0) <= 200)
         }
-        if [.queued, .running].contains(transcript.status) { try require(etaMinutes.map { (0...Self.safe).contains($0) } == true) }
-        else { try require(etaMinutes == nil) }
+        if ![.queued, .running].contains(transcript.status) { try require(etaMinutes == nil) }
         if let reference = transcript.reference {
             try require(safeBasename(reference.file))
             try require(reference.kind == "embedded" || (reference.kind == "sidecar" && reference.file == "transcript.json" && reference.format == "cassini.words.v1"))
@@ -50,20 +49,43 @@ struct AppMetadata: Decodable {
         if let quoteOverride { try require((0...Self.safe).contains(quoteOverride.atMs) && !quoteOverride.text.isEmpty && quoteOverride.text.unicodeScalars.count <= 100000) }
     }
 }
-enum MetadataError: Error { case invalid }
+enum MetadataError: Error { case invalid, unsupportedVersion }
 func safeBasename(_ value: String) -> Bool { !value.isEmpty && value != "." && value != ".." && !value.contains("/") && !value.contains("\\") && value.unicodeScalars.count <= 255 }
 func safeFile(_ name: String, in directory: URL) throws -> URL {
-    guard safeBasename(name) else { throw MetadataError.invalid }
-    let file = directory.appendingPathComponent(name).resolvingSymlinksInPath()
-    guard file.deletingLastPathComponent() == directory.resolvingSymlinksInPath() else { throw MetadataError.invalid }
-    return file
+    guard safeBasename(name), !name.contains("\0") else { throw MetadataError.invalid }
+    // Do not resolve a file symlink. openRegular must reject it, even inside the folder.
+    return URL(fileURLWithPath: directory.path + "/" + name, isDirectory: false)
 }
-func readJSON<T: Decodable>(_ type: T.Type, at url: URL, limit: Int = 1_048_576) throws -> T {
-    let file = try FileHandle(forReadingFrom: url); defer { try? file.close() }
-    let data = try file.read(upToCount: limit + 1) ?? Data()
-    guard data.count <= limit else { throw MetadataError.invalid }
+func decodeJSON<T: Decodable>(_ type: T.Type, data: Data) throws -> T {
     _ = try JSONParser.parse(data)
     return try JSONDecoder().decode(type, from: data)
+}
+extension AppMetadata {
+    static func parse(_ data: Data) throws -> Self {
+        let value = try JSONParser.parse(data)
+        if let rawVersion = value["version"], MetadataSchema.validate(rawVersion, against: .object([("type", .string("integer"))])),
+           let version = MetadataSchema.decimal(rawVersion), version > 1 {
+            throw MetadataError.unsupportedVersion
+        }
+        var checked = value
+        var decodedData = data
+        if ["queued", "running"].contains(value["transcript"]?["status"]?.string ?? ""),
+           let eta = value["etaMinutes"] {
+            // D6 R3 is the explicit ETA exception to R2: preserve the job and
+            // normalize an unavailable/invalid estimate in memory only.
+            let valid = MetadataSchema.validate(eta, against: .object([
+                ("type", .string("integer")), ("minimum", .number("0")),
+                ("maximum", .number(String(Self.safe))) ]))
+            if !valid {
+                checked = .object(value.object!.map { ($0.0, $0.0 == "etaMinutes" ? .number("0") : $0.1) })
+                var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+                object["etaMinutes"] = NSNull()
+                decodedData = try JSONSerialization.data(withJSONObject: object)
+            }
+        }
+        guard MetadataSchema.validate(checked) else { throw MetadataError.invalid }
+        return try JSONDecoder().decode(Self.self, from: decodedData)
+    }
 }
 func recordingDate(_ value: String) -> Date? {
     let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

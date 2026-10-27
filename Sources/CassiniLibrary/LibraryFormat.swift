@@ -41,8 +41,8 @@ public struct LibraryFormat: Sendable {
         return date(at, pattern: calendar.component(.year, from: at) == calendar.component(.year, from: now) ? "EEEE d MMMM" : "EEEE d MMMM yyyy")
     }
     public func rowTime(_ at: Date) -> String { date(at, pattern: "HH:mm") }
-    public func previewSubtitle(_ at: Date, durationMs: Int64, received: Bool = false) -> String {
-        dayGroup(at) + ", " + rowTime(at) + " · " + Self.meetingDuration(durationMs) + (received ? " · Received" : "")
+    public func previewSubtitle(_ at: Date, durationMs: Int64?, received: Bool = false) -> String {
+        dayGroup(at) + ", " + rowTime(at) + (durationMs.map { " · " + Self.meetingDuration($0) } ?? "") + (received ? " · Received" : "")
     }
     public func searchDate(_ at: Date) -> String {
         let group = dayGroup(at)
@@ -52,9 +52,9 @@ public struct LibraryFormat: Sendable {
     public func searchContext(_ at: Date, durationMs: Int64, positionMs: Int64) -> String {
         previewSubtitle(at, durationMs: durationMs) + " · at " + Self.position(positionMs)
     }
-    public static func rowMeta(durationMs: Int64, names: [String]) -> String {
+    public static func rowMeta(durationMs: Int64?, names: [String]) -> String {
         let namesText = names.prefix(3).joined(separator: ", ") + (names.count > 3 ? " +\(names.count - 3)" : "")
-        return meetingDuration(durationMs) + (namesText.isEmpty ? "" : " · " + namesText)
+        return [durationMs.map(meetingDuration), namesText.isEmpty ? nil : namesText].compactMap { $0 }.joined(separator: " · ")
     }
     public static func eta(_ minutes: Int64) -> String {
         if minutes <= 0 { return "Transcribing, less than a minute left" }
@@ -64,9 +64,19 @@ public struct LibraryFormat: Sendable {
         "\(places) \(places == 1 ? "place" : "places") in \(meetings) \(meetings == 1 ? "meeting" : "meetings")"
     }
     public static func size(bytes: Int64, approximate: Bool = false) -> String {
-        let mb = (Double(max(0, bytes)) / 1048576).rounded(.toNearestOrAwayFromZero)
-        let value = mb < 1000 ? String(format: "%.0f MB", locale: Locale(identifier: "en_GB"), mb)
-            : String(format: "%.1f GB", locale: Locale(identifier: "en_GB"), Double(max(0, bytes)) / 1073741824)
+        let bytes = max(0, bytes)
+        // Integer quotient/remainder implements decimal half-up exactly, including
+        // 1.25 GiB and large inputs, without overflowing bytes*10.
+        let unit: Int64 = 1_048_576
+        let mb = bytes / unit + (bytes % unit >= unit / 2 ? 1 : 0)
+        let value: String
+        if mb < 1000 { value = "\(mb) MB" }
+        else {
+            let gb: Int64 = 1_073_741_824
+            let fractional = (bytes % gb) * 10
+            let tenths = (bytes / gb) * 10 + fractional / gb + (fractional % gb >= gb / 2 ? 1 : 0)
+            value = "\(tenths / 10).\(tenths % 10) GB"
+        }
         return (approximate ? "about " : "") + value
     }
 }

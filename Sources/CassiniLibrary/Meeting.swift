@@ -23,11 +23,13 @@ public struct MeetingState: Codable, Equatable, Sendable {
     public var etaMinutes: Int64?
     public var error: MeetingIssue?
     public var liveMs: Int64?
+    /// nil for isolated badge vectors; the scanner always supplies audio availability (R9).
+    public var audioAvailable: Bool?
     public init(lifecycle: MeetingLifecycle = .saved, origin: MeetingOrigin = .own,
                 interruptedAtMs: Int64? = nil, transcript: TranscriptStatus = .none,
-                etaMinutes: Int64? = nil, error: MeetingIssue? = nil, liveMs: Int64? = nil) {
+                etaMinutes: Int64? = nil, error: MeetingIssue? = nil, liveMs: Int64? = nil, audioAvailable: Bool? = nil) {
         self.lifecycle = lifecycle; self.origin = origin; self.interruptedAtMs = interruptedAtMs
-        self.transcript = transcript; self.etaMinutes = etaMinutes; self.error = error; self.liveMs = liveMs
+        self.transcript = transcript; self.etaMinutes = etaMinutes; self.error = error; self.liveMs = liveMs; self.audioAvailable = audioAvailable
     }
     public var badge: MeetingBadge? {
         if lifecycle == .recording { return .init(kind: "recording", text: "Recording " + LibraryFormat.liveBadge(liveMs ?? 0), tint: "red", dot: true) }
@@ -40,7 +42,7 @@ public struct MeetingState: Codable, Equatable, Sendable {
         if origin == .received { return .init(kind: "received", text: "Received", tint: "grey") }
         return nil
     }
-    public var canWriteDown: Bool { lifecycle == .saved && transcript == .none }
+    public var canWriteDown: Bool { lifecycle == .saved && [.none, .failed].contains(transcript) && audioAvailable != false }
 }
 public enum CaptureActivity: Sendable { case recording, saving }
 public protocol CaptureActivityProviding: Sendable {
@@ -80,13 +82,29 @@ public struct LibraryMeeting: Identifiable, Sendable {
     public var notes: [MeetingNote]
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
+    public var metadataReadOnly: Bool = false
+    public var canWriteDown: Bool { state.canWriteDown }
     public var speakerNames: [String] { speakers.map(\.displayName) }
 }
 /// Diagnostic codes only. No raw errors or undrawn UI copy is produced by the core.
 public enum LibraryReadIssue: String, Sendable { case unsafePath, invalidMetadata, invalidCapture, missingAudio, invalidAudio, invalidTranscript, unsupportedVersion, unknownStartOffset }
+public struct LibraryDayGroup: Sendable {
+    public var title: String
+    public var meetings: [LibraryMeeting]
+}
 public struct LibraryScan: Sendable {
     public var meetings: [LibraryMeeting]
     public var issues: [LibraryReadIssue]
+    /// R6 order is established by the scanner before grouping by calendar day.
+    public func groups(format: LibraryFormat) -> [LibraryDayGroup] {
+        var groups: [LibraryDayGroup] = []
+        for meeting in meetings {
+            let title = meeting.start.map(format.dayGroup) ?? "Date unknown"
+            if groups.last?.title == title { groups[groups.count - 1].meetings.append(meeting) }
+            else { groups.append(.init(title: title, meetings: [meeting])) }
+        }
+        return groups
+    }
 }
 public protocol LibraryWatching: AnyObject, Sendable {
     func start(onChange: @escaping @Sendable (URL) -> Void) throws

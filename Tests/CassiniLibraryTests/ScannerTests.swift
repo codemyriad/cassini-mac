@@ -4,10 +4,10 @@ import Testing
 import CassiniKit
 @testable import CassiniLibrary
 
-private final class Fixture {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+final class Fixture {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString.lowercased())
     let id = UUID(uuidString: "9037a57c-c501-44e6-8f1a-56f4c9317695")!
-    var folder: URL { root.appendingPathComponent("Recording-" + id.uuidString) }
+    var folder: URL { root.appendingPathComponent("Recording-" + id.uuidString.lowercased()) }
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     init() throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -25,7 +25,7 @@ private final class Fixture {
     }
     func received(plain: Bool = false) throws -> URL {
         try FileManager.default.removeItem(at: folder)
-        let received = root.appendingPathComponent("Received-" + id.uuidString)
+        let received = root.appendingPathComponent("Received-" + id.uuidString.lowercased())
         try FileManager.default.createDirectory(at: received, withIntermediateDirectories: true)
         let source = repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/\(plain ? "002-plain-audio" : "001-minimal-v1").opus")
         try FileManager.default.copyItem(at: source, to: received.appendingPathComponent("original.opus"))
@@ -35,7 +35,7 @@ private final class Fixture {
 
 @Suite struct LibraryScannerTests {
     @Test func absentLibraryIsEmptyAndScanNeverCreatesIt() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString.lowercased())
         #expect(try LibraryScanner(root: root).scan().meetings.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: root.path))
         #expect(LibraryScanner().root.path.hasSuffix("/Music/Cassini"))
@@ -95,6 +95,7 @@ private final class Fixture {
         let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
         #expect(result.audioFiles.count == 1 && result.durationMs == 1125)
         #expect(result.issues.contains(.invalidAudio))
+        #expect(result.state.interruptedAtMs == nil)
     }
     @Test func speakerOrderQuoteSelectionAndOverrideUseTranscriptNotCaptureSources() throws {
         let f = try Fixture()
@@ -111,13 +112,18 @@ private final class Fixture {
         #expect(result.speakerNames == ["Speaker 1", "Dario", "Speaker 3"])
         #expect(result.quote?.text == "Longest turn")
         #expect(result.quote?.displayText == "“Longest turn”")
-        try f.metadata { $0["quoteOverride"] = ["atMs": 400, "text": "Last played"] }
+        try f.metadata {
+            $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]]
+            $0["quoteOverride"] = ["atMs": 400, "text": "Last played"]
+        }
         #expect(try LibraryScanner(root: f.root).scan().meetings.first?.quote?.text == "Last played")
     }
     @Test(arguments: [false, true]) func receivedTranscriptAndPlainAudioHaveDifferentActions(plain: Bool) throws {
         let f = try Fixture(); let received = try f.received(plain: plain)
         let data = try Data(contentsOf: received.appendingPathComponent("original.opus"))
-        try f.metadata(in: received, received: ["originalName": "original.opus", "originalFolderName": "Downloads", "sha256": SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), "importedAtMs": 1793107080000])
+        try f.metadata(in: received, received: ["originalName": "original.opus", "originalFolderName": "Downloads", "sha256": SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), "importedAtMs": 1793107080000]) { json in
+            if !plain { json["transcript"] = ["status": "done", "reference": ["kind": "embedded", "file": "original.opus"]] }
+        }
         let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
         #expect(result.state.origin == .received && result.state.badge?.kind == "received")
         #expect(result.state.canWriteDown == plain)
@@ -127,7 +133,10 @@ private final class Fixture {
     }
     @Test func damagedSidecarDoesNotClaimDoneOrDropAudio() throws {
         let f = try Fixture()
-        try f.metadata { $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]] }
+        try f.metadata {
+            $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]]
+            $0["quoteOverride"] = ["atMs": 0, "text": "Must not show"]
+        }
         try Data("broken".utf8).write(to: f.folder.appendingPathComponent("transcript.json"))
         let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
         #expect(result.state.transcript == .damaged && result.state.error?.id == "transcript-damaged")
@@ -135,14 +144,14 @@ private final class Fixture {
     }
     @Test func escapingFoldersAndSidecarPathsAreRejectedWithoutReadingThem() throws {
         let f = try Fixture()
-        let outside = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString.lowercased())
         try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: outside) }
-        let link = f.root.appendingPathComponent("Recording-" + UUID().uuidString)
+        let link = f.root.appendingPathComponent("Recording-" + UUID().uuidString.lowercased())
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
         try f.metadata { $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "../outside.json", "format": "cassini.words.v1"]] }
         let result = try LibraryScanner(root: f.root).scan()
         #expect(result.meetings.count == 1 && result.issues.contains(.unsafePath))
-        #expect(result.meetings[0].issues.contains(.invalidMetadata))
+        #expect(try #require(result.meetings.first).issues.contains(.invalidMetadata))
     }
 }

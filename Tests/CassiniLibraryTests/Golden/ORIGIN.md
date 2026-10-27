@@ -1,7 +1,8 @@
-These are the coordinator-owned golden vectors from cassini-coordination/ux-draft.
-- format-vectors.json v2, D1: 915a8cabd8af07c847ac55e479993b4af4bb4223e26ec447ce5e479543883773
-- states-vectors.json v1: 1f5cc52920abb8148942d0484e9c67cc734f613d7e90c07968ecf3622cb19702
-- meeting.schema.json: W1-M1 draft 1fa62835f1d03c59cec024b0555c3c2a4907757a, GNOME accepted W1-G4.
+Coordinator-owned copies from cassini-coordination/ux-draft (D6/D7).
+- format-vectors.json v3: ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51 (69 cases).
+- states-vectors.json v2: 33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415 (17 cases).
+- meeting.schema.json: accepted W1-M1 schema; identical copy in the core Schema resource.
+- LIBRARY-RULES.md: binding D6 R1–R10; supersedes earlier LIBRARY choices.
 
-Both golden JSON files are copied verbatim. Change them only after coordinator decisions.
-The Library scanner follows DECISIONS-UX D2/D3; display-only unknown offsets never align playback.
+Vectors are byte-for-byte copies, SHA256-checked. Do not adjust expected results locally.
+S-3a (D7): main Library plus one case per R1–R9, pending the coordinator's fixture ping.
