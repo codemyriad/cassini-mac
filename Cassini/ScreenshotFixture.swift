@@ -52,7 +52,13 @@ enum ScreenshotFixture {
     private static func prepare(_ window: NSWindow, sheet: Bool) {
         window.setAccessibilityIdentifier("cassini-screenshot-window")
         window.toolbarStyle = .unified
-        window.setFrame(NSRect(x: 80, y: 80, width: 1120, height: 640), display: true)
+        guard let screen = window.screen ?? NSScreen.main else { NSApp.terminate(nil); return }
+        // Hosted macOS starts with a 1024×768 display. Keep every edge inside its
+        // usable frame so a window screenshot cannot silently clip an offscreen edge.
+        let frame = NSRect(x: screen.visibleFrame.minX + 24, y: screen.visibleFrame.minY + 16,
+                           width: 960, height: 640)
+        guard screen.visibleFrame.contains(frame) else { NSApp.terminate(nil); return }
+        window.setFrame(frame, display: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         if sheet {

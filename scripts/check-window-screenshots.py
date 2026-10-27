@@ -27,5 +27,5 @@ for name in ("current-window", "current-window-sheet"):
     assert data[:8] == b"\x89PNG\r\n\x1a\n", name
     width, height = struct.unpack(">II", data[16:24])
     # Retina scale is allowed; titlebar and attached sheet stay in the window.
-    assert width >= 1120 and height >= 640, (name, width, height)
+    assert width >= 960 and height >= 640, (name, width, height)
     print(f"{name}: {width}×{height}, {len(data)} bytes")

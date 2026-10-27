@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 final class WindowScreenshots: XCTestCase {
@@ -31,8 +32,13 @@ final class WindowScreenshots: XCTestCase {
         let window = app.windows["cassini-screenshot-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(window.toolbars.firstMatch.waitForExistence(timeout: 5), window.debugDescription)
-        XCTAssertEqual(window.frame.width, 1120, accuracy: 2)
+        XCTAssertEqual(window.frame.width, 960, accuracy: 2)
         XCTAssertEqual(window.frame.height, 640, accuracy: 2)
+        let screen = try XCTUnwrap(NSScreen.main)
+        XCTAssertGreaterThanOrEqual(window.frame.minX, 0)
+        XCTAssertGreaterThanOrEqual(window.frame.minY, 0)
+        XCTAssertLessThanOrEqual(window.frame.maxX, screen.frame.width)
+        XCTAssertLessThanOrEqual(window.frame.maxY, screen.frame.height)
         if withSheet {
             XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout: 5), window.debugDescription)
             XCTAssertTrue(window.sheets.staticTexts["A recording is running"].exists)

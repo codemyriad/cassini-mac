@@ -38,7 +38,7 @@ The artifact includes the PNGs, export manifest, test log and xcresult bundle.
 - The fixture sheet only demonstrates capture. It does not wire the future
   recording-close confirmation to the recorder.
 - The bundled fixture avoids an external-file sandbox grant or Open panel.
-- The screenshot's point dimensions are 1120 × 640; raster dimensions can vary
+- The screenshot's point dimensions are 960 × 640; raster dimensions can vary
   with the hosted display's scale. This spike does not claim pixel equivalence
   to the design boards or cross-OS identical native chrome.
 
@@ -50,7 +50,9 @@ and [test runner environment propagation](https://developer.apple.com/videos/pla
 Run [40546900811](https://github.com/codemyriad/cassini-mac/actions/runs/40546900811)
 opened both actual document windows and found their toolbars, but failed the
 720-point height assertion: the hosted display constrained them to 684/681
-points. The spike now requests 1120 × 640, which fits that display. It still
+points. The failure video also exposed the 1024 × 768 hosted display: the requested
+1120-point width extended offscreen. The spike now requests 960 × 640 inside
+`NSScreen.visibleFrame`, and asserts every window edge fits on screen. It still
 captures the complete window. Future 1120 × 720 board comparisons will need a
 larger hosted display mode; this spike does not resize a screenshot to claim a
 match.
