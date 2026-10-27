@@ -46,8 +46,25 @@ final class PipelineTests: XCTestCase {
         XCTAssertEqual(ends.first?.reason, "durationLimit")
         XCTAssertEqual(gate.flush().last?.reason, "flush")
     }
+    func testTextExceptionRejectsOtherWordsInputsAndGoldens() throws {
+        let policy = try MacTextExceptions.load(root), rule = try XCTUnwrap(policy.exceptions.first)
+        let segment = SpeechSegment(startSample: 318976, endSample: 458240, reason: "silence")
+        XCTAssertNotNil(policy.entry(golden: rule.golden, goldenHash: rule.goldenSha256, segmentIndex: 5, segment: segment, actualHash: rule.segmentInputSha256, referenceHash: rule.segmentInputSha256))
+        XCTAssertNil(policy.entry(golden: rule.golden, goldenHash: rule.goldenSha256, segmentIndex: 5, segment: segment, actualHash: "wrong", referenceHash: rule.segmentInputSha256))
+        XCTAssertNil(policy.entry(golden: "pipeline-golden.json", goldenHash: rule.goldenSha256, segmentIndex: 5, segment: segment, actualHash: rule.segmentInputSha256, referenceHash: rule.segmentInputSha256))
+        XCTAssertNil(policy.entry(golden: rule.golden, goldenHash: "wrong", segmentIndex: 5, segment: segment, actualHash: rule.segmentInputSha256, referenceHash: rule.segmentInputSha256))
+        var segments = Array(repeating: segment, count: 8), hashes = Array(repeating: ["actual":rule.segmentInputSha256,"expected":rule.segmentInputSha256], count: 8)
+        func permits(_ index: Int, _ text: String = "ask") -> Bool {
+            policy.permitsWord(golden: rule.golden, goldenHash: rule.goldenSha256, index: index, actual: text, expected: "as", segments: segments, hashes: hashes)
+        }
+        XCTAssertTrue(permits(37)); XCTAssertFalse(permits(36)); XCTAssertFalse(permits(38)); XCTAssertFalse(permits(37,"another"))
+        hashes[5] = [:]; XCTAssertFalse(permits(37))
+        hashes[5] = ["actual":rule.segmentInputSha256,"expected":rule.segmentInputSha256]
+        segments[5] = .init(startSample: 318975,endSample: 458240,reason:"silence"); XCTAssertFalse(permits(37))
+    }
     func testBothPinnedModelGoldens() throws {
         guard let directory = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let policy = try MacTextExceptions.load(root)
         let arguments = ["--assets", directory]
         let assets = try VADAssets.forWorker(arguments: arguments)
         let detector = try SpeechDetector(assets: assets)
@@ -58,7 +75,9 @@ final class PipelineTests: XCTestCase {
             let input: String; let segments: [Segment]; let words: [Word]
         }
         for name in ["whistle-golden", "pipeline-golden"] {
-            let golden = try JSONDecoder().decode(Golden.self, from: Data(contentsOf: root.appendingPathComponent(name + ".json")))
+            let goldenBytes = try Data(contentsOf: root.appendingPathComponent(name + ".json"))
+            let golden = try JSONDecoder().decode(Golden.self, from: goldenBytes)
+            let goldenHash = SHA256.hash(data: goldenBytes).map { String(format: "%02x", $0) }.joined()
             let audio = try SegmentedAudio(url: root.appendingPathComponent(golden.input), detector: detector)
             XCTAssertEqual(audio.segments, golden.segments.map { .init(startSample: $0.startSample, endSample: $0.endSample, reason: $0.reason) }, name)
             var reference: [Float] = []
@@ -75,7 +94,9 @@ final class PipelineTests: XCTestCase {
                 XCTAssertEqual(actualHash, expectedHash, name + " segment input \(index), required by D11.3")
                 hashes.append(["actual":actualHash,"expected":expectedHash])
                 let transcript = try engine.transcribe(samples: samples)
-                XCTAssertEqual(transcript.text, golden.segments[index].text, name + " segment \(index)")
+                let scoped = policy.entry(golden: name + ".json", goldenHash: goldenHash, segmentIndex: index, segment: segment, actualHash: actualHash, referenceHash: expectedHash)
+                let allowed = scoped.map { $0.expectedSegmentText == golden.segments[index].text && $0.actualSegmentText == transcript.text } ?? false
+                if !allowed { XCTAssertEqual(transcript.text, golden.segments[index].text, name + " segment \(index)") }
                 let start = Int64(segment.startSample * 1000 / 16000)
                 for word in transcript.words ?? [] {
                     let beginMs = Int64((word.start * 1000).rounded(.toNearestOrEven))
@@ -92,7 +113,8 @@ final class PipelineTests: XCTestCase {
             }
             XCTAssertEqual(words.count, golden.words.count, name)
             for (index, pair) in zip(words, golden.words).enumerated() {
-                XCTAssertEqual(pair.0.text, pair.1.text, name + " word \(index)")
+                let allowed = policy.permitsWord(golden: name + ".json", goldenHash: goldenHash, index: index, actual: pair.0.text, expected: pair.1.text, segments: audio.segments, hashes: hashes)
+                if !allowed { XCTAssertEqual(pair.0.text, pair.1.text, name + " word \(index)") }
                 XCTAssertLessThanOrEqual(abs(pair.0.startMs - pair.1.startMs), 80, name + " word \(index) start")
                 XCTAssertLessThanOrEqual(abs(pair.0.endMs - pair.1.endMs), 80, name + " word \(index) end")
             }

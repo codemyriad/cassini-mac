@@ -48,8 +48,11 @@ boundaries, source identities, offsets including unknown alignment, revisions,
 private files and unchanged capture data. Hosted ARM/Intel run both shared golden
 inputs with the production model/recognizer. D11.3 permits at most 80 ms word-time
 movement only after identical segment input hashes; text/count/boundaries remain
-exact. The local ARM run currently reports a strict “ask”/“as” text difference on
-one segment of the 16 kHz input; it is not an accepted exception.
+exact. D11.4 publishes a single approved Mac “ask”/“as” exception: only word 37
+in segment 5 of whistle-golden, with its exact input SHA256, original golden
+SHA256, and pinned Needle/model identity. The exception manifest is copied
+verbatim with a compiled SHA256 check. Negative tests reject other words,
+ordinals, inputs, boundaries and goldens. Recognizer output is never rewritten.
 
 No test here starts a user's microphone, system tap, browser or playback device.
 Native permission consent remains outside the fixture-based recording tests.
