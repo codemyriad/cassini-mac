@@ -1,6 +1,6 @@
 {
-  "commit": "72862aab50772ecda3998e72a13a424630b1d784",
-  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged",
+  "commit": "0bf0a4b8f862ea3d40e31140907489942fd10d1d",
+  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged; 0bf0a4b R11: only main live session source gnome\u2192chromium, all 13 expected outputs unchanged",
   "path": "ux-draft/library-vectors",
   "repository": "cassini-coordination",
   "sha256": {
@@ -16,7 +16,7 @@
     "assets/onboarding.opus": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
     "assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
-    "cases.json": "03bdf6112f7c264e27b0fe2c4dc4a671d9b778981098d7e5edd707bd6522c012",
+    "cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
     "expected/empty.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/main.json": "e5cb374351532dbfa9137abf17d24c3ea0362408e0e740b6e65ffbd4a2b5fa39",
