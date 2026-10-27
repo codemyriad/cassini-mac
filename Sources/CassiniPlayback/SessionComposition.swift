@@ -12,6 +12,7 @@ public enum SessionComposition {
         let composition = AVMutableComposition()
         for source in tracks {
             try Task.checkCancellation()
+            guard source.url.isFileURL else { throw Failure.unreadableAudio }
             guard let offset = source.startOffsetMs else { throw Failure.unknownOffset }
             guard offset.isFinite, offset >= 0, offset <= 86_400_000 else { throw Failure.invalidOffset }
             let asset = AVURLAsset(url: source.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])

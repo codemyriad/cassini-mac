@@ -59,6 +59,17 @@ import CassiniLibrary
         // The fixture's tone survives through the production scanner and mixer.
         let samples = try read(composition, start: 0, duration: 0.1)
         #expect(samples.contains { abs($0) > 0.01 })
+        // A missing source timestamp must stay unknown even though Library's
+        // display-duration rule substitutes zero for that track.
+        let manifestURL = meeting.folder.appendingPathComponent("session.json")
+        var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+        var sources = try #require(manifest["tracks"] as? [[String: Any]])
+        sources[0].removeValue(forKey: "startOffsetMs"); manifest["tracks"] = sources
+        try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+        let recovered = try #require(LibraryScanner(root: root.appendingPathComponent("main/root")).scan().meetings.first { $0.title == "Budget review" })
+        #expect(!recovered.canPlaySession)
+        #expect(recovered.audioTracks.first?.startOffsetMs == nil)
+        #expect(!recovered.audioFiles.isEmpty)
     }
 
     private func directory() throws -> URL {
