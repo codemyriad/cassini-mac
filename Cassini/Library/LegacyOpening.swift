@@ -12,26 +12,19 @@ enum LegacyOpening {
     static func openTranscript(_ meeting: LibraryMeeting) {
         // UX3 owns the full new Meeting page. This interim read-only window uses
         // the already-read Library items and shared speaker labels, without a file import.
-        if let controller = transcriptWindows[meeting.libraryKey] { controller.showWindow(nil); return }
-        let view = ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(meeting.title ?? UXText.text("library.untitled")).font(.title.bold())
-                ForEach(Array(meeting.transcriptItems.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .top, spacing: 16) {
-                        Text(meeting.speakers.first { $0.id == item.speaker }?.displayName ?? "").fontWeight(.semibold).frame(width: 110, alignment: .leading)
-                        Text(LibraryFormat.position(item.startMs)).monospacedDigit().foregroundStyle(.secondary)
-                        Text(item.text).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }.padding(32)
+        if let controller = transcriptWindows[meeting.libraryKey] {
+            controller.update(meeting); controller.showWindow(nil); return
         }
-        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-        window.title = meeting.title ?? UXText.text("library.untitled")
-        window.setContentSize(NSSize(width: 1000, height: 660)); window.styleMask.insert([.resizable, .miniaturizable])
-        let controller = TranscriptWindowController(window: window)
-        controller.onClose = { transcriptWindows.removeValue(forKey: meeting.libraryKey) }
-        window.delegate = controller; transcriptWindows[meeting.libraryKey] = controller
+        let controller = TranscriptWindowController(meeting: meeting)
+        let key = meeting.libraryKey
+        controller.onClose = { closing in
+            if transcriptWindows[key] === closing { transcriptWindows.removeValue(forKey: key) }
+        }
+        transcriptWindows[key] = controller
         controller.showWindow(nil)
+    }
+    static func refreshTranscripts(_ meetings: [LibraryMeeting]) {
+        for meeting in meetings { transcriptWindows[meeting.libraryKey]?.update(meeting) }
     }
 }
 struct LegacyDocumentView: View {
@@ -59,7 +52,52 @@ struct LegacyDocumentView: View {
     }
 }
 
+private struct TranscriptDetailView: View {
+    let meeting: LibraryMeeting
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                Text(meeting.title ?? UXText.text("library.untitled")).font(.title.bold())
+                ForEach(Array(meeting.transcriptTurns.enumerated()), id: \.offset) { _, turn in
+                    HStack(alignment: .top, spacing: 16) {
+                        Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? "").fontWeight(.semibold).frame(width: 110, alignment: .leading)
+                        Text(LibraryFormat.position(turn.startMs)).monospacedDigit().foregroundStyle(.secondary)
+                        Text(turn.text).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }.padding(32)
+        }
+    }
+}
 @MainActor private final class TranscriptWindowController: NSWindowController, NSWindowDelegate {
-    var onClose: (() -> Void)?
-    func windowWillClose(_ notification: Notification) { onClose?() }
+    var onClose: ((TranscriptWindowController) -> Void)?
+    private let host: NSHostingController<TranscriptDetailView>
+    private var meeting: LibraryMeeting
+    init(meeting: LibraryMeeting) {
+        self.meeting = meeting
+        host = NSHostingController(rootView: TranscriptDetailView(meeting: meeting))
+        let window = NSWindow(contentViewController: host)
+        // AppKit must retain its window/controller invariants until _close has
+        // unwound; the registry is released only on the next main-queue turn.
+        window.isReleasedWhenClosed = false
+        window.title = meeting.title ?? UXText.text("library.untitled")
+        window.setAccessibilityIdentifier("cassini-transcript-window")
+        window.setContentSize(NSSize(width: 1000, height: 660)); window.styleMask.insert([.resizable, .miniaturizable])
+        super.init(window: window)
+        window.delegate = self
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
+    func update(_ next: LibraryMeeting) {
+        guard meeting.title != next.title || meeting.speakers != next.speakers || meeting.transcriptItems != next.transcriptItems else { return }
+        meeting = next; host.rootView = TranscriptDetailView(meeting: next)
+        window?.title = next.title ?? UXText.text("library.untitled")
+    }
+    func windowWillClose(_ notification: Notification) {
+        DispatchQueue.main.async { [self] in
+            // A rapid reopen keeps the same live controller registered.
+            guard window?.isVisible != true else { return }
+            window?.delegate = nil
+            onClose?(self)
+        }
+    }
 }

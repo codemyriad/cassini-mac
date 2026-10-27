@@ -16,9 +16,15 @@ struct LibraryLaunchContext {
     var timeZone = TimeZone.current
     var activity: [UUID: CaptureActivity] = [:]
     var screenshot = false
+    var scansLibrary = true
     static var current: Self {
         var context = Self()
         #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains(where: { ["--whistle-self-test", "--recording-self-test", "--recording-sink-self-test"].contains($0) }) ||
+            ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
+            context.scansLibrary = false
+        }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
            let name = argument("-CassiniScreenshot"), ["library", "first-run"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
@@ -70,6 +76,7 @@ final class LibraryStore {
         watcher = LibraryWatcher(root: context.root)
     }
     func start() {
+        guard context.scansLibrary else { loaded = true; return }
         guard !started else { return }; started = true
         if !context.screenshot { observeNativeRecorder() }
         do { try watcher.start { [weak self] folder in Task { @MainActor in self?.refresh(affected: folder) } } }
@@ -89,6 +96,7 @@ final class LibraryStore {
                     let result = try await scanner.scanInBackground(affected: target, now: context.now ?? Date())
                     guard started else { break }
                     snapshot = result; offline = false
+                    LegacyOpening.refreshTranscripts(result.meetings)
                     if selectedKey == nil || !meetings.contains(where: { $0.libraryKey == selectedKey }) {
                         selectedKey = context.screenshot ? meetings.first(where: { $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey : meetings.first?.libraryKey
                     }
@@ -115,22 +123,5 @@ final class LibraryStore {
         activity.replace(phases)
         for id in changedIDs { refresh(affected: context.root.appendingPathComponent("Recording-" + id.uuidString.lowercased())) }
     }
-    struct Excerpt: Identifiable {
-        var id: Int64 { startMs }
-        var speaker: String; var startMs: Int64; var text: String
-    }
-    func excerpt(_ meeting: LibraryMeeting) -> [Excerpt] {
-        let sorted = meeting.transcriptItems.enumerated().sorted {
-            $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
-        }.map(\.element)
-        var turns: [Excerpt] = []
-        for item in sorted {
-            if turns.last?.speaker == item.speaker { turns[turns.count - 1].text += " " + item.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-            else {
-                if turns.count == 3 { break }
-                turns.append(.init(speaker: item.speaker, startMs: item.startMs, text: item.text.trimmingCharacters(in: .whitespacesAndNewlines)))
-            }
-        }
-        return turns
-    }
+    func excerpt(_ meeting: LibraryMeeting) -> [LibraryTranscriptTurn] { Array(meeting.transcriptTurns.prefix(3)) }
 }

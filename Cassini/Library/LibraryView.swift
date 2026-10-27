@@ -147,49 +147,54 @@ struct LibraryView: View {
             .background((selected ? Color.white.opacity(0.22) : tint.opacity(0.10)), in: Capsule())
     }
     private func preview(_ meeting: LibraryMeeting) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
-                if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
-            }
-            HStack(spacing: 8) {
-                ForEach(meeting.speakers, id: \.id) { speaker in
-                    HStack(spacing: 6) {
-                        Text(speaker.displayName)
-                        if speaker.provenance == .recognised { autoTag }
-                    }.padding(.horizontal, 12).frame(height: 28).background(LibraryTheme.chip, in: Capsule())
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
+                    if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
-            }
-            HStack(spacing: 10) {
-                Button { play(meeting) } label: { Label(UXText.text(sessionPlayback.isPlaying ? "player.pause" : "common.play"), systemImage: sessionPlayback.isPlaying ? "pause.fill" : "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
-                    .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
-                    .opacity(!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing ? 0.45 : 1)
-                    .disabled(!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing)
-                    .accessibilityIdentifier("preview-play")
-                Button { readTranscript(meeting) } label: {
-                    Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
-                }.buttonStyle(.plain).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
-                    .disabled(meeting.transcriptItems.isEmpty)
-                    .accessibilityIdentifier("preview-read-transcript")
-            }
-            VStack(alignment: .leading, spacing: 16) {
-                Divider()
-                Text(UXText.text("library.preview.transcriptHeading")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(LibraryTheme.dim).padding(.top, 4)
-                ForEach(Array(store.excerpt(meeting).enumerated()), id: \.offset) { _, turn in
-                    HStack(alignment: .top, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 5) {
-                                Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"])).fontWeight(.semibold)
-                                if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(meeting.speakers, id: \.id) { speaker in
+                            HStack(spacing: 6) {
+                                Text(speaker.displayName)
+                                if speaker.provenance == .recognised { autoTag }
+                            }.fixedSize().padding(.horizontal, 12).frame(height: 28).background(LibraryTheme.chip, in: Capsule())
+                        }
+                    }
+                }.scrollIndicators(.hidden)
+                HStack(spacing: 10) {
+                    Button { play(meeting) } label: { Label(UXText.text(sessionPlayback.isPlaying ? "player.pause" : "common.play"), systemImage: sessionPlayback.isPlaying ? "pause.fill" : "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
+                        .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
+                        .opacity(!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing ? 0.45 : 1)
+                        .disabled(!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing)
+                        .accessibilityIdentifier("preview-play")
+                    Button { readTranscript(meeting) } label: {
+                        Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
+                    }.buttonStyle(.plain).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
+                        .disabled(meeting.transcriptItems.isEmpty)
+                        .accessibilityIdentifier("preview-read-transcript")
+                }
+                if !meeting.transcriptItems.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Divider()
+                        Text(UXText.text("library.preview.transcriptHeading")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(LibraryTheme.dim).padding(.top, 4)
+                        ForEach(Array(store.excerpt(meeting).enumerated()), id: \.offset) { _, turn in
+                            HStack(alignment: .top, spacing: 16) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 5) {
+                                        Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"])).fontWeight(.semibold)
+                                        if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
+                                    }
+                                    Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit()
+                                }.frame(width: 110, alignment: .leading)
+                                Text(turn.text).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit()
-                        }.frame(width: 110, alignment: .leading)
-                        Text(turn.text).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
-            }
-            Spacer(minLength: 0)
-        }.padding(.horizontal, 44).padding(.vertical, 32)
+            }.padding(.horizontal, 44).padding(.vertical, 32)
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .textBackgroundColor))
             .accessibilityElement(children: .contain)
