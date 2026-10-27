@@ -71,13 +71,16 @@ public struct LibraryScanner: Sendable {
         return (id, received)
     }
     private static func ordered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
-        if let x = a.start, let y = b.start { return x == y ? a.id.uuidString < b.id.uuidString : x > y }
+        if let x = a.start, let y = b.start { return x == y ? identityOrdered(a, b) : x > y }
         if a.start != nil || b.start != nil { return a.start != nil }
         let x = (a.title ?? "").folding(options: .caseInsensitive, locale: Locale(identifier: "en_GB"))
         let y = (b.title ?? "").folding(options: .caseInsensitive, locale: Locale(identifier: "en_GB"))
         if x != y { return x < y }
         if a.title != b.title { return (a.title ?? "") < (b.title ?? "") }
-        return a.id.uuidString < b.id.uuidString
+        return identityOrdered(a, b)
+    }
+    private static func identityOrdered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
+        a.id == b.id ? a.libraryKey < b.libraryKey : a.id.uuidString < b.id.uuidString
     }
     private func json<Value: Decodable>(_ type: Value.Type, at url: URL, limit: Int = 1_048_576,
                                        seen: inout Set<URL>) throws -> Value {
@@ -214,22 +217,31 @@ public struct LibraryScanner: Sendable {
     }
     private struct Manifest: Decodable {
         let version: Int; let id: UUID; let title: String?; let createdAt: String?; let state: String; let problemKind: String?
-        let tracks: [Track]
+        var tracks: [Track]
         struct Track: Decodable {
-            let file: String?; let sampleRate: Int?; let channels: Int?; let startOffsetMs: Double?; let gapFrames: Double?
+            let file: String?; let sampleRate: Int?; let channels: Int?; var startOffsetMs: DisplayOffset?; let gapFrames: Double?
             enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 file = try? c.decode(String.self, forKey: .file)
                 sampleRate = try? c.decode(Int.self, forKey: .sampleRate); channels = try? c.decode(Int.self, forKey: .channels)
-                startOffsetMs = try? c.decode(Double.self, forKey: .startOffsetMs); gapFrames = try? c.decode(Double.self, forKey: .gapFrames)
+                startOffsetMs = nil; gapFrames = try? c.decode(Double.self, forKey: .gapFrames)
             }
+        }
+        static func parse(_ data: Data) throws -> Self {
+            let raw = try JSONParser.parse(data)
+            var manifest = try JSONDecoder().decode(Self.self, from: data)
+            if let tracks = raw["tracks"]?.array {
+                for index in manifest.tracks.indices { manifest.tracks[index].startOffsetMs = DisplayOffset(tracks[index]["startOffsetMs"]) }
+            }
+            return manifest
         }
     }
     private func capture(folder: URL, id: UUID, seen: inout Set<URL>) -> Capture {
         var result = Capture()
         do {
-            let manifest = try json(Manifest.self, at: safeFile("session.json", in: folder), seen: &seen)
+            let session = try safeFile("session.json", in: folder); seen.insert(session)
+            let manifest = try cache.read(session) { try Manifest.parse(regularData($0, limit: 1_048_576)) }
             if manifest.version > 1 { result.issues.append(.unsupportedVersion) }
             guard manifest.version == 1, manifest.id == id, manifest.tracks.count <= 64,
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
@@ -244,9 +256,8 @@ public struct LibraryScanner: Sendable {
                     let wave = try Self.wave(url)
                     guard wave.rate == track.sampleRate, wave.channels == track.channels else { throw MetadataError.invalid }
                     result.files.append(url)
-                    let duration = Int64(wave.frames * 1000 / UInt64(wave.rate))
-                    if let start = track.startOffsetMs, start.isFinite, (0...86_400_000).contains(start) { ends.append(Int64(start) + duration) }
-                    else { ends.append(duration); result.issues.append(.unknownStartOffset) }
+                    if track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
+                    ends.append((track.startOffsetMs ?? .zero).end(frames: wave.frames, rate: wave.rate))
                 } catch { result.issues.append(.invalidAudio) } // R4: a completed session is trusted.
             }
             result.endMs = ends.max() // R5: no counted track is unknown, never zero.

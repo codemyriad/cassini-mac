@@ -69,9 +69,11 @@ public struct MeetingQuote: Codable, Equatable, Sendable {
     public var displayText: String { "“" + text + "”" }
 }
 public struct MeetingNote: Codable, Equatable, Sendable { public var atMs: Int64; public var text: String }
-public struct LibraryMeeting: Identifiable, Sendable {
+public struct LibraryMeeting: Sendable {
     public let id: UUID
     public let folder: URL
+    /// D6.1: keep UUID as id; use the prefixed folder key in collections/UI.
+    public var libraryKey: String { folder.lastPathComponent }
     public var state: MeetingState
     public var title: String?
     public var start: Date?

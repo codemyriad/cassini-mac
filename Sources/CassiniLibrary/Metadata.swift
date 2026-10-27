@@ -10,7 +10,7 @@ struct AppMetadata: Decodable {
     let notes: [MeetingNote]
     let speakers: [Speaker]
     let transcript: Transcript
-    var etaMinutes: Int64?
+    let etaMinutes: Int64?
     let error: MeetingIssue?
     let quoteOverride: MeetingQuote?
     let received: Received?
@@ -67,24 +67,8 @@ extension AppMetadata {
            let version = MetadataSchema.decimal(rawVersion), version > 1 {
             throw MetadataError.unsupportedVersion
         }
-        var checked = value
-        var decodedData = data
-        if ["queued", "running"].contains(value["transcript"]?["status"]?.string ?? ""),
-           let eta = value["etaMinutes"] {
-            // D6 R3 is the explicit ETA exception to R2: preserve the job and
-            // normalize an unavailable/invalid estimate in memory only.
-            let valid = MetadataSchema.validate(eta, against: .object([
-                ("type", .string("integer")), ("minimum", .number("0")),
-                ("maximum", .number(String(Self.safe))) ]))
-            if !valid {
-                checked = .object(value.object!.map { ($0.0, $0.0 == "etaMinutes" ? .number("0") : $0.1) })
-                var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-                object["etaMinutes"] = NSNull()
-                decodedData = try JSONSerialization.data(withJSONObject: object)
-            }
-        }
-        guard MetadataSchema.validate(checked) else { throw MetadataError.invalid }
-        return try JSONDecoder().decode(Self.self, from: decodedData)
+        guard MetadataSchema.validate(value) else { throw MetadataError.invalid }
+        return try JSONDecoder().decode(Self.self, from: data)
     }
 }
 func recordingDate(_ value: String) -> Date? {

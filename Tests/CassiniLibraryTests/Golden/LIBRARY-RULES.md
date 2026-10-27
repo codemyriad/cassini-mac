@@ -178,3 +178,19 @@ A received meeting whose transcript is `none` can be written down once (HARMONY 
 - `library.untitled` = "Untitled meeting"
 - `library.group.unknownDate` = "Date unknown"
 - `states.badge.transcribing.noEta` = "Transcribing…" (grey/accent as the transcribing badge)
+
+## D6.1 amendments (answers to GNOME R4–R7 and Mac's ETA question), 2026-10-27
+
+- **ETA (R2 vs R3).** `meeting.schema.json` now allows `etaMinutes: null` while the transcript is queued/running.
+  No reader exception is needed: null means "Transcribing…". A non-integer ETA is schema-invalid, so R2 applies
+  (the whole file is ignored).
+- **Fractional offsets (R5.2).** Durations and `interruptedAtMs` are integers. Track end =
+  `floor((startOffsetMs or 0) + frames * 1000 / rate)`, computed exactly (rationals or integer arithmetic, no binary
+  float drift). The duration is the max of these. Example: offset 12.75 and 48 frames at 48000 Hz gives `floor(13.75)`
+  = 13.
+- **The same UUID under both prefixes (R1).** `Recording-U` and `Received-U` are both listed as separate meetings.
+  Each keeps its UUID as `id`. Apps key them internally by folder basename. Final sort tie-break: folder basename,
+  ascending (this is GNOME's proposal).
+- **Received metadata (R1.4).** A `Received-` folder needs a valid meeting.json **with a non-null `received`
+  object**, otherwise it is not listed. A `Recording-` meeting.json with a non-null `received` is invalid (R2: ignore
+  the whole file).

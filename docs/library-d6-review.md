@@ -23,7 +23,9 @@ these rules are superseded. D7 prioritizes visible common-case parity and bugs.
 | 32 | Trimmed title fallback chain ends in Untitled meeting; known starts sort first, unknown dates last by folded/exact title then UUID. |
 
 Format v3 / states v2 are vendored unchanged. S-3a's trimmed main + R1–R9 fixtures
-will be added only after the coordinator publishes them; they are not claimed as
-passing yet. The R3 unknown-ETA exception to the older schema is recorded in
-coordination REPLIES-MAC.md. The model remains read-only, including unsupported
+are now vendored with per-file SHA pins and an exact output adapter following
+independent review. An input descriptor defect in Onboarding is reported in
+coordination REPLIES-MAC.md; expected JSON is unchanged. D6.1 resolves the ETA question through the updated schema; no reader exception
+remains. Fractional ends use exact numeric tokens / integer arithmetic, and
+collections key meetings by folder basename when both prefixes share a UUID. The model remains read-only, including unsupported
 metadata. No app scenes, desktop/browser/audio tests or recorder behavior change.

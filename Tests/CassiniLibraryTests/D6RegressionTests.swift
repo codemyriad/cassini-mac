@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import Testing
 import CryptoKit
+import CassiniKit
 @testable import CassiniLibrary
 
 private let sidecar: [String: String] = ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]
@@ -40,13 +41,17 @@ private func row(_ f: Fixture) throws -> LibraryMeeting { try #require(LibrarySc
         #expect(newer.metadataReadOnly && newer.issues.contains(.unsupportedVersion))
         #expect(!newer.issues.contains(.invalidMetadata) && newer.state.transcript == .done)
     }
-    @Test func queuedInvalidEtaIsUnknownAndStoredActionWinsDamage() throws {
+    @Test func queuedNullEtaIsUnknownButInvalidEstimatesIgnoreMetadata() throws {
         let f = try Fixture()
         for eta: Any in [NSNull(), "bad", -1, 1.5] {
             try f.metadata { $0["transcript"] = ["status": "running", "reference": sidecar]; $0["etaMinutes"] = eta }
             let meeting = try row(f)
-            #expect(meeting.state.transcript == .running && meeting.state.etaMinutes == nil)
-            #expect(meeting.state.badge?.text == "Transcribing…")
+            if eta is NSNull {
+                #expect(meeting.state.transcript == .running && meeting.state.etaMinutes == nil)
+                #expect(meeting.state.badge?.text == "Transcribing…")
+            } else {
+                #expect(meeting.issues.contains(.invalidMetadata) && meeting.state.transcript == .none)
+            }
         }
         try f.metadata {
             $0["transcript"] = ["status": "damaged", "reference": sidecar]
@@ -166,6 +171,33 @@ private func row(_ f: Fixture) throws -> LibraryMeeting { try #require(LibrarySc
         let meeting = try row(f)
         #expect(meeting.state.transcript == .damaged && meeting.quote == nil)
         #expect(meeting.audioFiles.count == 1 && meeting.durationMs != nil)
+    }
+
+    @Test func fractionalDisplayEndsUseExactDecimalAndSampleRemainders() throws {
+        // .75 ms plus .5 ms must carry into the next integer millisecond.
+        let offset = try #require(DisplayOffset(try JSONParser.parse(Data("12.75".utf8))))
+        #expect(offset.end(frames: 24, rate: 48000) == 13)
+        #expect(offset.end(frames: 48, rate: 48000) == 13)
+        let tinyBelow = try #require(DisplayOffset(try JSONParser.parse(Data("11.99999999999999999999999999999999999999999".utf8))))
+        #expect(tinyBelow.end(frames: 0, rate: 48000) == 11)
+        let edge = try #require(DisplayOffset(try JSONParser.parse(Data("0.125".utf8))))
+        #expect(edge.end(frames: 7, rate: 8000) == 1)
+        let exponential = try #require(DisplayOffset(try JSONParser.parse(Data("1275e-2".utf8))))
+        #expect(exponential.end(frames: 24, rate: 48000) == 13)
+    }
+    @Test func sameUUIDUnderBothPrefixesIsTwoMeetingsAndReceivedNeedsMetadataObject() throws {
+        let f = try Fixture()
+        try f.editCapture { $0["createdAt"] = "1970-01-01T00:00:00Z"; $0["title"] = "Both" }
+        let received = f.root.appendingPathComponent("Received-" + f.id.uuidString.lowercased())
+        try FileManager.default.createDirectory(at: received, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus"), to: received.appendingPathComponent("original.opus"))
+        try f.metadata(in: received) // received:null is not a committed import.
+        #expect(try LibraryScanner(root: f.root).scan().meetings.count == 1)
+        try f.metadata(in: received, received: ["originalName": "original.opus", "sha256": String(repeating: "0", count: 64), "importedAtMs": 0]) { $0["title"] = "Both" }
+        let meetings = try LibraryScanner(root: f.root).scan().meetings
+        #expect(meetings.count == 2 && Set(meetings.map(\.id)).count == 1)
+        #expect(Set(meetings.map(\.libraryKey)).count == 2)
+        #expect(meetings.map(\.libraryKey) == [received.lastPathComponent, f.folder.lastPathComponent])
     }
 
 }
