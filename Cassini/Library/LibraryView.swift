@@ -216,6 +216,7 @@ struct LibraryView: View {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
                     if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
+                if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 ScrollView(.horizontal) {
@@ -285,6 +286,7 @@ struct LibraryView: View {
                     Text(UXText.text("firstRun.title")).font(.system(size: 22, weight: .bold)).fixedSize(horizontal: true, vertical: false)
                     Text(UXText.text("firstRun.body")).foregroundStyle(LibraryTheme.dim).lineSpacing(4).multilineTextAlignment(.center).frame(maxWidth: 460)
                 }
+                if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
                 recordButton(big: true)
                 Text(UXText.text("firstRun.shortcutHint", ["shortcut": UXText.text("common.shortcut.record")])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
             }

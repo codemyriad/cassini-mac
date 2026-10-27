@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if RecordingFixture.enabled { NSLog("Hosted recording fixture launch: %@", CommandLine.arguments) }
         if CommandLine.arguments.contains("--fixture-library-recording"), !RecordingFixture.enabled || RecordingFixture.root == nil {
             NSLog("Invalid hosted recording fixture: enabled=%d, root=%@, arguments=%@", RecordingFixture.enabled, String(describing: RecordingFixture.root), CommandLine.arguments)
             NSApp.terminate(nil); return

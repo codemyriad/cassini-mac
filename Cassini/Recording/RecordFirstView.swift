@@ -24,6 +24,7 @@ import CassiniLibrary
         if recorder.isRecording { recorder.stop(); return }
         guard recorder.canStart else { return }
         self.parent = parent
+        recorder.prepareDiskInfo(parent: parent)
         if RecordingPreferences.skipFirst { begin() }
         else { showingFirst = true }
     }
@@ -36,6 +37,7 @@ struct RecordFirstView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
+            if let line = RecordingController.shared.diskLine { Text(line).foregroundStyle(.orange) }
             VStack(alignment: .leading, spacing: 10) {
                 Text(UXText.text("recordFirst.responsibility")).lineSpacing(5)
                 Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip).toggleStyle(.checkbox).font(.system(size: 11.5)).foregroundStyle(.secondary)

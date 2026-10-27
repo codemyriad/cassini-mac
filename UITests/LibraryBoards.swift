@@ -66,6 +66,22 @@ final class LibraryBoards: XCTestCase {
         let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed)
     }
+    @MainActor func testDiskReserveStopsAndKeepsTheRecording() throws {
+        let extra = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString,
+                     "-CassiniDiskFree", "1073741824", "-CassiniDiskTotal", "10000000000"]
+        let app = try launch("first-run", fixture: "empty", extra: extra); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.staticTexts["Only 0 minutes of space left."].waitForExistence(timeout: 10))
+        XCTAssertFalse(window.sheets.buttons["Choose another folder"].exists)
+        window.sheets.buttons["record-first-start"].click()
+        let line = "Cassini stopped recording to keep some space free on this computer. Everything up to now is saved."
+        XCTAssertTrue(window.staticTexts[line].waitForExistence(timeout: 10), app.debugDescription)
+        let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed)
+        XCTAssertFalse(window.buttons["recording-stop"].exists)
+    }
     @MainActor func testMeetingBoard() throws {
         let app = try launch("meeting", fixture: "main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
@@ -203,7 +219,12 @@ final class LibraryBoards: XCTestCase {
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
         app.launchArguments += extra
-        app.launch(); return app
+        app.launch()
+        if extra.contains("--fixture-library-recording"), !app.windows.firstMatch.waitForExistence(timeout: 2) {
+            app.menuBars.menuBarItems["Window"].click()
+            app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
+        }
+        return app
     }
     @MainActor private func board(_ name: String, fixture: String) throws {
         let app = try launch(name, fixture: fixture); defer { app.terminate() }
