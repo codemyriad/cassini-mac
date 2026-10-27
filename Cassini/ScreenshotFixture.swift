@@ -52,7 +52,7 @@ enum ScreenshotFixture {
     private static func prepare(_ window: NSWindow, sheet: Bool) {
         window.setAccessibilityIdentifier("cassini-screenshot-window")
         window.toolbarStyle = .unified
-        window.setFrame(NSRect(x: 80, y: 80, width: 1120, height: 720), display: true)
+        window.setFrame(NSRect(x: 80, y: 80, width: 1120, height: 640), display: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         if sheet {

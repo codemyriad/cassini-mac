@@ -32,7 +32,7 @@ final class WindowScreenshots: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(window.toolbars.firstMatch.waitForExistence(timeout: 5), window.debugDescription)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 2)
-        XCTAssertEqual(window.frame.height, 720, accuracy: 2)
+        XCTAssertEqual(window.frame.height, 640, accuracy: 2)
         if withSheet {
             XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout: 5), window.debugDescription)
             XCTAssertTrue(window.sheets.staticTexts["A recording is running"].exists)
