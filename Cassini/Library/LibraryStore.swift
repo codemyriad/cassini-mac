@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import Darwin
 import CassiniLibrary
@@ -58,6 +59,7 @@ final class LibraryStore {
     private(set) var snapshot: LibraryScan?
     var selectedKey: String?
     private(set) var loaded = false
+    private(set) var revision = 0
     private(set) var offline = false
     @ObservationIgnored private let activity: NativeActivity
     @ObservationIgnored private let scanner: LibraryScanner
@@ -101,7 +103,7 @@ final class LibraryStore {
                         selectedKey = context.screenshot ? meetings.first(where: { $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey : meetings.first?.libraryKey
                     }
                 } catch { offline = true }
-                loaded = true
+                loaded = true; revision &+= 1
             }
             scanning = false
         }

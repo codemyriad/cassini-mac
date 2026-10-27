@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import AVFoundation
 import MediaPlayer
@@ -89,7 +90,10 @@ final class PlayerController {
 
     // MARK: Transport
 
+    static func pauseActive() { active?.pause() }
+
     func play() {
+        SessionPlaybackController.stopAll()
         guard !isPlaying, playbackError == nil, file != nil else { return }
         if durationMs > 0, currentMs >= durationMs - 50 {
             pausedFrame = 0

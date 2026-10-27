@@ -45,3 +45,15 @@ Offline regressions reproduce zero/stale data headers and verify full decoded
 audio duration/samples, source-byte preservation, scratch cleanup and mixed empty /
 nonempty tracks. Unknown source offsets are still never fabricated as zero.
 Composition failures use the system's localized file-read error presentation.
+
+## Transport lifetime
+
+Requested playback is separate from asynchronous AVPlayer state. Pause remains
+available when a scan changes eligibility. Source, selection and offline changes
+cancel preparation and close the player. Playback failures return to Play and use
+the system error presenter. EOF waits for an exact rewind before a queued replay;
+Pause or teardown invalidates that request. Starting recording or legacy playback
+stops the preview, and preview playback pauses the legacy player.
+
+`SessionPlaybackTests` exercises those transitions with an injected transport,
+including stale callbacks and cancellation, without creating an audio device.
