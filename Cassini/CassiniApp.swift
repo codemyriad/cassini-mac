@@ -9,6 +9,7 @@ struct CassiniApp: App {
 
     var body: some Scene {
         Window(UXText.text("library.title"), id: "library") { LibraryView() }
+            .defaultLaunchBehavior(.presented)
             .defaultSize(width: 1120, height: 720)
             .windowToolbarStyle(.unified)
             .commands { AppCommands() }
