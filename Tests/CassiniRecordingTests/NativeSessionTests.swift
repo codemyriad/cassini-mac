@@ -16,7 +16,8 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
     var stall = true
     var finishDelayMs = 0
     var gateFinish = false
-    let finishEntered = DispatchSemaphore(value: 0), finishRelease = DispatchSemaphore(value: 0)
+    let finishRelease = DispatchSemaphore(value: 0)
+    var onFinish: (@Sendable () -> Void)?
     var finishTimedOut = false
     init(_ session: RecordingSession) { self.session = session }
     var recordingProblem: String? { session.recordingProblem }
@@ -28,7 +29,7 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
     func finish(problem: String?) throws { try session.finish(problem: problem) }
     func finish(problem: String?, kind: String?) throws {
         if gateFinish {
-            finishEntered.signal()
+            onFinish?()
             finishTimedOut = finishRelease.wait(timeout: .now() + 10) != .success
         }
         if finishDelayMs > 0 { Thread.sleep(forTimeInterval: Double(finishDelayMs) / 1000) }
@@ -148,9 +149,11 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
         let sink = RecordingSink(session: writer, originHostTime: 1) { _ in }
         sink.receive(try nativeBuffer(rate: 8000, frames: 80), hostTime: 1, id: "mic", label: "Mic", kind: "microphone")
         var finished = false
+        let entered = AsyncStream<Void> { continuation in
+            writer.onFinish = { continuation.yield(()); continuation.finish() }
+        }
         let completion = Task { try await sink.finishAsync(problem: nil); finished = true }
-        let entered = await Task.detached { writer.finishEntered.wait(timeout: .now() + 10) == .success }.value
-        #expect(entered)
+        for await _ in entered { break }
         // The actor must run this continuation while the writer is waiting. The
         // gate avoids assuming that a 30ms timer runs before a 200ms writer under
         // the hosted runner's concurrent CPU load. A blocking implementation can
