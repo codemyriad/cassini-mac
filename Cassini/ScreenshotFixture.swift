@@ -67,9 +67,14 @@ enum ScreenshotFixture {
             let alert = NSAlert()
             alert.messageText = "A recording is running"
             alert.informativeText = "Stop and keep it, or keep recording in the background?"
-            alert.addButton(withTitle: "Keep recording")
-            alert.addButton(withTitle: "Stop and keep it")
-            alert.beginSheetModal(for: window)
+            alert.addButton(withTitle: "Stop and keep it").keyEquivalent = "\r"
+            alert.addButton(withTitle: "Keep recording").keyEquivalent = "\u{1B}"
+            alert.beginSheetModal(for: window) { response in
+                // Expose only the fixture result to the keyboard regression tests.
+                // Neither action starts or stops a real recording.
+                window.setAccessibilityIdentifier(response == .alertFirstButtonReturn
+                    ? "cassini-screenshot-stopped" : "cassini-screenshot-kept")
+            }
         }
     }
 }

@@ -20,7 +20,13 @@ final class WindowScreenshots: XCTestCase {
     }
 
     @MainActor
-    private func capture(_ name: String, attachment: String, withSheet: Bool) throws {
+    func testEscapeKeepsRecording() throws {
+        try capture("sheet", attachment: nil, withSheet: true, dismissUsing: .escape)
+    }
+
+    @MainActor
+    private func capture(_ name: String, attachment: String?, withSheet: Bool,
+                         dismissUsing key: XCUIKeyboardKey = .return) throws {
         let app = XCUIApplication()
         let fixture = try fixtureDirectory()
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
@@ -51,10 +57,17 @@ final class WindowScreenshots: XCTestCase {
         // A content-hosting view snapshot would omit those native surfaces.
         let screenshot = window.screenshot()
         XCTAssertGreaterThan(screenshot.pngRepresentation.count, 10_000)
-        let image = XCTAttachment(screenshot: screenshot)
-        image.name = attachment
-        image.lifetime = .keepAlways
-        add(image)
+        if let attachment {
+            let image = XCTAttachment(screenshot: screenshot)
+            image.name = attachment
+            image.lifetime = .keepAlways
+            add(image)
+        }
+        if withSheet {
+            app.typeKey(key, modifierFlags: [])
+            let resultID = key == .escape ? "cassini-screenshot-kept" : "cassini-screenshot-stopped"
+            XCTAssertTrue(app.windows[resultID].waitForExistence(timeout: 5), app.debugDescription)
+        }
     }
 
     private func fixtureDirectory() throws -> URL {

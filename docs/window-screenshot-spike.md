@@ -1,9 +1,10 @@
 # Whole-window screenshot spike (W1-M3)
 
 This proves the capture mechanism for later design work. It captures the existing
-Cassini document window, **not** the new Library design. There are two tests: the
+Cassini document window, **not** the new Library design. There are three tests covering the
 unified-toolbar window alone, and that window with an attached native NSAlert
-sheet using HARMONY §7 confirmation 1's exact copy. No recording, playback,
+sheet using HARMONY §7 confirmation 1's exact copy. Keyboard regressions verify
+Return chooses “Stop and keep it” and Esc chooses “Keep recording”. No recording, playback,
 browser connection or hardware audio tests run.
 
 `CassiniScreenshots` is an XcodeGen UI-testing scheme. XCUITest opens the app's
