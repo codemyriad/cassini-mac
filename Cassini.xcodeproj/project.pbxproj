@@ -23,6 +23,7 @@
 		40C516E74B343AD6588FB12A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C9C1C73010D4F2A7AEF6D4 /* main.swift */; };
 		41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = F7FE2A1C7242DF314538998C /* Fixtures */; };
 		44CFFFC71378B43F6E26F87D /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */; };
+		4B13F891F062EF653D0D14A2 /* MeetingNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */; };
 		5A50888A70EF3FF62908C1B5 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88787BACB86B7C8D434EC09F /* TranscriptView.swift */; };
 		5B22C485F9011F2995FB4C70 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09080E2F396E98099308B88B /* InspectorView.swift */; };
 		632D3A78813971C44A184A9C /* PlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */; };
@@ -33,6 +34,7 @@
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
 		73430AD2E1F30C774BD10517 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC82AC94B942EF58DB6679 /* Commands.swift */; };
 		75CD3E441B477E26E2D33504 /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40168E838DC5368995A71BB6 /* SummaryView.swift */; };
+		774E8A72ECF24F17C054463D /* RecordingConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */; };
 		7DEEB1101C8F4A2EA8DAD64C /* RecordingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */; };
 		8180537AAB57C31634363BE9 /* SessionPlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5F13A0E9BCCB3758F8E8FC /* SessionPlaybackController.swift */; };
 		8D80BC25A6FB4F926F37BBD9 /* LibraryBoards.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66314F1ADDF8D8554337717 /* LibraryBoards.swift */; };
@@ -51,6 +53,7 @@
 		E46E58DE325E1AA975257BC2 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */; };
 		E494989AFB7C975E633A394B /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6A70F100BBB78693556A7214 /* CassiniKit */; };
 		EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C12D84FB78BFC6CC8C985F /* UXText.swift */; };
+		ECF1884477A253784A867E2C /* MeetingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5113D3C4C431936150BE52 /* MeetingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -107,13 +110,15 @@
 		202F303D76A9CA142F725248 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
-		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		5CC01E1B7B594D265434100B /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		5F5113D3C4C431936150BE52 /* MeetingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingView.swift; sourceTree = "<group>"; };
 		71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		7480882332EEE8C270AB671F /* TranscriptTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTextView.swift; sourceTree = "<group>"; };
+		7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNavigation.swift; sourceTree = "<group>"; };
 		858A17B830285C2819946691 /* RecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSelfTest.swift; sourceTree = "<group>"; };
+		85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingConfirmation.swift; sourceTree = "<group>"; };
 		884DDBCFE2CA6B77E53BCC76 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		88787BACB86B7C8D434EC09F /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		888C6DFF47B6CE64EA6EED03 /* ScreenshotFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotFixture.swift; sourceTree = "<group>"; };
@@ -134,6 +139,7 @@
 		E13BC99CBCC0BCA4FFF80043 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		E284419A62A77AD5FD73134E /* Cassini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cassini.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CassiniQuickLook.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		F6CC5AF01F2B185E4E45B0DF /* CassiniApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniApp.swift; sourceTree = "<group>"; };
 		F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowScreenshots.swift; sourceTree = "<group>"; };
 		F7FE2A1C7242DF314538998C /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fixtures; path = UITests/Fixtures; sourceTree = SOURCE_ROOT; };
@@ -196,6 +202,16 @@
 			path = Library;
 			sourceTree = "<group>";
 		};
+		1E18315C73CDF41E4D6F5935 /* Meeting */ = {
+			isa = PBXGroup;
+			children = (
+				7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */,
+				5F5113D3C4C431936150BE52 /* MeetingView.swift */,
+				85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */,
+			);
+			path = Meeting;
+			sourceTree = "<group>";
+		};
 		31AB581C9E11BF19B5E97181 /* Cassini */ = {
 			isa = PBXGroup;
 			children = (
@@ -208,6 +224,7 @@
 				BAFFFBC8704BE23F2A1D6CFF /* TranscriptExportPanel.swift */,
 				BF44CFE16B2926034520B457 /* WhistleSelfTest.swift */,
 				0B079030956ED1313FAA99AE /* Library */,
+				1E18315C73CDF41E4D6F5935 /* Meeting */,
 				5C0E9974647CBCED16F981A7 /* Recording */,
 				ED21289CD25E4D8251164DC1 /* Resources */,
 				EF77A83F63AFE90F92F4A514 /* Transcript */,
@@ -593,8 +610,11 @@
 				335E85C4B4CE9D0332A91D88 /* LegacyOpening.swift in Sources */,
 				C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */,
 				E46E58DE325E1AA975257BC2 /* LibraryView.swift in Sources */,
+				4B13F891F062EF653D0D14A2 /* MeetingNavigation.swift in Sources */,
+				ECF1884477A253784A867E2C /* MeetingView.swift in Sources */,
 				632D3A78813971C44A184A9C /* PlayerBar.swift in Sources */,
 				AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */,
+				774E8A72ECF24F17C054463D /* RecordingConfirmation.swift in Sources */,
 				7DEEB1101C8F4A2EA8DAD64C /* RecordingController.swift in Sources */,
 				39E0B15ED7A1BC02093C216F /* RecordingSelfTest.swift in Sources */,
 				A6B859DA323763AB43D52A85 /* RecordingView.swift in Sources */,

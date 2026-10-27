@@ -1,76 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 
-/// Menu bar commands, so every shortcut is discoverable and remappable in System Settings.
-/// Space, ← and → reach the app through the app delegate's key monitor (see there for why); the
-/// key equivalents here are what the menu shows.
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
-    @FocusedValue(\.session) private var session
-
+    private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("Open…") { LegacyOpening.chooseDocuments() }
-                .keyboardShortcut("o", modifiers: .command)
-            Button(UXText.text("common.record")) { SessionPlaybackController.stopAll(); openWindow(id: "recording") }
-                .keyboardShortcut("r", modifiers: .command)
+            Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
+            Button(UXText.text("common.record")) {
+                if RecordingConfirmation.active { RecordingConfirmation.stop() }
+                else { SessionPlaybackController.stopAll(); openWindow(id: "recording") }
+            }.keyboardShortcut("r", modifiers: .command)
         }
-
         CommandGroup(after: .saveItem) {
-            Button("Export Transcript…") { if let session { TranscriptExportPanel.run(for: session) } }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(session?.timeline == nil)
-            Button("Show in Finder") { session?.showInFinder() }
-                .disabled(session?.fileURL == nil)
+            Button(UXText.text("common.exportEllipsis")) {}.keyboardShortcut("e", modifiers: [.command, .shift]).disabled(true)
         }
-
-        CommandGroup(after: .textEditing) {
-            Button("Find…") { session?.focusSearchRequest += 1 }
-                .keyboardShortcut("f", modifiers: .command)
-            Button("Find Next") { session?.findNext() }
-                .keyboardShortcut("g", modifiers: .command)
-                .disabled(session?.matchCount == 0)
-            Button("Find Previous") { session?.findPrevious() }
-                .keyboardShortcut("g", modifiers: [.command, .shift])
-                .disabled(session?.matchCount == 0)
-        }
-
-        CommandMenu("Playback") {
-            Button(session?.player?.isPlaying == true ? "Pause" : "Play") { session?.player?.toggle() }
-                .keyboardShortcut(.space, modifiers: [])
-                .disabled(session?.player == nil || session?.player?.playbackError != nil)
-            Button("Skip Back 15 Seconds") { if let s = session, let p = s.player { s.seek(toMs: p.currentMs - PlayerController.skipMs) } }
-                .keyboardShortcut(.leftArrow, modifiers: [])
-                .disabled(session?.player == nil || session?.player?.playbackError != nil)
-            Button("Skip Forward 15 Seconds") { if let s = session, let p = s.player { s.seek(toMs: p.currentMs + PlayerController.skipMs) } }
-                .keyboardShortcut(.rightArrow, modifiers: [])
-                .disabled(session?.player == nil || session?.player?.playbackError != nil)
-            Divider()
-            Button("Faster") { session?.player?.stepSpeed(1) }
-                .keyboardShortcut(.upArrow, modifiers: .command)
-                .disabled(session?.player == nil)
-            Button("Slower") { session?.player?.stepSpeed(-1) }
-                .keyboardShortcut(.downArrow, modifiers: .command)
-                .disabled(session?.player == nil)
-            Divider()
-            Toggle("Follow Along", isOn: Binding(
-                get: { session?.follow ?? true },
-                set: { on in session?.follow = on; if on { session?.jumpToCurrent() } }
-            ))
-            .keyboardShortcut("l", modifiers: .command)
-            .disabled(session?.timeline == nil)
-            Button("Jump to Current Word") { session?.jumpToCurrent() }
-                .keyboardShortcut("j", modifiers: .command)
-                .disabled(session?.timeline == nil)
-        }
-
         CommandGroup(after: .sidebar) {
-            Toggle("Show Inspector", isOn: Binding(
-                get: { session?.showInspector ?? false },
-                set: { session?.showInspector = $0 }
-            ))
-            .keyboardShortcut("i", modifiers: [.command, .option])
-            .disabled(session == nil)
+            Button(UXText.text("common.backToLibrary")) { MeetingNavigation.shared.back() }
+                .keyboardShortcut("[", modifiers: .command).disabled(detail == nil)
+        }
+        CommandMenu(UXText.text("player.a11y")) {
+            Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }
+                .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true)
+            Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(detail?.canPlay != true)
+            Button(UXText.text("player.forward10")) { detail?.skip(10) }.keyboardShortcut(.rightArrow, modifiers: []).disabled(detail?.canPlay != true)
         }
     }
 }

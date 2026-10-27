@@ -8,10 +8,13 @@ enum SessionTransportState { case paused, waiting, playing }
     var onState: ((SessionTransportState) -> Void)? { get set }
     var onEnd: (() -> Void)? { get set }
     var onFailure: ((Error) -> Void)? { get set }
+    var onPosition: ((Double) -> Void)? { get set }
     func play()
     func pause()
     func rewind(_ completion: @escaping @MainActor @Sendable (Bool) -> Void)
     func close()
+    func seek(toMs: Double, completion: @escaping @MainActor @Sendable (Bool) -> Void)
+    func setRate(_ rate: Float)
 }
 private final class PreparationLifetime: @unchecked Sendable {
     var task: Task<Void, Never>?
@@ -22,6 +25,8 @@ private final class PreparationLifetime: @unchecked Sendable {
 @MainActor @Observable public final class SessionPlayback {
     public private(set) var isPlaying = false
     public private(set) var isPreparing = false
+    public private(set) var positionMs = 0.0
+    public var rate: Float = 1 { didSet { transport?.setRate(rate) } }
     @ObservationIgnored public var onFailure: ((Error) -> Void)?
     @ObservationIgnored private let build: @Sendable ([LibraryAudioTrack]) async throws -> SessionTimeline
     @ObservationIgnored private let makeTransport: (SessionTimeline) -> any SessionTransport
@@ -33,6 +38,8 @@ private final class PreparationLifetime: @unchecked Sendable {
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var wantsPlay = false
     @ObservationIgnored private var rewinding = false
+    @ObservationIgnored private var seekSerial = 0
+    @ObservationIgnored private var requestedPosition: Double?
     private static weak var active: SessionPlayback?
     var preparation: Task<Void, Never>? { lifetime.task }
 
@@ -58,8 +65,13 @@ private final class PreparationLifetime: @unchecked Sendable {
             if !rewinding { transport.play() }
             return
         }
+        prepare(meeting, autoplay: true)
+    }
+    public func prepare(_ meeting: LibraryMeeting, autoplay: Bool = false) {
+        guard meeting.canPlaySession, key != meeting.libraryKey else { return }
         stop(); Self.active?.stop(); Self.active = self
         key = meeting.libraryKey; sources = meeting.audioTracks; isPreparing = true
+        wantsPlay = autoplay
         let current = generation, builder = build
         lifetime.task = Task { [weak self] in
             do {
@@ -72,11 +84,32 @@ private final class PreparationLifetime: @unchecked Sendable {
                 transport.onState = { [weak self] state in self?.changed(state, generation: current) }
                 transport.onEnd = { [weak self] in self?.ended(generation: current) }
                 transport.onFailure = { [weak self] error in self?.failed(error, generation: current) }
-                self.wantsPlay = true; self.isPlaying = true; transport.play()
+                transport.onPosition = { [weak self] ms in
+                    guard let self, current == self.generation, !self.rewinding else { return }
+                    self.positionMs = ms
+                }
+                transport.setRate(self.rate)
+                self.isPlaying = self.wantsPlay
+                if let position = self.requestedPosition { self.seek(toMs: position) }
+                else if self.wantsPlay { transport.play() }
             } catch is CancellationError {
                 if let self, current == self.generation { self.stop() }
             }
             catch { self?.failed(error, generation: current) }
+        }
+    }
+    public func seek(toMs: Double) {
+        guard toMs.isFinite else { return }
+        requestedPosition = max(0, toMs); positionMs = max(0, toMs)
+        guard let transport else { return }
+        seekSerial += 1
+        let serial = seekSerial, current = generation
+        rewinding = true; transport.pause()
+        transport.seek(toMs: max(0, toMs)) { [weak self] finished in
+            guard let self, current == self.generation, serial == self.seekSerial else { return }
+            self.rewinding = false
+            guard finished else { self.failed(CocoaError(.fileReadUnknown), generation: current); return }
+            if self.wantsPlay { transport.play(); self.isPlaying = true }
         }
     }
     private func changed(_ state: SessionTransportState, generation current: Int) {
@@ -91,9 +124,11 @@ private final class PreparationLifetime: @unchecked Sendable {
     private func ended(generation current: Int) {
         guard current == generation, !rewinding, let transport else { return }
         wantsPlay = false; isPlaying = false; rewinding = true
+        requestedPosition = nil; positionMs = 0; seekSerial += 1
+        let serial = seekSerial
         transport.pause()
         transport.rewind { [weak self] finished in
-            guard let self, current == self.generation else { return }
+            guard let self, current == self.generation, serial == self.seekSerial else { return }
             self.rewinding = false
             guard finished else { self.failed(CocoaError(.fileReadUnknown), generation: current); return }
             if self.wantsPlay { self.transport?.play(); self.isPlaying = true }
@@ -108,6 +143,7 @@ private final class PreparationLifetime: @unchecked Sendable {
         lifetime.task?.cancel(); lifetime.task = nil
         transport?.close(); transport = nil; timeline = nil
         key = nil; sources = []; wantsPlay = false; rewinding = false
+        requestedPosition = nil; positionMs = 0; seekSerial += 1
         isPlaying = false; isPreparing = false
         if Self.active === self { Self.active = nil }
     }

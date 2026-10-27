@@ -8,14 +8,48 @@ import Testing
     var onState: ((SessionTransportState) -> Void)?
     var onEnd: (() -> Void)?
     var onFailure: ((Error) -> Void)?
+    var onPosition: ((Double) -> Void)?
     var completion: (@MainActor @Sendable (Bool) -> Void)?
     var plays = 0, pauses = 0, closes = 0
     func play() { plays += 1 }
     func pause() { pauses += 1 }
     func rewind(_ completion: @escaping @MainActor @Sendable (Bool) -> Void) { self.completion = completion }
     func close() { closes += 1; onState = nil; onEnd = nil; onFailure = nil }
+    func seek(toMs: Double, completion: @escaping @MainActor @Sendable (Bool) -> Void) { self.completion = completion }
+    func setRate(_ rate: Float) {}
 }
 @Suite(.serialized) @MainActor struct SessionPlaybackTests {
+    @Test func pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() async {
+        let fake = FakeTransport(), actual = state(fake), meeting = meeting()
+        actual.prepare(meeting); actual.seek(toMs: 123)
+        await actual.preparation?.value
+        fake.completion?(true)
+        #expect(fake.plays == 0 && !actual.isPlaying && actual.positionMs == 123)
+        actual.toggle(meeting)
+        #expect(fake.plays == 1)
+        actual.seek(toMs: 300)
+        let obsolete = fake.completion
+        actual.seek(toMs: 500)
+        obsolete?(true)
+        #expect(fake.plays == 1 && actual.positionMs == 500)
+        fake.completion?(true)
+        #expect(fake.plays == 2)
+        actual.seek(toMs: 600)
+        actual.toggle(meeting)
+        fake.completion?(true)
+        #expect(!actual.isPlaying && fake.plays == 2)
+        actual.stop()
+    }
+    @Test func finalSeekFailureReturnsToPlayAndReportsOnce() async {
+        let fake = FakeTransport(), actual = state(fake)
+        var failures = 0
+        actual.onFailure = { _ in failures += 1 }
+        actual.toggle(meeting()); await actual.preparation?.value
+        actual.seek(toMs: 100)
+        let callback = fake.completion
+        callback?(false); callback?(false)
+        #expect(!actual.isPlaying && fake.closes == 1 && failures == 1)
+    }
     @Test func pauseRemainsPossibleAfterEligibilityChanges() async {
         let fake = FakeTransport()
         let actual = self.state(fake)

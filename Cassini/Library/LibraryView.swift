@@ -2,7 +2,7 @@
 import SwiftUI
 import CassiniLibrary
 
-private enum LibraryTheme {
+enum LibraryTheme {
     static let dim = adaptive(light: NSColor(red: 106/255, green: 106/255, blue: 112/255, alpha: 1), dark: .secondaryLabelColor)
     static let sidebar = Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .windowBackgroundColor : NSColor(red: 241/255, green: 240/255, blue: 245/255, alpha: 1) })
     static let chip = adaptive(light: NSColor(red: 239/255, green: 239/255, blue: 243/255, alpha: 1), dark: .controlBackgroundColor)
@@ -14,18 +14,52 @@ private enum LibraryTheme {
 struct LibraryView: View {
     @State private var store = LibraryStore()
     @State private var sessionPlayback = SessionPlaybackController()
+    @State private var navigation = MeetingNavigation.shared
+    @State private var toolbarWidth: CGFloat = 1120
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        GeometryReader { _ in
+        GeometryReader { geometry in
             Group {
-                if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
+                if let detail = navigation.detail { MeetingView(model: detail, format: store.format) }
+                else if navigation.loading { ProgressView() }
+                else if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear { toolbarWidth = geometry.size.width }
+                .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
         .frame(minWidth: 760, minHeight: 480)
-        .navigationTitle(UXText.text("library.title"))
+        .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("library.title"))
         .toolbar {
+            if let detail = navigation.detail {
+                ToolbarItem(placement: .navigation) {
+                    HStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Button { navigation.back() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 30) }
+                                .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
+                                .accessibilityIdentifier("meeting-back")
+                            Spacer(minLength: 0)
+                            recordButton(big: false)
+                        }.frame(width: 169)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .bold))
+                                .lineLimit(1).accessibilityIdentifier("meeting-title")
+                            if let start = detail.meeting.start {
+                                Text(store.format.previewSubtitle(start, durationMs: detail.meeting.durationMs, received: detail.meeting.state.origin == .received))
+                                    .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
+                            }
+                        }.padding(.leading, 16).frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityElement(children: .contain)
+                        HStack(spacing: 14) {
+                            Button(UXText.text("common.exportEllipsis")) {}.buttonStyle(.plain).fontWeight(.semibold)
+                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(true)
+                            Button {} label: { Image(systemName: "ellipsis").frame(width: 28, height: 30) }.buttonStyle(.plain)
+                                .disabled(true).accessibilityLabel(UXText.text("meeting.moreActions"))
+                        }
+                    }.frame(width: max(480, toolbarWidth - 110))
+                }
+            } else {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 0) {
                     toolbarControl.frame(width: store.meetings.isEmpty ? nil : 328, alignment: .leading)
@@ -35,12 +69,14 @@ struct LibraryView: View {
             if store.meetings.isEmpty {
                 ToolbarItem(placement: .principal) { toolbarTitle }
             }
+            }
         }
         .background(WindowAccessor { window in
             guard let window else { return }
             window.setAccessibilityIdentifier("cassini-library-window")
             window.toolbarStyle = .unified
             window.titleVisibility = .hidden
+            RecordingConfirmation.attach(to: window)
             #if DEBUG
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
@@ -49,11 +85,19 @@ struct LibraryView: View {
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             let open = openWindow
             LegacyOpening.handler = { url in open(id: "legacy-viewer", value: LegacyRoute(url: url)) }
+            navigation.openLibrary = { open(id: "library") }
             store.start()
         }
-        .onDisappear { store.stop(); sessionPlayback.stop() }
+        .onDisappear { store.stop(); sessionPlayback.stop(); navigation.back() }
         .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
-        .onChange(of: store.revision) { _, _ in sessionPlayback.reconcile(store.selected, offline: store.offline) }
+        .onChange(of: store.revision) { _, _ in
+            sessionPlayback.reconcile(store.selected, offline: store.offline)
+            navigation.update(store.meetings, offline: store.offline)
+            #if DEBUG
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting", navigation.detail == nil,
+               let meeting = store.meetings.first(where: { $0.title == "Client call, Rossi & Partners" }) { navigation.open(meeting, frozen: true) }
+            #endif
+        }
         .onOpenURL { LegacyOpening.openDocument($0) }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
@@ -157,6 +201,8 @@ struct LibraryView: View {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
                     if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
+                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", action: nil) }
+                if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
@@ -241,11 +287,10 @@ struct LibraryView: View {
     }
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }
-        guard let audio = meeting.audioFiles.first else { return }
-        LegacyOpening.openDocument(audio, autoplay: true)
+        guard !meeting.audioFiles.isEmpty else { return }
+        navigation.open(meeting, autoplay: true)
     }
     private func readTranscript(_ meeting: LibraryMeeting) {
-        if meeting.state.origin == .received, let url = meeting.audioFiles.first { LegacyOpening.openDocument(url) }
-        else { LegacyOpening.openTranscript(meeting) }
+        sessionPlayback.stop(); navigation.open(meeting)
     }
 }

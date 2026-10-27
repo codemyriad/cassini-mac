@@ -9,20 +9,38 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testMeetingBoard() throws {
+        let app = try launch("meeting", fixture: "main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(window.staticTexts["meeting-elapsed"].waitForExistence(timeout: 10))
+        let title = window.staticTexts["meeting-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5), window.debugDescription)
+        XCTAssertTrue(title.isHittable, window.debugDescription)
+        XCTAssertTrue(text("Client call, Rossi & Partners", in: window))
+        XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
+        XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
+        capture(window, name: "meeting")
+        for value in ["43%", "36%", "21%", "00:03:12", "00:47:05", "Named by you", "Recognised from saved voices", "Not named yet"] { XCTAssertTrue(text(value, in: window), value) }
+        XCTAssertFalse(window.buttons["Name the speakers"].exists)
+        XCTAssertFalse(window.buttons["Inspector"].exists)
+        XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
+        XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
+        window.buttons["Forward 10 seconds"].click()
+        XCTAssertTrue(text("00:03:22", in: window))
+        window.buttons["Back 10 seconds"].click()
+        XCTAssertTrue(text("00:03:12", in: window))
+    }
     @MainActor func testTranscriptCanBeClosedAndReopened() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
-        let read = library.buttons["preview-read-transcript"]
-        XCTAssertTrue(read.waitForExistence(timeout: 20))
         for _ in 0..<3 {
-            read.click()
-            let transcript = app.windows["cassini-transcript-window"]
-            XCTAssertTrue(transcript.waitForExistence(timeout: 10))
-            transcript.buttons["_XCUI:CloseWindow"].click()
-            let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: transcript)
-            XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
-            XCTAssertTrue(library.exists)
-            XCTAssertTrue(app.state == .runningForeground)
+            let read = library.buttons["preview-read-transcript"]
+            XCTAssertTrue(read.waitForExistence(timeout: 20)); read.click()
+            XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 10))
+            XCTAssertEqual(app.windows.count, 1)
+            library.buttons["meeting-back"].click()
+            XCTAssertTrue(read.waitForExistence(timeout: 10))
         }
     }
     @MainActor func testOpenAndFinderRoutingWithLibraryClosed() async throws {
@@ -32,45 +50,69 @@ final class LibraryBoards: XCTestCase {
         library.buttons["_XCUI:CloseWindow"].click()
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: library)
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
-        XCTAssertTrue(app.state == .runningForeground)
         app.typeKey("o", modifierFlags: .command)
         XCTAssertTrue(app.windows["open-panel"].waitForExistence(timeout: 5), app.debugDescription)
         app.typeKey(.escape, modifierFlags: [])
         let cancelled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.windows["open-panel"])
         XCTAssertEqual(XCTWaiter.wait(for: [cancelled], timeout: 5), .completed)
-        XCTAssertFalse(library.exists, app.debugDescription)
+        XCTAssertFalse(library.exists)
         let fixture = try fixtureDirectory().appendingPathComponent("meeting.opus")
+        for _ in 0..<2 {
+            try await finderOpen(fixture)
+            XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertEqual(app.windows.count, 1)
+        }
+        library.buttons["_XCUI:CloseWindow"].click()
+        let closedAgain = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: library)
+        XCTAssertEqual(XCTWaiter.wait(for: [closedAgain], timeout: 5), .completed)
         try await finderOpen(fixture)
-        let viewer = app.windows["cassini-legacy-window"]
-        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
-        try await finderOpen(fixture)
-        XCTAssertTrue(viewer.exists)
-        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
-        // Finder activation may also reopen the app's primary Library scene.
-        // The required behavior is delivering the file from the closed state.
-        viewer.buttons["_XCUI:CloseWindow"].click()
-        let viewerClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: viewer)
-        XCTAssertEqual(XCTWaiter.wait(for: [viewerClosed], timeout: 5), .completed)
-        try await finderOpen(fixture)
-        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
+        XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.windows.count, 1)
     }
     @MainActor func testReceivedReadAndPlayReuseOneViewer() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
         let received = library.descendants(matching: .any).matching(identifier: "meeting-Received-a0000000-0000-4000-8000-000000000006").firstMatch
         XCTAssertTrue(received.waitForExistence(timeout: 20), app.debugDescription)
-        received.click()
-        library.buttons["preview-read-transcript"].click()
-        let viewer = app.windows["cassini-legacy-window"]
-        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
-        // Bring the Library forward without closing the received-file viewer.
-        app.menuBars.menuBarItems["Window"].click()
-        app.menuItems["Library"].click()
+        received.click(); library.buttons["preview-read-transcript"].click()
+        XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.windows.count, 1)
+        library.buttons["meeting-back"].click()
+        XCTAssertTrue(library.buttons["preview-play"].waitForExistence(timeout: 10))
         library.buttons["preview-play"].click()
-        XCTAssertTrue(viewer.exists)
-        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
+        XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.windows.count, 1)
+    }
+    @MainActor func testSuggestionDismissalPersistsAcrossNavigation() throws {
+        let app = try launch("library", fixture: "main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout: 20))
+        window.buttons["preview-read-transcript"].click()
+        XCTAssertTrue(window.buttons["Not now"].waitForExistence(timeout: 10))
+        window.buttons["Not now"].click()
+        window.buttons["meeting-back"].click()
+        window.buttons["preview-read-transcript"].click()
+        XCTAssertFalse(window.buttons["Not now"].exists)
+    }
+    @MainActor func testCloseAndQuitConfirmationKeyboardRoles() throws {
+        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-recording-active"])
+        defer { if app.state != .notRunning { app.terminate() } }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.waitForExistence(timeout: 20))
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(window.sheets.staticTexts["A recording is running"].waitForExistence(timeout: 10))
+        app.typeKey(.escape, modifierFlags: [])
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: window)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 10), .completed)
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["A recording is running"].waitForExistence(timeout: 10))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(app.state != .notRunning)
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["A recording is running"].waitForExistence(timeout: 10))
+        app.typeKey(.return, modifierFlags: [])
+        let ended = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.state == .notRunning }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ended], timeout: 10), .completed)
     }
     @MainActor func testFailedReadClosesLoadingViewer() throws {
         let app = XCUIApplication(); defer { app.terminate() }
@@ -78,7 +120,7 @@ final class LibraryBoards: XCTestCase {
         // Legacy fixture routing intentionally points to a nonexistent file.
         // That mode skips the real Library scanner and never starts playback.
         let absent = try fixtureDirectory().appendingPathComponent("absent-fixture")
-        app.launchArguments = ["-CassiniScreenshot", "window", "-CassiniFixture", absent.path,
+        app.launchArguments = ["-CassiniScreenshot", "first-run", "-CassiniFixture", try fixtureDirectory().appendingPathComponent("Library/empty").path, "-CassiniOpenFile", absent.appendingPathComponent("meeting.opus").path,
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB"]
         app.launch()
@@ -96,13 +138,14 @@ final class LibraryBoards: XCTestCase {
         configuration.activates = true
         _ = try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
     }
-    @MainActor private func launch(_ name: String, fixture: String) throws -> XCUIApplication {
+    @MainActor private func launch(_ name: String, fixture: String, extra: [String] = []) throws -> XCUIApplication {
         let app = XCUIApplication()
         let root = try fixtureDirectory().appendingPathComponent("Library/" + fixture)
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", root.path,
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
+        app.launchArguments += extra
         app.launch(); return app
     }
     @MainActor private func board(_ name: String, fixture: String) throws {

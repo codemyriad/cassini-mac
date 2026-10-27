@@ -7,8 +7,13 @@ import AppKit
 /// focus, and otherwise acts on the key window's session, so the menu never sees those keys.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
+    private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            MainActor.assumeIsolated { AppDelegate.handle(event) }
+        }
+
         #if DEBUG
         if ScreenshotFixture.launchIfRequested() { return }
         if CommandLine.arguments.contains("--whistle-self-test") {
@@ -20,9 +25,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         #endif
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated { AppDelegate.handle(event) }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard RecordingConfirmation.active else { return .terminateNow }
+        guard !confirmingQuit else { return .terminateLater }; confirmingQuit = true
+        DispatchQueue.main.async { [weak self] in
+            RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
+                self?.confirmingQuit = false
+                if stop { RecordingConfirmation.stop() }
+                sender.reply(toApplicationShouldTerminate: stop)
+            }
         }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -42,6 +57,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let window = event.window else { return event }
         if let editor = window.firstResponder as? NSTextView, editor.isEditable {
             editor.keyDown(with: event)
+            return nil
+        }
+        if window.accessibilityIdentifier() == "cassini-library-window", let detail = MeetingNavigation.shared.detail {
+            switch event.keyCode {
+            case 49: detail.toggle()
+            case 123: detail.skip(-10)
+            case 124: detail.skip(10)
+            default: break
+            }
             return nil
         }
         guard let session = SessionRegistry.shared.session(for: window) else { return event }

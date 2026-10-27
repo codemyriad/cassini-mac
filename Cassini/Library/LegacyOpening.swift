@@ -28,6 +28,12 @@ enum LegacyOpening {
 
     static func openDocument(_ requestedURL: URL, autoplay: Bool = false) {
         SessionPlaybackController.stopAll()
+        #if DEBUG
+        let legacyFixture = ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ["window", "sheet"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "")
+        #else
+        let legacyFixture = false
+        #endif
+        if !legacyFixture { MeetingNavigation.shared.openFile(requestedURL, autoplay: autoplay); return }
         let url = requestedURL.standardizedFileURL
         if let model = documents[url]?.model {
             if autoplay { model.requestPlay() }

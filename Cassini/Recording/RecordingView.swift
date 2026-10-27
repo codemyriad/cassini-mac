@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import CassiniRecording
 import SwiftUI
@@ -110,6 +111,7 @@ struct RecordingView: View {
             }.padding(28)
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 620)
+        .background(WindowAccessor { if let window = $0 { RecordingConfirmation.attach(to: window) } })
         .onAppear { recorder.refreshProcesses() }
         .onChange(of: recorder.isStarting) { _, starting in if starting { stopPlayback() } }
         .onDisappear { stopPlayback(); reviewScope?.stopAccessingSecurityScopedResource(); reviewScope = nil }

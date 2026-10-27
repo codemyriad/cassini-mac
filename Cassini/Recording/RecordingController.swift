@@ -27,6 +27,7 @@ final class RecordingController {
     private var scopedParent: URL?
     private var configurationObserver: NSObjectProtocol?
     private var statusTimer: Timer?
+    private var startGeneration = 0
 
     var canStart: Bool {
         !isRecording && !isStarting && (includeMicrophone || output != .none)
@@ -52,12 +53,15 @@ final class RecordingController {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let parent = panel.url else { return }
+        startGeneration += 1
+        let attempt = startGeneration
         isStarting = true
-        defer { isStarting = false }
+        defer { if startGeneration == attempt { isStarting = false } }
         if parent.startAccessingSecurityScopedResource() { scopedParent = parent }
         do {
             if includeMicrophone {
                 let permitted = await AVCaptureDevice.requestAccess(for: .audio)
+                guard startGeneration == attempt else { return }
                 guard permitted else { throw RecordingError.invalid("Allow microphone access in System Settings → Privacy & Security → Microphone, then try again.") }
             }
             let session = try RecordingSession(parent: parent, title: title, source: "macos")
@@ -124,6 +128,7 @@ final class RecordingController {
 
     func stop(problem: String? = nil) {
         guard sink != nil || isStarting else { return }
+        startGeneration += 1; isStarting = false
         self.problem = problem
         statusTimer?.invalidate()
         statusTimer = nil
