@@ -33,3 +33,11 @@ the user's Library. Release builds contain no hosted recording driver.
 Local verification builds UI tests without launching. Real microphone/system-audio
 validation remains subject to the user's existing prohibition on desktop/device
 tests. No OS consent is granted by development tools.
+
+D7 disk protection uses the larger of 1 GiB or 2% of the volume as a reserve.
+Before Record, a conservative three-channel PCM rate gives an immediate warning
+below ten minutes. During capture, actual file growth gives the current write rate;
+below thirty minutes, a warning appears without an action and one menu-bar notice.
+At the reserve, capture stops and finalizes, retaining the audio and showing the
+catalog's stopped-to-keep-space line. The hosted fixture can inject free/total bytes
+only while the existing hosted-only RAM-input mode is enabled; it never fills a disk.

@@ -13,6 +13,15 @@ import Observation
     var isStarting: Bool { phase == .starting }
     var isSaving: Bool { phase == .saving }
     var canStart: Bool { phase == .idle }
+    private(set) var diskMinutes: Int?
+    private(set) var diskStopped = false
+    @ObservationIgnored private let diskWatch = RecordingDiskWatch()
+    var diskLine: String? { diskStopped ? UXText.text("errors.diskStopped.line") : diskMinutes.map { UXText.text("errors.diskLow.line", ["n":String($0)]) } }
+    func prepareDiskInfo(parent: URL) {
+        diskStopped = false; RecordingDiskWatch.clear()
+        let minutes = RecordingDiskWatch.inspect(parent, rate: 48000 * 3 * 2)?.minutesLeft
+        diskMinutes = minutes.flatMap { $0 < 10 ? $0 : nil }
+    }
     var title = UXText.text("library.untitled")
     private(set) var startedAt: Date?
     private(set) var directory: URL?
@@ -75,6 +84,12 @@ import Observation
                 }
             }
             phase = .recording
+            diskWatch.start(directory: session.directory) { [weak self] budget in
+                guard let self, self.isRecording else { return }
+                self.diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
+                if budget.shouldStop { self.diskStopped = true; RecordingDiskWatch.clear(); self.stop() }
+                if let line = self.diskLine { RecordingDiskWatch.showOnce(line) }
+            }
             statusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, let status = self.sink?.status() else { return }
@@ -89,6 +104,8 @@ import Observation
         generation += 1
         let attempt = generation
         self.problem = problem
+        if !diskStopped { RecordingDiskWatch.clear() }
+        diskWatch.stop()
         statusTimer?.invalidate(); statusTimer = nil
         inputs?.stop(); inputs = nil
         levels = [:]; waitingForAudio = false
