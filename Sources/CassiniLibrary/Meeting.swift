@@ -69,6 +69,13 @@ public struct MeetingQuote: Codable, Equatable, Sendable {
     public var displayText: String { "“" + text + "”" }
 }
 public struct MeetingNote: Codable, Equatable, Sendable { public var atMs: Int64; public var text: String }
+/// Validated audio and its original source timing. A nil offset is deliberately
+/// distinct from the zero used only for Library duration display (D3).
+public struct LibraryAudioTrack: Sendable, Equatable {
+    public let url: URL
+    public let startOffsetMs: Double?
+    public init(url: URL, startOffsetMs: Double?) { self.url = url; self.startOffsetMs = startOffsetMs }
+}
 public struct LibraryMeeting: Sendable {
     public let id: UUID
     public let folder: URL
@@ -86,6 +93,10 @@ public struct LibraryMeeting: Sendable {
     public var issues: [LibraryReadIssue]
     public var metadataReadOnly: Bool = false
     public var transcriptItems: [LibraryTranscriptItem] = []
+    public var audioTracks: [LibraryAudioTrack] = []
+    public var canPlaySession: Bool {
+        state.origin == .own && state.lifecycle == .saved && !audioTracks.isEmpty && audioTracks.allSatisfy { $0.startOffsetMs != nil }
+    }
     public var canWriteDown: Bool { state.canWriteDown }
     public var speakerNames: [String] { speakers.map(\.displayName) }
 }

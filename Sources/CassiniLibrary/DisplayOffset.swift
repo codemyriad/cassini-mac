@@ -44,6 +44,8 @@ struct DisplayOffset {
         whole = integral.reduce(0) { $0 * 10 + Int64($1) }
         guard whole <= 86_400_000, whole < 86_400_000 || !fraction.contains(where: { $0 != 0 }) else { return nil }
     }
+    /// Playback uses the actual validated source offset, never display's nil → 0.
+    var milliseconds: Double { Double(whole) + (Double("0." + fraction.map(String.init).joined()) ?? 0) }
     func end(frames: UInt64, rate: Int) -> Int64 {
         let numerator = frames * 1000 // WAV size bounds keep this within UInt64.
         let quotient = numerator / UInt64(rate), remainder = Int(numerator % UInt64(rate))
