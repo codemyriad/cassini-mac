@@ -14,7 +14,7 @@ public struct LibraryScanner: Sendable {
         var root: URL?
         var meetings: [URL: LibraryMeeting] = [:]
         var files: [URL: Set<URL>] = [:]
-        var issues: [LibraryReadIssue] = []
+        var issues: [URL: [LibraryReadIssue]] = [:]
     }
     public init(root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Music/Cassini"),
                 activity: any CaptureActivityProviding = CaptureActivitySnapshot()) {
@@ -25,7 +25,7 @@ public struct LibraryScanner: Sendable {
         snapshot.lock.lock(); defer { snapshot.lock.unlock() }
         let original = try pathInfo(root)
         if original == nil {
-            snapshot.root = root; snapshot.meetings = [:]; snapshot.files = [:]; snapshot.issues = []
+            snapshot.root = root; snapshot.meetings = [:]; snapshot.files = [:]; snapshot.issues = [:]
             cache.prune(keeping: [])
             return .init(meetings: [], issues: [])
         }
@@ -33,22 +33,22 @@ public struct LibraryScanner: Sendable {
         guard let info = try pathInfo(resolved), info.st_mode & S_IFMT == S_IFDIR else { throw MetadataError.invalid }
         let activities = activity.snapshot()
         let incremental = affected.flatMap { url -> URL? in
-            guard snapshot.root == resolved, url.deletingLastPathComponent().path == resolved.path || url.deletingLastPathComponent().path == root.path,
+            guard snapshot.root == resolved, (try? physicalURL(url.deletingLastPathComponent()).path) == resolved.path,
                   Self.identity(url.lastPathComponent) != nil else { return nil }
             return URL(fileURLWithPath: resolved.path + "/" + url.lastPathComponent, isDirectory: false)
         }
         let children: [URL]
         if let incremental {
             children = [incremental]
-            snapshot.meetings.removeValue(forKey: incremental); snapshot.files.removeValue(forKey: incremental)
+            snapshot.meetings.removeValue(forKey: incremental); snapshot.files.removeValue(forKey: incremental); snapshot.issues.removeValue(forKey: incremental)
         } else {
             children = try FileManager.default.contentsOfDirectory(at: resolved, includingPropertiesForKeys: nil).map { URL(fileURLWithPath: resolved.path + "/" + $0.lastPathComponent, isDirectory: false) }
-            snapshot.meetings = [:]; snapshot.files = [:]; snapshot.issues = []
+            snapshot.meetings = [:]; snapshot.files = [:]; snapshot.issues = [:]
         }
         for folder in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let (id, received) = Self.identity(folder.lastPathComponent) else { continue }
             guard let info = try? pathInfo(folder) else { continue }
-            if info.st_mode & S_IFMT == S_IFLNK { snapshot.issues.append(.unsafePath); continue }
+            if info.st_mode & S_IFMT == S_IFLNK { snapshot.issues[folder] = [.unsafePath]; continue }
             guard info.st_mode & S_IFMT == S_IFDIR else { continue }
             var seen = Set<URL>()
             if let meeting = read(folder: folder, id: id, received: received, activity: activities[id], now: now, seen: &seen) {
@@ -58,7 +58,7 @@ public struct LibraryScanner: Sendable {
         }
         snapshot.root = resolved
         cache.prune(keeping: Set(snapshot.files.values.flatMap { $0 }))
-        return .init(meetings: snapshot.meetings.values.sorted(by: Self.ordered), issues: snapshot.issues)
+        return .init(meetings: snapshot.meetings.values.sorted(by: Self.ordered), issues: snapshot.issues.values.flatMap { $0 })
     }
     public func scanInBackground(affected: URL? = nil, now: Date = Date()) async throws -> LibraryScan {
         try await Task.detached(priority: .userInitiated) { try scan(affected: affected, now: now) }.value
@@ -144,7 +144,7 @@ public struct LibraryScanner: Sendable {
         meeting.state.audioAvailable = !meeting.audioFiles.isEmpty
         meeting.title = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? "Untitled meeting"
 
-        var words: [LibraryWord] = []
+        var words: [LibraryTranscriptItem] = []
         var readable = false
         var bodyPresent = false
         do {
@@ -188,6 +188,7 @@ public struct LibraryScanner: Sendable {
         }
         if ![.queued, .running].contains(meeting.state.transcript) { meeting.state.etaMinutes = nil }
         if meeting.state.transcript == .damaged { words = [] }
+        meeting.transcriptItems = words
         let sorted = words.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
         }.map(\.element)
@@ -289,13 +290,16 @@ public struct LibraryScanner: Sendable {
     }
 }
 private struct LibraryWords: Decodable {
-    let items: [LibraryWord]
+    let items: [LibraryTranscriptItem]
     func validate() throws {
         guard items.allSatisfy({ !$0.speaker.isEmpty && $0.startMs >= 0 && $0.endMs >= $0.startMs && $0.endMs <= AppMetadata.safe }) else { throw MetadataError.invalid }
     }
 }
-private struct LibraryWord: Decodable {
-    let speaker: String; let startMs: Int64; let endMs: Int64; let text: String
+public struct LibraryTranscriptItem: Codable, Equatable, Sendable {
+    public let speaker: String; public let startMs: Int64; public let endMs: Int64; public let text: String
+    public init(speaker: String, startMs: Int64, endMs: Int64, text: String) {
+        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text
+    }
 }
 private func collapsed(_ text: String) -> String { text.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
 private func normalizedOverride(_ quote: MeetingQuote?) -> MeetingQuote? {
@@ -306,7 +310,7 @@ private func normalizedOverride(_ quote: MeetingQuote?) -> MeetingQuote? {
     }
     return text.isEmpty ? nil : MeetingQuote(atMs: quote.atMs, text: text)
 }
-private func defaultQuote(_ words: [LibraryWord]) -> MeetingQuote? {
+private func defaultQuote(_ words: [LibraryTranscriptItem]) -> MeetingQuote? {
     struct Turn { var speaker: String; var start: Int64; var end: Int64; var text: [String]; var ordinal: Int }
     var turns: [Turn] = []
     for (index, word) in words.enumerated() {

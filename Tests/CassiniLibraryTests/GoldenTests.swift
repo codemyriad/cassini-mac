@@ -44,7 +44,8 @@ private enum Golden {
     }
     @Test(arguments: Golden.formats) private func formatVector(vector: FormatCase) throws {
         let value = try JSONDecoder().decode(FormatInput.self, from: vector.data)
-        let format = LibraryFormat(timeZone: try #require(TimeZone(identifier: "Europe/Rome")), now: Date(timeIntervalSince1970: 1793107080))
+        let header = try JSONSerialization.jsonObject(with: Golden.data("format-vectors")) as! [String: Any]
+        let format = LibraryFormat(timeZone: try #require(TimeZone(identifier: header["tz"] as! String)), now: Date(timeIntervalSince1970: (header["nowMs"] as! NSNumber).doubleValue / 1000))
         let at = Date(timeIntervalSince1970: Double(value.atMs ?? 0) / 1000)
         let actual: String
         switch vector.group {

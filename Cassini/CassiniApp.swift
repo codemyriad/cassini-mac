@@ -7,11 +7,14 @@ struct CassiniApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        DocumentGroup(viewing: CassiniDocument.self) { config in
-            DocumentView(document: config.document, fileURL: config.fileURL)
-        }
-        .defaultSize(width: 1280, height: 780)
-        .commands { AppCommands() }
+        Window(UXText.text("library.title"), id: "library") { LibraryView() }
+            .defaultSize(width: 1120, height: 720)
+            .windowToolbarStyle(.unified)
+            .commands { AppCommands() }
+
+        WindowGroup(UXText.text("library.title"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
+            if let route { LegacyDocumentView(url: route.url, autoplay: route.autoplay) }
+        }.defaultSize(width: 1280, height: 780)
 
         Window("Recording", id: "recording") { RecordingView() }
             .defaultSize(width: 680, height: 760)
@@ -40,6 +43,12 @@ struct CassiniDocument: FileDocument {
             file = nil
             readError = "\(error)"
         }
+    }
+
+    init(url: URL) throws {
+        data = try Data(contentsOf: url)
+        do { file = try CassiniReader.read(data); readError = nil }
+        catch { file = nil; readError = "\(error)" }
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
