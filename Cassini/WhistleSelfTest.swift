@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #if DEBUG
 import AppKit
 import CassiniWhistle
@@ -20,7 +21,7 @@ import Darwin
                 input.append(request + Data([10]))
             }
             let result = try await WhistleSubprocess.run(executable: worker,
-                arguments: ["--library", bundle.bundleURL.appendingPathComponent("Contents/Frameworks/libneedle3.dylib").path, "--model", folder.appendingPathComponent("whistle.cact").path],
+                arguments: [],
                 environment: WhistleEnvironment.worker(), input: input)
             let data = result.stdout
             guard result.status == 0, result.inputError == nil else {

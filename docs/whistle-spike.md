@@ -83,3 +83,27 @@ hashed before publication. Unique temporary files are removed on every failure
 and atomically renamed only after verification. Hermetic tests cover valid cache,
 corrupt cache, a truncated response followed by good data, and repeated invalid
 responses followed by recovery on the next build.
+
+## Asset trust and native state
+
+The packaged worker derives its app location from _NSGetExecutablePath and
+accepts no library/model path arguments. Before dlopen it validates the parent
+bundle signature, nested code and sealed resources using SecStaticCodeCheckValidity,
+checks the signed bundle checksum manifest, and verifies the compiled model hash.
+The standalone test tool takes --assets DIRECTORY, with fixed filenames, and
+accepts only the original source-pinned Mach-O architecture slices and model.
+All asset reads are bounded regular-file reads and reject symlinks.
+
+The privacy guard reads getenv immediately before loading, rather than relying
+on a Foundation environment snapshot. The parent forwards an allowlisted child
+environment with privacy flags, system PATH/locale and optional TMPDIR; it does
+not forward loader variables, proxies or tokens. Model bytes live in explicitly
+owned storage until after dlclose. A locked process ownership slot refuses a
+second model instance, and native transcription calls are serialized.
+
+Tests compare compiled pins to pins.json, reject changed libraries/models and
+legacy path arguments, observe a late C-environment mutation, exercise exclusive
+ownership and destruction/recreation, and repeat transcription after allocation
+churn. Dedicated architecture jobs run the real-model integration after the
+verified build-time fetch. Apple's validation API checks sealed resources:
+https://developer.apple.com/documentation/security/secstaticcodecheckvalidity(_:_:_:)
