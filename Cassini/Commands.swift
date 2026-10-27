@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 
 /// Menu bar commands, so every shortcut is discoverable and remappable in System Settings.
@@ -9,7 +10,7 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button(UXText.text("common.record")) { openWindow(id: "recording") }
+            Button(UXText.text("common.record")) { SessionPlaybackController.stopAll(); openWindow(id: "recording") }
                 .keyboardShortcut("r", modifiers: .command)
         }
 

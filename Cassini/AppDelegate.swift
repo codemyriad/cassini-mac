@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 
 /// Routes bare-key media shortcuts (Space, ←, →). The Playback menu lists them as key
@@ -25,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { RecordingController.shared.stop() }
+        MainActor.assumeIsolated { SessionPlaybackController.stopAll(); RecordingController.shared.stop() }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { !CommandLine.arguments.contains("--recording-self-test") && !CommandLine.arguments.contains("--recording-sink-self-test") }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import AVFoundation
 import CassiniRecording
@@ -40,6 +41,7 @@ final class RecordingController {
     }
 
     func start() async {
+        SessionPlaybackController.stopAll(); PlayerController.pauseActive()
         guard canStart else { return }
         problem = nil
         warnings = []
