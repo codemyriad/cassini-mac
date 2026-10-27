@@ -63,7 +63,16 @@ import Observation
 }
 
 @MainActor @Observable final class MeetingDetailModel {
-    var meeting: LibraryMeeting
+    var meeting: LibraryMeeting {
+        didSet {
+            if meeting.transcriptItems != oldValue.transcriptItems || meeting.speakers.map(\.id) != oldValue.speakers.map(\.id) {
+                turns = MeetingPresentation.turns(meeting.transcriptItems)
+                shares = MeetingPresentation.shares(meeting)
+            }
+        }
+    }
+    private(set) var turns: [MeetingPresentation.Turn] = []
+    private(set) var shares: [String: Int] = [:]
     let fileURL: URL?
     let audio = SessionPlayback()
     private let filePlayer: PlayerController?
@@ -74,6 +83,7 @@ import Observation
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
         let playable = fileURL ?? (meeting.state.origin == .received ? meeting.audioFiles.first : nil)
         filePlayer = !frozen ? playable.map { PlayerController(url: $0, durationMs: Int(meeting.durationMs ?? 0), title: meeting.title ?? UXText.text("library.untitled"), fileAccessLease: lease) } : nil
+        turns = MeetingPresentation.turns(meeting.transcriptItems); shares = MeetingPresentation.shares(meeting)
         audio.onFailure = { NSApp.presentError($0) }
     }
     var isPlaying: Bool { frozen ? fixturePlaying : filePlayer?.isPlaying ?? audio.isPlaying }

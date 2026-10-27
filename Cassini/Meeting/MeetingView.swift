@@ -7,7 +7,12 @@ struct MeetingView: View {
     let format: LibraryFormat
     @AppStorage("CassiniCompanionSuggestionDismissed") private var suggestionDismissed = false
     private var meeting: LibraryMeeting { model.meeting }
-    private var shares: [String: Int] { MeetingPresentation.shares(meeting) }
+    private var shares: [String: Int] { model.shares }
+    private var currentTurn: Int? {
+        model.turns.last { turn in
+            turn.items.contains { $0.startMs <= model.positionMs && model.positionMs < $0.endMs }
+        }?.id
+    }
     private func colour(_ index: Int) -> Color {
         [Color.accentColor, Color(red: 179/255, green: 71/255, blue: 0), Color(red: 125/255, green: 60/255, blue: 152/255)][index % 3]
     }
@@ -32,14 +37,14 @@ struct MeetingView: View {
                     Spacer(minLength: 0)
                 }.padding(.horizontal, 19).padding(.top, 14)
                     .frame(width: 260).frame(maxHeight: .infinity)
-                    .background(Color(nsColor: NSColor(red: 241/255, green: 240/255, blue: 245/255, alpha: 1)))
-                    .accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
+                    .background(LibraryTheme.sidebar)
+                    .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
                 Divider()
-                ScrollView {
+                ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         if let line = issueLine { InlineMeetingLine(id: line, action: nil) }
                         if !suggestionDismissed { companionCard }
-                        ForEach(MeetingPresentation.turns(meeting.transcriptItems)) { turn in
+                        ForEach(model.turns) { turn in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 5) {
@@ -58,13 +63,17 @@ struct MeetingView: View {
                         }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")
+                    .onChange(of: currentTurn) { _, turn in
+                        if let turn { withAnimation { proxy.scrollTo(turn, anchor: .center) } }
+                    }
+                }
             }
             Divider()
             playerBar
         }
         .font(.system(size: 13))
         .background(Color(nsColor: .textBackgroundColor))
-        .accessibilityIdentifier("meeting-page")
+        .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
     }
     private func transcript(_ items: [LibraryTranscriptItem]) -> AttributedString {
         var result = AttributedString()
@@ -106,14 +115,15 @@ struct MeetingView: View {
                 HStack(spacing: 16) {
                     Button(UXText.text("meeting.companionCard.setUp")) {
                         NSWorkspace.shared.open(URL(string: "https://github.com/codemyriad/cassini-mac#record-meetings-in-your-browser")!)
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(.plain).fontWeight(.semibold).foregroundStyle(.white)
+                        .padding(.horizontal, 14).frame(height: 32).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
                     Button(UXText.text("common.notNow")) { suggestionDismissed = true }.buttonStyle(.plain).foregroundStyle(Color.accentColor)
                 }.padding(.top, 6)
             }
             Spacer(minLength: 0)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 7))
-            .accessibilityLabel(UXText.text("meeting.companionCard.a11y")).accessibilityIdentifier("meeting-companion-card")
+            .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.companionCard.a11y")).accessibilityIdentifier("meeting-companion-card")
     }
     private var playerBar: some View {
         HStack(spacing: 16) {
@@ -130,7 +140,7 @@ struct MeetingView: View {
             Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_GB")))])) { model.cycleRate() }
                 .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(Color(nsColor: .windowBackgroundColor))
-            .disabled(!model.canPlay).accessibilityLabel(UXText.text("player.a11y"))
+            .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
     }
 }
 
