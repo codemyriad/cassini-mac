@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CryptoKit
 import Testing
@@ -112,6 +113,19 @@ final class Fixture {
         #expect(result.audioFiles.count == 1 && result.durationMs == 1125)
         #expect(result.issues.contains(.invalidAudio))
         #expect(result.state.interruptedAtMs == nil)
+    }
+    @Test func emptyCaptureTracksKeepHistoryButDoNotEnablePlaybackAlone() throws {
+        let f = try Fixture()
+        let microphone = try FileHandle(forWritingTo: f.folder.appendingPathComponent("track-microphone.wav"))
+        try microphone.truncate(atOffset: 44); try microphone.close()
+        let partial = try #require(LibraryScanner(root: f.root).scan().meetings.first)
+        #expect(partial.canPlaySession)
+        #expect(partial.audioTracks.contains { $0.frameCount == 0 })
+        let system = try FileHandle(forWritingTo: f.folder.appendingPathComponent("track-system.wav"))
+        try system.truncate(atOffset: 44); try system.close()
+        let empty = try #require(LibraryScanner(root: f.root).scan().meetings.first)
+        #expect(!empty.canPlaySession)
+        #expect(empty.audioFiles.count == 2 && empty.state.interruptedAtMs == nil)
     }
     @Test func speakerOrderQuoteSelectionAndOverrideUseTranscriptNotCaptureSources() throws {
         let f = try Fixture()

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 public enum MeetingLifecycle: String, Codable, Sendable { case recording, saving, saved }
@@ -74,7 +75,8 @@ public struct MeetingNote: Codable, Equatable, Sendable { public var atMs: Int64
 public struct LibraryAudioTrack: Sendable, Equatable {
     public let url: URL
     public let startOffsetMs: Double?
-    public init(url: URL, startOffsetMs: Double?) { self.url = url; self.startOffsetMs = startOffsetMs }
+    public let frameCount: UInt64?
+    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil) { self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount }
 }
 public struct LibraryMeeting: Sendable {
     public let id: UUID
@@ -101,7 +103,8 @@ public struct LibraryMeeting: Sendable {
     public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems) }
     public var audioTracks: [LibraryAudioTrack] = []
     public var canPlaySession: Bool {
-        state.origin == .own && state.lifecycle == .saved && !audioTracks.isEmpty && audioTracks.allSatisfy { $0.startOffsetMs != nil }
+        let nonempty = audioTracks.filter { $0.frameCount != 0 }
+        return state.origin == .own && state.lifecycle == .saved && !nonempty.isEmpty && nonempty.allSatisfy { $0.startOffsetMs != nil }
     }
     public var canWriteDown: Bool { state.canWriteDown }
     public var speakerNames: [String] { speakers.map(\.displayName) }
