@@ -6,12 +6,17 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "CassiniKit", targets: ["CassiniKit"]),
+        .library(name: "CassiniLibrary", targets: ["CassiniLibrary"]),
+        .library(name: "CassiniLibraryWatchers", targets: ["CassiniLibraryWatchers"]),
         .library(name: "CassiniRecording", targets: ["CassiniRecording"]),
         .executable(name: "cassini-browser-host", targets: ["cassini-browser-host"]),
         .executable(name: "cassini-inspect", targets: ["cassini-inspect"]),
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .target(name: "CassiniLibrary", dependencies: ["CassiniKit"], resources: [.copy("Schema")]),
+        .target(name: "CassiniLibraryWatchers", dependencies: ["CassiniLibrary"]),
+        .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors")]),
         .target(name: "CassiniRecording", dependencies: ["CassiniKit"]),
         .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording"]),
         .testTarget(name: "CassiniRecordingTests", dependencies: ["CassiniRecording"]),
