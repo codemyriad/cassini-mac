@@ -39,8 +39,12 @@
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Cassini records selected application or system audio locally when you start recording.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Code Myriad</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Cassini records your microphone as a separate local meeting track.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

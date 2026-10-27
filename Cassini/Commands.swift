@@ -4,10 +4,14 @@ import SwiftUI
 /// Space, ← and → reach the app through the app delegate's key monitor (see there for why); the
 /// key equivalents here are what the menu shows.
 struct AppCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.session) private var session
 
     var body: some Commands {
-        CommandGroup(replacing: .newItem) {}
+        CommandGroup(replacing: .newItem) {
+            Button("New Recording…") { openWindow(id: "recording") }
+                .keyboardShortcut("n", modifiers: .command)
+        }
 
         CommandGroup(after: .saveItem) {
             Button("Export Transcript…") { if let session { TranscriptExportPanel.run(for: session) } }

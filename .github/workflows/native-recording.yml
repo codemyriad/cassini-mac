@@ -1,0 +1,51 @@
+name: Native recording on DrMeyers
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Generated PCM sink only, or sink plus actual process-tap hardware'
+        type: choice
+        options: [full, sink-only]
+        default: full
+  schedule:
+    - cron: '23 2 * * *'
+
+permissions:
+  contents: read
+concurrency:
+  group: drmeyers-native-audio
+  cancel-in-progress: false
+
+jobs:
+  native:
+    if: >-
+      github.repository == 'codemyriad/cassini-mac' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: [self-hosted, macOS, ARM64, drmeyers-audio]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain and shared-source verification
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          python3 browser-protocol/verify.py --pinned BrowserExtension
+      - name: Native session and writer tests
+        run: swift test --filter 'Recording'
+      - name: Generated native audio diagnostic
+        env:
+          NATIVE_MODE: ${{ inputs.mode || 'full' }}
+        run: |
+          python3 scripts/run-native-ci.py --mode "$NATIVE_MODE" \
+            --artifacts "$RUNNER_TEMP/native-artifacts" \
+            --derived-data "$RUNNER_TEMP/cassini-native-build"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: drmeyers-native-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-artifacts

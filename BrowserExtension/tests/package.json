@@ -1,0 +1,8 @@
+{
+  "name": "cassini-browser-recording-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test *.test.cjs && node synthetic-capture.mjs && node extension-capture.mjs && node tab-capture.mjs"
+  },
+  "devDependencies": { "playwright": "1.61.1" }
+}

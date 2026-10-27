@@ -30,7 +30,20 @@ targets:
     dependencies:
       - package: CassiniKit
         product: CassiniKit
+      - package: CassiniKit
+        product: CassiniRecording
       - target: CassiniQuickLook
+      - target: CassiniBrowserHost
+        link: false
+    postBuildScripts:
+      - name: Bundle native messaging host
+        script: |
+          mkdir -p "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH"
+          cp "$BUILT_PRODUCTS_DIR/cassini-browser-host" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/cassini-browser-host"
+        inputFiles:
+          - "$(BUILT_PRODUCTS_DIR)/cassini-browser-host"
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/cassini-browser-host"
     info:
       path: Cassini/Info.plist
       properties:
@@ -42,6 +55,8 @@ targets:
         LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: "© 2026 Code Myriad"
         NSPrincipalClass: NSApplication
+        NSMicrophoneUsageDescription: Cassini records your microphone as a separate local meeting track.
+        NSAudioCaptureUsageDescription: Cassini records selected application or system audio locally when you start recording.
         NSSupportsAutomaticTermination: false
         NSSupportsSuddenTermination: false
         CFBundleDocumentTypes:
@@ -68,6 +83,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
+        com.apple.security.device.audio-input: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac
@@ -75,6 +91,19 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
         GENERATE_INFOPLIST_FILE: false
+  CassiniBrowserHost:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/cassini-browser-host
+    dependencies:
+      - package: CassiniKit
+        product: CassiniRecording
+    settings:
+      base:
+        PRODUCT_NAME: cassini-browser-host
+        SKIP_INSTALL: true
+        ENABLE_HARDENED_RUNTIME: true
   CassiniQuickLook:
     type: app-extension
     platform: macOS

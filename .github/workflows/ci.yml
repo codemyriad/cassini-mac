@@ -23,6 +23,37 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Browser audio worklet tests
+        run: node --test BrowserExtension/tests/*.test.cjs
+      - name: Verify shared browser snapshot
+        run: python3 browser-protocol/verify.py --pinned BrowserExtension
+      - name: Shared native-session fixture
+        run: python3 browser-protocol/conformance/check-native-fixture.py
+      - name: Browser host conformance
+        run: python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned browser tests
+        run: |
+          npm ci --prefix BrowserExtension/tests
+          BrowserExtension/tests/node_modules/.bin/playwright install chromium
+      - name: Browser capture scenarios
+        timeout-minutes: 8
+        run: |
+          set -o pipefail
+          mkdir -p BrowserExtension/tests/artifacts
+          PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/BrowserExtension/tests/node_modules/playwright/index.mjs" node browser-protocol/tests/product-topologies.mjs 2>&1 | tee BrowserExtension/tests/artifacts/topologies.log
+          node BrowserExtension/tests/synthetic-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/synthetic.log
+          node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
+          node BrowserExtension/tests/tab-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/tab.log
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: recording-failure-${{ github.sha }}
+          path: |
+            BrowserExtension/tests/artifacts
+            browser-protocol/artifacts
       - name: Conformance suite (full profile)
         working-directory: Tests/CassiniKitTests/Conformance
         run: |

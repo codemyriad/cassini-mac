@@ -12,6 +12,9 @@ struct CassiniApp: App {
         }
         .defaultSize(width: 1280, height: 780)
         .commands { AppCommands() }
+
+        Window("Recording", id: "recording") { RecordingView() }
+            .defaultSize(width: 680, height: 760)
     }
 }
 

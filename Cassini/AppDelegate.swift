@@ -8,9 +8,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if CommandLine.arguments.contains("--recording-self-test") || CommandLine.arguments.contains("--recording-sink-self-test") {
+            Task { @MainActor in await RecordingSelfTest.run(sinkOnly: CommandLine.arguments.contains("--recording-sink-self-test")) }
+            return
+        }
+        #endif
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             MainActor.assumeIsolated { AppDelegate.handle(event) }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { RecordingController.shared.stop() }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }

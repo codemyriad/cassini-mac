@@ -6,3 +6,10 @@ build/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 Samples/*.opus
+
+node_modules/
+BrowserExtension/tests/artifacts/
+native-artifacts/
+build-native-ci/
+__pycache__/
+*.pyc
