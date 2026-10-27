@@ -67,8 +67,8 @@ struct RecordFirstView: View {
             Image(systemName: icon).frame(width: 36, height: 36).background(Color.secondary.opacity(0.07), in: Circle()).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(UXText.text(title)).fontWeight(.semibold)
-                Text(UXText.text(description)).foregroundStyle(.secondary).lineSpacing(4)
-                Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineSpacing(4)
+                Text(UXText.text(description)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
