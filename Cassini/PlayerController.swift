@@ -37,6 +37,7 @@ final class PlayerController {
     @ObservationIgnored private let node = AVAudioPlayerNode()
     @ObservationIgnored private let timePitch = AVAudioUnitTimePitch()
     @ObservationIgnored private var file: AVAudioFile?
+    @ObservationIgnored private let fileAccessLease: AnyObject?
     @ObservationIgnored private var sampleRate: Double = 48000
     /// The file frame the current schedule started at; the node's player time counts from here.
     @ObservationIgnored private var segmentStart: AVAudioFramePosition = 0
@@ -58,7 +59,8 @@ final class PlayerController {
     @ObservationIgnored private static weak var active: PlayerController?
     @ObservationIgnored private static var remoteCommandsInstalled = false
 
-    init(url: URL, durationMs: Int, title: String) {
+    init(url: URL, durationMs: Int, title: String, fileAccessLease: AnyObject? = nil) {
+        self.fileAccessLease = fileAccessLease
         self.durationMs = durationMs
         self.title = title
         do {

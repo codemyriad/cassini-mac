@@ -45,6 +45,7 @@
 		C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */; };
 		CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDC2D28CF9C48F3E7198A41F /* Quartz.framework */; };
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
+		D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */; };
 		D8B58B15098E7E1417F6CE8D /* TranscriptExportPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFFFBC8704BE23F2A1D6CFF /* TranscriptExportPanel.swift */; };
 		E0A49316E91E04F56C05A113 /* CassiniLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = B52B47E53FE17F1664D4546F /* CassiniLibrary */; };
 		E46E58DE325E1AA975257BC2 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */; };
@@ -129,6 +130,7 @@
 		CD057B32C9901BC49239FFBC /* LegacyOpening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyOpening.swift; sourceTree = "<group>"; };
 		D295CC7B2C3B5C3830DE45C0 /* AudioProcessTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProcessTap.swift; sourceTree = "<group>"; };
 		DB5F13A0E9BCCB3758F8E8FC /* SessionPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPlaybackController.swift; sourceTree = "<group>"; };
+		DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyDocumentModel.swift; sourceTree = "<group>"; };
 		E13BC99CBCC0BCA4FFF80043 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		E284419A62A77AD5FD73134E /* Cassini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cassini.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CassiniQuickLook.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -184,6 +186,7 @@
 		0B079030956ED1313FAA99AE /* Library */ = {
 			isa = PBXGroup;
 			children = (
+				DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */,
 				CD057B32C9901BC49239FFBC /* LegacyOpening.swift */,
 				71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */,
 				AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */,
@@ -586,6 +589,7 @@
 				73430AD2E1F30C774BD10517 /* Commands.swift in Sources */,
 				1EF5EE8DD217C7B2C937D7A2 /* DocumentView.swift in Sources */,
 				5B22C485F9011F2995FB4C70 /* InspectorView.swift in Sources */,
+				D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */,
 				335E85C4B4CE9D0332A91D88 /* LegacyOpening.swift in Sources */,
 				C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */,
 				E46E58DE325E1AA975257BC2 /* LibraryView.swift in Sources */,

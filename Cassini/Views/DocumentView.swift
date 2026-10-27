@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniKit
 import SwiftUI
 
@@ -10,6 +11,11 @@ struct DocumentView: View {
     init(document: CassiniDocument, fileURL: URL?, autoPlay: Bool = false) {
         self.autoPlay = autoPlay
         _session = State(initialValue: SessionModel(document: document, url: fileURL))
+    }
+
+    init(session: SessionModel) {
+        autoPlay = false
+        _session = State(initialValue: session)
     }
 
     var body: some View {

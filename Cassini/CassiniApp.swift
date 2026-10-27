@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -13,7 +14,7 @@ struct CassiniApp: App {
             .commands { AppCommands() }
 
         WindowGroup(UXText.text("library.title"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
-            if let route { LegacyDocumentView(url: route.url, autoplay: route.autoplay) }
+            if let route { LegacyDocumentView(url: route.url) }
         }.defaultSize(width: 1280, height: 780)
 
         Window("Recording", id: "recording") { RecordingView() }

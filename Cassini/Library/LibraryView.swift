@@ -47,13 +47,14 @@ struct LibraryView: View {
         })
         .onAppear {
             sessionPlayback.onFailure = { NSApp.presentError($0) }
-            LegacyOpening.handler = { url in SessionPlaybackController.stopAll(); openWindow(id: "legacy-viewer", value: LegacyRoute(url: url, autoplay: false)) }
+            let open = openWindow
+            LegacyOpening.handler = { url in open(id: "legacy-viewer", value: LegacyRoute(url: url)) }
             store.start()
         }
         .onDisappear { store.stop(); sessionPlayback.stop() }
         .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
         .onChange(of: store.revision) { _, _ in sessionPlayback.reconcile(store.selected, offline: store.offline) }
-        .onOpenURL { SessionPlaybackController.stopAll(); openWindow(id: "legacy-viewer", value: LegacyRoute(url: $0, autoplay: false)) }
+        .onOpenURL { LegacyOpening.openDocument($0) }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
     private var toolbarTitle: some View {
@@ -241,10 +242,10 @@ struct LibraryView: View {
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }
         guard let audio = meeting.audioFiles.first else { return }
-        openWindow(id: "legacy-viewer", value: LegacyRoute(url: audio, autoplay: true))
+        LegacyOpening.openDocument(audio, autoplay: true)
     }
     private func readTranscript(_ meeting: LibraryMeeting) {
-        if meeting.state.origin == .received, let url = meeting.audioFiles.first { sessionPlayback.stop(); openWindow(id: "legacy-viewer", value: LegacyRoute(url: url, autoplay: false)) }
+        if meeting.state.origin == .received, let url = meeting.audioFiles.first { LegacyOpening.openDocument(url) }
         else { LegacyOpening.openTranscript(meeting) }
     }
 }
