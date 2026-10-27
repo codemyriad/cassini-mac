@@ -42,8 +42,6 @@
 		9E41F9238C947BD499DCA591 /* CassiniPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = E0ABF1926525946F2D0642F1 /* CassiniPlayback */; };
 		A6B859DA323763AB43D52A85 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13BC99CBCC0BCA4FFF80043 /* RecordingView.swift */; };
 		AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128F0DA36A8F1649E4BFACB /* PlayerController.swift */; };
-		B8957EE7FE1BD516447926BF /* CassiniBrowserHost in Resources */ = {isa = PBXBuildFile; fileRef = AE55575B68548E992AE03E83 /* CassiniBrowserHost */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		C3655E583FCFB3BAB225C5DA /* CassiniWhistleWorker in Resources */ = {isa = PBXBuildFile; fileRef = C2AF16181F491E3932E02CCA /* CassiniWhistleWorker */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */; };
 		CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDC2D28CF9C48F3E7198A41F /* Quartz.framework */; };
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
@@ -104,11 +102,11 @@
 		0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerBar.swift; sourceTree = "<group>"; };
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
 		202F303D76A9CA142F725248 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
+		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		5CC01E1B7B594D265434100B /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -514,8 +512,6 @@
 			files = (
 				41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */,
 				66D88998A0953337261A8C61 /* UX in Resources */,
-				B8957EE7FE1BD516447926BF /* CassiniBrowserHost in Resources */,
-				C3655E583FCFB3BAB225C5DA /* CassiniWhistleWorker in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

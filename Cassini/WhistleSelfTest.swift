@@ -20,7 +20,7 @@ import Darwin
                 input.append(request + Data([10]))
             }
             let result = try await WhistleSubprocess.run(executable: worker,
-                arguments: ["--library", folder.appendingPathComponent("libneedle3.dylib").path, "--model", folder.appendingPathComponent("whistle.cact").path],
+                arguments: ["--library", bundle.bundleURL.appendingPathComponent("Contents/Frameworks/libneedle3.dylib").path, "--model", folder.appendingPathComponent("whistle.cact").path],
                 environment: WhistleEnvironment.worker(), input: input)
             let data = result.stdout
             guard result.status == 0, result.inputError == nil else {

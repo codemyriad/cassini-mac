@@ -66,3 +66,20 @@ capacity, a child ignoring SIGTERM, cancellation, oversized lines/files, symlink
 and FIFOs. Actual worker requests verify it can reject invalid inputs and still
 serve the next valid JFK request. Library/model identity verification and bundle
 layout are addressed separately from these stream/input bounds.
+
+## Bundle layout and artifact-cache recovery
+
+Only the executable copies in Contents/MacOS ship. The engine is in
+Contents/Frameworks; weights/licences/pins/checksums remain in Resources/Whistle.
+The checker rejects obsolete resource copies, including leftovers from an
+incremental build. This follows Apple's bundle layout guidance:
+https://developer.apple.com/documentation/bundleresources/placing-content-in-a-bundle
+Signing requests a secure timestamp for certificate identities; ad-hoc builds use
+no timestamp. Developer ID notarization is a later distribution check.
+
+A corrupt cached archive is removed and fetched again. HTTP success with bad or
+truncated bytes is retried just like a connection failure; every attempt is
+hashed before publication. Unique temporary files are removed on every failure
+and atomically renamed only after verification. Hermetic tests cover valid cache,
+corrupt cache, a truncated response followed by good data, and repeated invalid
+responses followed by recovery on the next build.
