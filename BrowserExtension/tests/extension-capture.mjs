@@ -88,7 +88,7 @@ try {
   await popup.waitForFunction(() => !document.querySelector('#tracks').hidden);
   const after = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   assert.equal(after.recording, false);
-  assert.equal(after.message, 'Recording saved locally.');
+  assert.equal(after.message, 'Saved on this computer.');
   assert.equal(during.tracks, 1);
   const manifest = JSON.parse(await readFile(path.join(savedPath, 'session.json')));
   assert.equal(manifest.state, 'completed');

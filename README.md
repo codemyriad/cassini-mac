@@ -71,8 +71,8 @@ For browser tracks or a single tab, load the Chromium extension:
    second argument to register its bundled signed host without a Swift build. Rerun after
    moving the app or changing the extension ID. `scripts/install-browser-host.sh --uninstall`
    removes registrations, retaining the app/helper and recordings.
-3. In the meeting tab, open the extension and choose **Record WebRTC tracks**. If the page
-   blocks access or no tracks are found, choose **Record tab audio**. The tab fallback preserves
+3. In the meeting tab, open the extension and choose **Record separate tracks**. If the page
+   blocks access or no tracks are found, choose **Record the whole tab**. The tab fallback preserves
    playback and records the rendered mix; it usually excludes your microphone. Use native
    output + microphone capture when you need that fallback.
 4. **Stop and save** writes to `~/Music/Cassini/Recording-<UUID>`. In Cassini’s recording window,
