@@ -47,7 +47,7 @@ public final class RecordingSession {
     public init(parent: URL, title: String, source: String) throws {
         let id = UUID()
         directory = parent.appendingPathComponent("Recording-\(id.uuidString)", isDirectory: true)
-        manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(title.prefix(500)),
+        manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))),
                                      source: source, state: "recording", tracks: [])
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                attributes: [.posixPermissions: 0o700])
@@ -126,7 +126,7 @@ public final class RecordingSession {
     }
 
     public static func cleanLabel(_ value: String) -> String {
-        String(String(value.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }).prefix(200))
+        String(String.UnicodeScalarView(value.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.prefix(200)))
     }
 
     private func checkpoint() throws {

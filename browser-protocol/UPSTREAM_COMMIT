@@ -1,6 +1,6 @@
-tree 41f6cc90e97d78e5dc9248007c283f653e6d5e0c
-parent b3fa2a3a20b71edd911c485801c9a69496ccbc16
-author Silvio Tomatis <silviot@gmail.com> 1793100652 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793100652 +0100
+tree ef421e9aabefa646f31086a9d67c5e54d0812da6
+parent bcdc14a2643531dc1d512a8663b0324e5c2a3d47
+author Silvio Tomatis <silviot@gmail.com> 1793105228 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793105228 +0100
 
-Run device-dependent tab capture on the dedicated Mac runner
+Close conformance subprocess pipes after each case
