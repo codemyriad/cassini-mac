@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import SwiftUI
+import Observation
+import CassiniLibrary
+
+@MainActor enum RecordingPreferences {
+    static var defaults: UserDefaults {
+        #if DEBUG
+        if RecordingFixture.enabled, let id = LibraryLaunchContext.argument("-CassiniCaptureID") {
+            return UserDefaults(suiteName: "com.codemyriad.cassini-mac.capture-fixture." + id)!
+        }
+        #endif
+        return .standard
+    }
+    static var skipFirst: Bool { defaults.bool(forKey: "CassiniSkipRecordFirst") }
+}
+
+@MainActor @Observable final class RecordCoordinator {
+    static let shared = RecordCoordinator()
+    var showingFirst = false
+    private var parent = LibraryLaunchContext.current.root
+    func request(parent: URL) {
+        let recorder = RecordingController.shared
+        if recorder.isRecording { recorder.stop(); return }
+        guard recorder.canStart else { return }
+        self.parent = parent
+        recorder.prepareDiskInfo(parent: parent)
+        if RecordingPreferences.skipFirst { begin() }
+        else { showingFirst = true }
+    }
+    func confirm() { showingFirst = false; DispatchQueue.main.async { self.begin() } }
+    private func begin() { MeetingNavigation.shared.back(); let parent = parent; Task { await RecordingController.shared.start(parent: parent) } }
+}
+
+struct RecordFirstView: View {
+    @State private var skip = RecordingPreferences.skipFirst
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
+            if let line = RecordingController.shared.diskLine { Text(line).foregroundStyle(.orange) }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(UXText.text("recordFirst.responsibility")).lineSpacing(5)
+                Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip).toggleStyle(.checkbox).font(.system(size: 11.5)).foregroundStyle(.secondary)
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 16) {
+                Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(.secondary)
+                source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.description", caption: "recordFirst.mic.caption")
+                Divider()
+                source(icon: "display", title: "recordFirst.sound.title", description: "recordFirst.sound.description", caption: "recordFirst.sound.caption")
+            }
+            HStack(spacing: 10) {
+                Spacer()
+                Button(UXText.text("common.notNow")) { RecordCoordinator.shared.showingFirst = false }
+                    .buttonStyle(.plain).padding(.horizontal, 18).frame(height: 36).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
+                    .keyboardShortcut(.cancelAction)
+                Button { RecordCoordinator.shared.confirm() } label: {
+                    HStack(spacing: 8) { Circle().fill(.white).frame(width: 9, height: 9); Text(UXText.text("recordFirst.start")).fontWeight(.semibold) }
+                        .padding(.horizontal, 18).frame(height: 36).foregroundStyle(.white).background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 6))
+                }.buttonStyle(.plain).keyboardShortcut(.defaultAction).accessibilityIdentifier("record-first-start")
+            }.padding(.top, 8)
+        }.font(.system(size: 13)).padding(28).frame(width: 520)
+            .onChange(of: skip) { _, value in RecordingPreferences.defaults.set(value, forKey: "CassiniSkipRecordFirst") }
+            .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("recordFirst.title"))
+    }
+    private func source(icon: String, title: String, description: String, caption: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon).frame(width: 36, height: 36).background(Color.secondary.opacity(0.07), in: Circle()).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(UXText.text(title)).fontWeight(.semibold)
+                Text(UXText.text(description)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct LiveRecordingPill: View {
+    let started: Date
+    let microphone: Float
+    let output: Float
+    var body: some View {
+        TimelineView(.periodic(from: started, by: 1)) { timeline in
+            HStack(spacing: 8) {
+                Circle().fill(LibraryTheme.red).frame(width: 9, height: 9)
+                Text(LibraryFormat.liveBadge(Int64(max(0, timeline.date.timeIntervalSince(started)) * 1000))).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
+                VStack(spacing: 4) {
+                    meter(microphone, label: "common.yourMicrophone")
+                    meter(output, label: "recordFirst.sound.title")
+                }.frame(width: 30)
+                Button(UXText.text("common.stop")) { RecordingController.shared.stop() }
+                    .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 10).frame(height: 26)
+                    .background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 5)).accessibilityIdentifier("recording-stop")
+            }.padding(.horizontal, 10).frame(height: 34).background(LibraryTheme.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+    private func meter(_ level: Float, label: String) -> some View {
+        GeometryReader { geometry in
+            Capsule().fill(LibraryTheme.red.opacity(0.15))
+                .overlay(alignment: .leading) { Capsule().fill(LibraryTheme.red.opacity(0.7)).frame(width: geometry.size.width * Double(max(0, min(1, level)))) }
+        }.frame(height: 4).accessibilityRepresentation {
+            ProgressView(value: Double(max(0, min(1, level))))
+                .accessibilityLabel(UXText.text(label))
+        }
+    }
+}

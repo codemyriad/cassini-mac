@@ -9,6 +9,7 @@ struct CassiniApp: App {
 
     var body: some Scene {
         Window(UXText.text("library.title"), id: "library") { LibraryView() }
+            .defaultLaunchBehavior(.presented)
             .defaultSize(width: 1120, height: 720)
             .windowToolbarStyle(.unified)
             .commands { AppCommands() }
@@ -17,8 +18,6 @@ struct CassiniApp: App {
             if let route { LegacyDocumentView(url: route.url) }
         }.defaultSize(width: 1280, height: 780)
 
-        Window("Recording", id: "recording") { RecordingView() }
-            .defaultSize(width: 680, height: 760)
     }
 }
 

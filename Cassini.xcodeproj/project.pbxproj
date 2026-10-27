@@ -32,6 +32,7 @@
 		66D88998A0953337261A8C61 /* UX in Resources */ = {isa = PBXBuildFile; fileRef = FFDAA113CF52CBA710233AC3 /* UX */; };
 		68278762F3B55EA7F2FB4B42 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC01E1B7B594D265434100B /* SidebarView.swift */; };
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
+		73356EFFDF01D974F26825A6 /* RecordFirstView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EE191DCB541B08F4D08855 /* RecordFirstView.swift */; };
 		73430AD2E1F30C774BD10517 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC82AC94B942EF58DB6679 /* Commands.swift */; };
 		75CD3E441B477E26E2D33504 /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40168E838DC5368995A71BB6 /* SummaryView.swift */; };
 		774E8A72ECF24F17C054463D /* RecordingConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */; };
@@ -42,8 +43,9 @@
 		8F81CB90D10877C15C1C85E4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202F303D76A9CA142F725248 /* PreviewViewController.swift */; };
 		9DA6B8CE06B604EA48E553F3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884DDBCFE2CA6B77E53BCC76 /* main.swift */; };
 		9E41F9238C947BD499DCA591 /* CassiniPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = E0ABF1926525946F2D0642F1 /* CassiniPlayback */; };
-		A6B859DA323763AB43D52A85 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13BC99CBCC0BCA4FFF80043 /* RecordingView.swift */; };
 		AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128F0DA36A8F1649E4BFACB /* PlayerController.swift */; };
+		BBA405927990B28446051D29 /* RecordingInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */; };
+		C455EC9E42F5F34E0DBA1FE6 /* RecordingDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */; };
 		C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */; };
 		CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDC2D28CF9C48F3E7198A41F /* Quartz.framework */; };
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
@@ -110,12 +112,15 @@
 		202F303D76A9CA142F725248 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
+		34EE191DCB541B08F4D08855 /* RecordFirstView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordFirstView.swift; sourceTree = "<group>"; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		5CC01E1B7B594D265434100B /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		5F5113D3C4C431936150BE52 /* MeetingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingView.swift; sourceTree = "<group>"; };
+		63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingInputs.swift; sourceTree = "<group>"; };
 		71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		7480882332EEE8C270AB671F /* TranscriptTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTextView.swift; sourceTree = "<group>"; };
+		76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDiskWatch.swift; sourceTree = "<group>"; };
 		7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNavigation.swift; sourceTree = "<group>"; };
 		858A17B830285C2819946691 /* RecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSelfTest.swift; sourceTree = "<group>"; };
 		85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingConfirmation.swift; sourceTree = "<group>"; };
@@ -129,6 +134,7 @@
 		B0E7443641B578BD53031A57 /* DocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentView.swift; sourceTree = "<group>"; };
 		B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptBuilder.swift; sourceTree = "<group>"; };
 		BAFFFBC8704BE23F2A1D6CFF /* TranscriptExportPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptExportPanel.swift; sourceTree = "<group>"; };
+		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		BF44CFE16B2926034520B457 /* WhistleSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhistleSelfTest.swift; sourceTree = "<group>"; };
 		C2AF16181F491E3932E02CCA /* CassiniWhistleWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniWhistleWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		C66314F1ADDF8D8554337717 /* LibraryBoards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryBoards.swift; sourceTree = "<group>"; };
@@ -136,10 +142,8 @@
 		D295CC7B2C3B5C3830DE45C0 /* AudioProcessTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProcessTap.swift; sourceTree = "<group>"; };
 		DB5F13A0E9BCCB3758F8E8FC /* SessionPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPlaybackController.swift; sourceTree = "<group>"; };
 		DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyDocumentModel.swift; sourceTree = "<group>"; };
-		E13BC99CBCC0BCA4FFF80043 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		E284419A62A77AD5FD73134E /* Cassini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cassini.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CassiniQuickLook.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		F6CC5AF01F2B185E4E45B0DF /* CassiniApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniApp.swift; sourceTree = "<group>"; };
 		F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowScreenshots.swift; sourceTree = "<group>"; };
 		F7FE2A1C7242DF314538998C /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fixtures; path = UITests/Fixtures; sourceTree = SOURCE_ROOT; };
@@ -245,9 +249,11 @@
 			isa = PBXGroup;
 			children = (
 				D295CC7B2C3B5C3830DE45C0 /* AudioProcessTap.swift */,
+				34EE191DCB541B08F4D08855 /* RecordFirstView.swift */,
 				24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */,
+				76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */,
+				63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */,
 				858A17B830285C2819946691 /* RecordingSelfTest.swift */,
-				E13BC99CBCC0BCA4FFF80043 /* RecordingView.swift */,
 			);
 			path = Recording;
 			sourceTree = "<group>";
@@ -614,10 +620,12 @@
 				ECF1884477A253784A867E2C /* MeetingView.swift in Sources */,
 				632D3A78813971C44A184A9C /* PlayerBar.swift in Sources */,
 				AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */,
+				73356EFFDF01D974F26825A6 /* RecordFirstView.swift in Sources */,
 				774E8A72ECF24F17C054463D /* RecordingConfirmation.swift in Sources */,
 				7DEEB1101C8F4A2EA8DAD64C /* RecordingController.swift in Sources */,
+				C455EC9E42F5F34E0DBA1FE6 /* RecordingDiskWatch.swift in Sources */,
+				BBA405927990B28446051D29 /* RecordingInputs.swift in Sources */,
 				39E0B15ED7A1BC02093C216F /* RecordingSelfTest.swift in Sources */,
-				A6B859DA323763AB43D52A85 /* RecordingView.swift in Sources */,
 				3A376D5042C616DB3FDC923F /* ScreenshotFixture.swift in Sources */,
 				44CFFFC71378B43F6E26F87D /* SessionModel.swift in Sources */,
 				8180537AAB57C31634363BE9 /* SessionPlaybackController.swift in Sources */,

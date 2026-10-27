@@ -1,156 +1,155 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import AVFoundation
+import CassiniLibrary
 import CassiniRecording
 import Observation
 
-@MainActor @Observable
-final class RecordingController {
+@MainActor @Observable final class RecordingController {
     static let shared = RecordingController()
-    enum Output: String, CaseIterable { case none = "No output audio", application = "Selected processes", system = "All system audio" }
-    var output: Output = .system
-    var includeMicrophone = true
-    var processes: [AudioProcess] = []
-    var selectedProcesses: Set<UInt32> = []
-    var title = "Meeting"
-    private(set) var isRecording = false
-    private(set) var isStarting = false
+    enum Phase { case idle, starting, recording, saving }
+    private(set) var phase: Phase = .idle
+    var isRecording: Bool { phase == .recording }
+    var isStarting: Bool { phase == .starting }
+    var isSaving: Bool { phase == .saving }
+    var canStart: Bool { phase == .idle }
+    private(set) var diskMinutes: Int?
+    private(set) var diskStopped = false
+    @ObservationIgnored private let diskWatch = RecordingDiskWatch()
+    var diskLine: String? { diskStopped ? UXText.text("errors.diskStopped.line") : diskMinutes.map { UXText.text("errors.diskLow.line", ["n":String($0)]) } }
+    func prepareDiskInfo(parent: URL) {
+        diskStopped = false; RecordingDiskWatch.clear()
+        let minutes = RecordingDiskWatch.inspect(parent, rate: 48000 * 3 * 2)?.minutesLeft
+        diskMinutes = minutes.flatMap { $0 < 10 ? $0 : nil }
+    }
+    var title = UXText.text("library.untitled")
     private(set) var startedAt: Date?
     private(set) var directory: URL?
+    private(set) var lastCompletedDirectory: URL?
     private(set) var problem: String?
     private(set) var levels: [String: Float] = [:]
     private(set) var warnings: [String] = []
     private(set) var waitingForAudio = false
-    private var engine: AVAudioEngine?
-    private var tap: AudioProcessTap?
-    private var sink: RecordingSink?
-    private var scopedParent: URL?
-    private var configurationObserver: NSObjectProtocol?
-    private var statusTimer: Timer?
-    private var startGeneration = 0
+    @ObservationIgnored var onSaved: ((URL) -> Void)?
+    @ObservationIgnored private(set) var finishTask: Task<Void, Never>?
+    @ObservationIgnored private var inputs: (any RecordingInputs)?
+    @ObservationIgnored private var sink: RecordingSink?
+    @ObservationIgnored private var statusTimer: Timer?
+    @ObservationIgnored private var generation = 0
 
-    var canStart: Bool {
-        !isRecording && !isStarting && (includeMicrophone || output != .none)
-            && (output != .application || !selectedProcesses.isEmpty)
-    }
-
-    func refreshProcesses() {
-        do {
-            processes = try AudioProcessTap.processes()
-            selectedProcesses.formIntersection(Set(processes.map(\.id)))
-        } catch { problem = error.localizedDescription }
-    }
-
-    func start() async {
-        SessionPlaybackController.stopAll(); PlayerController.pauseActive()
+    func start(parent: URL) async {
         guard canStart else { return }
-        problem = nil
-        warnings = []
-        let panel = NSOpenPanel()
-        panel.title = "Choose where to save the recording"
-        panel.prompt = "Record Here"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let parent = panel.url else { return }
-        startGeneration += 1
-        let attempt = startGeneration
-        isStarting = true
-        defer { if startGeneration == attempt { isStarting = false } }
-        if parent.startAccessingSecurityScopedResource() { scopedParent = parent }
+        SessionPlaybackController.stopAll(); PlayerController.pauseActive()
+        generation += 1
+        let attempt = generation
+        problem = nil; warnings = []; directory = nil; lastCompletedDirectory = nil
+        phase = .starting
+        let inputs: any RecordingInputs
+        #if DEBUG
+        if RecordingFixture.enabled { inputs = HostedRecordingInputs() }
+        else { inputs = NativeRecordingInputs() }
+        #else
+        inputs = NativeRecordingInputs()
+        #endif
+        self.inputs = inputs
         do {
-            if includeMicrophone {
-                let permitted = await AVCaptureDevice.requestAccess(for: .audio)
-                guard startGeneration == attempt else { return }
-                guard permitted else { throw RecordingError.invalid("Allow microphone access in System Settings → Privacy & Security → Microphone, then try again.") }
+            #if DEBUG
+            if RecordingFixture.enabled {
+                guard let expected = RecordingFixture.root, expected.standardizedFileURL == parent.standardizedFileURL else { throw CocoaError(.fileWriteNoPermission) }
             }
+            #endif
+            try await inputs.authorize()
+            guard generation == attempt else { inputs.stop(); return }
+            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let session = try RecordingSession(parent: parent, title: title, source: "macos")
-            directory = session.directory
-            let recordingDirectory = session.directory
-            let sink = RecordingSink(session: session) { message in
-                let directory = recordingDirectory
+            try MeetingMetadataWriter(directory: session.directory, id: session.manifest.id).createIfNeeded()
+            directory = session.directory; startedAt = session.manifest.createdAt
+            let writer: any RecordingSinkWriter
+            #if DEBUG
+            writer = RecordingFixture.enabled ? HostedFinalizationWriter(session) : session
+            #else
+            writer = session
+            #endif
+            let sink = RecordingSink(session: writer) { [weak self] message in
                 Task { @MainActor in
-                    guard RecordingController.shared.directory == directory else { return }
-                    RecordingController.shared.stop(problem: message)
+                    guard let self, self.generation == attempt, self.phase != .saving else { return }
+                    self.stop(problem: message)
                 }
             }
             self.sink = sink
-            startedAt = Date()
-            if output != .none {
-                let tap = AudioProcessTap()
-                self.tap = tap
-                let label = output == .system ? "System output" : processes.filter { selectedProcesses.contains($0.id) }.map(\.name).joined(separator: ", ")
-                let kind = output == .system ? "system" : "application"
-                let directory = session.directory
-                _ = try tap.start(processes: output == .system ? nil : Array(selectedProcesses), onFormatChange: {
-                    Task { @MainActor in
-                        guard RecordingController.shared.directory == directory else { return }
-                        RecordingController.shared.stop(problem: "The output audio format changed. Start a new recording with the current device.")
-                    }
-                }) { buffer, time in
-                    sink.receive(buffer, hostTime: time, id: "output", label: label, kind: kind)
+            try inputs.start(sink: sink) { [weak self] message in
+                Task { @MainActor in
+                    guard let self, self.generation == attempt, self.phase != .saving else { return }
+                    self.stop(problem: message)
                 }
             }
-            if includeMicrophone {
-                let engine = AVAudioEngine()
-                self.engine = engine
-                let input = engine.inputNode
-                let format = input.outputFormat(forBus: 0)
-                guard format.sampleRate > 0, (1...64).contains(format.channelCount) else {
-                    throw RecordingError.invalid("No supported microphone is available. Choose an input in Sound settings. Multichannel inputs record channels 1 and 2.")
-                }
-                input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, time in
-                    sink.receive(buffer, hostTime: time.isHostTimeValid ? time.hostTime : 0,
-                                 id: "microphone", label: "Microphone", kind: "microphone")
-                }
-                try engine.start()
-                configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
-                    Task { @MainActor in
-                        guard RecordingController.shared.directory == recordingDirectory else { return }
-                        RecordingController.shared.stop(problem: "The microphone configuration changed. Start a new recording with the current input.")
-                    }
-                }
+            phase = .recording
+            diskWatch.start(directory: session.directory) { [weak self] budget in
+                guard let self, self.isRecording else { return }
+                self.diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
+                if budget.shouldStop { self.diskStopped = true; RecordingDiskWatch.clear(); self.stop() }
+                if let line = self.diskLine { RecordingDiskWatch.showOnce(line) }
             }
-            isRecording = true
             statusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, let status = self.sink?.status() else { return }
-                    self.levels = status.levels
-                    self.warnings = status.warnings
-                    if status.droppedMs > 0 { self.warnings.append("Audio lost during a disk stall: \(Int(status.droppedMs.rounded())) ms. Gaps will contain silence.") }
-                    let expecting = self.output == .none ? ["microphone"] : (self.includeMicrophone ? ["output", "microphone"] : ["output"])
-                    self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5
-                        && expecting.contains { status.frames[$0, default: 0] == 0 }
+                    self.levels = status.levels; self.warnings = status.warnings
+                    self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5 && ["microphone", "output"].contains { status.frames[$0, default: 0] == 0 }
                 }
             }
-        } catch { stop(problem: error.localizedDescription) }
+        } catch { guard generation == attempt else { return }; stop(problem: error.localizedDescription) }
     }
-
     func stop(problem: String? = nil) {
-        guard sink != nil || isStarting else { return }
-        startGeneration += 1; isStarting = false
+        guard phase == .starting || phase == .recording else { return }
+        generation += 1
+        let attempt = generation
         self.problem = problem
-        statusTimer?.invalidate()
-        statusTimer = nil
-        levels = [:]
-        waitingForAudio = false
-        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver); self.configurationObserver = nil }
-        if let engine {
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
-            self.engine = nil
+        if !diskStopped { RecordingDiskWatch.clear() }
+        diskWatch.stop()
+        statusTimer?.invalidate(); statusTimer = nil
+        inputs?.stop(); inputs = nil
+        levels = [:]; waitingForAudio = false
+        let sink = self.sink; self.sink = nil
+        guard let sink, let directory else {
+            phase = .idle
+            if let problem { present(problem) }
+            return
         }
-        tap?.stop()
-        tap = nil
-        do { try sink?.finish(problem: problem) }
-        catch { self.problem = error.localizedDescription }
-        sink = nil
-        isRecording = false
-        scopedParent?.stopAccessingSecurityScopedResource()
-        scopedParent = nil
+        phase = .saving
+        finishTask = Task { [weak self] in
+            var failure: String?
+            do { try await Task.detached(priority: .userInitiated) { try sink.finish(problem: problem) }.value }
+            catch { failure = error.localizedDescription }
+            guard let self, self.generation == attempt else { return }
+            self.problem = problem ?? failure
+            self.lastCompletedDirectory = directory
+            self.phase = .idle; self.finishTask = nil
+            self.onSaved?(directory)
+            if let issue = self.problem { self.present(issue) }
+        }
     }
+    func stopAndWait() async { stop(); await finishTask?.value }
+    private func present(_ message: String) {
+        NSApp.presentError(NSError(domain: "CassiniRecording", code: 1, userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+}
 
-    func reveal() {
-        if let directory { NSWorkspace.shared.activateFileViewerSelecting([directory]) }
+enum RecordingFixture {
+    static var enabled: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && CommandLine.arguments.contains("--fixture-library-recording")
+        #else
+        return false
+        #endif
+    }
+    static var root: URL? {
+        #if DEBUG
+        guard enabled, let key = LibraryLaunchContext.argument("-CassiniCaptureID"), UUID(uuidString: key) != nil else { return nil }
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + key)
+        try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        return parent.appendingPathComponent("root")
+        #else
+        return nil
+        #endif
     }
 }

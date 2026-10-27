@@ -9,6 +9,87 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testRecordFirstBoard() throws {
+        let app = try launch("record-first", fixture: "first-record"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.sheets.staticTexts["Before your first recording"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(window.sheets.checkBoxes["Don’t show again"].exists)
+        XCTAssertTrue(window.sheets.buttons["record-first-start"].exists)
+        XCTAssertTrue(text("macOS asks you to allow this next.", in: window.sheets.firstMatch))
+        XCTAssertTrue(text("macOS asks once more, for Screen & System Audio Recording.", in: window.sheets.firstMatch))
+        let explanation = window.sheets.staticTexts["Cassini also records the sound of your meeting apps so the other participants are on the recording."]
+        XCTAssertTrue(explanation.exists)
+        XCTAssertGreaterThan(explanation.frame.height, 28, "The complete explanation must wrap, rather than truncate")
+        XCTAssertEqual(window.toolbars.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Library", "Library")).count, 1)
+        capture(window, name: "record-first")
+        XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
+        XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
+        window.sheets.buttons["Not now"].click()
+        XCTAssertFalse(window.buttons["recording-stop"].exists)
+    }
+    @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
+        let id = UUID().uuidString
+        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout: 10))
+        window.sheets.buttons["record-first-start"].click()
+        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertEqual(app.windows.count, 1)
+        XCTAssertFalse(app.windows["open-panel"].exists)
+        let mic = window.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Your microphone")).firstMatch
+        let output = window.progressIndicators["This computer’s sound"]
+        func value(_ meter: XCUIElement) -> Double {
+            (meter.value as? NSNumber)?.doubleValue ?? Double(meter.value as? String ?? "") ?? .nan
+        }
+        let meterReady = NSPredicate { _, _ in abs(value(mic) - 0.12) < 0.005 && abs(value(output) - 0.38) < 0.005 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: meterReady, object: nil)], timeout: 5), .completed, window.debugDescription)
+        window.buttons["recording-stop"].click()
+        XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
+        let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed, window.debugDescription)
+        XCTAssertFalse(window.buttons["recording-stop"].exists)
+        XCTAssertFalse(app.windows["open-panel"].exists)
+    }
+    @MainActor func testRecordFirstPreferenceSurvivesRelaunch() throws {
+        let extra = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString]
+        var app = try launch("first-run", fixture: "empty", extra: extra)
+        defer { if app.state != .notRunning { app.terminate() } }
+        var window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20))
+        window.buttons["first-run-record"].click()
+        let checkbox = window.sheets.checkBoxes["Don’t show again"]
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 10)); checkbox.click()
+        window.sheets.buttons["Not now"].click()
+        app.terminate()
+        app = try launch("first-run", fixture: "empty", extra: extra)
+        window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20))
+        app.typeKey("r", modifierFlags: .command)
+        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(window.sheets.firstMatch.exists)
+        app.typeKey("r", modifierFlags: .command)
+        let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed)
+    }
+    @MainActor func testDiskReserveStopsAndKeepsTheRecording() throws {
+        let extra = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString,
+                     "-CassiniDiskFree", "1073741824", "-CassiniDiskTotal", "10000000000"]
+        let app = try launch("first-run", fixture: "empty", extra: extra); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.staticTexts["Only 0 minutes of space left."].waitForExistence(timeout: 10))
+        XCTAssertFalse(window.sheets.buttons["Choose another folder"].exists)
+        window.sheets.buttons["record-first-start"].click()
+        let line = "Cassini stopped recording to keep some space free on this computer. Everything up to now is saved."
+        XCTAssertTrue(window.staticTexts[line].waitForExistence(timeout: 10), app.debugDescription)
+        let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed)
+        XCTAssertFalse(window.buttons["recording-stop"].exists)
+    }
     @MainActor func testMeetingBoard() throws {
         let app = try launch("meeting", fixture: "main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
@@ -146,7 +227,12 @@ final class LibraryBoards: XCTestCase {
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
         app.launchArguments += extra
-        app.launch(); return app
+        app.launch()
+        if extra.contains("--fixture-library-recording"), !app.windows.firstMatch.waitForExistence(timeout: 2) {
+            app.menuBars.menuBarItems["Window"].click()
+            app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
+        }
+        return app
     }
     @MainActor private func board(_ name: String, fixture: String) throws {
         let app = try launch(name, fixture: fixture); defer { app.terminate() }

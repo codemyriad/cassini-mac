@@ -18,6 +18,7 @@ import AppKit
         #endif
         RecordingController.shared.stop()
     }
+    static func stopAndWait() async { stop(); await RecordingController.shared.finishTask?.value }
     static func ask(window: NSWindow?, completion: @escaping (Bool) -> Void) {
         let alert = NSAlert()
         alert.messageText = UXText.text("confirm.recordingRunning.title")
@@ -47,12 +48,12 @@ import AppKit
             guard !asking else { return false }; asking = true
             RecordingConfirmation.ask(window: sender) { [weak self, weak sender] stop in
                 guard let self, let sender else { return }
-                self.asking = false
-                if stop { RecordingConfirmation.stop() }
-                self.approved = true
-                // Let AppKit finish detaching the confirmation sheet before
-                // asking SwiftUI's window delegate to close its parent.
-                DispatchQueue.main.async { sender.performClose(nil) }
+                Task { @MainActor in
+                    if stop { await RecordingConfirmation.stopAndWait() }
+                    self.asking = false; self.approved = true
+                    // Finish saving and let AppKit detach the sheet before close.
+                    DispatchQueue.main.async { sender.performClose(nil) }
+                }
             }
             return false
         }

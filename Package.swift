@@ -24,7 +24,7 @@ let package = Package(
         .executableTarget(name: "cassini-whistle-worker", dependencies: ["CassiniWhistle"]),
         .testTarget(name: "CassiniWhistleTests", dependencies: ["CassiniWhistle"], resources: [.copy("Fixtures")]),
         .testTarget(name: "CassiniPlaybackTests", dependencies: ["CassiniPlayback", "CassiniLibrary"]),
-        .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors")]),
+        .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers", "CassiniRecording"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors")]),
         .target(name: "CassiniRecording", dependencies: ["CassiniKit"]),
         .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording"]),
         .testTarget(name: "CassiniRecordingTests", dependencies: ["CassiniRecording"]),

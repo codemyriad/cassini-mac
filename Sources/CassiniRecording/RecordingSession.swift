@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
 
@@ -46,7 +47,7 @@ public final class RecordingSession {
 
     public init(parent: URL, title: String, source: String) throws {
         let id = UUID()
-        directory = parent.appendingPathComponent("Recording-\(id.uuidString)", isDirectory: true)
+        directory = parent.appendingPathComponent("Recording-\(id.uuidString.lowercased())", isDirectory: true)
         manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))),
                                      source: source, state: "recording", tracks: [])
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
