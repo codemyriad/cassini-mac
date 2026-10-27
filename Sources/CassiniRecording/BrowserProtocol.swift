@@ -87,6 +87,7 @@ public final class BrowserRecordingHost {
             }
             let label = try string("label", code: "source") ?? kind
             let labelSource = try string("labelSource", code: "source") ?? "browser"
+            guard ["browser", "dom"].contains(labelSource) else { throw BrowserProtocolError("source", "Invalid browser label provenance.") }
             guard session.manifest.tracks.count < 64 else { throw BrowserProtocolError("limit", "Too many audio sources.") }
             try write("source") { try session.addTrack(id: id, label: label, kind: kind, sampleRate: rate, channels: channels, labelSource: labelSource) }
             sequences[id] = 0

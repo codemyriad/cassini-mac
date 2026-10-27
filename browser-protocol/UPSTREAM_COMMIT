@@ -1,6 +1,7 @@
-tree 62685d35b3a2dfc88e65ac86fcbe3d2198c5524d
-parent 14271ee2118a763325512ec7572a9385ed7709c6
-author Silvio Tomatis <silviot@gmail.com> 1793103212 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793103212 +0100
+tree e2760a0367befd2439e366ac113d2f693537f463
+parent 6808e5dbdc0689586ca0e5c66efc539f5dc91d4c
+parent 4985d6ef7e9f1f36494d08528024dabad978390b
+author Silvio Tomatis <silviot@gmail.com> 1793108959 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793108959 +0100
 
-M2: draft additive DOM label provenance contract and vectors
+M2 review: keep draft on strict M0 and limit browser label provenance

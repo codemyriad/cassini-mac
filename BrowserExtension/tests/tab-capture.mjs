@@ -1,3 +1,4 @@
+import { workerDeathDuringRecording } from '../../browser-protocol/scenarios/worker-recovery.mjs';
 import { installZoomLikeAudio } from '../../browser-protocol/scenarios/product-topologies.mjs';
 import { saveFailure } from './artifacts.mjs';
 // Optional integration test. See README.md for the temporary Playwright setup.
@@ -14,7 +15,9 @@ const server = createServer((_request, response) => {
   response.end('<!doctype html><title>Cassini synthetic extension test</title><button>Allow audio</button>');
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const profile = await mkdtemp(path.join(os.tmpdir(), 'cassini-tab-'));
+const profileRoot = process.env.CASSINI_TEST_PROFILE_ROOT || os.tmpdir();
+await mkdir(profileRoot, { recursive: true });
+const profile = await mkdtemp(path.join(profileRoot, 'cassini-tab-'));
 const launch = extra => chromium.launchPersistentContext(profile, {
   channel: 'chromium', headless: true, ignoreDefaultArgs: ['--mute-audio'],
   args: [`--disable-extensions-except=${root}/BrowserExtension`,
@@ -82,7 +85,7 @@ try {
   await popup.waitForFunction(() => !document.querySelector('#tracks').hidden);
   const after = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   assert.equal(after.recording, false);
-  assert.equal(after.message, 'Recording saved locally.');
+  assert.equal(after.message, 'Saved on this computer.');
   assert.equal(during.tracks, 1);
   const manifest = JSON.parse(await readFile(path.join(savedPath, 'session.json')));
   assert.equal(manifest.state, 'completed');
@@ -105,7 +108,10 @@ try {
   assert.ok(power(990) > power(660) * 100, 'spectral identity preserved');
   assert.equal(await worker.evaluate(async () => (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length > 0), false);
   assert.deepEqual(errors, []);
-  console.log('PASS: tabCapture → offscreen AudioWorklet → Chrome Native Messaging → stereo WAV; 990 Hz verified and offscreen cleaned up');
+  await rm(savedPath, { recursive: true, force: true }); savedPath = null;
+  const crashed = await workerDeathDuringRecording({ context, meetingPage: page, popup, extensionId, mode: 'tab' });
+  await rm(crashed.path, { recursive: true, force: true });
+  console.log('PASS: tabCapture → offscreen AudioWorklet → Chrome Native Messaging → stereo WAV; 990 Hz verified; worker death retains audio and closes offscreen capture');
 } catch (error) {
   await saveFailure('tab-capture', error, savedPath);
   throw error;

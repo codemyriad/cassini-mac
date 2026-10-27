@@ -1,13 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-if [[ "${1:-}" == "--uninstall" ]]; then
-  python3 "$repo_root/scripts/register-browser-host.py" --uninstall
-  exit
-fi
+mode="--install-extension"
 extension_id="${1:-}"
-if [[ ! "$extension_id" =~ ^[a-p]{32}$ ]]; then
-  echo "Usage: $0 <32-character extension ID> [Cassini.app] | --uninstall" >&2
+if [[ "$extension_id" == "--uninstall" ]]; then
+  mode="--uninstall-extension"
+elif [[ ! "$extension_id" =~ ^[a-p]{32}$ ]]; then
+  echo "Usage: $0 <32-character extension ID> [Cassini.app] | --uninstall [Cassini.app]" >&2
   exit 1
 fi
 if [[ -n "${2:-}" ]]; then
@@ -16,12 +15,20 @@ if [[ -n "${2:-}" ]]; then
 else
   cd "$repo_root"
   swift build -c release --product cassini-browser-host
-  host_dir="$HOME/Library/Application Support/Cassini/BrowserHost"
-  mkdir -p "$host_dir"
-  chmod 700 "$host_dir"
-  cp .build/release/cassini-browser-host "$host_dir/cassini-browser-host"
-  chmod 700 "$host_dir/cassini-browser-host"
-  codesign --force --sign - "$host_dir/cassini-browser-host"
-  executable="$host_dir/cassini-browser-host"
+  if [[ "$mode" == "--uninstall-extension" ]]; then
+    executable="$repo_root/.build/release/cassini-browser-host"
+  else
+    host_dir="$HOME/Library/Application Support/Cassini/BrowserHost"
+    mkdir -p "$host_dir"
+    chmod 700 "$host_dir"
+    cp .build/release/cassini-browser-host "$host_dir/cassini-browser-host"
+    chmod 700 "$host_dir/cassini-browser-host"
+    codesign --force --sign - "$host_dir/cassini-browser-host"
+    executable="$host_dir/cassini-browser-host"
+  fi
 fi
-python3 "$repo_root/scripts/register-browser-host.py" "$extension_id" "$executable"
+if [[ "$mode" == "--uninstall-extension" ]]; then
+  exec "$executable" "$mode"
+else
+  exec "$executable" "$mode" "$extension_id"
+fi

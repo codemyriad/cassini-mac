@@ -78,10 +78,10 @@ public struct JSONParser {
     }
 
     mutating func value(depth: Int) throws -> JSON {
-        guard depth < JSONParser.maxDepth else { throw fail("nesting deeper than \(JSONParser.maxDepth)") }
         guard i < bytes.count else { throw fail("unexpected end") }
         switch bytes[i] {
         case UInt8(ascii: "{"):
+            guard depth < JSONParser.maxDepth else { throw fail("nesting deeper than \(JSONParser.maxDepth)") }
             i += 1
             var members: [(String, JSON)] = []
             var seen = Set<String>()
@@ -103,6 +103,7 @@ public struct JSONParser {
                 throw fail("expected , or }")
             }
         case UInt8(ascii: "["):
+            guard depth < JSONParser.maxDepth else { throw fail("nesting deeper than \(JSONParser.maxDepth)") }
             i += 1
             var items: [JSON] = []
             skipWS()

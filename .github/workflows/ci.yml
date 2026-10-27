@@ -29,6 +29,11 @@ jobs:
         run: python3 browser-protocol/verify.py --pinned BrowserExtension
       - name: Shared native-session fixture
         run: python3 browser-protocol/conformance/check-native-fixture.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install strict conformance dependencies
+        run: python3 -m pip install -r browser-protocol/requirements-test.txt
       - name: Browser host conformance
         run: python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
       - uses: actions/setup-node@v4
@@ -79,9 +84,10 @@ jobs:
             -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES -quiet build
       - name: Package
         run: |
-          cd build/Build/Products/Release
-          ditto -c -k --keepParent Cassini.app Cassini.zip
+          python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
       - uses: actions/upload-artifact@v5
         with:
           name: Cassini-${{ github.sha }}
-          path: build/Build/Products/Release/Cassini.zip
+          path: |
+            build/Cassini.zip
+            build/Cassini.zip.sha256
