@@ -20,7 +20,7 @@ def visit(value):
             visit(child)
 visit(manifest)
 for name in ("current-window", "current-window-sheet"):
-    matches = [entry for entry in entries if entry.get("suggestedHumanReadableName", "").startswith(name + ".")
+    matches = [entry for entry in entries if entry.get("suggestedHumanReadableName", "").startswith((name + ".", name + "_"))
                or entry.get("suggestedHumanReadableName") == name]
     assert len(matches) == 1, (name, entries)
     data = (root / matches[0]["exportedFileName"]).read_bytes()

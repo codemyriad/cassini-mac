@@ -49,6 +49,11 @@ jobs:
         with:
           name: window-screenshots-${{ github.sha }}
           path: |
-            build/window-screenshots
+            build/window-screenshots/*.png
+            build/window-screenshots/manifest.json
             build/window-tests.log
-            build/WindowScreenshots.xcresult
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: window-screenshot-diagnostics-${{ github.sha }}
+          path: build/WindowScreenshots.xcresult

@@ -27,7 +27,8 @@ Do not run this UI suite on DrMeyers or the user's desktop.
 
 A local `xcodebuild ... build-for-testing` compiles the app and runner without
 launching either. Hosted workflow `ux-shot.yml` runs on `macos-15` with Xcode 16.4.
-The artifact includes the PNGs, export manifest, test log and xcresult bundle.
+The primary artifact includes the PNGs, export manifest and test log. Failed
+runs also upload the full xcresult bundle as a separate diagnostic artifact.
 
 ## Limits and rejected approaches
 
@@ -56,3 +57,13 @@ points. The failure video also exposed the 1024 × 768 hosted display: the reque
 captures the complete window. Future 1120 × 720 board comparisons will need a
 larger hosted display mode; this spike does not resize a screenshot to claim a
 match.
+
+## Hosted attempt 2
+
+Run [40547290346](https://github.com/codemyriad/cassini-mac/actions/runs/40547290346)
+passed both UI tests (including the sheet controls) and exported PNGs. The
+artifact verifier rejected Xcode's `_0_<UUID>.png` suffix on attachment names.
+The verifier now accepts both plain `.png` and Xcode's suffixed names while
+matching each requested attachment separately. The primary artifact excludes
+automatic XCTest video files to make PNG inspection quick; failure diagnostics
+retain the full xcresult.
