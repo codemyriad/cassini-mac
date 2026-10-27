@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
@@ -22,6 +24,77 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(library.exists)
             XCTAssertTrue(app.state == .runningForeground)
         }
+    }
+    @MainActor func testOpenAndFinderRoutingWithLibraryClosed() async throws {
+        let app = try launch("first-run", fixture: "empty"); defer { app.terminate() }
+        let library = app.windows["cassini-library-window"]
+        XCTAssertTrue(library.waitForExistence(timeout: 20))
+        library.buttons["_XCUI:CloseWindow"].click()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: library)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+        XCTAssertTrue(app.state == .runningForeground)
+        app.typeKey("o", modifierFlags: .command)
+        XCTAssertTrue(app.windows["open-panel"].waitForExistence(timeout: 5), app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
+        let cancelled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.windows["open-panel"])
+        XCTAssertEqual(XCTWaiter.wait(for: [cancelled], timeout: 5), .completed)
+        XCTAssertFalse(library.exists, app.debugDescription)
+        let fixture = try fixtureDirectory().appendingPathComponent("meeting.opus")
+        try await finderOpen(fixture)
+        let viewer = app.windows["cassini-legacy-window"]
+        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
+        try await finderOpen(fixture)
+        XCTAssertTrue(viewer.exists)
+        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
+        // Finder activation may also reopen the app's primary Library scene.
+        // The required behavior is delivering the file from the closed state.
+        viewer.buttons["_XCUI:CloseWindow"].click()
+        let viewerClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: viewer)
+        XCTAssertEqual(XCTWaiter.wait(for: [viewerClosed], timeout: 5), .completed)
+        try await finderOpen(fixture)
+        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
+    }
+    @MainActor func testReceivedReadAndPlayReuseOneViewer() throws {
+        let app = try launch("library", fixture: "main"); defer { app.terminate() }
+        let library = app.windows["cassini-library-window"]
+        let received = library.descendants(matching: .any).matching(identifier: "meeting-Received-a0000000-0000-4000-8000-000000000006").firstMatch
+        XCTAssertTrue(received.waitForExistence(timeout: 20), app.debugDescription)
+        received.click()
+        library.buttons["preview-read-transcript"].click()
+        let viewer = app.windows["cassini-legacy-window"]
+        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
+        // Bring the Library forward without closing the received-file viewer.
+        app.menuBars.menuBarItems["Window"].click()
+        app.menuItems["Library"].click()
+        library.buttons["preview-play"].click()
+        XCTAssertTrue(viewer.exists)
+        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
+    }
+    @MainActor func testFailedReadClosesLoadingViewer() throws {
+        let app = XCUIApplication(); defer { app.terminate() }
+        app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
+        // Legacy fixture routing intentionally points to a nonexistent file.
+        // That mode skips the real Library scanner and never starts playback.
+        let absent = try fixtureDirectory().appendingPathComponent("absent-fixture")
+        app.launchArguments = ["-CassiniScreenshot", "window", "-CassiniFixture", absent.path,
+                               "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
+                               "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB"]
+        app.launch()
+        let okay = app.dialogs.firstMatch.buttons["OK"]
+        XCTAssertTrue(okay.waitForExistence(timeout: 15), app.debugDescription)
+        okay.click()
+        let settled = NSPredicate { _, _ in app.progressIndicators.count == 0 && app.windows.count == 1 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 10), .completed, app.debugDescription)
+        XCTAssertTrue(app.windows["cassini-library-window"].exists)
+    }
+    @MainActor private func finderOpen(_ url: URL) async throws {
+        let appURL = try fixtureDirectory().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        XCTAssertEqual(appURL.pathExtension, "app")
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        _ = try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
     }
     @MainActor private func launch(_ name: String, fixture: String) throws -> XCUIApplication {
         let app = XCUIApplication()

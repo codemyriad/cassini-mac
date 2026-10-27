@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import CassiniKit
 import Observation
@@ -46,19 +47,22 @@ final class SessionModel {
     var focusSearchRequest = 0
 
     weak var window: NSWindow?
+    /// Retained through file decoding and player teardown, even after a window closes.
+    @ObservationIgnored var fileAccessLease: AnyObject?
     /// The transcript view's frame-rate subscriber: time in ms and the current word per speaker.
     @ObservationIgnored var transcriptSink: ((Int, [String: Int]) -> Void)?
     @ObservationIgnored private var lookupHint: [String: Int] = [:]
     @ObservationIgnored private var lastWords: [String: Int] = [:]
 
-    init(document: CassiniDocument, url: URL?) {
+    init(document: CassiniDocument, url: URL?, fileAccessLease: AnyObject? = nil) {
+        self.fileAccessLease = fileAccessLease
         file = document.file
         readError = document.readError
         fileURL = url
         manifest = document.file?.manifest
         let title = manifest?.meeting.title ?? url?.deletingPathExtension().lastPathComponent ?? "Recording"
         if let url {
-            player = PlayerController(url: url, durationMs: manifest?.meeting.durationMs ?? 0, title: title)
+            player = PlayerController(url: url, durationMs: manifest?.meeting.durationMs ?? 0, title: title, fileAccessLease: fileAccessLease)
         } else {
             player = nil
         }

@@ -10,6 +10,8 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
+            Button("Open…") { LegacyOpening.chooseDocuments() }
+                .keyboardShortcut("o", modifiers: .command)
             Button(UXText.text("common.record")) { SessionPlaybackController.stopAll(); openWindow(id: "recording") }
                 .keyboardShortcut("r", modifiers: .command)
         }

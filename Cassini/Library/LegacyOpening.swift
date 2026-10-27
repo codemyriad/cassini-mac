@@ -1,13 +1,68 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import CassiniKit
 import CassiniLibrary
 import SwiftUI
 
-struct LegacyRoute: Codable, Hashable { let url: URL; var autoplay = false }
+/// Scene identity contains no transport request, including in restoration data.
+struct LegacyRoute: Codable, Hashable {
+    let url: URL
+    init(url: URL) { self.url = url.standardizedFileURL }
+}
 
 @MainActor
 enum LegacyOpening {
-    static var handler: ((URL) -> Void)?
+    static var handler: ((URL) -> Void)? {
+        didSet {
+            guard let handler else { return }
+            let queued = pendingURLs; pendingURLs.removeAll()
+            queued.forEach(handler)
+        }
+    }
+    private struct WeakDocument { weak var model: LegacyDocumentModel? }
+    private static var documents: [URL: WeakDocument] = [:]
+    private static var pendingURLs: [URL] = []
+    private static var pendingPlay = Set<URL>()
+    private static var pendingAccess: [URL: FileAccessLease] = [:]
+    private static var openPanel: NSOpenPanel?
+
+    static func openDocument(_ requestedURL: URL, autoplay: Bool = false) {
+        SessionPlaybackController.stopAll()
+        let url = requestedURL.standardizedFileURL
+        if let model = documents[url]?.model {
+            if autoplay { model.requestPlay() }
+            model.session?.window?.makeKeyAndOrderFront(nil)
+        } else {
+            // Acquire the original user-selected URL before scene encoding or
+            // normalization can discard its security-scope attachment.
+            if pendingAccess[url] == nil { pendingAccess[url] = FileAccessLease(requestedURL) }
+            if autoplay { pendingPlay.insert(url) }
+        }
+        if let handler { handler(url) }
+        else if !pendingURLs.contains(url) { pendingURLs.append(url) }
+    }
+    static func register(_ model: LegacyDocumentModel) -> (lease: FileAccessLease, play: Bool) {
+        documents[model.url] = WeakDocument(model: model)
+        return (pendingAccess.removeValue(forKey: model.url) ?? FileAccessLease(model.url), pendingPlay.remove(model.url) != nil)
+    }
+    static func unregister(_ model: LegacyDocumentModel) {
+        if documents[model.url]?.model === model { documents.removeValue(forKey: model.url) }
+        pendingPlay.remove(model.url)
+        pendingAccess.removeValue(forKey: model.url)
+    }
+    static func chooseDocuments() {
+        if let openPanel { openPanel.makeKeyAndOrderFront(nil); return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = CassiniDocument.readableContentTypes
+        panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
+        openPanel = panel
+        panel.begin { response in
+            MainActor.assumeIsolated {
+                openPanel = nil
+                if response == .OK { panel.urls.forEach { openDocument($0) } }
+            }
+        }
+    }
     private static var transcriptWindows: [String: TranscriptWindowController] = [:]
     static func openTranscript(_ meeting: LibraryMeeting) {
         // UX3 owns the full new Meeting page. This interim read-only window uses
@@ -28,27 +83,33 @@ enum LegacyOpening {
     }
 }
 struct LegacyDocumentView: View {
-    let url: URL
-    var autoplay = false
-    @State private var document: CassiniDocument?
-    @State private var scoped = false
+    @State private var model: LegacyDocumentModel
+    @Environment(\.dismissWindow) private var dismissWindow
+    init(url: URL) { _model = State(initialValue: LegacyDocumentModel(url: url)) }
     var body: some View {
         Group {
-            if let document {
-                DocumentView(document: document, fileURL: url, autoPlay: autoplay)
+            if let session = model.session {
+                DocumentView(session: session)
                     .background(WindowAccessor { window in
+                        guard let window else { return }
                         #if DEBUG
-                        if let window { ScreenshotFixture.prepareLegacy(window) }
+                        if ["window", "sheet"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "") {
+                            ScreenshotFixture.prepareLegacy(window); return
+                        }
                         #endif
+                        window.setAccessibilityIdentifier("cassini-legacy-window")
                     })
             } else { ProgressView() }
         }
-        .task(id: url) {
-            scoped = url.startAccessingSecurityScopedResource()
-            do { document = try await Task.detached { try CassiniDocument(url: url) }.value }
-            catch { NSApp.presentError(error) }
+        .onAppear {
+            let dismiss = dismissWindow, route = LegacyRoute(url: model.url)
+            model.onFailure = { error in
+                dismiss(id: "legacy-viewer", value: route)
+                DispatchQueue.main.async { NSApp.presentError(error) }
+            }
+            model.start()
         }
-        .onDisappear { if scoped { url.stopAccessingSecurityScopedResource(); scoped = false } }
+        .onDisappear { model.close() }
     }
 }
 
