@@ -1,7 +1,7 @@
 name: Whistle bundling spike
 on:
   pull_request:
-    paths: ['Whistle/**', 'Sources/CassiniWhistle/**', 'Sources/cassini-whistle-worker/**', 'Tests/CassiniWhistleTests/**', 'Cassini/WhistleSelfTest.swift', 'Cassini/AppDelegate.swift', 'project.yml', 'Package.swift', 'scripts/*whistle*', '.github/workflows/ux-whistle.yml']
+    paths: ['Whistle/**', 'Sources/CassiniWhistle/**', 'Sources/CassiniTranscription/**', 'Sources/CassiniVAD/**', 'Tests/CassiniTranscriptionTests/**', 'scripts/fetch-vad.py', 'Sources/cassini-whistle-worker/**', 'Tests/CassiniWhistleTests/**', 'Cassini/WhistleSelfTest.swift', 'Cassini/AppDelegate.swift', 'project.yml', 'Package.swift', 'scripts/*whistle*', '.github/workflows/ux-whistle.yml']
 concurrency:
   group: ux-whistle-${{ github.ref }}
   cancel-in-progress: true
@@ -30,7 +30,9 @@ jobs:
       - name: Recover corrupt or truncated artifact caches
         run: python3 scripts/test-whistle-fetch.py
       - name: Fetch pinned build-time artifacts
-        run: python3 scripts/fetch-whistle.py --output build/Whistle
+        run: |
+          python3 scripts/fetch-whistle.py --output build/Whistle
+          python3 scripts/fetch-vad.py --output build/Whistle
       - name: Verified model memory and process ownership
         env:
           CASSINI_WHISTLE_TEST_ASSETS: ${{ github.workspace }}/build/Whistle
@@ -38,6 +40,14 @@ jobs:
           DO_NOT_TRACK: '1'
           ORT_DISABLE_TELEMETRY: '1'
         run: swift test --filter WhistleAssetIntegrationTests
+      - name: Shared FIR, segmentation and strict Whistle goldens
+        env:
+          CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+          CASSINI_PIPELINE_REPORT_DIR: ${{ github.workspace }}/build/pipeline
+          NEEDLE_TELEMETRY: '0'
+          DO_NOT_TRACK: '1'
+          ORT_DISABLE_TELEMETRY: '1'
+        run: swift test --filter 'PipelineTests|TranscriptionMeetingTests'
       - name: Constructor privacy guard and persistent worker JFK golden
         run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle --report build/whistle-${{ matrix.runner }}.json
       - uses: actions/upload-artifact@v5
@@ -45,6 +55,7 @@ jobs:
         with:
           name: whistle-${{ matrix.runner }}
           path: |
+            build/pipeline
             build/whistle-*.json
             build/Whistle/unsigned-sha256.json
   bundle:

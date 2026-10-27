@@ -10,8 +10,10 @@
 		137937AE2E3240A6B5CB141C /* TranscriptTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7480882332EEE8C270AB671F /* TranscriptTextView.swift */; };
 		164C9949FF793B6793EF5BC9 /* CassiniQuickLook.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */; };
-		1D01F0FC29FED44F688C1508 /* CassiniRecording in Frameworks */ = {isa = PBXBuildFile; productRef = E6FC20266D6A5D5475AFA517 /* CassiniRecording */; };
+		1D01F0FC29FED44F688C1508 /* CassiniTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = 2DBCBD7E1D6BFC34FE3E6FFA /* CassiniTranscription */; };
 		1EF5EE8DD217C7B2C937D7A2 /* DocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E7443641B578BD53031A57 /* DocumentView.swift */; };
+		273268D9968D6B4962355E33 /* CassiniTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = D2F761FDCABCC9F844AB3AFF /* CassiniTranscription */; };
+		2E10429165E3007976185FB1 /* CassiniRecording in Frameworks */ = {isa = PBXBuildFile; productRef = E6FC20266D6A5D5475AFA517 /* CassiniRecording */; };
 		305A1C99522B22795540C210 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 64B46FF60172AA9811C4742A /* CassiniWhistle */; };
 		335E85C4B4CE9D0332A91D88 /* LegacyOpening.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD057B32C9901BC49239FFBC /* LegacyOpening.swift */; };
 		34F29BC7B0D273489995F825 /* CassiniApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CC5AF01F2B185E4E45B0DF /* CassiniApp.swift */; };
@@ -21,6 +23,7 @@
 		3B6D0A18A1DAF82517C54273 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 6DC84AF01711048FD74E3E5D /* CassiniWhistle */; };
 		3E24FB942DE21DD890F33692 /* CassiniRecording in Frameworks */ = {isa = PBXBuildFile; productRef = 8CA2FF37AA01A8D733FBC056 /* CassiniRecording */; };
 		40C516E74B343AD6588FB12A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C9C1C73010D4F2A7AEF6D4 /* main.swift */; };
+		40F5CCB4E0A6211762C66102 /* TranscriptionQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */; };
 		41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = F7FE2A1C7242DF314538998C /* Fixtures */; };
 		44CFFFC71378B43F6E26F87D /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */; };
 		4B13F891F062EF653D0D14A2 /* MeetingNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */; };
@@ -120,6 +123,7 @@
 		71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		7480882332EEE8C270AB671F /* TranscriptTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTextView.swift; sourceTree = "<group>"; };
 		7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNavigation.swift; sourceTree = "<group>"; };
+		84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionQueue.swift; sourceTree = "<group>"; };
 		858A17B830285C2819946691 /* RecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSelfTest.swift; sourceTree = "<group>"; };
 		85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingConfirmation.swift; sourceTree = "<group>"; };
 		884DDBCFE2CA6B77E53BCC76 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -129,10 +133,10 @@
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
+		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		B0E7443641B578BD53031A57 /* DocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentView.swift; sourceTree = "<group>"; };
 		B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptBuilder.swift; sourceTree = "<group>"; };
 		BAFFFBC8704BE23F2A1D6CFF /* TranscriptExportPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptExportPanel.swift; sourceTree = "<group>"; };
-		CFA89931C04D5CF676013C9A /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		BF44CFE16B2926034520B457 /* WhistleSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhistleSelfTest.swift; sourceTree = "<group>"; };
 		C2AF16181F491E3932E02CCA /* CassiniWhistleWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniWhistleWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		C66314F1ADDF8D8554337717 /* LibraryBoards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryBoards.swift; sourceTree = "<group>"; };
@@ -163,6 +167,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				305A1C99522B22795540C210 /* CassiniWhistle in Frameworks */,
+				273268D9968D6B4962355E33 /* CassiniTranscription in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,7 +180,8 @@
 				63B8705E0C2C6C01FF0B331D /* CassiniLibraryWatchers in Frameworks */,
 				9E41F9238C947BD499DCA591 /* CassiniPlayback in Frameworks */,
 				3B6D0A18A1DAF82517C54273 /* CassiniWhistle in Frameworks */,
-				1D01F0FC29FED44F688C1508 /* CassiniRecording in Frameworks */,
+				1D01F0FC29FED44F688C1508 /* CassiniTranscription in Frameworks */,
+				2E10429165E3007976185FB1 /* CassiniRecording in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,6 +236,7 @@
 				5C0E9974647CBCED16F981A7 /* Recording */,
 				ED21289CD25E4D8251164DC1 /* Resources */,
 				EF77A83F63AFE90F92F4A514 /* Transcript */,
+				937002C1FBFE88E2BDF8A0AF /* Transcription */,
 				68B274567A048794627409BD /* Views */,
 			);
 			path = Cassini;
@@ -290,6 +297,14 @@
 				94C9C1C73010D4F2A7AEF6D4 /* main.swift */,
 			);
 			path = "cassini-whistle-worker";
+			sourceTree = "<group>";
+		};
+		937002C1FBFE88E2BDF8A0AF /* Transcription */ = {
+			isa = PBXGroup;
+			children = (
+				84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */,
+			);
+			path = Transcription;
 			sourceTree = "<group>";
 		};
 		99B4EEB5A5F6FD88B65F3B2B /* cassini-browser-host */ = {
@@ -408,6 +423,7 @@
 				5ABA35F9DA9389B4A5887020 /* CassiniLibraryWatchers */,
 				E0ABF1926525946F2D0642F1 /* CassiniPlayback */,
 				6DC84AF01711048FD74E3E5D /* CassiniWhistle */,
+				2DBCBD7E1D6BFC34FE3E6FFA /* CassiniTranscription */,
 				E6FC20266D6A5D5475AFA517 /* CassiniRecording */,
 			);
 			productName = Cassini;
@@ -465,6 +481,7 @@
 			name = CassiniWhistleWorker;
 			packageProductDependencies = (
 				64B46FF60172AA9811C4742A /* CassiniWhistle */,
+				D2F761FDCABCC9F844AB3AFF /* CassiniTranscription */,
 			);
 			productName = CassiniWhistleWorker;
 			productReference = C2AF16181F491E3932E02CCA /* CassiniWhistleWorker */;
@@ -631,6 +648,7 @@
 				D8B58B15098E7E1417F6CE8D /* TranscriptExportPanel.swift in Sources */,
 				137937AE2E3240A6B5CB141C /* TranscriptTextView.swift in Sources */,
 				5A50888A70EF3FF62908C1B5 /* TranscriptView.swift in Sources */,
+				40F5CCB4E0A6211762C66102 /* TranscriptionQueue.swift in Sources */,
 				EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */,
 				8D98D370E8999895D3A2F2C0 /* WhistleSelfTest.swift in Sources */,
 			);
@@ -1053,6 +1071,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		2DBCBD7E1D6BFC34FE3E6FFA /* CassiniTranscription */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CassiniTranscription;
+		};
 		5ABA35F9DA9389B4A5887020 /* CassiniLibraryWatchers */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CassiniLibraryWatchers;
@@ -1080,6 +1102,10 @@
 		B52B47E53FE17F1664D4546F /* CassiniLibrary */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CassiniLibrary;
+		};
+		D2F761FDCABCC9F844AB3AFF /* CassiniTranscription */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CassiniTranscription;
 		};
 		E0ABF1926525946F2D0642F1 /* CassiniPlayback */ = {
 			isa = XCSwiftPackageProductDependency;

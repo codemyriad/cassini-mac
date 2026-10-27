@@ -42,7 +42,7 @@ struct MeetingView: View {
                 Divider()
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        if let line = issueLine { InlineMeetingLine(id: line, action: nil) }
+                        if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil) }
                         if !suggestionDismissed { companionCard }
                         ForEach(model.turns) { turn in
                             HStack(alignment: .top, spacing: 16) {

@@ -55,6 +55,10 @@ struct LibraryView: View {
                         }.padding(.leading, 16).frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityElement(children: .contain)
                         HStack(spacing: 14) {
+                            if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
+                                Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
+                                    .buttonStyle(.bordered).accessibilityIdentifier("meeting-write-down")
+                            }
                             Button(UXText.text("common.exportEllipsis")) {}.buttonStyle(.plain).fontWeight(.semibold)
                                 .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(true)
                             Button {} label: { Image(systemName: "ellipsis").frame(width: 28, height: 30) }.buttonStyle(.plain)
@@ -212,7 +216,7 @@ struct LibraryView: View {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
                     if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
-                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", action: nil) }
+                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
@@ -230,6 +234,11 @@ struct LibraryView: View {
                         .opacity(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing) ? 0.45 : 1)
                         .disabled(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
                         .accessibilityIdentifier("preview-play")
+                if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
+                    Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
+                        .buttonStyle(.bordered).accessibilityIdentifier("preview-write-down")
+                }
+
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
                     }.buttonStyle(.plain).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))

@@ -2,6 +2,8 @@
 #if DEBUG
 import AppKit
 import CassiniWhistle
+import CassiniRecording
+import CassiniLibrary
 import Darwin
 
 /// Hosted-only packaging proof: a real sandboxed app starts its bundled,
@@ -35,8 +37,28 @@ import Darwin
             let reference = try String(contentsOf: folder.appendingPathComponent("jfk.txt"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
             func words(_ value: String) -> [String] { value.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) }
             guard words(text) == words(reference) else { throw WhistleFailure.runtime("JFK words differ: " + text) }
+            let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniPipelineProbe-" + UUID().uuidString)
+            try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            defer { try? FileManager.default.removeItem(at: temporary) }
+            let session = try RecordingSession(parent: temporary, title: "Offline JFK", source: "macos")
+            try session.addTrack(id: "microphone", label: "Microphone", kind: "microphone", sampleRate: 16000, channels: 1)
+            let pcm = try Data(contentsOf: folder.appendingPathComponent("jfk.wav")).dropFirst(44)
+            for at in stride(from: 0, to: pcm.count, by: 64000) {
+                let start = pcm.startIndex + at, end = min(pcm.endIndex, start + 64000)
+                try session.append(id: "microphone", pcm: Data(pcm[start..<end]), offsetMs: Double(at) / 32)
+            }
+            try session.finish()
+            try MeetingMetadataWriter(directory: session.directory, id: session.manifest.id).createIfNeeded()
+            let request = try JSONSerialization.data(withJSONObject: ["id":"pipeline", "meeting":session.directory.path]) + Data([10])
+            let pipeline = try await WhistleSubprocess.run(executable: worker, arguments: [], environment: WhistleEnvironment.worker(), input: request, timeout: 60)
+            let pipelineResponse = try JSONSerialization.jsonObject(with: pipeline.stdout) as! [String:Any]
+            guard pipeline.status == 0, pipeline.inputError == nil, pipelineResponse["error"] == nil,
+                  let written = try LibraryScanner(root: temporary).scan().meetings.first,
+                  written.state.transcript == .done, !written.transcriptItems.isEmpty, written.speakers.first?.id == "me" else {
+                throw WhistleFailure.runtime("sandboxed pipeline failed: " + String(decoding: pipeline.stdout + pipeline.stderr, as: UTF8.self))
+            }
             let report: [String: Any] = ["text": text, "wordReferenceMatch": true, "exactReferenceMatch": text == reference,
-                                         "bundledSandboxWorker": true, "twoRequestsIdentical": true]
+                                         "bundledSandboxWorker": true, "bundledVADPipeline": true, "twoRequestsIdentical": true]
             try WhistleIO.write(JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) + Data([10]), to: STDOUT_FILENO)
             exit(0)
         } catch {
