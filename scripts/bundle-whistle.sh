@@ -4,8 +4,14 @@ set -euo pipefail
 staging="$DERIVED_FILE_DIR/Whistle"
 python3 "$SRCROOT/scripts/fetch-whistle.py" --output "$staging"
 destination="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Whistle"
-mkdir -p "$destination"
-cp "$staging/"* "$destination/"
+frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
+mkdir -p "$destination" "$frameworks"
+for resource in whistle.cact LICENSE NOTICE pins.json; do cp "$staging/$resource" "$destination/$resource"; done
+library="$frameworks/libneedle3.dylib"
+cp "$staging/libneedle3.dylib" "$library"
+# Remove only obsolete generated copies from incremental builds of the old layout.
+rm -f "$destination/libneedle3.dylib" "$destination/unsigned-sha256.json"
+rm -f "${destination%/Whistle}/cassini-whistle-worker" "${destination%/Whistle}/cassini-browser-host"
 if [ "$CONFIGURATION" = Debug ]; then
     cp "$SRCROOT/Tests/CassiniWhistleTests/Fixtures/jfk.wav" "$destination/jfk.wav"
     cp "$SRCROOT/Tests/CassiniWhistleTests/Fixtures/jfk.txt" "$destination/jfk.txt"
@@ -15,18 +21,20 @@ cp "$BUILT_PRODUCTS_DIR/cassini-whistle-worker" "$worker"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then
     identity="${EXPANDED_CODE_SIGN_IDENTITY:--}"
     if [ -z "$identity" ]; then identity=-; fi
-    codesign --force --sign "$identity" --options runtime --timestamp=none "$destination/libneedle3.dylib"
-    codesign --force --sign "$identity" --options runtime --timestamp=none --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
+    timestamp=(--timestamp)
+    if [ "$identity" = - ]; then timestamp=(--timestamp=none); fi
+    codesign --force --sign "$identity" --options runtime "${timestamp[@]}" "$library"
+    codesign --force --sign "$identity" --options runtime "${timestamp[@]}" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
 fi
 # Record what is actually shipped, including signatures, separately from source pins.
-python3 - "$destination" "$worker" <<'PY'
+python3 - "$destination" "$worker" "$library" <<'PY'
 import hashlib,json,sys
 from pathlib import Path
-folder, worker = map(Path, sys.argv[1:])
+folder, worker, library = map(Path, sys.argv[1:])
 def sha(path):
     value=hashlib.sha256()
     with path.open('rb') as stream:
         for block in iter(lambda: stream.read(1024*1024), b''): value.update(block)
     return value.hexdigest()
-(folder/'bundle-sha256.json').write_text(json.dumps({p.name:sha(p) for p in [folder/'libneedle3.dylib',folder/'whistle.cact',worker]},indent=2)+'\n')
+(folder/'bundle-sha256.json').write_text(json.dumps({p.name:sha(p) for p in [library,folder/'whistle.cact',worker]},indent=2)+'\n')
 PY

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import time
 import urllib.request
 import zipfile
@@ -25,6 +26,31 @@ def checked(path, expected):
         raise ValueError('SHA256 mismatch: ' + path.name)
 
 
+def fetch(artifact, cache):
+    archive = cache / artifact['name']
+    if archive.exists():
+        try:
+            checked(archive, artifact['sha256'])
+            return archive
+        except (OSError, ValueError):
+            archive.unlink(missing_ok=True)
+    for attempt in range(3):
+        pending = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=cache, prefix=archive.name + '.', suffix='.part', delete=False) as target:
+                pending = Path(target.name)
+                with urllib.request.urlopen(artifact['url'], timeout=60) as source:
+                    shutil.copyfileobj(source, target)
+            checked(pending, artifact['sha256'])
+            pending.replace(archive)
+            return archive
+        except (OSError, ValueError):
+            if attempt == 2: raise
+            time.sleep(attempt + 1)
+        finally:
+            if pending is not None: pending.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
@@ -36,21 +62,7 @@ def main():
     pins = json.loads((ROOT / 'Whistle/pins.json').read_text())
     slices = []
     for artifact in pins['artifacts']:
-        archive = cache / artifact['name']
-        if archive.exists():
-            checked(archive, artifact['sha256'])  # Fail on corrupt cache, never trust it.
-        else:
-            pending = archive.with_suffix(archive.suffix + '.part')
-            for attempt in range(3):
-                try:
-                    with urllib.request.urlopen(artifact['url'], timeout=60) as source, pending.open('wb') as target:
-                        shutil.copyfileobj(source, target)
-                    break
-                except OSError:
-                    pending.unlink(missing_ok=True)
-                    if attempt == 2: raise
-                    time.sleep(attempt + 1)
-            checked(pending, artifact['sha256']); pending.replace(archive)
+        archive = fetch(artifact, cache)
         if 'member' in artifact:
             target = cache / ('libneedle3-' + artifact['arch'] + '.dylib')
             with zipfile.ZipFile(archive) as wheel:

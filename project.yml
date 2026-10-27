@@ -50,8 +50,10 @@ targets:
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
         link: false
+        embed: false
       - target: CassiniWhistleWorker
         link: false
+        embed: false
     postBuildScripts:
       - name: Bundle native messaging host
         script: |
