@@ -52,7 +52,7 @@ public final class WhistleEngine {
             let load: Load = try Self.symbol("needle_load", in: handle)
             let transcribe: Transcribe = try Self.symbol("needle_transcribe", in: handle)
             let error: LastError = try Self.symbol("needle_last_error", in: handle)
-            let bytes = try Data(contentsOf: model, options: .mappedIfSafe)
+            let bytes = try WhistleIO.readRegular(model, maximum: 64 * 1024 * 1024)
             guard !bytes.isEmpty else { throw WhistleFailure.model("empty weights") }
             let result = bytes.withUnsafeBytes { load($0.bindMemory(to: UInt8.self).baseAddress, UInt64($0.count)) }
             guard result >= 0 else { throw WhistleFailure.model(error().map { String(cString: $0) } ?? "load failed") }
@@ -77,7 +77,7 @@ public final class WhistleEngine {
         return try JSONDecoder().decode(WhistleTranscript.self, from: Data(bytes))
     }
     private static func pcm16(_ url: URL) throws -> [Float] {
-        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        let data = try WhistleIO.readRegular(url, maximum: 2_000_000)
         guard data.count >= 44, data.count <= 2_000_000, data[0..<4] == Data("RIFF".utf8), data[8..<12] == Data("WAVE".utf8) else { throw WhistleFailure.audio }
         func u16(_ at: Int) -> UInt16 { data.withUnsafeBytes { UInt16(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt16.self)) } }
         func u32(_ at: Int) -> UInt32 { data.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt32.self)) } }
