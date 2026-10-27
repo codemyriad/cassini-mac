@@ -23,7 +23,7 @@ final class FileAccessLease: @unchecked Sendable {
 
     init(url: URL) { self.url = url.standardizedFileURL }
     func start() {
-        guard !started, !closed else { return }; started = true
+        guard !started else { return }; started = true; closed = false
         let registration = LegacyOpening.register(self)
         wantsPlay = registration.play
         let lease = registration.lease, url = registration.lease.url
@@ -56,7 +56,7 @@ final class FileAccessLease: @unchecked Sendable {
         else { wantsPlay = true }
     }
     func close() {
-        closed = true; wantsPlay = false
+        closed = true; started = false; wantsPlay = false
         readTask?.cancel(); readTask = nil
         completion?.cancel(); completion = nil
         session?.close(); session = nil

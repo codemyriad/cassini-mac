@@ -49,6 +49,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
         // Finder activation may also reopen the app's primary Library scene.
         // The required behavior is delivering the file from the closed state.
+        viewer.buttons["_XCUI:CloseWindow"].click()
+        let viewerClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: viewer)
+        XCTAssertEqual(XCTWaiter.wait(for: [viewerClosed], timeout: 5), .completed)
+        try await finderOpen(fixture)
+        XCTAssertTrue(viewer.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.windows.matching(identifier: "cassini-legacy-window").count, 1)
     }
     @MainActor func testReceivedReadAndPlayReuseOneViewer() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
