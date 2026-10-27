@@ -32,7 +32,7 @@ final class LibraryBoards: XCTestCase {
         library.buttons["_XCUI:CloseWindow"].click()
         XCTAssertTrue(app.state == .runningForeground)
         app.typeKey("o", modifierFlags: .command)
-        XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.windows["open-panel"].waitForExistence(timeout: 5), app.debugDescription)
         app.typeKey(.escape, modifierFlags: [])
         let fixture = try fixtureDirectory().appendingPathComponent("meeting.opus")
         try await finderOpen(fixture)
@@ -70,7 +70,7 @@ final class LibraryBoards: XCTestCase {
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB"]
         app.launch()
-        let okay = app.buttons["OK"]
+        let okay = app.dialogs.firstMatch.buttons["OK"]
         XCTAssertTrue(okay.waitForExistence(timeout: 15), app.debugDescription)
         okay.click()
         let settled = NSPredicate { _, _ in app.progressIndicators.count == 0 && app.windows.count == 1 }
