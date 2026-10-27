@@ -98,7 +98,7 @@ python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
 python3 browser-protocol/verify.py --pinned BrowserExtension
 ```
 
-Real Chromium tests, also run in CI (generated audio only; failure artifacts are retained):
+Real Chromium tests (generated audio only; failure artifacts are retained):
 
 ```sh
 swift build
@@ -212,7 +212,7 @@ gh workflow run native-recording.yml --ref main -f mode=sink-only
 gh workflow run native-recording.yml --ref main -f mode=full
 ```
 
-Both modes test the native writer/session loader; `full` also attempts an actual Core Audio
+Both modes test the native writer/session loader and real tabCapture; `full` also attempts an actual Core Audio
 process tap of Cassini's generated 440/880 Hz tone. It never opens the microphone or captures
 other applications. The full mode needs genuine macOS system-audio consent and a working
 output device; runner registration does not grant that permission. Nightly defaults to full
@@ -244,3 +244,9 @@ fixtures cover mixed receivers, a PC-free Web Audio path requiring tab fallback,
 receive slots whose speaker content changes without changing receiver identity. They do not
 claim that a live vendor version is compatible. Chromium-only and Chrome 116 minimum remain
 in scope; live product/account tests, Firefox and Flatpak are separate follow-up work.
+
+Hosted macOS runs WebRTC, media/iframe, worker-lifecycle and protocol checks. Real tabCapture
+runs in the DrMeyers manual/nightly workflow: hosted macOS's Null Audio Device is not a reliable
+rendering target. The tab test waits for saved audio frames, not a fixed startup delay.
+Consent/output-device timeouts produce `status: "blocked"` in native result.json and still
+exit nonzero, so an unavailable hardware gate cannot be mistaken for a passing code test.

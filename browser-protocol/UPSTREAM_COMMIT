@@ -1,7 +1,6 @@
-tree 12245b81be3ef2881aefb515078f0db9a9dce9cb
-parent b9ac62aa7901fa073eb602254836ae0bbe8327ed
-parent 2a8b4900d5b865a88c79172d83edbca2673a0f9c
-author Silvio Tomatis <silviot@gmail.com> 1793099964 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793099964 +0100
+tree 41f6cc90e97d78e5dc9248007c283f653e6d5e0c
+parent b3fa2a3a20b71edd911c485801c9a69496ccbc16
+author Silvio Tomatis <silviot@gmail.com> 1793100652 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793100652 +0100
 
-Merge README clarification and retain upstream workflow for SPEC v1.1
+Run device-dependent tab capture on the dedicated Mac runner

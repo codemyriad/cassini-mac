@@ -60,7 +60,21 @@ try {
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
   await popup.click('#tab');
-  await page.waitForTimeout(3000);
+  let ready = false;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const state = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
+    savedPath = state.path;
+    if (savedPath && state.recording && state.tracks === 1) {
+      const metadata = JSON.parse(await readFile(path.join(savedPath, 'session.json')));
+      const track = metadata.tracks[0];
+      if (track) {
+        const audio = await readFile(path.join(savedPath, track.file));
+        if (audio.length >= 44 + track.sampleRate * track.channels * 2 * 1.25) { ready = true; break; }
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+  assert.ok(ready, 'tab capture produced at least 1.25 seconds of saved audio; this test requires a real output device');
   const during = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   savedPath = during.path;
   assert.equal(during.recording, true, during.message);

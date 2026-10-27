@@ -46,7 +46,7 @@ jobs:
           PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/BrowserExtension/tests/node_modules/playwright/index.mjs" node browser-protocol/tests/product-topologies.mjs 2>&1 | tee BrowserExtension/tests/artifacts/topologies.log
           node BrowserExtension/tests/synthetic-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/synthetic.log
           node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
-          node BrowserExtension/tests/tab-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/tab.log
+          echo "Real tabCapture runs on drmeyers-audio; hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v5
         if: failure()
         with:

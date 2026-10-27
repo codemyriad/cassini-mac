@@ -12,6 +12,9 @@ artifacts = args.artifacts.resolve(); artifacts.mkdir(parents=True, exist_ok=Tru
 derived = args.derived_data.resolve()
 result = dict(mode=args.mode, status='running', phases=[], microphoneTested=False, generatedAudioOnly=True)
 
+class AudioEnvironmentUnavailable(RuntimeError):
+    pass
+
 def save(): (artifacts / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
 def run(command, name, timeout):
     with (artifacts / (name + '.log')).open('w') as output:
@@ -52,9 +55,13 @@ try:
         text = output.read_text() if output.exists() else ''
         print(text, end='')
         if 'RECORDING_SELF_TEST_PASSED' not in text:
+            if mode == 'tap' and 'Timed out waiting for audio consent or a usable output device.' in text:
+                raise AudioEnvironmentUnavailable('Native tap validation is blocked by audio consent or output-device readiness; no hardware pass is claimed.')
             raise RuntimeError(f'{mode} diagnostic did not pass; consent, output device, or capture behavior needs attention. See {output.name}')
         result['phases'].append(dict(name=mode, status='passed')); save()
     result['status'] = 'passed'
+except AudioEnvironmentUnavailable as error:
+    result['status'] = 'blocked'; result['blocker'] = 'audio-consent-or-output-device'; result['error'] = str(error); print(str(error))
 except Exception as error:
     result['status'] = 'failed'; result['error'] = str(error); print(str(error))
 finally:

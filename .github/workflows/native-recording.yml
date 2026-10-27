@@ -37,6 +37,16 @@ jobs:
           python3 browser-protocol/verify.py --pinned BrowserExtension
       - name: Native session and writer tests
         run: swift test --filter 'Recording'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Real tab capture with DrMeyers output device
+        run: |
+          npm ci --prefix BrowserExtension/tests
+          BrowserExtension/tests/node_modules/.bin/playwright install chromium
+          mkdir -p "$RUNNER_TEMP/native-artifacts"
+          set -o pipefail
+          node BrowserExtension/tests/tab-capture.mjs 2>&1 | tee "$RUNNER_TEMP/native-artifacts/tab-capture.log"
       - name: Generated native audio diagnostic
         env:
           NATIVE_MODE: ${{ inputs.mode || 'full' }}
@@ -48,4 +58,6 @@ jobs:
         if: always()
         with:
           name: drmeyers-native-${{ github.run_id }}
-          path: ${{ runner.temp }}/native-artifacts
+          path: |
+            ${{ runner.temp }}/native-artifacts
+            BrowserExtension/tests/artifacts
