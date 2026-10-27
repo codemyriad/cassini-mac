@@ -19,11 +19,13 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
         let expectedControl = name == "library" ? "preview-read-transcript" : "first-run-record"
         XCTAssertTrue(window.buttons[expectedControl].waitForExistence(timeout: 20), window.debugDescription)
+        let exactFrame = NSPredicate { _, _ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: exactFrame, object: nil)], timeout: 10), .completed, window.debugDescription)
         let attachment = XCTAttachment(screenshot: window.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         if name == "library" {
             XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout: 20), window.debugDescription)
-            XCTAssertTrue(window.descendants(matching: .any).matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
+            XCTAssertTrue(window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
             XCTAssertTrue(text("Today, 09:00 · 52 min", in: window))
             XCTAssertTrue(text("00:00:04", in: window))
             XCTAssertFalse(window.buttons["preview-play"].isEnabled)

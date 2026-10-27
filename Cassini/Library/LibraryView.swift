@@ -2,10 +2,13 @@ import SwiftUI
 import CassiniLibrary
 
 private enum LibraryTheme {
-    static let dim = Color(nsColor: .secondaryLabelColor)
+    static let dim = adaptive(light: NSColor(red: 106/255, green: 106/255, blue: 112/255, alpha: 1), dark: .secondaryLabelColor)
     static let sidebar = Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .windowBackgroundColor : NSColor(red: 241/255, green: 240/255, blue: 245/255, alpha: 1) })
-    static let chip = Color(nsColor: .quaternaryLabelColor).opacity(0.35)
-    static let red = Color(nsColor: .systemRed)
+    static let chip = adaptive(light: NSColor(red: 239/255, green: 239/255, blue: 243/255, alpha: 1), dark: .controlBackgroundColor)
+    static let red = adaptive(light: NSColor(red: 215/255, green: 0, blue: 21/255, alpha: 1), dark: .systemRed)
+    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
+    }
 }
 struct LibraryView: View {
     @State private var store = LibraryStore()
@@ -16,16 +19,19 @@ struct LibraryView: View {
             else { split }
         }
         .font(.system(size: 13))
+        .frame(minWidth: 760, minHeight: 480)
         .navigationTitle(UXText.text("library.title"))
         .toolbar {
-            ToolbarItem(placement: .navigation) { toolbarControl }
+            if store.loaded && store.meetings.isEmpty {
+                ToolbarItem(placement: .navigation) { toolbarControl }
+            }
         }
         .background(WindowAccessor { window in
             guard let window else { return }
             window.setAccessibilityIdentifier("cassini-library-window")
             window.toolbarStyle = .unified
             #if DEBUG
-            ScreenshotFixture.prepareLibrary(window)
+            if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
         .onAppear {
@@ -44,6 +50,7 @@ struct LibraryView: View {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
                                 .listRowSeparator(.hidden)
+                                .listRowBackground(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
                                 .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
                                 .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                         }
@@ -57,6 +64,8 @@ struct LibraryView: View {
             .background(LibraryTheme.sidebar)
             .navigationSplitViewColumnWidth(min: 400, ideal: 400, max: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
+            .toolbar(removing: .sidebarToggle)
+            .toolbar { ToolbarItem(placement: .navigation) { toolbarControl } }
         } detail: {
             if let meeting = store.selected { preview(meeting) }
             else { Color(nsColor: .textBackgroundColor) }
@@ -77,7 +86,7 @@ struct LibraryView: View {
                     }.accessibilityHidden(true)
                     Text(UXText.text("common.stop")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 10).frame(height: 26).background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 5))
-                }.padding(.horizontal, 10).frame(height: 34).background(LibraryTheme.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+                }.fixedSize().padding(.horizontal, 10).frame(height: 34).background(LibraryTheme.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
             } else { recordButton(big: false) }
         }
     }
@@ -127,11 +136,15 @@ struct LibraryView: View {
                 }
             }
             HStack(spacing: 10) {
-                Button { play(meeting) } label: { Label(UXText.text("common.play"), systemImage: "play.fill").frame(height: 24) }
-                    .buttonStyle(.borderedProminent).disabled(meeting.state.origin == .own || meeting.audioFiles.isEmpty)
+                Button { play(meeting) } label: { Label(UXText.text("common.play"), systemImage: "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
+                    .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
+                    .opacity(meeting.state.origin == .own || meeting.audioFiles.isEmpty ? 0.45 : 1)
+                    .disabled(meeting.state.origin == .own || meeting.audioFiles.isEmpty)
                     .accessibilityIdentifier("preview-play")
-                Button(UXText.text("library.preview.readTranscript")) { readTranscript(meeting) }
-                    .buttonStyle(.bordered).controlSize(.large).disabled(meeting.transcriptItems.isEmpty)
+                Button { readTranscript(meeting) } label: {
+                    Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
+                }.buttonStyle(.plain).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
+                    .disabled(meeting.transcriptItems.isEmpty)
                     .accessibilityIdentifier("preview-read-transcript")
             }
             VStack(alignment: .leading, spacing: 16) {
