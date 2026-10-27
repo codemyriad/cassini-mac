@@ -23,10 +23,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build worker and privacy tests
+      - name: Build worker and Whistle regressions
         run: |
           swift build --product cassini-whistle-worker
-          swift test --filter WhistlePrivacyTests
+          swift test --filter Whistle
       - name: Fetch pinned build-time artifacts
         run: python3 scripts/fetch-whistle.py --output build/Whistle
       - name: Constructor privacy guard and persistent worker JFK golden

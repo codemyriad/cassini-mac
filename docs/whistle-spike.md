@@ -51,3 +51,18 @@ this is a smoke-test observation, not a performance benchmark. No local app,
 desktop, browser or audio-device test was run. UX13 still needs the app queue,
 long-meeting chunking, cancellation/crash recovery and real progress reporting.
 Apache-2.0 LICENSE and NOTICE are included with the bundle.
+
+## Post-merge I/O fixes
+
+The packaging exchange runs all blocking work off the main actor, drains stdout
+and stderr concurrently, caps retained diagnostics while continuing to drain, and
+has an independent timeout/cancellation path. Pipe writes suppress SIGPIPE only
+on their own descriptor and return EPIPE; no Objective-C writeData exception is
+used. The worker rejects oversized lines during buffering, and WAV/model files
+are checked with O_NOFOLLOW/O_NONBLOCK/fstat before bounded reads.
+
+Regressions cover an early child exit, closed stdout, noisy stderr beyond pipe
+capacity, a child ignoring SIGTERM, cancellation, oversized lines/files, symlinks
+and FIFOs. Actual worker requests verify it can reject invalid inputs and still
+serve the next valid JFK request. Library/model identity verification and bundle
+layout are addressed separately from these stream/input bounds.

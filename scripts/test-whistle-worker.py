@@ -56,12 +56,33 @@ __attribute__((constructor)) static void loaded(void) {
     assert all('error' not in r for r in responses), responses
     text = responses[0]['transcript']['text']
     assert responses[1]['transcript'] == responses[0]['transcript'], 'Repeated worker request changed transcript'
+    # Invalid files are rejected without following links, reading FIFO input or
+    # allocating an oversized WAV; a subsequent good request still succeeds.
+    with tempfile.TemporaryDirectory(prefix='cassini-whistle-input-') as temporary:
+        temporary = Path(temporary)
+        fifo = temporary/'fifo'; os.mkfifo(fifo)
+        link = temporary/'link'; link.symlink_to(fixture/'jfk.wav')
+        huge = temporary/'huge.wav'
+        with huge.open('wb') as stream: stream.truncate(4_000_000)
+        paths = [fifo, link, huge, fixture/'jfk.wav']
+        bad = subprocess.run(command, input=''.join(json.dumps(dict(id=str(i),wav=str(p)))+'\n' for i,p in enumerate(paths)),
+            capture_output=True,text=True,env=dict(os.environ,**SAFE),timeout=10)
+        replies = [json.loads(line) for line in bad.stdout.splitlines()]
+        assert bad.returncode==0 and len(replies)==4,(bad.returncode,bad.stdout,bad.stderr)
+        assert all('error' in r for r in replies[:3]) and replies[-1]['transcript']['text']==text,replies
+    too_long = subprocess.run(command,input='x'*1_000_000+'\n',capture_output=True,text=True,env=dict(os.environ,**SAFE),timeout=10)
+    assert too_long.returncode==78 and 'tooLarge' in too_long.stdout,(too_long.returncode,too_long.stdout)
+    read_fd, write_fd = os.pipe(); os.close(read_fd)
+    try:
+        closed = subprocess.run(command,input=json.dumps(requests[0])+'\n',stdout=write_fd,stderr=subprocess.PIPE,text=True,env=dict(os.environ,**SAFE),timeout=10)
+        assert closed.returncode==78,closed.returncode
+    finally: os.close(write_fd)
     reference = (fixture / 'jfk.txt').read_text().strip()
     words = lambda s: re.findall(r'\w+', s.casefold())
     assert words(text) == words(reference), (text, reference)
     report = dict(architecture=platform.machine(), engineVersion=pins['engineVersion'], text=text, reference=reference,
                   exactReferenceMatch=text == reference, wordReferenceMatch=True, twoRequestsIdentical=True,
-                  constructorPrivacyGuard=True, telemetry=SAFE)
+                  constructorPrivacyGuard=True, boundedInputGuards=True, closedStdoutHandled=True, telemetry=SAFE)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))

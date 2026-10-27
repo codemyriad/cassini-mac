@@ -6,8 +6,8 @@ import Darwin
 // future transcription queue owns a single child, never an in-process engine.
 struct Request: Decodable { let id: String; let wav: String }
 struct Response: Encodable { let id: String?; var transcript: WhistleTranscript?; var error: String? }
-func emit(_ response: Response) {
-    if let data = try? JSONEncoder().encode(response) { FileHandle.standardOutput.write(data + Data([10])) }
+func emit(_ response: Response) throws {
+    try WhistleIO.write(JSONEncoder().encode(response) + Data([10]), to: STDOUT_FILENO)
 }
 func argument(_ key: String) -> String? {
     guard let index = CommandLine.arguments.firstIndex(of: key), index + 1 < CommandLine.arguments.count else { return nil }
@@ -20,15 +20,17 @@ do {
         throw WhistleFailure.library("--library and --model are required")
     }
     let engine = try WhistleEngine(library: URL(fileURLWithPath: library), model: URL(fileURLWithPath: model))
-    while let line = readLine() {
+    let lines = WhistleLineReader(fd: STDIN_FILENO)
+    while let line = try lines.next() {
         var id: String?
+        let response: Response
         do {
-            guard line.utf8.count <= 65536 else { throw WhistleFailure.audio }
-            let request = try JSONDecoder().decode(Request.self, from: Data(line.utf8)); id = request.id
-            emit(Response(id: id, transcript: try engine.transcribe(wav: URL(fileURLWithPath: request.wav))))
-        } catch { emit(Response(id: id, error: String(describing: error))) }
+            let request = try JSONDecoder().decode(Request.self, from: line); id = request.id
+            response = Response(id: id, transcript: try engine.transcribe(wav: URL(fileURLWithPath: request.wav)))
+        } catch { response = Response(id: id, error: String(describing: error)) }
+        try emit(response)
     }
 } catch {
-    emit(Response(id: nil, error: String(describing: error)))
+    try? emit(Response(id: nil, error: String(describing: error)))
     exit(78)
 }
