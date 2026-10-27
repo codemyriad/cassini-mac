@@ -44,9 +44,13 @@ targets:
       - package: CassiniKit
         product: CassiniPlayback
       - package: CassiniKit
+        product: CassiniWhistle
+      - package: CassiniKit
         product: CassiniRecording
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
+        link: false
+      - target: CassiniWhistleWorker
         link: false
     postBuildScripts:
       - name: Bundle native messaging host
@@ -57,6 +61,9 @@ targets:
           - "$(BUILT_PRODUCTS_DIR)/cassini-browser-host"
         outputFiles:
           - "$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/cassini-browser-host"
+      - name: Bundle pinned Whistle worker and engine
+        script: bash "$SRCROOT/scripts/bundle-whistle.sh"
+        basedOnDependencyAnalysis: false
     info:
       path: Cassini/Info.plist
       properties:
@@ -130,6 +137,19 @@ targets:
     settings:
       base:
         PRODUCT_NAME: cassini-browser-host
+        SKIP_INSTALL: true
+        ENABLE_HARDENED_RUNTIME: true
+  CassiniWhistleWorker:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/cassini-whistle-worker
+    dependencies:
+      - package: CassiniKit
+        product: CassiniWhistle
+    settings:
+      base:
+        PRODUCT_NAME: cassini-whistle-worker
         SKIP_INSTALL: true
         ENABLE_HARDENED_RUNTIME: true
   CassiniQuickLook:

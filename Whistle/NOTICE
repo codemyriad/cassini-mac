@@ -1,0 +1,5 @@
+Cassini includes Whistle and the Needle 3.3.0 inference engine by Cactus Compute.
+Both are distributed under the Apache License, Version 2.0; see LICENSE.
+Sources and exact revisions/checksums are recorded in pins.json.
+The JFK test recording is a public-domain United States government work and is
+included in the test suite and Debug builds, never the Release application.
