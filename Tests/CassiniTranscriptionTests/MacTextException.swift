@@ -23,7 +23,7 @@ struct MacTextExceptions: Decodable {
     static func load(_ root: URL) throws -> Self {
         let bytes = try Data(contentsOf: root.appendingPathComponent("mac-text-exceptions.json"))
         let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
-        guard digest == "5ec26f54bfc5e6e73f3c25e91f74aa37610b20b8f2aa43ea1f423bfca41a9b39" else { throw TranscriptionFailure.runtime("unapproved text exception manifest") }
+        guard digest == "3df3f885587d6e997f3d9b90551b0d54bff3083435010daf4fd468d199023f78" else { throw TranscriptionFailure.runtime("unapproved text exception manifest") }
         let policy = try JSONDecoder().decode(Self.self, from: bytes)
         guard policy.version == 1, policy.decision == "D11.4", policy.platform == "macos", policy.enginePins == WhistleAssets.sourcePins,
               policy.exceptions.count == 1 else { throw TranscriptionFailure.runtime("text exception does not match this engine") }

@@ -23,5 +23,5 @@
       "actualSegmentText": "What your country can do for you ask what you can do for your country. And so my fellow Americans."
     }
   ],
-  "note": "Silvio explicitly approved publishing one hash-bound Mac text exception after identical local M4 and hosted ARM/Intel results. Original goldens stay unchanged; D11.3 exact segment/count and hash-gated 80 ms time rules continue. All other text differences fail."
+  "note": "The coordinator explicitly approved publishing one hash-bound Mac text exception after identical local M4 and hosted ARM/Intel results. Original goldens stay unchanged; D11.3 exact segment/count and hash-gated 80 ms time rules continue. All other text differences fail."
 }

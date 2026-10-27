@@ -8,7 +8,7 @@ fixture, made without capture: ffmpeg -i Goldens/jfk.wav -ac 1 -ar 48000 -c:a
 libopus -b:a 32k -application audio Fixtures/jfk-received.opus. It exercises
 Received import, offline Opus decode, the production pipeline and Speaker 1.
 
-D11.4 mac-text-exceptions.json copied verbatim from coordination commit ed0bb85.
-SHA256 5ec26f54bfc5e6e73f3c25e91f74aa37610b20b8f2aa43ea1f423bfca41a9b39.
+D11.4 mac-text-exceptions.json copied verbatim from coordination commit 017b8c1.
+SHA256 3df3f885587d6e997f3d9b90551b0d54bff3083435010daf4fd468d199023f78.
 Only the approved Mac word 37/segment 5/hash/pins exception is applied.
 Original SHA256SUMS and all shared golden bytes remain unchanged.
