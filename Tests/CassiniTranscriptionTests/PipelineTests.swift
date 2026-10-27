@@ -67,7 +67,11 @@ final class PipelineTests: XCTestCase {
                 let transcript = try engine.transcribe(samples: samples)
                 XCTAssertEqual(transcript.text, golden.segments[index].text, name + " segment \(index)")
                 let start = Int64(segment.startSample * 1000 / 16000)
-                words += (transcript.words ?? []).map { .init(startMs: start + Int64(($0.start * 1000).rounded(.toNearestOrEven)), endMs: start + Int64(($0.end * 1000).rounded(.toNearestOrEven)), text: $0.word) }
+                for word in transcript.words ?? [] {
+                    let beginMs = Int64((word.start * 1000).rounded(.toNearestOrEven))
+                    let endMs = Int64((word.end * 1000).rounded(.toNearestOrEven))
+                    words.append(Golden.Word(startMs: start + beginMs, endMs: start + endMs, text: word.word))
+                }
             }
             if let path = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_REPORT_DIR"] {
                 let folder = URL(fileURLWithPath: path)
