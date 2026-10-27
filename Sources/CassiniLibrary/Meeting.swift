@@ -54,7 +54,7 @@ public struct CaptureActivitySnapshot: CaptureActivityProviding {
     public init(_ captures: [UUID: CaptureActivity] = [:]) { self.captures = captures }
     public func snapshot() -> [UUID: CaptureActivity] { captures }
 }
-public enum NameProvenance: String, Codable, Sendable { case user, recognised, unnamed }
+public enum NameProvenance: String, Codable, Sendable { case user, recognised, unnamed, source }
 public struct MeetingSpeaker: Sendable, Equatable {
     public var id: String
     public var name: String?

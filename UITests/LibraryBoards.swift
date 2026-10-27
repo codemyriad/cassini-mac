@@ -14,6 +14,12 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(window.staticTexts["meeting-elapsed"].waitForExistence(timeout: 10))
+        let title = window.staticTexts["meeting-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5), window.debugDescription)
+        XCTAssertTrue(title.isHittable, window.debugDescription)
+        XCTAssertTrue(text("Client call, Rossi & Partners", in: window))
+        XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
+        XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
         for value in ["43%", "36%", "21%", "00:03:12", "00:47:05", "Named by you", "Recognised from saved voices", "Not named yet"] { XCTAssertTrue(text(value, in: window), value) }
         XCTAssertFalse(window.buttons["Name the speakers"].exists)

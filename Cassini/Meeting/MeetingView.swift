@@ -93,6 +93,7 @@ struct MeetingView: View {
         case .user: return "meeting.speakerCaption.namedByYou"
         case .recognised: return "meeting.speakerCaption.recognised"
         case .unnamed: return "meeting.speakerCaption.notNamed"
+        case .source: return speaker.id == "me" ? "common.yourMicrophone" : (speaker.id == "others" ? "recordFirst.sound.title" : nil)
         case nil: return speaker.name == nil ? "meeting.speakerCaption.notNamed" : nil
         }
     }

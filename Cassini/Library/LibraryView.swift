@@ -15,15 +15,18 @@ struct LibraryView: View {
     @State private var store = LibraryStore()
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
+    @State private var toolbarWidth: CGFloat = 1120
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        GeometryReader { _ in
+        GeometryReader { geometry in
             Group {
                 if let detail = navigation.detail { MeetingView(model: detail, format: store.format) }
                 else if navigation.loading { ProgressView() }
                 else if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear { toolbarWidth = geometry.size.width }
+                .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
         .frame(minWidth: 760, minHeight: 480)
@@ -31,25 +34,30 @@ struct LibraryView: View {
         .toolbar {
             if let detail = navigation.detail {
                 ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 12) {
-                        Button { navigation.back() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 30) }
-                            .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
-                            .accessibilityIdentifier("meeting-back")
-                        Spacer(minLength: 0)
-                        recordButton(big: false)
-                    }.frame(width: 169)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .bold))
-                        if let start = detail.meeting.start {
-                            Text(store.format.previewSubtitle(start, durationMs: detail.meeting.durationMs, received: detail.meeting.state.origin == .received)).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    HStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Button { navigation.back() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 30) }
+                                .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
+                                .accessibilityIdentifier("meeting-back")
+                            Spacer(minLength: 0)
+                            recordButton(big: false)
+                        }.frame(width: 169)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .bold))
+                                .lineLimit(1).accessibilityIdentifier("meeting-title")
+                            if let start = detail.meeting.start {
+                                Text(store.format.previewSubtitle(start, durationMs: detail.meeting.durationMs, received: detail.meeting.state.origin == .received))
+                                    .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
+                            }
+                        }.padding(.leading, 16).frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityElement(children: .contain)
+                        HStack(spacing: 14) {
+                            Button(UXText.text("common.exportEllipsis")) {}.buttonStyle(.plain).fontWeight(.semibold)
+                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(true)
+                            Button {} label: { Image(systemName: "ellipsis").frame(width: 28, height: 30) }.buttonStyle(.plain)
+                                .disabled(true).accessibilityLabel(UXText.text("meeting.moreActions"))
                         }
-                    }.padding(.leading, 16).accessibilityIdentifier("meeting-header")
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 14) {
-                        Button(UXText.text("common.exportEllipsis")) {}.disabled(true)
-                        Button {} label: { Image(systemName: "ellipsis") }.disabled(true).accessibilityLabel(UXText.text("meeting.moreActions"))
-                    }
+                    }.frame(width: max(480, toolbarWidth - 110))
                 }
             } else {
             ToolbarItem(placement: .navigation) {

@@ -4,6 +4,15 @@ import Testing
 @testable import CassiniLibrary
 
 struct MeetingPresentationTests {
+    @Test func captureSourceNamesAreAcceptedOnlyWithNames() throws {
+        let f = try Fixture()
+        try f.metadata { $0["speakers"] = [["id": "me", "name": "Me", "provenance": "source", "colourIndex": 0]] }
+        let path = f.folder.appendingPathComponent("meeting.json")
+        let parsed = try AppMetadata.parse(Data(contentsOf: path))
+        #expect(parsed.speakers.first?.provenance == .source && parsed.speakers.first?.name == "Me")
+        try f.metadata { $0["speakers"] = [["id": "me", "name": NSNull(), "provenance": "source", "colourIndex": 0]] }
+        #expect(throws: MetadataError.self) { try AppMetadata.parse(Data(contentsOf: path)) }
+    }
     @Test func sharesUseLargestRemainderWithFirstSpeakingTies() {
         var meeting = LibraryMeeting(id: UUID(), folder: URL(fileURLWithPath: "/fixture"), state: .init(), title: nil,
             start: nil, durationMs: nil, speakers: ["a", "b", "c"].enumerated().map { .init(id: $0.element, provenance: .unnamed, colourIndex: $0.offset) }, quote: nil, notes: [], audioFiles: [], issues: [])
