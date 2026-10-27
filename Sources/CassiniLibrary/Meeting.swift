@@ -96,12 +96,33 @@ public struct LibraryMeeting: Sendable {
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
     public var isBrowserCapture: Bool { captureSource == "chromium" }
+    /// The scanner establishes stable chronological item order. Both transcript
+    /// views consume these same consecutive speaker turns.
+    public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems) }
     public var audioTracks: [LibraryAudioTrack] = []
     public var canPlaySession: Bool {
         state.origin == .own && state.lifecycle == .saved && !audioTracks.isEmpty && audioTracks.allSatisfy { $0.startOffsetMs != nil }
     }
     public var canWriteDown: Bool { state.canWriteDown }
     public var speakerNames: [String] { speakers.map(\.displayName) }
+}
+public struct LibraryTranscriptTurn: Equatable, Sendable {
+    public let speaker: String
+    public let startMs: Int64
+    public var endMs: Int64
+    public var text: String
+    public static func coalescing(_ items: [LibraryTranscriptItem]) -> [Self] {
+        var turns: [Self] = []
+        for item in items {
+            let text = item.text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            guard !text.isEmpty else { continue }
+            if turns.last?.speaker == item.speaker {
+                turns[turns.count - 1].text += " " + text
+                turns[turns.count - 1].endMs = item.endMs
+            } else { turns.append(.init(speaker: item.speaker, startMs: item.startMs, endMs: item.endMs, text: text)) }
+        }
+        return turns
+    }
 }
 /// Diagnostic codes only. No raw errors or undrawn UI copy is produced by the core.
 public enum LibraryReadIssue: String, Sendable { case unsafePath, invalidMetadata, invalidCapture, missingAudio, invalidAudio, invalidTranscript, unsupportedVersion, unknownStartOffset }

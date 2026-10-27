@@ -7,14 +7,33 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
-    @MainActor private func board(_ name: String, fixture: String) throws {
+    @MainActor func testTranscriptCanBeClosedAndReopened() throws {
+        let app = try launch("library", fixture: "main"); defer { app.terminate() }
+        let library = app.windows["cassini-library-window"]
+        let read = library.buttons["preview-read-transcript"]
+        XCTAssertTrue(read.waitForExistence(timeout: 20))
+        for _ in 0..<3 {
+            read.click()
+            let transcript = app.windows["cassini-transcript-window"]
+            XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+            transcript.buttons["_XCUI:CloseWindow"].click()
+            let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: transcript)
+            XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+            XCTAssertTrue(library.exists)
+            XCTAssertTrue(app.state == .runningForeground)
+        }
+    }
+    @MainActor private func launch(_ name: String, fixture: String) throws -> XCUIApplication {
         let app = XCUIApplication()
         let root = try fixtureDirectory().appendingPathComponent("Library/" + fixture)
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", root.path,
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
-        app.launch(); defer { app.terminate() }
+        app.launch(); return app
+    }
+    @MainActor private func board(_ name: String, fixture: String) throws {
+        let app = try launch(name, fixture: fixture); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
         let expectedControl = name == "library" ? "preview-read-transcript" : "first-run-record"

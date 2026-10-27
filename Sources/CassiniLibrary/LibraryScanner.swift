@@ -188,10 +188,10 @@ public struct LibraryScanner: Sendable {
         }
         if ![.queued, .running].contains(meeting.state.transcript) { meeting.state.etaMinutes = nil }
         if meeting.state.transcript == .damaged { words = [] }
-        meeting.transcriptItems = words
         let sorted = words.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
         }.map(\.element)
+        meeting.transcriptItems = sorted
         var ids: [String] = []
         for word in sorted where !ids.contains(word.speaker) { ids.append(word.speaker) }
         let overrides = Dictionary(uniqueKeysWithValues: (metadata?.speakers ?? []).map { ($0.id, $0) })
