@@ -29,7 +29,7 @@ public enum ReceivedAudioImport {
             try output.synchronize()
             let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
             try MeetingMetadataWriter(directory: folder, id: id).transaction { metadata in
-                metadata["received"] = ["originalName":"original.opus", "originalFolderName":NSNull(), "sha256":digest, "importedAtMs":Int64(Date().timeIntervalSince1970 * 1000)]
+                metadata["received"] = ["originalName":"original.opus", "sha256":digest, "importedAtMs":Int64(Date().timeIntervalSince1970 * 1000)]
                 metadata["title"] = source.deletingPathExtension().lastPathComponent
                 metadata["titleSource"] = "meeting-window"
             }

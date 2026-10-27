@@ -24,7 +24,7 @@ let package = Package(
         .target(name: "CassiniWhistle"),
         .target(name: "CassiniVAD", exclude: ["ONNXRuntime-LICENSE", "UPSTREAM.md"]),
         .target(name: "CassiniTranscription", dependencies: ["CassiniWhistle", "CassiniLibrary", "CassiniRecording", "CassiniVAD"], resources: [.copy("Resources")]),
-        .testTarget(name: "CassiniTranscriptionTests", dependencies: ["CassiniTranscription"], exclude: ["UPSTREAM.md"], resources: [.copy("Goldens")]),
+        .testTarget(name: "CassiniTranscriptionTests", dependencies: ["CassiniTranscription"], exclude: ["UPSTREAM.md"], resources: [.copy("Goldens"), .copy("Fixtures")]),
         .executableTarget(name: "cassini-whistle-worker", dependencies: ["CassiniWhistle", "CassiniTranscription"]),
         .testTarget(name: "CassiniWhistleTests", dependencies: ["CassiniWhistle"], resources: [.copy("Fixtures")]),
         .testTarget(name: "CassiniPlaybackTests", dependencies: ["CassiniPlayback", "CassiniLibrary"]),

@@ -16,6 +16,27 @@ final class TranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(TranscriptSpeaker.fromTrack(id: "42", kind: "remote").id, "track-42")
         XCTAssertNil(TranscriptSpeaker.fromTrack(id: "42", kind: "remote").name)
     }
+    func testReceivedPlainOpusBecomesOneUnnamedSpeaker() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let original = Bundle.module.url(forResource: "jfk-received", withExtension: "opus", subdirectory: "Fixtures")!
+        let before = SHA256.hash(data: try Data(contentsOf: original))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imported = try ReceivedAudioImport.copy(original, into: root)
+        XCTAssertEqual(imported.state.origin,.received); XCTAssertTrue(imported.canWriteDown)
+        let vad = try VADAssets.forWorker(arguments: ["--assets",assets])
+        let detector = try SpeechDetector(assets: vad)
+        let engine = try WhistleEngine(assets: WhistleAssets.pinned(directory: URL(fileURLWithPath: assets)))
+        try MeetingTranscriber.run(directory: imported.folder, engine: engine, detector: detector)
+        let written = try XCTUnwrap(LibraryScanner(root: root).scan().meetings.first)
+        XCTAssertEqual(written.state.transcript,.done); XCTAssertFalse(written.transcriptItems.isEmpty)
+        XCTAssertEqual(written.speakers.count,1)
+        XCTAssertEqual(written.speakers.first?.id,"track-original")
+        XCTAssertEqual(written.speakers.first?.displayName,"Speaker 1")
+        XCTAssertEqual(written.speakers.first?.provenance,.unnamed)
+        XCTAssertNil(written.speakers.first?.name)
+        XCTAssertEqual(SHA256.hash(data: try Data(contentsOf: original)),before)
+    }
     func testProductionWriterPipelineOffsetsAndReadOnlyAudio() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

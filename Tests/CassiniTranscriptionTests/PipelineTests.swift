@@ -7,6 +7,16 @@ import CassiniWhistle
 
 final class PipelineTests: XCTestCase {
     private var root: URL { Bundle.module.url(forResource: "Goldens", withExtension: nil)! }
+    func testSharedGoldenChecksums() throws {
+        let manifest = try String(contentsOf: root.appendingPathComponent("SHA256SUMS"), encoding: .utf8)
+        for line in manifest.split(separator: "\n") {
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            XCTAssertEqual(fields.count,2)
+            let bytes = try Data(contentsOf: root.appendingPathComponent(String(fields[1])))
+            let actual = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+            XCTAssertEqual(actual,String(fields[0]),String(fields[1]))
+        }
+    }
     func testStreamingFIRMatchesGoldenAndBatchBoundaries() throws {
         var input: [Float] = []
         try MeetingAudioDecoder.decode(root.appendingPathComponent("pipeline-input-48k.wav")) { pcm, rate in XCTAssertEqual(rate, 48000); input += pcm }

@@ -90,7 +90,7 @@ public enum MeetingTranscriber {
             try publish(status: "running")
             for (index, track) in tracks.enumerated() {
                 for segment in track.audio.segments {
-                    let began = Date(), samples = try track.audio.samples(segment)
+                    let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
                     let result = try engine.transcribe(samples: samples)
                     if language == "auto" { language = result.language }
                     let start = track.offset + Int64(segment.startSample * 1000 / 16000)
@@ -100,7 +100,7 @@ public enum MeetingTranscriber {
                         items.append(.init(word: .init(speaker: track.speaker.id, startMs: a, endMs: b, text: word.word), track: index, ordinal: items.count))
                     }
                     let speech = Double(samples.count) / 16000
-                    processed += speech; remaining -= speech; elapsed += Date().timeIntervalSince(began)
+                    processed += speech; remaining -= speech; elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
                     try publish(status: "running")
                 }
             }
