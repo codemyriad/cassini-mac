@@ -37,12 +37,10 @@ jobs:
       - name: Package
         id: package
         run: |
-          cd build/Build/Products/Release
-          ZIP="Cassini-${{ steps.version.outputs.version }}.zip"
-          ditto -c -k --keepParent Cassini.app "$ZIP"
-          shasum -a 256 "$ZIP" > "$ZIP.sha256"
-          echo "zip=build/Build/Products/Release/$ZIP" >> "$GITHUB_OUTPUT"
-          echo "sum=build/Build/Products/Release/$ZIP.sha256" >> "$GITHUB_OUTPUT"
+          ZIP="build/Cassini-${{ steps.version.outputs.version }}.zip"
+          python3 scripts/package-release.py build/Build/Products/Release/Cassini.app "$ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "sum=$ZIP.sha256" >> "$GITHUB_OUTPUT"
       - name: Release notes
         run: |
           cat > notes.md <<'EOF'
@@ -69,6 +67,13 @@ jobs:
 
           Only approve a build you intentionally downloaded here. The right-click → Open shortcut of
           older macOS versions no longer works on macOS 15.
+
+          ### Browser recording
+
+          The archive also includes BrowserExtension, Install Browser Host.command, and setup
+          instructions. Load the extension in chrome://extensions, then run the installer with
+          its extension ID. The bundled host requires no Swift compiler, Xcode or Python.
+          Keep the extension folder in a permanent location. Re-run setup after moving the app.
 
           ### Updating
 

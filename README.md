@@ -66,11 +66,11 @@ For browser tracks or a single tab, load the Chromium extension:
    ```sh
    scripts/install-browser-host.sh YOUR_EXTENSION_ID
    ```
-   This builds and ad-hoc signs the local host and registers it only in existing Chrome,
+   This developer command builds and ad-hoc signs the local host and registers it only in existing Chrome,
    Chromium, Edge and Brave directories. Alternatively, pass `/path/to/Cassini.app` as a
    second argument to register its bundled signed host without a Swift build. Rerun after
    moving the app or changing the extension ID. `scripts/install-browser-host.sh --uninstall`
-   removes registrations and the standalone helper, retaining recordings.
+   removes registrations, retaining the app/helper and recordings.
 3. In the meeting tab, open the extension and choose **Record WebRTC tracks**. If the page
    blocks access or no tracks are found, choose **Record tab audio**. The tab fallback preserves
    playback and records the rendered mix; it usually excludes your microphone. Use native
@@ -250,3 +250,36 @@ runs in the DrMeyers manual/nightly workflow: hosted macOS's Null Audio Device i
 rendering target. The tab test waits for saved audio frames, not a fixed startup delay.
 Consent/output-device timeouts produce `status: "blocked"` in native result.json and still
 exit nonzero, so an unavailable hardware gate cannot be mistaken for a passing code test.
+
+
+### Release setup for manual product runs (M3)
+
+The release zip contains `Cassini/Cassini.app`, `BrowserExtension`,
+`Install Browser Host.command`, `README.txt` and the pinned protocol revision. Extract the
+whole folder and follow its README: approve/open the app if Gatekeeper requires it, load the
+extension in Chrome's Developer mode, then double-click the installer and paste its extension
+ID. Setup uses only the bundled executable and macOS's shell. Xcode, Swift, Python and
+Homebrew are not required by release users.
+
+Keep the extension directory in a permanent location. The installer uses the app beside it,
+or `/Applications/Cassini.app` if the app has been moved there. Rerun after moving the app or
+changing the extension ID. `Install Browser Host.command --uninstall` removes registrations
+and retains recordings. Existing Chrome/Chromium/Edge/Brave user directories are registered;
+other browsers are not created. The host's setup mode is separate from framed native stdio.
+
+Build/package for review:
+
+```
+xcodegen generate
+xcodebuild -project Cassini.xcodeproj -scheme Cassini -configuration Release -derivedDataPath build build
+python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini-recording.zip
+sudo python3 scripts/check-release-install.py build/Cassini-recording.zip --report /tmp/cassini-release-install.json
+```
+
+The last check creates and removes its own hidden, non-login local account. It verifies the
+standard Chrome NativeMessagingHosts path, executable/allowlist/permissions, real Release-host
+stdio recording in that account, and uninstall preserving the recording. The test's child
+processes have an invalid DEVELOPER_DIR to detect accidental compiler use. The M3 check passed
+on DrMeyers. Interactive Chrome Load unpacked and downloaded-file Gatekeeper approval remain
+manual checks; command installation and native stdio are the automated clean-account coverage.
+CI/release workflows use the same packager and include the SHA256 sidecar.

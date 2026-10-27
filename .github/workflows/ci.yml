@@ -79,9 +79,10 @@ jobs:
             -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES -quiet build
       - name: Package
         run: |
-          cd build/Build/Products/Release
-          ditto -c -k --keepParent Cassini.app Cassini.zip
+          python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
       - uses: actions/upload-artifact@v5
         with:
           name: Cassini-${{ github.sha }}
-          path: build/Build/Products/Release/Cassini.zip
+          path: |
+            build/Cassini.zip
+            build/Cassini.zip.sha256
