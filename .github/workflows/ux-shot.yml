@@ -1,0 +1,59 @@
+name: UX window screenshot spike
+
+on:
+  pull_request:
+    paths:
+      - 'Cassini/**'
+      - 'UITests/**'
+      - 'project.yml'
+      - 'scripts/check-window-screenshots.py'
+      - '.github/workflows/ux-shot.yml'
+
+concurrency:
+  group: ux-shot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require GitHub-hosted runner
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Capture actual windows with XCUITest
+        env:
+          TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild test -project Cassini.xcodeproj -scheme CassiniScreenshots \
+            -configuration Debug -destination 'platform=macOS' -parallel-testing-enabled NO \
+            -derivedDataPath build -resultBundlePath build/WindowScreenshots.xcresult \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/window-tests.log
+      - name: Export window PNGs
+        if: always()
+        run: |
+          xcrun xcresulttool export attachments --path build/WindowScreenshots.xcresult \
+            --output-path build/window-screenshots
+      - name: Require both whole-window PNGs
+        run: python3 scripts/check-window-screenshots.py build/window-screenshots
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: window-screenshots-${{ github.sha }}
+          path: |
+            build/window-screenshots/*.png
+            build/window-screenshots/manifest.json
+            build/window-tests.log
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: window-screenshot-diagnostics-${{ github.sha }}
+          path: build/WindowScreenshots.xcresult

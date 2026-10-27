@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        if ScreenshotFixture.launchIfRequested() { return }
         if CommandLine.arguments.contains("--recording-self-test") || CommandLine.arguments.contains("--recording-sink-self-test") {
             Task { @MainActor in await RecordingSelfTest.run(sinkOnly: CommandLine.arguments.contains("--recording-sink-self-test")) }
             return

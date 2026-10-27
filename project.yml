@@ -27,6 +27,9 @@ targets:
         excludes:
           - "Info.plist"
           - "Cassini.entitlements"
+      - path: UITests/Fixtures
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: CassiniKit
         product: CassiniKit
@@ -91,6 +94,20 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
         GENERATE_INFOPLIST_FILE: false
+  CassiniWindowScreenshots:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: UITests
+        excludes: [Fixtures]
+    dependencies:
+      - target: Cassini
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.screenshots
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: Cassini
+        ENABLE_HARDENED_RUNTIME: false
   CassiniBrowserHost:
     type: tool
     platform: macOS
@@ -150,3 +167,13 @@ schemes:
         Cassini: all
     run:
       config: Debug
+  CassiniScreenshots:
+    build:
+      targets:
+        Cassini: all
+        CassiniWindowScreenshots: [test]
+    test:
+      config: Debug
+      targets:
+        - CassiniWindowScreenshots
+      gatherCoverageData: false

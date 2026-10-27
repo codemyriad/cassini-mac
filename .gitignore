@@ -13,3 +13,4 @@ native-artifacts/
 build-native-ci/
 __pycache__/
 *.pyc
+build-shot/
