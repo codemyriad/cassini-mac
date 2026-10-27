@@ -203,7 +203,12 @@ final class LibraryBoards: XCTestCase {
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
         app.launchArguments += extra
-        app.launch(); return app
+        app.launch()
+        if extra.contains("--fixture-library-recording"), !app.windows.firstMatch.waitForExistence(timeout: 2) {
+            app.menuBars.menuBarItems["Window"].click()
+            app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
+        }
+        return app
     }
     @MainActor private func board(_ name: String, fixture: String) throws {
         let app = try launch(name, fixture: fixture); defer { app.terminate() }
