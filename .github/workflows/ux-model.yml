@@ -1,0 +1,32 @@
+name: UX Library model
+on:
+  push:
+    branches: ['ux/1a-library-model']
+  pull_request:
+    paths:
+      - 'Sources/CassiniLibrary/**'
+      - 'Sources/CassiniLibraryWatchers/**'
+      - 'Tests/CassiniLibraryTests/**'
+      - 'Package.swift'
+      - '.github/workflows/ux-model.yml'
+permissions:
+  contents: read
+jobs:
+  library:
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      TZ: UTC
+      LANG: C
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Golden vectors and read-only Library tests
+        run: |
+          set -o pipefail
+          swift test --filter Library 2>&1 | tee ux-library-tests.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: ux-library-test-results
+          path: ux-library-tests.log
