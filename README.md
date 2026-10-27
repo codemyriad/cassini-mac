@@ -90,6 +90,7 @@ Instructions for building from source, running the test and conformance suites, 
 
 ## License
 
-Copyright © 2026 Code Myriad.
+Cassini for Mac is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License, version 3 or later](COPYING).
 
 Cassini bundles the Whistle speech model and the Needle 3.3.0 inference engine by Cactus Compute under the Apache License, Version 2.0; see [`Whistle/LICENSE`](Whistle/LICENSE) and [`Whistle/NOTICE`](Whistle/NOTICE). The format conformance test vectors in `Tests/CassiniKitTests/Conformance` are dedicated to the public domain under CC0.
