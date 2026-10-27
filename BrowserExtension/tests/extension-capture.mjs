@@ -1,3 +1,4 @@
+import { workerDeathDuringRecording } from '../../browser-protocol/scenarios/worker-recovery.mjs';
 import { tonePower } from '../../browser-protocol/scenarios/tones.mjs';
 import { saveFailure } from './artifacts.mjs';
 // Optional integration test. See README.md for the temporary Playwright setup.
@@ -69,11 +70,12 @@ try {
   await wake.close();
   // Simulate action invocation's activeTab metadata grant in the temporary test profile.
   // The actual MAIN/isolated scripts, service worker and Native Messaging transport run normally.
-  await worker.evaluate(url => {
+  const meetingTab = await worker.evaluate(url => {
     const query = chrome.tabs.query.bind(chrome.tabs);
     return query({ active: true, currentWindow: true }).then(tabs => {
       const tab = { ...tabs[0], url, title: 'Synthetic extension test' };
       chrome.tabs.query = async () => [tab];
+      return tab;
     });
   }, page.url());
 
@@ -88,7 +90,7 @@ try {
   await popup.waitForFunction(() => !document.querySelector('#tracks').hidden);
   const after = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   assert.equal(after.recording, false);
-  assert.equal(after.message, 'Recording saved locally.');
+  assert.equal(after.message, 'Saved on this computer.');
   assert.equal(during.tracks, 1);
   const manifest = JSON.parse(await readFile(path.join(savedPath, 'session.json')));
   assert.equal(manifest.state, 'completed');
@@ -97,6 +99,10 @@ try {
   assert.ok(wav.subarray(44).some(byte => byte !== 0), 'recorded a generated tone');
   assert.deepEqual(errors, []);
   await rm(savedPath, { recursive: true, force: true }); savedPath = null;
+  const crashed = await workerDeathDuringRecording({ context, meetingPage: page, popup, extensionId });
+  await rm(crashed.path, { recursive: true, force: true });
+  worker = context.serviceWorkers().find(item => item.url().includes(extensionId)) || await context.waitForEvent('serviceworker');
+  await worker.evaluate(tab => { chrome.tabs.query = async () => [tab]; }, meetingTab);
   await page.evaluate(() => {
     const frame = document.createElement('iframe');
     frame.srcdoc = `<body><script>
@@ -108,7 +114,14 @@ try {
     document.body.append(frame);
   });
   await popup.click('#tracks');
-  await page.waitForTimeout(2000);
+  let sourceStatus;
+  const sourceDeadline=Date.now()+15000;
+  do {
+    sourceStatus=await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'status'}));
+    if (sourceStatus.tracks===2) break;
+    await page.waitForTimeout(50);
+  } while(Date.now()<sourceDeadline);
+  await page.waitForTimeout(1500);
   const beforeNavigation = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   savedPath = beforeNavigation.path;
   assert.equal(beforeNavigation.recording, true);
