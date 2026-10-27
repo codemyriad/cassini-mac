@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
-        if CommandLine.arguments.contains("--fixture-library-recording"), !RecordingFixture.enabled || RecordingFixture.root == nil { NSApp.terminate(nil); return }
+        if CommandLine.arguments.contains("--fixture-library-recording"), !RecordingFixture.enabled || RecordingFixture.root == nil {
+            NSLog("Invalid hosted recording fixture: enabled=%d, root=%@, arguments=%@", RecordingFixture.enabled, String(describing: RecordingFixture.root), CommandLine.arguments)
+            NSApp.terminate(nil); return
+        }
         if ScreenshotFixture.launchIfRequested() { return }
         if CommandLine.arguments.contains("--whistle-self-test") {
             Task { @MainActor in await WhistleSelfTest.run() }

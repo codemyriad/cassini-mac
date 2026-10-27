@@ -49,6 +49,9 @@ jobs:
         with:
           name: ux-boards
           path: build/ux-boards
+      - name: Preserve hosted app diagnostics
+        if: failure()
+        run: /usr/bin/log show --style compact --last 10m --predicate 'process == "Cassini"' > build/cassini-app.log
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
@@ -56,4 +59,5 @@ jobs:
           path: |
             build/UXBoards.xcresult
             build/ux-boards.log
+            build/cassini-app.log
             build/display-*

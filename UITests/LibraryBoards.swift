@@ -28,7 +28,7 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20))
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
         window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout: 10))
         window.sheets.buttons["record-first-start"].click()
