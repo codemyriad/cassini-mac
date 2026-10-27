@@ -15,6 +15,9 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
     let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
     var stall = true
     var finishDelayMs = 0
+    var gateFinish = false
+    let finishEntered = DispatchSemaphore(value: 0), finishRelease = DispatchSemaphore(value: 0)
+    var finishTimedOut = false
     init(_ session: RecordingSession) { self.session = session }
     var recordingProblem: String? { session.recordingProblem }
     func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws { try session.addTrack(id: id, label: label, kind: kind, sampleRate: sampleRate, channels: channels) }
@@ -24,6 +27,10 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
     }
     func finish(problem: String?) throws { try session.finish(problem: problem) }
     func finish(problem: String?, kind: String?) throws {
+        if gateFinish {
+            finishEntered.signal()
+            finishTimedOut = finishRelease.wait(timeout: .now() + 10) != .success
+        }
         if finishDelayMs > 0 { Thread.sleep(forTimeInterval: Double(finishDelayMs) / 1000) }
         try session.finish(problem: problem, kind: kind)
     }
@@ -137,15 +144,22 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
         defer { try? FileManager.default.removeItem(at: parent) }
         let session = try RecordingSession(parent: parent, title: "Async save", source: "macos")
         let writer = StalledSession(session)
-        writer.stall = false; writer.finishDelayMs = 200
+        writer.stall = false; writer.finishDelayMs = 200; writer.gateFinish = true
         let sink = RecordingSink(session: writer, originHostTime: 1) { _ in }
         sink.receive(try nativeBuffer(rate: 8000, frames: 80), hostTime: 1, id: "mic", label: "Mic", kind: "microphone")
         var finished = false
         let completion = Task { try await sink.finishAsync(problem: nil); finished = true }
-        try await Task.sleep(for: .milliseconds(30))
-        #expect(!finished, "A slow final writer must not block this MainActor continuation")
+        let entered = await Task.detached { writer.finishEntered.wait(timeout: .now() + 10) == .success }.value
+        #expect(entered)
+        // The actor must run this continuation while the writer is waiting. The
+        // gate avoids assuming that a 30ms timer runs before a 200ms writer under
+        // the hosted runner's concurrent CPU load. A blocking implementation can
+        // proceed only through the bounded timeout and fails both assertions.
+        #expect(!finished, "The writer must still be waiting when this MainActor continuation runs")
+        writer.finishRelease.signal()
         try await completion.value
         #expect(finished)
+        #expect(!writer.finishTimedOut)
     }
 
 }
