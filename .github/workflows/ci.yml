@@ -29,6 +29,11 @@ jobs:
         run: python3 browser-protocol/verify.py --pinned BrowserExtension
       - name: Shared native-session fixture
         run: python3 browser-protocol/conformance/check-native-fixture.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install strict conformance dependencies
+        run: python3 -m pip install -r browser-protocol/requirements-test.txt
       - name: Browser host conformance
         run: python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
       - uses: actions/setup-node@v4

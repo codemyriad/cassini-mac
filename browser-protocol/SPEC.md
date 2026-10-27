@@ -87,7 +87,9 @@ preceding version. Vectors deliberately isolate other errors; wording is not con
 
 The last four are snapshot resource policies, not requirements on third-party hosts.
 Overflow is counted and reported, preserving render-clock gaps instead of compressing time.
-A failed page source is retired while other sources continue. A host transport failure ends
+Transient AudioContext suspension attempts resume for up to four seconds without changing the source.
+Other source failures retry after five seconds under fresh IDs at most three times; only
+then is the source retired. Render-clock gaps remain on the timeline while other sources continue. A host transport failure ends
 the session because its ordered acknowledgements can no longer be trusted.
 
 ## Page trust and browser clocks
@@ -152,3 +154,47 @@ the same safe WAV paths, dates, frame counts, interruption states and optional m
 browser sessions. `conformance/native-session/` is a complete deterministic two-source
 fixture (440 Hz microphone at 0 ms; 880 Hz system stereo at 125 ms), with macOS and GNOME
 manifest variants. It is a synthetic format fixture, not proof of hardware capture.
+
+
+## Executable JSON examples and schema bounds
+
+See [start](conformance/examples/start.json), [track](conformance/examples/track.json),
+[audio](conformance/examples/audio.json), [stop](conformance/examples/stop.json),
+[responses](conformance/examples/responses.json), and [session](conformance/examples/session.json).
+For example, a complete start request is:
+
+```json
+{"type":"start","version":1,"title":"Example meeting"}
+```
+
+Schema lengths count Unicode code points; ID limits additionally count UTF-8 bytes.
+endOffsetMs is bounded at 86460000 ms (24 hours plus one minute), allowing the final chunk
+after the latest legal start offset. A completed session has no non-null problem/problemKind;
+an interrupted session has a nonempty problem. Response examples are complete responses;
+vector expect objects are partial matchers, not full responses.
+
+After `stopped` the host answers further requests with error `state` and exits on EOF.
+
+An active recording's path/mode/tab/origin is held in extension session storage after the
+host start acknowledgement. Worker restart reports interruption with that path and clears
+the stale badge; it does not claim that unacknowledged audio survived. A worker-crashed tab
+capture document is closed to release the capture stream.
+
+
+## Native host-time discontinuities (v1.1 clarification)
+
+After the first-buffer anchor, samples drive continuity. A forward jump between native
+input buffers of at least one second beyond the previous buffer's duration becomes counted
+silence. Compute `lagMs = currentHostMs - previousHostMs - previousInputFrames/rate*1000`,
+round its positive duration to sample frames, and insert it when at least `rate` frames.
+Use input-buffer host stamps, not callback delivery/arrival time. This per-buffer difference
+protects smooth device drift: comparing absolute session-start lag would incorrectly count
+10 hours at +50 ppm (1.8 seconds) as missing audio. Smaller/negative divergence is diagnostic;
+it must not reorder samples or silently compress a forward discontinuity.
+
+`gapFrames` and `droppedFrames` are optional per-track nonnegative integer counts, included
+in the final WAV/manifest frames. Gaps indicate missing input time; dropped frames indicate
+writer-queue overflow. Report only-gap loss with session problemKind=`gap`; writer loss takes
+problemKind=`io` if both occurred. Both preserve available audio and explicit silence.
+The complete `conformance/native-session-gap/` fixture contains continuous mic audio and a
+one-second system gap, with both macos/gnome manifest variants.

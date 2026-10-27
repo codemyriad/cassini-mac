@@ -25,6 +25,9 @@ public struct RecordingTrack: Codable, Identifiable, Sendable {
     public var endOffsetMs: Double? = nil
     public var ended: Bool? = nil
     public var labelSource: String? = nil
+    public var droppedFrames: UInt64? = nil
+    public var gapFrames: UInt64? = nil
+    public var problem: String? = nil
 }
 
 public enum RecordingError: LocalizedError {
@@ -47,7 +50,7 @@ public final class RecordingSession {
     public init(parent: URL, title: String, source: String) throws {
         let id = UUID()
         directory = parent.appendingPathComponent("Recording-\(id.uuidString)", isDirectory: true)
-        manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(title.prefix(500)),
+        manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))),
                                      source: source, state: "recording", tracks: [])
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                attributes: [.posixPermissions: 0o700])
@@ -104,7 +107,15 @@ public final class RecordingSession {
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
     }
 
-    public func finish(problem: String? = nil) throws {
+    public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
+        guard let i = manifest.tracks.firstIndex(where: { $0.id == id }) else { return }
+        manifest.tracks[i].droppedFrames = droppedFrames > 0 ? droppedFrames : nil
+        manifest.tracks[i].gapFrames = gapFrames > 0 ? gapFrames : nil
+    }
+
+    public func finish(problem: String? = nil) throws { try finish(problem: problem, kind: nil) }
+
+    public func finish(problem: String?, kind: String?) throws {
         guard !finished else { return }
         finished = true
         var failure: Error?
@@ -119,14 +130,14 @@ public final class RecordingSession {
             manifest.tracks[i].ended = true
             manifest.tracks[i].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames) / Double(track.sampleRate) * 1000 }
         }
-        manifest.problemKind = failure != nil ? "io" : (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
+        manifest.problemKind = failure != nil ? "io" : (kind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture")))
         manifest.state = manifest.problem == nil ? "completed" : "interrupted"
         try checkpoint()
         if let failure { throw failure }
     }
 
     public static func cleanLabel(_ value: String) -> String {
-        String(String(value.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }).prefix(200))
+        String(String.UnicodeScalarView(value.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.prefix(200)))
     }
 
     private func checkpoint() throws {
@@ -204,11 +215,11 @@ private final class WAVWriter {
         try handle.write(contentsOf: header)
     }
 
-    func synchronize() throws { try durableSync(handle) }
+    func synchronize() throws { try handle.synchronize() }
 
     func close() throws {
         guard !closed else { return }
-        try synchronize()
+        try durableSync(handle)
         try handle.close()
         closed = true
     }

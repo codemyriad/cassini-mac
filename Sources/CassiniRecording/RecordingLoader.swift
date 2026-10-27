@@ -27,8 +27,11 @@ public enum RecordingLoader {
             guard files.count <= 64 else { throw RecordingError.invalid("Too many recording tracks to recover.") }
             let tracks: [RecordingTrack] = files.compactMap { file in
                 guard let info = try? wave(file, directory: directory) else { return nil }
-                return RecordingTrack(id: file.deletingPathExtension().lastPathComponent, label: "Recovered audio", kind: "media",
-                                      file: file.lastPathComponent, sampleRate: info.rate, channels: info.channels, startOffsetMs: nil, frames: info.frames)
+                var track = RecordingTrack(id: file.deletingPathExtension().lastPathComponent, label: "Recovered audio", kind: "media",
+                                           file: file.lastPathComponent, sampleRate: info.rate, channels: info.channels, startOffsetMs: nil, frames: info.frames)
+                track.labelSource = "recovered"
+                track.ended = false
+                return track
             }
             guard !tracks.isEmpty else { throw RecordingError.invalid("No readable recording metadata or PCM WAV tracks were found.") }
             return RecordingManifest(version: 1, id: UUID(), createdAt: Date(), title: "Recovered recording", source: "recovered",
@@ -41,9 +44,31 @@ public enum RecordingLoader {
                   (track.startOffsetMs ?? 0).isFinite, (0...86_400_000).contains(track.startOffsetMs ?? 0) else {
                 throw RecordingError.invalid("Invalid recording track.")
             }
-            let info = try wave(directory.appendingPathComponent(track.file), directory: directory)
-            guard info.rate == track.sampleRate, info.channels == track.channels else { throw RecordingError.invalid("Audio format differs from recording metadata.") }
-            result.tracks[index].frames = info.frames
+            let file = directory.appendingPathComponent(track.file)
+            // Unsafe paths stay fatal; an unreadable in-folder track is recoverable independently.
+            guard file.resolvingSymlinksInPath().deletingLastPathComponent() == directory.resolvingSymlinksInPath() else {
+                throw RecordingError.invalid("Audio is outside the recording folder.")
+            }
+            do {
+                let info = try wave(file, directory: directory)
+                guard info.rate == track.sampleRate, info.channels == track.channels else {
+                    throw RecordingError.invalid("Audio format differs from recording metadata.")
+                }
+                result.tracks[index].frames = info.frames
+                if track.ended == true, let start = track.startOffsetMs {
+                    result.tracks[index].endOffsetMs = start + Double(info.frames) / Double(info.rate) * 1000
+                }
+            } catch {
+                result.tracks[index].frames = 0
+                result.tracks[index].ended = false
+                result.tracks[index].endOffsetMs = nil
+                result.tracks[index].labelSource = "recovered"
+                result.tracks[index].problem = "Audio unavailable: " + error.localizedDescription
+                result.state = "interrupted"
+                result.problemKind = "recovery"
+                let note = "One or more audio tracks could not be recovered. Readable tracks remain available."
+                if result.problem?.contains(note) != true { result.problem = [result.problem, note].compactMap { $0 }.joined(separator: " ") }
+            }
         }
         return result
     }

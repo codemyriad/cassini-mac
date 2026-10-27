@@ -40,7 +40,6 @@ do {
     while let data = try NativeMessageFraming.read(from: .standardInput) {
         let response = try host.receive(data)
         try NativeMessageFraming.write(JSONSerialization.data(withJSONObject: response), to: .standardOutput)
-        if response["type"] == "stopped" { break }
     }
     try host.disconnect()
 } catch {

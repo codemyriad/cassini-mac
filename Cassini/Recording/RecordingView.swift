@@ -49,9 +49,9 @@ struct RecordingView: View {
                             Text("System output includes other apps and notifications.").font(.caption).foregroundStyle(.secondary)
                         }
                     }.padding(8)
-                }.disabled(recorder.isRecording || recorder.isStarting)
+                }.disabled(recorder.isRecording || recorder.isStarting || recorder.isSaving)
                 HStack(spacing: 16) {
-                    if recorder.isRecording {
+                    if recorder.isRecording || recorder.isSaving {
                         Image(systemName: "record.circle.fill").foregroundStyle(.red)
                         if let started = recorder.startedAt {
                             TimelineView(.periodic(from: started, by: 1)) { context in
@@ -59,7 +59,7 @@ struct RecordingView: View {
                                     .monospacedDigit()
                             }
                         }
-                        Button("Stop Recording") { recorder.stop() }.buttonStyle(.borderedProminent)
+                        Button(recorder.isSaving ? "Saving…" : "Stop Recording") { Task { await recorder.stop() } }.buttonStyle(.borderedProminent).disabled(recorder.isSaving)
                     } else {
                         Button(recorder.isStarting ? "Starting…" : "Start Recording…") { Task { await recorder.start() } }
                             .buttonStyle(.borderedProminent).disabled(!recorder.canStart)
@@ -83,7 +83,7 @@ struct RecordingView: View {
                 Divider()
                 Text("Browser recording").font(.title2.bold())
                 Text("Use the Cassini Chromium extension to record WebRTC tracks or a tab’s audio. Browser recordings are saved in Music/Cassini. Open a recording folder below to listen to its tracks.")
-                Button("Open Recording Folder…") { openRecording() }.disabled(recorder.isRecording || recorder.isStarting)
+                Button("Open Recording Folder…") { openRecording() }.disabled(recorder.isRecording || recorder.isStarting || recorder.isSaving)
                 if let review {
                     Text(review.title).font(.headline)
                     Text("\(review.state.capitalized) · \(review.tracks.count) tracks").foregroundStyle(.secondary)
@@ -93,14 +93,15 @@ struct RecordingView: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(track.label)
+                                if let issue = track.problem { Text(issue).font(.caption).foregroundStyle(.orange) }
                                 Text("\(track.kind) · \(track.sampleRate) Hz · \(track.channels) channels").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Listen") { play([track]) }.disabled(recorder.isRecording || recorder.isStarting)
+                            Button("Listen") { play([track]) }.disabled(recorder.isRecording || recorder.isStarting || recorder.isSaving || track.frames == 0)
                         }
                     }
                     HStack {
-                        Button("Listen to All") { play(review.tracks) }.disabled(recorder.isRecording || recorder.isStarting)
+                        Button("Listen to All") { play(review.tracks) }.disabled(recorder.isRecording || recorder.isStarting || recorder.isSaving || review.tracks.allSatisfy { $0.frames == 0 })
                         Button("Stop Playback") { stopPlayback() }
                     }
                 }
@@ -145,8 +146,9 @@ struct RecordingView: View {
     private func play(_ tracks: [RecordingTrack]) {
         stopPlayback()
         guard let reviewDirectory else { return }
+        let playable = tracks.filter { $0.frames > 0 }
         do {
-            for track in tracks {
+            for track in playable {
                 guard track.file == URL(fileURLWithPath: track.file).lastPathComponent,
                       track.file.hasSuffix(".wav"), (track.startOffsetMs ?? 0).isFinite,
                       (0...86_400_000).contains(track.startOffsetMs ?? 0) else {
@@ -161,8 +163,8 @@ struct RecordingView: View {
                 players.append(player)
             }
             if let clock = players.first?.deviceCurrentTime {
-                let base = tracks.count == 1 ? (tracks.first?.startOffsetMs ?? 0) : 0
-                for (player, track) in zip(players, tracks) {
+                let base = playable.count == 1 ? (playable.first?.startOffsetMs ?? 0) : 0
+                for (player, track) in zip(players, playable) {
                     player.play(atTime: clock + 0.15 + ((track.startOffsetMs ?? 0) - base) / 1000)
                 }
             }

@@ -1,26 +1,7 @@
-tree ebdc699b71621af66cae5f997c95c8d7f7a483c9
-parent 14271ee2118a763325512ec7572a9385ed7709c6
-parent 3b898996d29ad34c8da25e8e472ce6f6c95bb59a
-author DrMeyers <drmeyers@codemyriad.io> 1793107025 +0100
-committer GitHub <noreply@github.com> 1793107025 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq4KRRCRC1aQ7uu5UhlAAAvXAQAF0Iu1K1EHcx9Hqufxmeiav+
- sv97pUyFGJ4C7jk1l5kuDXgp0E2bTKiZBxK6vknHXACBICwCuEb1Kp90kpjY6pt2
- cXXB/oWFwcedUpgsM0e7PDl86IPDEyJfJmPC6RS4ii+RxLuelTiiTcHGwfmQe/oG
- BnptPf+fGLMhB6KYHURvvfn68TLRpSG9EyrTyBkvtlxEKwewdt0SqyQg9X+1S4rF
- 2xvIAjcU+1K8pcRU//adDRKKL0pkBN/epVvYrqvDRBFZlCniQYAjPyKf+7oc+naZ
- FpPBTVDbMtzbfu1SEs9aahLwBkGEvIEl7WMTjOi0xcl5NtUaXOvNvFGAUTDMs0QK
- vsodY1JnfvZwDfMSUE0vD/QlGsA+VefgvZbY8dCVEPa4W/HkB2GFnMToHFnKtUN9
- kPxJ3xo9lARwWPsxW/7OBUsoqp+7h52sl3UxrnHfMSzX0GcpDmZbJ8dpzPulr750
- nDZOgMpXjbevZYznJjxEjuLe1kR3XI5+NjV33o+KQ/Ql4+Y3CN6Vr/zXoCPfGLbC
- /iiFoN6LqPtQSgYyVRAjXIy3Gnyilx7CpZDxhIDs3HI+URAhC/tko36T2kPuOE80
- xovewtHFVbhbAuZul0hEfJR2xhqCfRV1l/IdmRShUSNuco9k92qyZ9ZW3+9orjKy
- GEIhfDJIGT8Uh/y9b+hS
- =Oir7
- -----END PGP SIGNATURE-----
- 
+tree 5562e05b4227e3fffe6c7745bce51153bffcc48f
+parent adcfce17283c02af2cdfca04c5d9cb519cdc29c8
+parent 3ab56d1fc74e9487648c4d2a750923fedfa3a512
+author Silvio Tomatis <silviot@gmail.com> 1793108111 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793108111 +0100
 
-Merge pull request #6 from codemyriad/copy-pass
-
-Extension copy pass: plain language, no platform names
+Stack native gap clarification after lifecycle recovery

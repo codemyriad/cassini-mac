@@ -19,8 +19,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { RecordingController.shared.stop() }
+    private var terminationPending = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            let recorder = RecordingController.shared
+            guard recorder.isRecording || recorder.isStarting || recorder.isSaving else { return .terminateNow }
+            if !terminationPending {
+                terminationPending = true
+                Task { @MainActor in
+                    await recorder.stop()
+                    sender.reply(toApplicationShouldTerminate: true)
+                }
+            }
+            return .terminateLater
+        }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }

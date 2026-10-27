@@ -13,7 +13,10 @@ final class RecordingController {
     var selectedProcesses: Set<UInt32> = []
     var title = "Meeting"
     private(set) var isRecording = false
+    private(set) var isSaving = false
+    private var savingTask: Task<Void, Never>?
     private(set) var isStarting = false
+    private var startCancelled = false
     private(set) var startedAt: Date?
     private(set) var directory: URL?
     private(set) var problem: String?
@@ -28,7 +31,7 @@ final class RecordingController {
     private var statusTimer: Timer?
 
     var canStart: Bool {
-        !isRecording && !isStarting && (includeMicrophone || output != .none)
+        !isRecording && !isStarting && !isSaving && (includeMicrophone || output != .none)
             && (output != .application || !selectedProcesses.isEmpty)
     }
 
@@ -51,11 +54,13 @@ final class RecordingController {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let parent = panel.url else { return }
         isStarting = true
+        startCancelled = false
         defer { isStarting = false }
         if parent.startAccessingSecurityScopedResource() { scopedParent = parent }
         do {
             if includeMicrophone {
                 let permitted = await AVCaptureDevice.requestAccess(for: .audio)
+                guard !startCancelled else { return }
                 guard permitted else { throw RecordingError.invalid("Allow microphone access in System Settings → Privacy & Security → Microphone, then try again.") }
             }
             let session = try RecordingSession(parent: parent, title: title, source: "macos")
@@ -65,7 +70,7 @@ final class RecordingController {
                 let directory = recordingDirectory
                 Task { @MainActor in
                     guard RecordingController.shared.directory == directory else { return }
-                    RecordingController.shared.stop(problem: message)
+                    await RecordingController.shared.stop(problem: message)
                 }
             }
             self.sink = sink
@@ -79,7 +84,7 @@ final class RecordingController {
                 _ = try tap.start(processes: output == .system ? nil : Array(selectedProcesses), onFormatChange: {
                     Task { @MainActor in
                         guard RecordingController.shared.directory == directory else { return }
-                        RecordingController.shared.stop(problem: "The output audio format changed. Start a new recording with the current device.")
+                        await RecordingController.shared.stop(problem: "The output audio format changed. Start a new recording with the current device.")
                     }
                 }) { buffer, time in
                     sink.receive(buffer, hostTime: time, id: "output", label: label, kind: kind)
@@ -101,7 +106,7 @@ final class RecordingController {
                 configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
                     Task { @MainActor in
                         guard RecordingController.shared.directory == recordingDirectory else { return }
-                        RecordingController.shared.stop(problem: "The microphone configuration changed. Start a new recording with the current input.")
+                        await RecordingController.shared.stop(problem: "The microphone configuration changed. Start a new recording with the current input.")
                     }
                 }
             }
@@ -111,17 +116,20 @@ final class RecordingController {
                     guard let self, let status = self.sink?.status() else { return }
                     self.levels = status.levels
                     self.warnings = status.warnings
+                    if status.gapMs > 0 { self.warnings.append("Host-time gaps preserved as silence: \(Int(status.gapMs.rounded())) ms.") }
                     if status.droppedMs > 0 { self.warnings.append("Audio lost during a disk stall: \(Int(status.droppedMs.rounded())) ms. Gaps will contain silence.") }
                     let expecting = self.output == .none ? ["microphone"] : (self.includeMicrophone ? ["output", "microphone"] : ["output"])
                     self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5
                         && expecting.contains { status.frames[$0, default: 0] == 0 }
                 }
             }
-        } catch { stop(problem: error.localizedDescription) }
+        } catch { await stop(problem: error.localizedDescription) }
     }
 
-    func stop(problem: String? = nil) {
+    func stop(problem: String? = nil) async {
+        if let savingTask { await savingTask.value; return }
         guard sink != nil || isStarting else { return }
+        startCancelled = true
         self.problem = problem
         statusTimer?.invalidate()
         statusTimer = nil
@@ -135,12 +143,20 @@ final class RecordingController {
         }
         tap?.stop()
         tap = nil
-        do { try sink?.finish(problem: problem) }
-        catch { self.problem = error.localizedDescription }
+        let finishing = sink
         sink = nil
         isRecording = false
-        scopedParent?.stopAccessingSecurityScopedResource()
-        scopedParent = nil
+        isSaving = true
+        let task = Task { @MainActor in
+            do { try await finishing?.finishAsync(problem: problem) }
+            catch { self.problem = error.localizedDescription }
+            self.scopedParent?.stopAccessingSecurityScopedResource()
+            self.scopedParent = nil
+            self.isSaving = false
+        }
+        savingTask = task
+        await task.value
+        savingTask = nil
     }
 
     func reveal() {
