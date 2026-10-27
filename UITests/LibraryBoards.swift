@@ -90,6 +90,31 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed)
         XCTAssertFalse(window.buttons["recording-stop"].exists)
     }
+    @MainActor func testStopWritesDownAndRetryKeepsAudio() throws {
+        let extra = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString,
+                     "-CassiniTranscriptionFixture", "YES", "-CassiniFailTranscriptionOnce", "YES"]
+        let app = try launch("first-run", fixture: "empty", extra: extra); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout: 10))
+        window.sheets.buttons["record-first-start"].click()
+        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
+        let speech = NSPredicate { _, _ in self.text("0:05", in: window) || self.text("0:06", in: window) }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: speech, object: nil)], timeout: 10), .completed)
+        window.buttons["recording-stop"].click()
+        let retry = window.buttons["Try again"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(text("Could not write this meeting down. The audio is fine.", in: window))
+        XCTAssertTrue(window.buttons["preview-play"].isEnabled)
+        retry.click()
+        let readable = NSPredicate { _, _ in window.buttons["preview-read-transcript"].isEnabled && !retry.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: readable, object: nil)], timeout: 40), .completed, app.debugDescription)
+        window.buttons["preview-read-transcript"].click()
+        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout: 10))
+        XCTAssertTrue(text("Me", in: window), app.debugDescription)
+        XCTAssertFalse(window.buttons["meeting-write-down"].exists)
+    }
     @MainActor func testMeetingBoard() throws {
         let app = try launch("meeting", fixture: "main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]

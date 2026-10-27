@@ -84,13 +84,14 @@ public final class WhistleEngine {
         return unsafeBitCast(pointer, to: T.self)
     }
     public func transcribe(wav: URL) throws -> WhistleTranscript {
+        try transcribe(samples: Self.pcm16(wav))
+    }
+    public func transcribe(samples pcm: [Float]) throws -> WhistleTranscript {
         operations.lock(); defer { operations.unlock() }
-        let pcm = try Self.pcm16(wav)
+        guard !pcm.isEmpty, pcm.count <= 16000 * 30, pcm.allSatisfy({ $0.isFinite }) else { throw WhistleFailure.audio }
         var output = [CChar](repeating: 0, count: 1_048_576)
         let result = pcm.withUnsafeBufferPointer { samples in
-            "en".withCString { language in
-                transcribeFunction(samples.baseAddress, Int32(samples.count), language, nil, 1, &output, Int32(output.count))
-            }
+            transcribeFunction(samples.baseAddress, Int32(samples.count), nil, nil, 1, &output, Int32(output.count))
         }
         guard result >= 0 else { throw WhistleFailure.runtime(lastError().map { String(cString: $0) } ?? "transcribe failed") }
         let bytes = output.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }

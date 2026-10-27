@@ -14,6 +14,13 @@ enum WhistlePins {
     ]
 }
 public struct WhistleAssets {
+    /// Source identity for diagnostics and narrowly scoped golden policy. Both
+    /// standalone original slices and sealed bundles are validated below.
+    public static var sourcePins: [String:String] {
+        ["engineVersion":"3.3.0", "modelSha256":WhistlePins.model,
+         "arm64LibrarySha256":WhistlePins.libraries[0x0100000c]!,
+         "x86_64LibrarySha256":WhistlePins.libraries[0x01000007]!]
+    }
     let library: URL
     let model: Data
     private init(library: URL, model: Data) { self.library = library; self.model = model }

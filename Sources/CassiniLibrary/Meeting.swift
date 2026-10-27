@@ -97,6 +97,14 @@ public struct LibraryMeeting: Sendable {
     public var transcriptItems: [LibraryTranscriptItem] = []
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
+    /// Producer completion is independent of whether an app activity adapter is
+    /// currently connected. Never automatically transcribe a growing capture.
+    public var captureFinalized = false
+    public var canQueueAutomatically: Bool {
+        !metadataReadOnly && state.lifecycle == .saved && !audioFiles.isEmpty &&
+        (state.origin == .received || captureFinalized) &&
+        (state.origin == .own && state.transcript == .none || [.queued,.running].contains(state.transcript))
+    }
     public var isBrowserCapture: Bool { captureSource == "chromium" }
     /// The scanner establishes stable chronological item order. Both transcript
     /// views consume these same consecutive speaker turns.

@@ -101,6 +101,7 @@ final class LibraryStore {
                     let result = try await scanner.scanInBackground(affected: target, now: context.now ?? Date())
                     guard started else { break }
                     snapshot = result; offline = false
+                    TranscriptionQueue.shared.consider(result.meetings, automatic: !context.screenshot && (!RecordingFixture.enabled || RecordingFixture.transcribes))
                     LegacyOpening.refreshTranscripts(result.meetings)
                     if selectedKey == nil || !meetings.contains(where: { $0.libraryKey == selectedKey }) {
                         selectedKey = context.screenshot ? meetings.first(where: { $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey : meetings.first?.libraryKey

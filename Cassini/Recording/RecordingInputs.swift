@@ -53,24 +53,38 @@ import CassiniRecording
 @MainActor final class HostedRecordingInputs: RecordingInputs {
     private var timer: Timer?
     private var frames: UInt64 = 0
+    private var speech: [Float] = []
     private var origin = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime)
     func authorize() async throws {}
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
+        if RecordingFixture.transcribes {
+            let url = Bundle.main.resourceURL!.appendingPathComponent("Whistle/jfk.wav")
+            let data = try Data(contentsOf: url)
+            guard data.count > 44 else { throw CocoaError(.fileReadCorruptFile) }
+            speech = stride(from: 44, to: data.count - 1, by: 2).map { offset in
+                data.withUnsafeBytes { Float(Int16(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: Int16.self))) / 32768 }
+            }
+        }
         emit(sink)
         timer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.emit(sink) }
         }
     }
     private func emit(_ sink: RecordingSink) {
-        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
-        let host = origin + AVAudioTime.hostTime(forSeconds: Double(frames) / 48000)
+        let rate = RecordingFixture.transcribes ? 16000 : 48000
+        let count = rate / 50
+        let format = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 1)!
+        let host = origin + AVAudioTime.hostTime(forSeconds: Double(frames) / Double(rate))
         for (id, level, kind) in [("microphone", Float(0.12), "microphone"), ("output", Float(0.38), "system")] {
-            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960)!
-            buffer.frameLength = 960
-            for n in 0..<960 { buffer.floatChannelData![0][n] = level }
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
+            buffer.frameLength = AVAudioFrameCount(count)
+            for n in 0..<count {
+                let at = Int(frames) + n
+                buffer.floatChannelData![0][n] = RecordingFixture.transcribes ? (id == "microphone" && at < speech.count ? speech[at] : 0) : level
+            }
             sink.receive(buffer, hostTime: host, id: id, label: id, kind: kind)
         }
-        frames += 960
+        frames += UInt64(count)
     }
     func stop() { timer?.invalidate(); timer = nil }
 }
