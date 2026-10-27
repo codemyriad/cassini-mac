@@ -128,7 +128,7 @@ public struct LibraryScanner: Sendable {
             if meeting.start == nil { meeting.start = Date(timeIntervalSince1970: Double(receivedMetadata.importedAtMs) / 1000) }
         } else {
             let capture = capture(folder: folder, id: id, seen: &seen)
-            meeting.issues += capture.issues
+            meeting.issues += capture.issues; meeting.captureSource = capture.source
             titleCandidates.append(capture.title)
             meeting.start = capture.start; meeting.audioFiles = capture.files; meeting.audioTracks = capture.tracks; meeting.durationMs = capture.endMs
             switch activity {
@@ -213,13 +213,15 @@ public struct LibraryScanner: Sendable {
         if !meeting.issues.contains(.invalidTranscript) { meeting.issues.append(.invalidTranscript) }
     }
     private struct Capture {
-        var title: String?; var start: Date?; var endMs: Int64?; var files: [URL] = []
+        var source: String?; var title: String?; var start: Date?; var endMs: Int64?; var files: [URL] = []
         var tracks: [LibraryAudioTrack] = []
         var unfinalized = false; var interrupted = false; var issues: [LibraryReadIssue] = []
     }
     private struct Manifest: Decodable {
         let version: Int; let id: UUID; let title: String?; let createdAt: String?; let state: String; let problemKind: String?
         var tracks: [Track]
+        var source: String?
+        enum CodingKeys: CodingKey { case version, id, title, createdAt, state, problemKind, tracks }
         struct Track: Decodable {
             let file: String?; let sampleRate: Int?; let channels: Int?; var startOffsetMs: DisplayOffset?; let gapFrames: Double?
             enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames }
@@ -233,6 +235,7 @@ public struct LibraryScanner: Sendable {
         static func parse(_ data: Data) throws -> Self {
             let raw = try JSONParser.parse(data)
             var manifest = try JSONDecoder().decode(Self.self, from: data)
+            manifest.source = raw["source"]?.string
             if let tracks = raw["tracks"]?.array {
                 for index in manifest.tracks.indices { manifest.tracks[index].startOffsetMs = DisplayOffset(tracks[index]["startOffsetMs"]) }
             }
@@ -247,7 +250,7 @@ public struct LibraryScanner: Sendable {
             if manifest.version > 1 { result.issues.append(.unsupportedVersion) }
             guard manifest.version == 1, manifest.id == id, manifest.tracks.count <= 64,
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
-            result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
+            result.source = manifest.source; result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
             result.unfinalized = manifest.state == "recording"
             result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains { ($0.gapFrames ?? 0) > 0 }
             var ends: [Int64] = []

@@ -26,13 +26,20 @@ struct LibraryView: View {
         .navigationTitle(UXText.text("library.title"))
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                toolbarControl.frame(width: store.meetings.isEmpty ? nil : 308, alignment: .leading)
+                HStack(spacing: 0) {
+                    toolbarControl.frame(width: store.meetings.isEmpty ? nil : 328, alignment: .leading)
+                    if !store.meetings.isEmpty { toolbarTitle }
+                }
+            }
+            if store.meetings.isEmpty {
+                ToolbarItem(placement: .principal) { toolbarTitle }
             }
         }
         .background(WindowAccessor { window in
             guard let window else { return }
             window.setAccessibilityIdentifier("cassini-library-window")
             window.toolbarStyle = .unified
+            window.titleVisibility = .hidden
             #if DEBUG
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
@@ -46,6 +53,10 @@ struct LibraryView: View {
         .onOpenURL { openWindow(id: "legacy-viewer", value: LegacyRoute(url: $0, autoplay: false)) }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
+    private var toolbarTitle: some View {
+        Text(UXText.text("library.title")).font(.system(size: 15, weight: .bold))
+            .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
+    }
     private var split: some View {
         HStack(spacing: 0) {
             List(selection: $store.selectedKey) {
@@ -54,7 +65,9 @@ struct LibraryView: View {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
                                 .listRowSeparator(.hidden)
-                                .listRowBackground(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
+                                .listRowBackground(RoundedRectangle(cornerRadius: 7)
+                                    .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
+                                    .padding(.horizontal, 8))
                                 .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
                                 .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                         }
@@ -101,16 +114,28 @@ struct LibraryView: View {
             }
             HStack(spacing: 6) {
                 if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
-                if meeting.state.lifecycle != .recording && ![.queued, .running].contains(meeting.state.transcript) {
-                    Text(LibraryFormat.rowMeta(durationMs: meeting.durationMs, names: meeting.speakerNames)).foregroundStyle(dim).lineLimit(1)
-                }
+                if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(dim).lineLimit(1) }
             }.font(.system(size: 11.5))
-            if [.queued, .running].contains(meeting.state.transcript), let duration = meeting.durationMs {
-                Text(UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration(duration)])).font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1)
-            } else if let quote = meeting.quote { Text(quote.displayText).font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
+            if let line = rowSecondLine(meeting) { Text(line).font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
         }
         .foregroundStyle(selected ? .white : Color(nsColor: .labelColor))
         .padding(.vertical, 1).frame(minHeight: 50, alignment: .top)
+    }
+    // R11: visible badge precedence also governs both row text lines.
+    private func rowMeta(_ meeting: LibraryMeeting) -> String? {
+        switch meeting.state.badge?.kind {
+        case "recording": return meeting.isBrowserCapture ? UXText.text("common.listeningInsideBrowser") : nil
+        case "saving", "transcribing": return nil
+        default: return LibraryFormat.rowMeta(durationMs: meeting.durationMs, names: meeting.speakerNames)
+        }
+    }
+    private func rowSecondLine(_ meeting: LibraryMeeting) -> String? {
+        switch meeting.state.badge?.kind {
+        case "recording": return meeting.isBrowserCapture ? UXText.text("library.row.recording.line") : nil
+        case "saving": return nil
+        case "transcribing": return meeting.durationMs.map { UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)]) }
+        default: return meeting.quote?.displayText
+        }
     }
     private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {
         let tint: Color = badge.tint == "red" ? LibraryTheme.red : badge.tint == "amber" ? Color(red: 122/255, green: 77/255, blue: 0) : badge.tint == "accent" ? .accentColor : LibraryTheme.dim

@@ -93,6 +93,9 @@ public struct LibraryMeeting: Sendable {
     public var issues: [LibraryReadIssue]
     public var metadataReadOnly: Bool = false
     public var transcriptItems: [LibraryTranscriptItem] = []
+    /// Original capture source; never infer browser capture from a live badge.
+    public var captureSource: String? = nil
+    public var isBrowserCapture: Bool { captureSource == "chromium" }
     public var audioTracks: [LibraryAudioTrack] = []
     public var canPlaySession: Bool {
         state.origin == .own && state.lifecycle == .saved && !audioTracks.isEmpty && audioTracks.allSatisfy { $0.startOffsetMs != nil }
