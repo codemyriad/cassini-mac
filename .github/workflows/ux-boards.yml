@@ -40,10 +40,12 @@ jobs:
             -derivedDataPath build -resultBundlePath build/UXBoards.xcresult \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/ux-boards.log
       - name: Export exact board PNGs
+        if: always()
         run: |
           xcrun xcresulttool export attachments --path build/UXBoards.xcresult --output-path build/ux-attachments
           python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
       - uses: actions/upload-artifact@v5
+        if: always()
         with:
           name: ux-boards
           path: build/ux-boards

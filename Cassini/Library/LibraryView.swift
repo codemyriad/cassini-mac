@@ -35,7 +35,6 @@ struct LibraryView: View {
         .onDisappear { store.stop() }
         .onOpenURL { openWindow(id: "legacy-viewer", value: LegacyRoute(url: $0, autoplay: false)) }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
-        .accessibilityIdentifier(store.loaded ? "library-ready" : "library-loading")
     }
     private var split: some View {
         NavigationSplitView {

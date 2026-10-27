@@ -17,21 +17,26 @@ final class LibraryBoards: XCTestCase {
         app.launch(); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
+        let expectedControl = name == "library" ? "preview-read-transcript" : "first-run-record"
+        XCTAssertTrue(window.buttons[expectedControl].waitForExistence(timeout: 20), window.debugDescription)
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         if name == "library" {
             XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout: 20), window.debugDescription)
-            XCTAssertTrue(window.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
-            XCTAssertTrue(window.staticTexts["Today, 09:00 · 52 min"].exists)
-            XCTAssertTrue(window.staticTexts["00:00:04"].exists)
+            XCTAssertTrue(window.descendants(matching: .any).matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
+            XCTAssertTrue(text("Today, 09:00 · 52 min", in: window))
+            XCTAssertTrue(text("00:00:04", in: window))
             XCTAssertFalse(window.buttons["preview-play"].isEnabled)
         } else {
             XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), window.debugDescription)
-            XCTAssertTrue(window.staticTexts["Your recorded meetings will appear here."].exists)
-            XCTAssertTrue(window.staticTexts["Recordings and transcripts stay on this computer, in Music/Cassini."].exists)
+            XCTAssertTrue(text("Your recorded meetings will appear here.", in: window))
+            XCTAssertTrue(text("Recordings and transcripts stay on this computer, in Music/Cassini.", in: window))
         }
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
-        let attachment = XCTAttachment(screenshot: window.screenshot())
-        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+    }
+    private func text(_ value: String, in window: XCUIElement) -> Bool {
+        window.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", value, value)).firstMatch.exists
     }
     private func fixtureDirectory() throws -> URL {
         var ancestor = Bundle(for: Self.self).bundleURL

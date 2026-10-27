@@ -18,8 +18,8 @@ enum ScreenshotFixture {
             NSApp.terminate(nil)
             return true
         }
-        // Validate the frozen-clock contract now; the current document UI has no
-        // wall-clock labels. A later Library fixture renderer will consume it.
+        // LibraryLaunchContext consumes the validated frozen clock for Library
+        // boards; the legacy document capture has no wall-clock labels.
         let fixture = URL(fileURLWithPath: directory, isDirectory: true)
             .appendingPathComponent("meeting.opus")
         if name == "window" || name == "sheet" {
