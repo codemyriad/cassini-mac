@@ -24,6 +24,14 @@ public enum MeetingTranscriber {
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
         }
     }
+    public static func pauseForResume(directory: URL, id: UUID) throws {
+        try MeetingMetadataWriter(directory:directory,id:id).transaction { metadata in
+            guard var transcript = metadata["transcript"] as? [String:Any],
+                  let status = transcript["status"] as? String, ["queued","running"].contains(status) else { return }
+            transcript["status"] = "queued"; metadata["transcript"] = transcript
+            metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
+        }
+    }
     /// One worker owns a meeting lock through both segmentation and recognition.
     /// Capture-owned session/audio files are only opened for reading.
     public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others") throws {
@@ -61,11 +69,20 @@ public enum MeetingTranscriber {
                 tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
             }
             struct Item { let word: LibraryTranscriptItem; let track: Int; let ordinal: Int }
+            let previous = [.queued,.running].contains(meeting.state.transcript) ? meeting.transcriptItems : []
+            var completedEnds: [String:Int64] = [:]
             var items: [Item] = [], language = "auto", elapsed: Double = 0, processed: Double = 0
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
             let reference: [String:Any] = ["kind":"sidecar", "file":"transcript.json", "format":"cassini.words.v1"]
             func publish(status: String) throws {
-                let ordered = items.sorted {
+                // Re-recognition may restart from the beginning, but reading
+                // must retain the saved tail until that source has caught up.
+                let retained: [Item] = status == "running" ? previous.enumerated().compactMap { index,word in
+                    guard word.endMs > completedEnds[word.speaker,default:-1] else { return nil }
+                    let rank = tracks.firstIndex(where: { $0.speaker.id == word.speaker }) ?? Int.max
+                    return Item(word:word,track:rank,ordinal:items.count + index)
+                } : []
+                let ordered = (items + retained).sorted {
                     if $0.word.startMs != $1.word.startMs { return $0.word.startMs < $1.word.startMs }
                     if $0.track != $1.track { return $0.track < $1.track }
                     return $0.ordinal < $1.ordinal
@@ -101,6 +118,7 @@ public enum MeetingTranscriber {
                     }
                     let speech = Double(samples.count) / 16000
                     processed += speech; remaining -= speech; elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
+                    completedEnds[track.speaker.id] = max(completedEnds[track.speaker.id,default:-1],track.offset + Int64(segment.endSample * 1000 / 16000))
                     try publish(status: "running")
                 }
             }

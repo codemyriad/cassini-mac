@@ -14,6 +14,16 @@ func emit(_ response: Response) throws {
 do {
     // The exact C environment is checked before asset verification or dlopen.
     try WhistleEnvironment.validateLive()
+    // A killed parent cannot cancel its Task. Reparenting must stop this helper
+    // even while the recognizer is inside a blocking native call. Do not use
+    // stdin EOF as liveness: clients close stdin after their final request.
+    let owner = getppid()
+    guard owner > 1 else { exit(0) }
+    let ownerWatchdog = DispatchSource.makeTimerSource(queue:.global())
+    ownerWatchdog.schedule(deadline:.now() + .milliseconds(200),repeating:.milliseconds(200))
+    ownerWatchdog.setEventHandler { if getppid() != owner { exit(0) } }
+    ownerWatchdog.resume()
+    defer { ownerWatchdog.cancel() }
     SegmentedAudio.removeAbandonedScratch()
     let assets = try WhistleAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
     let engine = try WhistleEngine(assets: assets)
