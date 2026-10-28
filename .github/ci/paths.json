@@ -101,5 +101,12 @@
     "project.yml",
     "Package.swift",
     ".github/workflows/ux-parakeet.yml"
+  ],
+  "browser_setup": [
+    "Spikes/BrowserSetup/**",
+    "scripts/test-browser-setup-spike.py",
+    "Cassini/Cassini.entitlements",
+    "Package.swift",
+    ".github/workflows/ux-browser-setup.yml"
   ]
 }

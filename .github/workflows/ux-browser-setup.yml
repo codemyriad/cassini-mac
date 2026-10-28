@@ -1,0 +1,44 @@
+name: UX browser setup spike
+on:
+  workflow_call:
+    inputs:
+      products_ready:
+        type: boolean
+        default: false
+        description: Caller already produced same-run build artifacts
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    if: ${{ !inputs.products_ready }}
+    uses: ./.github/workflows/ci-build.yml
+    with:
+      parakeet_models: false
+  setup:
+    name: Browser setup (${{ matrix.runner }})
+    needs: [build]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-products
+        with:
+          swiftpm: 'true'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scoped XPC registration without touching browser profiles
+        run: python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: browser-setup-${{ matrix.runner }}
+          path: |
+            build/browser-setup-report.json
+            build/browser-setup-report.stderr.txt
