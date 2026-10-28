@@ -28,7 +28,7 @@ stereo=audio.compute(str(args.stereo_source))
 expected={'stereo':(2,48000,0),'opaque-x':(2,48000,0),
           'pcm-8000':(1,30000,0),'pcm-16000':(1,30000,0),'pcm-48000':(1,30000,0),
           'words-running':(1,48000,0),'words-failed':(1,48000,0),'words-done':(1,48000,1),
-          'stale-checkpoint':(1,48000,0)}
+          'stale-checkpoint':(1,48000,0),'salvaged':(1,48000,0)}
 assert {p.stem for p in args.cases.glob('*.opus')} == set(expected), 'Missing/unexpected generated cases'
 reports=[]
 for name,(channels,samples,words) in expected.items():
@@ -45,6 +45,9 @@ for name,(channels,samples,words) in expected.items():
     if name in ('stereo','opaque-x'):assert dig['sha256']==stereo['sha256'],(name,dig,stereo)
     if name=='stereo':assert [n['atMs'] for n in manifest['x']['gocassini.com']['notes']]==[120,10]
     if name=='opaque-x':assert manifest['x']['other.example']['integer']==9007199254740993
+    if name=='salvaged':
+        assert 'recordedAtLocal' not in manifest['meeting']
+        assert manifest['x']['gocassini.com']['recovery']=={'offsetsAssumedZero':True}
     if name!='words-done':assert not manifest.get('readableTranscripts') and not manifest.get('provenance',{}).get('speechToText')
     reports.append(dict(name=name,channels=channels,sampleCount=samples,words=words,sha256=dig['sha256']))
 (args.cases/'reference-report.json').write_text(json.dumps(dict(reference=PIN,cases=reports),indent=2)+'\n')

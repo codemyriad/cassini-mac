@@ -99,14 +99,18 @@ public enum MeetingFileExporter {
         try writer.finish(sampleCount:Int(frames))
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?) throws -> JSON {
-        guard let date = meeting.start, let title = meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
+        guard let title = meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
             ("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
         let integrity: JSON = .object([("matchPolicy",.string("exact-opus-audio-v1")),("opusAudioSha256",.string(digest.sha256)),
             ("sampleRate",.number("48000")),("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
-        let info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
-            ("createdAtUtc",.string(iso.string(from:date))),("durationMs",.number(String(digest.durationMs)))])
+        var info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
+            ("createdAtUtc",.string(iso.string(from:Date()))),("durationMs",.number(String(digest.durationMs)))])
+        if let start = meeting.start {
+            let local = ISO8601DateFormatter(); local.formatOptions = [.withInternetDateTime,.withFractionalSeconds]; local.timeZone = .current
+            info = try info.setting("recordedAtLocal",to:.string(local.string(from:start)))
+        }
         let speakers: JSON = .array(meeting.speakers.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) })
         var root: JSON = .object([("kind",.string("cassini-portable-meeting")),("version",.number("1")),("profile",.string("ogg-opus")),
             ("meeting",info),("audio",audio),("integrity",integrity),("speakers",speakers)])
@@ -114,6 +118,9 @@ public enum MeetingFileExporter {
         else if let recorded = original?.raw["audioEncode"] { root = try root.setting("audioEncode",to:recorded) }
         var extensions = original?.raw["x"] ?? .object([])
         var owned = extensions["gocassini.com"] ?? .object([])
+        if meeting.state.origin == .own, meeting.audioTracks.contains(where:{ $0.startOffsetMs == nil }) {
+            owned = try owned.setting("recovery",to:.object([("offsetsAssumedZero",.bool(true))]))
+        }
         let notes: JSON? = meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) })
         if notes != nil || owned.object != nil {
             owned = try owned.setting("notes",to:notes)
