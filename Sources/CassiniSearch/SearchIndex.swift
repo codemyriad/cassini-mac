@@ -39,12 +39,13 @@ public struct SearchHit: Sendable, Identifiable {
         let upper = text.index(range.upperBound,offsetBy:100,limitedBy:text.endIndex) ?? text.endIndex
         let prefix = lower == text.startIndex ? "" : "…", suffix = upper == text.endIndex ? "" : "…"
         let skipped = text[..<lower].utf16.count
-        let kept = text[lower..<upper].utf16.count
+        let clipped = String(text[lower..<upper])
+        let kept = clipped.utf16.count
         let highlights = spans.compactMap { span -> SearchSpan? in
             let a = max(span.start,skipped), b = min(span.start + span.length,skipped + kept)
             return b > a ? .init(start:a - skipped + prefix.utf16.count,length:b - a) : nil
         }
-        return (prefix + text[lower..<upper] + suffix,highlights)
+        return (prefix + clipped + suffix,highlights)
     }
 }
 
