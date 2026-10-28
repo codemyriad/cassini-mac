@@ -1,0 +1,32 @@
+name: UX model downloader
+on:
+  pull_request:
+    paths: ['Sources/CassiniModels/**', 'Sources/CassiniZstd/**', 'Tests/CassiniModelsTests/**', 'Cassini/Resources/Licenses/**', 'scripts/verify-model-vendor.py', 'Package.swift', '.github/workflows/ux-model-download.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  downloader:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify static decoder and notice pins offline
+        run: python3 scripts/verify-model-vendor.py
+      - name: Local HTTP fault fixtures only
+        run: |
+          set -o pipefail
+          swift test --filter ModelDownloaderTests 2>&1 | tee downloader.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: downloader-${{ matrix.runner }}
+          path: downloader.log

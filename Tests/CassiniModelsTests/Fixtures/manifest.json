@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "base_url": "http://127.0.0.1:1",
+  "published_at": "2026-10-28",
+  "models": [
+    {
+      "id": "fixture-model",
+      "name": "Test fixture",
+      "description": "No actual model",
+      "license": "CC0-1.0",
+      "source_url": "https://example.invalid/never-fetch",
+      "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "files": [
+        {
+          "path": "weights.bin",
+          "artifact": "models/files/41fa5ce6bd3c0c61e8c4da624cc7b00cbfd542746787dc5467552d196f109997/weights.bin.zst",
+          "required": true
+        },
+        {
+          "path": "tokens.txt",
+          "artifact": "models/files/7d6d20c75ae74c43d5acc44759cf776175bcc400c84352bf5aa00a23f24aaaf0/tokens.txt.zst",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "41fa5ce6bd3c0c61e8c4da624cc7b00cbfd542746787dc5467552d196f109997",
+      "key": "models/files/41fa5ce6bd3c0c61e8c4da624cc7b00cbfd542746787dc5467552d196f109997/weights.bin.zst",
+      "filename": "weights.bin.zst",
+      "url": "http://127.0.0.1:1/models/files/41fa5ce6bd3c0c61e8c4da624cc7b00cbfd542746787dc5467552d196f109997/weights.bin.zst",
+      "size": 393418,
+      "sha256": "41fa5ce6bd3c0c61e8c4da624cc7b00cbfd542746787dc5467552d196f109997",
+      "uncompressed_size": 1441792,
+      "uncompressed_sha256": "c9c1e4ef36c2a6ce9c4429064c00f3aaf907bf455f89108f441b13d7d980553b",
+      "encoding": "zstd-seekable",
+      "format_version": "0.1.0"
+    },
+    {
+      "id": "7d6d20c75ae74c43d5acc44759cf776175bcc400c84352bf5aa00a23f24aaaf0",
+      "key": "models/files/7d6d20c75ae74c43d5acc44759cf776175bcc400c84352bf5aa00a23f24aaaf0/tokens.txt.zst",
+      "filename": "tokens.txt.zst",
+      "url": "http://127.0.0.1:1/models/files/7d6d20c75ae74c43d5acc44759cf776175bcc400c84352bf5aa00a23f24aaaf0/tokens.txt.zst",
+      "size": 59,
+      "sha256": "7d6d20c75ae74c43d5acc44759cf776175bcc400c84352bf5aa00a23f24aaaf0",
+      "uncompressed_size": 21,
+      "uncompressed_sha256": "9e60054de98fd431a69de49418dd478eae476a3da8a4ec3d60cabc8a5108df7c",
+      "encoding": "zstd-seekable",
+      "format_version": "0.1.0"
+    }
+  ]
+}

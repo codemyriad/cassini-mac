@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "CassiniTranscription", targets: ["CassiniTranscription"]),
         .library(name: "CassiniSearch", targets: ["CassiniSearch"]),
         .library(name: "CassiniExport", targets: ["CassiniExport"]),
+        .library(name: "CassiniModels", targets: ["CassiniModels"]),
         .executable(name: "cassini-whistle-worker", targets: ["cassini-whistle-worker"]),
         .library(name: "CassiniRecording", targets: ["CassiniRecording"]),
         .executable(name: "cassini-browser-host", targets: ["cassini-browser-host"]),
@@ -20,6 +21,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .target(name:"CassiniZstd",exclude:["LICENSE","UPSTREAM.md","SHA256SUMS"],publicHeadersPath:"include",cSettings:[.define("ZSTD_LEGACY_SUPPORT",to:"0"),.define("ZSTD_DISABLE_ASM")]),
+        .target(name:"CassiniModels",dependencies:["CassiniKit","CassiniZstd"]),
+        .testTarget(name:"CassiniModelsTests",dependencies:["CassiniModels"],resources:[.copy("Fixtures")]),
         .target(name: "CassiniLibrary", dependencies: ["CassiniKit"], resources: [.copy("Schema")]),
         .target(name: "CassiniLibraryWatchers", dependencies: ["CassiniLibrary"]),
         .target(name: "CassiniPlayback", dependencies: ["CassiniLibrary"]),

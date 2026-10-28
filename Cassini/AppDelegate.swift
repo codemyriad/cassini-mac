@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ModelNotices.configureMenu()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             MainActor.assumeIsolated { AppDelegate.handle(event) }
         }

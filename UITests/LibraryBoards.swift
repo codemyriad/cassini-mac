@@ -7,6 +7,17 @@ final class LibraryBoards: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
     }
+    @MainActor func testSettingsTranscriptionWhistleOnly() throws {
+        let app = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        XCTAssertTrue(window.otherElements["settings-whistle-row"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(text("Writing down what was said",in:window))
+        XCTAssertTrue(text("When Cassini uses the network",in:window))
+        XCTAssertFalse(window.buttons["Download"].exists)
+        XCTAssertFalse(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
+        XCTAssertFalse(text("To check for updates. No meeting data is sent.",in:window))
+        capture(window,name:"settings-transcription")
+    }
     @MainActor func testSettingsRecordingPreferenceAndTabs() throws {
         let app = try launch("settings-recording",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]

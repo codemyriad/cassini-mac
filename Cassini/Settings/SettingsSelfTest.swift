@@ -177,13 +177,15 @@ import CassiniKit
             _ = try send(["type":"track","id":"remote","kind":"remote","sampleRate":48000,"channels":1])
             _ = try send(["type":"audio","id":"remote","sequence":0,"offsetMs":0,"pcm":Data([0,0,64,1]).base64EncodedString()])
             _ = try send(["type":"stop"])
+            try check(ModelNotices.menuConfigured,"native About menu reaches model notices")
+            try check(ModelNotices.files.count >= 7 && ModelNotices.files.allSatisfy { (try? Data(contentsOf:$0).isEmpty) == false },"bundled model/decoder notices reachable")
             // Simulate Quit: stop the move scheduler first, then let the jobs
             // finalize at their unchanged paths. A separate app launch resumes.
             LibraryMoveCoordinator.shared.beginShutdown(); await LibraryMoveCoordinator.shared.waitForShutdown()
             queue.beginShutdown(); await queue.waitForShutdown(); await recorder.stopAndWait()
             let persisted = try LibraryLocation.read(file:config)
             try check(persisted.pendingMoves.count == 2 && !persisted.previousPaths.isEmpty,"pending move intent survives Quit")
-            let report: [String:Any] = ["firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
+            let report: [String:Any] = ["aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
                                       "closedMeetingMovedAtomically":true,"partialFailureRetainsOriginal":true,"liveFolderDeferred":true,"pendingMovesPersisted":true,
                                       "activeInferencePathPreserved":true,"queuedMetadataMovedAfterPreparation":true,"importIntentResumesAfterMove":true,"retainedSelectionUsesFolder":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
             output = try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])
