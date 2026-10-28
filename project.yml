@@ -28,6 +28,9 @@ targets:
           - "Info.plist"
           - "Cassini.entitlements"
           - "Resources"
+      - path: Cassini/Resources/Licenses
+        type: folder
+        buildPhase: resources
       - path: Cassini/Resources/UX
         type: folder
         buildPhase: resources
@@ -51,6 +54,8 @@ targets:
         product: CassiniRecording
       - package: CassiniKit
         product: CassiniExport
+      - package: CassiniKit
+        product: CassiniModels
       - package: CassiniKit
         product: CassiniSearch
       - target: CassiniQuickLook

@@ -21,7 +21,7 @@ struct CassiniSettingsView: View {
     var body: some View {
         TabView(selection:$navigation.tab) {
             SettingsRecordingView().tabItem { Label(SettingsTab.recording.title,systemImage:SettingsTab.recording.icon) }.tag(SettingsTab.recording)
-            SettingsTranscriptionPlaceholder().tabItem { Label(SettingsTab.transcription.title,systemImage:SettingsTab.transcription.icon) }.tag(SettingsTab.transcription)
+            SettingsTranscriptionView().tabItem { Label(SettingsTab.transcription.title,systemImage:SettingsTab.transcription.icon) }.tag(SettingsTab.transcription)
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
         }.frame(width:700,height:500)
@@ -135,8 +135,47 @@ private struct SettingsBrowserView: View {
         }
     }
 }
-private struct SettingsTranscriptionPlaceholder: View {
-    var body: some View { SettingsPage { Text(UXText.text("settings.transcription.privacy")).foregroundStyle(LibraryTheme.dim).lineSpacing(5) } }
+private struct SettingsTranscriptionView: View {
+    private var weightSize: String {
+        let url = Bundle.main.url(forResource:"whistle",withExtension:"cact",subdirectory:"Whistle")
+        let count = url.flatMap { try? $0.resourceValues(forKeys:[.fileSizeKey]).fileSize } ?? 16_919_407
+        return LibraryFormat.size(bytes:Int64(count))
+    }
+    var body: some View {
+        SettingsPage {
+            HStack(alignment:.top,spacing:10) {
+                Image(systemName:"checkmark.shield").font(.system(size:19)).foregroundStyle(.green).accessibilityHidden(true)
+                Text(UXText.text("settings.transcription.privacy")).foregroundStyle(LibraryTheme.dim).lineSpacing(5).fixedSize(horizontal:false,vertical:true)
+            }
+            VStack(alignment:.leading,spacing:10) {
+                Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.bold)
+                Text(UXText.text("settings.transcription.speech.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                HStack(alignment:.top,spacing:12) {
+                    Image(systemName:"largecircle.fill.circle").foregroundStyle(Color.accentColor).font(.system(size:17)).padding(.top,2).accessibilityHidden(true)
+                    VStack(alignment:.leading,spacing:6) {
+                        HStack(spacing:8) {
+                            Text(UXText.text("models.whistle.name")).fontWeight(.semibold)
+                            Text(weightSize).font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
+                        }
+                        Text(UXText.text("models.whistle.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                        Text(UXText.text("models.status.inUse")).font(.system(size:11,weight:.semibold)).foregroundStyle(.green)
+                    }
+                    Spacer(minLength:4)
+                    Text(UXText.text("models.included")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).padding(.top,2)
+                }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
+                    .background(Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:8))
+                    .overlay(RoundedRectangle(cornerRadius:8).stroke(LibraryTheme.dim.opacity(0.2)))
+                    .accessibilityElement(children:.combine).accessibilityIdentifier("settings-whistle-row")
+            }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
+            VStack(alignment:.leading,spacing:12) {
+                Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
+                HStack(alignment:.top,spacing:10) {
+                    Text("•").accessibilityHidden(true)
+                    Text(UXText.text("settings.transcription.network.download")).foregroundStyle(LibraryTheme.dim).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                }
+            }
+        }
+    }
 }
 private struct SettingsPage<Content: View>: View {
     @ViewBuilder let content: Content

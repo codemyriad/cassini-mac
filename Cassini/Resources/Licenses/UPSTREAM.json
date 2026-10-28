@@ -1,0 +1,13 @@
+{
+  "notice": {
+    "url": "https://dist.gocassini.com/NOTICE.txt",
+    "retrieved": "2026-10-28",
+    "sha256": "8a153125fcc23e60ee52ec06a1af64436d568eaef0c8eeffc83c0f365f4621b8"
+  },
+  "zstandard": {
+    "version": "1.5.7",
+    "url": "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+    "archiveSHA256": "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+    "license": "BSD-3-Clause"
+  }
+}
