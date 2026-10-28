@@ -38,12 +38,13 @@ public enum LibraryImport {
         guard copied == identity.size, fstat(input,&after) == 0, FileKey(after) == identity else { throw POSIXError(.EINVAL) }
         try write.synchronize()
         let digest = hash.finalize().map { String(format:"%02x",$0) }.joined()
+        let data = try Data(contentsOf:original,options:.mappedIfSafe)
+        let file = try CassiniReader.read(data)
+        guard case .success? = file.audioDigest else { throw MetadataError.invalid }
         let scanner = LibraryScanner(root:root)
         if let duplicate = try scanner.scan().meetings.first(where: { $0.received?.sha256 == digest }) { return duplicate }
         if shouldCancel() { throw CancellationError() }
-        let data = try Data(contentsOf:original,options:.mappedIfSafe)
-        let file = try CassiniReader.read(data)
-        let trusted = ![.invalidCassiniMetadata,.staleAudio,.unknownCassiniFormat].contains(file.state)
+        let trusted = [.ok,.plainAudio].contains(file.state)
         let selected = trusted ? file.defaultTranscript : nil
         let timed = file.transcripts.filter { $0.entry.format == "cassini.words.v1" }
         let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
@@ -52,13 +53,13 @@ public enum LibraryImport {
                   let text = note["text"]?.string, text.unicodeScalars.count <= 100000 else { return nil }
             return ["atMs":time,"text":text]
         } ?? []
-        let title = [file.manifest?.meeting.title,file.tags?["TITLE"],source.deletingPathExtension().lastPathComponent]
+        let title = [trusted ? file.manifest?.meeting.title : nil,trusted ? file.tags?["TITLE"] : nil,source.deletingPathExtension().lastPathComponent]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
         if shouldCancel() { throw CancellationError() }
         try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
             var received: [String:Any] = ["originalName":"original.opus","sha256":digest,"importedAtMs":Int64(Date().timeIntervalSince1970 * 1000)]
             let parent = String(String.UnicodeScalarView(source.deletingLastPathComponent().lastPathComponent.unicodeScalars.prefix(255)))
-            if !parent.isEmpty { received["originalFolderName"] = parent }
+            if safeBasename(parent) { received["originalFolderName"] = parent }
             metadata["received"] = received
             metadata["notes"] = importedNotes
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }

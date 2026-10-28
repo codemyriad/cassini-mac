@@ -119,13 +119,15 @@ public struct LibraryScanner: Sendable {
                 let url = try safeFile(receivedMetadata.originalName, in: folder); original = url; seen.insert(url)
                 file = try cache.read(url) { try CassiniReader.read(regularData($0)) }
                 if let file {
+                    // R6 permits these display fallbacks even when a payload is
+                    // damaged; they do not authenticate its words or notes.
                     titleCandidates += [file.manifest?.meeting.title, file.tags?["TITLE"]]
                     meeting.start = file.manifest.flatMap { recordingDate($0.meeting.createdAtUtc) }
                     if case .success(let digest)? = file.audioDigest {
                         meeting.durationMs = Int64(digest.durationMs); meeting.audioFiles = [url]
                     } else { meeting.issues.append(.invalidAudio) }
                     if file.state == .unknownCassiniFormat { meeting.issues.append(.unsupportedVersion) }
-                    for speaker in file.manifest?.speakers ?? [] { embeddedNames[speaker.id] = speaker.label }
+                    if file.state == .ok { for speaker in file.manifest?.speakers ?? [] { embeddedNames[speaker.id] = speaker.label } }
                 }
             } catch { meeting.issues.append(.invalidAudio) }
             titleCandidates.append((receivedMetadata.originalName as NSString).deletingPathExtension)
@@ -163,7 +165,7 @@ public struct LibraryScanner: Sendable {
                     try body.validate(); words = body.items; meeting.transcriptLanguage = body.language; readable = true
                 } else {
                     guard received, reference.file == metadata?.received?.originalName, original != nil, let file,
-                          ![.invalidCassiniMetadata, .staleAudio, .unknownCassiniFormat].contains(file.state),
+                          file.state == .ok,
                           case .success? = file.audioDigest else { throw MetadataError.invalid }
                     let selected: (entry: TranscriptEntry, load: TranscriptLoad)?
                     if let requested = reference.transcriptId { selected = file.transcripts.first { $0.entry.id == requested } }

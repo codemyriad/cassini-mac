@@ -53,6 +53,30 @@ struct MeetingExportTests {
         let stamped = try #require(iso.date(from:stamp))
         #expect(stamped >= before && stamped <= Date())
     }
+    @Test(arguments:[false,true]) func reexportDoesNotAuthenticateUntrustedManifestExtensions(unverified: Bool) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let imported = try LibraryImport.copy(source,into:root.appendingPathComponent("Original"))
+        let valid = try MeetingFileExporter.cassini(imported,assets:nil,temporaryRoot:root)
+        let bytes = try Data(contentsOf:valid.url), parsed = try CassiniReader.read(bytes)
+        var manifest = try #require(parsed.manifest?.raw)
+        let integrity = try #require(manifest["integrity"])
+        manifest = try manifest.setting("integrity",to:integrity.setting(unverified ? "matchPolicy" : "opusAudioSha256",to:.string(unverified ? "future-policy" : String(repeating:"0",count:64))))
+        let info = try #require(manifest["meeting"])
+        manifest = try manifest.setting("meeting",to:info.setting("id",to:.string("untrusted-id")))
+        manifest = try manifest.setting("x",to:.object([("untrusted.example",.object([("claim",.bool(true))]))]))
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:Data("{\"items\":[]}".utf8),wordCount:0)
+        let damaged = root.appendingPathComponent("Untrusted.opus")
+        _ = try OpusStreamFile.rewrite(bytes,tags:tags,to:damaged)
+        let suspect = try CassiniReader.read(contentsOf:damaged)
+        #expect(suspect.state == (unverified ? .unverified : .staleAudio))
+        let received = try LibraryImport.copy(damaged,into:root.appendingPathComponent("Imported"))
+        let result = try MeetingFileExporter.cassini(received,assets:nil,temporaryRoot:root)
+        let exported = try CassiniReader.read(contentsOf:result.url)
+        #expect(exported.state == .ok && exported.manifest?.meeting.id != "untrusted-id")
+        #expect(exported.manifest?.raw["x"]?["untrusted.example"] == nil)
+        #expect(try exported.audioDigest?.get() == suspect.audioDigest?.get())
+    }
     private func evidence(_ artifact: ExportArtifact, name: String) throws {
         guard let path = ProcessInfo.processInfo.environment["CASSINI_EXPORT_REPORT_DIR"] else { return }
         let root = URL(fileURLWithPath:path)

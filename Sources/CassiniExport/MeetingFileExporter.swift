@@ -45,7 +45,7 @@ public enum MeetingFileExporter {
             try budget(bytes:Double(audio.count) * 2 + Double(256 << 20),directory:directory)
             let file = try CassiniReader.read(audio)
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
-            digest = actual; original = file; choice = nil
+            digest = actual; original = file.state == .ok ? file : nil; choice = nil
         } else {
             let inputs = try meeting.audioTracks.map(PCMInput.init)
             guard let assets else { throw MeetingExportError.invalidAssets }
