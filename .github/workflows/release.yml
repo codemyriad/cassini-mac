@@ -8,13 +8,32 @@ permissions:
   contents: write
 
 jobs:
+  main-ci:
+    name: Require green main CI on the tagged commit
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          COMMIT=$(git rev-parse HEAD)
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=$COMMIT&per_page=100" > main-runs.json
+          python3 - <<'PYTHON'
+          import json
+          runs = json.load(open('main-runs.json'))['workflow_runs']
+          assert any(r['conclusion'] == 'success' for r in runs), 'The tagged commit needs a successful push-to-main CI run (D20).'
+          PYTHON
   release:
+    needs: main-ci
     name: Build and publish Cassini.app
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - name: Install xcodegen
         run: brew install cmake xcodegen
       - name: Generate project

@@ -1,93 +1,165 @@
 name: CI
-
-on:
+'on':
+  pull_request: null
   push:
-    branches: [main]
-  pull_request:
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
+    branches:
+    - main
+    - ux/1a-library-model
+  schedule:
+  - cron: 43 2 * * *
+  workflow_dispatch: null
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shot: ${{ steps.paths.outputs.shot }}
+      board_shot: ${{ steps.paths.outputs.board_shot }}
+      boards: ${{ steps.paths.outputs.boards }}
+      exports: ${{ steps.paths.outputs.exports }}
+      library: ${{ steps.paths.outputs.library }}
+      whistle: ${{ steps.paths.outputs.whistle }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - id: paths
+      env:
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        python3 scripts/test-ci-contract.py
+        python3 scripts/ci-changes.py
+  build:
+    uses: ./.github/workflows/ci-build.yml
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
-      - name: Swift version
-        run: swift --version
-      - name: Build
-        run: swift build
-      - name: Test
-        run: swift test
-      - name: Browser audio worklet tests
-        run: node --test BrowserExtension/tests/*.test.cjs
-      - name: Verify shared browser snapshot
-        run: python3 browser-protocol/verify.py --pinned BrowserExtension
-      - name: Shared native-session fixture
-        run: python3 browser-protocol/conformance/check-native-fixture.py
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install strict conformance dependencies
-        run: python3 -m pip install -r browser-protocol/requirements-test.txt
-      - name: Browser host conformance
-        run: python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install pinned browser tests
-        run: |
-          npm ci --prefix BrowserExtension/tests
-          BrowserExtension/tests/node_modules/.bin/playwright install chromium
-      - name: Browser capture scenarios
-        timeout-minutes: 8
-        run: |
-          set -o pipefail
-          mkdir -p BrowserExtension/tests/artifacts
-          PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/BrowserExtension/tests/node_modules/playwright/index.mjs" node browser-protocol/tests/product-topologies.mjs 2>&1 | tee BrowserExtension/tests/artifacts/topologies.log
-          node BrowserExtension/tests/synthetic-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/synthetic.log
-          node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
-          echo "Real tabCapture runs on drmeyers-audio; hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v5
-        if: failure()
-        with:
-          name: recording-failure-${{ github.sha }}
-          path: |
-            BrowserExtension/tests/artifacts
-            browser-protocol/artifacts
-      - name: Conformance suite (full profile)
-        working-directory: Tests/CassiniKitTests/Conformance
-        run: |
-          python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect" --profile full | tee full.txt
-          grep -q " 0 fail" full.txt
-          python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect --metadata" --profile metadata | tee metadata.txt
-          grep -q " 0 fail" metadata.txt
-
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        swiftpm: 'true'
+    - name: Swift version
+      run: swift --version
+    - name: Test
+      run: swift test --skip-build
+    - name: Browser audio worklet tests
+      run: node --test BrowserExtension/tests/*.test.cjs
+    - name: Verify shared browser snapshot
+      run: python3 browser-protocol/verify.py --pinned BrowserExtension
+    - name: Shared native-session fixture
+      run: python3 browser-protocol/conformance/check-native-fixture.py
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install strict conformance dependencies
+      run: python3 -m pip install -r browser-protocol/requirements-test.txt
+    - name: Browser host conformance
+      run: python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Install pinned browser tests
+      run: |
+        npm ci --prefix BrowserExtension/tests
+        BrowserExtension/tests/node_modules/.bin/playwright install chromium
+    - name: Browser capture scenarios
+      timeout-minutes: 8
+      run: |
+        set -o pipefail
+        mkdir -p BrowserExtension/tests/artifacts
+        PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/BrowserExtension/tests/node_modules/playwright/index.mjs" node browser-protocol/tests/product-topologies.mjs 2>&1 | tee BrowserExtension/tests/artifacts/topologies.log
+        node BrowserExtension/tests/synthetic-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/synthetic.log
+        node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
+        echo "Real tabCapture runs on drmeyers-audio; hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@v5
+      if: failure()
+      with:
+        name: recording-failure-${{ github.sha }}
+        path: |
+          BrowserExtension/tests/artifacts
+          browser-protocol/artifacts
+    - name: Conformance suite (full profile)
+      working-directory: Tests/CassiniKitTests/Conformance
+      run: |
+        python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect" --profile full | tee full.txt
+        grep -q " 0 fail" full.txt
+        python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect --metadata" --profile metadata | tee metadata.txt
+        grep -q " 0 fail" metadata.txt
+    needs:
+    - build
   app:
     name: Build Cassini.app
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
-      - name: Install xcodegen
-        run: brew install cmake xcodegen
-      - name: Generate project
-        run: xcodegen generate
-      - name: Build
-        run: |
-          xcodebuild -project Cassini.xcodeproj -scheme Cassini -configuration Release \
-            -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES -quiet build
-      - name: Package
-        run: |
-          python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
-      - uses: actions/upload-artifact@v5
-        with:
-          name: Cassini-${{ github.sha }}
-          path: |
-            build/Cassini.zip
-            build/Cassini.zip.sha256
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        release: 'true'
+    - name: Package
+      run: |
+        python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
+    - uses: actions/upload-artifact@v5
+      with:
+        name: Cassini-${{ github.sha }}
+        path: |
+          build/Cassini.zip
+          build/Cassini.zip.sha256
+    needs:
+    - build
+  shot:
+    name: UX window screenshot spike
+    needs:
+    - changes
+    - build
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.shot != 'false' }}
+    uses: ./.github/workflows/ux-shot.yml
+    with:
+      products_ready: true
+  board_shot:
+    name: UX board-size screenshot spike
+    needs:
+    - changes
+    - build
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.board_shot != 'false' }}
+    uses: ./.github/workflows/ux-board-shot.yml
+    with:
+      products_ready: true
+  boards:
+    name: UX Library boards
+    needs:
+    - changes
+    - build
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.boards != 'false' }}
+    uses: ./.github/workflows/ux-boards.yml
+    with:
+      products_ready: true
+  exports:
+    name: UX portable exports
+    needs:
+    - changes
+    - build
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.exports != 'false' }}
+    uses: ./.github/workflows/ux-export.yml
+    with:
+      products_ready: true
+  library:
+    name: UX Library model
+    needs:
+    - changes
+    - build
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.library != 'false' }}
+    uses: ./.github/workflows/ux-model.yml
+    with:
+      products_ready: true
+  whistle:
+    name: Whistle bundling spike
+    needs:
+    - changes
+    - build
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.whistle != 'false' }}
+    uses: ./.github/workflows/ux-whistle.yml
+    with:
+      products_ready: true
+permissions:
+  contents: read

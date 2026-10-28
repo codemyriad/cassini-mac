@@ -1,0 +1,56 @@
+name: Restore same-run products
+description: Verify source, pins, architecture and Xcode before extracting signed products.
+inputs:
+  swiftpm:
+    default: 'false'
+    description: Native SwiftPM test bundles and executables
+  assets:
+    default: 'false'
+    description: Universal pinned offline engines and models
+  debug:
+    default: 'false'
+    description: Universal signed app and UI tests
+  release:
+    default: 'false'
+    description: Universal signed Release app
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: sudo xcode-select -s /Applications/Xcode_16.4.app
+    - id: arch
+      shell: bash
+      run: echo "name=$(uname -m)" >> "$GITHUB_OUTPUT"
+    - uses: actions/download-artifact@v5
+      if: inputs.swiftpm == 'true'
+      with:
+        name: ci-swiftpm-${{ steps.arch.outputs.name }}
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.assets == 'true'
+      with:
+        name: ci-assets
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.debug == 'true'
+      with:
+        name: ci-debug
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.release == 'true'
+      with:
+        name: ci-release
+        path: build/ci-products
+    - shell: bash
+      env:
+        RESTORE_SWIFTPM: ${{ inputs.swiftpm }}
+        RESTORE_ASSETS: ${{ inputs.assets }}
+        RESTORE_DEBUG: ${{ inputs.debug }}
+        RESTORE_RELEASE: ${{ inputs.release }}
+      run: |
+        for kind in swiftpm assets debug release; do
+          flag="RESTORE_$(echo "$kind" | tr '[:lower:]' '[:upper:]')"
+          if [ "${!flag}" = true ]; then
+            python3 scripts/ci-products.py unpack "$kind" build/ci-products
+          fi
+        done
