@@ -1,10 +1,55 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CryptoKit
+import CassiniKit
 import Testing
 @testable import CassiniLibrary
 
 struct LibraryImportTests {
+    @Test func intactHeadersDoNotMakeATruncatedOrCorruptStreamImportable() throws {
+        let f = try Fixture(), library = f.root.appendingPathComponent("Library")
+        let input = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus")
+        let original = try Data(contentsOf:input)
+        var corrupt = original; corrupt[corrupt.count - 1] ^= 1
+        for (index,bytes) in [Data(original.dropLast()),corrupt].enumerated() {
+            let source = f.root.appendingPathComponent("Damaged-\(index).opus"); try bytes.write(to:source)
+            let parsed = try CassiniReader.read(bytes)
+            if case .success? = parsed.audioDigest { Issue.record("Corrupt fixture unexpectedly has valid audio") }
+            #expect(throws:(any Error).self) { try LibraryImport.copy(source,into:library) }
+            #expect(try FileManager.default.contentsOfDirectory(atPath:library.path).isEmpty)
+        }
+    }
+    @Test func unverifiedMetadataCannotSupplyWordsNotesNamesOrAnEmbeddedReference() throws {
+        let f = try Fixture(), library = f.root.appendingPathComponent("Library")
+        let base = try Data(contentsOf:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let parsed = try CassiniReader.read(base)
+        var manifest = try #require(parsed.manifest?.raw)
+        let integrity = try #require(manifest["integrity"]).setting("matchPolicy",to:.string("future-policy"))
+        manifest = try manifest.setting("integrity",to:integrity).setting("x",to:.object([("gocassini.com",.object([("notes",.array([.object([("atMs",.number("0")),("text",.string("Untrusted note"))])]))]))]))
+        let body = Data("{\"items\":[{\"speaker\":\"untrusted\",\"startMs\":0,\"endMs\":100,\"text\":\"Untrusted words\"}]}".utf8)
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,wordCount:1)
+        let source = f.root.appendingPathComponent("Unknown policy.opus")
+        _ = try OpusStreamFile.rewrite(base,tags:tags,to:source)
+        #expect(try CassiniReader.read(contentsOf:source).state == .unverified)
+        let imported = try LibraryImport.copy(source,into:library)
+        #expect(imported.state.audioAvailable == true && imported.state.transcript == .damaged)
+        #expect(imported.transcriptItems.isEmpty && imported.notes.isEmpty && imported.speakers.isEmpty)
+        #expect(imported.title == "Unknown policy")
+        // A legacy importer may have persisted an embedded done reference.
+        try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
+            $0["transcript"] = ["status":"done","reference":["kind":"embedded","file":"original.opus","transcriptId":"script"]]
+        }
+        let legacy = try #require(LibraryScanner(root:library).scan().meetings.first)
+        #expect(legacy.state.transcript == .damaged && legacy.transcriptItems.isEmpty)
+    }
+    @Test func anUnrepresentableParentNameDoesNotRejectValidAudio() throws {
+        let f = try Fixture(), folder = f.root.appendingPathComponent("2026\\04")
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:false)
+        let source = folder.appendingPathComponent("Lesson.opus")
+        try FileManager.default.copyItem(at:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus"),to:source)
+        let imported = try LibraryImport.copy(source,into:f.root.appendingPathComponent("Library"))
+        #expect(imported.state.audioAvailable == true && imported.received?.originalFolderName == nil)
+    }
     @Test(arguments:[true,false]) func privateCopyKeepsOriginalAndEmbeddedTranscript(plain: Bool) throws {
         let f = try Fixture(), downloads = f.root.appendingPathComponent("Downloads"), library = f.root.appendingPathComponent("Library")
         try FileManager.default.createDirectory(at:downloads,withIntermediateDirectories:true)
