@@ -58,7 +58,7 @@ import Observation
             detail.close(); self.detail = MeetingDetailModel(meeting: meeting); return
         }
         detail.meeting = meeting
-        detail.audio.reconcile(meeting, offline: offline)
+        detail.reconcile(offline:offline)
     }
     func back() { readTask?.cancel(); readTask = nil; loading = false; detail?.close(); detail = nil }
 }
@@ -76,40 +76,44 @@ import Observation
     private(set) var shares: [String: Int] = [:]
     let fileURL: URL?
     let audio = SessionPlayback()
-    private let filePlayer: PlayerController?
+    private let fileAccessLease: AnyObject?
     private let frozen: Bool
     private var fixturePosition = 192_000
     private var fixturePlaying = true
     init(meeting: LibraryMeeting, fileURL: URL? = nil, lease: AnyObject? = nil, frozen: Bool = false) {
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
-        let playable = fileURL ?? (meeting.state.origin == .received ? meeting.audioFiles.first : nil)
-        filePlayer = !frozen ? playable.map { PlayerController(url: $0, durationMs: Int(meeting.durationMs ?? 0), title: meeting.title ?? UXText.text("library.untitled"), fileAccessLease: lease) } : nil
+        fileAccessLease = lease
         turns = MeetingPresentation.turns(meeting.transcriptItems); shares = MeetingPresentation.shares(meeting)
         audio.onFailure = { NSApp.presentError($0) }
     }
-    var isPlaying: Bool { frozen ? fixturePlaying : filePlayer?.isPlaying ?? audio.isPlaying }
-    var positionMs: Int { frozen ? fixturePosition : filePlayer?.currentMs ?? Int(audio.positionMs) }
-    var durationMs: Int { Int(meeting.durationMs ?? Int64(filePlayer?.durationMs ?? 0)) }
-    var canPlay: Bool { frozen || filePlayer != nil || meeting.canPlaySession }
-    var rate: Double { filePlayer?.speed ?? Double(audio.rate) }
+    // Received audio uses the same asynchronous composition/transport as a
+    // recorded meeting. Opening a page performs no synchronous demux or engine
+    // setup on the UI thread. This private transport input changes no metadata.
+    private var playbackMeeting: LibraryMeeting {
+        guard meeting.state.origin == .received else { return meeting }
+        var source = meeting; source.state.origin = .own
+        source.audioTracks = meeting.audioFiles.map { .init(url:$0,startOffsetMs:0) }
+        return source
+    }
+    var isPlaying: Bool { frozen ? fixturePlaying : audio.isPlaying }
+    var positionMs: Int { frozen ? fixturePosition : Int(audio.positionMs) }
+    var durationMs: Int { Int(meeting.durationMs ?? 0) }
+    var canPlay: Bool { frozen || playbackMeeting.canPlaySession }
+    var rate: Double { Double(audio.rate) }
     func toggle() {
         if frozen { fixturePlaying.toggle(); return }
-        if let filePlayer { filePlayer.toggle() }
-        else { PlayerController.pauseActive(); audio.toggle(meeting) }
+        PlayerController.pauseActive(); audio.toggle(playbackMeeting)
     }
     func seek(_ ms: Int) {
         let ms = max(0, min(durationMs, ms))
         if frozen { fixturePosition = ms; return }
-        if let filePlayer { filePlayer.seek(toMs: ms) }
-        else { audio.prepare(meeting); audio.seek(toMs: Double(ms)) }
+        audio.prepare(playbackMeeting); audio.seek(toMs: Double(ms))
     }
     func skip(_ seconds: Int) { seek(positionMs + seconds * 1000) }
     func cycleRate() {
-        if let filePlayer { filePlayer.cycleSpeed() }
-        else {
-            let rates: [Float] = [1, 1.25, 1.5, 2, 0.75]
-            audio.rate = rates[((rates.firstIndex(of: audio.rate) ?? 0) + 1) % rates.count]
-        }
+        let rates: [Float] = [1, 1.25, 1.5, 2, 0.75]
+        audio.rate = rates[((rates.firstIndex(of: audio.rate) ?? 0) + 1) % rates.count]
     }
-    func close() { audio.stop(); filePlayer?.shutDown() }
+    func reconcile(offline: Bool) { audio.reconcile(playbackMeeting,offline:offline) }
+    func close() { audio.stop() }
 }
