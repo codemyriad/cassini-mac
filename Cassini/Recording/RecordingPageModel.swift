@@ -30,7 +30,9 @@ private actor RecordingEdits {
 @MainActor @Observable final class RecordingPageModel {
     private static var editors: [String:RecordingPageModel] = [:]
     static func editor(for meeting: LibraryMeeting) -> RecordingPageModel {
-        if let model = editors[meeting.folder.path] { model.update(meeting); return model }
+        // View initializers look this up during rendering; lookup must not
+        // publish observed changes back into the same render pass.
+        if let model = editors[meeting.folder.path] { return model }
         // Keep the current editor across Back/Open, even before the watcher has
         // observed its last write. Retain older editors only while writes settle.
         editors = editors.filter { $0.value.titleTask != nil || $0.value.notesTask != nil }

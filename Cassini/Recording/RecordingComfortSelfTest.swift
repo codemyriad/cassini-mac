@@ -74,6 +74,7 @@ import CassiniRecording
             try browser.appendNative(id:"b",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let newer = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("changed browser source list")
             try require(RecordingPageModel.editor(for:newer) === editor,"browser updates keep unsaved editor state")
+            editor.update(newer)
             for _ in 0..<80 { if editor.voiceCount == 2 { break }; try await Task.sleep(for:.milliseconds(25)) }
             try require(editor.voiceCount == 2,"browser source count updates")
             editor.notesText = "Browser note"; editor.changeNotes(); await RecordingPageModel.flushAll()

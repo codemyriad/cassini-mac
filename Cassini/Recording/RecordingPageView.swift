@@ -76,6 +76,7 @@ struct RecordingPageView: View {
         }.background(Color(nsColor:.textBackgroundColor))
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .onAppear {
+                model.update(detail.meeting)
                 if RecordCoordinator.shared.focusNotesWhenOpened { notesFocused = true; RecordCoordinator.shared.focusNotesWhenOpened = false }
             }
             .onChange(of:RecordCoordinator.shared.focusNotesWhenOpened) { _,focus in
