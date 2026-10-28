@@ -23,7 +23,11 @@ public struct WhistleAssets {
     }
     let library: URL
     let model: Data
-    private init(library: URL, model: Data) { self.library = library; self.model = model }
+    let resources: URL
+    let bundleContents: URL?
+    private init(library: URL, model: Data, resources: URL, bundleContents: URL? = nil) {
+        self.library = library; self.model = model; self.resources = resources; self.bundleContents = bundleContents
+    }
     public static func forWorker(arguments: [String]) throws -> Self {
         var count: UInt32 = 0
         _ = _NSGetExecutablePath(nil, &count)
@@ -46,7 +50,7 @@ public struct WhistleAssets {
         let bytes = try WhistleIO.readRegular(library, maximum: 16 * 1024 * 1024)
         try verifySourceLibrary(bytes)
         let model = try modelBytes(at: contained("whistle.cact", in: root))
-        return .init(library: library, model: model)
+        return .init(library: library, model: model, resources:root)
     }
     private static func bundled(app: URL, executable: URL) throws -> Self {
         var code: SecStaticCode?
@@ -64,7 +68,7 @@ public struct WhistleAssets {
               manifest["cassini-whistle-worker"] == sha(try WhistleIO.readRegular(executable, maximum: 64 * 1024 * 1024)) else {
             throw WhistleFailure.library("signed bundle checksum mismatch")
         }
-        return .init(library: library, model: model)
+        return .init(library: library, model: model, resources:resource, bundleContents:app.appendingPathComponent("Contents"))
     }
     private static func contained(_ path: String, in root: URL) throws -> URL {
         let url = root.appendingPathComponent(path).standardizedFileURL

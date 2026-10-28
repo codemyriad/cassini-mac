@@ -30,6 +30,7 @@ do {
     SegmentedAudio.removeAbandonedScratch()
     let assets = try WhistleAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
     let engine = try WhistleEngine(assets: assets)
+    var vadAssets: VADAssets?
     let lines = WhistleLineReader(fd: STDIN_FILENO)
     while let line = try lines.next() {
         var id: String?
@@ -37,7 +38,8 @@ do {
         do {
             let request = try JSONDecoder().decode(Request.self, from: line); id = request.id
             if let meeting = request.meeting, request.wav == nil {
-                let vad = try VADAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
+                let vad = try vadAssets ?? VADAssets.verified(for:assets)
+                vadAssets = vad
                 let detector = try SpeechDetector(assets: vad)
                 try MeetingTranscriber.run(directory: URL(fileURLWithPath: meeting), engine: engine, detector: detector, me: request.me ?? "Me", others: request.others ?? "The others")
                 response = Response(id: id)
