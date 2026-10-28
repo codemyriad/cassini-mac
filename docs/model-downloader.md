@@ -57,3 +57,8 @@ launch: it must not rely on the extra read-root/test-manager entitlements Xcode
 injects for UI testing. This does not grant any device or OS permission.
 
 Both architecture builds are useful; an Intel compile is not an Intel execution.
+
+Hosted downloader jobs run the same local HTTP fixtures on ARM and Intel,
+restoring the D20 producer test bundles with `--skip-build`. Original PR paths
+are recorded in `.github/ci/paths.json`; main, nightly and central dispatch run
+the full matrix. The reusable area also supports standalone dispatch.

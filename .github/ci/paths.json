@@ -75,5 +75,14 @@
     "Package.swift",
     "scripts/*whistle*",
     ".github/workflows/ux-whistle.yml"
+  ],
+  "model_download": [
+    "Sources/CassiniModels/**",
+    "Sources/CassiniZstd/**",
+    "Tests/CassiniModelsTests/**",
+    "Cassini/Resources/Licenses/**",
+    "scripts/verify-model-vendor.py",
+    "Package.swift",
+    ".github/workflows/ux-model-download.yml"
   ]
 }
