@@ -1,9 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
+import CassiniKit
 @testable import CassiniLibrary
 
 struct MeetingPresentationTests {
+    @Test func openingVerifiedWordsKeepsTheirIdentityAndText() throws {
+        let f = try Fixture()
+        let base = try Data(contentsOf:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let parsed = try CassiniReader.read(base), id = UUID()
+        var manifest = try #require(parsed.manifest?.raw)
+        manifest = try manifest.setting("meeting",to:#require(manifest["meeting"]).setting("id",to:.string(id.uuidString.lowercased())))
+        let speaker = try #require(parsed.manifest?.speakers.first?.id)
+        let body = try JSONSerialization.data(withJSONObject:["items":[["speaker":speaker,"startMs":0,"endMs":100,"text":"Verified words"]]])
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,wordCount:1)
+        let url = f.root.appendingPathComponent("Verified.opus")
+        _ = try OpusStreamFile.rewrite(base,tags:tags,to:url)
+        let file = try CassiniReader.read(contentsOf:url)
+        let meeting = MeetingPresentation.external(file,url:url)
+        #expect(file.state == .ok && meeting.state.transcript == .done)
+        #expect(meeting.transcriptItems.map(\.text) == ["Verified words"] && !meeting.canWriteDown)
+        #expect(meeting.id == id)
+    }
+    @Test(arguments: ["[]", "null"]) func openingEmptyWordsKeepsWriteDownAvailable(items: String) throws {
+        let f = try Fixture()
+        let base = try Data(contentsOf:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let manifest = try #require(CassiniReader.read(base).manifest?.raw)
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:Data("{\"items\":\(items)}".utf8),wordCount:0)
+        let url = f.root.appendingPathComponent("No words.opus")
+        _ = try OpusStreamFile.rewrite(base,tags:tags,to:url)
+        let file = try CassiniReader.read(contentsOf:url)
+        #expect(file.state == .ok)
+        let meeting = MeetingPresentation.external(file,url:url)
+        #expect(meeting.state.transcript == .none && meeting.canWriteDown)
+        #expect(meeting.state.audioAvailable == true && meeting.audioFiles == [url])
+        #expect(meeting.transcriptItems.isEmpty && meeting.speakers.isEmpty)
+    }
+    @Test func openingUnverifiedWordsDoesNotAuthenticateThem() throws {
+        let f = try Fixture()
+        let base = try Data(contentsOf:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        var manifest = try #require(CassiniReader.read(base).manifest?.raw)
+        let id = UUID()
+        manifest = try manifest.setting("meeting",to:#require(manifest["meeting"]).setting("id",to:.string(id.uuidString.lowercased())))
+        manifest = try manifest.setting("integrity",to:#require(manifest["integrity"]).setting("matchPolicy",to:.string("future-policy")))
+        let body = Data("{\"items\":[{\"speaker\":\"untrusted\",\"startMs\":0,\"endMs\":100,\"text\":\"Untrusted words\"}]}".utf8)
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,wordCount:1)
+        let url = f.root.appendingPathComponent("Unknown policy.opus")
+        _ = try OpusStreamFile.rewrite(base,tags:tags,to:url)
+        let file = try CassiniReader.read(contentsOf:url)
+        #expect(file.state == .unverified)
+        let meeting = MeetingPresentation.external(file,url:url)
+        #expect(meeting.state.transcript == .damaged && meeting.transcriptItems.isEmpty)
+        #expect(meeting.speakers.isEmpty && meeting.state.audioAvailable == true)
+        #expect(meeting.id != id)
+    }
     @Test func captureSourceNamesAreAcceptedOnlyWithNames() throws {
         let f = try Fixture()
         try f.metadata { $0["speakers"] = [["id": "me", "name": "Me", "provenance": "source", "colourIndex": 0]] }
