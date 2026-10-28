@@ -6,13 +6,14 @@ import CassiniRecording
 import CassiniLibrary
 import Darwin
 
-/// Hosted-only packaging proof: a real sandboxed app starts its bundled,
+/// Opt-in packaging proof: a real sandboxed app starts its bundled,
 /// sandbox-inheriting helper. Never records or opens an audio device.
 @MainActor enum WhistleSelfTest {
     static func run() async {
         let environment = ProcessInfo.processInfo.environment
-        guard environment["GITHUB_ACTIONS"] == "true", environment["RUNNER_ENVIRONMENT"] == "github-hosted",
-              environment["CASSINI_HOSTED_WHISTLE"] == "1" else { exit(78) }
+        let hosted = environment["GITHUB_ACTIONS"] == "true" && environment["RUNNER_ENVIRONMENT"] == "github-hosted"
+        let local = environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1"
+        guard hosted || local, environment["CASSINI_HOSTED_WHISTLE"] == "1" else { exit(78) }
         do {
             let bundle = Bundle.main
             let folder = bundle.resourceURL!.appendingPathComponent("Whistle")
