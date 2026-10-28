@@ -97,6 +97,8 @@ child.wait()
         request=json.dumps(dict(id='owner-proof',wav=str(fixture/'jfk.wav')))+'\n'
         os.write(write_fd,request.encode())
         response=owner_line();assert response['id']=='owner-proof' and 'error' not in response,response
+        time.sleep(0.45)
+        assert owner.poll() is None,'Worker died while its owner was still alive across watchdog ticks'
         owner.kill();owner.wait(timeout=5)
         deadline=time.monotonic()+3
         while time.monotonic()<deadline:
@@ -169,7 +171,7 @@ if __name__ == '__main__':
             requests.write_text(''.join(json.dumps(dict(id=str(i),wav=str(ROOT/'Tests/CassiniWhistleTests/Fixtures/jfk.wav')))+'\n' for i in range(2)))
             command = ['xcrun','lldb','--batch','-o',
                        'process launch -i '+str(requests)+' -o '+str(directory/'debug-stdout.txt')+' -e '+str(directory/'debug-stderr.txt'),
-                       '-o','thread backtrace all','--',str(worker),'--assets',str(bundle)]
+                       '-k','thread backtrace all','--',str(worker),'--assets',str(bundle)]
             debug = subprocess.run(command,env=worker_env(),capture_output=True,text=True,timeout=90)
             (directory/'lldb.txt').write_text(debug.stdout+'\n'+debug.stderr)
         except Exception as diagnostic_error:
