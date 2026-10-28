@@ -62,3 +62,8 @@ Hosted downloader jobs run the same local HTTP fixtures on ARM and Intel,
 restoring the D20 producer test bundles with `--skip-build`. Original PR paths
 are recorded in `.github/ci/paths.json`; main, nightly and central dispatch run
 the full matrix. The reusable area also supports standalone dispatch.
+
+The Whistle-only Settings app does not need the network client entitlement.
+D16 will put networking in a separate XPC download service, preserving network
+denial for the UI and its sandbox-inheriting speech workers. The standalone
+downloader tests remain local HTTP fixtures.
