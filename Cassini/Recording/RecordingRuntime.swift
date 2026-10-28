@@ -26,20 +26,23 @@ private let recordingHotKeySignature: OSType = 0x43415353
 /// RegisterEventHotKey receives the app's own global shortcut without observing
 /// other keystrokes or requesting Accessibility/Input Monitoring permission.
 @MainActor @Observable final class RecordingShortcut {
-    static let key: KeyEquivalent = "r"
-    static let modifiers: SwiftUI.EventModifiers = [.option, .command]
-    static var glyph: String {
-        (modifiers.contains(.control) ? "⌃" : "") + (modifiers.contains(.option) ? "⌥" : "") +
-        (modifiers.contains(.shift) ? "⇧" : "") + (modifiers.contains(.command) ? "⌘" : "") + String(key.character).uppercased()
-    }
+    private(set) var choice = RecordingHotKey.saved
+    static var glyph: String { RecordingRuntime.shared.shortcut.choice.glyph }
     private(set) var registered = false
     @ObservationIgnored private var keyReference: EventHotKeyRef?
     @ObservationIgnored private var eventReference: EventHandlerRef?
     @ObservationIgnored private var perform: (() -> Void)?
     func start(_ perform: @escaping () -> Void) {
-        guard eventReference == nil else { return }; self.perform = perform
+        self.perform = perform
+        guard !registered, installHandler() == noErr else { return }
+        registered = RegisterEventHotKey(choice.code,choice.flags,
+            EventHotKeyID(signature:recordingHotKeySignature,id:1),GetApplicationEventTarget(),0,&keyReference) == noErr
+        if !registered { removeHandler() }
+    }
+    private func installHandler() -> OSStatus {
+        if eventReference != nil { return noErr }
         var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let result = InstallEventHandler(GetApplicationEventTarget(), { _, event, data in
+        return InstallEventHandler(GetApplicationEventTarget(), { _, event, data in
             guard let event, let data else { return OSStatus(eventNotHandledErr) }
             var identifier = EventHotKeyID()
             guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
@@ -49,10 +52,26 @@ private let recordingHotKeySignature: OSType = 0x43415353
             DispatchQueue.main.async { shortcut.perform?() }
             return noErr
         }, 1, &type, Unmanaged.passUnretained(self).toOpaque(), &eventReference)
-        guard result == noErr else { return }
-        registered = RegisterEventHotKey(UInt32(kVK_ANSI_R), UInt32(optionKey | cmdKey),
-            EventHotKeyID(signature: recordingHotKeySignature, id: 1), GetApplicationEventTarget(), 0, &keyReference) == noErr
-        if !registered { stop() }
+    }
+    private func removeHandler() {
+        if let eventReference { RemoveEventHandler(eventReference) }
+        eventReference = nil
+    }
+    /// Register the candidate before releasing the old key. A conflicting or
+    /// reserved key cannot silently leave recording without its working shortcut.
+    func change(to candidate: RecordingHotKey) -> OSStatus {
+        guard candidate.valid else { return OSStatus(paramErr) }
+        if candidate == choice, registered { return noErr }
+        let handlerStatus = installHandler()
+        guard handlerStatus == noErr else { return handlerStatus }
+        var replacement: EventHotKeyRef?
+        let result = RegisterEventHotKey(candidate.code,candidate.flags,
+            EventHotKeyID(signature:recordingHotKeySignature,id:1),GetApplicationEventTarget(),0,&replacement)
+        guard result == noErr, let replacement else { return result == noErr ? OSStatus(eventNotHandledErr) : result }
+        if let keyReference { UnregisterEventHotKey(keyReference) }
+        keyReference = replacement; registered = true; choice = candidate
+        if let bytes = try? JSONEncoder().encode(candidate) { RecordingPreferences.defaults.set(bytes,forKey:"CassiniRecordingHotKey") }
+        return noErr
     }
     func stop() {
         if let keyReference { UnregisterEventHotKey(keyReference) }

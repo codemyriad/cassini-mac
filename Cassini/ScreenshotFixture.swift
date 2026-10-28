@@ -11,7 +11,7 @@ enum ScreenshotFixture {
         guard arguments.contains("-CassiniScreenshot") else { return false }
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription"].contains(name),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
               ISO8601DateFormatter().date(from: clock) != nil else {
@@ -34,6 +34,16 @@ enum ScreenshotFixture {
             }
         }
 
+        if name.hasPrefix("settings-") {
+            Task { @MainActor in
+                SettingsNavigation.shared.tab = name == "settings-recording" ? .recording : .transcription
+                for _ in 0..<100 {
+                    if let open = SettingsNavigation.shared.open { open(); return }
+                    try? await Task.sleep(for:.milliseconds(100))
+                }
+                NSApp.terminate(nil)
+            }
+        }
         return true
     }
 

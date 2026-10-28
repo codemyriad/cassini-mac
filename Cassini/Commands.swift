@@ -15,7 +15,7 @@ struct AppCommands: Commands {
             Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
             Button(UXText.text(RecordingController.shared.isRecording ? "common.stop" : "common.record")) {
                 if RecordingConfirmation.active { RecordingConfirmation.stop() }
-                else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryLaunchContext.current.root) }
+                else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryStore.shared.context.root) }
             }.keyboardShortcut("r", modifiers: .command).disabled(RecordingController.shared.isSaving)
         }
         CommandGroup(after: .newItem) {

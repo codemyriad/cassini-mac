@@ -12,7 +12,7 @@ import Observation
     var isRecording: Bool { phase == .recording }
     var isStarting: Bool { phase == .starting }
     var isSaving: Bool { phase == .saving }
-    var canStart: Bool { phase == .idle }
+    var canStart: Bool { phase == .idle && LibraryLocationModel.shared.available }
     private(set) var diskMinutes: Int?
     private(set) var diskStopped = false
     @ObservationIgnored private let diskWatch = RecordingDiskWatch()
@@ -71,13 +71,18 @@ import Observation
         do {
             #if DEBUG
             if RecordingFixture.enabled {
-                guard let expected = RecordingFixture.root, expected.standardizedFileURL == parent.standardizedFileURL else { throw CocoaError(.fileWriteNoPermission) }
+                guard let expected = RecordingFixture.root, expected.standardizedFileURL.path == parent.standardizedFileURL.path else { throw CocoaError(.fileWriteNoPermission) }
             }
             #endif
             try await inputs.authorize()
             guard generation == attempt else { inputs.stop(); return }
-            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let session = try RecordingSession(parent: parent, title: title, source: "macos")
+            // Permission authorization may have yielded while Move published a
+            // new Library. Resolve the destination at actual folder creation.
+            let session = try LibraryRouting.withLock(file:LibraryLaunchContext.locationFile,exclusive:false,wait:false) {
+                LibraryLocationModel.shared.reload()
+                guard LibraryLocationModel.shared.available else { throw POSIXError(.ENOENT) }
+                return try RecordingSession(parent:LibraryLocationModel.shared.roots[0],title:title,source:"macos")
+            }
             try MeetingMetadataWriter(directory: session.directory, id: session.manifest.id).createIfNeeded()
             directory = session.directory; startedAt = session.manifest.createdAt
             let writer: any RecordingSinkWriter

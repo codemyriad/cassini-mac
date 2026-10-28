@@ -52,6 +52,11 @@ jobs:
     - name: Private import and queue lifecycle without devices
       if: always()
       run: python3 scripts/test-import-lifecycle.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/import-lifecycle.json
+    - name: Private Settings and Library relocation without devices
+      if: always()
+      run: |
+        codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
+        python3 scripts/test-settings-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/settings-app.json
     - uses: actions/upload-artifact@v5
       if: always()
       with:

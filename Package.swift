@@ -37,7 +37,7 @@ let package = Package(
         .testTarget(name: "CassiniPlaybackTests", dependencies: ["CassiniPlayback", "CassiniLibrary"]),
         .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers", "CassiniRecording"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors"), .copy("ExportGolden")]),
         .target(name: "CassiniRecording", dependencies: ["CassiniKit"]),
-        .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording"]),
+        .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording", "CassiniLibrary"]),
         .testTarget(name: "CassiniRecordingTests", dependencies: ["CassiniRecording"]),
         .executableTarget(name: "cassini-inspect", dependencies: ["CassiniKit"]),
         .testTarget(

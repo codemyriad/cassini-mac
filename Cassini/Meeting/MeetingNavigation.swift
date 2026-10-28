@@ -11,6 +11,7 @@ import Observation
     @ObservationIgnored private var readTask: Task<Void, Never>?
     @ObservationIgnored var openLibrary: (() -> Void)?
     func open(_ meeting: LibraryMeeting, autoplay: Bool = false, frozen: Bool = false) {
+        guard !LibraryMoveCoordinator.shared.busy || meeting.state.lifecycle != .saved else { return }
         if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() }
         readTask?.cancel(); loading = false
         if detail?.meeting.libraryKey == meeting.libraryKey {

@@ -31,7 +31,12 @@ import CassiniSearch
     var names: [String] { SearchIndex.names(meetings) }
     var count: String { LibraryFormat.searchCount(places:Int64(hits.count),meetings:Int64(Set(hits.map(\.meetingKey)).count)) }
     func meeting(_ hit: SearchHit) -> LibraryMeeting? { meetings.first { $0.libraryKey == hit.meetingKey } }
+    func reindexAfterMove(_ meetings: [LibraryMeeting]) async {
+        self.meetings = meetings; hits = []; selectedID = nil
+        if let ready = indexTask, let index = try? await ready.value { try? await index.replace(meetings) }
+    }
     func open() {
+        guard !LibraryMoveCoordinator.shared.busy else { return }
         MeetingNavigation.shared.back(); visible = true; focusRequest &+= 1
         MeetingNavigation.shared.openLibrary?(); update(LibraryStore.shared.meetings)
     }

@@ -102,7 +102,7 @@ struct RecordingStatusMenu: View {
         }.buttonStyle(.plain).foregroundStyle(hovered == item.id ? Color.white : Color.primary)
             .background(hovered == item.id ? Color.accentColor : Color.clear,in:RoundedRectangle(cornerRadius:4))
             .onHover { over in hovered = over ? item.id : nil }.accessibilityIdentifier("recording-menu-" + item.id)
-        if item.id == "stop" { button.keyboardShortcut(RecordingShortcut.key,modifiers:RecordingShortcut.modifiers) }
+        if item.id == "stop" { button.keyboardShortcut(RecordingRuntime.shared.shortcut.choice.key,modifiers:RecordingRuntime.shared.shortcut.choice.modifiers) }
         else { button }
     }
 }

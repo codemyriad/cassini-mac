@@ -7,6 +7,42 @@ final class LibraryBoards: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
     }
+    @MainActor func testSettingsRecordingPreferenceAndTabs() throws {
+        let app = try launch("settings-recording",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        let toggle = window.descendants(matching:.any).matching(identifier:"settings-explain-recording")
+            .matching(NSPredicate(format:"value != nil")).firstMatch
+        XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout:20),app.debugDescription)
+        capture(window,name:"settings-recording")
+        XCTAssertTrue(toggle.waitForExistence(timeout:5),app.debugDescription)
+        let value = try XCTUnwrap(toggle.value)
+        toggle.click()
+        let changed = NSPredicate { _,_ in
+            guard let current = toggle.value else { return false }
+            return String(describing:current) != String(describing:value)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:5),.completed,app.debugDescription)
+        window.buttons["settings-change-shortcut"].click()
+        XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:5))
+        app.typeKey(.escape,modifierFlags:[])
+        let shortcutClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for:[shortcutClosed],timeout:5),.completed,app.debugDescription)
+        XCTAssertFalse(window.sheets.firstMatch.exists)
+        window.toolbars.buttons["Library"].click()
+        XCTAssertTrue(window.buttons["settings-move-library"].waitForExistence(timeout:5))
+        window.buttons["settings-move-library"].click()
+        let chooser = app.windows["open-panel"]
+        XCTAssertTrue(chooser.waitForExistence(timeout:5),app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        let chooserClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:chooser)
+        XCTAssertEqual(XCTWaiter.wait(for:[chooserClosed],timeout:5),.completed,app.debugDescription)
+        XCTAssertFalse(chooser.exists)
+        window.toolbars.buttons["Browser companion"].click()
+        XCTAssertTrue(text("Not set up",in:window))
+        app.typeKey("w",modifierFlags:.command)
+        app.typeKey(",",modifierFlags:.command)
+        XCTAssertTrue(window.waitForExistence(timeout:5))
+    }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
     @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {
@@ -68,10 +104,16 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]),true)
         sheet.buttons["export-confirm"].click()
         // NSSavePanel is exposed as a sheet on some supported macOS versions.
-        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
-        let closed = NSPredicate { _,_ in !app.buttons["Save"].exists }
+        let saveButton = nativeSaveButton(in:app)
+        let closed = NSPredicate { _,_ in !saveButton.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:5),.completed,app.debugDescription)
+    }
+    @MainActor private func nativeSaveButton(in app: XCUIApplication) -> XCUIElement {
+        // App-wide queries also match the Touch Bar Save button. The panel
+        // itself may be exposed as either a sheet or a window.
+        app.descendants(matching:.any).matching(identifier:"save-panel").firstMatch.buttons["OKButton"]
     }
     @MainActor func testExportReceivedAudioThroughAFileOnlySaveGrant() throws {
         // Keep the 52-minute board fixture out of this publication test. The
@@ -81,7 +123,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("e",modifierFlags:[.command,.shift])
         XCTAssertTrue(app.buttons["export-confirm"].waitForExistence(timeout:10),app.debugDescription)
         app.buttons["export-confirm"].click()
-        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)
         // The runner can create/inspect its own folder; Cassini receives a
         // file-only Powerbox grant, with no added entitlement or directory grant.
         let destination = FileManager.default.temporaryDirectory
@@ -90,7 +132,7 @@ final class LibraryBoards: XCTestCase {
         defer { try? FileManager.default.removeItem(at:destination) }
         app.typeKey("g",modifierFlags:[.command,.shift])
         app.typeText(destination.path); app.typeKey(.return,modifierFlags:[])
-        app.buttons["Save"].click()
+        nativeSaveButton(in:app).click()
         let output = destination.appendingPathComponent("Onboarding walkthrough.opus")
         let saved = NSPredicate { _,_ in FileManager.default.fileExists(atPath:output.path) }
         let result = XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20)

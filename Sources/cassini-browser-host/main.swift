@@ -1,4 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniRecording
+import CassiniLibrary
 import Foundation
 import MachO
 
@@ -22,7 +24,7 @@ if arguments.first == "--install-extension" || arguments.first == "--uninstall-e
             let paths = try installer.install(extensionID: arguments[1])
             print("Installed Cassini recording host for \(paths.count) existing browser profile directories.")
             for path in paths { print(path.path) }
-            print("Browser recordings are saved in ~/Music/Cassini. Re-run setup after moving Cassini.app.")
+            print("Browser recordings are saved in \(try LibraryLocation.read().primaryPath). Re-run setup after moving Cassini.app.")
         } else {
             throw RecordingError.invalid("Usage: cassini-browser-host --install-extension EXTENSION_ID | --uninstall-extension")
         }
@@ -34,16 +36,25 @@ if arguments.first == "--install-extension" || arguments.first == "--uninstall-e
 }
 
 // stdout belongs exclusively to Chrome's length-prefixed protocol.
-let destination = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Music/Cassini", isDirectory: true)
-let host = BrowserRecordingHost(parent: destination)
+var host: BrowserRecordingHost?
 do {
+    let connection = arguments.first?.hasPrefix("chrome-extension://") == true
+        ? try? BrowserCompanionConnection(browser:BrowserCompanionConnection.parentBrowserName) : nil
+    defer { withExtendedLifetime(connection) {} }
+    let recorder = BrowserRecordingHost { title in
+        try LibraryRouting.withLock(exclusive:false) {
+            try RecordingSession(parent:LibraryRouting.recordingDestination(),title:title,source:"chromium")
+        }
+    }; host = recorder
+
     while let data = try NativeMessageFraming.read(from: .standardInput) {
-        let response = try host.receive(data)
+        let response = try recorder.receive(data)
+        try? connection?.update(recordingDirectory:recorder.session?.manifest.state == "recording" ? recorder.session?.directory : nil)
         try NativeMessageFraming.write(JSONSerialization.data(withJSONObject: response), to: .standardOutput)
     }
-    try host.disconnect()
+    try recorder.disconnect()
 } catch {
-    try? host.disconnect(problem: error.localizedDescription)
+    try? host?.disconnect(problem: error.localizedDescription)
     let response = ["type": "error", "code": (error as? BrowserProtocolError)?.code ?? "io", "message": error.localizedDescription]
     if let data = try? JSONSerialization.data(withJSONObject: response) {
         try? NativeMessageFraming.write(data, to: .standardOutput)

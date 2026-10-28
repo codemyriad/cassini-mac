@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var toolbarWidth: CGFloat = 1120
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         GeometryReader { geometry in
@@ -82,7 +83,7 @@ struct LibraryView: View {
                         HStack(spacing: 14) {
                             if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
                                 Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
-                                    .buttonStyle(.bordered).accessibilityIdentifier("meeting-write-down")
+                                    .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down")
                             }
                             Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
                                 .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export")
@@ -123,6 +124,7 @@ struct LibraryView: View {
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .onAppear {
+            SettingsNavigation.shared.open = { openSettings(); NSApp.activate(ignoringOtherApps:true) }
             search.update(store.meetings)
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             let open = openWindow
@@ -283,7 +285,7 @@ struct LibraryView: View {
                     if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
                 if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
-                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }) }
+                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 if let folder = meeting.received?.originalFolderName {
                     HStack(alignment:.top,spacing:12) {
@@ -306,17 +308,17 @@ struct LibraryView: View {
                     Button { play(meeting) } label: { Label(UXText.text(sessionPlayback.isPlaying ? "player.pause" : "common.play"), systemImage: sessionPlayback.isPlaying ? "pause.fill" : "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
                         .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
                         .opacity(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing) ? 0.45 : 1)
-                        .disabled(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
+                        .disabled(LibraryMoveCoordinator.shared.busy || !sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
                         .accessibilityIdentifier("preview-play")
                 if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
                     Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
-                        .buttonStyle(.bordered).accessibilityIdentifier("preview-write-down")
+                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("preview-write-down")
                 }
 
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
                     }.buttonStyle(.plain).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
-                        .disabled(meeting.transcriptItems.isEmpty)
+                        .disabled(meeting.transcriptItems.isEmpty || LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("preview-read-transcript")
                 }
                 if !meeting.transcriptItems.isEmpty {
@@ -361,12 +363,16 @@ struct LibraryView: View {
                 }
                 if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
                 recordButton(big: true)
-                Text(UXText.text("firstRun.shortcutHint", ["shortcut": UXText.text("common.shortcut.record")])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("firstRun.shortcutHint", ["shortcut": RecordingRuntime.shared.shortcut.choice.glyph])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
             }
             Spacer()
             HStack(spacing: 8) {
                 Image(systemName: "lock").accessibilityHidden(true)
-                Text(UXText.text("firstRun.footer"))
+                if LibraryLocationModel.shared.location.primaryPath == LibraryLocation.standardRoot.path || store.context.screenshot {
+                    Text(UXText.text("firstRun.footer"))
+                } else {
+                    Text(UXText.text("settings.library.folder.title") + ": " + LibraryLocationModel.shared.displayPath)
+                }
             }.font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).padding(16)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .textBackgroundColor))
     }

@@ -40,12 +40,15 @@ public enum NativeMessageFraming {
 
 public final class BrowserRecordingHost {
     public private(set) var session: RecordingSession?
-    private let parent: URL
+    private let makeSession: (String) throws -> RecordingSession
     private var sequences: [String: Int] = [:]
     private var started = false
     private var stopped = false
 
-    public init(parent: URL) { self.parent = parent }
+    public convenience init(parent: URL) {
+        self.init(makeSession:{ try RecordingSession(parent:parent,title:$0,source:"chromium") })
+    }
+    public init(makeSession: @escaping (String) throws -> RecordingSession) { self.makeSession = makeSession }
 
     public func receive(_ data: Data) throws -> [String: String] {
         let message: JSON
@@ -76,7 +79,7 @@ public final class BrowserRecordingHost {
             let version = try integer("version", code: "version")
             guard version == nil || version == 1 else { throw BrowserProtocolError("version", "Unsupported browser recording protocol version.") }
             let title = try string("title", code: "source") ?? "Browser recording"
-            try write("source") { session = try RecordingSession(parent: parent, title: title, source: "chromium") }
+            try write("source") { session = try makeSession(title) }
             started = true
             return ["type": "started", "path": session!.directory.path]
         case "track":

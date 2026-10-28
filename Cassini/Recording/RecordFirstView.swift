@@ -6,6 +6,7 @@ import CassiniLibrary
 @MainActor enum RecordingPreferences {
     static var defaults: UserDefaults {
         #if DEBUG
+        if let defaults = SettingsFixture.defaults { return defaults }
         if RecordingFixture.enabled, let id = LibraryLaunchContext.argument("-CassiniCaptureID") {
             return UserDefaults(suiteName: "com.codemyriad.cassini-mac.capture-fixture." + id)!
         }
@@ -37,7 +38,7 @@ import CassiniLibrary
         guard recorder.canStart else { return }
         let introduction = !RecordingPreferences.skipFirst
         if introduction { MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps: true) }
-        request(parent: LibraryLaunchContext.current.root, showRecording: introduction)
+        request(parent: LibraryLocationModel.shared.roots[0], showRecording: introduction)
     }
     func openCurrent(focusNotes: Bool = false) {
         guard let folder = RecordingController.shared.directory else { return }
@@ -50,11 +51,11 @@ import CassiniLibrary
         }
     }
     func confirm() { showingFirst = false; DispatchQueue.main.async { self.begin() } }
-    private func begin() { MeetingNavigation.shared.back(); let parent = parent; Task { await RecordingController.shared.start(parent: parent) } }
+    private func begin() { MeetingNavigation.shared.back(); let parent = LibraryLocationModel.shared.roots[0]; Task { await RecordingController.shared.start(parent: parent) } }
 }
 
 struct RecordFirstView: View {
-    @State private var skip = RecordingPreferences.skipFirst
+    @AppStorage("CassiniSkipRecordFirst",store:RecordingPreferences.defaults) private var skip = false
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
@@ -80,7 +81,6 @@ struct RecordFirstView: View {
                 }.buttonStyle(.plain).keyboardShortcut(.defaultAction).accessibilityIdentifier("record-first-start")
             }.padding(.top, 8)
         }.font(.system(size: 13)).padding(28).frame(width: 520)
-            .onChange(of: skip) { _, value in RecordingPreferences.defaults.set(value, forKey: "CassiniSkipRecordFirst") }
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("recordFirst.title"))
     }
     private func source(icon: String, title: String, description: String, caption: String) -> some View {

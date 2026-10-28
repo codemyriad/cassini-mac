@@ -8,14 +8,16 @@ import sys
 source, target = map(Path, sys.argv[1:])
 target.mkdir(parents=True, exist_ok=True)
 manifest = json.loads((source/'manifest.json').read_text())
-for name in ('library', 'first-run', 'meeting', 'record-first', 'recording', 'received', 'export', 'search'):
+for name in ('library', 'first-run', 'meeting', 'record-first', 'recording', 'received', 'export', 'search', 'settings-recording'):
     matches = [a for test in manifest for a in test['attachments'] if a['suggestedHumanReadableName'].startswith(name + '_') or a['suggestedHumanReadableName'] == name+'.png']
     assert len(matches) == 1, (name, matches)
     path = source/matches[0]['exportedFileName']
     data = path.read_bytes()
-    assert data[:8] == b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',data[16:24]) == (1120,720)
+    assert data[:8] == b'\x89PNG\r\n\x1a\n'
+    width,height=struct.unpack('>II',data[16:24])
+    assert (width == 700 and 500 <= height <= 700) if name.startswith('settings-') else (width,height) == (1120,720)
     shutil.copyfile(path,target/(name+'.png'))
-    print(name, '1120x720')
+    print(name, f'{width}x{height}')
 payloads = [a for test in manifest for a in test['attachments'] if a['suggestedHumanReadableName'].startswith('recording-menu')]
 assert len(payloads) == 1, payloads
 payload = source/payloads[0]['exportedFileName']
