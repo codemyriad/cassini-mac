@@ -6,6 +6,16 @@ import CassiniLibrary
 
 /// Offline reads only: no AVPlayer, audio engine, microphone, or output device.
 @Suite struct SessionCompositionTests {
+    @Test func receivedStereoOpusPreparesAndSeeksWithoutAnAudioDevice() async throws {
+        let repo = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = repo.appendingPathComponent("Tests/CassiniExportTests/Fixtures/stereo-tone.opus")
+        let bytes = try Data(contentsOf:source)
+        let timeline = try await SessionComposition.make(tracks:[.init(url:source,startOffsetMs:0)])
+        #expect(abs(timeline.durationMs - 1000) < 1)
+        let samples = try read(timeline.asset,start:0.25,duration:0.25)
+        #expect(!samples.isEmpty && samples.contains { abs($0) > 0.01 })
+        #expect(try Data(contentsOf:source) == bytes)
+    }
     @Test(arguments: [0, 4000]) func repairsStaleHeadersWithoutChangingRecordedBytes(declaredFrames: Int) async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let source = try capturedWave(root, "stale", frames: 8000, declaredFrames: declaredFrames)
