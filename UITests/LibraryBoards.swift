@@ -58,12 +58,14 @@ final class LibraryBoards: XCTestCase {
         sheet.radioButtons["Markdown"].click()
         XCTAssertEqual(selected(sheet.radioButtons["Markdown"]),true)
         app.typeKey(.escape,modifierFlags:[])
-        XCTAssertFalse(sheet.exists)
+        let dismissed = NSPredicate { _,_ in !sheet.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:dismissed,object:nil)],timeout:5),.completed,app.debugDescription)
         app.typeKey("e",modifierFlags:[.command,.shift])
         XCTAssertTrue(sheet.buttons["export-confirm"].waitForExistence(timeout:5))
         XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]),true)
         sheet.buttons["export-confirm"].click()
-        XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout:10),app.debugDescription)
+        // NSSavePanel is exposed as a sheet on some supported macOS versions.
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
     }
     @MainActor func testRecordingBoard() throws {
