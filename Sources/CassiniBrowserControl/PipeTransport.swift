@@ -274,6 +274,7 @@ final class PipeEndpoint: ControlEndpoint, @unchecked Sendable {
         PipeFiles.retire(folder)
     }
     func send(_ data: Data) throws { try FrameIO.writeFrame(output,data:FrameIO.normalized(data),cancel:cancellation) }
-    func receive() throws -> Data? { try FrameIO.read(input,cancel:cancellation).map { try FrameIO.normalized($0) } }
+    func receive() throws -> Data? { try receive(deadline:nil) }
+    func receive(deadline: UInt64?) throws -> Data? { try FrameIO.read(input,cancel:cancellation,deadline:deadline).map { try FrameIO.normalized($0) } }
     func stop() { cancellation.cancel() }
 }
