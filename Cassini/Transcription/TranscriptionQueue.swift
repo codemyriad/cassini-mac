@@ -15,6 +15,7 @@ import Darwin
 @MainActor @Observable final class TranscriptionQueue {
     static let shared = TranscriptionQueue()
     private(set) var active: URL?
+    private(set) var activeModel: String?
     @ObservationIgnored private var pending: [LibraryMeeting] = []
     @ObservationIgnored private var known = Set<String>()
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -92,8 +93,11 @@ import Darwin
             do {
                 struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String }
                 let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"))) + Data([10])
-                var worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
-                var arguments: [String] = []
+                let model = try await SpeechModelController.shared.modelForNewJob()
+                defer { withExtendedLifetime(model) {} }
+                var worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + (model == nil ? "cassini-whistle-worker" : "cassini-parakeet-worker"))
+                var arguments: [String] = model.map { ["--model",$0.lease.directory.path] } ?? []
+                activeModel = model == nil ? "whistle" : "parakeet"
                 #if DEBUG
                 if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniFailTranscriptionOnce") == "YES", !failedFixtureOnce {
                     failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
@@ -102,8 +106,18 @@ import Darwin
                     worker = URL(fileURLWithPath:"/bin/sleep"); arguments = ["60"]
                 }
                 #endif
-                let result = try await WhistleSubprocess.run(executable: worker, arguments: arguments, environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
-                struct Response: Decodable { let error: String? }
+                var result = try await WhistleSubprocess.run(executable: worker, arguments: arguments, environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
+                struct Response: Decodable { let error: String?; let code: String? }
+                // Startup model checks fail before the Parakeet worker can read
+                // or edit the meeting. Inspect the structured error even on a
+                // nonzero exit, reset the choice, then retry this job in Whistle.
+                if let model, result.status != 0,
+                   (try? JSONDecoder().decode(Response.self,from:result.stdout).code) == "invalid-model" {
+                    await SpeechModelController.shared.invalidModel(generation:model.generation)
+                    try Task.checkCancellation(); activeModel = "whistle"
+                    worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                    result = try await WhistleSubprocess.run(executable:worker,arguments:[],environment:WhistleEnvironment.worker(),input:input,timeout:24 * 60 * 60)
+                }
                 guard result.status == 0, result.inputError == nil else { throw TranscriptionFailure.runtime("worker exited") }
                 let response = try JSONDecoder().decode(Response.self, from: result.stdout)
                 if let error = response.error, !error.contains("meeting is already being written down") { throw TranscriptionFailure.runtime(error) }
@@ -120,7 +134,7 @@ import Darwin
                 }.value
             }
             await Task.detached { SegmentedAudio.removeAbandonedScratch() }.value
-            active = nil; task = nil; startNext()
+            active = nil; activeModel = nil; task = nil; startNext()
         }
     }
 }

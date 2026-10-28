@@ -11,7 +11,7 @@ resources="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Parakeet"
 frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
 worker="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/cassini-parakeet-worker"
 mkdir -p "$resources" "$frameworks"
-for name in pins.json UPSTREAM.json Sherpa-LICENSE ONNXRuntime-LICENSE ONNXRuntime-ThirdPartyNotices.txt; do cp "$staging/$name" "$resources/$name"; done
+for name in pins.json UPSTREAM.json Sherpa-LICENSE ONNXRuntime-LICENSE ONNXRuntime-ThirdPartyNotices.txt model-manifest.json; do cp "$staging/$name" "$resources/$name"; done
 for name in libsherpa-onnx-c-api.dylib libonnxruntime.dylib; do cp "$staging/$name" "$frameworks/$name"; done
 cp "$BUILT_PRODUCTS_DIR/cassini-parakeet-worker" "$worker"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then

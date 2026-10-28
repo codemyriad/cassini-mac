@@ -10,6 +10,9 @@ signed=subprocess.run(['codesign','-d','--entitlements',':-',str(a.app.resolve()
 profile=plistlib.loads(signed.stdout)
 expected=plistlib.loads((Path(__file__).resolve().parent.parent/'Cassini/Cassini.entitlements').read_bytes())
 assert profile==expected and not profile.get('com.apple.security.network.client'),'Use the exact product profile without network access'
+service=a.app/'Contents/XPCServices/CassiniModelDownloads.xpc'
+service_profile=plistlib.loads(subprocess.run(['codesign','-d','--entitlements',':-',str(service)],capture_output=True,check=True).stdout)
+assert service_profile==plistlib.loads((Path(__file__).resolve().parent.parent/'ModelDownloads/ModelDownloads.entitlements').read_bytes()),'Use the exact download-service product profile'
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):pass
 with socketserver.TCPServer(('127.0.0.1',0),Handler) as server:

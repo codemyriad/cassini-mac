@@ -15,10 +15,11 @@ ROOT = Path(__file__).resolve().parent.parent
 PRODUCTS = {
     'swiftpm': ['.build'],
     'assets': ['build/Whistle', 'build/Opus'],
+    'parakeet': ['build/Parakeet', 'build/ParakeetModel'],
     'debug': ['build/Build/Products/Debug', 'build/Build/Products'],
     'release': ['build/Build/Products/Release'],
 }
-PINS = ['Package.swift', 'Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-opus.py', 'scripts/fetch-vad.py']
+PINS = ['Package.swift', 'Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-opus.py', 'scripts/fetch-vad.py', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'Parakeet/model-manifest.json']
 
 
 def digest(path):
@@ -91,6 +92,8 @@ def stage_assets(kind, destination):
             raise ValueError('Parakeet pin mismatch')
         for name, expected in json.loads((ROOT/'Parakeet/UPSTREAM.json').read_text())['sha256'].items():
             if digest(ROOT/name) != expected: raise ValueError('Parakeet header/notice pin mismatch')
+            if name.startswith('Parakeet/') and digest(source/Path(name).name) != expected:
+                raise ValueError('Staged Parakeet metadata mismatch: '+name)
     if kind == 'Whistle':
         if json.loads((source/'pins.json').read_text()) != json.loads((ROOT/'Whistle/pins.json').read_text()):
             raise ValueError('Whistle pin mismatch')

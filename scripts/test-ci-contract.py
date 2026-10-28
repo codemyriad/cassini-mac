@@ -122,6 +122,18 @@ class Transport(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Unsafe'): products.unpack('swiftpm',self.output)
 
 
+class ParakeetCoverage(unittest.TestCase):
+    def test_runtime_and_service_changes_recheck_all_app_consumers(self):
+        for name in ['Parakeet/model-manifest.json','ModelDownloads/Service.swift']:
+            self.assertTrue(all(changes.select('pull_request','base',PATHS,[name]).values()))
+
+    def test_optional_golden_weights_do_not_enter_legacy_or_shipped_products(self):
+        self.assertEqual(products.PRODUCTS['assets'],['build/Whistle','build/Opus'])
+        self.assertEqual(products.PRODUCTS['parakeet'],['build/Parakeet','build/ParakeetModel'])
+        self.assertNotIn('build/ParakeetModel',products.PRODUCTS['debug'])
+        self.assertNotIn('build/ParakeetModel',products.PRODUCTS['release'])
+
+
 class Measurements(unittest.TestCase):
     def test_round_each_assigned_mac_job_and_exclude_queued_cancellations(self):
         run=dict(id=1,status='completed',conclusion='success',created_at='2026-01-01T00:00:00Z',updated_at='2026-01-01T00:03:00Z')

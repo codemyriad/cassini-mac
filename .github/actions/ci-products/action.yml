@@ -7,6 +7,9 @@ inputs:
   assets:
     default: 'false'
     description: Universal pinned offline engines and models
+  parakeet:
+    default: 'false'
+    description: Optional Parakeet runtime and golden model, never included in shipped products
   debug:
     default: 'false'
     description: Universal signed app and UI tests
@@ -32,6 +35,11 @@ runs:
         name: ci-assets
         path: build/ci-products
     - uses: actions/download-artifact@v5
+      if: inputs.parakeet == 'true'
+      with:
+        name: ci-parakeet
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
       if: inputs.debug == 'true'
       with:
         name: ci-debug
@@ -45,10 +53,11 @@ runs:
       env:
         RESTORE_SWIFTPM: ${{ inputs.swiftpm }}
         RESTORE_ASSETS: ${{ inputs.assets }}
+        RESTORE_PARAKEET: ${{ inputs.parakeet }}
         RESTORE_DEBUG: ${{ inputs.debug }}
         RESTORE_RELEASE: ${{ inputs.release }}
       run: |
-        for kind in swiftpm assets debug release; do
+        for kind in swiftpm assets parakeet debug release; do
           flag="RESTORE_$(echo "$kind" | tr '[:lower:]' '[:upper:]')"
           if [ "${!flag}" = true ]; then
             python3 scripts/ci-products.py unpack "$kind" build/ci-products

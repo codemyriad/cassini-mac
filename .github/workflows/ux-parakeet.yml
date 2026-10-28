@@ -1,0 +1,69 @@
+name: UX Parakeet Ultra
+on:
+  workflow_call:
+    inputs:
+      products_ready:
+        type: boolean
+        default: false
+        description: Caller already produced same-run build artifacts
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    if: ${{ !inputs.products_ready }}
+    uses: ./.github/workflows/ci-build.yml
+  parakeet:
+    name: Parakeet runtime, goldens and app (${{ matrix.runner }})
+    needs: [build]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      NEEDLE_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+      ORT_DISABLE_TELEMETRY: '1'
+      CASSINI_PARAKEET_RUNTIME: ${{ github.workspace }}/build/Parakeet
+      CASSINI_PARAKEET_MODEL: ${{ github.workspace }}/build/ParakeetModel/models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
+      CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-products
+        with:
+          swiftpm: 'true'
+          assets: 'true'
+          parakeet: 'true'
+          debug: 'true'
+          release: 'true'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - name: Both strict D16 input goldens, token conversion and accepted model leases
+        run: |
+          set -o pipefail
+          mkdir -p build/parakeet-reports
+          swift test --skip-build --filter 'Parakeet|ProgressTests' 2>&1 | tee build/parakeet-reports/goldens.log
+      - name: Native runtime privacy, integrity and parent lifetime
+        run: |
+          python3 scripts/test-parakeet-worker.py --worker .build/debug/cassini-parakeet-worker \
+            --runtime "$CASSINI_PARAKEET_RUNTIME" --model "$CASSINI_PARAKEET_MODEL" --vad "$CASSINI_PIPELINE_ASSETS" \
+            --report build/parakeet-reports/worker.json
+      - name: Signed Debug and Release runtimes with no optional model bundled
+        run: |
+          python3 scripts/check-parakeet-bundle.py build/Build/Products/Release/Cassini.app
+          codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
+          python3 scripts/check-parakeet-bundle.py build/Build/Products/Debug/Cassini.app
+      - name: Operating system network denial and scoped download service
+        run: python3 scripts/test-model-network-app.py build/Build/Products/Debug/Cassini.app --output build/parakeet-reports/network.json
+      - name: Real signed queue, active Remove and invalid-model fallback
+        run: python3 scripts/test-parakeet-app.py build/Build/Products/Debug/Cassini.app --model "$CASSINI_PARAKEET_MODEL" --report build/parakeet-reports/app.json
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: parakeet-${{ matrix.runner }}
+          path: build/parakeet-reports

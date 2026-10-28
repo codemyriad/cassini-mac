@@ -19,6 +19,7 @@ jobs:
       library: ${{ steps.paths.outputs.library }}
       whistle: ${{ steps.paths.outputs.whistle }}
       model_download: ${{ steps.paths.outputs.model_download }}
+      parakeet: ${{ steps.paths.outputs.parakeet }}
     steps:
     - uses: actions/checkout@v5
       with:
@@ -31,7 +32,11 @@ jobs:
         python3 scripts/test-ci-contract.py
         python3 scripts/ci-changes.py
   build:
+    needs: [changes]
+    if: ${{ always() && !cancelled() }}
     uses: ./.github/workflows/ci-build.yml
+    with:
+      parakeet_models: ${{ needs.changes.outputs.parakeet != 'false' }}
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
@@ -169,6 +174,14 @@ jobs:
     - build
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.model_download != 'false' }}
     uses: ./.github/workflows/ux-model-download.yml
+    with:
+      products_ready: true
+
+  parakeet:
+    name: UX Parakeet Ultra
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
+    uses: ./.github/workflows/ux-parakeet.yml
     with:
       products_ready: true
 

@@ -84,5 +84,22 @@
     "scripts/verify-model-vendor.py",
     "Package.swift",
     ".github/workflows/ux-model-download.yml"
+  ],
+  "parakeet": [
+    "Parakeet/**",
+    "ModelDownloads/**",
+    "Cassini/Settings/**",
+    "Cassini/Transcription/**",
+    "Cassini/AppDelegate.swift",
+    "Sources/CassiniParakeet/**",
+    "Sources/CassiniSherpaBridge/**",
+    "Sources/cassini-parakeet-worker/**",
+    "Sources/cassini-model-fetch/**",
+    "Tests/CassiniParakeetTests/**",
+    "scripts/*parakeet*",
+    "scripts/test-model-network-app.py",
+    "project.yml",
+    "Package.swift",
+    ".github/workflows/ux-parakeet.yml"
   ]
 }

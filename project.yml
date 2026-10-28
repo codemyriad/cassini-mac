@@ -57,6 +57,8 @@ targets:
       - package: CassiniKit
         product: CassiniModels
       - package: CassiniKit
+        product: CassiniParakeet
+      - package: CassiniKit
         product: CassiniSearch
       - target: CassiniModelDownloads
         embed: true

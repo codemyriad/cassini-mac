@@ -7,14 +7,21 @@ final class LibraryBoards: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
     }
-    @MainActor func testSettingsTranscriptionWhistleOnly() throws {
+    @MainActor func testSettingsTranscriptionModelChoices() throws {
         let app = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("Writing down what was said",in:window))
         XCTAssertTrue(text("When Cassini uses the network",in:window))
-        XCTAssertFalse(window.buttons["Download"].exists)
-        XCTAssertFalse(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
+        XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
+        XCTAssertTrue(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
+        let parakeet = window.radioButtons["settings-parakeet-radio"]
+        XCTAssertTrue(parakeet.waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertFalse(parakeet.isEnabled)
+        let whistle = window.radioButtons["settings-whistle-radio"]
+        XCTAssertTrue(whistle.exists && whistle.isEnabled)
+        XCTAssertEqual(String(describing:try XCTUnwrap(whistle.value)),"1")
+        XCTAssertTrue(text("443 MB download",in:window))
         XCTAssertFalse(text("To check for updates. No meeting data is sent.",in:window))
         capture(window,name:"settings-transcription")
     }

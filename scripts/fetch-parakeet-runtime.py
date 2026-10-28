@@ -45,7 +45,7 @@ def main():
         subprocess.run(['xcrun','lipo','-create',*slices,'-output',str(output)],check=True)
         if set(subprocess.check_output(['xcrun','lipo','-archs',str(output)],text=True).split()) != {'arm64','x86_64'}:
             raise ValueError('Missing universal runtime slice')
-    for name in ['pins.json','UPSTREAM.json','Sherpa-LICENSE','ONNXRuntime-LICENSE','ONNXRuntime-ThirdPartyNotices.txt']:
+    for name in ['pins.json','UPSTREAM.json','Sherpa-LICENSE','ONNXRuntime-LICENSE','ONNXRuntime-ThirdPartyNotices.txt','model-manifest.json']:
         shutil.copyfile(ROOT/'Parakeet'/name,args.output/name)
     hashes = {name: f.digest(args.output/name) for name in libraries.values()}
     (args.output/'unsigned-sha256.json').write_text(json.dumps(hashes,indent=2)+'\n')
