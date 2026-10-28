@@ -11,7 +11,7 @@ public struct AudioEncodeSource: Codable, Sendable {
         self.codec = codec; self.sampleRate = sampleRate; self.speechBitrateBps = speechBitrateBps; self.empty = empty
     }
 }
-public struct AudioEncodeChoice: Codable, Equatable, Sendable {
+public struct AudioEncodeChoice: Encodable, Equatable, Sendable {
     public let policy = "match-source"
     public let application = "audio"
     public let bitrateBps: Int

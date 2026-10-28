@@ -1,0 +1,45 @@
+name: UX portable exports
+on:
+  pull_request:
+    paths: ['Sources/**', 'Tests/CassiniExportTests/**', 'Tests/CassiniLibraryTests/ExportGolden/**', 'Tests/CassiniKitTests/**', 'Opus/**', 'scripts/*opus*', 'scripts/check-export-reference.py', 'Package.swift', '.github/workflows/ux-export.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exports:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: brew install cmake
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build pinned offline encoder from verified source
+        run: python3 scripts/fetch-opus.py --output build/Opus
+      - name: Golden text, policy, packet preservation, safe save and audio round trips
+        env:
+          CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+          CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
+        run: swift test --filter 'ExportGoldenTests|MeetingExportTests|ExportDestinationTests|PortableWriterTests|OpusTests|LibraryImport'
+      - uses: actions/checkout@v5
+        with:
+          repository: codemyriad/cassini-format
+          ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+          path: build/format-reference
+          persist-credentials: false
+      - name: Independent pure metadata and audio readers
+        run: python3 scripts/check-export-reference.py build/format-reference build/export-cases
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: exports-${{ matrix.runner }}
+          path: |
+            build/export-cases
+            build/Opus/pins.json
+            build/Opus/unsigned-sha256.json

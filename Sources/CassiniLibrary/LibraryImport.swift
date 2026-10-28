@@ -45,15 +45,27 @@ public enum LibraryImport {
         let file = try CassiniReader.read(data)
         let trusted = ![.invalidCassiniMetadata,.staleAudio,.unknownCassiniFormat].contains(file.state)
         let selected = trusted ? file.defaultTranscript : nil
+        let timed = file.transcripts.filter { $0.entry.format == "cassini.words.v1" }
+        let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
+        let importedNotes: [[String:Any]] = (trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"]?.array : nil)?.compactMap { note in
+            guard let time = note["atMs"]?.int, time >= 0, time <= AppMetadata.safe,
+                  let text = note["text"]?.string, text.unicodeScalars.count <= 100000 else { return nil }
+            return ["atMs":time,"text":text]
+        } ?? []
         let title = [file.manifest?.meeting.title,file.tags?["TITLE"],source.deletingPathExtension().lastPathComponent]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
+        if shouldCancel() { throw CancellationError() }
         try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
             var received: [String:Any] = ["originalName":"original.opus","sha256":digest,"importedAtMs":Int64(Date().timeIntervalSince1970 * 1000)]
             let parent = String(String.UnicodeScalarView(source.deletingLastPathComponent().lastPathComponent.unicodeScalars.prefix(255)))
             if !parent.isEmpty { received["originalFolderName"] = parent }
             metadata["received"] = received
+            metadata["notes"] = importedNotes
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
-            if selected?.load.transcript != nil {
+            if emptyTimed {
+                // D12: a valid empty word-timed body is ready to write down.
+                metadata["transcript"] = ["status":"none","reference":NSNull()]
+            } else if selected?.load.transcript != nil {
                 metadata["transcript"] = ["status":"done","reference":["kind":"embedded","file":"original.opus","transcriptId":selected!.entry.id]]
             } else if !trusted || selected != nil {
                 metadata["transcript"] = ["status":"damaged","reference":NSNull()]

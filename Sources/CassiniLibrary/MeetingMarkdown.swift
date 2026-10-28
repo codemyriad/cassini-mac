@@ -7,7 +7,7 @@ public enum MeetingMarkdown {
     public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone) -> String {
         render(title:meeting.title ?? "Untitled meeting",start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.transcriptItems,notes:meeting.notes)
+            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
                               names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote]) -> String {
