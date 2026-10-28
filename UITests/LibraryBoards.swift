@@ -36,8 +36,11 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("f",modifierFlags:.command)
         XCTAssertTrue(window.searchFields["library-search-field"].waitForExistence(timeout:5))
         XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"")
+        // Cmd-F must focus the newly attached native field without a mouse click.
+        app.typeText("budget")
+        XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"budget")
         app.typeKey(.escape,modifierFlags:[])
-        XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:5))
+        XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:5),window.debugDescription)
     }
     @MainActor func testReceivedBoard() throws {
         let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
