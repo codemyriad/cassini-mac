@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise Settings and relocation through the real app with private RAM fixtures."""
-import argparse,json,os,subprocess,uuid
+import argparse,json,os,plistlib,subprocess,uuid
 from pathlib import Path
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path);parser.add_argument('--output',type=Path,required=True)
 args=parser.parse_args()
 hosted=os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted'
 assert hosted or os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS')=='1','Explicit workflow opt-in required'
+# Direct probes must not inherit XCTest's extra filesystem grants.
+signed=subprocess.run(['codesign','-d','--entitlements',':-',str(args.app.resolve())],capture_output=True,check=True)
+expected=plistlib.loads((Path(__file__).resolve().parent.parent/'Cassini/Cassini.entitlements').read_bytes())
+assert plistlib.loads(signed.stdout)==expected,'Re-sign with Cassini/Cassini.entitlements before running this sandbox proof'
 key=str(uuid.uuid4())
 command=[str(args.app.resolve()/'Contents/MacOS/Cassini'),'--settings-self-test','--fixture-library-recording',
          '-CassiniCaptureID',key,'-CassiniSettingsID',key,'-CassiniTranscriptionFixture','YES','-CassiniSlowTranscription','YES',
