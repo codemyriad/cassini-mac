@@ -104,6 +104,9 @@ public struct LibraryScanner: Sendable {
         } catch { metadata = nil; meeting.issues.append(.invalidMetadata) }
         guard !received || metadata != nil else { return nil } // R1.4: import not committed.
         meeting.notes = metadata?.notes ?? []
+        if let value = metadata?.received {
+            meeting.received = .init(originalName:value.originalName,originalFolderName:value.originalFolderName,sha256:value.sha256,importedAtMs:value.importedAtMs)
+        }
         meeting.state.transcript = metadata?.transcript.status ?? .none
         meeting.state.etaMinutes = metadata?.etaMinutes
         meeting.state.error = metadata?.error

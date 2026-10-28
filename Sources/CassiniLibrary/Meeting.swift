@@ -70,6 +70,12 @@ public struct MeetingQuote: Codable, Equatable, Sendable {
     public var displayText: String { "“" + text + "”" }
 }
 public struct MeetingNote: Codable, Equatable, Sendable { public var atMs: Int64; public var text: String }
+public struct LibraryReceivedInfo: Sendable, Equatable {
+    public let originalName: String
+    public let originalFolderName: String?
+    public let sha256: String
+    public let importedAtMs: Int64
+}
 /// Validated audio and its original source timing. A nil offset is deliberately
 /// distinct from the zero used only for Library duration display (D3).
 public struct LibraryAudioTrack: Sendable, Equatable {
@@ -94,6 +100,7 @@ public struct LibraryMeeting: Sendable {
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
     public var metadataReadOnly: Bool = false
+    public var received: LibraryReceivedInfo? = nil
     public var transcriptItems: [LibraryTranscriptItem] = []
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
