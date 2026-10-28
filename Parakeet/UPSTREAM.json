@@ -1,0 +1,22 @@
+{
+  "repository": "codemyriad/sherpa-onnx-go-macos",
+  "commit": "e46ea026d083a5319cca8c7f2ee4a8f32019fed7",
+  "header": "c-api.h",
+  "decision": "D16",
+  "ortLicenceArchive": {
+    "url": "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.1/onnxruntime-osx-arm64-1.28.1.zip",
+    "sha256": "7a4e1ed0ff3640d25de56c4366c0a2c6cd6f6555a415617c6b847e5736d5cbc0"
+  },
+  "sha256": {
+    "Sources/CassiniSherpaBridge/vendor/c-api.h": "426db2c6acfb51e02143aece67c45779fae699d961c7c26ccf6f1388fdeaa2df",
+    "Parakeet/Sherpa-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "Parakeet/ONNXRuntime-LICENSE": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "Parakeet/ONNXRuntime-ThirdPartyNotices.txt": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+    "Parakeet/model-manifest.json": "4c1be5a4c2eee21c7e474bfc3576b4afa80e9aef0880800e005fe6c3b3b91bb4"
+  },
+  "modelManifest": {
+    "url": "https://dist.gocassini.com/manifest.json",
+    "sha256": "4b5a255b15ad7bc12d2597542426c0f18b839a7d9e8581bbceb94a03104a0bd3",
+    "note": "Pinned model and its four artifacts extracted verbatim; displayed download size is their compressed size sum."
+  }
+}

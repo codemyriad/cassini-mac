@@ -36,8 +36,10 @@ public struct WhistleTranscript: Codable, Sendable {
     public let text: String
     public let language: String
     public let words: [Word]?
+    public init(text: String, language: String, words: [Word]?) { self.text = text; self.language = language; self.words = words }
     public struct Word: Codable, Sendable {
         public let word: String; public let start: Double; public let end: Double; public let probability: Double
+        public init(word: String, start: Double, end: Double, probability: Double) { self.word = word; self.start = start; self.end = end; self.probability = probability }
     }
 }
 

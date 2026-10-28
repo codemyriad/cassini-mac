@@ -114,6 +114,7 @@ public struct LibraryMeeting: Sendable {
     public var received: LibraryReceivedInfo? = nil
     public var transcriptItems: [LibraryTranscriptItem] = []
     public var transcriptLanguage: String? = nil
+    public var transcriptModel: String? = nil
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
     /// Producer completion is independent of whether an app activity adapter is

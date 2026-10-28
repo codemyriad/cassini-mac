@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--recording-saving-self-test") {
             Task { @MainActor in await RecordingSavingSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--parakeet-self-test") {
+            Task { @MainActor in await ParakeetSelfTest.run() }; return
+        }
+        if CommandLine.arguments.contains("--models-network-self-test") {
+            Task { @MainActor in await ModelNetworkSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--recording-comfort-self-test") {
             Task { @MainActor in await RecordingComfortSelfTest.run() }; return
         }

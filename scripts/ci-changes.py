@@ -24,7 +24,7 @@ def select(event, base, paths, changed=None):
         selected = {area: any(fnmatch.fnmatchcase(name, pattern) for name in changed for pattern in patterns)
                     for area, patterns in paths.items()}
         # Swift package dependencies feed the app as well as the unit tests.
-        if any(p.startswith(('Sources/', 'Tests/', 'QuickLook/', 'Whistle/', 'Opus/')) or p in ('Package.swift', 'Package.resolved') for p in changed):
+        if any(p.startswith(('Sources/', 'Tests/', 'QuickLook/', 'Whistle/', 'Opus/', 'Parakeet/', 'ModelDownloads/')) or p in ('Package.swift', 'Package.resolved') for p in changed):
             return everything
         return selected
     except (OSError, UnicodeError, subprocess.SubprocessError, ValueError) as error:

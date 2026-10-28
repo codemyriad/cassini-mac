@@ -1,6 +1,11 @@
 name: Build shared CI products
 on:
   workflow_call:
+    inputs:
+      parakeet_models:
+        type: boolean
+        default: true
+        description: Include optional model golden fixtures in their separate artifact
 permissions:
   contents: read
 jobs:
@@ -23,7 +28,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .build
-          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}
+          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}
           restore-keys: swiftpm-${{ matrix.arch }}-xcode16.4-
       - name: Compile all native Swift executables and test bundles once
         run: swift build --build-tests
@@ -41,8 +46,9 @@ jobs:
             build/whistle-downloads
             build/vad-downloads
             build/opus-downloads
+            build/parakeet-downloads
             ~/Library/Caches/Homebrew
-          key: pinned-fetches-xcode16.4-${{ hashFiles('Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-*.py', 'project.yml') }}
+          key: pinned-fetches-xcode16.4-${{ hashFiles('Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-*.py', 'project.yml') }}
       - name: Install build tools
         if: matrix.arch == 'arm64'
         run: brew install cmake xcodegen
@@ -52,12 +58,30 @@ jobs:
           python3 scripts/fetch-whistle.py --output build/Whistle
           python3 scripts/fetch-vad.py --output build/Whistle
           python3 scripts/fetch-opus.py --output build/Opus
+          python3 scripts/fetch-parakeet-runtime.py --output build/Parakeet
           python3 scripts/ci-products.py pack assets build/ci-upload/assets
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
         with:
           name: ci-assets
           path: build/ci-upload/assets
+          retention-days: 3
+          compression-level: 0
+      - uses: actions/cache@v4
+        if: matrix.arch == 'arm64' && inputs.parakeet_models
+        with:
+          path: build/ParakeetModel
+          key: parakeet-model-${{ hashFiles('Parakeet/model-manifest.json', 'Sources/CassiniModels/**', 'Sources/cassini-model-fetch/**') }}
+      - name: Fetch and verify optional model once for ARM and Intel goldens
+        if: matrix.arch == 'arm64' && inputs.parakeet_models
+        run: |
+          .build/debug/cassini-model-fetch --output build/ParakeetModel
+          python3 scripts/ci-products.py pack parakeet build/ci-upload/parakeet
+      - uses: actions/upload-artifact@v5
+        if: matrix.arch == 'arm64' && inputs.parakeet_models
+        with:
+          name: ci-parakeet
+          path: build/ci-upload/parakeet
           retention-days: 3
           compression-level: 0
       - name: Prepare identical bundled Library fixtures
@@ -80,6 +104,9 @@ jobs:
           xcodebuild build-for-testing -project Cassini.xcodeproj -scheme CassiniScreenshots -configuration Debug \
             -destination 'platform=macOS' -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/debug-build.log
+          # Strip build-for-testing exceptions from the actual product profiles.
+          codesign --force --sign - --options 0 --timestamp=none --entitlements ModelDownloads/ModelDownloads.entitlements build/Build/Products/Debug/Cassini.app/Contents/XPCServices/CassiniModelDownloads.xpc
+          codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
           codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
           python3 scripts/ci-products.py pack debug build/ci-upload/debug
       - uses: actions/upload-artifact@v5
@@ -105,6 +132,9 @@ jobs:
           xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Release \
             -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/release-build.log
+          # Strip build-for-testing exceptions from the actual product profiles.
+          codesign --force --sign - --options 0 --timestamp=none --entitlements ModelDownloads/ModelDownloads.entitlements build/Build/Products/Release/Cassini.app/Contents/XPCServices/CassiniModelDownloads.xpc
+          codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Release/Cassini.app
           codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
           python3 scripts/ci-products.py pack release build/ci-upload/release
       - uses: actions/upload-artifact@v5

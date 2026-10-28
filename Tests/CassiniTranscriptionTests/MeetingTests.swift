@@ -124,7 +124,7 @@ final class TranscriptionMeetingTests: XCTestCase {
         let sidecar = session.directory.appendingPathComponent("transcript.json")
         try JSONSerialization.data(withJSONObject:["language":"en","items":[["speaker":"me","startMs":30000,"endMs":30160,"text":"Retained old partial"]]]).write(to:sidecar)
         try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { meta in
-            meta["transcript"] = ["status":"queued","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+            meta["transcript"] = ["status":"queued","model":"whistle","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
         }
         final class Outcome: @unchecked Sendable {
             let lock = NSLock(); private var result: Result<Void,Error>?

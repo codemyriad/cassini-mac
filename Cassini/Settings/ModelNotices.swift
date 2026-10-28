@@ -12,11 +12,13 @@ import CassiniModels
     static var files: [URL] {
         let paths = [("Zstandard-LICENSE","txt","Licenses"),
                      ("NOTICE",nil,"Whistle"),("LICENSE",nil,"Whistle"),("Silero-LICENSE",nil,"Whistle"),
-                     ("ONNXRuntime-LICENSE",nil,"Whistle"),("ONNXRuntime-ThirdPartyNotices","txt","Whistle")]
+                     ("ONNXRuntime-LICENSE",nil,"Whistle"),("ONNXRuntime-ThirdPartyNotices","txt","Whistle"),
+                     ("Sherpa-LICENSE",nil,"Parakeet"),("ONNXRuntime-LICENSE",nil,"Parakeet"),
+                     ("ONNXRuntime-ThirdPartyNotices","txt","Parakeet")]
         return paths.compactMap { Bundle.main.url(forResource:$0.0,withExtension:$0.1,subdirectory:$0.2) }
 
     }
-    static var credits: NSAttributedString { credits(appData:ModelStorage.appData) }
+    static var credits: NSAttributedString { credits(appData:SpeechModelController.appData) }
     static func credits(appData: URL) -> NSAttributedString {
         let text = NSMutableAttributedString()
         for file in files {

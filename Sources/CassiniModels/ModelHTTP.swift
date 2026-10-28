@@ -13,12 +13,13 @@ enum ModelHTTP {
     }
     enum WriteMode { case replace, append, ignore }
     static func transfer(_ request: URLRequest, to file: URL, limit: UInt64,
+                         progress: @escaping @Sendable (UInt64) -> Void = { _ in },
                          headers: @escaping @Sendable (HTTPURLResponse) throws -> WriteMode) async throws -> HTTPURLResponse {
         let cancellation = Cancellation()
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
-                let delegate = Transfer(file:file,limit:limit,headers:headers,continuation:continuation)
+                let delegate = Transfer(file:file,limit:limit,progress:progress,headers:headers,continuation:continuation)
                 let configuration = URLSessionConfiguration.ephemeral
                 configuration.httpAdditionalHeaders = ["User-Agent":userAgent]
                 configuration.httpCookieStorage = nil; configuration.httpShouldSetCookies = false
@@ -44,6 +45,7 @@ enum ModelHTTP {
     }
     private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         let file: URL, limit: UInt64
+        let reportProgress: @Sendable (UInt64) -> Void
         let headers: @Sendable (HTTPURLResponse) throws -> WriteMode
         let continuation: CheckedContinuation<HTTPURLResponse,Error>
         var session: URLSession?
@@ -52,8 +54,8 @@ enum ModelHTTP {
         var response: HTTPURLResponse?
         var failure: Error?
         var ignored = false
-        init(file: URL, limit: UInt64, headers: @escaping @Sendable (HTTPURLResponse) throws -> WriteMode, continuation: CheckedContinuation<HTTPURLResponse,Error>) {
-            self.file = file; self.limit = limit; self.headers = headers; self.continuation = continuation
+        init(file: URL, limit: UInt64, progress: @escaping @Sendable (UInt64) -> Void, headers: @escaping @Sendable (HTTPURLResponse) throws -> WriteMode, continuation: CheckedContinuation<HTTPURLResponse,Error>) {
+            self.file = file; self.limit = limit; self.reportProgress = progress; self.headers = headers; self.continuation = continuation
         }
         func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
             failure = ModelDownloadError.origin; completionHandler(nil)
@@ -73,14 +75,14 @@ enum ModelHTTP {
                 if case .replace = mode { try handle.truncate(atOffset:0) }
                 received = try handle.seekToEnd()
                 guard received <= limit else { try? handle.close(); throw ModelDownloadError.tooLarge }
-                output = handle; completionHandler(.allow)
+                output = handle; reportProgress(received); completionHandler(.allow)
             } catch { failure = error; completionHandler(.cancel) }
         }
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
             guard failure == nil, !ignored else { return }
             do {
                 guard UInt64(data.count) <= limit - received else { throw ModelDownloadError.tooLarge }
-                try output?.write(contentsOf:data); received += UInt64(data.count)
+                try output?.write(contentsOf:data); received += UInt64(data.count); reportProgress(received)
             } catch { failure = error; dataTask.cancel() }
         }
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {

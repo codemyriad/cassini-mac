@@ -108,6 +108,7 @@ public struct LibraryScanner: Sendable {
             meeting.received = .init(originalName:value.originalName,originalFolderName:value.originalFolderName,sha256:value.sha256,importedAtMs:value.importedAtMs)
         }
         meeting.state.transcript = metadata?.transcript.status ?? .none
+        meeting.transcriptModel = metadata?.transcript.model
         meeting.state.etaMinutes = metadata?.etaMinutes
         meeting.state.error = metadata?.error
         var titleCandidates: [String?] = [metadata?.title]

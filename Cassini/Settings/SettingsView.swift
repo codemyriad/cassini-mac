@@ -136,6 +136,7 @@ private struct SettingsBrowserView: View {
     }
 }
 private struct SettingsTranscriptionView: View {
+    @State private var models = SpeechModelController.shared
     private var weightSize: String {
         let url = Bundle.main.url(forResource:"whistle",withExtension:"cact",subdirectory:"Whistle")
         let count = url.flatMap { try? $0.resourceValues(forKeys:[.fileSizeKey]).fileSize } ?? 16_919_407
@@ -151,21 +152,60 @@ private struct SettingsTranscriptionView: View {
                 Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.bold)
                 Text(UXText.text("settings.transcription.speech.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
                 HStack(alignment:.top,spacing:12) {
-                    Image(systemName:"largecircle.fill.circle").foregroundStyle(Color.accentColor).font(.system(size:17)).padding(.top,2).accessibilityHidden(true)
+                    SpeechRadio(selected:!models.usesParakeet,label:UXText.text("models.whistle.name")) { models.chooseParakeet(false) }
+                        .frame(width:20,height:20).accessibilityIdentifier("settings-whistle-radio")
                     VStack(alignment:.leading,spacing:6) {
                         HStack(spacing:8) {
                             Text(UXText.text("models.whistle.name")).fontWeight(.semibold)
                             Text(weightSize).font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
                         }
                         Text(UXText.text("models.whistle.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
-                        Text(UXText.text("models.status.inUse")).font(.system(size:11,weight:.semibold)).foregroundStyle(.green)
+                        if !models.usesParakeet { Text(UXText.text("models.status.inUse")).font(.system(size:11,weight:.semibold)).foregroundStyle(.green) }
                     }
                     Spacer(minLength:4)
                     Text(UXText.text("models.included")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).padding(.top,2)
                 }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
-                    .background(Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:8))
+                    .background(models.usesParakeet ? Color(nsColor:.textBackgroundColor) : Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:8))
                     .overlay(RoundedRectangle(cornerRadius:8).stroke(LibraryTheme.dim.opacity(0.2)))
-                    .accessibilityElement(children:.combine).accessibilityIdentifier("settings-whistle-row")
+                    .accessibilityElement(children:.contain).accessibilityIdentifier("settings-whistle-row")
+                HStack(alignment:.top,spacing:12) {
+                    SpeechRadio(selected:models.usesParakeet,label:UXText.text("models.parakeetUltra.name")) { models.chooseParakeet(true) }
+                        .frame(width:20,height:20).disabled(!models.downloaded)
+                        .accessibilityIdentifier("settings-parakeet-radio")
+                    VStack(alignment:.leading,spacing:6) {
+                        HStack(spacing:8) {
+                            Text(UXText.text("models.parakeetUltra.name")).fontWeight(.semibold)
+                            if !models.downloaded {
+                                Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:SpeechModelController.downloadBytes)]))
+                                    .font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
+                            }
+                        }
+                        Text(UXText.text("models.parakeetUltra.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim)
+                        if let progress = models.progress {
+                            ProgressView(value:progress).accessibilityLabel(UXText.text("models.downloading.a11y",["model":UXText.text("models.parakeetUltra.name")]))
+                            Text(UXText.text("models.status.downloading",["percent":String(Int(progress * 100))])).font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
+                        } else if models.downloaded {
+                            Text(UXText.text(models.usesParakeet ? "models.status.inUse" : "models.status.downloaded"))
+                                .font(.system(size:11,weight:.semibold)).foregroundStyle(models.usesParakeet ? .green : LibraryTheme.dim)
+                        }
+                    }
+                    Spacer(minLength:4)
+                    if models.progress != nil {
+                        Button(UXText.text("common.cancel")) { models.cancelDownload() }.accessibilityIdentifier("settings-cancel-model")
+                    } else if models.downloaded {
+                        Button(UXText.text("models.remove")) { models.remove() }.disabled(models.busy).accessibilityIdentifier("settings-remove-parakeet")
+                    } else {
+                        Button(UXText.text(models.failedDownload ? "common.retry" : "models.download")) { models.download() }
+                            .disabled(models.busy).accessibilityIdentifier("settings-download-parakeet")
+                    }
+                }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
+                    .background(models.usesParakeet ? Color.accentColor.opacity(0.07) : Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
+                    .overlay(RoundedRectangle(cornerRadius:8).stroke(LibraryTheme.dim.opacity(0.2)))
+                    .accessibilityElement(children:.contain).accessibilityIdentifier("settings-parakeet-row")
+                if let message = models.message {
+                    Text(message).font(.system(size:12)).foregroundStyle(models.failedDownload ? LibraryTheme.amber : LibraryTheme.dim)
+                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("settings-model-message")
+                }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
             VStack(alignment:.leading,spacing:12) {
                 Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
@@ -174,7 +214,7 @@ private struct SettingsTranscriptionView: View {
                     Text(UXText.text("settings.transcription.network.download")).foregroundStyle(LibraryTheme.dim).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
                 }
             }
-        }
+        }.task { await models.refresh() }
     }
 }
 private struct SettingsPage<Content: View>: View {
@@ -200,5 +240,24 @@ private struct ShortcutCaptureView: NSViewRepresentable {
             guard let choice = RecordingHotKey(event:event) else { NSSound.beep(); return }
             receive?(choice)
         }
+    }
+}
+
+private struct SpeechRadio: NSViewRepresentable {
+    let selected: Bool
+    let label: String
+    let action: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(action) }
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(title:"",target:context.coordinator,action:#selector(Coordinator.select))
+        button.setButtonType(.radio); button.setAccessibilityLabel(label); return button
+    }
+    func updateNSView(_ view: NSButton, context: Context) {
+        view.state = selected ? .on : .off; view.isEnabled = context.environment.isEnabled; context.coordinator.action = action
+    }
+    final class Coordinator: NSObject {
+        var action: () -> Void
+        init(_ action: @escaping () -> Void) { self.action = action }
+        @objc func select() { action() }
     }
 }

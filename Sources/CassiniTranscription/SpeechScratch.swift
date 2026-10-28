@@ -4,10 +4,10 @@ import Darwin
 
 /// The kernel releases this lease even after SIGKILL. PID reuse and sandbox
 /// restrictions on kill(pid,0) therefore cannot strand new scratch audio.
-final class SpeechScratch {
-    let directory: URL
+public final class SpeechScratch {
+    public let directory: URL
     private let fd: Int32
-    init(root: URL = FileManager.default.temporaryDirectory) throws {
+    public init(root: URL = FileManager.default.temporaryDirectory) throws {
         directory = root.appendingPathComponent("CassiniSpeech-\(getpid())-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         let descriptor = open(directory.appendingPathComponent(".lease").path,O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,0o600)
@@ -18,7 +18,7 @@ final class SpeechScratch {
         fd = descriptor
     }
     deinit { close(fd); try? FileManager.default.removeItem(at:directory) }
-    static func removeAbandoned(in root: URL) {
+    public static func removeAbandoned(in root: URL) {
         for directory in (try? FileManager.default.contentsOfDirectory(at:root,includingPropertiesForKeys:nil)) ?? [] {
             let name = directory.lastPathComponent
             guard name.hasPrefix("CassiniSpeech-") else { continue }

@@ -14,6 +14,9 @@ func emit(_ response: Response) throws {
 do {
     // The exact C environment is checked before asset verification or dlopen.
     try WhistleEnvironment.validateLive()
+    #if DEBUG
+    if try SpeechNetworkProbe.run(arguments:Array(CommandLine.arguments.dropFirst())) { exit(0) }
+    #endif
     // A killed parent cannot cancel its Task. Reparenting must stop this helper
     // even while the recognizer is inside a blocking native call. Do not use
     // stdin EOF as liveness: clients close stdin after their final request.
