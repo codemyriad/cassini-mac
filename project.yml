@@ -51,6 +51,8 @@ targets:
         product: CassiniRecording
       - package: CassiniKit
         product: CassiniExport
+      - package: CassiniKit
+        product: CassiniSearch
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
         link: false

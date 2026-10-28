@@ -11,7 +11,7 @@ enum ScreenshotFixture {
         guard arguments.contains("-CassiniScreenshot") else { return false }
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search"].contains(name),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
               ISO8601DateFormatter().date(from: clock) != nil else {
@@ -44,7 +44,7 @@ enum ScreenshotFixture {
 
     private static var prepared = Set<ObjectIdentifier>()
     static func prepareLibrary(_ window: NSWindow) {
-        guard ["library", "first-run", "meeting", "record-first", "recording", "received", "export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
+        guard ["library", "first-run", "meeting", "record-first", "recording", "received", "export", "search"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
         guard prepared.insert(ObjectIdentifier(window)).inserted else { return }
         prepare(window, sheet: false, boardSize: true)
@@ -55,18 +55,20 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["recording","received","export"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
             for _ in 0..<60 {
                 if name == "recording" && MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording { break }
                 if name == "received" && LibraryStore.shared.selected?.state.origin == .received { break }
                 if name == "export" && window.attachedSheet != nil { break }
+                if name == "search" && LibrarySearchModel.shared.hits.count == 4 { break }
                 try? await Task.sleep(for:.milliseconds(100))
             }
             try? await Task.sleep(for:.seconds(1))
             guard (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
                   (name != "export" || window.attachedSheet != nil),
+                  (name != "search" || LibrarySearchModel.shared.hits.count == 4),
                   window.frame.size == NSSize(width:1120,height:720),
                   let frame = window.contentView?.superview,
                   let image = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1120,pixelsHigh:720,

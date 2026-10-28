@@ -4,7 +4,11 @@ import CassiniLibrary
 
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
-    private var exportMeeting: LibraryMeeting? { detail?.meeting ?? LibraryStore.shared.selected }
+    private var exportMeeting: LibraryMeeting? {
+        let search = LibrarySearchModel.shared
+        if search.visible { return search.searching ? nil : search.selected.flatMap { search.meeting($0) } }
+        return detail?.meeting ?? LibraryStore.shared.selected
+    }
     private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -19,8 +23,13 @@ struct AppCommands: Commands {
                 .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!MeetingExportCoordinator.canExport(exportMeeting))
         }
         CommandGroup(after: .sidebar) {
-            Button(UXText.text("common.backToLibrary")) { MeetingNavigation.shared.back() }
-                .keyboardShortcut("[", modifiers: .command).disabled(detail == nil)
+            Button(UXText.text("common.backToLibrary")) {
+                if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() } else { MeetingNavigation.shared.back() }
+            }
+                .keyboardShortcut("[", modifiers: .command).disabled(detail == nil && !LibrarySearchModel.shared.visible)
+        }
+        CommandGroup(replacing:.textEditing) {
+            Button(UXText.text("search.field.a11y")) { LibrarySearchModel.shared.open() }.keyboardShortcut("f",modifiers:.command)
         }
         CommandMenu("Playback") {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }

@@ -9,6 +9,36 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {
+        let app = try launch("search",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"], count = window.staticTexts["search-count"]
+        XCTAssertTrue(count.waitForExistence(timeout:20),window.debugDescription)
+        let ready = NSPredicate { _,_ in count.label == "4 places in 3 meetings" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:10),.completed)
+        XCTAssertFalse(window.buttons["Has summary"].exists)
+        XCTAssertTrue(window.buttons["search-play"].exists)
+        capture(window,name:"search")
+        window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
+        app.menuItems["Today"].click()
+        let today = NSPredicate { _,_ in count.label == "2 places in 1 meeting" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:today,object:nil)],timeout:5),.completed)
+        window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click(); app.menuItems["Any date"].click()
+        window.descendants(matching:.any).matching(identifier:"search-speaker").firstMatch.click(); app.menuItems["Dario"].click()
+        let noHits = NSPredicate { _,_ in count.label == "0 places in 0 meetings" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:noHits,object:nil)],timeout:5),.completed)
+        window.descendants(matching:.any).matching(identifier:"search-speaker").firstMatch.click(); app.menuItems["Marta"].click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:5),.completed)
+        let hit = window.buttons.matching(NSPredicate(format:"identifier CONTAINS %@",":4:0")).firstMatch
+        XCTAssertTrue(hit.exists); hit.click()
+        window.buttons["search-open-meeting"].click()
+        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:5))
+        XCTAssertTrue(text("00:14:32",in:window),window.debugDescription)
+        app.typeKey("f",modifierFlags:.command)
+        XCTAssertTrue(window.searchFields["library-search-field"].waitForExistence(timeout:5))
+        XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"")
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:5))
+    }
     @MainActor func testReceivedBoard() throws {
         let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
