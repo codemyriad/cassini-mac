@@ -8,6 +8,50 @@ import CassiniWhistle
 @testable import CassiniTranscription
 
 final class TranscriptionMeetingTests: XCTestCase {
+    func testSafeScannerSourcesSurviveBadTracksAndUnsupportedManifests() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let engine = try WhistleEngine(assets:WhistleAssets.pinned(directory:URL(fileURLWithPath:assets)))
+        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        let pcm = try Data(contentsOf:Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens")!).dropFirst(44)
+        for salvage in [false,true] {
+            let session = try RecordingSession(parent:root,title:"Safe sources",source:"macos")
+            try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+            for at in stride(from:0,to:pcm.count,by:64000) {
+                let start = pcm.startIndex + at, end = min(pcm.endIndex,start + 64000)
+                try session.append(id:"mic",pcm:Data(pcm[start..<end]),offsetMs:Double(at)/32)
+            }
+            try session.finish()
+            let valid = session.directory.appendingPathComponent(session.manifest.tracks[0].file)
+            let before = try Data(contentsOf:valid)
+            let alias = session.directory.appendingPathComponent("track-alias.wav")
+            try FileManager.default.createSymbolicLink(at:alias,withDestinationURL:valid)
+            let fifo = session.directory.appendingPathComponent("track-pipe.wav")
+            XCTAssertEqual(mkfifo(fifo.path,0o600),0)
+            try Data(repeating:0,count:10).write(to:session.directory.appendingPathComponent("track-broken.wav"))
+            let manifestURL = session.directory.appendingPathComponent("session.json")
+            var manifest = try JSONSerialization.jsonObject(with:Data(contentsOf:manifestURL)) as! [String:Any]
+            if salvage { manifest["version"] = 2 }
+            else {
+                var tracks = manifest["tracks"] as! [[String:Any]]
+                for name in ["track-alias.wav","track-pipe.wav","track-broken.wav"] {
+                    tracks.append(["id":name,"kind":"system","file":name,"sampleRate":16000,"channels":1,"startOffsetMs":0])
+                }
+                manifest["tracks"] = tracks
+            }
+            try JSONSerialization.data(withJSONObject:manifest).write(to:manifestURL)
+            let selected = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == session.manifest.id }))
+            XCTAssertEqual(selected.audioTracks.count,1)
+            try MeetingTranscriber.run(directory:session.directory,engine:engine,detector:detector)
+            let done = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == session.manifest.id }))
+            XCTAssertEqual(done.state.transcript,.done)
+            XCTAssertFalse(done.transcriptItems.isEmpty)
+            XCTAssertEqual(done.speakers.map(\.id),[salvage ? valid.deletingPathExtension().lastPathComponent : "me"])
+            XCTAssertEqual(try Data(contentsOf:valid),before)
+        }
+    }
     func testSourceNamesAndPlainOpusIdentity() {
         XCTAssertEqual(TranscriptSpeaker.fromTrack(id: "original", kind: "system", received: true).id, "track-original")
         XCTAssertNil(TranscriptSpeaker.fromTrack(id: "original", kind: "system", received: true).name)

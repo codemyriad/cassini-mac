@@ -1,8 +1,31 @@
 import Foundation
+import Darwin
 import Testing
 @testable import CassiniRecording
 
 @Suite struct RecordingLoaderTests {
+    @Test func skipsSameFolderAliasesPipesAndUnreadableTracks() throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:parent) }
+        let session = try RecordingSession(parent:parent,title:"Safe recovery",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.append(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try session.finish()
+        let audio = session.directory.appendingPathComponent(session.manifest.tracks[0].file)
+        try FileManager.default.createSymbolicLink(at:session.directory.appendingPathComponent("track-alias.wav"),withDestinationURL:audio)
+        #expect(mkfifo(session.directory.appendingPathComponent("track-pipe.wav").path,0o600) == 0)
+        try Data(repeating:0,count:10).write(to:session.directory.appendingPathComponent("track-broken.wav"))
+        let metadata = session.directory.appendingPathComponent("session.json")
+        var manifest = try JSONSerialization.jsonObject(with:Data(contentsOf:metadata)) as! [String:Any]
+        manifest["version"] = 2
+        try JSONSerialization.data(withJSONObject:manifest).write(to:metadata)
+        let recovered = try RecordingLoader.load(directory:session.directory)
+        #expect(recovered.tracks.count == 1 && recovered.tracks[0].frames == 1600)
+        #expect(recovered.tracks[0].file == audio.lastPathComponent)
+        #expect("track-" + recovered.tracks[0].id == audio.deletingPathExtension().lastPathComponent)
+        try FileManager.default.removeItem(at:metadata)
+        #expect(mkfifo(metadata.path,0o600) == 0)
+        #expect(try RecordingLoader.load(directory:session.directory).tracks.count == 1)
+    }
     @Test(arguments: ["2026-10-27T08:59:42.047524+00:00", "2026-10-27T08:59:42Z"]) func readsBothPlatforms(date: String) throws {
         let json = """
         {"version":1,"id":"E5B7AE4F-127B-4279-9D22-8C8CAB73B66A","createdAt":"\(date)","title":"Meeting","source":"chromium","state":"completed","tracks":[]}
