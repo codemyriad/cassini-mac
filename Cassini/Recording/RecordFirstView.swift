@@ -109,6 +109,7 @@ struct LiveRecordingPill: View {
                         Text(LibraryFormat.liveBadge(frozenMs ?? RecordingController.shared.elapsedMs)).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
                     }
                 }.buttonStyle(.plain).accessibilityIdentifier("recording-open-current")
+                    .accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(frozenMs ?? RecordingController.shared.elapsedMs)]))
                     .accessibilityHint(UXText.text("hidden.openCassini"))
                 VStack(spacing:4) {
                     meter(microphone,label:"common.yourMicrophone",silent:frozenMs != nil || RecordingController.shared.microphoneSilent)
