@@ -40,6 +40,7 @@ private final class PreparationLifetime: @unchecked Sendable {
     @ObservationIgnored private var rewinding = false
     @ObservationIgnored private var seekSerial = 0
     @ObservationIgnored private var requestedPosition: Double?
+    @ObservationIgnored private var pendingDuration: Double?
     private static weak var active: SessionPlayback?
     var preparation: Task<Void, Never>? { lifetime.task }
 
@@ -59,7 +60,8 @@ private final class PreparationLifetime: @unchecked Sendable {
         if wantsPlay || isPlaying {
             wantsPlay = false; transport?.pause(); isPlaying = false; return
         }
-        guard meeting.canPlaySession, !isPreparing else { return }
+        guard meeting.canPlaySession else { return }
+        if key == meeting.libraryKey, isPreparing { wantsPlay = true; return }
         if key == meeting.libraryKey, let transport {
             wantsPlay = true; isPlaying = true
             if !rewinding { transport.play() }
@@ -71,6 +73,7 @@ private final class PreparationLifetime: @unchecked Sendable {
         guard meeting.canPlaySession, key != meeting.libraryKey else { return }
         stop(); Self.active?.stop(); Self.active = self
         key = meeting.libraryKey; sources = meeting.audioTracks; isPreparing = true
+        pendingDuration = meeting.durationMs.map { max(0,Double($0)) }
         wantsPlay = autoplay
         let current = generation, builder = build
         lifetime.task = Task { [weak self] in
@@ -100,12 +103,14 @@ private final class PreparationLifetime: @unchecked Sendable {
     }
     public func seek(toMs: Double) {
         guard toMs.isFinite else { return }
-        requestedPosition = max(0, toMs); positionMs = max(0, toMs)
+        let limit = timeline?.durationMs ?? pendingDuration ?? Double.greatestFiniteMagnitude
+        let target = min(limit,max(0,toMs))
+        requestedPosition = target; positionMs = target
         guard let transport else { return }
         seekSerial += 1
         let serial = seekSerial, current = generation
         rewinding = true; transport.pause()
-        transport.seek(toMs: max(0, toMs)) { [weak self] finished in
+        transport.seek(toMs: target) { [weak self] finished in
             guard let self, current == self.generation, serial == self.seekSerial else { return }
             self.rewinding = false
             guard finished else { self.failed(CocoaError(.fileReadUnknown), generation: current); return }
@@ -143,7 +148,7 @@ private final class PreparationLifetime: @unchecked Sendable {
         lifetime.task?.cancel(); lifetime.task = nil
         transport?.close(); transport = nil; timeline = nil
         key = nil; sources = []; wantsPlay = false; rewinding = false
-        requestedPosition = nil; positionMs = 0; seekSerial += 1
+        requestedPosition = nil; pendingDuration = nil; positionMs = 0; seekSerial += 1
         isPlaying = false; isPreparing = false
         if Self.active === self { Self.active = nil }
     }

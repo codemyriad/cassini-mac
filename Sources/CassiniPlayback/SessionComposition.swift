@@ -4,9 +4,13 @@ import CassiniLibrary
 
 public final class SessionTimeline: @unchecked Sendable {
     public let asset: AVComposition
+    let durationMs: Double
     private let storage: PlaybackStorage
     var temporaryDirectory: URL? { storage.directory }
-    init(asset: AVComposition, storage: PlaybackStorage) { self.asset = asset; self.storage = storage }
+    init(asset: AVComposition, storage: PlaybackStorage, durationMs: Double? = nil) {
+        self.asset = asset; self.storage = storage
+        self.durationMs = max(0,durationMs ?? asset.duration.seconds * 1000)
+    }
 }
 /// One immutable playback timeline with a separate composition track per source.
 /// No input files or capture metadata are changed. Assets load without opening

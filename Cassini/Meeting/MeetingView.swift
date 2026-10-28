@@ -59,10 +59,14 @@ struct MeetingView: View {
                                         if url.scheme == "cassini-seek", let host = url.host, let ms = Int(host) { model.seek(ms); return .handled }
                                         return .discarded
                                     })
-                            }
+                            }.id(turn.id)
                         }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")
+                    .task {
+                        await Task.yield()
+                        if let turn = currentTurn { proxy.scrollTo(turn,anchor:.center) }
+                    }
                     .onChange(of: currentTurn) { _, turn in
                         if let turn { withAnimation { proxy.scrollTo(turn, anchor: .center) } }
                     }

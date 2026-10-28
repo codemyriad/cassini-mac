@@ -11,14 +11,43 @@ import Testing
     var onPosition: ((Double) -> Void)?
     var completion: (@MainActor @Sendable (Bool) -> Void)?
     var plays = 0, pauses = 0, closes = 0
+    var lastSeek: Double?
     func play() { plays += 1 }
     func pause() { pauses += 1 }
     func rewind(_ completion: @escaping @MainActor @Sendable (Bool) -> Void) { self.completion = completion }
     func close() { closes += 1; onState = nil; onEnd = nil; onFailure = nil }
-    func seek(toMs: Double, completion: @escaping @MainActor @Sendable (Bool) -> Void) { self.completion = completion }
+    func seek(toMs: Double, completion: @escaping @MainActor @Sendable (Bool) -> Void) { lastSeek = toMs; self.completion = completion }
     func setRate(_ rate: Float) {}
 }
 @Suite(.serialized) @MainActor struct SessionPlaybackTests {
+    @Test func playFromASearchHitSurvivesAsynchronousPreparation() async {
+        let fake = FakeTransport(), actual = state(fake), meeting = meeting()
+        actual.prepare(meeting); actual.seek(toMs:400); actual.toggle(meeting)
+        #expect(actual.isPreparing && fake.plays == 0)
+        await actual.preparation?.value
+        #expect(fake.lastSeek == 400 && fake.plays == 0)
+        fake.completion?(true)
+        #expect(fake.plays == 1 && actual.isPlaying && actual.positionMs == 400)
+        actual.stop()
+    }
+    @Test func aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() async {
+        let fake = FakeTransport(), actual = state(fake), meeting = meeting()
+        actual.prepare(meeting); actual.seek(toMs:400); actual.toggle(meeting); actual.toggle(meeting)
+        await actual.preparation?.value; fake.completion?(true)
+        #expect(fake.plays == 0 && !actual.isPlaying && actual.positionMs == 400)
+        actual.stop()
+    }
+    @Test func pendingAndPreparedSeeksClampToTheActualAudioDuration() async {
+        let fake = FakeTransport(), actual = state(fake)
+        var source = meeting(); source.durationMs = 10_000
+        actual.prepare(source); actual.seek(toMs:20_000)
+        #expect(actual.positionMs == 10_000)
+        await actual.preparation?.value; fake.completion?(true)
+        #expect(actual.positionMs == 1000 && fake.lastSeek == 1000)
+        actual.seek(toMs:10_000); fake.completion?(true)
+        #expect(actual.positionMs == 1000 && fake.lastSeek == 1000)
+        actual.stop()
+    }
     @Test func pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() async {
         let fake = FakeTransport(), actual = state(fake), meeting = meeting()
         actual.prepare(meeting); actual.seek(toMs: 123)
@@ -125,7 +154,10 @@ import Testing
         #expect(fake.plays == 0)
     }
     private func state(_ fake: FakeTransport) -> SessionPlayback {
-        SessionPlayback(build: { _ in SessionTimeline(asset: AVMutableComposition(), storage: PlaybackStorage()) }, makeTransport: { _ in fake })
+        SessionPlayback(build: { _ in
+            let asset = AVMutableComposition()
+            return SessionTimeline(asset:asset,storage:PlaybackStorage(),durationMs:1000)
+        }, makeTransport: { _ in fake })
     }
     private func meeting() -> LibraryMeeting {
         var meeting = LibraryMeeting(id: UUID(), folder: URL(fileURLWithPath: "/tmp/Recording-test"), state: .init(),
