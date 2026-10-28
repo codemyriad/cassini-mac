@@ -49,6 +49,9 @@ jobs:
     - name: Real recording controls without devices
       if: always()
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
+    - name: Private import and queue lifecycle without devices
+      if: always()
+      run: python3 scripts/test-import-lifecycle.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/import-lifecycle.json
     - uses: actions/upload-artifact@v5
       if: always()
       with:

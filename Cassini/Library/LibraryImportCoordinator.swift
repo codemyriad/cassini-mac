@@ -7,20 +7,29 @@ import Observation
 /// hash and validation. Quit cancels and waits for ordinary cleanup.
 @MainActor @Observable final class LibraryImportCoordinator {
     static let shared = LibraryImportCoordinator()
-    @ObservationIgnored private var pending: [FileAccessLease] = []
+    private struct Request { let lease: FileAccessLease; let key: String; let retaining: AnyObject? }
+    @ObservationIgnored private var pending: [Request] = []
+    @ObservationIgnored private var requestedTranscription = Set<String>()
+    @ObservationIgnored private var scheduled = Set<String>()
     @ObservationIgnored private var task: Task<Void,Never>?
     @ObservationIgnored private var closing = false
     var isBusy: Bool { task != nil || !pending.isEmpty }
-    func open(_ url: URL) {
+    func open(_ url: URL, writingDown: Bool = false, retaining: AnyObject? = nil) {
         guard !closing, url.isFileURL else { return }
-        pending.append(FileAccessLease(url)); MeetingNavigation.shared.openLibrary?(); startNext()
+        let key = url.standardizedFileURL.path
+        if writingDown { requestedTranscription.insert(key) }
+        guard scheduled.insert(key).inserted else { return }
+        pending.append(Request(lease:FileAccessLease(url),key:key,retaining:retaining))
+        MeetingNavigation.shared.openLibrary?(); startNext()
     }
-    func beginShutdown() { closing = true; pending.removeAll(); task?.cancel() }
+    func beginShutdown() { closing = true; pending.removeAll(); requestedTranscription.removeAll(); task?.cancel() }
     func waitForShutdown() async { await task?.value }
     private func startNext() {
         guard !closing, task == nil, !pending.isEmpty else { return }
-        let lease = pending.removeFirst(), root = LibraryLaunchContext.current.root
+        let request = pending.removeFirst(), root = LibraryStore.shared.context.root
+        let lease = request.lease
         task = Task {
+            defer { scheduled.remove(request.key); requestedTranscription.remove(request.key); withExtendedLifetime(request.retaining) {} }
             do {
                 let work = Task.detached(priority:.userInitiated) { [lease] in
                     defer { withExtendedLifetime(lease) {} }
@@ -32,6 +41,10 @@ import Observation
                 LibrarySearchModel.shared.close()
                 MeetingNavigation.shared.back()
                 LibraryStore.shared.selectImported(meeting)
+                if requestedTranscription.remove(request.key) != nil {
+                    if meeting.canWriteDown { TranscriptionQueue.shared.enqueue(meeting,retry:meeting.state.transcript == .failed) }
+                    MeetingNavigation.shared.open(meeting)
+                }
                 MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps:true)
             } catch is CancellationError {} catch { if !closing { NSApp.presentError(error) } }
             task = nil; startNext()
