@@ -86,6 +86,11 @@ def stage_assets(kind, destination):
     hashes = json.loads((source/'unsigned-sha256.json').read_text())
     if kind == 'Opus' and json.loads((source/'pins.json').read_text()) != json.loads((ROOT/'Opus/pins.json').read_text()):
         raise ValueError('Opus pin mismatch')
+    if kind == 'Parakeet':
+        if json.loads((source/'pins.json').read_text()) != json.loads((ROOT/'Parakeet/pins.json').read_text()):
+            raise ValueError('Parakeet pin mismatch')
+        for name, expected in json.loads((ROOT/'Parakeet/UPSTREAM.json').read_text())['sha256'].items():
+            if digest(ROOT/name) != expected: raise ValueError('Parakeet header/notice pin mismatch')
     if kind == 'Whistle':
         if json.loads((source/'pins.json').read_text()) != json.loads((ROOT/'Whistle/pins.json').read_text()):
             raise ValueError('Whistle pin mismatch')
@@ -105,7 +110,7 @@ def stage_assets(kind, destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['pack', 'unpack', 'stage-assets'])
-    parser.add_argument('kind', choices=list(PRODUCTS)+['Whistle', 'Opus'])
+    parser.add_argument('kind', choices=list(PRODUCTS)+['Whistle', 'Opus', 'Parakeet'])
     parser.add_argument('directory', type=Path)
     args = parser.parse_args()
     if args.action == 'stage-assets':

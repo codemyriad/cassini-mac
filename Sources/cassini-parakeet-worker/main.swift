@@ -11,6 +11,9 @@ func emit(_ response: Response) throws { try WhistleIO.write(JSONEncoder().encod
 var requestID: String?
 do {
     try WhistleEnvironment.validateLive()
+    #if DEBUG
+    if try SpeechNetworkProbe.run(arguments:Array(CommandLine.arguments.dropFirst())) { exit(0) }
+    #endif
     let owner = getppid()
     guard owner > 1 else { exit(0) }
     let watchdog = DispatchSource.makeTimerSource(queue:.global())

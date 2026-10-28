@@ -58,11 +58,16 @@ targets:
         product: CassiniModels
       - package: CassiniKit
         product: CassiniSearch
+      - target: CassiniModelDownloads
+        embed: true
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
         link: false
         embed: false
       - target: CassiniWhistleWorker
+        link: false
+        embed: false
+      - target: CassiniParakeetWorker
         link: false
         embed: false
     postBuildScripts:
@@ -79,6 +84,9 @@ targets:
           - "$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/cassini-browser-host"
       - name: Bundle pinned Whistle worker and engine
         script: bash "$SRCROOT/scripts/bundle-whistle.sh"
+        basedOnDependencyAnalysis: false
+      - name: Bundle pinned Parakeet runtime and worker
+        script: bash "$SRCROOT/scripts/bundle-parakeet.sh"
         basedOnDependencyAnalysis: false
     info:
       path: Cassini/Info.plist
@@ -173,6 +181,23 @@ targets:
         PRODUCT_NAME: cassini-whistle-worker
         SKIP_INSTALL: true
         ENABLE_HARDENED_RUNTIME: true
+  CassiniParakeetWorker:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/cassini-parakeet-worker
+    dependencies:
+      - package: CassiniKit
+        product: CassiniParakeet
+      - package: CassiniKit
+        product: CassiniTranscription
+      - package: CassiniKit
+        product: CassiniWhistle
+    settings:
+      base:
+        PRODUCT_NAME: cassini-parakeet-worker
+        SKIP_INSTALL: true
+        ENABLE_HARDENED_RUNTIME: true
   CassiniQuickLook:
     type: app-extension
     platform: macOS
@@ -212,6 +237,29 @@ targets:
         PRODUCT_NAME: CassiniQuickLook
         ENABLE_HARDENED_RUNTIME: true
         GENERATE_INFOPLIST_FILE: false
+  CassiniModelDownloads:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - path: ModelDownloads
+        excludes: ["Info.plist", "*.entitlements"]
+    dependencies:
+      - package: CassiniKit
+        product: CassiniModels
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.models
+        PRODUCT_NAME: CassiniModelDownloads
+        CODE_SIGN_ENTITLEMENTS: ModelDownloads/ModelDownloads.entitlements
+    info:
+      path: ModelDownloads/Info.plist
+      properties:
+        CFBundleDisplayName: Cassini model downloads
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        XPCService:
+          ServiceType: Application
+
 schemes:
   Cassini:
     build:
@@ -229,3 +277,8 @@ schemes:
       targets:
         - CassiniWindowScreenshots
       gatherCoverageData: false
+
+  CassiniModelDownloads:
+    build:
+      targets:
+        CassiniModelDownloads: all

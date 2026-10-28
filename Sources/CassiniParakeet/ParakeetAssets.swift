@@ -3,13 +3,14 @@ import Foundation
 import CryptoKit
 import Security
 import CassiniWhistle
+import CassiniModels
 import MachO
 import Darwin
 
 public enum ParakeetFailure: Error { case privacy, runtime(String), invalidModel, invalidRuntime, invalidAudio, invalidTokens }
 public enum ParakeetPin {
-    public static let id = "parakeet-ultra-0.6b-int8"
-    public static let sourceSHA256 = "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+    public static let id = ModelPin.parakeetUltra.id
+    public static let sourceSHA256 = ModelPin.parakeetUltra.sourceSHA256
     public static let transcriptModel = id + "@" + sourceSHA256
     public static let files: [String:(bytes:UInt64,sha256:String)] = [
         "encoder.int8.onnx":(652282922,"299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69"),

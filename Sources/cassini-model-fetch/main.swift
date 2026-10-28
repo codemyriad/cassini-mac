@@ -9,7 +9,7 @@ let arguments = Array(CommandLine.arguments.dropFirst())
 guard arguments.count == 2, arguments[0] == "--output" else {
     fputs("Usage: cassini-model-fetch --output APP_DATA_DIRECTORY\n",stderr); exit(64)
 }
-let pin = ModelPin(id:"parakeet-ultra-0.6b-int8",sourceSHA256:"18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9")
+let pin = ModelPin.parakeetUltra
 do {
     let output = URL(fileURLWithPath:arguments[1],isDirectory:true)
     try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])

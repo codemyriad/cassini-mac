@@ -31,7 +31,34 @@ private final class Server: @unchecked Sendable {
 }
 private func fails(_ run: () async throws -> Void) async -> Error? { do { try await run(); Issue.record("Expected failure"); return nil } catch { return error } }
 
+private final class ProgressLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ModelDownloadProgress] = []
+    func add(_ value: ModelDownloadProgress) { lock.lock(); values.append(value); lock.unlock() }
+    func snapshot() -> [ModelDownloadProgress] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
 @Suite struct ModelDownloaderTests {
+    @Test func progressReportsBytesAndMarksOnlyTheAtomicInstallComplete() async throws {
+        let server = try Server("normal"), downloader = try server.downloader(), log = ProgressLog()
+        let plan = try await downloader.plan(pin)
+        let installed = try await downloader.install(pin) { log.add($0) }
+        let states = log.snapshot()
+        #expect(states.first?.receivedBytes == 0)
+        #expect(states.last?.receivedBytes == plan.compressedBytes && states.last?.isInstalled == true)
+        #expect(states.allSatisfy { $0.totalBytes == plan.compressedBytes && $0.receivedBytes <= $0.totalBytes })
+        #expect(states.map(\.receivedBytes) == states.map(\.receivedBytes).sorted())
+        #expect(states.dropLast().allSatisfy { !$0.isInstalled })
+        #expect(FileManager.default.fileExists(atPath:installed.appendingPathComponent("receipt.json").path))
+    }
+    @Test func aBadDecodedHashNeverReportsAnInstalledModel() async throws {
+        let server = try Server("raw-hash"), downloader = try server.downloader(), log = ProgressLog()
+        let error = await fails { _ = try await downloader.install(pin) { log.add($0) } }
+        #expect(error as? ModelDownloadError == .hash)
+        #expect(!log.snapshot().isEmpty && !log.snapshot().contains { $0.isInstalled })
+        #expect(!FileManager.default.fileExists(atPath:server.destination.path))
+    }
+
     @Test(arguments:["normal","no-length"]) func installVerifyReuseWithoutArtifactDownloadAndRemove(_ scenario: String) async throws {
         let server = try Server(scenario), downloader = try server.downloader()
         #expect(server.requests.isEmpty)
