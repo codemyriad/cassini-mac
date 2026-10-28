@@ -38,6 +38,79 @@ final class TranscriptionMeetingTests: XCTestCase {
         XCTAssertNil(written.speakers.first?.name)
         XCTAssertEqual(SHA256.hash(data: try Data(contentsOf: original)),before)
     }
+    func testPausePreservesPartialWordsAndExistingMetadata() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Pause",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.append(id:"mic",pcm:Data(repeating:0,count:32000),offsetMs:0); try session.finish()
+        let words: [String:Any] = ["language":"en","items":[["speaker":"me","startMs":0,"endMs":160,"text":"Partial words"]]]
+        let bytes = try JSONSerialization.data(withJSONObject:words)
+        let sidecar = session.directory.appendingPathComponent("transcript.json"); try bytes.write(to:sidecar)
+        let writer = try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id)
+        try writer.transaction { meta in
+            meta["title"] = "Keep the title"; meta["notes"] = [["atMs":12,"text":"Keep the note"]]
+            meta["speakers"] = [["id":"me","name":"Renamed","provenance":"user","colourIndex":0]]
+            meta["transcript"] = ["status":"running","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+            meta["etaMinutes"] = 3
+        }
+        try MeetingTranscriber.pauseForResume(directory:session.directory,id:session.manifest.id)
+        let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(meeting.state.transcript,.queued); XCTAssertNil(meeting.state.error); XCTAssertNil(meeting.state.etaMinutes)
+        XCTAssertEqual(meeting.transcriptItems.count,1); XCTAssertEqual(meeting.title,"Keep the title")
+        XCTAssertEqual(meeting.notes.first?.text,"Keep the note"); XCTAssertEqual(meeting.speakers.first?.displayName,"Renamed")
+        XCTAssertEqual(try Data(contentsOf:sidecar),bytes)
+        try MeetingTranscriber.setStatus(directory:session.directory,id:session.manifest.id,status:"done")
+        try MeetingTranscriber.pauseForResume(directory:session.directory,id:session.manifest.id)
+        XCTAssertEqual(try LibraryScanner(root:root).scan().meetings.first?.state.transcript,.done)
+    }
+    func testResumeKeepsTheSavedTailUntilRecognitionCatchesUp() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Resume",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:48000,channels:1)
+        let url = Bundle.module.url(forResource:"pipeline-input-48k",withExtension:"wav",subdirectory:"Goldens")!
+        let input = try Data(contentsOf:url).dropFirst(44)
+        for at in stride(from:0,to:input.count,by:160000) {
+            let first = input.startIndex + at, last = min(input.endIndex,first + 160000)
+            try session.appendNative(id:"mic",pcm:Data(input[first..<last]),offsetMs:Double(at) / 96)
+        }
+        try session.finish()
+        let sidecar = session.directory.appendingPathComponent("transcript.json")
+        try JSONSerialization.data(withJSONObject:["language":"en","items":[["speaker":"me","startMs":30000,"endMs":30160,"text":"Retained old partial"]]]).write(to:sidecar)
+        try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { meta in
+            meta["transcript"] = ["status":"queued","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        final class Outcome: @unchecked Sendable {
+            let lock = NSLock(); private var result: Result<Void,Error>?
+            func finish(_ result: Result<Void,Error>) { lock.lock(); self.result = result; lock.unlock() }
+            func snapshot() -> Result<Void,Error>? { lock.lock(); defer { lock.unlock() }; return result }
+        }
+        let outcome = Outcome(), folder = session.directory
+        Thread.detachNewThread {
+            outcome.finish(Result {
+                let vad = try VADAssets.forWorker(arguments:["--assets",assets])
+                let detector = try SpeechDetector(assets:vad)
+                let engine = try WhistleEngine(assets:WhistleAssets.pinned(directory:URL(fileURLWithPath:assets)))
+                try MeetingTranscriber.run(directory:folder,engine:engine,detector:detector)
+            })
+        }
+        let deadline = Date().addingTimeInterval(30); var sawMixedProgress = false
+        while outcome.snapshot() == nil, Date() < deadline {
+            if let data = try? Data(contentsOf:sidecar), let body = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+               let words = body["items"] as? [[String:Any]], words.count > 1,
+               words.contains(where: { ($0["text"] as? String) == "Retained old partial" }),
+               words.contains(where: { ($0["startMs"] as? Int ?? Int.max) < 10000 }) { sawMixedProgress = true }
+            Thread.sleep(forTimeInterval:0.01)
+        }
+        let result = try XCTUnwrap(outcome.snapshot()); try result.get()
+        XCTAssertTrue(sawMixedProgress,"Saved later words must remain while the beginning is re-recognized")
+        let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(meeting.state.transcript,.done)
+        XCTAssertFalse(meeting.transcriptItems.contains { $0.text == "Retained old partial" })
+        XCTAssertEqual(meeting.transcriptItems.count,68)
+    }
     func testProductionWriterPipelineOffsetsAndReadOnlyAudio() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

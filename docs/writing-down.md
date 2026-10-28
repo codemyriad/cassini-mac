@@ -6,6 +6,17 @@ found after restarting the app. Received meetings require Write it down; failed
 jobs require Try again. Explicitly writing down an opened external Opus makes a
 private Received folder first, preserving the original.
 
+Quit stops scheduling, cancels the current child, and waits for it to exit before
+terminating. Unfinished work remains queued with its partial transcript, names
+and notes intact; the next launch resumes it. Re-recognition retains the saved
+word tail until that source catches up. A parent-PID watchdog also stops the
+worker after an abrupt app exit, even with stdin open or inference in progress.
+Hosted tests exercise Quit/relaunch with generated audio; the CLI worker test
+kills only its owner while holding stdin open after a real inference request.
+The Debug packaging probe also accepts `CASSINI_LOCAL_WORKFLOW_TESTS=1` together
+with `CASSINI_HOSTED_WHISTLE=1` for an explicitly requested local workflow run;
+this does not enable microphone, system-audio or browser capture.
+
 The worker never changes session.json or audio. It updates app-owned meeting.json
 through revision-preserving directory-locked transactions and publishes a private,
 atomic transcript.json after every speech segment. The Library watcher updates the
