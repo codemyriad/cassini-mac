@@ -10,7 +10,7 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testSettingsTranscriptionWhistleOnly() throws {
         let app = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
-        XCTAssertTrue(window.otherElements["settings-whistle-row"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("Writing down what was said",in:window))
         XCTAssertTrue(text("When Cassini uses the network",in:window))
         XCTAssertFalse(window.buttons["Download"].exists)
