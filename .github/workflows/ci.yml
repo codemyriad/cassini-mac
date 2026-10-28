@@ -51,7 +51,7 @@ jobs:
     - name: Test
       run: swift test --skip-build
     - name: Browser audio worklet tests
-      run: node --test BrowserExtension/tests/*.test.cjs
+      run: node --test browser-protocol/extension/tests/*.test.cjs BrowserExtension/tests/tone-window.test.cjs
     - name: Verify shared browser snapshot
       run: python3 browser-protocol/verify.py --pinned BrowserExtension
     - name: Shared native-session fixture
