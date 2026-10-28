@@ -69,7 +69,9 @@ final class LibraryBoards: XCTestCase {
         sheet.buttons["export-confirm"].click()
         // NSSavePanel is exposed as a sheet on some supported macOS versions.
         XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
-        app.buttons["Cancel"].click()
+        app.typeKey(.escape,modifierFlags:[])
+        let closed = NSPredicate { _,_ in !app.buttons["Save"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:5),.completed,app.debugDescription)
     }
     @MainActor func testExportReceivedAudioThroughAFileOnlySaveGrant() throws {
         // Keep the 52-minute board fixture out of this publication test. The
@@ -80,8 +82,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(app.buttons["export-confirm"].waitForExistence(timeout:10),app.debugDescription)
         app.buttons["export-confirm"].click()
         XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
-        // Exercise the actual per-file Powerbox grant outside both containers.
-        let destination = URL(fileURLWithPath:"/private/tmp",isDirectory:true)
+        // The runner can create/inspect its own folder; Cassini receives a
+        // file-only Powerbox grant, with no added entitlement or directory grant.
+        let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("CassiniPanelExport-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         defer { try? FileManager.default.removeItem(at:destination) }
@@ -90,7 +93,11 @@ final class LibraryBoards: XCTestCase {
         app.buttons["Save"].click()
         let output = destination.appendingPathComponent("Onboarding.opus")
         let saved = NSPredicate { _,_ in FileManager.default.fileExists(atPath:output.path) }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20),.completed,app.debugDescription)
+        let result = XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20)
+        if result != .completed {
+            let screenshot = XCTAttachment(screenshot:app.screenshot()); screenshot.name = "save-panel-failure"; screenshot.lifetime = .keepAlways; add(screenshot)
+        }
+        XCTAssertEqual(result,.completed,app.debugDescription + "\nDestination: " + String(describing:try? FileManager.default.contentsOfDirectory(atPath:destination.path)))
         let bytes = try Data(contentsOf:output)
         XCTAssertEqual(bytes.prefix(4),Data("OggS".utf8))
         XCTAssertNotNil(bytes.range(of:Data("CASSINI_FORMAT=org.cassini.portable-meeting/1".utf8)))
