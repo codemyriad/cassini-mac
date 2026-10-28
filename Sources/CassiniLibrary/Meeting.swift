@@ -88,7 +88,10 @@ public struct LibraryMeeting: Sendable {
     public let id: UUID
     public let folder: URL
     /// D6.1: keep UUID as id; use the prefixed folder key in collections/UI.
-    public var libraryKey: String { folder.lastPathComponent }
+    public var libraryKey: String { retainedKey ?? folder.lastPathComponent }
+    /// Only a retained Move original that collides with a destination folder
+    /// needs a local collection identity. UUIDs and on-disk names stay intact.
+    var retainedKey: String? = nil
     public var state: MeetingState
     public var title: String?
     public var start: Date?
@@ -152,6 +155,20 @@ public struct LibraryDayGroup: Sendable {
 public struct LibraryScan: Sendable {
     public var meetings: [LibraryMeeting]
     public var issues: [LibraryReadIssue]
+    /// Primary-root copies take precedence over retained originals of the same
+    /// meeting. Global order and identities remain the R6 folder-key contract.
+    public static func merging(_ snapshots: [Self], retaining folders: Set<URL> = []) -> Self {
+        var seen = Set<String>(), meetings: [LibraryMeeting] = []
+        for snapshot in snapshots { for var meeting in snapshot.meetings {
+            if !seen.insert(meeting.libraryKey).inserted {
+                guard folders.contains(LibraryLocation.canonical(meeting.folder)) else { continue }
+                meeting.retainedKey = "retained:" + LibraryLocation.canonical(meeting.folder).path
+                guard seen.insert(meeting.libraryKey).inserted else { continue }
+            }
+            meetings.append(meeting)
+        } }
+        return .init(meetings:meetings.sorted(by:LibraryScanner.ordered),issues:snapshots.flatMap(\.issues))
+    }
     /// R6 order is established by the scanner before grouping by calendar day.
     public func groups(format: LibraryFormat) -> [LibraryDayGroup] {
         var groups: [LibraryDayGroup] = []

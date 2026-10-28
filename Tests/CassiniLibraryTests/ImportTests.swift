@@ -90,6 +90,17 @@ struct LibraryImportTests {
         #expect(second.title == "Renamed by the person" && second.notes.first?.text == "A note to keep")
         #expect(try FileManager.default.contentsOfDirectory(atPath:library.path).filter { $0.hasPrefix("Received-") }.count == 1)
     }
+    @Test func duplicateInRetainedRootSelectsOriginalAfterPartialMove() throws {
+        let f = try Fixture(), old = f.root.appendingPathComponent("Old"), next = f.root.appendingPathComponent("New")
+        let source = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus")
+        let first = try LibraryImport.copy(source,into:old)
+        try MeetingMetadataWriter(directory:first.folder,id:first.id).transaction { $0["title"] = "Keep the original title"; $0["titleSource"] = "user" }
+        let bytes = try Data(contentsOf:first.folder.appendingPathComponent("meeting.json"))
+        let again = try LibraryImport.copy(source,into:next,additionalRoots:[old])
+        #expect(again.folder == first.folder && again.title == "Keep the original title")
+        #expect(try FileManager.default.contentsOfDirectory(atPath:next.path).isEmpty)
+        #expect(try Data(contentsOf:first.folder.appendingPathComponent("meeting.json")) == bytes)
+    }
     @Test func invalidLinkedAndCancelledImportsPublishNothing() throws {
         let f = try Fixture(), library = f.root.appendingPathComponent("Library")
         try FileManager.default.createDirectory(at:library,withIntermediateDirectories:true)

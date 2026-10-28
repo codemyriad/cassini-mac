@@ -71,7 +71,7 @@ public struct LibraryScanner: Sendable {
         guard let id = UUID(uuidString: text), id.uuidString.lowercased() == text else { return nil }
         return (id, received)
     }
-    private static func ordered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
+    static func ordered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
         if let x = a.start, let y = b.start { return x == y ? identityOrdered(a, b) : x > y }
         if a.start != nil || b.start != nil { return a.start != nil }
         let x = (a.title ?? "").folding(options: .caseInsensitive, locale: Locale(identifier: "en_GB"))

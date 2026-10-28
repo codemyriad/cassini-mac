@@ -7,6 +7,29 @@ final class LibraryBoards: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
     }
+    @MainActor func testSettingsRecordingPreferenceAndTabs() throws {
+        let app = try launch("settings-recording",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        let toggle = window.descendants(matching:.any).matching(identifier:"settings-explain-recording").firstMatch
+        XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout:20),app.debugDescription)
+        capture(window,name:"settings-recording")
+        let value = toggle.value as? String
+        toggle.click(); XCTAssertNotEqual(toggle.value as? String,value)
+        window.buttons["settings-change-shortcut"].click()
+        XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:5))
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertFalse(window.sheets.firstMatch.exists)
+        app.radioButtons["Library"].click()
+        XCTAssertTrue(window.buttons["settings-move-library"].waitForExistence(timeout:5))
+        window.buttons["settings-move-library"].click()
+        XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout:5),app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        app.radioButtons["Browser companion"].click()
+        XCTAssertTrue(text("Not set up",in:window))
+        app.typeKey("w",modifierFlags:.command)
+        app.typeKey(",",modifierFlags:.command)
+        XCTAssertTrue(window.waitForExistence(timeout:5))
+    }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
     @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {

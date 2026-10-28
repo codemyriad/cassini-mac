@@ -7,7 +7,7 @@ import CassiniKit
 /// R1.4: original bytes are private and complete before meeting.json commits the
 /// import. A full-file hash identifies repeats, regardless of source filename.
 public enum LibraryImport {
-    public static func copy(_ source: URL, into root: URL, shouldCancel: () -> Bool = { false }) throws -> LibraryMeeting {
+    public static func copy(_ source: URL, into root: URL, additionalRoots: [URL] = [], shouldCancel: () -> Bool = { false }) throws -> LibraryMeeting {
         let (input, identity) = try openRegular(source); defer { close(input) }
         guard identity.size > 0, identity.size <= Int64(UInt32.max) else { throw POSIXError(.EFBIG) }
         let read = FileHandle(fileDescriptor:input,closeOnDealloc:false)
@@ -42,7 +42,9 @@ public enum LibraryImport {
         let file = try CassiniReader.read(data)
         guard case .success? = file.audioDigest else { throw MetadataError.invalid }
         let scanner = LibraryScanner(root:root)
-        if let duplicate = try scanner.scan().meetings.first(where: { $0.received?.sha256 == digest }) { return duplicate }
+        for candidate in [root] + additionalRoots where FileManager.default.fileExists(atPath:candidate.path) {
+            if let duplicate = try LibraryScanner(root:candidate).scan().meetings.first(where: { $0.received?.sha256 == digest }) { return duplicate }
+        }
         if shouldCancel() { throw CancellationError() }
         let trusted = [.ok,.plainAudio].contains(file.state)
         let selected = trusted ? file.defaultTranscript : nil

@@ -22,6 +22,7 @@ import Darwin
     @ObservationIgnored private var prepared = Set<String>()
     @ObservationIgnored private var schedulingFailures = Set<String>()
     @ObservationIgnored private var closing = false
+    @ObservationIgnored private var paused = false
     var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
     func beginShutdown() {
         guard !closing else { return }; closing = true
@@ -35,14 +36,22 @@ import Darwin
     #if DEBUG
     @ObservationIgnored private var failedFixtureOnce = false
     #endif
+    // Persist accepted queue intent before any inactive folder can move.
+    // The active child's paths remain protected; queued folders are rediscovered.
+    func pauseForMove() async {
+        paused = true
+        await preparation?.value
+        pending.removeAll(); prepared.removeAll()
+    }
+    func resumeAfterMove() { guard !closing else { return }; paused = false; known.removeAll() }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
-        guard automatic, !closing else { return }
+        guard automatic, !closing, !paused else { return }
         let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
         for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {
-        guard !closing, !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
+        guard !closing, !paused, !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
               active?.path != meeting.folder.path, !pending.contains(where: { $0.folder.path == meeting.folder.path }) else { return }
         if retry { known.remove(meeting.folder.path) }
         guard known.insert(meeting.folder.path).inserted else { return }
@@ -50,7 +59,7 @@ import Darwin
         pending.append(meeting); preparePending()
     }
     func writeDown(_ detail: MeetingDetailModel) {
-        guard !closing, detail.meeting.canWriteDown else { return }
+        guard !closing, !paused, detail.meeting.canWriteDown else { return }
         guard let original = detail.fileURL else { enqueue(detail.meeting, retry: detail.meeting.state.transcript == .failed); return }
         LibraryImportCoordinator.shared.open(original,writingDown:true,retaining:detail)
     }
@@ -75,7 +84,7 @@ import Darwin
         }
     }
     private func startNext() {
-        guard !closing, task == nil, !pending.isEmpty else { return }
+        guard !closing, !paused, task == nil, !pending.isEmpty else { return }
         guard prepared.contains(pending[0].folder.path) else { return }
         let meeting = pending.removeFirst(); active = meeting.folder
         prepared.remove(meeting.folder.path)

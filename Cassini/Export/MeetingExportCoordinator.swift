@@ -27,7 +27,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     @ObservationIgnored private var closing = false
     var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil || openPanel != nil }
     static func canExport(_ meeting: LibraryMeeting?) -> Bool {
-        guard let meeting, meeting.state.lifecycle == .saved else { return false }
+        guard !LibraryMoveCoordinator.shared.busy, let meeting, meeting.state.lifecycle == .saved else { return false }
         return !meeting.audioFiles.isEmpty || !meeting.transcriptItems.isEmpty || !meeting.notes.isEmpty
     }
     func show(_ meeting: LibraryMeeting) {

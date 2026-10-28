@@ -16,6 +16,9 @@ struct CassiniApp: App {
             .windowToolbarStyle(.unified)
             .commands { AppCommands() }
 
+        Settings { CassiniSettingsView() }
+            .windowResizability(.contentSize)
+
         MenuBarExtra(isInserted:.constant(captureActive)) { RecordingStatusMenu() } label: { RecordingStatusLabel() }
             .menuBarExtraStyle(.window)
 

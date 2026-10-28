@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var toolbarWidth: CGFloat = 1120
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         GeometryReader { geometry in
@@ -123,6 +124,7 @@ struct LibraryView: View {
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .onAppear {
+            SettingsNavigation.shared.open = { openSettings(); NSApp.activate(ignoringOtherApps:true) }
             search.update(store.meetings)
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             let open = openWindow
@@ -306,7 +308,7 @@ struct LibraryView: View {
                     Button { play(meeting) } label: { Label(UXText.text(sessionPlayback.isPlaying ? "player.pause" : "common.play"), systemImage: sessionPlayback.isPlaying ? "pause.fill" : "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
                         .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
                         .opacity(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing) ? 0.45 : 1)
-                        .disabled(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
+                        .disabled(LibraryMoveCoordinator.shared.busy || !sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
                         .accessibilityIdentifier("preview-play")
                 if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
                     Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
@@ -316,7 +318,7 @@ struct LibraryView: View {
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
                     }.buttonStyle(.plain).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
-                        .disabled(meeting.transcriptItems.isEmpty)
+                        .disabled(meeting.transcriptItems.isEmpty || LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("preview-read-transcript")
                 }
                 if !meeting.transcriptItems.isEmpty {
@@ -361,12 +363,16 @@ struct LibraryView: View {
                 }
                 if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
                 recordButton(big: true)
-                Text(UXText.text("firstRun.shortcutHint", ["shortcut": UXText.text("common.shortcut.record")])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("firstRun.shortcutHint", ["shortcut": RecordingRuntime.shared.shortcut.choice.glyph])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
             }
             Spacer()
             HStack(spacing: 8) {
                 Image(systemName: "lock").accessibilityHidden(true)
-                Text(UXText.text("firstRun.footer"))
+                if LibraryLocationModel.shared.location.primaryPath == LibraryLocation.standardRoot.path || store.context.screenshot {
+                    Text(UXText.text("firstRun.footer"))
+                } else {
+                    Text(UXText.text("settings.library.folder.title") + ": " + LibraryLocationModel.shared.displayPath)
+                }
             }.font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).padding(16)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .textBackgroundColor))
     }
