@@ -1,23 +1,27 @@
 # Cassini
 
-Cassini is a macOS app for recording your work meetings and reading them back on this computer.
+Cassini is a Mac app that records your meetings, writes them down, and lets you read and search them on this computer.
 
 ![The Cassini Library window with a list of sample meetings on the left and a meeting preview on the right.](docs/screenshots/library.png)
 
-*The Library with sample meetings. Some sample rows show states of features that are not finished yet, such as "Transcribing, about 4 minutes left", the small `auto` tag on a recognised voice, and "Needs attention".*
+*The Library with sample meetings. The small `auto` tag next to a name comes from the sample data: recognising saved voices is not available yet.*
 
 ## What you can do
 
-- Browse your meetings in the Library, grouped by day, with speaker names, a quote from the conversation, and the first lines of the transcript.
-- Record a meeting on your Mac with your microphone, all system audio, or selected apps, while live level meters show that sound is coming through.
-- Record a meeting in Chrome, Chromium, Microsoft Edge, or Brave using the bundled browser extension, either keeping your microphone and the others separate or capturing what the meeting tab plays.
-- Play saved meetings directly from the Library with your microphone and the others mixed in time, or open a meeting folder in the Recording window to listen to each audio source on its own.
-- Open portable Cassini `.opus` meeting files to read the transcript while words highlight as they are spoken, click any word or timestamp to jump to that moment, filter by speaker, and search inside the transcript.
-- Preview portable `.opus` meeting files in Finder with Quick Look, and export an open file’s transcript as Markdown, plain text, SRT, or WebVTT subtitles.
+- Record a meeting with your microphone and all of this Mac's sound (the others) together, straight into your Library, while taking time-pinned notes.
+- Let Cassini write your meeting down automatically on this computer, offline, using the speech model included in the app.
+- Read a meeting's transcript while listening back, with words highlighted as they are played and any word clickable to play from that moment.
+- Search every meeting in your Library for a phrase, narrow matches by speaker, date, or meetings recorded by you, and jump straight to that moment.
+- Open Cassini `.opus` files you receive from others so a copy stays in your Library as a Received meeting.
+- Export any meeting to share or archive as a portable Cassini `.opus` audio file or as a Markdown transcript with notes.
+- Record meetings in Chrome, Chromium, Microsoft Edge, or Brave using the bundled browser extension, keeping each person in the call apart.
+- Preview any Cassini `.opus` meeting file in Finder by pressing Space for Quick Look.
 
 ## Get started
 
 ### Install
+
+The latest published release, `v0.1.0`, is an earlier version: the Library, Recording page, writing down, Search every meeting, Received meetings, and Export described here come with the next release. Until then, you can build Cassini from source by following [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 Cassini requires macOS 15 or later and runs on both Apple Silicon and Intel Macs.
 
@@ -36,26 +40,70 @@ To update later, quit Cassini, download and unzip the newer release, replace `Ca
 
 ![The Cassini Library before any meetings have been recorded, showing a Record button and the ⌘R keyboard shortcut.](docs/screenshots/first-run.png)
 
-*The Library when you first open Cassini. The subtitle on this screen mentions writing the meeting down automatically, which is planned and not active yet.*
+*The Library before your first meeting.*
 
-1. Click **Record** in the Library (or press **⌘R** from anywhere in Cassini). This opens the Recording window.
-2. Enter a title if you want one, choose what sound from the others to include (**All system audio**, **Selected processes**, or **No output audio**), and leave **Record microphone** turned on to include your own voice.
-3. Click **Start Recording…** and choose your `Music/Cassini` folder (`~/Music/Cassini`) so the meeting appears in your Library.
-4. On your first recording, macOS asks for permission:
-   - **Microphone** access when **Record microphone** is on. You can review this in **System Settings → Privacy & Security → Microphone**.
-   - **Screen & System Audio Recording** access when you capture system audio or selected apps. You can review this in **System Settings → Privacy & Security → Screen & System Audio Recording**.
-5. While you talk, level meters in the Recording window show sound from your microphone and the others. Closing the Recording window keeps recording; press **⌘R** to bring the window back.
-6. Click **Stop** (**Stop Recording** in the Recording window) when the meeting ends. Quitting Cassini also stops and saves the meeting.
+Click **Record** in the Library (or press **⌘R** anywhere in Cassini). Cassini records your microphone and all of this Mac's sound (the others) together, straight into your Library (`Music/Cassini`). There is no folder to choose and no save dialog.
+
+The first time you record, a **Before your first recording** sheet reminds you that you are responsible for telling the people you record, and explains what will be recorded; tick **Don't show again** to hide it next time. macOS then asks for **Microphone** access, followed by **Screen & System Audio Recording** access so Cassini can record the others. You can review both permissions in **System Settings → Privacy & Security**.
+
+![The Recording page showing a large timer, a Stop button, an editable title, live sound levels for your microphone and the others, and time-pinned notes.](docs/screenshots/recording.png)
+
+*The Recording page with a sample meeting. "Change what is recorded" is shown disabled and is not available yet.*
+
+The Recording page shows a large timer, live sound levels for your microphone and the others, an editable **Title**, and **Notes** where each note line is pinned to the moment you start typing it. If your microphone has been silent for 20 seconds, a warning appears with a **Check** button that opens your Sound settings.
+
+Recording keeps going if you go back to the Library. If you close the window, Cassini asks whether to **Stop and keep it** or **Keep recording** in the background. Your Mac does not go to sleep while recording. While a recording is running, a timer in the menu bar offers **Stop Recording**, **Add a Note…**, and **Open Cassini**. You can also press **⌥⌘R** (Option-Command-R) to start or stop recording from any app.
+
+Click **Stop** in the Library header, on the Recording page, or in the menu-bar timer when the meeting finishes. The Library shows the meeting saving and then being written down. If you quit Cassini while recording, it asks first and saves the meeting before it closes. If disk space runs low, Cassini warns you; if it gets too low, it stops recording and keeps everything recorded so far.
+
+### Read and search your meetings
+
+![A sample meeting open in Cassini, showing speakers on the left, the transcript with a highlighted line on the right, and playback controls at the bottom.](docs/screenshots/meeting.png)
+
+*A meeting page with a sample meeting. Speaker labels such as "Named by you", "Recognised from saved voices", and the small `auto` tag come from the sample data and are not features yet.*
+
+When a recording stops, Cassini writes it down automatically on this Mac, offline, using the included Whistle speech model, on both Apple silicon and Intel Macs. The Library shows progress and an estimate of the time left. If you quit Cassini, it picks up where it left off next time; if writing down fails, click **Try again**. Received meetings without a transcript have a **Write it down** button.
+
+In a meeting recorded from your microphone and your Mac's sound, words are attributed to **Me** and **The others**. In browser recordings, each person in the call is kept apart as **Speaker 1**, **Speaker 2**, and so on.
+
+In the Library, meetings are grouped by day with a quote, the speakers, and a short transcript preview. You can start playback straight from the preview, or open the meeting to see each speaker's share of the conversation and read the full transcript. As the meeting plays, words are highlighted. Click any word to play from that moment, use the player bar to skip 10 seconds back or forward, or press **Space** to play and pause. The **1×** button changes the playback speed, and **⌘[** takes you back to the Library. In Finder, you can also press **Space** on a Cassini `.opus` file to preview it with Quick Look.
+
+![The Search view showing matches for the word "budget" across sample meetings, with filter buttons and a transcript preview.](docs/screenshots/search.png)
+
+*Search every meeting with sample meetings. Filtering by speaker uses speaker names already stored in a meeting; naming speakers and the `auto` tag shown in the sample are not features yet.*
+
+Press **⌘F** or use the search bar in the Library to **Search every meeting** for a phrase. You can narrow results by speaker (when a meeting has named speakers), by date (**Today**, **Past 7 days**, or **Past 30 days**), and with **Recorded by me**. Each hit shows the words around it; click **Play from** to listen from that moment, or **Open the meeting here** to open the meeting at that point. Filters reset when you close Search. The search index is private, kept in Cassini's cache folder, and never written into your Library.
+
+### Open meetings you receive
+
+![A Received meeting in the Library showing a banner that a copy is kept in the Library and the transcript preview below.](docs/screenshots/received.png)
+
+*A sample meeting in the Library marked as `Received`.*
+
+Use **File → Open…** (**⌘O**), choose **Open With → Cassini** in Finder, or drop a Cassini `.opus` file onto Cassini to copy it into your Library as a **Received** meeting. The original file is left untouched, and the copy stays in your Library even if the original moves. Opening the same file a second time opens the existing copy instead of creating a duplicate.
+
+### Export a meeting
+
+![The Export sheet over a sample meeting, with options for Cassini file or Markdown and a Save to Documents choice.](docs/screenshots/export.png)
+
+*The Export sheet over a sample meeting. The note about recognised speakers comes from sample data; recognising voices is not a feature yet.*
+
+Click **Export…** in the meeting header (or press **⇧⌘E**) to export a meeting. You have two choices:
+
+- **Cassini file** — audio with the transcript, speakers, and notes inside, which plays in any audio player.
+- **Markdown** — the transcript as text with speakers and times, plus your notes.
+
+Cassini saves the file to **Documents** unless you click **Choose…** to pick another folder, and it never overwrites an existing file. Export is the only way a meeting leaves this computer. Voiceprints are never exported.
 
 ### Record meetings in your browser
 
-If your meeting runs in Chrome, Chromium, Microsoft Edge, or Brave, you can use the browser companion included in the release zip. It is set up per user for your own browser profiles (`~/Library/Application Support/...`), never system-wide, and does not need Xcode, Python, or developer tools.
+If your meeting runs in Chrome, Chromium, Microsoft Edge, or Brave, you can use the browser companion included in the release zip. It is set up per user for your own browser profiles (`~/Library/Application Support/...`), never system-wide, and does not need Xcode, Python, or developer tools. A meeting page in Cassini may also show a **Set up** suggestion, which displays these setup instructions.
 
 1. Make sure you have opened your browser at least once, and keep the unzipped `BrowserExtension` folder in a permanent place on your Mac.
 2. Open `chrome://extensions` in your browser, turn on **Developer mode**, click **Load unpacked**, and select the `BrowserExtension` folder. Copy the 32-letter extension ID shown on the card.
 3. Double-click `Install Browser Host.command` in the unzipped release folder, paste the 32-letter extension ID, and press Return. (If you moved `Cassini.app` somewhere other than `/Applications` or the release folder, rerun the installer after putting `Cassini.app` in `/Applications`.)
-4. Reload your meeting tab, click the **Cassini Recorder** extension in your browser toolbar, and start recording either with your microphone and the others kept separate, or by capturing what the whole tab plays.
-5. Click **Stop and save** when the meeting finishes. The meeting is saved in `Music/Cassini` and appears in your Library.
+4. Reload your meeting tab, click the **Cassini Recorder** extension in your browser toolbar, and start recording either with your microphone and the others kept separate, or by capturing what the whole tab plays. In browser recordings, each person in the call is kept apart as Speaker 1, Speaker 2, and so on.
+5. Click **Stop and save** when the meeting finishes. The meeting appears in your Library in `Music/Cassini` and is written down automatically.
 
 To remove the browser companion registration later while keeping your meetings:
 
@@ -67,18 +115,16 @@ If you are working from a git checkout instead of a release zip, you can registe
 
 ## Your meetings stay on this computer
 
-Your meetings live in `Music/Cassini` inside your home folder (`~/Music/Cassini`), with one folder per meeting. When you start a recording from the Recording window, Cassini asks you to pick a folder; choosing `Music/Cassini` keeps everything in one place for the Library.
+Your Library lives in `Music/Cassini` inside your home folder (`~/Music/Cassini`), with one folder per meeting.
 
-Nothing is uploaded anywhere. Cassini has no account, no sign-in, and no cloud service. Recording, playback, and file verification all happen on this computer. Portable `.opus` meeting files carry their own transcript and speaker list inside the audio file itself, so you can move or share a file on your own terms and any standard Opus player can still play the audio.
+Nothing is uploaded anywhere. Cassini has no account, no sign-in, and no cloud service. Recording, writing down, and search all happen on this Mac, and writing down works offline with the included speech model. Export is the only way a meeting leaves this computer, and only when you choose. Portable meetings are ordinary `.opus` audio files carrying their transcript, speakers, and notes, playable in any Opus-capable player.
 
 ## What's coming
 
-- Writing meetings down on this computer with a bundled speech model, so newly recorded meetings get a transcript without sending audio anywhere.
-- Telling speakers apart automatically in recorded meetings so you can see when you and each of the others spoke.
-- Naming speakers in a meeting and recognising saved voices across meetings.
-- Searching across every meeting in your Library from one search bar.
-- Exporting recorded meetings from the Library as portable `.opus` meeting files or transcripts.
-- Starting and stopping recordings directly from the Library toolbar with live audio levels.
+- Naming speakers and keeping names for future meetings, plus recognising saved voices automatically.
+- Telling apart several people who share one microphone or one sound source.
+- Seeing browser meetings in the Cassini window and recording them with one click, or automatically.
+- Choosing what is recorded before you start, for example recording your microphone only.
 
 ## Help and feedback
 
