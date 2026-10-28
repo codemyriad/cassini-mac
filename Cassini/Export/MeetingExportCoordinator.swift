@@ -25,7 +25,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     @ObservationIgnored private var openPanel: NSOpenPanel?
     @ObservationIgnored private var savePanel: NSSavePanel?
     @ObservationIgnored private var closing = false
-    var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil }
+    var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil || openPanel != nil }
     static func canExport(_ meeting: LibraryMeeting?) -> Bool {
         guard let meeting, meeting.state.lifecycle == .saved else { return false }
         return !meeting.audioFiles.isEmpty || !meeting.transcriptItems.isEmpty || !meeting.notes.isEmpty
@@ -40,6 +40,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         }
     }
     func chooseDirectory() {
+        guard !working, !closing else { return }
         guard openPanel == nil else { openPanel?.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false; panel.directoryURL = directory; openPanel = panel
@@ -49,16 +50,16 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         } }
     }
     func perform() {
-        guard let meeting, !working, !closing else { return }
+        guard let meeting, !working, !closing, !isBusy else { return }
         if let access = directoryAccess { start(meeting,kind:kind,folder:access,file:nil) }
         else { presentSavePanel(meeting,kind:kind) }
     }
     func cancel() {
-        showing = false; estimateTask?.cancel(); presentationTask?.cancel(); presentationTask = nil
+        showing = false; estimateTask?.cancel(); presentationTask?.cancel()
         openPanel?.cancel(nil); savePanel?.cancel(nil); task?.cancel()
     }
     func beginShutdown() { closing = true; cancel() }
-    func waitForShutdown() async { await task?.value }
+    func waitForShutdown() async { await presentationTask?.value; await task?.value }
     func dismissForQuit() async {
         let parent = NSApp.keyWindow?.sheetParent ?? NSApp.mainWindow
         cancel()
@@ -71,6 +72,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         let parent = NSApp.keyWindow?.sheetParent ?? NSApp.mainWindow
         showing = false
         presentationTask = Task {
+            defer { presentationTask = nil }
             for _ in 0..<40 {
                 guard parent?.attachedSheet != nil else { break }
                 do { try await Task.sleep(for:.milliseconds(25)) } catch { return }
@@ -79,7 +81,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
             let panel = NSSavePanel(); panel.directoryURL = directory
             panel.nameFieldStringValue = MeetingMarkdown.filename(title:meeting.title ?? UXText.text("library.untitled"),extension:kind.suffix)
             panel.allowedContentTypes = [kind == .cassini ? .oggAudio : (UTType(filenameExtension:"md") ?? .plainText)]
-            panel.canCreateDirectories = true; savePanel = panel; presentationTask = nil
+            panel.canCreateDirectories = true; savePanel = panel
             let complete: (NSApplication.ModalResponse) -> Void = { [self] response in MainActor.assumeIsolated {
                 self.savePanel = nil
                 if response == .OK, let url = panel.url, !self.closing { self.start(meeting,kind:kind,folder:nil,file:FileAccessLease(url)) }

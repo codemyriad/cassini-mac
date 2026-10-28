@@ -37,6 +37,16 @@ public enum ExportDestination {
     /// replacement directory so safe saving works with per-file sandbox access.
     public static func selectedFile(_ artifact: ExportArtifact, url: URL,
                                     shouldCancel: () -> Bool = { false }) throws {
+        func existingRegular() throws -> Bool {
+            var info = stat()
+            if lstat(url.path,&info) == 0 {
+                guard info.st_mode & S_IFMT == S_IFREG else { throw POSIXError(.ELOOP) }
+                return true
+            }
+            guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+            return false
+        }
+        let replacing = try existingRegular()
         let manager = FileManager.default
         let replacement = try manager.url(for:.itemReplacementDirectory,in:.userDomainMask,appropriateFor:url,create:true)
         defer { try? manager.removeItem(at:replacement) }
@@ -45,9 +55,13 @@ public enum ExportDestination {
         guard fd >= 0 else { throw POSIXError(.EIO) }
         try copy(artifact,to:fd,shouldCancel:shouldCancel)
         if shouldCancel() { throw CancellationError() }
-        if manager.fileExists(atPath:url.path) {
-            _ = try manager.replaceItemAt(url,withItemAt:pending,backupItemName:nil,options:.usingNewMetadataOnly)
-        } else { try manager.moveItem(at:pending,to:url) }
+        _ = try existingRegular()
+        // POSIX rename replaces a final symlink itself; it cannot follow one
+        // installed after the lstat check. A new target remains no-overwrite.
+        let flags = replacing ? UInt32(0) : UInt32(RENAME_EXCL)
+        guard renameatx_np(AT_FDCWD,pending.path,AT_FDCWD,url.path,flags) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
+        }
     }
     private static func copy(_ artifact: ExportArtifact, to fd: Int32, shouldCancel: () -> Bool) throws {
         let destination = FileHandle(fileDescriptor:fd,closeOnDealloc:true)

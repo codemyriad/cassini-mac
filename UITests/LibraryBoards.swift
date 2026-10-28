@@ -69,7 +69,20 @@ final class LibraryBoards: XCTestCase {
         sheet.buttons["export-confirm"].click()
         // NSSavePanel is exposed as a sheet on some supported macOS versions.
         XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
-        app.typeKey(.escape,modifierFlags:[])
+        // Exercise the actual per-file Powerbox grant, outside the app's
+        // container, so publication cannot rely on a folder-wide test grant.
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniPanelExport-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)
+        defer { try? FileManager.default.removeItem(at:destination) }
+        app.typeKey("g",modifierFlags:[.command,.shift])
+        app.typeText(destination.path); app.typeKey(.return,modifierFlags:[])
+        app.buttons["Save"].click()
+        let output = destination.appendingPathComponent("Budget review.opus")
+        let saved = NSPredicate { _,_ in FileManager.default.fileExists(atPath:output.path) }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20),.completed,app.debugDescription)
+        let bytes = try Data(contentsOf:output)
+        XCTAssertEqual(bytes.prefix(4),Data("OggS".utf8))
+        XCTAssertNotNil(bytes.range(of:Data("CASSINI_FORMAT=org.cassini.portable-meeting/1".utf8)))
     }
     @MainActor func testRecordingBoard() throws {
         let app = try launch("recording",fixture:"main"); defer { app.terminate() }
