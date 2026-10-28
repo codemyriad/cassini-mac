@@ -1,4 +1,5 @@
 // swift-tools-version: 6.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 import PackageDescription
 
 let package = Package(
@@ -15,6 +16,8 @@ let package = Package(
         .library(name: "CassiniExport", targets: ["CassiniExport"]),
         .library(name: "CassiniParakeet", targets: ["CassiniParakeet"]),
         .library(name: "CassiniModels", targets: ["CassiniModels"]),
+        .library(name: "CassiniBrowserControl", targets: ["CassiniBrowserControl"]),
+        .executable(name: "cassini-control-host", targets: ["cassini-control-host"]),
         .executable(name: "cassini-parakeet-worker", targets: ["cassini-parakeet-worker"]),
         .executable(name: "cassini-model-fetch", targets: ["cassini-model-fetch"]),
         .executable(name: "cassini-whistle-worker", targets: ["cassini-whistle-worker"]),
@@ -27,6 +30,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .target(name:"CassiniBrowserControl",dependencies:["CassiniKit","CassiniLibrary"]),
+        .executableTarget(name:"cassini-control-host",dependencies:["CassiniBrowserControl"]),
+        .testTarget(name:"CassiniBrowserControlTests",dependencies:["CassiniBrowserControl","CassiniKit"]),
         .target(name:"CassiniBrowserSetupProbe",path:"Spikes/BrowserSetup/Protocol"),
         .executableTarget(name:"cassini-browser-setup-probe-client",dependencies:["CassiniBrowserSetupProbe"],path:"Spikes/BrowserSetup/Client"),
         .executableTarget(name:"cassini-browser-setup-probe-service",dependencies:["CassiniBrowserSetupProbe"],path:"Spikes/BrowserSetup/Service"),

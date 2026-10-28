@@ -1,4 +1,4 @@
-name: UX browser setup spike
+name: UX browser setup and control
 on:
   workflow_call:
     inputs:
@@ -33,6 +33,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Native control transport lifecycle
+        run: swift test --skip-build --filter CassiniBrowserControlTests
+      - name: Shared control-host vectors
+        run: |
+          python3 -m pip install -r browser-protocol/requirements-test.txt
+          python3 browser-protocol/conformance/control/run.py .build/debug/cassini-control-host
       - name: Scoped XPC registration without touching browser profiles
         run: python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
       - uses: actions/upload-artifact@v5

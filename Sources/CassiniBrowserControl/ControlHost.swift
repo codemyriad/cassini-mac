@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
+import Darwin
+import CassiniLibrary
+
+protocol ControlEndpoint: AnyObject, Sendable {
+    func send(_ data: Data) throws
+    func receive() throws -> Data?
+    func stop()
+}
+
+/// The Unix socket is only the isolated shared-conformance adapter. Production
+/// uses file-scoped IPC and never asks the sandboxed app to open a socket.
+final class TestSocketEndpoint: ControlEndpoint, @unchecked Sendable {
+    private let fd: Int32
+    private let cancellation = Cancellation()
+    private var buffer = Data()
+    init(path: String) throws {
+        var info = stat()
+        guard lstat(path,&info) == 0, info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFSOCK,
+              info.st_mode & 0o077 == 0 else { throw BrowserIPCError.unsafePath }
+        let parent = URL(fileURLWithPath:path).deletingLastPathComponent().path
+        guard lstat(parent,&info) == 0, info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFDIR,
+              info.st_mode & 0o077 == 0 else { throw BrowserIPCError.unsafePath }
+        var address = sockaddr_un(); address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let bytes = Data(path.utf8) + Data([0])
+        guard bytes.count <= MemoryLayout.size(ofValue:address.sun_path) else { throw BrowserIPCError.unsafePath }
+        _ = withUnsafeMutableBytes(of:&address.sun_path) { bytes.copyBytes(to:$0) }
+        let socketFD = socket(AF_UNIX,SOCK_STREAM,0)
+        guard socketFD >= 0 else { throw BrowserIPCError.unavailable }
+        let connected = withUnsafePointer(to:&address) { $0.withMemoryRebound(to:sockaddr.self,capacity:1) {
+            Darwin.connect(socketFD,$0,socklen_t(MemoryLayout<sockaddr_un>.size))
+        } }
+        var uid: uid_t = 0, gid: gid_t = 0
+        guard connected == 0, getpeereid(socketFD,&uid,&gid) == 0, uid == getuid() else {
+            close(socketFD); throw BrowserIPCError.unavailable
+        }
+        do { try FrameIO.prepare(socketFD) } catch { close(socketFD); throw error }
+        fd = socketFD
+    }
+    deinit { close(fd) }
+    func send(_ data: Data) throws { try FrameIO.write(fd,bytes:FrameIO.normalized(data) + Data([10]),cancel:cancellation) }
+    func receive() throws -> Data? {
+        while true {
+            if let end = buffer.firstIndex(of:10) {
+                let line = Data(buffer[..<end]); buffer.removeSubrange(...end)
+                return try FrameIO.normalized(line)
+            }
+            guard buffer.count <= FrameIO.maximum else { throw BrowserIPCError.framing }
+            try FrameIO.wait(fd,Int16(POLLIN),cancel:cancellation)
+            var bytes = [UInt8](repeating:0,count:8192)
+            let size = Darwin.read(fd,&bytes,bytes.count)
+            if size < 0 && [EAGAIN,EINTR].contains(errno) { continue }
+            if size == 0 { guard buffer.isEmpty else { throw BrowserIPCError.framing }; return nil }
+            guard size > 0 else { throw BrowserIPCError.closed }
+            buffer.append(contentsOf:bytes.prefix(size))
+        }
+    }
+    func stop() { cancellation.cancel() }
+}
+
+private final class HostState: @unchecked Sendable {
+    let cancellation = Cancellation()
+    private let lock = NSLock()
+    private var failure: String?
+    func fail(_ error: Error) { lock.lock(); if failure == nil { failure = String(describing:error) }; lock.unlock(); cancellation.cancel() }
+    func error() -> String? { lock.lock(); defer { lock.unlock() }; return failure }
+}
+
+public enum BrowserControlHost {
+    public static func run(environment: [String:String] = ProcessInfo.processInfo.environment) -> Int32 {
+        // Both framed stdout and protected pipe writes must report EPIPE rather
+        // than killing the process before its owned IPC lease can be released.
+        signal(SIGPIPE,SIG_IGN)
+        let state = HostState(), readers = DispatchGroup()
+        var endpoint: (any ControlEndpoint)?
+        do {
+            if let path = environment["CASSINI_CONTROL_SOCKET"], !path.isEmpty { endpoint = try TestSocketEndpoint(path:path) }
+            else {
+                let root = environment["CASSINI_CONTROL_PIPE_ROOT"].map { URL(fileURLWithPath:$0,isDirectory:true) } ?? PipeFiles.standardRoot
+                endpoint = try PipeEndpoint(root:root,role:.control,browser:BrowserCompanionConnection.parentBrowserName)
+            }
+            guard let connection = endpoint else { throw BrowserIPCError.unavailable }
+            try FrameIO.prepare(STDIN_FILENO); try FrameIO.prepare(STDOUT_FILENO)
+            readers.enter()
+            DispatchQueue.global(qos:.userInitiated).async {
+                defer { readers.leave(); state.cancellation.cancel() }
+                do {
+                    while !state.cancellation.isCancelled, let data = try connection.receive() {
+                        try FrameIO.writeFrame(STDOUT_FILENO,data:data,cancel:state.cancellation)
+                    }
+                } catch { if !state.cancellation.isCancelled { state.fail(error) } }
+            }
+            do {
+                while !state.cancellation.isCancelled, let data = try FrameIO.read(STDIN_FILENO,cancel:state.cancellation) {
+                    try connection.send(data)
+                }
+            } catch { if !state.cancellation.isCancelled { state.fail(error) } }
+        } catch { state.fail(error) }
+        state.cancellation.cancel(); endpoint?.stop()
+        _ = readers.wait(timeout:.now() + 2)
+        if let error = state.error() { FileHandle.standardError.write(Data(("Cassini control host: " + error + "\n").utf8)); return 78 }
+        return 0
+    }
+}
