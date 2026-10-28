@@ -207,6 +207,7 @@ public struct BrowserControlRegistry: Sendable {
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }
     }
     private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool) throws -> BrowserControlRequest {
+        guard (0...9007199254740991).contains(key.tabID) else { throw BrowserControlStateError.malformed }
         let id = UUID().uuidString.lowercased()
         var fields: [(String,JSON)] = [("type",.string("command")),("requestId",.string(id)),("action",.string(action.rawValue)),("tabId",.number(String(key.tabID)))]
         if independent { fields.append(("independent",.bool(true))) }
@@ -235,14 +236,21 @@ public struct BrowserControlRegistry: Sendable {
             guard let list = sessions.array, list.count <= 100 else { throw BrowserControlStateError.malformed }; entries = list
         } else { entries = recording ? [json] : [] }
         var found = Set<Int>()
-        return try entries.map { value in
-            let tab = try integer(value["tabId"])
-            guard let recording = value["recording"]?.bool, found.insert(tab).inserted else { throw BrowserControlStateError.malformed }
+        return try entries.compactMap { value -> BrowserCaptureStatus? in
+            guard value["tabId"] != nil, value["path"] != nil, let recording = value["recording"]?.bool else { throw BrowserControlStateError.malformed }
             let stopping = try value["stopping"].map { item -> Bool in guard let flag = item.bool else { throw BrowserControlStateError.malformed }; return flag } ?? false
             let capture = try optionalString(value["captureId"],maximum:128)
             guard capture?.isEmpty != true else { throw BrowserControlStateError.malformed }
             _ = try string(value["message"],maximum:2000)
-            return .init(key:.init(peer:peer,tabID:tab),captureID:capture,path:try optionalString(value["path"],maximum:4096),recording:recording,stopping:stopping,tracks:try value["tracks"].map { try integer($0) } ?? 0)
+            let path = try optionalString(value["path"],maximum:4096)
+            let tracks = try value["tracks"].map { try integer($0) } ?? 0
+            // v1 permits an unknown tab. Such a status is advisory, not an
+            // actionable meeting key; inactive entries cannot reserve a tab.
+            guard value["tabId"]?.isNull != true else { return nil }
+            let tab = try integer(value["tabId"])
+            guard found.insert(tab).inserted else { throw BrowserControlStateError.malformed }
+            guard recording || stopping else { return nil }
+            return .init(key:.init(peer:peer,tabID:tab),captureID:capture,path:path,recording:recording,stopping:stopping,tracks:tracks)
         }
     }
 }

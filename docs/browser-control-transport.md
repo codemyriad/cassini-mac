@@ -70,3 +70,17 @@ survives a full 128-request window, so stopping 100 pending starts sends an init
 batch and drains the remaining Stops as capacity becomes available. A failed Start
 is never blindly resent: it may already have created a capture. This state module
 is not yet connected to the app or to audio writers.
+
+`BrowserControlService` drives that state over the private FIFO server. Its callbacks
+run on the service queue; app observers must hop to the main actor. The completion
+callback's Boolean identifies an automatic request. A notification is appropriate
+only after an automatic Start completes successfully. Commands expire after 30
+seconds by retiring their management peer: fresh connection status then reconciles
+any recording that already started. This does not disconnect the separate PCM host.
+Auto-record starts disabled, and no service is launched by the app in this PR.
+
+The app vendors the coordinator-approved protocol 0.2 snapshot `206c560`. Its
+canonical extension tests run beside the canonical vectors; the installed extension
+is checked byte for byte by `verify.py`, and the Mac-only tone-window tests run
+alongside those shared tests. Shared PR16 separately fixes the independent test's
+installed-layout path and a cross-tab management stall; it awaits GNOME review.
