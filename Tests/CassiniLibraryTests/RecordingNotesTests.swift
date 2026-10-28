@@ -4,6 +4,32 @@ import Testing
 @testable import CassiniLibrary
 
 struct RecordingNotesTests {
+    @Test func insertionAtTheBodyStartKeepsTheExistingNoteTime() {
+        var notes = RecordingNotes(lines:[.init(atMs:5123,text:"First")],displayed:"00:00:05  First")
+        notes.edit("00:00:05  \nFirst",atMs:600000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:nil,text:""),.init(atMs:5123,text:"First")])
+    }
+    @Test func pastedLineBeforeAnEditedNoteDoesNotStealItsTimeOrSaveItsPrefix() {
+        var notes = RecordingNotes(lines:[.init(atMs:5123,text:"First")],displayed:"00:00:05  First")
+        notes.edit("Intro\n00:00:05  First updated",atMs:20000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:20000,text:"Intro"),.init(atMs:5123,text:"First updated")])
+    }
+    @Test func undoAndRedoRestoreExactMillisecondsWhileRetypingStartsANewNote() {
+        var notes = RecordingNotes(lines:[.init(atMs:12345,text:"First"),.init(atMs:33456,text:"Second")],displayed:"00:00:12  First\n00:00:33  Second")
+        notes.edit("",atMs:40000,prefix:stamp)
+        notes.edit("00:00:12  First\n00:00:33  Second",atMs:45000,restoration:.undo,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:12345,text:"First"),.init(atMs:33456,text:"Second")])
+        notes.edit("",atMs:50000,restoration:.redo,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:nil,text:"")])
+        notes.edit("First",atMs:55000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:55000,text:"First")])
+    }
+    @Test func retypingBeforeBlurKeepsTheOldPrefixOutOfTheNewBody() {
+        var notes = RecordingNotes(lines:[.init(atMs:5123,text:"First")],displayed:"00:00:05  First")
+        notes.edit("00:00:05  ",atMs:10000,prefix:stamp)
+        notes.edit("00:00:05  Again",atMs:23000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:23000,text:"Again")])
+    }
     @Test func clearingANoteClearsItsTimeAndRetypingPinsANewTime() {
         var notes = RecordingNotes(lines:[],displayed:"")
         notes.edit("A",atMs:5000,prefix:stamp)

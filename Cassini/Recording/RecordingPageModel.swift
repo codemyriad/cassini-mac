@@ -116,7 +116,9 @@ private actor RecordingEdits {
     }
     func changeNotes() {
         guard !frozen else { return }
-        notes.edit(notesText,atMs:elapsedMs) { LibraryFormat.position($0) + "  " }
+        let undo = (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
+        let restoration: RecordingNotes.Restoration? = undo?.isUndoing == true ? .undo : (undo?.isRedoing == true ? .redo : nil)
+        notes.edit(notesText,atMs:elapsedMs,restoration:restoration) { LibraryFormat.position($0) + "  " }
         notesDirty = true; scheduleNotes()
     }
     func formatNotes() {
