@@ -114,6 +114,26 @@ struct MeetingExportTests {
         #expect(result.manifest?.meeting.recordedAtLocal == recorded)
         #expect(result.manifest?.meeting.createdAtUtc != "2020-01-02T03:04:05Z")
     }
+    @Test func ordinaryAudioTitleTagsStillSurviveBothOpenAndImport() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        var packet = Data("OpusTags".utf8)
+        func number(_ value: UInt32) { var value = value.littleEndian; withUnsafeBytes(of:&value) { packet.append(contentsOf:$0) } }
+        number(0); number(1)
+        let comment = Data("TITLE=Ordinary audio title".utf8); number(UInt32(comment.count)); packet.append(comment)
+        let input = root.appendingPathComponent("Ordinary.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:source),tags:packet,to:input)
+        let file = try CassiniReader.read(contentsOf:input)
+        #expect(file.state == .plainAudio)
+        let external = MeetingPresentation.external(file,url:input)
+        let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        for meeting in [external,imported] {
+            let artifact = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let exported = try CassiniReader.read(contentsOf:artifact.url)
+            #expect(exported.manifest?.meeting.title == "Ordinary audio title")
+            #expect(exported.manifest?.meeting.recordedAtLocal == nil)
+        }
+    }
     private func evidence(_ artifact: ExportArtifact, name: String) throws {
         guard let path = ProcessInfo.processInfo.environment["CASSINI_EXPORT_REPORT_DIR"] else { return }
         let root = URL(fileURLWithPath:path)

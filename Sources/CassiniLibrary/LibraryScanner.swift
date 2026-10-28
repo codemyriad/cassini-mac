@@ -132,6 +132,7 @@ public struct LibraryScanner: Sendable {
             } catch { meeting.issues.append(.invalidAudio) }
             titleCandidates.append((receivedMetadata.originalName as NSString).deletingPathExtension)
             meeting.exportTitle = [metadata?.title,file?.state == .ok ? file?.manifest?.meeting.title : nil,
+                file?.state == .plainAudio ? file?.tags?["TITLE"] : nil,
                 (receivedMetadata.originalName as NSString).deletingPathExtension]
                 .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
             if meeting.start == nil { meeting.start = Date(timeIntervalSince1970: Double(receivedMetadata.importedAtMs) / 1000) }
