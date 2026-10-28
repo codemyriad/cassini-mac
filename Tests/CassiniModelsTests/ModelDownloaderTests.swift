@@ -32,7 +32,7 @@ private final class Server: @unchecked Sendable {
 private func fails(_ run: () async throws -> Void) async -> Error? { do { try await run(); Issue.record("Expected failure"); return nil } catch { return error } }
 
 @Suite struct ModelDownloaderTests {
-    @Test(arguments:["normal","no-length"]) func installVerifyNoNetworkReuseAndRemove(_ scenario: String) async throws {
+    @Test(arguments:["normal","no-length"]) func installVerifyReuseWithoutArtifactDownloadAndRemove(_ scenario: String) async throws {
         let server = try Server(scenario), downloader = try server.downloader()
         #expect(server.requests.isEmpty)
         let plan = try await downloader.plan(pin)
@@ -62,6 +62,15 @@ private func fails(_ run: () async throws -> Void) async -> Error? { do { try aw
         let manifest = try JSONSerialization.jsonObject(with:Data(contentsOf:Bundle.module.url(forResource:"manifest",withExtension:"json",subdirectory:"Fixtures")!)) as! [String:Any]
         let digest = (manifest["artifacts"] as! [[String:Any]])[0]["sha256"] as! String
         #expect(ranged.first?["ifRange"] as? String == "\"" + digest + "\"")
+    }
+    @Test func transientServerFailureRetainsPreviouslyValidatedPrefix() async throws {
+        let server = try Server("503"), downloader = try server.downloader()
+        _ = await fails { _ = try await downloader.install(pin) }
+        let error = await fails { _ = try await downloader.install(pin) }
+        #expect(error as? ModelDownloadError == .response)
+        _ = try await downloader.install(pin)
+        let ranges = server.requests.compactMap { $0["range"] as? String }
+        #expect(ranges.count == 2 && ranges[0] == ranges[1])
     }
     @Test(arguments:["changed-etag","bad-range"]) func changedIdentityNeverAppends(_ scenario: String) async throws {
         let server = try Server(scenario), downloader = try server.downloader()

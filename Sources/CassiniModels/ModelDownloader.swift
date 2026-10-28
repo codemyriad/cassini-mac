@@ -186,6 +186,7 @@ public actor ModelDownloader {
             do {
                 let response = try await ModelHTTP.transfer(request,to:file,limit:asset.compressedBytes) { response in
                     if response.statusCode == 416 && existing > 0 { return .ignore }
+                    guard response.statusCode == 200 || response.statusCode == 206 else { throw ModelDownloadError.response }
                     guard response.value(forHTTPHeaderField:"ETag") == etag else { throw ModelDownloadError.etag }
                     let length = response.value(forHTTPHeaderField:"Content-Length").flatMap(UInt64.init)
                     if response.statusCode == 200 {
@@ -209,7 +210,7 @@ public actor ModelDownloader {
             } catch let error as ModelDownloadError {
                 // Invalid identity/headers/hash are not resumable. A transport
                 // truncation/cancel keeps the bounded immutable-object prefix.
-                if error != .truncated { try? FileManager.default.removeItem(at:file) }
+                if error != .truncated && error != .response { try? FileManager.default.removeItem(at:file) }
                 throw error
             }
         }

@@ -30,6 +30,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
    first=not state['truncated'];state['truncated']=True
   if a.scenario=='redirect':self.send_response(302);self.send_header('Location','http://example.invalid/model.zst');self.end_headers();return
   ranged=self.headers.get('Range')
+  if ranged and a.scenario=='503' and state['artifacts']==2:self.send_error(503);return
   if ranged and a.scenario=='416':self.send_response(416);self.send_header('Content-Range',f'bytes */{len(data)}');self.end_headers();return
   if ranged and a.scenario!='ignore-range':offset=int(ranged.removeprefix('bytes=').removesuffix('-'))
   self.send_response(206 if offset else 200)
@@ -39,7 +40,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   if offset:self.send_header('Content-Range',f'bytes {offset}-{len(data)-1}/{len(data)}' if a.scenario!='bad-range' else 'bytes 0-1/2')
   self.end_headers()
   if a.scenario=='compressed-hash':data=bytes([data[0]^1])+data[1:]
-  truncating=a.scenario in ('truncated','416','changed-etag','ignore-range','bad-range') and first
+  truncating=a.scenario in ('truncated','416','changed-etag','ignore-range','bad-range','503') and first
   if truncating:
    self.wfile.write(data[:len(data)//2]);self.wfile.flush();time.sleep(.15);self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
   if a.scenario=='slow':
