@@ -142,20 +142,34 @@ struct LibrarySearchField: NSViewRepresentable {
     var onChange: () -> Void
     var onCancel: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
+    func makeNSView(context: Context) -> FocusableSearchField {
+        let field = FocusableSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
         field.font = NSFont.systemFont(ofSize:13)
         field.placeholderString = UXText.text("search.field.placeholder"); field.setAccessibilityLabel(UXText.text("search.field.a11y"))
         field.setAccessibilityIdentifier("library-search-field")
         if let cell = field.cell as? NSSearchFieldCell { cell.cancelButtonCell?.target = context.coordinator; cell.cancelButtonCell?.action = #selector(Coordinator.cancel) }
         return field
     }
-    func updateNSView(_ view: NSSearchField, context: Context) {
+    func updateNSView(_ view: FocusableSearchField, context: Context) {
         context.coordinator.parent = self
         if view.stringValue != text { view.stringValue = text }
         if focusRequest != context.coordinator.focused {
             context.coordinator.focused = focusRequest
-            if focusRequest > 0 { DispatchQueue.main.async { if let window = view.window { window.makeFirstResponder(view) } } }
+            if focusRequest > 0 { view.requestFocus() }
+        }
+    }
+    // SwiftUI may update the field before attaching it to a window. Retain the
+    // request until attachment rather than losing Cmd-F's keyboard focus.
+    final class FocusableSearchField: NSSearchField {
+        private var needsFocus = false
+        func requestFocus() { needsFocus = true; applyFocus() }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyFocus() }
+        private func applyFocus() {
+            guard needsFocus, window != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.needsFocus, let window = self.window else { return }
+                if window.makeFirstResponder(self) { self.needsFocus = false }
+            }
         }
     }
     final class Coordinator: NSObject, NSSearchFieldDelegate {

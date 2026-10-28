@@ -18,7 +18,7 @@ struct AppCommands: Commands {
                 else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryLaunchContext.current.root) }
             }.keyboardShortcut("r", modifiers: .command).disabled(RecordingController.shared.isSaving)
         }
-        CommandGroup(after: .saveItem) {
+        CommandGroup(after: .newItem) {
             Button(UXText.text("common.exportEllipsis")) { if let meeting = exportMeeting { MeetingExportCoordinator.shared.show(meeting) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!MeetingExportCoordinator.canExport(exportMeeting))
         }

@@ -45,15 +45,15 @@ struct LibraryView: View {
         .toolbar {
             if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
                 ToolbarItem(placement:.navigation) {
-                    HStack(spacing:12) {
-                        Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
-                            .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("recording-back")
-                        if recorder.isRecording, let started = recorder.startedAt {
-                            LiveRecordingPill(started:started,microphone:recorder.levels["microphone",default:0],output:recorder.levels["output",default:0])
-                        } else if store.context.screenshot {
-                            LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
-                        } else { ProgressView().controlSize(.small) }
-                    }
+                    Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
+                        .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("recording-back")
+                }
+                ToolbarItem(placement:.navigation) {
+                    if recorder.isRecording, let started = recorder.startedAt {
+                        LiveRecordingPill(started:started,microphone:recorder.levels["microphone",default:0],output:recorder.levels["output",default:0])
+                    } else if store.context.screenshot {
+                        LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
+                    } else { ProgressView().controlSize(.small) }
                 }
                 ToolbarItem(placement:.principal) {
                     Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold)).lineLimit(1)
@@ -183,6 +183,7 @@ struct LibraryView: View {
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
+                                .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
                                 .onTapGesture(count:2) { if meeting.state.lifecycle != .saved { navigation.open(meeting) } }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)

@@ -57,6 +57,9 @@ struct RecordingStatusMenu: View {
         TimelineView(.periodic(from:.now,by:1)) { _ in
             let payload = RecordingMenuPayload(recorder:recorder,runtime:RecordingRuntime.shared)
             VStack(alignment:.leading,spacing:8) {
+                #if DEBUG
+                if RecordingFixture.enabled { RecordingMenuFixturePayload(json:payload.json).frame(width:1,height:1).opacity(0.01) }
+                #endif
                 VStack(alignment:.leading,spacing:4) {
                     Text(payload.header).fontWeight(.bold)
                     Text(payload.title).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).lineLimit(2)
@@ -103,3 +106,16 @@ struct RecordingStatusMenu: View {
         else { button }
     }
 }
+
+#if DEBUG
+/// AXGroup has no reliable value on macOS15. Expose the actual debug payload
+/// through a native read-only text node, absent from Release and normal launches.
+private struct RecordingMenuFixturePayload: NSViewRepresentable {
+    let json: String
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(labelWithString:json)
+        field.setAccessibilityIdentifier("recording-menu-fixture-payload"); return field
+    }
+    func updateNSView(_ field: NSTextField, context: Context) { field.stringValue = json }
+}
+#endif

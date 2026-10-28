@@ -80,7 +80,11 @@ private actor RecordingEdits {
     var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }
     func changeTitle() {
         title = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500)))
-        guard !frozen else { return }; titleDirty = true; scheduleTitle()
+        guard !frozen else { return }
+        // Publish the current user input immediately; persistence is debounced.
+        // Older writes cannot replace this value after a later binding update.
+        if native { RecordingController.shared.title = displayTitle }
+        titleDirty = true; scheduleTitle()
     }
     func changeNotes() {
         guard !frozen else { return }

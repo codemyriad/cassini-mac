@@ -41,12 +41,13 @@ struct RecordingPageView: View {
                 if let line = recorder.diskLine { Text(line).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
                 VStack(alignment:.leading,spacing:6) {
                     caption("recording.title.label")
-                    TextField("",text:$model.title).textFieldStyle(.plain).font(.system(size:16)).padding(.horizontal,12).frame(height:40)
+                    TextField("",text:Binding(get:{ model.title },set:{ value in
+                        model.title = value; model.changeTitle()
+                    })).textFieldStyle(.plain).font(.system(size:16)).padding(.horizontal,12).frame(height:40)
                         .background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:6))
                         .overlay { RoundedRectangle(cornerRadius:6).stroke(Color.secondary.opacity(0.25)) }
                         .focused($titleFocused).accessibilityLabel(UXText.text("recording.title.label")).accessibilityIdentifier("recording-title")
                         .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
-                        .onChange(of:model.title) { _,_ in model.changeTitle() }
                     if detail.meeting.isBrowserCapture {
                         Text(UXText.text("recording.title.caption")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
                     }
@@ -62,12 +63,13 @@ struct RecordingPageView: View {
                     .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(Color.secondary.opacity(0.25)) }
                 VStack(alignment:.leading,spacing:6) {
                     caption("recording.notes.label")
-                    TextEditor(text:$model.notesText).font(.system(size:13)).monospacedDigit().scrollContentBackground(.hidden)
+                    TextEditor(text:Binding(get:{ model.notesText },set:{ value in
+                        model.notesText = value; model.changeNotes()
+                    })).font(.system(size:13)).monospacedDigit().scrollContentBackground(.hidden)
                         .padding(8).frame(height:80).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:6))
                         .overlay { RoundedRectangle(cornerRadius:6).stroke(Color.secondary.opacity(0.25)) }
                         .focused($notesFocused).accessibilityLabel(UXText.text("recording.notes.label")).accessibilityIdentifier("recording-notes")
                         .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
-                        .onChange(of:model.notesText) { _,_ in if notesFocused { model.changeNotes() } }
                     Text(UXText.text("recording.notes.caption")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
                 }
             }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
