@@ -96,7 +96,8 @@ final class TranscriptionMeetingTests: XCTestCase {
                 try MeetingTranscriber.run(directory:folder,engine:engine,detector:detector)
             })
         }
-        let deadline = Date().addingTimeInterval(30); var sawMixedProgress = false
+        // Hosted Intel must finish real FIR/VAD/recognition, not a timer stub.
+        let deadline = Date().addingTimeInterval(120); var sawMixedProgress = false
         while outcome.snapshot() == nil, Date() < deadline {
             if let data = try? Data(contentsOf:sidecar), let body = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
                let words = body["items"] as? [[String:Any]], words.count > 1,
