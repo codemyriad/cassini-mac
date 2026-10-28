@@ -80,6 +80,12 @@ import CassiniRecording
             editor.notesText = "Browser note"; editor.changeNotes(); await RecordingPageModel.flushAll()
             let noted = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("browser note")
             try require((noted.notes.first?.atMs ?? 0) >= elapsed + 1000,"browser notes use advancing time")
+            let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.saving]))
+                .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
+            editor.update(saving)
+            let savingTime = editor.elapsedMs
+            try await Task.sleep(for:.milliseconds(60))
+            try require(savingTime >= elapsed + 1000 && editor.elapsedMs == savingTime,"browser Saving holds the last recording time")
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))

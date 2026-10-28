@@ -69,7 +69,7 @@ private actor RecordingEdits {
         let displayed = initial.map { UXText.text("recording.notes.entry", ["position":LibraryFormat.position($0.atMs ?? 0),"text":$0.text]) }.joined(separator: "\n")
         notesText = displayed
         notes = RecordingNotes(lines:initial,displayed:displayed)
-        liveElapsed = meeting.state.liveMs ?? 0
+        liveElapsed = meeting.state.liveMs ?? meeting.durationMs ?? 0
         #if DEBUG
         frozen = LibraryLaunchContext.current.screenshot
         #endif
@@ -99,7 +99,7 @@ private actor RecordingEdits {
     var native: Bool { RecordingController.shared.directory?.lastPathComponent == meeting.libraryKey }
     var elapsedMs: Int64 {
         if native { return RecordingController.shared.elapsedMs }
-        if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? 0 }
+        if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? liveElapsed }
         return liveElapsed + Int64(max(0,ProcessInfo.processInfo.systemUptime - liveAnchor) * 1000)
     }
     var microphone: Float { native ? RecordingController.shared.levels["microphone",default:0] : 0 }
