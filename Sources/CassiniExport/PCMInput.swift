@@ -42,7 +42,8 @@ final class PCMInput {
         let (count,addOverflow) = whole.addingReportingOverflow((rest * 48000 + Int64(rate) - 1) / Int64(rate))
         guard !addOverflow else { throw MeetingExportError.tooLarge }; outputFrames = count
         if frameCount > 0 {
-            guard let ms = track.startOffsetMs, ms.isFinite, ms >= 0, ms <= 9_007_199_254_740_991 else { throw MeetingExportError.invalidSource }
+            let ms = track.startOffsetMs ?? 0 // D19: marked as assumed in export provenance.
+            guard ms.isFinite, ms >= 0, ms <= 9_007_199_254_740_991 else { throw MeetingExportError.invalidSource }
             offsetFrames = Int64((ms * 48).rounded(.toNearestOrAwayFromZero))
         } else { offsetFrames = 0 }
         guard outputFrames <= Int64.max - offsetFrames - 960 else { throw MeetingExportError.tooLarge }
@@ -108,7 +109,15 @@ final class PCMInput {
         }
         if let failed { throw failed }
         if let error { throw error }
-        guard status != .error, let data = output.floatChannelData, output.frameLength > 0 else { throw MeetingExportError.invalidSource }
+        guard status != .error else { throw MeetingExportError.invalidSource }
+        if output.frameLength == 0 {
+            // A converter can drain a fraction short of the integer timeline.
+            // Only a clean EOF after all physical input permits silent padding.
+            guard status == .endOfStream, inputRemaining == 0 else { throw MeetingExportError.invalidSource }
+            let count = min(8192,Int(outputRemaining)); outputRemaining -= Int64(count)
+            return [Float](repeating:0,count:count)
+        }
+        guard let data = output.floatChannelData else { throw MeetingExportError.invalidSource }
         let count = min(Int(outputRemaining),Int(output.frameLength)); outputRemaining -= Int64(count)
         return Array(UnsafeBufferPointer(start:data[0],count:count))
     }

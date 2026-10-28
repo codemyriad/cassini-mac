@@ -8,6 +8,51 @@ import CassiniRecording
 @testable import CassiniExport
 
 struct MeetingExportTests {
+    @Test(arguments:[8000,11025,16000,22050,24000,44100,48000,96000])
+    func resamplerEOFProducesTheExactTimelineEvenForFractionalAndShortInputs(rate: Int) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        for count in [1,2,3,17,127,511,512,1023,1024,rate / 5 + 1,rate * 3 + 17] {
+            let session = try RecordingSession(parent:root,title:"Fractional tail",source:"macos")
+            try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:rate,channels:1)
+            for at in stride(from:0,to:count,by:8192) {
+                try session.appendNative(id:"mic",pcm:Data(repeating:1,count:min(8192,count - at) * 2),offsetMs:Double(at) * 1000 / Double(rate))
+            }
+            try session.finish()
+            let track = LibraryAudioTrack(url:session.directory.appendingPathComponent(session.manifest.tracks[0].file),startOffsetMs:0,frameCount:UInt64(count))
+            let input = try PCMInput(track)
+            let expected = Int64(ceil(Double(count) * 48000 / Double(rate)))
+            #expect(input.outputFrames == expected)
+            var position: Int64 = 0
+            while position < expected {
+                var block = [Float](repeating:0,count:Int(min(127,expected - position)))
+                try input.add(to:&block,position:position)
+                #expect(block.allSatisfy { $0.isFinite })
+                position += Int64(block.count)
+            }
+            #expect(position == expected)
+        }
+    }
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func salvagedSessionExportsWithoutInventingADateOrOffset() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Lost manifest",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:0,count:32000),offsetMs:100); try session.finish()
+        try FileManager.default.removeItem(at:session.directory.appendingPathComponent("session.json"))
+        let recovered = try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(recovered.start == nil && recovered.audioTracks.first?.startOffsetMs == nil)
+        let before = Date().addingTimeInterval(-1)
+        let artifact = try MeetingFileExporter.cassini(recovered,assets:assets(),temporaryRoot:root)
+        try evidence(artifact,name:"salvaged")
+        let file = try CassiniReader.read(contentsOf:artifact.url)
+        #expect(file.state == .ok && file.manifest?.audio.sampleCount == 48000)
+        #expect(file.manifest?.meeting.recordedAtLocal == nil)
+        #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"]?["offsetsAssumedZero"] == .bool(true))
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        let stamp = try #require(file.manifest?.meeting.createdAtUtc)
+        let stamped = try #require(iso.date(from:stamp))
+        #expect(stamped >= before && stamped <= Date())
+    }
     private func evidence(_ artifact: ExportArtifact, name: String) throws {
         guard let path = ProcessInfo.processInfo.environment["CASSINI_EXPORT_REPORT_DIR"] else { return }
         let root = URL(fileURLWithPath:path)
@@ -87,6 +132,8 @@ struct MeetingExportTests {
         let file = try CassiniReader.read(contentsOf:artifact.url)
         let digest = try #require(try file.audioDigest?.get())
         #expect(file.state == .ok && digest.channels == 1 && digest.sampleCount == 30000)
+        #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"] == nil)
+        #expect(file.manifest?.meeting.recordedAtLocal != nil)
         #expect(file.manifest?.raw["audioEncode"]?["bitrateBps"]?.int == (rate == 48000 ? 64000 : rate == 16000 ? 32000 : 16000))
         let decoder = try AVAudioFile(forReading:artifact.url,commonFormat:.pcmFormatFloat32,interleaved:false)
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat:decoder.processingFormat,frameCapacity:40000))
