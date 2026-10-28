@@ -1,0 +1,114 @@
+name: Build shared CI products
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build products (${{ matrix.arch }}, Xcode 16.4)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: swift --version
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Whistle/pins.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}
+          restore-keys: swiftpm-${{ matrix.arch }}-xcode16.4-
+      - name: Compile all native Swift executables and test bundles once
+        run: swift build --build-tests
+      - run: python3 scripts/ci-products.py pack swiftpm build/ci-upload/swiftpm
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ci-swiftpm-${{ matrix.arch }}
+          path: build/ci-upload/swiftpm
+          retention-days: 3
+          compression-level: 0
+      - uses: actions/cache@v4
+        if: matrix.arch == 'arm64'
+        with:
+          path: |
+            build/whistle-downloads
+            build/vad-downloads
+            build/opus-downloads
+            ~/Library/Caches/Homebrew
+          key: pinned-fetches-xcode16.4-${{ hashFiles('Whistle/pins.json', 'scripts/fetch-*.py', 'project.yml') }}
+      - name: Install build tools
+        if: matrix.arch == 'arm64'
+        run: brew install cmake xcodegen
+      - name: Verify pins and build universal offline assets once
+        if: matrix.arch == 'arm64'
+        run: |
+          python3 scripts/fetch-whistle.py --output build/Whistle
+          python3 scripts/fetch-vad.py --output build/Whistle
+          python3 scripts/fetch-opus.py --output build/Opus
+          python3 scripts/ci-products.py pack assets build/ci-upload/assets
+      - uses: actions/upload-artifact@v5
+        if: matrix.arch == 'arm64'
+        with:
+          name: ci-assets
+          path: build/ci-upload/assets
+          retention-days: 3
+          compression-level: 0
+      - name: Prepare identical bundled Library fixtures
+        if: matrix.arch == 'arm64'
+        run: |
+          python3 Tests/CassiniLibraryTests/LibraryVectors/make.py UITests/Fixtures/Library
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          for case in Path('UITests/Fixtures/Library').iterdir():
+              if case.name not in ('main', 'empty', 'first-record', 'received-only'): shutil.rmtree(case)
+          PY
+          xcodegen generate
+      - name: Build universal app and UI test bundles once
+        if: matrix.arch == 'arm64'
+        env:
+          CASSINI_CI_ASSETS: ${{ github.workspace }}/build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing -project Cassini.xcodeproj -scheme CassiniScreenshots -configuration Debug \
+            -destination 'platform=macOS' -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/debug-build.log
+          codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
+          python3 scripts/ci-products.py pack debug build/ci-upload/debug
+      - uses: actions/upload-artifact@v5
+        if: matrix.arch == 'arm64'
+        with:
+          name: ci-debug
+          path: build/ci-upload/debug
+          retention-days: 3
+          compression-level: 0
+      - name: Build universal Release app once
+        if: matrix.arch == 'arm64'
+        env:
+          CASSINI_CI_ASSETS: ${{ github.workspace }}/build
+        run: |
+          set -o pipefail
+          xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Release \
+            -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/release-build.log
+          codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
+          python3 scripts/ci-products.py pack release build/ci-upload/release
+      - uses: actions/upload-artifact@v5
+        if: matrix.arch == 'arm64'
+        with:
+          name: ci-release
+          path: build/ci-upload/release
+          retention-days: 3
+          compression-level: 0
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: build-diagnostics-${{ matrix.arch }}
+          path: build/*build.log

@@ -1,9 +1,14 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 # Xcode build step. No downloading happens in Cassini or the worker at runtime.
 staging="$DERIVED_FILE_DIR/Whistle"
-python3 "$SRCROOT/scripts/fetch-whistle.py" --output "$staging"
-python3 "$SRCROOT/scripts/fetch-vad.py" --output "$staging"
+if [ -n "${CASSINI_CI_ASSETS:-}" ]; then
+    python3 "$SRCROOT/scripts/ci-products.py" stage-assets Whistle "$staging"
+else
+    python3 "$SRCROOT/scripts/fetch-whistle.py" --output "$staging"
+    python3 "$SRCROOT/scripts/fetch-vad.py" --output "$staging"
+fi
 destination="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Whistle"
 frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
 mkdir -p "$destination" "$frameworks"

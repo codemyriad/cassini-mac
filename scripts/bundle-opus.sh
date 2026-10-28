@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 staging="$DERIVED_FILE_DIR/Opus"
-python3 "$SRCROOT/scripts/fetch-opus.py" --output "$staging"
+if [ -n "${CASSINI_CI_ASSETS:-}" ]; then
+    python3 "$SRCROOT/scripts/ci-products.py" stage-assets Opus "$staging"
+else
+    python3 "$SRCROOT/scripts/fetch-opus.py" --output "$staging"
+fi
 destination="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Opus"
 frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
 mkdir -p "$destination" "$frameworks"

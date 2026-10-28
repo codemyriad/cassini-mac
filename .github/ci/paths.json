@@ -1,0 +1,72 @@
+{
+  "shot": [
+    "Cassini/**",
+    "UITests/**",
+    "project.yml",
+    "scripts/check-window-screenshots.py",
+    ".github/workflows/ux-shot.yml"
+  ],
+  "board_shot": [
+    "Cassini/**",
+    "UITests/**",
+    "project.yml",
+    "scripts/hosted-display.py",
+    "scripts/check-window-screenshots.py",
+    ".github/workflows/ux-board-shot.yml"
+  ],
+  "boards": [
+    "Cassini/**",
+    "UITests/**",
+    "Sources/CassiniLibrary/**",
+    "Sources/CassiniSearch/**",
+    "Sources/CassiniExport/**",
+    "Sources/CassiniOpus/**",
+    "scripts/*opus*",
+    "project.yml",
+    "scripts/export-ux-boards.py",
+    "scripts/test-recording-comfort.py",
+    ".github/workflows/ux-boards.yml"
+  ],
+  "exports": [
+    "Sources/**",
+    "Tests/CassiniExportTests/**",
+    "Tests/CassiniLibraryTests/ExportGolden/**",
+    "Tests/CassiniKitTests/**",
+    "Opus/**",
+    "scripts/*opus*",
+    "scripts/check-export-reference.py",
+    "Package.swift",
+    ".github/workflows/ux-export.yml"
+  ],
+  "library": [
+    "Sources/CassiniLibrary/**",
+    "Sources/CassiniSearch/**",
+    "Tests/CassiniSearchTests/**",
+    "Sources/CassiniLibraryWatchers/**",
+    "Tests/CassiniLibraryTests/**",
+    "Package.swift",
+    ".github/workflows/ux-model.yml"
+  ],
+  "whistle": [
+    "Whistle/**",
+    "Opus/**",
+    "Sources/CassiniExport/**",
+    "Sources/CassiniOpus/**",
+    "Cassini/Export/**",
+    "scripts/*opus*",
+    "scripts/test-export-sandbox.py",
+    "Sources/CassiniWhistle/**",
+    "Sources/CassiniTranscription/**",
+    "Sources/CassiniVAD/**",
+    "Tests/CassiniTranscriptionTests/**",
+    "scripts/fetch-vad.py",
+    "Sources/cassini-whistle-worker/**",
+    "Tests/CassiniWhistleTests/**",
+    "Cassini/WhistleSelfTest.swift",
+    "Cassini/AppDelegate.swift",
+    "project.yml",
+    "Package.swift",
+    "scripts/*whistle*",
+    ".github/workflows/ux-whistle.yml"
+  ]
+}

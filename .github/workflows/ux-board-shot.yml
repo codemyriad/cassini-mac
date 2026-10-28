@@ -1,20 +1,16 @@
 name: UX board-size screenshot spike
-
-on:
-  pull_request:
-    paths:
-      - 'Cassini/**'
-      - 'UITests/**'
-      - 'project.yml'
-      - 'scripts/hosted-display.py'
-      - 'scripts/check-window-screenshots.py'
-      - '.github/workflows/ux-board-shot.yml'
-
-concurrency:
-  group: ux-board-shot-${{ github.ref }}
-  cancel-in-progress: true
-
+'on':
+  workflow_call:
+    inputs:
+      products_ready:
+        type: boolean
+        default: false
+        description: Caller already produced same-run build artifacts
+  workflow_dispatch: null
 jobs:
+  build:
+    if: ${{ !inputs.products_ready }}
+    uses: ./.github/workflows/ci-build.yml
   board-screenshots:
     name: Board-size capture ${{ matrix.attempt }}
     runs-on: macos-15
@@ -22,54 +18,57 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2]
+        attempt:
+        - 1
+        - 2
     steps:
-      - uses: actions/checkout@v5
-      - name: Require GitHub-hosted runner
-        run: test "$RUNNER_ENVIRONMENT" = github-hosted
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app
-      - name: Install capture tools
-        run: brew install cmake xcodegen displayplacer
-      - name: Select and verify a larger display mode
-        run: |
-          set -o pipefail
-          mkdir -p build
-          system_profiler SPDisplaysDataType > build/display-system.txt
-          python3 scripts/hosted-display.py 2>&1 | tee build/display-mode.log
-      - name: Generate project
-        run: xcodegen generate
-      - name: Capture 1120 by 720 windows and sheet
-        env:
-          TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
-          TEST_RUNNER_CASSINI_SCREENSHOT_SIZE: '1120x720'
-        run: |
-          set -o pipefail
-          xcodebuild test -project Cassini.xcodeproj -scheme CassiniScreenshots \
-            -configuration Debug -destination 'platform=macOS' -parallel-testing-enabled NO \
-            -derivedDataPath build -resultBundlePath build/BoardScreenshots.xcresult \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/window-tests.log
-      - name: Export window PNGs
-        if: always()
-        run: |
-          if test -d build/BoardScreenshots.xcresult; then
-            xcrun xcresulttool export attachments --path build/BoardScreenshots.xcresult \
-              --output-path build/window-screenshots
-          fi
-      - name: Require exact board-size PNGs
-        run: python3 scripts/check-window-screenshots.py build/window-screenshots 1120x720
-      - uses: actions/upload-artifact@v5
-        if: always()
-        with:
-          name: board-screenshots-${{ matrix.attempt }}-${{ github.sha }}
-          path: |
-            build/window-screenshots/*.png
-            build/window-screenshots/manifest.json
-            build/window-tests.log
-            build/display-*
-      - uses: actions/upload-artifact@v5
-        if: failure()
-        with:
-          name: board-screenshot-diagnostics-${{ matrix.attempt }}-${{ github.sha }}
-          path: build/BoardScreenshots.xcresult
-          if-no-files-found: ignore
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        debug: 'true'
+    - name: Require GitHub-hosted runner
+      run: test "$RUNNER_ENVIRONMENT" = github-hosted
+    - name: Install capture tools
+      run: brew install displayplacer
+    - name: Select and verify a larger display mode
+      run: |
+        set -o pipefail
+        mkdir -p build
+        system_profiler SPDisplaysDataType > build/display-system.txt
+        python3 scripts/hosted-display.py 2>&1 | tee build/display-mode.log
+    - name: Capture 1120 by 720 windows and sheet
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_SCREENSHOT_SIZE: 1120x720
+      run: |
+        set -o pipefail
+        xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -resultBundlePath build/BoardScreenshots.xcresult \
+          2>&1 | tee build/window-tests.log
+    - name: Export window PNGs
+      if: always()
+      run: |
+        if test -d build/BoardScreenshots.xcresult; then
+          xcrun xcresulttool export attachments --path build/BoardScreenshots.xcresult \
+            --output-path build/window-screenshots
+        fi
+    - name: Require exact board-size PNGs
+      run: python3 scripts/check-window-screenshots.py build/window-screenshots 1120x720
+    - uses: actions/upload-artifact@v5
+      if: always()
+      with:
+        name: board-screenshots-${{ matrix.attempt }}-${{ github.sha }}
+        path: |
+          build/window-screenshots/*.png
+          build/window-screenshots/manifest.json
+          build/window-tests.log
+          build/display-*
+    - uses: actions/upload-artifact@v5
+      if: failure()
+      with:
+        name: board-screenshot-diagnostics-${{ matrix.attempt }}-${{ github.sha }}
+        path: build/BoardScreenshots.xcresult
+        if-no-files-found: ignore
+    needs:
+    - build
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
