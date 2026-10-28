@@ -131,6 +131,9 @@ public struct LibraryScanner: Sendable {
                 }
             } catch { meeting.issues.append(.invalidAudio) }
             titleCandidates.append((receivedMetadata.originalName as NSString).deletingPathExtension)
+            meeting.exportTitle = [metadata?.title,file?.state == .ok ? file?.manifest?.meeting.title : nil,
+                (receivedMetadata.originalName as NSString).deletingPathExtension]
+                .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
             if meeting.start == nil { meeting.start = Date(timeIntervalSince1970: Double(receivedMetadata.importedAtMs) / 1000) }
         } else {
             let capture = capture(folder: folder, id: id, seen: &seen)
@@ -269,7 +272,7 @@ public struct LibraryScanner: Sendable {
                     guard wave.rate == track.sampleRate, wave.channels == track.channels else { throw MetadataError.invalid }
                     result.files.append(url)
                     result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames))
-                    if track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
+                    if wave.frames > 0, track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
                     ends.append((track.startOffsetMs ?? .zero).end(frames: wave.frames, rate: wave.rate))
                 } catch { result.issues.append(.invalidAudio) } // R4: a completed session is trusted.
             }

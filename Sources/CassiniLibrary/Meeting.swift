@@ -91,6 +91,9 @@ public struct LibraryMeeting: Sendable {
     public var libraryKey: String { folder.lastPathComponent }
     public var state: MeetingState
     public var title: String?
+    /// R6 display fallbacks may come from unverifiable tags. Received exports
+    /// use this independently trusted local/verified title or filename instead.
+    public var exportTitle: String? = nil
     public var start: Date?
     /// Display duration only; D3 substitutes zero for unknown source starts. Never playback alignment.
     public var durationMs: Int64?
