@@ -1,7 +1,7 @@
 name: UX Library boards
 on:
   pull_request:
-    paths: ['Cassini/**', 'UITests/**', 'Sources/CassiniLibrary/**', 'project.yml', 'scripts/export-ux-boards.py', '.github/workflows/ux-boards.yml']
+    paths: ['Cassini/**', 'UITests/**', 'Sources/CassiniLibrary/**', 'project.yml', 'scripts/export-ux-boards.py', 'scripts/test-recording-comfort.py', '.github/workflows/ux-boards.yml']
 concurrency:
   group: ux-boards-${{ github.ref }}
   cancel-in-progress: true
@@ -44,6 +44,9 @@ jobs:
         run: |
           xcrun xcresulttool export attachments --path build/UXBoards.xcresult --output-path build/ux-attachments
           python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
+      - name: Real recording controls without devices
+        if: always()
+        run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
       - uses: actions/upload-artifact@v5
         if: always()
         with:

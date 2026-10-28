@@ -27,7 +27,7 @@ struct LibraryLaunchContext {
             context.scansLibrary = false
         }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first"].contains(name),
+           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first", "recording"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
             context.root = URL(fileURLWithPath: path).appendingPathComponent("root")
@@ -58,6 +58,7 @@ private final class NativeActivity: CaptureActivityProviding, @unchecked Sendabl
 }
 @MainActor @Observable
 final class LibraryStore {
+    static let shared = LibraryStore()
     let context: LibraryLaunchContext
     private(set) var snapshot: LibraryScan?
     var selectedKey: String?

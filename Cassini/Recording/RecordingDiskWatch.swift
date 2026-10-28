@@ -20,7 +20,7 @@ import CassiniRecording
               let total = info[.systemSize] as? NSNumber, let free = info[.systemFreeSize] as? NSNumber else { return nil }
         return DiskBudget(total: total.uint64Value, free: free.uint64Value, bytesPerSecond: rate)
     }
-    func start(directory: URL, update: @escaping (DiskBudget) -> Void) {
+    func start(directory: URL, update: @escaping @MainActor @Sendable (DiskBudget) -> Void) {
         previous = (Date(), 0)
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {

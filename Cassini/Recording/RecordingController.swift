@@ -30,6 +30,14 @@ import Observation
     private(set) var levels: [String: Float] = [:]
     private(set) var warnings: [String] = []
     private(set) var waitingForAudio = false
+    private(set) var microphoneSilent = false
+    @ObservationIgnored private var timelineStart: TimeInterval?
+    @ObservationIgnored private var lastMicSound: TimeInterval = 0
+    @ObservationIgnored private var completedElapsedMs: Int64 = 0
+    var elapsedMs: Int64 {
+        guard isRecording, let timelineStart else { return completedElapsedMs }
+        return Int64(max(0, ProcessInfo.processInfo.systemUptime - timelineStart) * 1000)
+    }
     @ObservationIgnored var onSaved: ((URL) -> Void)?
     @ObservationIgnored private(set) var finishTask: Task<Void, Never>?
     @ObservationIgnored private var inputs: (any RecordingInputs)?
@@ -39,9 +47,13 @@ import Observation
 
     func start(parent: URL) async {
         guard canStart else { return }
+        #if DEBUG
+        guard !LibraryLaunchContext.current.screenshot || RecordingFixture.enabled else { return }
+        #endif
         SessionPlaybackController.stopAll(); PlayerController.pauseActive()
         generation += 1
         let attempt = generation
+        title = UXText.text("library.untitled")
         problem = nil; warnings = []; directory = nil; lastCompletedDirectory = nil
         phase = .starting
         let inputs: any RecordingInputs
@@ -70,7 +82,9 @@ import Observation
             #else
             writer = session
             #endif
-            let sink = RecordingSink(session: writer) { [weak self] message in
+            let origin = ProcessInfo.processInfo.systemUptime
+            timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
+            let sink = RecordingSink(session: writer, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
                 Task { @MainActor in
                     guard let self, self.generation == attempt, self.phase != .saving else { return }
                     self.stop(problem: message)
@@ -94,6 +108,9 @@ import Observation
                 MainActor.assumeIsolated {
                     guard let self, let status = self.sink?.status() else { return }
                     self.levels = status.levels; self.warnings = status.warnings
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if status.levels["microphone",default:0] >= 0.01 { self.lastMicSound = now }
+                    self.microphoneSilent = now - self.lastMicSound >= 20
                     self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5 && ["microphone", "output"].contains { status.frames[$0, default: 0] == 0 }
                 }
             }
@@ -101,6 +118,7 @@ import Observation
     }
     func stop(problem: String? = nil) {
         guard phase == .starting || phase == .recording else { return }
+        completedElapsedMs = elapsedMs
         generation += 1
         let attempt = generation
         self.problem = problem

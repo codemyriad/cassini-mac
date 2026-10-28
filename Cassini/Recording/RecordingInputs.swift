@@ -76,6 +76,7 @@ import CassiniRecording
         let format = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 1)!
         let host = origin + AVAudioTime.hostTime(forSeconds: Double(frames) / Double(rate))
         for (id, level, kind) in [("microphone", Float(0.12), "microphone"), ("output", Float(0.38), "system")] {
+            let level = id == "microphone" && LibraryLaunchContext.argument("-CassiniSilentMicrophone") == "YES" ? 0 : level
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
             buffer.frameLength = AVAudioFrameCount(count)
             for n in 0..<count {

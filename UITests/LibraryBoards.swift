@@ -9,6 +9,72 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testRecordingBoard() throws {
+        let app = try launch("recording",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(text("00:12:48",in:window))
+        XCTAssertTrue(text("Recording since 14:05 · saved as it records",in:window))
+        XCTAssertTrue(text("Listening inside your browser · 4 voices",in:window))
+        XCTAssertTrue(text("No sound from your microphone. Check your sound settings.",in:window))
+        XCTAssertTrue(window.buttons["recording-check-microphone"].exists)
+        XCTAssertFalse(window.buttons["Change what is recorded"].isEnabled)
+        let exact = NSPredicate { _,_ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exact,object:nil)],timeout:10),.completed)
+        capture(window,name:"recording")
+    }
+    @MainActor func testRecordingTitleNotesAndHiddenControls() throws {
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
+        window.sheets.checkBoxes["Don’t show again"].click()
+        window.sheets.buttons["record-first-start"].click()
+        let title = window.textFields["recording-title"]
+        XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
+        title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
+        let notes = window.textViews["recording-notes"]
+        notes.click(); notes.typeText("A note to keep")
+        window.buttons["recording-back"].click()
+        window.buttons["recording-open-current"].click()
+        XCTAssertTrue(title.waitForExistence(timeout:10))
+        XCTAssertEqual(title.value as? String,"Title from the live page")
+        XCTAssertTrue((notes.value as? String ?? "").contains("A note to keep"))
+        app.typeKey("h",modifierFlags:.command)
+        let status = app.descendants(matching:.any)["recording-menu-bar"]
+        XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription); status.click()
+        let payload = app.descendants(matching:.any)["recording-menu-payload"]
+        XCTAssertTrue(payload.waitForExistence(timeout:10),app.debugDescription)
+        let json = try XCTUnwrap(payload.value as? String)
+        let data = try XCTUnwrap(json.data(using:.utf8))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with:data) as? [String:Any])
+        XCTAssertEqual(body["assertionHeld"] as? Bool,true)
+        XCTAssertEqual(body["title"] as? String,"Title from the live page")
+        XCTAssertEqual(body["noSleep"] as? String,"Your Mac will not sleep while Cassini records.")
+        let actions = try XCTUnwrap(body["actions"] as? [[String:Any]])
+        XCTAssertEqual(actions.compactMap { $0["id"] as? String },["stop","note","open"])
+        XCTAssertEqual(actions.first?["shortcut"] as? String,"⌥⌘R")
+        let dump = XCTAttachment(data:data,uniformTypeIdentifier:"public.json")
+        dump.name = "recording-menu.json"; dump.lifetime = .keepAlways; add(dump)
+        app.buttons["recording-menu-note"].click()
+        XCTAssertTrue(notes.waitForExistence(timeout:10))
+        notes.typeText("\nFrom the hidden menu")
+        app.typeKey("h",modifierFlags:.command)
+        let finder = XCUIApplication(bundleIdentifier:"com.apple.finder"); finder.activate()
+        finder.typeKey("r",modifierFlags:[.option,.command])
+        app.activate()
+        let saved = NSPredicate { _,_ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:15),.completed,app.debugDescription)
+        XCTAssertFalse(window.buttons["recording-stop"].exists)
+        // Start from another app too; persisted first-record consent is reused.
+        app.typeKey("h",modifierFlags:.command); finder.activate()
+        finder.typeKey("r",modifierFlags:[.option,.command]); app.activate()
+        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertFalse(window.sheets.firstMatch.exists)
+        window.buttons["recording-stop"].click()
+    }
     @MainActor func testRecordFirstBoard() throws {
         let app = try launch("record-first", fixture: "first-record"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
@@ -100,7 +166,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout: 10))
         window.sheets.buttons["record-first-start"].click()
         XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
-        let speech = NSPredicate { _, _ in self.text("0:05", in: window) || self.text("0:06", in: window) }
+        let speech = NSPredicate { _, _ in self.text("0:05", in: window) || self.text("0:06", in: window) || window.buttons["recording-open-current"].label == "0:05" || window.buttons["recording-open-current"].label == "0:06" }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: speech, object: nil)], timeout: 10), .completed)
         window.buttons["recording-stop"].click()
         let retry = window.buttons["Try again"]
@@ -125,7 +191,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
         window.sheets.buttons["record-first-start"].click()
         XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10))
-        let speech = NSPredicate { _,_ in self.text("0:05",in:window) || self.text("0:06",in:window) }
+        let speech = NSPredicate { _,_ in self.text("0:05",in:window) || self.text("0:06",in:window) || window.buttons["recording-open-current"].label == "0:05" || window.buttons["recording-open-current"].label == "0:06" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:speech,object:nil)],timeout:10),.completed)
         window.buttons["recording-stop"].click()
         XCTAssertTrue(window.staticTexts["Transcribing…"].waitForExistence(timeout:10),app.debugDescription)
@@ -276,6 +342,9 @@ final class LibraryBoards: XCTestCase {
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
                                "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
         app.launchArguments += extra
+        if extra.contains("--fixture-library-recording"), !extra.contains("-CassiniDiskFree") {
+            app.launchArguments += ["-CassiniDiskFree",String(20 << 30),"-CassiniDiskTotal",String(100 << 30)]
+        }
         app.launch()
         if extra.contains("--fixture-library-recording"), !app.windows.firstMatch.waitForExistence(timeout: 2) {
             app.menuBars.menuBarItems["Window"].click()

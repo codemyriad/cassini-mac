@@ -6,13 +6,15 @@ enum LibraryTheme {
     static let dim = adaptive(light: NSColor(red: 106/255, green: 106/255, blue: 112/255, alpha: 1), dark: .secondaryLabelColor)
     static let sidebar = Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .windowBackgroundColor : NSColor(red: 241/255, green: 240/255, blue: 245/255, alpha: 1) })
     static let chip = adaptive(light: NSColor(red: 239/255, green: 239/255, blue: 243/255, alpha: 1), dark: .controlBackgroundColor)
+    static let amber = adaptive(light:NSColor(red:122/255,green:77/255,blue:0,alpha:1),dark:.systemOrange)
+    static let amberTint = adaptive(light:NSColor(red:1,green:240/255,blue:199/255,alpha:1),dark:NSColor.systemOrange.withAlphaComponent(0.16))
     static let red = adaptive(light: NSColor(red: 215/255, green: 0, blue: 21/255, alpha: 1), dark: .systemRed)
     private static func adaptive(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
     }
 }
 struct LibraryView: View {
-    @State private var store = LibraryStore()
+    @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
     @State private var toolbarWidth: CGFloat = 1120
@@ -22,7 +24,10 @@ struct LibraryView: View {
     var body: some View {
         GeometryReader { geometry in
             Group {
-                if let detail = navigation.detail { MeetingView(model: detail, format: store.format) }
+                if let detail = navigation.detail {
+                    if detail.meeting.state.lifecycle != .saved { RecordingPageView(detail:detail,format:store.format) }
+                    else { MeetingView(model:detail,format:store.format) }
+                }
                 else if navigation.loading { ProgressView() }
                 else if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
                 else { split }
@@ -35,7 +40,23 @@ struct LibraryView: View {
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("library.title"))
         .toolbar(removing: .title)
         .toolbar {
-            if let detail = navigation.detail {
+            if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
+                ToolbarItem(placement:.navigation) {
+                    HStack(spacing:12) {
+                        Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
+                            .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("recording-back")
+                        if recorder.isRecording, let started = recorder.startedAt {
+                            LiveRecordingPill(started:started,microphone:recorder.levels["microphone",default:0],output:recorder.levels["output",default:0])
+                        } else if store.context.screenshot {
+                            LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
+                        } else { ProgressView().controlSize(.small) }
+                    }
+                }
+                ToolbarItem(placement:.principal) {
+                    Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold)).lineLimit(1)
+                        .accessibilityIdentifier("recording-header-title")
+                }
+            } else if let detail = navigation.detail {
                 ToolbarItem(placement: .navigation) {
                     HStack(spacing: 0) {
                         HStack(spacing: 12) {
@@ -97,11 +118,22 @@ struct LibraryView: View {
             navigation.openLibrary = { open(id: "library") }
             store.start()
         }
-        .onDisappear { store.stop(); sessionPlayback.stop(); navigation.back() }
+        .onDisappear { sessionPlayback.stop(); navigation.back() }
+        .onChange(of: recorder.isSaving) { _,saving in
+            if saving, navigation.detail?.meeting.libraryKey == recorder.directory?.lastPathComponent { navigation.back() }
+        }
         .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
         .onChange(of: store.revision) { _, _ in
             sessionPlayback.reconcile(store.selected, offline: store.offline)
             navigation.update(store.meetings, offline: store.offline)
+            if recordCoordinator.openRecordingWhenReady, recorder.isRecording,
+               let current = store.meetings.first(where: { $0.libraryKey == recorder.directory?.lastPathComponent }) {
+                recordCoordinator.openRecordingWhenReady = false; navigation.open(current)
+            }
+            #if DEBUG
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "recording", navigation.detail == nil,
+               let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) { navigation.open(meeting, frozen:true) }
+            #endif
             #if DEBUG
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
                 recordCoordinator.showingFirst = true
@@ -124,6 +156,7 @@ struct LibraryView: View {
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
+                                .onTapGesture(count:2) { if meeting.state.lifecycle != .saved { navigation.open(meeting) } }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)
                                     .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)

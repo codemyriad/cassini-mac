@@ -11,7 +11,7 @@ enum ScreenshotFixture {
         guard arguments.contains("-CassiniScreenshot") else { return false }
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording"].contains(name),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
               ISO8601DateFormatter().date(from: clock) != nil else {
@@ -44,11 +44,36 @@ enum ScreenshotFixture {
 
     private static var prepared = Set<ObjectIdentifier>()
     static func prepareLibrary(_ window: NSWindow) {
-        guard ["library", "first-run", "meeting", "record-first"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
+        guard ["library", "first-run", "meeting", "record-first", "recording"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
         guard prepared.insert(ObjectIdentifier(window)).inserted else { return }
         prepare(window, sheet: false, boardSize: true)
         window.setAccessibilityIdentifier("cassini-library-window")
+        localRecordingRender(window)
+    }
+    /// Explicit local workflow fallback for a locked console without XCTest
+    /// automation. Renders only this app's fixture view, never the desktop.
+    private static func localRecordingRender(_ window: NSWindow) {
+        guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
+              LibraryLaunchContext.argument("-CassiniScreenshot") == "recording",
+              !RecordingFixture.enabled else { return }
+        Task { @MainActor in
+            for _ in 0..<60 {
+                if MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording { break }
+                try? await Task.sleep(for:.milliseconds(100))
+            }
+            try? await Task.sleep(for:.seconds(1))
+            guard MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording,
+                  window.frame.size == NSSize(width:1120,height:720),
+                  let frame = window.contentView?.superview,
+                  let image = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1120,pixelsHigh:720,
+                    bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0) else { exit(1) }
+            image.size = NSSize(width:1120,height:720)
+            frame.layoutSubtreeIfNeeded(); frame.cacheDisplay(in:frame.bounds,to:image)
+            guard let png = image.representation(using:.png,properties:[:]),
+                  let output = try? JSONSerialization.data(withJSONObject:["board":"recording","pngBase64":png.base64EncodedString()]) else { exit(1) }
+            FileHandle.standardOutput.write(output + Data([10])); exit(0)
+        }
     }
     static func prepareLegacy(_ window: NSWindow) {
         guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["window", "sheet"].contains(name),
