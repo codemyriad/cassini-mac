@@ -1,14 +1,15 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Desktop model downloader (D4 / W5-2)
+# Desktop model downloader (D4)
 
-`CassiniModels` is a tested core, not a model picker. The only visible model is
-bundled Whistle, with no download or removal control. There are no runtime calls
-to dist until a future working model row supplies its published `ModelPin`.
-Constructing a downloader and opening Settings/About make no network requests.
-Whistle and Silero build pins and the speech pipeline remain unchanged.
+`CassiniModels` supplies the pinned installer used by the optional Parakeet row.
+Whistle remains bundled and selected by default. Only an explicit Download
+starts runtime requests; constructing a downloader and opening Settings/About
+make no network requests. Whistle and Silero build pins and the speech pipeline
+remain unchanged.
 
-A future consumer uses `ModelStorage.appData` (Foundation Application Support /
-Cassini; container-relative in sandbox builds), `ModelDownloader(appData:)`, and
+The app locates model data with `ModelStorage.appData` (Foundation Application
+Support / Cassini; container-relative in sandbox builds). The service receives
+access to that directory by bookmark and uses `ModelDownloader(appData:)` with
 an explicit `(id, sourceSHA256)`. `plan` fetches schema-v2 manifest metadata;
 `spaceRequired` quotes and checks compressed + decoded staging + bounded metadata
 space while preserving max(1 GiB, 2% of volume). `install` repeats the check
@@ -35,8 +36,9 @@ Each download ships the current bounded dist NOTICE in its installed revision.
 About keeps its native menu and panel and always links bundled engine/decoder
 licences. The catalog link “Licences of downloaded models” appears only while
 a downloaded revision is installed, opening its local full NOTICE (D15.1).
-Bundled Whistle does not make this conditional link appear. It does not check for updates or fetch anything. No dead model rows,
-update bullet, voice/speaker downloads or inference-engine changes are included.
+Bundled Whistle does not make this conditional link appear. About does not
+check for updates or fetch anything. No unused model rows, update bullet or
+voice/speaker downloads are included.
 
 Run `python3 scripts/verify-model-vendor.py` and
 `swift test --filter ModelDownloaderTests`. The Python server binds 127.0.0.1
@@ -63,7 +65,8 @@ restoring the D20 producer test bundles with `--skip-build`. Original PR paths
 are recorded in `.github/ci/paths.json`; main, nightly and central dispatch run
 the full matrix. The reusable area also supports standalone dispatch.
 
-The Whistle-only Settings app does not need the network client entitlement.
-D16 will put networking in a separate XPC download service, preserving network
-denial for the UI and its sandbox-inheriting speech workers. The standalone
-downloader tests remain local HTTP fixtures.
+The Settings app has no network-client entitlement. Networking lives in a
+separate XPC download service with an explicit model-directory bookmark,
+preserving network denial for the UI and its sandbox-inheriting speech workers.
+See `parakeet-runtime.md` for the service boundary and per-job model leases.
+The standalone downloader tests remain local HTTP fixtures.
