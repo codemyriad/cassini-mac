@@ -364,8 +364,8 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(window.sheets.staticTexts["A recording is running"].waitForExistence(timeout: 10))
         app.typeKey(.escape, modifierFlags: [])
-        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: window)
-        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 10), .completed)
+        let cancelled = NSPredicate { _, _ in window.exists && !window.sheets.firstMatch.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:cancelled,object:nil)], timeout: 5), .completed)
         app.typeKey("q", modifierFlags: .command)
         XCTAssertTrue(app.staticTexts["A recording is running"].waitForExistence(timeout: 10))
         app.typeKey(.escape, modifierFlags: [])
@@ -375,6 +375,22 @@ final class LibraryBoards: XCTestCase {
         app.typeKey(.return, modifierFlags: [])
         let ended = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.state == .notRunning }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ended], timeout: 10), .completed)
+    }
+    @MainActor func testCloseConfirmationKeepsTheWindowUntilStopAndKeepIsChosen() throws {
+        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-recording-active"])
+        defer { if app.state != .notRunning { app.terminate() } }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.waitForExistence(timeout:20))
+        app.typeKey("w",modifierFlags:.command)
+        XCTAssertTrue(window.sheets.buttons["Keep recording"].waitForExistence(timeout:10),app.debugDescription)
+        window.sheets.buttons["Keep recording"].click()
+        let kept = NSPredicate { _,_ in window.exists && !window.sheets.firstMatch.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:kept,object:nil)],timeout:5),.completed)
+        app.typeKey("w",modifierFlags:.command)
+        XCTAssertTrue(window.sheets.staticTexts["A recording is running"].waitForExistence(timeout:10))
+        app.typeKey(.return,modifierFlags:[])
+        let closed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window)
+        XCTAssertEqual(XCTWaiter.wait(for:[closed],timeout:10),.completed)
     }
     @MainActor func testFailedReadClosesLoadingViewer() throws {
         let app = XCUIApplication(); defer { app.terminate() }

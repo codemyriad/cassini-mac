@@ -51,7 +51,8 @@ import AppKit
             RecordingConfirmation.ask(window: sender) { [weak self, weak sender] stop in
                 guard let self, let sender else { return }
                 Task { @MainActor in
-                    if stop { await RecordingConfirmation.stopAndWait() }
+                    guard stop else { self.asking = false; return }
+                    await RecordingConfirmation.stopAndWait()
                     self.asking = false; self.approved = true
                     // Finish saving and let AppKit detach the sheet before close.
                     DispatchQueue.main.async { sender.performClose(nil) }
