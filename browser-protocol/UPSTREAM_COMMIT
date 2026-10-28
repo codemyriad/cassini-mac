@@ -1,26 +1,26 @@
-tree 98074bef3f55dcedd0ad76423659e9a32a5b02ab
-parent 1a3f28844aeab01e6cebabbccb3cda7d3dd5116e
-parent c21127257ba1711fc065f722d6c28c4ea9f7ac3b
-author Silvio Tomatis <silviot@gmail.com> 1793207380 +0100
-committer GitHub <noreply@github.com> 1793207380 +0100
+tree 399f9d6fa40b06f839e27b831adccf75e277c572
+parent 206c5604815a6c5d85b81eafcc7db2811bba7a93
+parent bfec7a8ca7b9a09617d809c465c3a98967a038a0
+author Silvio Tomatis <silviot@gmail.com> 1793227981 +0100
+committer GitHub <noreply@github.com> 1793227981 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4ixUCRC1aQ7uu5UhlAAARwUQAATlhDnR784geOPI1CWIMpeF
- 8j78aZjCwj5s9PyRbJiccScafjaps5qWc+1sAEKgey/C6kbCXdCJiWS53DaG0uRt
- PLdYTgd2Z+wuCSQ44c/1gSFBIccf2PIxqey0BKZyB4MxUnd3C7p+SFh+9s545dEt
- 3h1kNME2oG2QDX8DTgetMwlpkFgoIY2teaiRZv99LTgwEg2RdqadeB5D8oxovVdF
- vKFZgvccX1PaEfWz/VVN0+3kf/wA4IctAbWmGVl8S58d4cE6ZbbWHxYcYGJ1SOu2
- 0+XJWsV52FbtszE0iaiTFQwh3n0rRd0o8BknKGp/gg0Ds4H7hLf70+H+Eg5vW5WG
- TtGWhrJFmnvwZCpsZSL26yV3zcysJNGYup1JleJXaG7jfli+sfgxVFqM277Cnxq3
- cpy1+DdPKwXVduKBxfPIZRvtKPqmoCDjEfweE6T1W/oNiiyjVKG1znJW/U1rc5t6
- ZTkLs2wFx3I2fUsmmE1yor1Y/kHmvD70ApNxgK6bCQOz4A8+WrceK/bYBAkBLLZN
- ZzOCrUudGUoGiZXL4GunoQjtCswYNi3K/aQ25frG5Wjar1DvGPZjEg5VNf7jSM04
- Xq4fq7BK9ohj/rdzECW91xg74j/u/pjk6XmIF3Pg3v0DJ6+Gtu/jRXY/0a0pWAcr
- 0XvrcsRhVlVKkNOILesU
- =XOVR
+ wsFcBAABCAAQBQJq4nzNCRC1aQ7uu5UhlAAAIbYQAFDujidrKS5falIPt0+p9zRN
+ WW4fm7B75QIxUGBfS7T68UjGXfshncjGxVIaDu/dPSiJw545b64mamD1jgwqQa8r
+ kEZy0Y9AHp974p0dpySkZHysGpe9Q8Cyi9Gxkj8wJU3MpLyrKoUME4UDZgqoS9Zg
+ sZH+TuDGl0qxfqWmFUcQ1y5FHbTCaXQcKtfxymFcvNcwjQIK1r2qknjWm6Ea4ZSu
+ /uXTzG+BVPlMKM5hUjkeBg1XS8R1QY/93lIHrDGWvZcTaOilGiVt/iMygyMPUJ9g
+ BrzghAtReEQ0iZfbb6IFE/uRlETsvZNMiHvvtqJuPV/IAaxI4JBMRJHQE4txg4Ls
+ bIXuE7m0mCm62ZTZi0sbx6A3N21EWkB+uBTpAmQgAkv8UydE3EtyR2fbT274bJwQ
+ 9CuQPEcLNleC0l4mm7ZaDB4S1JQ0JD1pjTlQd1Woz7Ir7WZExVNYBshY4eT5Q3i0
+ Bo3uISrMXW5yK7f46ghYardGe5wu+5bWaesz5g3n/RXjLqpOcLyv/BHxqN24ZLCO
+ 0QtY5CczNj7k4Y4J2zx18hbOD7SoD9fTA3QBvvHrQQjdDGrdlTWQYTikIx03L25O
+ Q9SxmUycFGnmfNQIzgCbR3fFgfMk3kwi1aMkEoi9dzdh+jFNpB0KhQF9D31jegEV
+ 82BXwDmxbxaFo76GFvVF
+ =2NND
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #14 from codemyriad/fix/icon-hashes
+Merge pull request #15 from codemyriad/spec/session-events-v1
 
-List the extension icons in SHA256SUMS
+Specify S-6 session events and stable source identities

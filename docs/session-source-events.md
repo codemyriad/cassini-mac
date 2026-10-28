@@ -1,8 +1,8 @@
 # Session source events
 
 This implements the coordinator's binding S-6 draft in
-`cassini-coordination/ux-draft/SESSION-EVENTS.md`. Shared protocol PR15 remains
-under review; its unmerged snapshot is not vendored here.
+`cassini-coordination/ux-draft/SESSION-EVENTS.md`. Shared protocol PR15 is merged and vendored at
+`a20ccb4cf28ee72335975cbbb6b91a33d9504ba3`.
 
 A session may contain up to 1000 ordered `selection` and `othersSource` events.
 `CaptureSourceState` projects them at a meeting-relative time. Older folders have
