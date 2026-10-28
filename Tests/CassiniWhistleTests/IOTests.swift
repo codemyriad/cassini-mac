@@ -1,9 +1,19 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
 import Testing
 @testable import CassiniWhistle
 
 @Suite struct WhistleIOTests {
+    @Test func sequentialLinesSurviveBufferRemovalAndBatchBoundaries() throws {
+        let pipe = Pipe()
+        let expected = [String(repeating:"a",count:3000),"second",String(repeating:"b",count:3000)]
+        try WhistleIO.write(Data((expected.joined(separator:"\n") + "\n").utf8),to:pipe.fileHandleForWriting.fileDescriptor)
+        try pipe.fileHandleForWriting.close()
+        let reader = WhistleLineReader(fd:pipe.fileHandleForReading.fileDescriptor)
+        for line in expected { #expect(try reader.next() == Data(line.utf8)) }
+        #expect(try reader.next() == nil)
+    }
     @Test func rejectsFifoSymlinkAndOversizeBeforeReading() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
