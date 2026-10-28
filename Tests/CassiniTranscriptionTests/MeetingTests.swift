@@ -60,6 +60,44 @@ final class TranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(TranscriptSpeaker.fromTrack(id: "42", kind: "remote").id, "track-42")
         XCTAssertNil(TranscriptSpeaker.fromTrack(id: "42", kind: "remote").name)
     }
+    func testOpaqueBrowserIdentityGroupsSpansAndNeverUsesTheirLabels() {
+        let first = TranscriptSpeaker.fromTrack(id:"span-one",kind:"remote",sourceTrackID:"remote-wire-1")
+        let second = TranscriptSpeaker.fromTrack(id:"span-two",kind:"remote",sourceTrackID:"remote-wire-1")
+        XCTAssertEqual(first.id,"track-remote-wire-1"); XCTAssertEqual(first.id,second.id)
+        XCTAssertNil(first.name)
+        let opaque = String(repeating:"é",count:100) // Exactly 200 UTF-8 bytes.
+        let escaped = TranscriptSpeaker.fromTrack(id:"span-three",kind:"remote",sourceTrackID:opaque)
+        XCTAssertEqual(escaped.id,TranscriptSpeaker.fromTrack(id:"span-four",kind:"remote",sourceTrackID:opaque).id)
+        XCTAssertLessThanOrEqual(escaped.id.utf8.count,200)
+        XCTAssertNotEqual(escaped.id,first.id)
+    }
+    func testTwoBrowserSpansWriteDownAsOneSpeakerThroughTheRealScanner() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Off and on",source:"chromium")
+        let input = try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens"))).dropFirst(44)
+        for (index,id) in ["before","after"].enumerated() {
+            try session.transition(starting:[.init(id:id,label:index == 0 ? "First label" : "Changed label",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"remote-wire-1")])
+            for start in stride(from:0,to:input.count,by:160000) {
+                let first = input.startIndex + start, last = min(input.endIndex,first + 160000)
+                try session.appendNative(id:id,pcm:Data(input[first..<last]),offsetMs:Double(index*30000) + Double(start)/32)
+            }
+            try session.transition(ending:[id])
+        }
+        try session.finish()
+        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        // The recognizer is deterministic here: this test isolates source to
+        // speaker routing; existing hosted goldens verify both real engines.
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
+            .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
+        })
+        let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(meeting.speakers.map(\.id),["track-remote-wire-1"])
+        XCTAssertTrue(meeting.transcriptItems.contains { $0.startMs < 30000 })
+        XCTAssertTrue(meeting.transcriptItems.contains { $0.startMs >= 30000 })
+        XCTAssertEqual(Set(meeting.transcriptItems.map(\.speaker)),["track-remote-wire-1"])
+    }
     func testReceivedPlainOpusBecomesOneUnnamedSpeaker() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
         let original = Bundle.module.url(forResource: "jfk-received", withExtension: "opus", subdirectory: "Fixtures")!

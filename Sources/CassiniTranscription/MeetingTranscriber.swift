@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CryptoKit
 import Darwin
 import CassiniLibrary
 import CassiniRecording
@@ -8,11 +9,16 @@ import CassiniWhistle
 public struct TranscriptSpeaker: Sendable {
     public let id: String
     public let name: String?
-    public static func fromTrack(id: String, kind: String, received: Bool = false, me: String = "Me", others: String = "The others") -> Self {
+    public static func fromTrack(id: String, kind: String, sourceTrackID: String? = nil, received: Bool = false, me: String = "Me", others: String = "The others") -> Self {
         if received { return .init(id: "track-original", name: nil) }
         if ["microphone", "local"].contains(kind) { return .init(id: "me", name: me) }
         if kind == "system" { return .init(id: "others", name: others) }
-        return .init(id: "track-" + id, name: nil)
+        let identity = sourceTrackID ?? id
+        let safe = !identity.isEmpty && identity.utf8.count <= 195 && identity.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45,95].contains($0)
+        }
+        let suffix = safe ? identity : "opaque-" + SHA256.hash(data:Data(identity.utf8)).map { String(format:"%02x",$0) }.joined()
+        return .init(id: "track-" + suffix, name: nil)
     }
 }
 public enum MeetingTranscriber {
@@ -64,8 +70,8 @@ public enum MeetingTranscriber {
                 let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
             }
             var tracks: [Track] = []
-            let sources: [(URL, String, String, Double?)]
-            if received { sources = [(meeting.audioFiles[0], "original", "original", 0)] }
+            let sources: [(URL, String, String, Double?, String?)]
+            if received { sources = [(meeting.audioFiles[0], "original", "original", 0, nil)] }
             else {
                 // The Library scanner already isolates damaged tracks and
                 // safely salvages unsupported/missing manifests. Reuse those
@@ -73,12 +79,12 @@ public enum MeetingTranscriber {
                 sources = meeting.audioTracks.compactMap { track in
                     guard track.frameCount != 0 else { return nil }
                     let filenameID = String(track.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count))
-                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs)
+                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID)
                 }
             }
-            for (url, id, kind, offset) in sources {
+            for (url, id, kind, offset, sourceTrackID) in sources {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
-                tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
+                tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
             }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
