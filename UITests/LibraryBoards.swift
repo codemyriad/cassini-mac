@@ -106,7 +106,8 @@ final class LibraryBoards: XCTestCase {
         // NSSavePanel is exposed as a sheet on some supported macOS versions.
         XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
-        let closed = NSPredicate { _,_ in !nativeSaveButton(in:app).exists }
+        let saveButton = nativeSaveButton(in:app)
+        let closed = NSPredicate { _,_ in !saveButton.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:5),.completed,app.debugDescription)
     }
     @MainActor private func nativeSaveButton(in app: XCUIApplication) -> XCUIElement {
