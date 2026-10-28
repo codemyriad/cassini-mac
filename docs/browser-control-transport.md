@@ -48,3 +48,25 @@ These tests create disposable files and processes only. They use no browser prof
 window, capture device, microphone, user recording or TCC permission. The existing
 ARM and Intel browser-setup jobs also run them from the shared producer's products;
 no second application build or new matrix job is introduced.
+
+## Control state (follow-up)
+
+`BrowserControlRegistry` is value-only state for the app driver. Every peer/tab key
+includes the connection UUID. The first standalone status must reconcile existing
+captures before explicit or automatic starts are allowed. Empty `sessions` lists
+are authoritative even when legacy top-level fields still report a recording.
+Start requests always use Separate tracks, opt into independent sessions, turn off
+page-local capture and carry the per-session microphone choice. Paths reported by
+the browser remain advisory and are never opened or used as writer destinations.
+
+The registry correlates results by request ID; a result containing an old snapshot
+cannot resurrect a capture removed by a newer status. It suppresses auto-restart
+for the same call after an attempted start or Stop, rearming after discovery removes
+the call. Losing management drops discovery and pending commands without inventing
+an audio Stop. Native recording lifetime belongs to the recording broker.
+
+The driver must call `drainStops()` after command completions/timeouts. Stop intent
+survives a full 128-request window, so stopping 100 pending starts sends an initial
+batch and drains the remaining Stops as capacity becomes available. A failed Start
+is never blindly resent: it may already have created a capture. This state module
+is not yet connected to the app or to audio writers.
