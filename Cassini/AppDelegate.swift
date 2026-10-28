@@ -39,22 +39,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !confirmingQuit else { return .terminateLater }
-        if RecordingController.shared.isSaving || !RecordingConfirmation.active && RecordingPageModel.hasPendingEdits {
+        if !RecordingConfirmation.active {
+            let queue = TranscriptionQueue.shared
+            let wait = RecordingController.shared.isSaving || queue.isBusy || RecordingPageModel.hasPendingEdits
+            queue.beginShutdown()
+            guard wait else { return .terminateNow }
             confirmingQuit = true
             DispatchQueue.main.async { [weak self] in
                 Task { @MainActor in
-                    await RecordingPageModel.flushAll(); await RecordingController.shared.finishTask?.value
+                    await RecordingPageModel.flushAll()
+                    await RecordingController.shared.finishTask?.value
+                    await queue.waitForShutdown()
                     self?.confirmingQuit = false; sender.reply(toApplicationShouldTerminate:true)
                 }
             }
             return .terminateLater
         }
-        guard RecordingConfirmation.active else { return .terminateNow }
         confirmingQuit = true
         DispatchQueue.main.async { [weak self] in
             RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
                 Task { @MainActor in
-                    if stop { await RecordingConfirmation.stopAndWait() }
+                    if stop {
+                        TranscriptionQueue.shared.beginShutdown()
+                        await RecordingConfirmation.stopAndWait()
+                        await TranscriptionQueue.shared.waitForShutdown()
+                    }
                     self?.confirmingQuit = false
                     sender.reply(toApplicationShouldTerminate: stop)
                 }
@@ -66,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated {
             RecordingRuntime.shared.stop(); LibraryStore.shared.stop()
+            TranscriptionQueue.shared.beginShutdown()
             SessionPlaybackController.stopAll(); RecordingController.shared.stop()
         }
     }

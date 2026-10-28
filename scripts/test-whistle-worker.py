@@ -11,6 +11,9 @@ import re
 import subprocess
 import sys
 import shutil
+import signal
+import time
+import select
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -69,6 +72,46 @@ __attribute__((constructor)) static void loaded(void) {
         (temporary/'libneedle3.dylib').write_bytes(b'not a pinned engine')
         result=subprocess.run(untrusted,input='',capture_output=True,text=True,env=worker_env(),timeout=10)
         assert result.returncode==78 and 'checksum mismatch' in result.stdout,result
+    # Hold stdin open in the grandparent: the orphan cannot pass this test by
+    # simply seeing EOF. First complete real inference, then kill only its owner.
+    read_fd, write_fd = os.pipe()
+    parent_script = """import json,subprocess,sys
+child=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL)
+print(json.dumps({'ownedChild':child.pid}),flush=True)
+child.wait()
+"""
+    owner = subprocess.Popen([sys.executable,'-u','-c',parent_script,str(read_fd),str(args.worker.resolve()),'--assets',str(args.bundle.resolve())],pass_fds=(read_fd,),stdout=subprocess.PIPE,bufsize=0,env=worker_env())
+    os.close(read_fd)
+    orphan = None
+    def owner_line():
+        data=bytearray();deadline=time.monotonic()+60
+        while not data.endswith(b'\n'):
+            ready,_,_=select.select([owner.stdout],[],[],max(0,deadline-time.monotonic()))
+            assert ready and len(data)<1048576,'Owner probe response stalled or exceeded its limit'
+            value=os.read(owner.stdout.fileno(),1)
+            assert value,'Owner probe closed before a complete response'
+            data.extend(value)
+        return json.loads(data)
+    try:
+        orphan=owner_line()['ownedChild']
+        request=json.dumps(dict(id='owner-proof',wav=str(fixture/'jfk.wav')))+'\n'
+        os.write(write_fd,request.encode())
+        response=owner_line();assert response['id']=='owner-proof' and 'error' not in response,response
+        owner.kill();owner.wait(timeout=5)
+        deadline=time.monotonic()+3
+        while time.monotonic()<deadline:
+            result=subprocess.run(['/bin/ps','-p',str(orphan),'-o','stat='],capture_output=True,text=True)
+            if result.returncode or result.stdout.strip().startswith('Z'):
+                orphan=None;break
+            time.sleep(.05)
+        else:raise AssertionError('Worker survived its owner with stdin still open')
+    finally:
+        os.close(write_fd)
+        if owner.poll() is None:owner.kill();owner.wait(timeout=5)
+        if orphan:
+            try:os.kill(orphan,signal.SIGKILL)
+            except ProcessLookupError:pass
+
     # The same child loads once and serves two requests, not one model per clip.
     command = [str(args.worker.resolve()), '--assets', str(args.bundle.resolve())]
     requests = [dict(id=str(i), wav=str(fixture / 'jfk.wav')) for i in range(2)]
@@ -105,7 +148,7 @@ __attribute__((constructor)) static void loaded(void) {
     assert words(text) == words(reference), (text, reference)
     report = dict(architecture=platform.machine(), engineVersion=pins['engineVersion'], text=text, reference=reference,
                   exactReferenceMatch=text == reference, wordReferenceMatch=True, twoRequestsIdentical=True,
-                  constructorPrivacyGuard=True, boundedInputGuards=True, closedStdoutHandled=True, pinnedAssets=True, telemetry=SAFE)
+                  constructorPrivacyGuard=True, orphanStopsWithoutEOF=True, boundedInputGuards=True, closedStdoutHandled=True, pinnedAssets=True, telemetry=SAFE)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
