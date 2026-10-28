@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--recording-comfort-self-test") {
             Task { @MainActor in await RecordingComfortSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--search-self-test") {
+            Task { @MainActor in await SearchSelfTest.run() }; return
+        }
         if ScreenshotFixture.launchIfRequested() {
             if RecordingFixture.enabled || RecordingPageFixture.enabled { RecordingRuntime.shared.start() }
             return

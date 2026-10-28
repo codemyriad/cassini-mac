@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - 'Sources/CassiniLibrary/**'
+      - 'Sources/CassiniSearch/**'
+      - 'Tests/CassiniSearchTests/**'
       - 'Sources/CassiniLibraryWatchers/**'
       - 'Tests/CassiniLibraryTests/**'
       - 'Package.swift'
@@ -28,7 +30,7 @@ jobs:
       - name: Golden vectors and read-only Library tests
         run: |
           set -o pipefail
-          swift test --filter Library 2>&1 | tee ux-library-tests.log
+          swift test --filter 'Library|SearchTests' 2>&1 | tee ux-library-tests.log
       - uses: actions/upload-artifact@v5
         if: always()
         with:

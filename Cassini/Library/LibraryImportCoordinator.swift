@@ -29,6 +29,7 @@ import Observation
                 }
                 let meeting = try await withTaskCancellationHandler(operation:{ try await work.value },onCancel:{ work.cancel() })
                 try Task.checkCancellation()
+                LibrarySearchModel.shared.close()
                 MeetingNavigation.shared.back()
                 LibraryStore.shared.selectImported(meeting)
                 MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps:true)

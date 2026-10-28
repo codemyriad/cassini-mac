@@ -14,6 +14,7 @@ enum LibraryTheme {
     }
 }
 struct LibraryView: View {
+    @State private var search = LibrarySearchModel.shared
     @State private var exporter = MeetingExportCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
@@ -30,6 +31,7 @@ struct LibraryView: View {
                     else { MeetingView(model:detail,format:store.format) }
                 }
                 else if navigation.loading { ProgressView() }
+                else if search.visible { LibrarySearchView(format:store.format) }
                 else if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -92,13 +94,20 @@ struct LibraryView: View {
             } else {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 0) {
-                    toolbarControl.frame(width: store.meetings.isEmpty ? nil : 328, alignment: .leading)
-                    if !store.meetings.isEmpty { toolbarTitle }
+                    toolbarControl.frame(width: search.visible ? 388 : store.meetings.isEmpty ? nil : 328, alignment: .leading)
+                    if search.visible || !store.meetings.isEmpty { toolbarTitle }
                 }
             }
-            if store.meetings.isEmpty {
+            if store.meetings.isEmpty && !search.visible {
                 ToolbarItem(placement: .principal) { toolbarTitle }
             }
+            }
+        }
+        .toolbar {
+            if !search.visible && navigation.detail == nil && !store.meetings.isEmpty {
+                ToolbarItem(placement:.primaryAction) {
+                    LibrarySearchField(text:$search.query,onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
+                }
             }
         }
         .background(WindowAccessor { window in
@@ -114,18 +123,20 @@ struct LibraryView: View {
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .onAppear {
+            search.update(store.meetings)
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             let open = openWindow
             LegacyOpening.handler = { url in open(id: "legacy-viewer", value: LegacyRoute(url: url)) }
             navigation.openLibrary = { open(id: "library") }
             store.start()
         }
-        .onDisappear { sessionPlayback.stop(); navigation.back() }
+        .onDisappear { sessionPlayback.stop(); navigation.back(); search.close() }
         .onChange(of: recorder.isSaving) { _,saving in
             if saving, navigation.detail?.meeting.libraryKey == recorder.directory?.lastPathComponent { navigation.back() }
         }
         .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
         .onChange(of: store.revision) { _, _ in
+            search.update(store.meetings)
             sessionPlayback.reconcile(store.selected, offline: store.offline)
             navigation.update(store.meetings, offline: store.offline)
             if recordCoordinator.openRecordingWhenReady, recorder.isRecording,
@@ -137,6 +148,9 @@ struct LibraryView: View {
                let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) { navigation.open(meeting, frozen:true) }
             #endif
             #if DEBUG
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !search.visible {
+                search.query = "budget"; search.speaker = "Marta"; search.open()
+            }
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
                 recordCoordinator.showingFirst = true
             }
@@ -159,7 +173,7 @@ struct LibraryView: View {
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
     private var toolbarTitle: some View {
-        Text(UXText.text("library.title")).font(.system(size: 15, weight: .bold))
+        Text(UXText.text(search.visible ? "search.title" : "library.title")).font(.system(size: 15, weight: .bold))
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
     }
     private var split: some View {
