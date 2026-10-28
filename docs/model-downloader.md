@@ -16,7 +16,7 @@ immediately before writing artifacts. Existing revisions stay in place.
 
 Only https://dist.gocassini.com is permitted in production. There are no cookies,
 credential storage, HTTP cache or redirects, and requests use Accept-Encoding:
-identity. Each immutable compressed object has its compressed SHA as ETag.
+identity and User-Agent: Cassini/<app-version> (D15.1). Each immutable compressed object has its compressed SHA as ETag.
 A bounded partial resumes using Range and If-Range; a full 200 replaces it,
 416 retries once from zero, and an invalid ETag/range is discarded. Transport
 interruptions retain a partial; an invalid compressed hash is never decoded.
@@ -31,10 +31,11 @@ Cancel retains resumable downloads. Remove cancels and waits, retires the whole
 installed revision, and clears that pin's partials. A new install cannot race
 Remove in the same downloader.
 
-Bundled dist NOTICE is a hash-bound build snapshot. Each download also ships the
-current bounded NOTICE in its installed revision. About keeps the native menu
-and panel and links actual notice/license filenames, including installed model
-notices. It does not check for updates or fetch anything. No dead model rows,
+Each download ships the current bounded dist NOTICE in its installed revision.
+About keeps its native menu and panel and always links bundled engine/decoder
+licences. The catalog link “Licences of downloaded models” appears only while
+a downloaded revision is installed, opening its local full NOTICE (D15.1).
+Bundled Whistle does not make this conditional link appear. It does not check for updates or fetch anything. No dead model rows,
 update bullet, voice/speaker downloads or inference-engine changes are included.
 
 Run `python3 scripts/verify-model-vendor.py` and

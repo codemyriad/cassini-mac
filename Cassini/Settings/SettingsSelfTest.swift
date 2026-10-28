@@ -177,6 +177,19 @@ import CassiniKit
             _ = try send(["type":"track","id":"remote","kind":"remote","sampleRate":48000,"channels":1])
             _ = try send(["type":"audio","id":"remote","sequence":0,"offsetMs":0,"pcm":Data([0,0,64,1]).base64EncodedString()])
             _ = try send(["type":"stop"])
+            let noticesRoot = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsNotices-" + id.uuidString)
+            defer { try? FileManager.default.removeItem(at:noticesRoot) }
+            let noticesLabel = UXText.text("about.modelNotices")
+            try check(!ModelNotices.credits(appData:noticesRoot).string.contains(noticesLabel),"no downloaded-model label before a download")
+            let notice = noticesRoot.appendingPathComponent("models/fixture-model/" + String(repeating:"a",count:64) + "/NOTICE.txt")
+            try FileManager.default.createDirectory(at:notice.deletingLastPathComponent(),withIntermediateDirectories:true)
+            try Data("Private fixture model licence".utf8).write(to:notice)
+            let downloadedCredits = ModelNotices.credits(appData:noticesRoot)
+            let labelRange = (downloadedCredits.string as NSString).range(of:noticesLabel)
+            try check(labelRange.location != NSNotFound,"downloaded-model label appears after install")
+            try check((downloadedCredits.attribute(.link,at:labelRange.location,effectiveRange:nil) as? URL) == notice,"downloaded-model label opens its local NOTICE")
+            try FileManager.default.removeItem(at:noticesRoot)
+            try check(!ModelNotices.credits(appData:noticesRoot).string.contains(noticesLabel),"downloaded-model label disappears after removal")
             try check(ModelNotices.menuConfigured,"native About menu reaches model notices")
             try check(ModelNotices.files.count >= 6 && ModelNotices.files.allSatisfy { (try? Data(contentsOf:$0).isEmpty) == false },"bundled model/decoder notices reachable")
             // Simulate Quit: stop the move scheduler first, then let the jobs
@@ -185,7 +198,7 @@ import CassiniKit
             queue.beginShutdown(); await queue.waitForShutdown(); await recorder.stopAndWait()
             let persisted = try LibraryLocation.read(file:config)
             try check(persisted.pendingMoves.count == 2 && !persisted.previousPaths.isEmpty,"pending move intent survives Quit")
-            let report: [String:Any] = ["aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
+            let report: [String:Any] = ["conditionalDownloadedNotices":true,"aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
                                       "closedMeetingMovedAtomically":true,"partialFailureRetainsOriginal":true,"liveFolderDeferred":true,"pendingMovesPersisted":true,
                                       "activeInferencePathPreserved":true,"queuedMetadataMovedAfterPreparation":true,"importIntentResumesAfterMove":true,"retainedSelectionUsesFolder":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
             output = try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])
