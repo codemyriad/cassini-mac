@@ -4,6 +4,22 @@ import Testing
 @testable import CassiniExport
 
 struct ExportDestinationTests {
+    @Test(arguments:[true,false]) func selectedFilesNeverFollowALiveOrDanglingSymlink(dangling: Bool) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let stage = root.appendingPathComponent("stage")
+        try FileManager.default.createDirectory(at:stage,withIntermediateDirectories:false)
+        let artifact = ExportArtifact(directory:stage,filename:"data.md")
+        try Data("Export".utf8).write(to:artifact.url)
+        let victim = root.appendingPathComponent("keep.md"), link = root.appendingPathComponent("selected.md")
+        if !dangling { try Data("Keep".utf8).write(to:victim) }
+        try FileManager.default.createSymbolicLink(at:link,withDestinationURL:victim)
+        #expect(throws:POSIXError(.ELOOP)) { try ExportDestination.selectedFile(artifact,url:link) }
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath:link.path) == victim.path)
+        if !dangling { #expect(try Data(contentsOf:victim) == Data("Keep".utf8)) }
+        else { #expect(!FileManager.default.fileExists(atPath:victim.path)) }
+    }
     @Test func collisionDoesNotOverwriteAndCancellationLeavesNoPartialFile() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)

@@ -30,6 +30,7 @@ struct MeetingExportSheet: View {
                 Button(UXText.text("common.choose")) { coordinator.chooseDirectory() }.buttonStyle(.plain)
                     .fontWeight(.semibold).padding(.horizontal,14).frame(height:30).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:6))
                     .accessibilityIdentifier("export-choose-folder")
+                    .disabled(coordinator.working)
             }.padding(14).background(LibraryTheme.chip.opacity(0.65),in:RoundedRectangle(cornerRadius:7))
             HStack(spacing:10) {
                 Spacer()
@@ -56,7 +57,7 @@ struct MeetingExportSheet: View {
             }
         }.padding(.horizontal,16).frame(minHeight:55)
             .background(coordinator.kind == kind ? Color.accentColor.opacity(0.10) : Color.clear)
-            .contentShape(Rectangle()).onTapGesture { if kind != .cassini || !meeting.audioFiles.isEmpty { coordinator.kind = kind } }
+            .contentShape(Rectangle()).onTapGesture { if !coordinator.working && (kind != .cassini || !meeting.audioFiles.isEmpty) { coordinator.kind = kind } }
             .disabled(coordinator.working || (kind == .cassini && meeting.audioFiles.isEmpty))
             .accessibilityElement(children:.contain).accessibilityIdentifier(kind == .cassini ? "export-cassini" : "export-markdown")
     }
@@ -90,7 +91,9 @@ private struct ExportRadio: NSViewRepresentable {
         let button = NSButton(title:"",target:context.coordinator,action:#selector(Coordinator.select))
         button.setButtonType(.radio); button.setAccessibilityLabel(label); return button
     }
-    func updateNSView(_ view: NSButton, context: Context) { view.state = selected ? .on : .off; context.coordinator.action = action }
+    func updateNSView(_ view: NSButton, context: Context) {
+        view.state = selected ? .on : .off; view.isEnabled = context.environment.isEnabled; context.coordinator.action = action
+    }
     final class Coordinator: NSObject {
         var action: () -> Void
         init(_ action: @escaping () -> Void) { self.action = action }
