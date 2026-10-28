@@ -23,7 +23,7 @@ args.output.mkdir(parents=True, exist_ok=True)
 (args.output/'recording-comfort-stderr.txt').write_text(result.stderr)
 assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
 report = json.loads(result.stdout)
-for name in ('recordingComfort', 'shortcutRegistered', 'noteTimesPreserved', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
+for name in ('recordingComfort', 'shortcutRegistered', 'noteTimesPreserved', 'titleReset', 'browserClockAndSources', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
     assert report[name] is True, (name, report)
 menu = report['menu']
 assert menu['assertionHeld'] is True and menu['levels'][0]['silent'] is True

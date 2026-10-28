@@ -4,6 +4,24 @@ import Testing
 @testable import CassiniLibrary
 
 struct RecordingNotesTests {
+    @Test func clearingANoteClearsItsTimeAndRetypingPinsANewTime() {
+        var notes = RecordingNotes(lines:[],displayed:"")
+        notes.edit("A",atMs:5000,prefix:stamp)
+        notes.edit("",atMs:6000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:nil,text:"")])
+        notes.reformat("")
+        notes.edit("Later",atMs:10000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:10000,text:"Later")])
+    }
+    @Test func editingThePrefixSpacingDoesNotTurnItIntoNoteContent() {
+        let time = LibraryFormat.position(5000)
+        var notes = RecordingNotes(lines:[.init(atMs:5000,text:"Hello")],displayed:time + "  Hello")
+        notes.edit(time + " Hello",atMs:10000,prefix:stamp)
+        #expect(notes.lines == [.init(atMs:5000,text:"Hello")])
+        notes.reformat(time + "  Hello")
+        notes.edit(time + "  ",atMs:11000,prefix:stamp)
+        #expect(notes.lines.first?.atMs == nil && notes.lines.first?.text == "")
+    }
     @Test func firstCharacterPinsTheTimeAndEditingKeepsIt() {
         var notes = RecordingNotes(lines:[],displayed:"")
         notes.edit("  ",atMs:1000,prefix:stamp)

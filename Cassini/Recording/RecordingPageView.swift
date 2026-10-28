@@ -83,6 +83,8 @@ struct RecordingPageView: View {
             }
             .onChange(of:notesFocused) { _,focused in if !focused { model.formatNotes(); model.flush() } }
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
+            .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
+            .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
     }
     private func caption(_ id: String) -> some View { Text(UXText.text(id)).font(.system(size:11.5,weight:.bold)).foregroundStyle(LibraryTheme.dim) }
