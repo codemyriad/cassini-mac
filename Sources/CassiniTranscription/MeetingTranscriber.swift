@@ -39,6 +39,11 @@ public enum MeetingTranscriber {
     /// One worker owns a meeting lock through both segmentation and recognition.
     /// Capture-owned session/audio files are only opened for reading.
     public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others") throws {
+        try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,recognize:engine.transcribe)
+    }
+    public static func run(directory inputDirectory: URL, detector: SpeechDetector, model: String,
+                           initialETA: Double, initialLanguage: String = "auto", me: String = "Me", others: String = "The others",
+                           recognize: ([Float]) throws -> WhistleTranscript) throws {
         var folderInfo = stat()
         guard lstat(inputDirectory.path, &folderInfo) == 0, folderInfo.st_mode & S_IFMT == S_IFDIR else { throw TranscriptionFailure.invalidMeeting }
         guard let canonical = realpath(inputDirectory.path, nil) else { throw TranscriptionFailure.invalidMeeting }
@@ -75,9 +80,13 @@ public enum MeetingTranscriber {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
             }
-            let previous = [.queued,.running].contains(meeting.state.transcript) ? meeting.transcriptItems : []
+            // A new model must regenerate partial output rather than attribute
+            // another/unknown recognizer's words to the selected model.
+            let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
+            let previous = resumes ? meeting.transcriptItems : []
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
-            var items: [TranscriptProgress.Item] = [], language = meeting.transcriptLanguage ?? "auto", elapsed: Double = 0, processed: Double = 0
+            var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
+            if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
             let reference: [String:Any] = ["kind":"sidecar", "file":"transcript.json", "format":"cassini.words.v1"]
             func publish(status: String) throws {
@@ -86,10 +95,10 @@ public enum MeetingTranscriber {
                 let data = try JSONEncoder().encode(Body(language: language, items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
                 try atomicTranscript(data, directory: directory)
-                let factor = processed > 0 ? elapsed / processed : 0.15
+                let factor = processed > 0 ? elapsed / processed : initialETA
                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
                 try writer.transaction { metadata in
-                    metadata["transcript"] = ["status":status, "reference":reference]
+                    metadata["transcript"] = ["status":status, "reference":reference, "model":model]
                     metadata["etaMinutes"] = status == "running" ? eta : NSNull()
                     metadata["error"] = NSNull()
                     var speakers = metadata["speakers"] as? [[String:Any]] ?? []
@@ -103,7 +112,7 @@ public enum MeetingTranscriber {
             for (index, track) in tracks.enumerated() {
                 for segment in track.audio.segments {
                     let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
-                    let result = try engine.transcribe(samples: samples)
+                    let result = try recognize(samples)
                     if language == "auto" { language = result.language }
                     let start = track.offset + Int64(segment.startSample * 1000 / 16000)
                     for word in result.words ?? [] {

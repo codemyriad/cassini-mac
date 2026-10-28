@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CassiniKit
 
@@ -15,7 +16,7 @@ struct AppMetadata: Decodable {
     let quoteOverride: MeetingQuote?
     let received: Received?
     struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int }
-    struct Transcript: Decodable { let status: TranscriptStatus; let reference: Reference? }
+    struct Transcript: Decodable { let status: TranscriptStatus; let reference: Reference?; let model: String? }
     struct Reference: Decodable { let kind: String; let file: String; let format: String?; let transcriptId: String? }
     struct Received: Decodable { let originalName: String; let originalFolderName: String?; let sha256: String; let importedAtMs: Int64 }
     static let safe: Int64 = 9_007_199_254_740_991

@@ -6,3 +6,6 @@ Coordinator-owned copies from cassini-coordination/ux-draft (D6/D7).
 
 Vectors are byte-for-byte copies, SHA256-checked. Do not adjust expected results locally.
 S-3a (D7): main Library plus one case per R1–R9, pending the coordinator's fixture ping.
+
+D16: meeting.schema.json and LIBRARY.md re-synced verbatim for optional transcript.model.
+Schema SHA256 aed7704a3f6916d156f122cb60dd31c2cffe4a5701fcaebae691dd14dd5be03c.
