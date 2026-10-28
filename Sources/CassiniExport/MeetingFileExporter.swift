@@ -99,7 +99,7 @@ public enum MeetingFileExporter {
         try writer.finish(sampleCount:Int(frames))
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?) throws -> JSON {
-        guard let title = meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
+        guard let title = meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
             ("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
@@ -107,9 +107,14 @@ public enum MeetingFileExporter {
             ("sampleRate",.number("48000")),("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
         var info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
             ("createdAtUtc",.string(iso.string(from:Date()))),("durationMs",.number(String(digest.durationMs)))])
-        if let start = meeting.start {
+        if meeting.state.origin == .own, let start = meeting.start {
             let local = ISO8601DateFormatter(); local.formatOptions = [.withInternetDateTime,.withFractionalSeconds]; local.timeZone = .current
             info = try info.setting("recordedAtLocal",to:.string(local.string(from:start)))
+        } else if let recorded = original?.meeting.recordedAtLocal {
+            // A received meeting's start is an R6 display/sort value: it may be
+            // the artifact's stamp or its import date. Neither is a recording
+            // start. Keep only the verified original field, including its zone.
+            info = try info.setting("recordedAtLocal",to:.string(recorded))
         }
         let speakers: JSON = .array(meeting.speakers.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) })
         var root: JSON = .object([("kind",.string("cassini-portable-meeting")),("version",.number("1")),("profile",.string("ogg-opus")),
@@ -118,7 +123,7 @@ public enum MeetingFileExporter {
         else if let recorded = original?.raw["audioEncode"] { root = try root.setting("audioEncode",to:recorded) }
         var extensions = original?.raw["x"] ?? .object([])
         var owned = extensions["gocassini.com"] ?? .object([])
-        if meeting.state.origin == .own, meeting.audioTracks.contains(where:{ $0.startOffsetMs == nil }) {
+        if meeting.state.origin == .own, meeting.audioTracks.contains(where:{ $0.frameCount != 0 && $0.startOffsetMs == nil }) {
             owned = try owned.setting("recovery",to:.object([("offsetsAssumedZero",.bool(true))]))
         }
         let notes: JSON? = meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) })

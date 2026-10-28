@@ -63,19 +63,76 @@ struct MeetingExportTests {
         let integrity = try #require(manifest["integrity"])
         manifest = try manifest.setting("integrity",to:integrity.setting(unverified ? "matchPolicy" : "opusAudioSha256",to:.string(unverified ? "future-policy" : String(repeating:"0",count:64))))
         let info = try #require(manifest["meeting"])
-        manifest = try manifest.setting("meeting",to:info.setting("id",to:.string("untrusted-id")))
+        var untrustedInfo = try info.setting("id",to:.string("untrusted-id"))
+        untrustedInfo = try untrustedInfo.setting("title",to:.string("Untrusted title"))
+        untrustedInfo = try untrustedInfo.setting("recordedAtLocal",to:.string("2001-02-03T04:05:06+09:00"))
+        manifest = try manifest.setting("meeting",to:untrustedInfo)
         manifest = try manifest.setting("x",to:.object([("untrusted.example",.object([("claim",.bool(true))]))]))
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:Data("{\"items\":[]}".utf8),wordCount:0)
         let damaged = root.appendingPathComponent("Untrusted.opus")
         _ = try OpusStreamFile.rewrite(bytes,tags:tags,to:damaged)
         let suspect = try CassiniReader.read(contentsOf:damaged)
         #expect(suspect.state == (unverified ? .unverified : .staleAudio))
-        let received = try LibraryImport.copy(damaged,into:root.appendingPathComponent("Imported"))
+        let importedSuspect = try LibraryImport.copy(damaged,into:root.appendingPathComponent("Imported"))
+        try MeetingMetadataWriter(directory:importedSuspect.folder,id:importedSuspect.id).transaction { $0["title"] = NSNull() }
+        let received = try #require(LibraryScanner(root:importedSuspect.folder.deletingLastPathComponent()).scan().meetings.first)
+        #expect(received.title == "Untrusted title") // R6 display fallback remains.
+        let external = MeetingPresentation.external(suspect,url:damaged)
+        let direct = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root)
+        let directFile = try CassiniReader.read(contentsOf:direct.url)
+        #expect(directFile.manifest?.meeting.title == "Untrusted")
+        #expect(directFile.manifest?.meeting.recordedAtLocal == nil)
         let result = try MeetingFileExporter.cassini(received,assets:nil,temporaryRoot:root)
         let exported = try CassiniReader.read(contentsOf:result.url)
         #expect(exported.state == .ok && exported.manifest?.meeting.id != "untrusted-id")
         #expect(exported.manifest?.raw["x"]?["untrusted.example"] == nil)
+        #expect(exported.manifest?.meeting.title == "original")
+        #expect(exported.manifest?.meeting.recordedAtLocal == nil)
         #expect(try exported.audioDigest?.get() == suspect.audioDigest?.get())
+    }
+    @Test(arguments:[nil,"2001-02-03T04:05:06.125+09:00"] as [String?])
+    func receivedExportsPreserveOnlyTheKnownRecordingTime(recorded: String?) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let imported = try LibraryImport.copy(source,into:root.appendingPathComponent("Plain"))
+        #expect(imported.start != nil) // Import time is useful for display only.
+        let plainExport = try MeetingFileExporter.cassini(imported,assets:nil,temporaryRoot:root)
+        let plain = try CassiniReader.read(contentsOf:plainExport.url)
+        #expect(plain.manifest?.meeting.recordedAtLocal == nil)
+        let manifest = try #require(plain.manifest?.raw)
+        var info = try #require(manifest["meeting"])
+        info = try info.setting("createdAtUtc",to:.string("2020-01-02T03:04:05Z"))
+        info = try info.setting("recordedAtLocal",to:recorded.map(JSON.string))
+        let changed = try manifest.setting("meeting",to:info)
+        let tagged = root.appendingPathComponent("Known-or-unknown.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:plainExport.url),tags:PortableMeetingTags.make(manifest:changed,transcript:Data("{\"items\":[]}".utf8),wordCount:0),to:tagged)
+        let received = try LibraryImport.copy(tagged,into:root.appendingPathComponent("Received"))
+        #expect(received.start != nil)
+        let exported = try MeetingFileExporter.cassini(received,assets:nil,temporaryRoot:root)
+        let result = try CassiniReader.read(contentsOf:exported.url)
+        #expect(result.state == .ok)
+        #expect(result.manifest?.meeting.recordedAtLocal == recorded)
+        #expect(result.manifest?.meeting.createdAtUtc != "2020-01-02T03:04:05Z")
+    }
+    @Test func ordinaryAudioTitleTagsStillSurviveBothOpenAndImport() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        var packet = Data("OpusTags".utf8)
+        func number(_ value: UInt32) { var value = value.littleEndian; withUnsafeBytes(of:&value) { packet.append(contentsOf:$0) } }
+        number(0); number(1)
+        let comment = Data("TITLE=Ordinary audio title".utf8); number(UInt32(comment.count)); packet.append(comment)
+        let input = root.appendingPathComponent("Ordinary.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:source),tags:packet,to:input)
+        let file = try CassiniReader.read(contentsOf:input)
+        #expect(file.state == .plainAudio)
+        let external = MeetingPresentation.external(file,url:input)
+        let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        for meeting in [external,imported] {
+            let artifact = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let exported = try CassiniReader.read(contentsOf:artifact.url)
+            #expect(exported.manifest?.meeting.title == "Ordinary audio title")
+            #expect(exported.manifest?.meeting.recordedAtLocal == nil)
+        }
     }
     private func evidence(_ artifact: ExportArtifact, name: String) throws {
         guard let path = ProcessInfo.processInfo.environment["CASSINI_EXPORT_REPORT_DIR"] else { return }
@@ -222,6 +279,8 @@ struct MeetingExportTests {
         try evidence(artifact,name:"stale-checkpoint")
         let file = try CassiniReader.read(contentsOf:artifact.url)
         #expect(file.manifest?.audio.sampleCount == 48000)
+        #expect(!meeting.issues.contains(.unknownStartOffset))
+        #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"] == nil)
         #expect(file.manifest?.raw["audioEncode"]?["cutoffHz"]?.int == 20000)
         #expect(file.manifest?.raw["audioEncode"]?["bitrateBps"]?.int == 64000)
         #expect(try Data(contentsOf:wave) == bytes)
