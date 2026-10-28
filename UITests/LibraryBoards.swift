@@ -94,7 +94,7 @@ final class LibraryBoards: XCTestCase {
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
         let notes = window.textViews["recording-notes"]
         notes.click(); notes.typeText("A note to keep")
-        window.buttons["recording-back"].click()
+        window.buttons.matching(identifier:"recording-back").firstMatch.click()
         window.buttons["recording-open-current"].click()
         XCTAssertTrue(title.waitForExistence(timeout:10))
         XCTAssertEqual(title.value as? String,"Title from the live page")
