@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("Invalid hosted recording fixture: enabled=%d, root=%@, arguments=%@", RecordingFixture.enabled, String(describing: RecordingFixture.root), CommandLine.arguments)
             NSApp.terminate(nil); return
         }
+        if CommandLine.arguments.contains("--recording-saving-self-test") {
+            Task { @MainActor in await RecordingSavingSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--recording-comfort-self-test") {
             Task { @MainActor in await RecordingComfortSelfTest.run() }; return
         }

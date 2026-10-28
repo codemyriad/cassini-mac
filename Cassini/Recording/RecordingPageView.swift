@@ -32,9 +32,9 @@ struct RecordingPageView: View {
                         Button { if model.native { recorder.stop() } } label: {
                             HStack(spacing:10) {
                                 RoundedRectangle(cornerRadius:2).fill(.white).frame(width:12,height:12)
-                                Text(UXText.text(recorder.isSaving ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
+                                Text(UXText.text((recorder.isSaving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
                             }.padding(.horizontal,26).frame(height:48).foregroundStyle(.white).background(LibraryTheme.red,in:Capsule())
-                        }.buttonStyle(.plain).disabled(recorder.isSaving || (!model.native && !model.frozen))
+                        }.buttonStyle(.plain).disabled(recorder.isSaving || detail.meeting.state.lifecycle == .saving || (!model.native && !model.frozen))
                             .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
                     }
                 }
@@ -71,6 +71,11 @@ struct RecordingPageView: View {
                         .focused($notesFocused).accessibilityLabel(UXText.text("recording.notes.label")).accessibilityIdentifier("recording-notes")
                         .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
                     Text(UXText.text("recording.notes.caption")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                    #if DEBUG
+                    if RecordingFixture.enabled {
+                        RecordingNotesFixturePayload(json:model.fixtureNotesJSON).frame(width:1,height:1).opacity(0.01)
+                    }
+                    #endif
                 }
             }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
         }.background(Color(nsColor:.textBackgroundColor))
@@ -84,6 +89,7 @@ struct RecordingPageView: View {
             }
             .onChange(of:notesFocused) { _,focused in if !focused { model.formatNotes(); model.flush() } }
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
+            .onChange(of:detail.meeting.state.lifecycle) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
@@ -132,3 +138,15 @@ struct RecordingLevelMeter: View {
         }.accessibilityRepresentation { ProgressView(value:Double(max(0,min(1,level)))).accessibilityLabel(label) }
     }
 }
+
+#if DEBUG
+/// Exact model timestamps for the hosted native editor test, never ordinary UI.
+private struct RecordingNotesFixturePayload: NSViewRepresentable {
+    let json: String
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(labelWithString:json)
+        field.setAccessibilityIdentifier("recording-notes-fixture-payload"); return field
+    }
+    func updateNSView(_ field: NSTextField, context: Context) { field.stringValue = json }
+}
+#endif

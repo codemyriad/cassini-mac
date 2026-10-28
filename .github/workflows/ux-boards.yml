@@ -49,6 +49,8 @@ jobs:
     - name: Real recording controls without devices
       if: always()
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
+    - name: Private stopped recording clock without devices or windows
+      run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/saving-clock.json
     - name: Private import and queue lifecycle without devices
       if: always()
       run: python3 scripts/test-import-lifecycle.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/import-lifecycle.json

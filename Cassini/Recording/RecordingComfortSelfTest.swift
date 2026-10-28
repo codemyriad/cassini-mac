@@ -49,6 +49,15 @@ import CassiniRecording
             // Real elapsed time and real sink peaks, without a clock shortcut.
             try await Task.sleep(for:.seconds(20))
             try require(recorder.microphoneSilent && recorder.elapsedMs >= 20000,"20-second silent-microphone rule (phase=\(recorder.phase), elapsed=\(recorder.elapsedMs), levels=\(recorder.levels))")
+            // A moved/imported duplicate can share the basename while referring
+            // to another folder. It must not control this native capture.
+            let activeFolder = try recorder.directory.unwrap("active native folder")
+            let duplicateRoot = root.deletingLastPathComponent().appendingPathComponent("same-name-other-root")
+            try FileManager.default.createDirectory(at:duplicateRoot,withIntermediateDirectories:false)
+            try FileManager.default.copyItem(at:activeFolder,to:duplicateRoot.appendingPathComponent(activeFolder.lastPathComponent))
+            let duplicate = try LibraryScanner(root:duplicateRoot).scan().meetings.first.unwrap("same-name duplicate")
+            let otherEditor = RecordingPageModel.editor(for:duplicate)
+            try require(duplicate.libraryKey == model.meeting.libraryKey && model.native && !otherEditor.native,"native capture identity includes its folder, not only its basename")
             let payload = RecordingMenuPayload(recorder:recorder,runtime:runtime)
             try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state")
             try require(payload.actions.map(\.id) == ["stop","note","open"] && payload.actions.first?.shortcut == "⌥⌘R","menu actions")
@@ -96,11 +105,15 @@ import CassiniRecording
             editor.update(saving)
             let savingTime = editor.elapsedMs
             try await Task.sleep(for:.milliseconds(60))
-            try require(savingTime >= elapsed + 1000 && editor.elapsedMs == savingTime,"browser Saving holds the last recording time")
+            try require(savingTime == saving.durationMs && editor.elapsedMs == savingTime,"browser Saving uses the producer end instead of the hidden wall-clock interval")
+            var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
+            editor.update(noStart)
+            try await Task.sleep(for:.milliseconds(60))
+            try require(editor.elapsedMs == savingTime,"lifecycle-only Saving holds the producer end with no start timestamp")
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))
-            let report: [String:Any] = ["recordingComfort":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
+            let report: [String:Any] = ["recordingComfort":true,"sameNameCaptureIsolation":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             exit(0)
         } catch {
@@ -108,6 +121,43 @@ import CassiniRecording
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             FileHandle.standardError.write(Data("Recording comfort probe failed: \(error)\n".utf8)); exit(1)
         }
+    }
+}
+@MainActor enum RecordingSavingSelfTest {
+    static func run() async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" || env["GITHUB_ACTIONS"] == "true" && env["RUNNER_ENVIRONMENT"] == "github-hosted" else { exit(78) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSavingProbe-" + UUID().uuidString)
+        do {
+            let session = try RecordingSession(parent:root,title:"Private browser",source:"chromium")
+            defer { try? FileManager.default.removeItem(at:root) }
+            try session.addTrack(id:"a",label:"A",kind:"remote",sampleRate:16000,channels:1)
+            try session.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
+            let recording = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([session.manifest.id:.recording]))
+                .scan().meetings.first.unwrap("recording fixture")
+            let editor = RecordingPageModel.editor(for:recording), initial = editor.elapsedMs
+            try await Task.sleep(for:.milliseconds(1100))
+            guard editor.elapsedMs >= initial + 1000 else { throw POSIXError(.EINVAL) }
+            // The cached editor is reopened after the source stopped. Its known
+            // physical end is only 100 ms; the hidden wall clock must not win.
+            let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([session.manifest.id:.saving]))
+                .scan().meetings.first.unwrap("saving fixture")
+            editor.update(saving)
+            guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
+            try await Task.sleep(for:.milliseconds(100))
+            guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
+            var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
+            editor.update(noStart)
+            editor.notesText = "Note while saving"; editor.changeNotes()
+            await RecordingPageModel.flushAll()
+            let noted = try LibraryScanner(root:root).scan().meetings.first.unwrap("noted fixture")
+            guard editor.elapsedMs == 100, noted.notes.first?.atMs == 100 else { throw POSIXError(.EINVAL) }
+            try session.finish()
+            let visible = NSApp.windows.filter { $0.isVisible && !(String(describing:type(of:$0)) == "NSStatusBarWindow" && $0.level == .statusBar) }
+            guard visible.isEmpty else { throw NSError(domain:"SavingProbeVisibleWindow",code:1,userInfo:[NSLocalizedDescriptionKey:visible.map { $0.title + " class=" + String(describing:type(of:$0)) + " level=" + String($0.level.rawValue) }.joined(separator:", ")]) }
+            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"notesUseStoppedTime":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
+            FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
+        } catch { FileHandle.standardError.write(Data("Saving clock probe failed: \(error)\n".utf8)); exit(1) }
     }
 }
 private extension Optional {

@@ -77,9 +77,13 @@ private actor RecordingEdits {
         else { refreshVoices() }
     }
     func update(_ meeting: LibraryMeeting) {
-        let elapsed = elapsedMs
+        // A cached editor may have been hidden since recording stopped. Only
+        // extrapolate while the incoming snapshot is still recording; Saving
+        // uses the producer's recorded end, not time spent away from the view.
+        let elapsed = meeting.state.lifecycle == .recording ? elapsedMs : (meeting.state.liveMs ?? meeting.durationMs ?? liveElapsed)
         self.meeting = meeting
-        liveElapsed = max(elapsed,meeting.state.liveMs ?? 0); liveAnchor = ProcessInfo.processInfo.systemUptime
+        liveElapsed = meeting.state.lifecycle == .recording ? max(elapsed,meeting.state.liveMs ?? 0) : elapsed
+        liveAnchor = ProcessInfo.processInfo.systemUptime
         if !frozen { refreshVoices() }
     }
     private func refreshVoices() {
@@ -96,7 +100,9 @@ private actor RecordingEdits {
             self.voiceCount = count; self.voiceTask = nil
         }
     }
-    var native: Bool { RecordingController.shared.directory?.lastPathComponent == meeting.libraryKey }
+    var native: Bool {
+        RecordingController.shared.directory?.standardizedFileURL.path == meeting.folder.standardizedFileURL.path
+    }
     var elapsedMs: Int64 {
         if native { return RecordingController.shared.elapsedMs }
         if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? liveElapsed }
@@ -116,9 +122,18 @@ private actor RecordingEdits {
     }
     func changeNotes() {
         guard !frozen else { return }
-        notes.edit(notesText,atMs:elapsedMs) { LibraryFormat.position($0) + "  " }
+        let undo = (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
+        let restoration: RecordingNotes.Restoration? = undo?.isUndoing == true ? .undo : (undo?.isRedoing == true ? .redo : nil)
+        notes.edit(notesText,atMs:elapsedMs,restoration:restoration) { LibraryFormat.position($0) + "  " }
         notesDirty = true; scheduleNotes()
     }
+    #if DEBUG
+    var fixtureNotesJSON: String {
+        _ = notesText // Track the same edits as the native editor binding.
+        let value: [[String:Any]] = notes.lines.map { ["atMs":$0.atMs.map { NSNumber(value:$0) } ?? NSNull(),"text":$0.text] }
+        return String(decoding:(try? JSONSerialization.data(withJSONObject:value,options:[.sortedKeys])) ?? Data("[]".utf8),as:UTF8.self)
+    }
+    #endif
     func formatNotes() {
         notesText = notes.lines.map { note in
             guard let at = note.atMs else { return note.text }
