@@ -91,7 +91,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("g",modifierFlags:[.command,.shift])
         app.typeText(destination.path); app.typeKey(.return,modifierFlags:[])
         app.buttons["Save"].click()
-        let output = destination.appendingPathComponent("Onboarding.opus")
+        let output = destination.appendingPathComponent("Onboarding walkthrough.opus")
         let saved = NSPredicate { _,_ in FileManager.default.fileExists(atPath:output.path) }
         let result = XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20)
         if result != .completed {
