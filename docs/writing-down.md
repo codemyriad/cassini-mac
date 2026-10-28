@@ -53,6 +53,10 @@ Build-time pins:
   resource manifest checks actual signed code bytes; standalone tests require
   original source pins. The live privacy environment is checked before dlopen,
   and ONNX telemetry is disabled explicitly. No runtime download exists.
+- Real signing identities retain hardened runtime and same-team library
+  validation. Ad-hoc development builds use no runtime flag, matching Xcode:
+  ad-hoc code has no Team ID, so runtime validation otherwise rejects its own
+  bundled engines on current macOS. Asset checksums and the sandbox still apply.
 
 Offline tests cover exact FIR output tolerance/batch invariance, exact gate segment
 boundaries, source identities, offsets including unknown alignment, revisions,
