@@ -20,7 +20,7 @@ def load(name):
     spec.loader.exec_module(module)
     return module
 
-changes, products = load('ci-changes'), load('ci-products')
+changes, products, metrics = load('ci-changes'), load('ci-products'), load('ci-metrics')
 PATHS = json.loads((ROOT/'.github/ci/paths.json').read_text())
 
 
@@ -95,6 +95,19 @@ class Transport(unittest.TestCase):
                         item.size=1;target.addfile(item,io.BytesIO(b'x'))
                 (self.output/'swiftpm.json').write_text(json.dumps({**self.identity,'sha256':products.digest(archive)}))
                 with self.assertRaisesRegex(ValueError,'Unsafe'): products.unpack('swiftpm',self.output)
+
+
+class Measurements(unittest.TestCase):
+    def test_round_each_assigned_mac_job_and_exclude_queued_cancellations(self):
+        run=dict(id=1,status='completed',conclusion='success',created_at='2026-01-01T00:00:00Z',updated_at='2026-01-01T00:03:00Z')
+        jobs=[dict(runner_name='host',labels=['macos-15'],created_at='2026-01-01T00:00:00Z',started_at='2026-01-01T00:00:30Z',completed_at='2026-01-01T00:01:31Z',conclusion='success'),
+              dict(runner_name='host',labels=['macos-15-intel'],created_at='2026-01-01T00:00:00Z',started_at='2026-01-01T00:01:30Z',completed_at='2026-01-01T00:02:00Z',conclusion='cancelled'),
+              dict(runner_name='',labels=['macos-15'],conclusion='cancelled')]
+        report=metrics.summarize([run],jobs)
+        self.assertEqual(report['executed_macos_jobs'],2)
+        self.assertEqual(report['macos_minutes_estimated'],3)
+        self.assertEqual(report['median_macos_queue_seconds'],60)
+        self.assertEqual(report['wall_minutes'],3)
 
 
 if __name__ == '__main__': unittest.main()
