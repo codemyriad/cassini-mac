@@ -104,10 +104,15 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]),true)
         sheet.buttons["export-confirm"].click()
         // NSSavePanel is exposed as a sheet on some supported macOS versions.
-        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
-        let closed = NSPredicate { _,_ in !app.buttons["Save"].exists }
+        let closed = NSPredicate { _,_ in !nativeSaveButton(in:app).exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:5),.completed,app.debugDescription)
+    }
+    @MainActor private func nativeSaveButton(in app: XCUIApplication) -> XCUIElement {
+        // App-wide queries also match the Touch Bar Save button. The panel
+        // itself may be exposed as either a sheet or a window.
+        app.descendants(matching:.any).matching(identifier:"save-panel").firstMatch.buttons["OKButton"]
     }
     @MainActor func testExportReceivedAudioThroughAFileOnlySaveGrant() throws {
         // Keep the 52-minute board fixture out of this publication test. The
@@ -117,7 +122,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("e",modifierFlags:[.command,.shift])
         XCTAssertTrue(app.buttons["export-confirm"].waitForExistence(timeout:10),app.debugDescription)
         app.buttons["export-confirm"].click()
-        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)
         // The runner can create/inspect its own folder; Cassini receives a
         // file-only Powerbox grant, with no added entitlement or directory grant.
         let destination = FileManager.default.temporaryDirectory
@@ -126,7 +131,7 @@ final class LibraryBoards: XCTestCase {
         defer { try? FileManager.default.removeItem(at:destination) }
         app.typeKey("g",modifierFlags:[.command,.shift])
         app.typeText(destination.path); app.typeKey(.return,modifierFlags:[])
-        app.buttons["Save"].click()
+        nativeSaveButton(in:app).click()
         let output = destination.appendingPathComponent("Onboarding walkthrough.opus")
         let saved = NSPredicate { _,_ in FileManager.default.fileExists(atPath:output.path) }
         let result = XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20)
