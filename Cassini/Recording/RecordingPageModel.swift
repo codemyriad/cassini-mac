@@ -77,9 +77,13 @@ private actor RecordingEdits {
         else { refreshVoices() }
     }
     func update(_ meeting: LibraryMeeting) {
-        let elapsed = elapsedMs
+        // A cached editor may have been hidden since recording stopped. Only
+        // extrapolate while the incoming snapshot is still recording; Saving
+        // uses the producer's recorded end, not time spent away from the view.
+        let elapsed = meeting.state.lifecycle == .recording ? elapsedMs : (meeting.state.liveMs ?? meeting.durationMs ?? liveElapsed)
         self.meeting = meeting
-        liveElapsed = max(elapsed,meeting.state.liveMs ?? 0); liveAnchor = ProcessInfo.processInfo.systemUptime
+        liveElapsed = meeting.state.lifecycle == .recording ? max(elapsed,meeting.state.liveMs ?? 0) : elapsed
+        liveAnchor = ProcessInfo.processInfo.systemUptime
         if !frozen { refreshVoices() }
     }
     private func refreshVoices() {

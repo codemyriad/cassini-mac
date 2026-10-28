@@ -10,8 +10,13 @@ struct CassiniApp: App {
 
     var body: some Scene {
         let captureActive = recorder.isRecording
+        #if DEBUG
+        let suppressWindow = CommandLine.arguments.contains("--recording-saving-self-test")
+        #else
+        let suppressWindow = false
+        #endif
         Window(UXText.text("library.title"), id: "library") { LibraryView() }
-            .defaultLaunchBehavior(.presented)
+            .defaultLaunchBehavior(suppressWindow ? .suppressed : .presented)
             .defaultSize(width: 1120, height: 720)
             .windowToolbarStyle(.unified)
             .commands { AppCommands() }

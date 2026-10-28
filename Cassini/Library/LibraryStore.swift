@@ -24,7 +24,7 @@ struct LibraryLaunchContext {
         var context = Self()
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains(where: { ["--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
+        if arguments.contains(where: { ["--recording-saving-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
             ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
             context.scansLibrary = false
         }

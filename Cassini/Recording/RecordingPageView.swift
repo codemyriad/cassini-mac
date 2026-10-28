@@ -32,9 +32,9 @@ struct RecordingPageView: View {
                         Button { if model.native { recorder.stop() } } label: {
                             HStack(spacing:10) {
                                 RoundedRectangle(cornerRadius:2).fill(.white).frame(width:12,height:12)
-                                Text(UXText.text(recorder.isSaving ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
+                                Text(UXText.text((recorder.isSaving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
                             }.padding(.horizontal,26).frame(height:48).foregroundStyle(.white).background(LibraryTheme.red,in:Capsule())
-                        }.buttonStyle(.plain).disabled(recorder.isSaving || (!model.native && !model.frozen))
+                        }.buttonStyle(.plain).disabled(recorder.isSaving || detail.meeting.state.lifecycle == .saving || (!model.native && !model.frozen))
                             .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
                     }
                 }
@@ -89,6 +89,7 @@ struct RecordingPageView: View {
             }
             .onChange(of:notesFocused) { _,focused in if !focused { model.formatNotes(); model.flush() } }
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
+            .onChange(of:detail.meeting.state.lifecycle) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
