@@ -50,6 +50,17 @@ jobs:
         run: swift test --filter 'PipelineTests|TranscriptionMeetingTests'
       - name: Constructor privacy guard and persistent worker JFK golden
         run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle --report build/whistle-${{ matrix.runner }}.json
+      - name: Preserve worker crash diagnostics
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, time
+          time.sleep(2)
+          output = Path('build/whistle-crashes'); output.mkdir(parents=True,exist_ok=True)
+          for report in (Path.home()/'Library/Logs/DiagnosticReports').glob('cassini-whistle-worker*'):
+              if report.is_file(): shutil.copy2(report,output/report.name)
+          PY
       - uses: actions/upload-artifact@v5
         if: always()
         with:

@@ -96,7 +96,8 @@ final class TranscriptionMeetingTests: XCTestCase {
                 try MeetingTranscriber.run(directory:folder,engine:engine,detector:detector)
             })
         }
-        let deadline = Date().addingTimeInterval(30); var sawMixedProgress = false
+        // Hosted Intel must finish real FIR/VAD/recognition, not a timer stub.
+        let deadline = Date().addingTimeInterval(120); var sawMixedProgress = false
         while outcome.snapshot() == nil, Date() < deadline {
             if let data = try? Data(contentsOf:sidecar), let body = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
                let words = body["items"] as? [[String:Any]], words.count > 1,
@@ -110,6 +111,25 @@ final class TranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(meeting.state.transcript,.done)
         XCTAssertFalse(meeting.transcriptItems.contains { $0.text == "Retained old partial" })
         XCTAssertEqual(meeting.transcriptItems.count,68)
+    }
+    func testRetryDiscardsFailedWordsWithoutChangingNotesOrSpeakers() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Retry",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.append(id:"mic",pcm:Data(repeating:0,count:32000),offsetMs:0); try session.finish()
+        try JSONSerialization.data(withJSONObject:["language":"en","items":[["speaker":"me","startMs":0,"endMs":160,"text":"Failed words"]]]).write(to:session.directory.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction {
+            $0["notes"] = [["atMs":0,"text":"Keep"]]
+            $0["speakers"] = [["id":"me","name":"Me","provenance":"source","colourIndex":0]]
+            $0["transcript"] = ["status":"failed","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        try MeetingTranscriber.setStatus(directory:session.directory,id:session.manifest.id,status:"queued")
+        let queued = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(queued.state.transcript,.queued); XCTAssertTrue(queued.transcriptItems.isEmpty)
+        XCTAssertEqual(queued.notes.first?.text,"Keep")
+        let metadata = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as! [String:Any]
+        XCTAssertEqual((metadata["speakers"] as? [[String:Any]])?.first?["name"] as? String,"Me")
     }
     func testProductionWriterPipelineOffsetsAndReadOnlyAudio() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }

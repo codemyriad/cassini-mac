@@ -19,6 +19,10 @@ public enum MeetingTranscriber {
     public static func setStatus(directory: URL, id: UUID, status: String) throws {
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
             var transcript = metadata["transcript"] as! [String:Any]
+            if status == "queued", (transcript["status"] as? String) == "failed" {
+                // Retry is a fresh recognition, not a resume of failed output.
+                transcript["reference"] = NSNull()
+            }
             transcript["status"] = status; metadata["transcript"] = transcript
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
@@ -68,25 +72,13 @@ public enum MeetingTranscriber {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
             }
-            struct Item { let word: LibraryTranscriptItem; let track: Int; let ordinal: Int }
             let previous = [.queued,.running].contains(meeting.state.transcript) ? meeting.transcriptItems : []
-            var completedEnds: [String:Int64] = [:]
-            var items: [Item] = [], language = "auto", elapsed: Double = 0, processed: Double = 0
+            var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
+            var items: [TranscriptProgress.Item] = [], language = meeting.transcriptLanguage ?? "auto", elapsed: Double = 0, processed: Double = 0
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
             let reference: [String:Any] = ["kind":"sidecar", "file":"transcript.json", "format":"cassini.words.v1"]
             func publish(status: String) throws {
-                // Re-recognition may restart from the beginning, but reading
-                // must retain the saved tail until that source has caught up.
-                let retained: [Item] = status == "running" ? previous.enumerated().compactMap { index,word in
-                    guard word.endMs > completedEnds[word.speaker,default:-1] else { return nil }
-                    let rank = tracks.firstIndex(where: { $0.speaker.id == word.speaker }) ?? Int.max
-                    return Item(word:word,track:rank,ordinal:items.count + index)
-                } : []
-                let ordered = (items + retained).sorted {
-                    if $0.word.startMs != $1.word.startMs { return $0.word.startMs < $1.word.startMs }
-                    if $0.track != $1.track { return $0.track < $1.track }
-                    return $0.ordinal < $1.ordinal
-                }.map(\.word)
+                let ordered = progress.published(items,complete:status == "done")
                 struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
                 let data = try JSONEncoder().encode(Body(language: language, items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
@@ -118,9 +110,11 @@ public enum MeetingTranscriber {
                     }
                     let speech = Double(samples.count) / 16000
                     processed += speech; remaining -= speech; elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
-                    completedEnds[track.speaker.id] = max(completedEnds[track.speaker.id,default:-1],track.offset + Int64(segment.endSample * 1000 / 16000))
+                    progress.advance(track:index,to:track.offset + Int64(segment.endSample * 1000 / 16000))
                     try publish(status: "running")
                 }
+                progress.finish(track:index)
+                try publish(status:"running")
             }
             try publish(status: "done")
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }

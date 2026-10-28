@@ -21,7 +21,10 @@ do {
     guard owner > 1 else { exit(0) }
     let ownerWatchdog = DispatchSource.makeTimerSource(queue:.global())
     ownerWatchdog.schedule(deadline:.now() + .milliseconds(200),repeating:.milliseconds(200))
-    ownerWatchdog.setEventHandler { if getppid() != owner { exit(0) } }
+    // Top-level Swift code is main-actor isolated. Dispatch's preconcurrency
+    // callback must explicitly be Sendable or Swift6.1 checks that isolation
+    // on the global queue and traps at the first watchdog tick.
+    ownerWatchdog.setEventHandler { @Sendable in if getppid() != owner { exit(0) } }
     ownerWatchdog.resume()
     defer { ownerWatchdog.cancel() }
     SegmentedAudio.removeAbandonedScratch()
