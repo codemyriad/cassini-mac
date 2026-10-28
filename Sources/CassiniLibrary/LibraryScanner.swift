@@ -104,6 +104,9 @@ public struct LibraryScanner: Sendable {
         } catch { metadata = nil; meeting.issues.append(.invalidMetadata) }
         guard !received || metadata != nil else { return nil } // R1.4: import not committed.
         meeting.notes = metadata?.notes ?? []
+        if let value = metadata?.received {
+            meeting.received = .init(originalName:value.originalName,originalFolderName:value.originalFolderName,sha256:value.sha256,importedAtMs:value.importedAtMs)
+        }
         meeting.state.transcript = metadata?.transcript.status ?? .none
         meeting.state.etaMinutes = metadata?.etaMinutes
         meeting.state.error = metadata?.error
@@ -157,7 +160,7 @@ public struct LibraryScanner: Sendable {
                 }
                 if reference.kind == "sidecar" {
                     let body = try json(LibraryWords.self, at: safeFile(reference.file, in: folder), limit: 64 * 1024 * 1024, seen: &seen)
-                    try body.validate(); words = body.items; readable = true
+                    try body.validate(); words = body.items; meeting.transcriptLanguage = body.language; readable = true
                 } else {
                     guard received, reference.file == metadata?.received?.originalName, original != nil, let file,
                           ![.invalidCassiniMetadata, .staleAudio, .unknownCassiniFormat].contains(file.state),
@@ -167,6 +170,7 @@ public struct LibraryScanner: Sendable {
                     else { selected = file.defaultTranscript }
                     guard let body = selected?.load.transcript else { throw MetadataError.invalid }
                     words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
+                    meeting.transcriptLanguage = body.language
                     readable = true
                 }
             } else if metadata == nil {
@@ -297,6 +301,13 @@ public struct LibraryScanner: Sendable {
 }
 private struct LibraryWords: Decodable {
     let items: [LibraryTranscriptItem]
+    let language: String?
+    enum CodingKeys: CodingKey { case items, language }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy:CodingKeys.self)
+        items = try values.decode([LibraryTranscriptItem].self,forKey:.items)
+        language = try? values.decode(String.self,forKey:.language)
+    }
     func validate() throws {
         guard items.allSatisfy({ !$0.speaker.isEmpty && $0.startMs >= 0 && $0.endMs >= $0.startMs && $0.endMs <= AppMetadata.safe }) else { throw MetadataError.invalid }
     }

@@ -1,7 +1,7 @@
 name: UX Library boards
 on:
   pull_request:
-    paths: ['Cassini/**', 'UITests/**', 'Sources/CassiniLibrary/**', 'project.yml', 'scripts/export-ux-boards.py', 'scripts/test-recording-comfort.py', '.github/workflows/ux-boards.yml']
+    paths: ['Cassini/**', 'UITests/**', 'Sources/CassiniLibrary/**', 'Sources/CassiniExport/**', 'Sources/CassiniOpus/**', 'scripts/*opus*', 'project.yml', 'scripts/export-ux-boards.py', 'scripts/test-recording-comfort.py', '.github/workflows/ux-boards.yml']
 concurrency:
   group: ux-boards-${{ github.ref }}
   cancel-in-progress: true
@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v5
       - run: test "$RUNNER_ENVIRONMENT" = github-hosted
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
-      - run: brew install xcodegen displayplacer
+      - run: brew install cmake xcodegen displayplacer
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -26,7 +26,7 @@ jobs:
           from pathlib import Path
           import shutil
           for case in Path('UITests/Fixtures/Library').iterdir():
-              if case.name not in ('main', 'empty', 'first-record'): shutil.rmtree(case)
+              if case.name not in ('main', 'empty', 'first-record', 'received-only'): shutil.rmtree(case)
           PY
           xcodegen generate
       - name: Render Library boards

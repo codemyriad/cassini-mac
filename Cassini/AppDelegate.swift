@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if RecordingFixture.enabled || RecordingPageFixture.enabled { RecordingRuntime.shared.start() }
             return
         }
+        if CommandLine.arguments.contains("--export-self-test") {
+            Task { @MainActor in await ExportSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--whistle-self-test") {
             Task { @MainActor in await WhistleSelfTest.run() }
             return
@@ -44,7 +47,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !confirmingQuit else { return .terminateLater }
         if !RecordingConfirmation.active {
             let queue = TranscriptionQueue.shared
-            let wait = RecordingController.shared.isSaving || queue.isBusy || RecordingPageModel.hasPendingEdits
+            let imports = LibraryImportCoordinator.shared
+            let exports = MeetingExportCoordinator.shared
+            let wait = RecordingController.shared.isSaving || queue.isBusy || imports.isBusy || exports.isBusy || RecordingPageModel.hasPendingEdits
+            imports.beginShutdown()
+            exports.beginShutdown()
             queue.beginShutdown()
             guard wait else { return .terminateNow }
             confirmingQuit = true
@@ -53,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await RecordingPageModel.flushAll()
                     await RecordingController.shared.finishTask?.value
                     await queue.waitForShutdown()
+                    await imports.waitForShutdown()
+                    await exports.waitForShutdown()
                     self?.confirmingQuit = false; sender.reply(toApplicationShouldTerminate:true)
                 }
             }
@@ -60,17 +69,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         confirmingQuit = true
         DispatchQueue.main.async { [weak self] in
+          Task { @MainActor in
+            await MeetingExportCoordinator.shared.dismissForQuit()
             RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
                 Task { @MainActor in
                     if stop {
+                        MeetingExportCoordinator.shared.beginShutdown()
+                        LibraryImportCoordinator.shared.beginShutdown()
                         TranscriptionQueue.shared.beginShutdown()
                         await RecordingConfirmation.stopAndWait()
                         await TranscriptionQueue.shared.waitForShutdown()
+                        await LibraryImportCoordinator.shared.waitForShutdown()
+                        await MeetingExportCoordinator.shared.waitForShutdown()
                     }
                     self?.confirmingQuit = false
                     sender.reply(toApplicationShouldTerminate: stop)
                 }
             }
+          }
         }
         return .terminateLater
     }
@@ -79,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             RecordingRuntime.shared.stop(); LibraryStore.shared.stop()
             TranscriptionQueue.shared.beginShutdown()
+            LibraryImportCoordinator.shared.beginShutdown()
+            MeetingExportCoordinator.shared.beginShutdown()
             SessionPlaybackController.stopAll(); RecordingController.shared.stop()
         }
     }

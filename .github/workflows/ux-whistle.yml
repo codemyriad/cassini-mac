@@ -1,7 +1,7 @@
 name: Whistle bundling spike
 on:
   pull_request:
-    paths: ['Whistle/**', 'Sources/CassiniWhistle/**', 'Sources/CassiniTranscription/**', 'Sources/CassiniVAD/**', 'Tests/CassiniTranscriptionTests/**', 'scripts/fetch-vad.py', 'Sources/cassini-whistle-worker/**', 'Tests/CassiniWhistleTests/**', 'Cassini/WhistleSelfTest.swift', 'Cassini/AppDelegate.swift', 'project.yml', 'Package.swift', 'scripts/*whistle*', '.github/workflows/ux-whistle.yml']
+    paths: ['Whistle/**', 'Opus/**', 'Sources/CassiniExport/**', 'Sources/CassiniOpus/**', 'Cassini/Export/**', 'scripts/*opus*', 'scripts/test-export-sandbox.py', 'Sources/CassiniWhistle/**', 'Sources/CassiniTranscription/**', 'Sources/CassiniVAD/**', 'Tests/CassiniTranscriptionTests/**', 'scripts/fetch-vad.py', 'Sources/cassini-whistle-worker/**', 'Tests/CassiniWhistleTests/**', 'Cassini/WhistleSelfTest.swift', 'Cassini/AppDelegate.swift', 'project.yml', 'Package.swift', 'scripts/*whistle*', '.github/workflows/ux-whistle.yml']
 concurrency:
   group: ux-whistle-${{ github.ref }}
   cancel-in-progress: true
@@ -56,7 +56,8 @@ jobs:
           name: whistle-${{ matrix.runner }}
           path: |
             build/pipeline
-            build/whistle-*.json
+            build/whistle-*
+            build/export-sandbox*.json
             build/Whistle/unsigned-sha256.json
   bundle:
     name: Universal app and sandboxed Whistle helper
@@ -66,7 +67,7 @@ jobs:
       - uses: actions/checkout@v5
       - run: test "$RUNNER_ENVIRONMENT" = github-hosted
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
-      - run: brew install xcodegen
+      - run: brew install cmake xcodegen
       - run: xcodegen generate
       - name: Build universal app with signed engine and inheriting helper
         run: |
@@ -76,6 +77,8 @@ jobs:
             -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/whistle-app-build.log
           codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
+      - name: Verify sealed Opus encoder and sandbox export round trip
+        run: python3 scripts/test-export-sandbox.py build/Build/Products/Debug/Cassini.app --output build/export-sandbox.json
       - name: Verify packaged app starts its sandbox-inheriting worker
         env:
           CASSINI_HOSTED_WHISTLE: '1'
@@ -96,4 +99,5 @@ jobs:
           name: whistle-universal-bundle
           path: |
             build/whistle-*
+            build/export-sandbox*
             build/Build/Products/Debug/Cassini.app/Contents/Resources/Whistle/bundle-sha256.json

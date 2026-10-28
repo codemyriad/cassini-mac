@@ -76,8 +76,6 @@ struct InspectorView: View {
                 HStack(spacing: 8) {
                     Button("Show in Finder") { session.showInFinder() }
                         .disabled(session.fileURL == nil)
-                    Button("Export…") { TranscriptExportPanel.run(for: session) }
-                        .disabled(session.timeline == nil)
                 }
                 .controlSize(.small)
             }

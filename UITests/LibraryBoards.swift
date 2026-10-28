@@ -9,6 +9,33 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testReceivedBoard() throws {
+        let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.otherElements["received-folder-card"].waitForExistence(timeout:20),window.debugDescription)
+        XCTAssertTrue(window.buttons["preview-play"].isEnabled)
+        XCTAssertTrue(text("Record your own meetings with the button above.",in:window))
+        capture(window,name:"received")
+    }
+    @MainActor func testExportBoardAndKeyboardChoices() throws {
+        let app = try launch("export",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"], sheet = window.sheets.firstMatch
+        XCTAssertTrue(sheet.buttons["export-confirm"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertEqual(sheet.frame.width,540,accuracy:2)
+        XCTAssertEqual(sheet.radioButtons["Cassini file"].value as? String,"1")
+        XCTAssertFalse(sheet.radioButtons["Markdown"].isSelected)
+        capture(window,name:"export")
+        sheet.radioButtons["Markdown"].click()
+        XCTAssertEqual(sheet.radioButtons["Markdown"].value as? String,"1")
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertFalse(sheet.exists)
+        app.typeKey("e",modifierFlags:[.command,.shift])
+        XCTAssertTrue(sheet.buttons["export-confirm"].waitForExistence(timeout:5))
+        XCTAssertEqual(sheet.radioButtons["Cassini file"].value as? String,"1")
+        sheet.buttons["export-confirm"].click()
+        XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout:10),app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+    }
     @MainActor func testRecordingBoard() throws {
         let app = try launch("recording",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
@@ -240,7 +267,7 @@ final class LibraryBoards: XCTestCase {
         }
     }
     @MainActor func testOpenAndFinderRoutingWithLibraryClosed() async throws {
-        let app = try launch("first-run", fixture: "empty"); defer { app.terminate() }
+        let app = try launch("first-run", fixture: "empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString]); defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
         XCTAssertTrue(library.waitForExistence(timeout: 20))
         library.buttons["_XCUI:CloseWindow"].click()
@@ -255,14 +282,15 @@ final class LibraryBoards: XCTestCase {
         let fixture = try fixtureDirectory().appendingPathComponent("meeting.opus")
         for _ in 0..<2 {
             try await finderOpen(fixture)
-            XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertTrue(library.buttons["preview-read-transcript"].waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertTrue(library.descendants(matching:.any)["received-folder-card"].exists)
             XCTAssertEqual(app.windows.count, 1)
         }
         library.buttons["_XCUI:CloseWindow"].click()
         let closedAgain = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: library)
         XCTAssertEqual(XCTWaiter.wait(for: [closedAgain], timeout: 5), .completed)
         try await finderOpen(fixture)
-        XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(library.buttons["preview-read-transcript"].waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.windows.count, 1)
     }
     @MainActor func testReceivedReadAndPlayReuseOneViewer() throws {

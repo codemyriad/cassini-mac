@@ -33,7 +33,7 @@ enum LegacyOpening {
         #else
         let legacyFixture = false
         #endif
-        if !legacyFixture { MeetingNavigation.shared.openFile(requestedURL, autoplay: autoplay); return }
+        if !legacyFixture { LibraryImportCoordinator.shared.open(requestedURL); return }
         let url = requestedURL.standardizedFileURL
         if let model = documents[url]?.model {
             if autoplay { model.requestPlay() }

@@ -217,11 +217,5 @@ private func vector(_ name: String) throws -> Data {
         }
     }
 
-    @Test func exportsSubtitles() {
-        let tl = Timeline([w("a", 0, 400, "Hi"), w("a", 500, 900, "there.")])
-        let vtt = TranscriptExporter.export(.webVTT, title: "T", timeline: tl, speakers: [Speaker(id: "a", label: "Ann")])
-        #expect(vtt.hasPrefix("WEBVTT\n\n00:00:00.000 --> 00:00:00.900\n<v Ann>Hi there."))
-        let srt = TranscriptExporter.export(.srt, title: "T", timeline: tl, speakers: [])
-        #expect(srt.contains("00:00:00,000 --> 00:00:00,900\nUnknown speaker: Hi there."))
-    }
+
 }

@@ -75,7 +75,7 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
       - name: Install xcodegen
-        run: brew install xcodegen
+        run: brew install cmake xcodegen
       - name: Generate project
         run: xcodegen generate
       - name: Build
