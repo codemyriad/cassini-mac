@@ -14,6 +14,7 @@ enum LibraryTheme {
     }
 }
 struct LibraryView: View {
+    @State private var exporter = MeetingExportCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
@@ -81,8 +82,8 @@ struct LibraryView: View {
                                 Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
                                     .buttonStyle(.bordered).accessibilityIdentifier("meeting-write-down")
                             }
-                            Button(UXText.text("common.exportEllipsis")) {}.buttonStyle(.plain).fontWeight(.semibold)
-                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(true)
+                            Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
+                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export")
                             Button {} label: { Image(systemName: "ellipsis").frame(width: 28, height: 30) }.buttonStyle(.plain)
                                 .disabled(true).accessibilityLabel(UXText.text("meeting.moreActions"))
                         }
@@ -110,6 +111,7 @@ struct LibraryView: View {
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
+        .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .onAppear {
             sessionPlayback.onFailure = { NSApp.presentError($0) }
@@ -138,11 +140,22 @@ struct LibraryView: View {
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
                 recordCoordinator.showingFirst = true
             }
-            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting", navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.title == "Client call, Rossi & Partners" }) { navigation.open(meeting, frozen: true) }
+            if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
+               let meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+                navigation.open(meeting,frozen:true)
+                if LibraryLaunchContext.argument("-CassiniScreenshot") == "export" {
+                    Task { @MainActor in
+                        try? await Task.sleep(for:.milliseconds(300)); exporter.show(meeting)
+                    }
+                }
+            }
             #endif
         }
         .onOpenURL { LegacyOpening.openDocument($0) }
+        .dropDestination(for:URL.self) { urls,_ in
+            let audio = urls.filter { $0.isFileURL && ["opus","ogg"].contains($0.pathExtension.lowercased()) }
+            audio.forEach { LibraryImportCoordinator.shared.open($0) }; return !audio.isEmpty
+        }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
     private var toolbarTitle: some View {
@@ -167,6 +180,10 @@ struct LibraryView: View {
                     } header: {
                         Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(LibraryTheme.dim).textCase(nil)
                     }
+                }
+                if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
+                    Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
             }
             .listStyle(.sidebar)
@@ -253,7 +270,14 @@ struct LibraryView: View {
                 if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
-                ScrollView(.horizontal) {
+                if let folder = meeting.received?.originalFolderName {
+                    HStack(alignment:.top,spacing:12) {
+                        Image(systemName:"folder").padding(.top,2).accessibilityHidden(true)
+                        Text(UXText.text("received.folderCard",["folder":folder])).fixedSize(horizontal:false,vertical:true)
+                    }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
+                        .background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:8)).accessibilityIdentifier("received-folder-card")
+                }
+                if meeting.state.origin == .own { ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
                             HStack(spacing: 6) {
@@ -262,7 +286,7 @@ struct LibraryView: View {
                             }.fixedSize().padding(.horizontal, 12).frame(height: 28).background(LibraryTheme.chip, in: Capsule())
                         }
                     }
-                }.scrollIndicators(.hidden)
+                }.scrollIndicators(.hidden) }
                 HStack(spacing: 10) {
                     Button { play(meeting) } label: { Label(UXText.text(sessionPlayback.isPlaying ? "player.pause" : "common.play"), systemImage: sessionPlayback.isPlaying ? "pause.fill" : "play.fill").fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36) }
                         .buttonStyle(.plain).foregroundStyle(.white).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))

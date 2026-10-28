@@ -43,11 +43,6 @@ struct DocumentView: View {
                 }
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                if let url = session.fileURL {
-                    ShareLink(item: url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
                 Button {
                     session.showInspector.toggle()
                 } label: {

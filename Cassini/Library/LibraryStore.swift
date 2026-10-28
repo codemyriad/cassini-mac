@@ -22,12 +22,12 @@ struct LibraryLaunchContext {
         var context = Self()
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains(where: { ["--whistle-self-test", "--recording-self-test", "--recording-sink-self-test"].contains($0) }) ||
+        if arguments.contains(where: { ["--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
             ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
             context.scansLibrary = false
         }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first", "recording"].contains(name),
+           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first", "recording", "received", "export"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
             context.root = URL(fileURLWithPath: path).appendingPathComponent("root")
@@ -71,6 +71,7 @@ final class LibraryStore {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var pending = Set<URL>()
     @ObservationIgnored private var scanning = false
+    @ObservationIgnored private var selectionWhenAvailable: String?
     var meetings: [LibraryMeeting] { snapshot?.meetings ?? [] }
     var groups: [LibraryDayGroup] { snapshot?.groups(format: format) ?? [] }
     var selected: LibraryMeeting? { meetings.first { $0.libraryKey == selectedKey } }
@@ -90,6 +91,11 @@ final class LibraryStore {
         refresh()
     }
     func stop() { started = false; watcher.stop(); pending.removeAll() }
+    func selectImported(_ meeting: LibraryMeeting) {
+        selectionWhenAvailable = meeting.libraryKey
+        if meetings.contains(where:{ $0.libraryKey == meeting.libraryKey }) { selectedKey = meeting.libraryKey }
+        refresh(affected:meeting.folder)
+    }
     func refresh(affected: URL? = nil) {
         pending.insert(affected ?? context.root)
         guard !scanning else { return }; scanning = true
@@ -102,6 +108,9 @@ final class LibraryStore {
                     let result = try await scanner.scanInBackground(affected: target, now: context.now ?? Date())
                     guard started else { break }
                     snapshot = result; offline = false
+                    if let key = selectionWhenAvailable, result.meetings.contains(where:{ $0.libraryKey == key }) {
+                        selectedKey = key; selectionWhenAvailable = nil
+                    }
                     TranscriptionQueue.shared.consider(result.meetings, automatic: !context.screenshot && (!RecordingFixture.enabled || RecordingFixture.transcribes))
                     LegacyOpening.refreshTranscripts(result.meetings)
                     if selectedKey == nil || !meetings.contains(where: { $0.libraryKey == selectedKey }) {

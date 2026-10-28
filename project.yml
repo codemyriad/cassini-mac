@@ -49,6 +49,8 @@ targets:
         product: CassiniTranscription
       - package: CassiniKit
         product: CassiniRecording
+      - package: CassiniKit
+        product: CassiniExport
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
         link: false
@@ -57,6 +59,9 @@ targets:
         link: false
         embed: false
     postBuildScripts:
+      - name: Bundle pinned Opus encoder
+        script: bash "$SRCROOT/scripts/bundle-opus.sh"
+        basedOnDependencyAnalysis: false
       - name: Bundle native messaging host
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH"
