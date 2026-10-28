@@ -25,10 +25,14 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then
     identity="${EXPANDED_CODE_SIGN_IDENTITY:--}"
     if [ -z "$identity" ]; then identity=-; fi
     timestamp=(--timestamp)
-    if [ "$identity" = - ]; then timestamp=(--timestamp=none); fi
-    codesign --force --sign "$identity" --options runtime "${timestamp[@]}" "$library"
-    codesign --force --sign "$identity" --options runtime "${timestamp[@]}" "$vadlibrary"
-    codesign --force --sign "$identity" --options runtime "${timestamp[@]}" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
+    options=(--options runtime)
+    # Ad-hoc signatures have no Team ID. Runtime library validation rejects
+    # loading the bundled ad-hoc engine on current macOS; match Xcode's own
+    # ad-hoc behavior. Real identities retain runtime and same-team validation.
+    if [ "$identity" = - ]; then timestamp=(--timestamp=none); options=(--options 0); fi
+    codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" "$library"
+    codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" "$vadlibrary"
+    codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
 fi
 # Record what is actually shipped, including signatures, separately from source pins.
 python3 - "$destination" "$worker" "$library" "$vadlibrary" <<'PY'
