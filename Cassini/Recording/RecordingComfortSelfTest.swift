@@ -49,6 +49,15 @@ import CassiniRecording
             // Real elapsed time and real sink peaks, without a clock shortcut.
             try await Task.sleep(for:.seconds(20))
             try require(recorder.microphoneSilent && recorder.elapsedMs >= 20000,"20-second silent-microphone rule (phase=\(recorder.phase), elapsed=\(recorder.elapsedMs), levels=\(recorder.levels))")
+            // A moved/imported duplicate can share the basename while referring
+            // to another folder. It must not control this native capture.
+            let activeFolder = try recorder.directory.unwrap("active native folder")
+            let duplicateRoot = root.deletingLastPathComponent().appendingPathComponent("same-name-other-root")
+            try FileManager.default.createDirectory(at:duplicateRoot,withIntermediateDirectories:false)
+            try FileManager.default.copyItem(at:activeFolder,to:duplicateRoot.appendingPathComponent(activeFolder.lastPathComponent))
+            let duplicate = try LibraryScanner(root:duplicateRoot).scan().meetings.first.unwrap("same-name duplicate")
+            let otherEditor = RecordingPageModel.editor(for:duplicate)
+            try require(duplicate.libraryKey == model.meeting.libraryKey && model.native && !otherEditor.native,"native capture identity includes its folder, not only its basename")
             let payload = RecordingMenuPayload(recorder:recorder,runtime:runtime)
             try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state")
             try require(payload.actions.map(\.id) == ["stop","note","open"] && payload.actions.first?.shortcut == "⌥⌘R","menu actions")
@@ -104,7 +113,7 @@ import CassiniRecording
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))
-            let report: [String:Any] = ["recordingComfort":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
+            let report: [String:Any] = ["recordingComfort":true,"sameNameCaptureIsolation":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             exit(0)
         } catch {

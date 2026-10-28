@@ -100,7 +100,9 @@ private actor RecordingEdits {
             self.voiceCount = count; self.voiceTask = nil
         }
     }
-    var native: Bool { RecordingController.shared.directory?.lastPathComponent == meeting.libraryKey }
+    var native: Bool {
+        RecordingController.shared.directory?.standardizedFileURL.path == meeting.folder.standardizedFileURL.path
+    }
     var elapsedMs: Int64 {
         if native { return RecordingController.shared.elapsedMs }
         if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? liveElapsed }
