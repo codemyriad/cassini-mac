@@ -51,13 +51,13 @@ public final class SegmentedAudio {
     public private(set) var segments: [SpeechSegment] = []
     public private(set) var sampleCount = 0
     private let directory: URL
+    private let scratch: SpeechScratch
     private let stream: FileHandle
     public init(url: URL, detector: SpeechDetector) throws {
-        directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSpeech-" + String(getpid()) + "-" + UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        let scratch = directory.appendingPathComponent("mono.f32")
-        guard FileManager.default.createFile(atPath: scratch.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { try? FileManager.default.removeItem(at: directory); throw TranscriptionFailure.audioFormat }
-        stream = try FileHandle(forUpdating: scratch)
+        scratch = try SpeechScratch(); directory = scratch.directory
+        let audio = directory.appendingPathComponent("mono.f32")
+        guard FileManager.default.createFile(atPath: audio.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw TranscriptionFailure.audioFormat }
+        stream = try FileHandle(forUpdating: audio)
         do {
             detector.reset()
             var resampler: MeetingResampler?, gate = SpeechGate()
@@ -72,21 +72,11 @@ public final class SegmentedAudio {
             }
             if resampler != nil { try write(resampler!.feed([], final: true)) }
             segments += gate.flush(); detector.reset()
-        } catch { try? stream.close(); try? FileManager.default.removeItem(at: directory); throw error }
+        } catch { try? stream.close(); throw error }
     }
-    deinit { try? stream.close(); try? FileManager.default.removeItem(at: directory) }
-    public static func removeAbandonedScratch() {
-        let root = FileManager.default.temporaryDirectory
-        for directory in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
-            let name = directory.lastPathComponent
-            guard name.hasPrefix("CassiniSpeech-") else { continue }
-            let parts = name.dropFirst("CassiniSpeech-".count).split(separator: "-", maxSplits: 1)
-            guard parts.count == 2, let pid = Int32(parts[0]), pid > 0, UUID(uuidString: String(parts[1])) != nil else { continue }
-            var info = stat()
-            guard lstat(directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o777 == 0o700,
-                  kill(pid, 0) != 0, errno == ESRCH else { continue }
-            try? FileManager.default.removeItem(at: directory)
-        }
+    deinit { try? stream.close() }
+    public static func removeAbandonedScratch(in root: URL = FileManager.default.temporaryDirectory) {
+        SpeechScratch.removeAbandoned(in:root)
     }
     public func samples(_ segment: SpeechSegment) throws -> [Float] {
         let count = segment.endSample - segment.startSample

@@ -88,6 +88,7 @@ import Observation
                 // Worker crashes and bundle/decoder failures take the same retry path.
                 try? MeetingTranscriber.setStatus(directory: meeting.folder, id: meeting.id, status: "failed")
             }
+            await Task.detached { SegmentedAudio.removeAbandonedScratch() }.value
             active = nil; task = nil; startNext()
         }
     }
