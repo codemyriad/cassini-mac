@@ -27,6 +27,13 @@ import CassiniKit
         var phase = "setup"
         do {
             try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)
+            try check(!FileManager.default.fileExists(atPath:original.path),"first capture starts without an existing Library")
+            await recorder.start(parent:LibraryLocationModel.shared.roots[0])
+            try await wait { recorder.isRecording && !recorder.waitingForAudio }
+            let initialCapture = try require(recorder.directory)
+            await recorder.stopAndWait()
+            try check(FileManager.default.fileExists(atPath:initialCapture.appendingPathComponent("session.json").path),"first capture creates the Library")
+            try FileManager.default.removeItem(at:initialCapture)
             let earlier = try RecordingSession(parent:original,title:"Written meeting",source:"macos")
             try earlier.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
             try earlier.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try earlier.finish()
@@ -176,7 +183,7 @@ import CassiniKit
             queue.beginShutdown(); await queue.waitForShutdown(); await recorder.stopAndWait()
             let persisted = try LibraryLocation.read(file:config)
             try check(persisted.pendingMoves.count == 2 && !persisted.previousPaths.isEmpty,"pending move intent survives Quit")
-            let report: [String:Any] = ["settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
+            let report: [String:Any] = ["firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
                                       "closedMeetingMovedAtomically":true,"partialFailureRetainsOriginal":true,"liveFolderDeferred":true,"pendingMovesPersisted":true,
                                       "activeInferencePathPreserved":true,"queuedMetadataMovedAfterPreparation":true,"importIntentResumesAfterMove":true,"retainedSelectionUsesFolder":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
             output = try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])

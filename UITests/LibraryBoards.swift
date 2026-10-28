@@ -10,11 +10,18 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testSettingsRecordingPreferenceAndTabs() throws {
         let app = try launch("settings-recording",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
-        let toggle = window.descendants(matching:.any).matching(identifier:"settings-explain-recording").firstMatch
+        let toggle = window.descendants(matching:.any).matching(identifier:"settings-explain-recording")
+            .matching(NSPredicate(format:"value != nil")).firstMatch
         XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout:20),app.debugDescription)
         capture(window,name:"settings-recording")
-        let value = toggle.value as? String
-        toggle.click(); XCTAssertNotEqual(toggle.value as? String,value)
+        XCTAssertTrue(toggle.waitForExistence(timeout:5),app.debugDescription)
+        let value = try XCTUnwrap(toggle.value)
+        toggle.click()
+        let changed = NSPredicate { _,_ in
+            guard let current = toggle.value else { return false }
+            return String(describing:current) != String(describing:value)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:5),.completed,app.debugDescription)
         window.buttons["settings-change-shortcut"].click()
         XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:5))
         app.typeKey(.escape,modifierFlags:[])

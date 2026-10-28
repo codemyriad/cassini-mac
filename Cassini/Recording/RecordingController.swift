@@ -71,7 +71,7 @@ import Observation
         do {
             #if DEBUG
             if RecordingFixture.enabled {
-                guard let expected = RecordingFixture.root, expected.standardizedFileURL == parent.standardizedFileURL else { throw CocoaError(.fileWriteNoPermission) }
+                guard let expected = RecordingFixture.root, expected.standardizedFileURL.path == parent.standardizedFileURL.path else { throw CocoaError(.fileWriteNoPermission) }
             }
             #endif
             try await inputs.authorize()
