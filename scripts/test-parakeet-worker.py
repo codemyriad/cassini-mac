@@ -21,6 +21,9 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
         if missing:environment.pop(missing)
         result=subprocess.run(untrusted,input=b'',capture_output=True,env=environment,timeout=10)
         assert result.returncode==78,(result.returncode,result.stdout,result.stderr)
+        if missing:
+            response=json.loads(result.stdout)
+            assert response['error']=='Required privacy environment missing: '+missing,response
         assert not marker.exists(),'Unverified runtime constructor ran'
     subprocess.run([sys.executable,'-c','import ctypes,sys;ctypes.CDLL(sys.argv[1])',str(library)],env=dict(SAFE,CASSINI_TELEMETRY_SENTINEL=str(marker)),check=True)
     assert marker.read_text()=='loaded','Constructor sentinel positive control failed'
