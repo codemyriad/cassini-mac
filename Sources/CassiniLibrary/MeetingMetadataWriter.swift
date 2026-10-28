@@ -49,6 +49,7 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
         }
         try edit(&document)
         let data = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted])
+        guard data.count <= 1_048_576 else { throw POSIXError(.EFBIG) }
         let metadata = try AppMetadata.parse(data)
         try metadata.validate(id: id, received: directory.lastPathComponent.hasPrefix("Received-"))
         let temporary = ".meeting-\(UUID().uuidString).tmp"

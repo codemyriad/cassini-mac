@@ -18,15 +18,36 @@ import CassiniLibrary
 @MainActor @Observable final class RecordCoordinator {
     static let shared = RecordCoordinator()
     var showingFirst = false
+    var openRecordingWhenReady = false
+    var focusNotesWhenOpened = false
     private var parent = LibraryLaunchContext.current.root
-    func request(parent: URL) {
+    func request(parent: URL, showRecording: Bool = true) {
         let recorder = RecordingController.shared
         if recorder.isRecording { recorder.stop(); return }
         guard recorder.canStart else { return }
         self.parent = parent
+        openRecordingWhenReady = showRecording
         recorder.prepareDiskInfo(parent: parent)
         if RecordingPreferences.skipFirst { begin() }
         else { showingFirst = true }
+    }
+    func requestFromAnywhere() {
+        let recorder = RecordingController.shared
+        if recorder.isRecording { recorder.stop(); return }
+        guard recorder.canStart else { return }
+        let introduction = !RecordingPreferences.skipFirst
+        if introduction { MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps: true) }
+        request(parent: LibraryLaunchContext.current.root, showRecording: introduction)
+    }
+    func openCurrent(focusNotes: Bool = false) {
+        guard let folder = RecordingController.shared.directory else { return }
+        focusNotesWhenOpened = focusNotes
+        if let meeting = LibraryStore.shared.meetings.first(where: { $0.libraryKey == folder.lastPathComponent }) {
+            MeetingNavigation.shared.open(meeting); NSApp.activate(ignoringOtherApps: true)
+        } else {
+            openRecordingWhenReady = true; LibraryStore.shared.refresh(affected:folder)
+            MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps:true)
+        }
     }
     func confirm() { showingFirst = false; DispatchQueue.main.async { self.begin() } }
     private func begin() { MeetingNavigation.shared.back(); let parent = parent; Task { await RecordingController.shared.start(parent: parent) } }
@@ -78,24 +99,31 @@ struct LiveRecordingPill: View {
     let started: Date
     let microphone: Float
     let output: Float
+    var frozenMs: Int64? = nil
     var body: some View {
         TimelineView(.periodic(from: started, by: 1)) { timeline in
             HStack(spacing: 8) {
-                Circle().fill(LibraryTheme.red).frame(width: 9, height: 9)
-                Text(LibraryFormat.liveBadge(Int64(max(0, timeline.date.timeIntervalSince(started)) * 1000))).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
-                VStack(spacing: 4) {
-                    meter(microphone, label: "common.yourMicrophone")
-                    meter(output, label: "recordFirst.sound.title")
-                }.frame(width: 30)
-                Button(UXText.text("common.stop")) { RecordingController.shared.stop() }
+                Button { if frozenMs == nil { RecordCoordinator.shared.openCurrent() } } label: {
+                    HStack(spacing:8) {
+                        Circle().fill(LibraryTheme.red).frame(width:9,height:9)
+                        Text(LibraryFormat.liveBadge(frozenMs ?? RecordingController.shared.elapsedMs)).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
+                    }
+                }.buttonStyle(.plain).accessibilityIdentifier("recording-open-current")
+                    .accessibilityHint(UXText.text("hidden.openCassini"))
+                VStack(spacing:4) {
+                    meter(microphone,label:"common.yourMicrophone",silent:frozenMs != nil || RecordingController.shared.microphoneSilent)
+                    meter(output,label:"recordFirst.sound.title")
+                }.frame(width:30)
+                Button(UXText.text("common.stop")) { if frozenMs == nil { RecordingController.shared.stop() } }
                     .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 10).frame(height: 26)
                     .background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 5)).accessibilityIdentifier("recording-stop")
             }.padding(.horizontal, 10).frame(height: 34).background(LibraryTheme.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+                .help(RecordingRuntime.shared.power.held ? UXText.text("recording.pill.noSleep") : "")
         }
     }
-    private func meter(_ level: Float, label: String) -> some View {
+    private func meter(_ level: Float, label: String, silent: Bool = false) -> some View {
         GeometryReader { geometry in
-            Capsule().fill(LibraryTheme.red.opacity(0.15))
+            Capsule().fill(silent ? LibraryTheme.amber.opacity(0.2) : LibraryTheme.red.opacity(0.15))
                 .overlay(alignment: .leading) { Capsule().fill(LibraryTheme.red.opacity(0.7)).frame(width: geometry.size.width * Double(max(0, min(1, level)))) }
         }.frame(height: 4).accessibilityRepresentation {
             ProgressView(value: Double(max(0, min(1, level))))

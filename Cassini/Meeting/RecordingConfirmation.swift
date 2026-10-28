@@ -18,7 +18,9 @@ import AppKit
         #endif
         RecordingController.shared.stop()
     }
-    static func stopAndWait() async { stop(); await RecordingController.shared.finishTask?.value }
+    static func stopAndWait() async {
+        stop(); await RecordingPageModel.flushAll(); await RecordingController.shared.finishTask?.value
+    }
     static func ask(window: NSWindow?, completion: @escaping (Bool) -> Void) {
         let alert = NSAlert()
         alert.messageText = UXText.text("confirm.recordingRunning.title")

@@ -100,7 +100,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout: 10))
         window.sheets.buttons["record-first-start"].click()
         XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
-        let speech = NSPredicate { _, _ in self.text("0:05", in: window) || self.text("0:06", in: window) }
+        let speech = NSPredicate { _, _ in self.text("0:05", in: window) || self.text("0:06", in: window) || window.buttons["recording-open-current"].label == "0:05" || window.buttons["recording-open-current"].label == "0:06" }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: speech, object: nil)], timeout: 10), .completed)
         window.buttons["recording-stop"].click()
         let retry = window.buttons["Try again"]

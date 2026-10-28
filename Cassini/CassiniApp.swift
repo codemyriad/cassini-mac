@@ -6,13 +6,18 @@ import UniformTypeIdentifiers
 @main
 struct CassiniApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var recorder = RecordingController.shared
 
     var body: some Scene {
+        let captureActive = recorder.isRecording
         Window(UXText.text("library.title"), id: "library") { LibraryView() }
             .defaultLaunchBehavior(.presented)
             .defaultSize(width: 1120, height: 720)
             .windowToolbarStyle(.unified)
             .commands { AppCommands() }
+
+        MenuBarExtra(isInserted:.constant(captureActive)) { RecordingStatusMenu() } label: { RecordingStatusLabel() }
+            .menuBarExtraStyle(.window)
 
         WindowGroup(UXText.text("library.title"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
             if let route { LegacyDocumentView(url: route.url) }

@@ -20,7 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("Invalid hosted recording fixture: enabled=%d, root=%@, arguments=%@", RecordingFixture.enabled, String(describing: RecordingFixture.root), CommandLine.arguments)
             NSApp.terminate(nil); return
         }
-        if ScreenshotFixture.launchIfRequested() { return }
+        if ScreenshotFixture.launchIfRequested() {
+            if RecordingFixture.enabled || RecordingPageFixture.enabled { RecordingRuntime.shared.start() }
+            return
+        }
         if CommandLine.arguments.contains("--whistle-self-test") {
             Task { @MainActor in await WhistleSelfTest.run() }
             return
@@ -30,18 +33,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         #endif
+        RecordingRuntime.shared.start()
+        LibraryStore.shared.start()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if RecordingController.shared.isSaving {
-            Task { @MainActor in
-                await RecordingController.shared.finishTask?.value
-                sender.reply(toApplicationShouldTerminate: true)
+        guard !confirmingQuit else { return .terminateLater }
+        if RecordingController.shared.isSaving || !RecordingConfirmation.active && RecordingPageModel.hasPendingEdits {
+            confirmingQuit = true
+            DispatchQueue.main.async { [weak self] in
+                Task { @MainActor in
+                    await RecordingPageModel.flushAll(); await RecordingController.shared.finishTask?.value
+                    self?.confirmingQuit = false; sender.reply(toApplicationShouldTerminate:true)
+                }
             }
             return .terminateLater
         }
         guard RecordingConfirmation.active else { return .terminateNow }
-        guard !confirmingQuit else { return .terminateLater }; confirmingQuit = true
+        confirmingQuit = true
         DispatchQueue.main.async { [weak self] in
             RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
                 Task { @MainActor in
@@ -55,7 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { SessionPlaybackController.stopAll(); RecordingController.shared.stop() }
+        MainActor.assumeIsolated {
+            RecordingRuntime.shared.stop(); LibraryStore.shared.stop()
+            SessionPlaybackController.stopAll(); RecordingController.shared.stop()
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
