@@ -28,7 +28,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .build
-          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}
+          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Spikes/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}
           restore-keys: swiftpm-${{ matrix.arch }}-xcode16.4-
       - name: Compile all native Swift executables and test bundles once
         run: swift build --build-tests

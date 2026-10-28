@@ -21,9 +21,15 @@ let package = Package(
         .library(name: "CassiniRecording", targets: ["CassiniRecording"]),
         .executable(name: "cassini-browser-host", targets: ["cassini-browser-host"]),
         .executable(name: "cassini-inspect", targets: ["cassini-inspect"]),
+        // Build-only UX10 entitlement spike; never embedded in Cassini.app.
+        .executable(name: "cassini-browser-setup-probe-client", targets: ["cassini-browser-setup-probe-client"]),
+        .executable(name: "cassini-browser-setup-probe-service", targets: ["cassini-browser-setup-probe-service"]),
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .target(name:"CassiniBrowserSetupProbe",path:"Spikes/BrowserSetup/Protocol"),
+        .executableTarget(name:"cassini-browser-setup-probe-client",dependencies:["CassiniBrowserSetupProbe"],path:"Spikes/BrowserSetup/Client"),
+        .executableTarget(name:"cassini-browser-setup-probe-service",dependencies:["CassiniBrowserSetupProbe"],path:"Spikes/BrowserSetup/Service"),
         .target(name:"CassiniSherpaBridge",publicHeadersPath:"include"),
         .executableTarget(name:"cassini-parakeet-worker",dependencies:["CassiniParakeet","CassiniTranscription","CassiniWhistle"]),
         .target(name:"CassiniParakeet",dependencies:["CassiniSherpaBridge","CassiniWhistle","CassiniTranscription","CassiniModels"]),

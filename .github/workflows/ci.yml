@@ -20,6 +20,7 @@ jobs:
       whistle: ${{ steps.paths.outputs.whistle }}
       model_download: ${{ steps.paths.outputs.model_download }}
       parakeet: ${{ steps.paths.outputs.parakeet }}
+      browser_setup: ${{ steps.paths.outputs.browser_setup }}
     steps:
     - uses: actions/checkout@v5
       with:
@@ -182,6 +183,14 @@ jobs:
     needs: [changes, build]
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
     uses: ./.github/workflows/ux-parakeet.yml
+    with:
+      products_ready: true
+
+  browser_setup:
+    name: UX browser setup spike
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.browser_setup != 'false' }}
+    uses: ./.github/workflows/ux-browser-setup.yml
     with:
       products_ready: true
 
