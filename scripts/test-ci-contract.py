@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tarfile
@@ -31,6 +32,15 @@ class Selection(unittest.TestCase):
                 with self.subTest(area=area, pattern=pattern):
                     example = pattern.replace('**', 'nested/file.swift').replace('*', 'fixture')
                     self.assertTrue(changes.select('pull_request', 'base', PATHS, [example])[area])
+
+    def test_direct_workflow_scripts_and_app_privacy_changes_run_their_consumers(self):
+        for area, workflow in [('boards','ux-boards'),('whistle','ux-whistle')]:
+            body = (ROOT/'.github/workflows'/f'{workflow}.yml').read_text()
+            for script in re.findall(r'python3\s+(scripts/[\w.-]+\.py)',body):
+                with self.subTest(area=area,script=script):
+                    self.assertTrue(changes.select('pull_request','base',PATHS,[script])[area])
+        for source in ['Cassini/Transcription/TranscriptionQueue.swift','Cassini/Cassini.entitlements','Cassini/Info.plist']:
+            self.assertTrue(changes.select('pull_request','base',PATHS,[source])['whistle'])
 
     def test_unknown_base_and_detection_failure_run_everything(self):
         self.assertTrue(all(changes.select('pull_request', '', PATHS).values()))
@@ -63,6 +73,21 @@ class Transport(unittest.TestCase):
 
     def tearDown(self):
         self.identity_patch.stop(); self.patch.stop(); self.temp.cleanup()
+
+    def test_stale_opus_pin_is_rejected_before_staging(self):
+        source=self.root/'assets/Opus';source.mkdir(parents=True)
+        expected=self.root/'Opus';expected.mkdir()
+        (expected/'pins.json').write_text('{"version":"new"}')
+        (source/'pins.json').write_text('{"version":"old"}')
+        (source/'unsigned-sha256.json').write_text('{}')
+        destination=self.root/'staged'
+        with patch.dict(os.environ,CASSINI_CI_ASSETS=str(self.root/'assets')):
+            with self.assertRaisesRegex(ValueError,'Opus pin mismatch'):
+                products.stage_assets('Opus',destination)
+            self.assertFalse(destination.exists())
+            (source/'pins.json').write_text((expected/'pins.json').read_text())
+            products.stage_assets('Opus',destination)
+            self.assertEqual((destination/'pins.json').read_bytes(),(expected/'pins.json').read_bytes())
 
     def test_archive_preserves_executable_and_relative_link(self):
         products.pack('swiftpm', self.output)

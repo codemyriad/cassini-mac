@@ -18,7 +18,7 @@ PRODUCTS = {
     'debug': ['build/Build/Products/Debug', 'build/Build/Products'],
     'release': ['build/Build/Products/Release'],
 }
-PINS = ['Package.swift', 'Whistle/pins.json', 'scripts/fetch-opus.py', 'scripts/fetch-vad.py']
+PINS = ['Package.swift', 'Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-opus.py', 'scripts/fetch-vad.py']
 
 
 def digest(path):
@@ -84,6 +84,8 @@ def stage_assets(kind, destination):
     """Only the producer uses this opt-in path; shipped code never uses CI state."""
     source = Path(os.environ['CASSINI_CI_ASSETS'])/kind
     hashes = json.loads((source/'unsigned-sha256.json').read_text())
+    if kind == 'Opus' and json.loads((source/'pins.json').read_text()) != json.loads((ROOT/'Opus/pins.json').read_text()):
+        raise ValueError('Opus pin mismatch')
     if kind == 'Whistle':
         if json.loads((source/'pins.json').read_text()) != json.loads((ROOT/'Whistle/pins.json').read_text()):
             raise ValueError('Whistle pin mismatch')

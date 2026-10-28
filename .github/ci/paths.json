@@ -25,7 +25,12 @@
     "project.yml",
     "scripts/export-ux-boards.py",
     "scripts/test-recording-comfort.py",
-    ".github/workflows/ux-boards.yml"
+    ".github/workflows/ux-boards.yml",
+    "scripts/check-ux-copy.py",
+    "scripts/hosted-display.py",
+    "scripts/test-search-app.py",
+    "scripts/test-import-lifecycle.py",
+    "scripts/test-settings-app.py"
   ],
   "exports": [
     "Sources/**",
@@ -48,6 +53,7 @@
     ".github/workflows/ux-model.yml"
   ],
   "whistle": [
+    "Cassini/**",
     "Whistle/**",
     "Opus/**",
     "Sources/CassiniExport/**",
