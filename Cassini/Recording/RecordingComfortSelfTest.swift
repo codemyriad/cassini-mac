@@ -52,11 +52,22 @@ import CassiniRecording
             let payload = RecordingMenuPayload(recorder:recorder,runtime:runtime)
             try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state")
             try require(payload.actions.map(\.id) == ["stop","note","open"] && payload.actions.first?.shortcut == "⌥⌘R","menu actions")
-            recorder.stop()
+            let total: UInt64 = 100 << 30, reserve = total / 50
+            FileHandle.standardError.write(Data("Private disk probe: checking native warning presentation\n".utf8))
+            recorder.applyDiskBudgetForTesting(DiskBudget(total:total,free:reserve + 300_000_000,bytesPerSecond:1_000_000))
+            try require(RecordingDiskWatch.warningTitle == UXText.text("errors.diskLow.line",["n":"5"]),"low-disk warning appears")
+            recorder.applyDiskBudgetForTesting(DiskBudget(total:total,free:reserve + 240_000_000,bytesPerSecond:1_000_000))
+            try require(RecordingDiskWatch.warningTitle == UXText.text("errors.diskLow.line",["n":"4"]),"low-disk warning updates")
+            recorder.applyDiskBudgetForTesting(DiskBudget(total:total,free:20 << 30,bytesPerSecond:1_000_000))
+            try require(RecordingDiskWatch.warningTitle == nil,"recovered disk space clears the warning")
+            recorder.applyDiskBudgetForTesting(DiskBudget(total:total,free:reserve,bytesPerSecond:1_000_000))
+            try require(RecordingDiskWatch.warningTitle == nil && recorder.diskStopped,"reserve stops without recreating a status item")
+            FileHandle.standardError.write(Data("Private disk probe: warning lifecycle completed\n".utf8))
             try require(recorder.isSaving,"Saving visible while finalizing")
             await recorder.finishTask?.value
             try await Task.sleep(for:.milliseconds(100))
             try require(!runtime.power.held && recorder.canStart,"power released after Stop")
+            try require(RecordingDiskWatch.warningTitle == nil,"no late disk sample recreates the warning")
             let saved = try LibraryScanner(root:root).scan().meetings.first.unwrap("saved meeting")
             try require(saved.state.lifecycle == .saved && saved.canPlaySession && saved.title == model.title && saved.notes == updated.notes,"saved title, notes and playable audio")
             runtime.stop()
@@ -89,7 +100,7 @@ import CassiniRecording
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))
-            let report: [String:Any] = ["recordingComfort":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
+            let report: [String:Any] = ["recordingComfort":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             exit(0)
         } catch {

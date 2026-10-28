@@ -16,11 +16,15 @@ import Observation
     private(set) var diskMinutes: Int?
     private(set) var diskStopped = false
     @ObservationIgnored private let diskWatch = RecordingDiskWatch()
+    @ObservationIgnored private var diskInfoTask: Task<Void,Never>?
     var diskLine: String? { diskStopped ? UXText.text("errors.diskStopped.line") : diskMinutes.map { UXText.text("errors.diskLow.line", ["n":String($0)]) } }
     func prepareDiskInfo(parent: URL) {
-        diskStopped = false; RecordingDiskWatch.clear()
-        let minutes = RecordingDiskWatch.inspect(parent, rate: 48000 * 3 * 2)?.minutesLeft
-        diskMinutes = minutes.flatMap { $0 < 10 ? $0 : nil }
+        diskInfoTask?.cancel(); diskStopped = false; diskMinutes = nil; RecordingDiskWatch.clear()
+        diskInfoTask = Task {
+            let minutes = await Task.detached { RecordingDiskWatch.inspect(parent,rate:48000 * 3 * 2)?.minutesLeft }.value
+            guard !Task.isCancelled, !isRecording, !isSaving else { return }
+            diskMinutes = minutes.flatMap { $0 < 10 ? $0 : nil }; diskInfoTask = nil
+        }
     }
     var title = UXText.text("library.untitled")
     private(set) var startedAt: Date?
@@ -99,10 +103,7 @@ import Observation
             }
             phase = .recording
             diskWatch.start(directory: session.directory) { [weak self] budget in
-                guard let self, self.isRecording else { return }
-                self.diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
-                if budget.shouldStop { self.diskStopped = true; RecordingDiskWatch.clear(); self.stop() }
-                if let line = self.diskLine { RecordingDiskWatch.showOnce(line) }
+                self?.applyDiskBudget(budget)
             }
             statusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -116,6 +117,17 @@ import Observation
             }
         } catch { guard generation == attempt else { return }; stop(problem: error.localizedDescription) }
     }
+    private func applyDiskBudget(_ budget: DiskBudget) {
+        guard isRecording else { return }
+        diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
+        if budget.shouldStop { diskStopped = true; RecordingDiskWatch.clear(); stop(); return }
+        RecordingDiskWatch.updateWarning(diskLine)
+    }
+    #if DEBUG
+    func applyDiskBudgetForTesting(_ budget: DiskBudget) {
+        guard RecordingFixture.enabled else { return }; applyDiskBudget(budget)
+    }
+    #endif
     func stop(problem: String? = nil) {
         guard phase == .starting || phase == .recording else { return }
         completedElapsedMs = elapsedMs
