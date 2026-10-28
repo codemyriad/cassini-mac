@@ -88,7 +88,7 @@ public actor SearchIndex {
         } catch { try? database.execute("ROLLBACK"); throw error }
     }
     public func search(_ query: String, filter: SearchFilter = .init(), now: Date = Date(), timeZone: TimeZone = .current) throws -> [SearchHit] {
-        let query = query.trimmingCharacters(in:.whitespacesAndNewlines)
+        let query = query.replacingOccurrences(of:"\0",with:" ").trimmingCharacters(in:.whitespacesAndNewlines)
         guard !query.isEmpty, query.count <= 512 else { return [] }
         // All user text is one literal phrase. Quotes/operators cannot become
         // SQL or FTS syntax; the binding is separate from the SQL statement.

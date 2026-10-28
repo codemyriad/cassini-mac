@@ -23,7 +23,7 @@ args.output.with_suffix('.stderr.txt').write_text(result.stderr)
 assert result.returncode == 0,(result.returncode,result.stdout,result.stderr)
 report = json.loads(result.stdout)
 assert report['places'] == 4 and report['meetings'] == 3 and report['d14Order'] == [4000,872000,1870000,527000]
-assert all(report[name] is True for name in ('realAppFTS5','andFilters','filtersResetOnClose','navigationClosesSearch','selectAllPreserved'))
+assert all(report[name] is True for name in ('realAppFTS5','andFilters','filtersResetOnClose','navigationClosesSearch','selectAllPreserved','indexFailureRecovers'))
 assert report['hitSeekMs'] == 872000 and report['audioDevicesOpened'] is False
 args.output.write_text(json.dumps(report,indent=2)+'\n')
 print('PASS real app FTS5, shared4/3 fixture, D14 filters/order, hit seek and close reset (no playback)')

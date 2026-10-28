@@ -20,6 +20,13 @@ import CassiniSearch
     @ObservationIgnored private var indexTask: Task<SearchIndex,Error>?
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var fixtureSelectionDone = false
+    @ObservationIgnored private let makeIndex: @Sendable (URL) throws -> SearchIndex
+    @ObservationIgnored private let reportFailure: @MainActor (Error) -> Void
+    @ObservationIgnored private var errorShown = false
+    init(makeIndex: @escaping @Sendable (URL) throws -> SearchIndex = { try SearchIndex(cache:$0) },
+         reportFailure: @escaping @MainActor (Error) -> Void = { NSApp.presentError($0) }) {
+        self.makeIndex = makeIndex; self.reportFailure = reportFailure
+    }
     var selected: SearchHit? { hits.first { $0.id == selectedID } }
     var names: [String] { SearchIndex.names(meetings) }
     var count: String { LibraryFormat.searchCount(places:Int64(hits.count),meetings:Int64(Set(hits.map(\.meetingKey)).count)) }
@@ -41,7 +48,8 @@ import CassiniSearch
         if indexTask == nil {
             let cache = context.screenshot ? FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSearchFixture-\(ProcessInfo.processInfo.processIdentifier)") :
                 FileManager.default.urls(for:.cachesDirectory,in:.userDomainMask)[0].appendingPathComponent("MeetingSearch-v1")
-            indexTask = Task.detached { try SearchIndex(cache:cache) }
+            let create = makeIndex
+            indexTask = Task.detached { try create(cache) }
         }
         let ready = indexTask!
         searching = true
@@ -60,10 +68,12 @@ import CassiniSearch
                     selectedID = results.first(where:{ $0.positionMs == 872000 })?.id ?? selectedID; fixtureSelectionDone = true
                 }
                 #endif
-                searching = false
+                searching = false; errorShown = false
             } catch is CancellationError {} catch {
                 guard !Task.isCancelled, revision == generation else { return }
-                hits = []; selectedID = nil; searching = false; NSApp.presentError(error)
+                indexTask = nil // A failed initialization must not poison later queries.
+                hits = []; selectedID = nil; searching = false
+                if !errorShown { errorShown = true; reportFailure(error) }
             }
         }
     }
