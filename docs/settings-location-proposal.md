@@ -25,7 +25,11 @@ readable, including a separate selectable row when folder names collide.
 
 Capturing, saving, unreadable producer sessions and locked inference jobs stay
 at their original paths until idle. A real inference child is neither cancelled
-nor rebased. Only pending scheduling and imports pause during movement; playback,
+nor rebased. Accepted queue metadata is persisted before its folder moves. Imports keep their
+file-access lease and Write it down intent while paused, then resolve the new
+destination on resume. A retained-folder collision keeps selection on the exact
+original folder, even when a watcher has not yet noticed restored access.
+Only pending scheduling and imports pause during movement; playback,
 export and detail views close after notes flush. Readers retain old roots until
 all pending/failed folders resolve. Search is rebuilt afterwards. Failed folders
 are retried only by Try again; automatic retries concern pending folders only.
@@ -43,6 +47,8 @@ validation, real inference locks, late routing and independent connection leases
 `scripts/test-settings-app.py` runs two fresh app processes over private generated
 files and RAM audio: Carbon shortcut replacement/conflict, per-meeting failure
 and retry, live/inference path preservation, Search rebuilding, a preconnected
-browser host's late-bound destination, and pending movement after relaunch.
+browser host's late-bound destination, held-lock queue/import preparation, retained
+folder selection through failed/successful retries, and pending movement after
+relaunch.
 It opens no audio devices and changes no user Library/configuration. It does not
 exercise a real external volume, picker interaction or hardware mute behavior.

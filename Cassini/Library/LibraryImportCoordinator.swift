@@ -51,10 +51,10 @@ import Observation
                 try Task.checkCancellation()
                 LibrarySearchModel.shared.close()
                 MeetingNavigation.shared.back()
-                LibraryStore.shared.selectImported(meeting)
+                let displayed = LibraryStore.shared.selectImported(meeting)
                 if requestedTranscription.remove(request.key) != nil {
-                    if meeting.canWriteDown { TranscriptionQueue.shared.enqueue(meeting,retry:meeting.state.transcript == .failed) }
-                    MeetingNavigation.shared.open(meeting)
+                    if meeting.canWriteDown { TranscriptionQueue.shared.enqueue(displayed,retry:displayed.state.transcript == .failed) }
+                    MeetingNavigation.shared.open(displayed)
                 }
                 MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps:true)
             } catch is CancellationError {

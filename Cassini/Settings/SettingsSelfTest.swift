@@ -5,6 +5,8 @@ import Carbon
 import CassiniLibrary
 import CassiniRecording
 import Darwin
+import CryptoKit
+import CassiniKit
 
 /// Real app proof over private generated files/RAM inputs. No picker, desktop
 /// automation, user Library or real capture device is involved.
@@ -22,6 +24,7 @@ import Darwin
         let recorder = RecordingController.shared, runtime = RecordingRuntime.shared, queue = TranscriptionQueue.shared
         var output: Data?, failure: Error?
         var blockedFolder: URL?
+        var phase = "setup"
         do {
             try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)
             let earlier = try RecordingSession(parent:original,title:"Written meeting",source:"macos")
@@ -37,12 +40,14 @@ import Darwin
             try queued.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
             try queued.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try queued.finish()
             try MeetingMetadataWriter(directory:queued.directory,id:queued.manifest.id).createIfNeeded()
+            phase = "initial import"
             let receivedSource = Bundle.main.resourceURL!.appendingPathComponent("Fixtures/Library/main/root/Received-a0000000-0000-4000-8000-000000000006/original.opus")
             let received = try LibraryImport.copy(receivedSource,into:original)
             blockedFolder = received.folder
             let receivedBytes = try Data(contentsOf:received.folder.appendingPathComponent("original.opus"))
             LibraryStore.shared.reloadLocation()
             try await wait { LibraryStore.shared.loaded && queue.active != nil }
+            phase = "shortcut"
             let flags = UInt32(controlKey | optionKey | shiftKey | cmdKey)
             let privateKey = RecordingHotKey(code:UInt32(kVK_F18),flags:flags,character:"\u{F715}",name:"F18")
             try check(runtime.shortcut.change(to:privateKey) == noErr,"private real hotkey registration")
@@ -63,6 +68,7 @@ import Darwin
             let search = LibrarySearchModel.shared
             search.query = "relocation"; search.open()
             try await wait { !search.searching && search.hits.count == 1 }; search.close()
+            phase = "RAM capture"
             let activeBeforeMove = try require(queue.active)
             let source = LibraryLocationModel.shared.roots[0]
             // The browser may connect before a Move and send start afterwards.
@@ -76,6 +82,43 @@ import Darwin
             try await wait { recorder.isRecording && !recorder.waitingForAudio }
             let live = try require(recorder.directory)
             let sessionBytes = try Data(contentsOf:earlier.directory.appendingPathComponent("session.json"))
+            // Hold metadata and import publication briefly so Move must pause
+            // both in-flight preparations, preserving their accepted intent.
+            phase = "pending queue"
+            await queue.pauseForMove()
+            let waiting = try RecordingSession(parent:source,title:"Pending metadata",source:"macos")
+            try waiting.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+            try waiting.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try waiting.finish()
+            try MeetingMetadataWriter(directory:waiting.directory,id:waiting.manifest.id).createIfNeeded()
+            let waitingMeeting = try require(LibraryScanner(root:source).scan().meetings.first(where:{ $0.id == waiting.manifest.id }))
+            let heldMetadata = open(waiting.directory.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard heldMetadata >= 0, flock(heldMetadata,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
+            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(heldMetadata,LOCK_UN); close(heldMetadata) }
+            queue.resumeAfterMove(); queue.enqueue(waitingMeeting)
+            phase = "pending import"
+            let pendingSource = source.appendingPathComponent(".pending-import.opus")
+            _ = try OpusStreamFile.rewrite(receivedBytes,tags:PortableMeetingTags.packet(),to:pendingSource)
+            let pendingHash = SHA256.hash(data:try Data(contentsOf:pendingSource)).map { String(format:"%02x",$0) }.joined()
+            let heldImport = open(source.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard heldImport >= 0, flock(heldImport,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
+            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(heldImport,LOCK_UN); close(heldImport) }
+            LibraryImportCoordinator.shared.open(pendingSource,writingDown:true)
+            await Task.yield()
+            // Distinct destination data with the same prefixed UUID must not
+            // steal selection from the retained original after a failed move.
+            phase = "destination collision"
+            let collision = destination.appendingPathComponent(received.folder.lastPathComponent)
+            try FileManager.default.copyItem(at:received.folder,to:collision)
+            let collisionAudio = collision.appendingPathComponent("original.opus")
+            let collisionHash = SHA256.hash(data:try Data(contentsOf:collisionAudio)).map { String(format:"%02x",$0) }.joined()
+            try check(collisionHash != pendingHash,"distinct destination input")
+            try MeetingMetadataWriter(directory:collision,id:received.id).transaction {
+                $0["title"] = "Existing destination"; $0["titleSource"] = "user"
+                var info = $0["received"] as! [String:Any]; info["sha256"] = collisionHash; $0["received"] = info
+                $0["transcript"] = ["status":"none","reference":NSNull()]; $0["quoteOverride"] = NSNull()
+            }
+            phase = "relocation"
+            LibraryStore.shared.selectedKey = received.libraryKey
             try check(chmod(received.folder.path,0) == 0,"private move-failure fixture")
             try await LibraryMoveCoordinator.shared.moveForTesting(to:destination,allowingFailures:true)
             try check(FileManager.default.fileExists(atPath:received.folder.path),"failed original retained")
@@ -83,11 +126,33 @@ import Darwin
             // with its unknown-title fallback before Move starts. Anchor the
             // failure to the actual folder, not that transient readable title.
             try check(LibraryLocationModel.shared.location.pendingMoves.contains { $0.id == LibraryLocation.canonical(received.folder).path && $0.phase == .failed },"failure line identifies the original folder")
+            try await wait { !LibraryImportCoordinator.shared.isBusy }
+            let movedWaiting = LibraryLocationModel.shared.roots[0].appendingPathComponent(waiting.directory.lastPathComponent)
+            try check(try LibraryScanner(root:LibraryLocationModel.shared.roots[0]).scan().meetings.first(where:{ $0.folder.path == movedWaiting.path })?.state.transcript == .queued,"queued metadata persisted before its folder moved")
+            try await wait { LibraryStore.shared.meetings.contains { $0.received?.sha256 == pendingHash && $0.folder.path != collision.path } }
+            let importedAfterMove = try require(LibraryStore.shared.meetings.first(where:{ $0.received?.sha256 == pendingHash && $0.folder.path != collision.path }))
+            try await wait {
+                (try? LibraryScanner(root:LibraryLocationModel.shared.roots[0]).scan().meetings.first(where:{ $0.folder == importedAfterMove.folder })?.state.transcript) == .queued
+            }
+            try check(importedAfterMove.folder.deletingLastPathComponent().path == LibraryLocationModel.shared.roots[0].path,"paused Write it down import resumes at new destination")
+            phase = "retry selection"
             try check(chmod(received.folder.path,0o700) == 0,"restore fixture permissions")
+            let freshReceived = try require(LibraryScanner(root:source).scan().meetings.first(where:{ $0.folder.path == received.folder.path }))
+            let displayed = LibraryStore.shared.selectImported(freshReceived)
+            try check(displayed.folder.path == received.folder.path && displayed.libraryKey.hasPrefix("retained:") && displayed.state.audioAvailable == true,"imported duplicate keeps fresh metadata and retained collection identity")
+            try await wait { !LibraryMoveCoordinator.shared.busy }
+            LibraryMoveCoordinator.shared.retry()
+            try await wait { !LibraryMoveCoordinator.shared.busy }
+            try check(LibraryStore.shared.selected?.folder.path == received.folder.path,"failed retry keeps selection on the retained folder")
+            try FileManager.default.removeItem(at:collision)
             try check(try Data(contentsOf:received.folder.appendingPathComponent("original.opus")) == receivedBytes,"failed meeting audio remains unchanged")
+            try await wait { !LibraryMoveCoordinator.shared.busy }
             LibraryMoveCoordinator.shared.retry()
             try await wait { !LibraryMoveCoordinator.shared.busy }
             try check(LibraryMoveCoordinator.shared.failures.isEmpty,"failed meeting can be retried")
+            let relocatedReceived = LibraryLocationModel.shared.roots[0].appendingPathComponent(received.folder.lastPathComponent)
+            try check(LibraryStore.shared.selected?.folder.path == relocatedReceived.path,"selection follows the retained meeting after a successful retry")
+            phase = "final reconciliation"
             let target = LibraryLocationModel.shared.roots[0]
             try check(recorder.isRecording && FileManager.default.fileExists(atPath:live.path),"live capture remains in its old folder")
             try check(LibraryLocationModel.shared.location.previousPaths.contains(source.path),"old reader retained")
@@ -113,7 +178,7 @@ import Darwin
             try check(persisted.pendingMoves.count == 2 && !persisted.previousPaths.isEmpty,"pending move intent survives Quit")
             let report: [String:Any] = ["settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
                                       "closedMeetingMovedAtomically":true,"partialFailureRetainsOriginal":true,"liveFolderDeferred":true,"pendingMovesPersisted":true,
-                                      "activeInferencePathPreserved":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
+                                      "activeInferencePathPreserved":true,"queuedMetadataMovedAfterPreparation":true,"importIntentResumesAfterMove":true,"retainedSelectionUsesFolder":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
             output = try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])
         } catch { failure = error }
         LibraryMoveCoordinator.shared.beginShutdown(); await LibraryMoveCoordinator.shared.waitForShutdown()
@@ -122,7 +187,7 @@ import Darwin
         SettingsFixture.defaults?.removePersistentDomain(forName:"com.codemyriad.cassini-mac.settings-fixture." + id.uuidString)
         if let blockedFolder { _ = chmod(blockedFolder.path,0o700) }
         if failure != nil { for url in [original,destination,config.deletingLastPathComponent()] { try? FileManager.default.removeItem(at:url) } }
-        if let failure { FileHandle.standardError.write(Data("Settings proof failed: \(failure)\n".utf8)); exit(1) }
+        if let failure { FileHandle.standardError.write(Data("Settings proof failed during \(phase): \(failure)\n".utf8)); exit(1) }
         if let output { FileHandle.standardOutput.write(output + Data([10])); exit(0) }; exit(1)
     }
     static func resume() async {

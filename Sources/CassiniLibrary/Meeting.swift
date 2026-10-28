@@ -155,6 +155,7 @@ public struct LibraryDayGroup: Sendable {
 public struct LibraryScan: Sendable {
     public var meetings: [LibraryMeeting]
     public var issues: [LibraryReadIssue]
+    public init(meetings: [LibraryMeeting], issues: [LibraryReadIssue]) { self.meetings = meetings; self.issues = issues }
     /// Primary-root copies take precedence over retained originals of the same
     /// meeting. Global order and identities remain the R6 folder-key contract.
     public static func merging(_ snapshots: [Self], retaining folders: Set<URL> = []) -> Self {

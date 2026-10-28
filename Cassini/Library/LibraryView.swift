@@ -83,7 +83,7 @@ struct LibraryView: View {
                         HStack(spacing: 14) {
                             if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
                                 Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
-                                    .buttonStyle(.bordered).accessibilityIdentifier("meeting-write-down")
+                                    .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down")
                             }
                             Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
                                 .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export")
@@ -285,7 +285,7 @@ struct LibraryView: View {
                     if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
                 if let line = recorder.diskLine { Text(line).foregroundStyle(.orange) }
-                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }) }
+                if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 if let folder = meeting.received?.originalFolderName {
                     HStack(alignment:.top,spacing:12) {
@@ -312,7 +312,7 @@ struct LibraryView: View {
                         .accessibilityIdentifier("preview-play")
                 if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
                     Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
-                        .buttonStyle(.bordered).accessibilityIdentifier("preview-write-down")
+                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("preview-write-down")
                 }
 
                     Button { readTranscript(meeting) } label: {

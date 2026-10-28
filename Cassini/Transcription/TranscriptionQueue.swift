@@ -43,7 +43,7 @@ import Darwin
         await preparation?.value
         pending.removeAll(); prepared.removeAll()
     }
-    func resumeAfterMove() { guard !closing else { return }; paused = false; known.removeAll() }
+    func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic, !closing, !paused else { return }
         let candidates = meetings.filter(\.canQueueAutomatically)

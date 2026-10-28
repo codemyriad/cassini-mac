@@ -17,7 +17,7 @@ args.output.parent.mkdir(parents=True,exist_ok=True);args.output.with_suffix('.s
 assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
 report=json.loads(r.stdout)
 for name in ['settingsPreferences','realShortcutReplacement','shortcutConflictRetainsOld','closedMeetingMovedAtomically',
-             'partialFailureRetainsOriginal','liveFolderDeferred','pendingMovesPersisted','activeInferencePathPreserved','searchReindexed','hostReadsLocation','producerBytesPreserved']:
+             'partialFailureRetainsOriginal','liveFolderDeferred','pendingMovesPersisted','activeInferencePathPreserved','queuedMetadataMovedAfterPreparation','importIntentResumesAfterMove','retainedSelectionUsesFolder','searchReindexed','hostReadsLocation','producerBytesPreserved']:
     assert report[name] is True,(name,report)
 resume=[x for x in command]
 resume[resume.index('--settings-self-test')]='--settings-resume-moves-self-test'

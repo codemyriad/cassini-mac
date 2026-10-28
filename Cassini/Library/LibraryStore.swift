@@ -91,6 +91,7 @@ final class LibraryStore {
     @ObservationIgnored private var pending = Set<URL>()
     @ObservationIgnored private var scanning = false
     @ObservationIgnored private var selectionWhenAvailable: String?
+    @ObservationIgnored private var selectionFolderWhenAvailable: URL?
     var meetings: [LibraryMeeting] { snapshot?.meetings ?? [] }
     var groups: [LibraryDayGroup] { snapshot?.groups(format: format) ?? [] }
     var selected: LibraryMeeting? { meetings.first { $0.libraryKey == selectedKey } }
@@ -114,16 +115,27 @@ final class LibraryStore {
     }
     func stop() { started = false; epoch &+= 1; watchers.forEach { $0.stop() }; watchers = []; pending.removeAll(); scanning = false }
     func reloadLocation() {
-        let selection = selectedKey
+        let selection = selected
+        let folder = selectionFolderWhenAvailable ?? selection.map { LibraryLocation.canonical($0.folder) }
+        selectionFolderWhenAvailable = folder
+        selectionWhenAvailable = folder?.lastPathComponent
         stop(); LibraryLocationModel.shared.reload(); context = LibraryLocationModel.shared.context()
         scanners = [:]; rootSnapshots = [:]; loaded = false
         for root in [context.root] + context.previousRoots { scanners[root] = LibraryScanner(root:root,activity:activity) }
-        selectedKey = selection; start()
+        selectedKey = selection?.libraryKey ?? selectedKey; start()
     }
-    func selectImported(_ meeting: LibraryMeeting) {
-        selectionWhenAvailable = meeting.libraryKey
-        if meetings.contains(where:{ $0.libraryKey == meeting.libraryKey }) { selectedKey = meeting.libraryKey }
+    @discardableResult func selectImported(_ meeting: LibraryMeeting) -> LibraryMeeting {
+        let folder = LibraryLocation.canonical(meeting.folder)
+        // A restored/readable retained folder may not be in the last watcher
+        // snapshot. Apply the same collision rule as a full scan to fresh input.
+        let others = meetings.filter { LibraryLocation.canonical($0.folder) != folder }
+        let retained = Set(LibraryLocationModel.shared.location.pendingMoves.map { LibraryLocation.canonical(URL(fileURLWithPath:$0.id)) })
+        let displayed = LibraryScan.merging([.init(meetings:others,issues:[]),.init(meetings:[meeting],issues:[])],retaining:retained)
+            .meetings.first { LibraryLocation.canonical($0.folder) == folder } ?? meeting
+        selectionFolderWhenAvailable = folder; selectionWhenAvailable = nil
+        selectedKey = displayed.libraryKey
         refresh(affected:meeting.folder)
+        return displayed
     }
     func refresh(affected: URL? = nil) {
         pending.insert(affected ?? context.root)
@@ -147,7 +159,12 @@ final class LibraryStore {
                 let retained = Set(LibraryLocationModel.shared.location.pendingMoves.map { LibraryLocation.canonical(URL(fileURLWithPath:$0.id)) })
                 let result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
                 snapshot = result; offline = primaryFailed
-                if let key = selectionWhenAvailable, result.meetings.contains(where:{ $0.libraryKey == key }) { selectedKey = key; selectionWhenAvailable = nil }
+                if let folder = selectionFolderWhenAvailable,
+                   let selected = result.meetings.first(where:{ LibraryLocation.canonical($0.folder) == folder }) {
+                    selectedKey = selected.libraryKey; selectionFolderWhenAvailable = nil; selectionWhenAvailable = nil
+                } else if let key = selectionWhenAvailable, result.meetings.contains(where:{ $0.libraryKey == key }) {
+                    selectedKey = key; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
+                }
                 TranscriptionQueue.shared.consider(result.meetings,automatic:!context.screenshot && (!RecordingFixture.enabled || RecordingFixture.transcribes))
                 LegacyOpening.refreshTranscripts(result.meetings)
                 if selectedKey == nil || !meetings.contains(where:{ $0.libraryKey == selectedKey }) {
