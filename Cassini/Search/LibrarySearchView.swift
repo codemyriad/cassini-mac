@@ -70,7 +70,7 @@ struct LibrarySearchView: View {
                 VStack(alignment:.leading,spacing:6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size:22,weight:.bold))
                     if let date = meeting.start {
-                        Text(format.searchContext(date,durationMs:meeting.durationMs ?? 0,positionMs:hit.positionMs)).foregroundStyle(LibraryTheme.dim)
+                        Text(format.searchContext(date,durationMs:meeting.durationMs,positionMs:hit.positionMs)).foregroundStyle(LibraryTheme.dim)
                     }
                 }
                 VStack(alignment:.leading,spacing:18) {

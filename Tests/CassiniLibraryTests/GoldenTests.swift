@@ -30,6 +30,12 @@ private enum Golden {
 }
 
 @Suite struct LibraryGoldenTests {
+    @Test func searchOmitsUnknownDurationWithoutLosingTheHitPosition() {
+        let date = Date(timeIntervalSince1970:0)
+        let format = LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,now:date)
+        #expect(format.searchContext(date,durationMs:nil,positionMs:300000) == "Today, 00:00 · at 00:05:00")
+        #expect(format.searchContext(date,durationMs:0,positionMs:300000) == "Today, 00:00 · under 1 min · at 00:05:00")
+    }
     @Test func goldenBytesAndCounts() throws {
         let hashes = ["format-vectors": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
                       "states-vectors": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",

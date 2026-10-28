@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// HARMONY §6. No process locale or implicit process time zone enters these formats.
@@ -49,7 +50,7 @@ public struct LibraryFormat: Sendable {
         if group == "Today" || group == "Yesterday" { return group }
         return date(at, pattern: calendar.component(.year, from: at) == calendar.component(.year, from: now) ? "d MMMM" : "d MMMM yyyy")
     }
-    public func searchContext(_ at: Date, durationMs: Int64, positionMs: Int64) -> String {
+    public func searchContext(_ at: Date, durationMs: Int64?, positionMs: Int64) -> String {
         previewSubtitle(at, durationMs: durationMs) + " · at " + Self.position(positionMs)
     }
     public static func rowMeta(durationMs: Int64?, names: [String]) -> String {
