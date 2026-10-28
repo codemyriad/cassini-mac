@@ -55,7 +55,6 @@ public enum MeetingTranscriber {
         do {
             try setStatus(directory: directory, id: meeting.id, status: "running")
             let received = meeting.state.origin == .received
-            let manifest = received ? nil : try RecordingLoader.load(directory: directory)
             struct Track {
                 let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
             }
@@ -63,9 +62,13 @@ public enum MeetingTranscriber {
             let sources: [(URL, String, String, Double?)]
             if received { sources = [(meeting.audioFiles[0], "original", "original", 0)] }
             else {
-                sources = (manifest?.tracks ?? []).compactMap { track in
-                    guard let valid = meeting.audioTracks.first(where: { $0.url.lastPathComponent == track.file }), valid.frameCount != 0 else { return nil }
-                    return (valid.url, track.id, track.kind, valid.startOffsetMs)
+                // The Library scanner already isolates damaged tracks and
+                // safely salvages unsupported/missing manifests. Reuse those
+                // exact sources instead of reopening every raw manifest path.
+                sources = meeting.audioTracks.compactMap { track in
+                    guard track.frameCount != 0 else { return nil }
+                    let filenameID = String(track.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count))
+                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs)
                 }
             }
             for (url, id, kind, offset) in sources {

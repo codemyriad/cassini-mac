@@ -234,10 +234,16 @@ public struct LibraryScanner: Sendable {
         var source: String?
         enum CodingKeys: CodingKey { case version, id, title, createdAt, state, problemKind, tracks }
         struct Track: Decodable {
+            let sourceID: String?; let sourceKind: String?
             let file: String?; let sampleRate: Int?; let channels: Int?; var startOffsetMs: DisplayOffset?; let gapFrames: Double?
-            enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames }
+            enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames, id, kind }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
+                let id = try? c.decode(String.self,forKey:.id)
+                sourceID = id.flatMap { value in
+                    !value.isEmpty && value.utf8.count <= 128 && value.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45,95].contains($0) } ? value : nil
+                }
+                sourceKind = try? c.decode(String.self,forKey:.kind)
                 file = try? c.decode(String.self, forKey: .file)
                 sampleRate = try? c.decode(Int.self, forKey: .sampleRate); channels = try? c.decode(Int.self, forKey: .channels)
                 startOffsetMs = nil; gapFrames = try? c.decode(Double.self, forKey: .gapFrames)
@@ -272,7 +278,7 @@ public struct LibraryScanner: Sendable {
                     let wave = try Self.wave(url)
                     guard wave.rate == track.sampleRate, wave.channels == track.channels else { throw MetadataError.invalid }
                     result.files.append(url)
-                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames))
+                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames, sourceID:track.sourceID, sourceKind:track.sourceKind))
                     if wave.frames > 0, track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
                     ends.append((track.startOffsetMs ?? .zero).end(frames: wave.frames, rate: wave.rate))
                 } catch { result.issues.append(.invalidAudio) } // R4: a completed session is trusted.

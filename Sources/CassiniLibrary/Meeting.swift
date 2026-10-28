@@ -82,7 +82,12 @@ public struct LibraryAudioTrack: Sendable, Equatable {
     public let url: URL
     public let startOffsetMs: Double?
     public let frameCount: UInt64?
-    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil) { self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount }
+    public let sourceID: String?
+    public let sourceKind: String?
+    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil) {
+        self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount
+        self.sourceID = sourceID; self.sourceKind = sourceKind
+    }
 }
 public struct LibraryMeeting: Sendable {
     public let id: UUID
