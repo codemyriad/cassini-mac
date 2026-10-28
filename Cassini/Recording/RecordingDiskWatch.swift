@@ -5,8 +5,10 @@ import CassiniRecording
 @MainActor final class RecordingDiskWatch {
     private var timer: Timer?
     private var previous: (Date, UInt64)?
+    private var sampling: Task<Void,Never>?
+    private var generation = 0
     private static var warningItem: NSStatusItem?
-    static func inspect(_ url: URL, rate: Double) -> DiskBudget? {
+    nonisolated static func inspect(_ url: URL, rate: Double) -> DiskBudget? {
         #if DEBUG
         if RecordingFixture.enabled,
            let free = LibraryLaunchContext.argument("-CassiniDiskFree").flatMap(UInt64.init),
@@ -21,25 +23,36 @@ import CassiniRecording
         return DiskBudget(total: total.uint64Value, free: free.uint64Value, bytesPerSecond: rate)
     }
     func start(directory: URL, update: @escaping @MainActor @Sendable (DiskBudget) -> Void) {
+        stop()
         previous = (Date(), 0)
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-                let bytes = files.reduce(UInt64(0)) { sum, file in sum + UInt64(max(0, (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)) }
-                let now = Date(), before = self.previous ?? (now,0)
-                let rate = bytes >= before.1 ? Double(bytes - before.1) / max(0.1, now.timeIntervalSince(before.0)) : 0
-                self.previous = (now,bytes)
-                if let budget = Self.inspect(directory, rate: rate) { update(budget) }
+                guard let self, self.sampling == nil else { return }
+                let revision = self.generation, before = self.previous ?? (Date(),0)
+                self.sampling = Task { [weak self] in
+                    let result = await Task.detached {
+                        let files = (try? FileManager.default.contentsOfDirectory(at:directory,includingPropertiesForKeys:[.fileSizeKey])) ?? []
+                        let bytes = files.reduce(UInt64(0)) { sum,file in sum + UInt64(max(0,(try? file.resourceValues(forKeys:[.fileSizeKey]).fileSize) ?? 0)) }
+                        let now = Date()
+                        let rate = bytes >= before.1 ? Double(bytes - before.1) / max(0.1,now.timeIntervalSince(before.0)) : 0
+                        return (now,bytes,Self.inspect(directory,rate:rate))
+                    }.value
+                    guard let self, !Task.isCancelled, revision == self.generation else { return }
+                    self.sampling = nil; self.previous = (result.0,result.1)
+                    if let budget = result.2 { update(budget) }
+                }
             }
         }
     }
-    func stop() { timer?.invalidate(); timer = nil }
-    static func showOnce(_ text: String) {
-        guard warningItem == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    func stop() { generation += 1; timer?.invalidate(); timer = nil; sampling?.cancel(); sampling = nil }
+    static func updateWarning(_ text: String?) {
+        guard let text else { clear(); return }
+        let item = warningItem ?? NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = text; item.button?.toolTip = text
         warningItem = item
     }
     static func clear() { if let item = warningItem { NSStatusBar.system.removeStatusItem(item) }; warningItem = nil }
+    #if DEBUG
+    static var warningTitle: String? { warningItem?.button?.title }
+    #endif
 }

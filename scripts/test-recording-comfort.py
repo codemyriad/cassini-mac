@@ -18,12 +18,19 @@ environment = dict(os.environ, CASSINI_HOSTED_SCREENSHOTS='1')
 command = [str(args.app.resolve()/'Contents/MacOS/Cassini'), '--recording-comfort-self-test',
            '--fixture-library-recording', '-CassiniCaptureID', str(uuid.uuid4()), '-CassiniSilentMicrophone', 'YES',
            '-CassiniDiskFree', str(20 << 30), '-CassiniDiskTotal', str(100 << 30)]
-result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=45)
 args.output.mkdir(parents=True, exist_ok=True)
+try:
+    result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=45)
+except subprocess.TimeoutExpired as error:
+    def decoded(value):
+        return value.decode('utf-8', errors='replace') if isinstance(value, bytes) else value or ''
+    (args.output/'recording-comfort-stderr.txt').write_text(decoded(error.stderr))
+    (args.output/'recording-comfort-stdout.txt').write_text(decoded(error.stdout))
+    raise
 (args.output/'recording-comfort-stderr.txt').write_text(result.stderr)
 assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
 report = json.loads(result.stdout)
-for name in ('recordingComfort', 'shortcutRegistered', 'noteTimesPreserved', 'titleReset', 'browserClockAndSources', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
+for name in ('recordingComfort', 'shortcutRegistered', 'noteTimesPreserved', 'titleReset', 'browserClockAndSources', 'diskWarningLifecycle', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
     assert report[name] is True, (name, report)
 menu = report['menu']
 assert menu['assertionHeld'] is True and menu['levels'][0]['silent'] is True
