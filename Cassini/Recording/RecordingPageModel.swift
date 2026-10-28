@@ -121,6 +121,13 @@ private actor RecordingEdits {
         notes.edit(notesText,atMs:elapsedMs,restoration:restoration) { LibraryFormat.position($0) + "  " }
         notesDirty = true; scheduleNotes()
     }
+    #if DEBUG
+    var fixtureNotesJSON: String {
+        _ = notesText // Track the same edits as the native editor binding.
+        let value: [[String:Any]] = notes.lines.map { ["atMs":$0.atMs.map { NSNumber(value:$0) } ?? NSNull(),"text":$0.text] }
+        return String(decoding:(try? JSONSerialization.data(withJSONObject:value,options:[.sortedKeys])) ?? Data("[]".utf8),as:UTF8.self)
+    }
+    #endif
     func formatNotes() {
         notesText = notes.lines.map { note in
             guard let at = note.atMs else { return note.text }
