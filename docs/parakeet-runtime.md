@@ -49,3 +49,28 @@ This checkpoint establishes the local M4 runtime/word conversion. The app-side
 model selection, worker lifetime, removal/fallback, provenance and hosted Intel
 validation are subsequent work, not claimed complete here. No user Library,
 preferences, desktop, microphone or system-audio devices are used by these tests.
+
+The production `cassini-parakeet-worker` serves one meeting request and exits. It
+uses the same bounded subprocess I/O and parent-death watchdog policy as Whistle.
+A malformed installed model returns `invalid-model` before changing a meeting,
+so the app can fall back without misclassifying a native-runtime failure.
+`ParakeetModelLease` holds private hard links under a kernel-leased speech work
+folder; removing the installed revision cannot retire an accepted job's inputs.
+Use an app-data job root on the model's volume. Cleanup reclaims abandoned links
+after a killed parent without relying on a reusable PID.
+
+`SignedSpeechBundle` verifies the actual executing helper and the app seal once,
+then supplies immutable capabilities to its recognizer and VAD. Standalone tools
+accept only original source-pinned libraries. Silero and ORT1.23.2 stay unchanged;
+Parakeet's private ORT1.28.1 is loaded locally in the separate Parakeet process.
+
+Transcription records `transcript.model` using the D16 schema. A resumed job
+retains partial words only from the same known model. Another/unknown model
+regenerates them, preserving notes, names and audio. Parakeet always writes `und`;
+Whistle preserves its detected language when resuming the same recognizer. The
+existing Whistle tail-retention fixture now explicitly names its known model.
+
+`scripts/test-parakeet-worker.py` exercises real offline Opus transcription, model
+provenance, unchanged audio, received Speaker1, pre-dlopen source/privacy rejection,
+distinct invalid-model results and owner death with stdin still open. It uses
+private generated meeting folders, never capture devices.

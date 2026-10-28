@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "CassiniExport", targets: ["CassiniExport"]),
         .library(name: "CassiniParakeet", targets: ["CassiniParakeet"]),
         .library(name: "CassiniModels", targets: ["CassiniModels"]),
+        .executable(name: "cassini-parakeet-worker", targets: ["cassini-parakeet-worker"]),
         .executable(name: "cassini-model-fetch", targets: ["cassini-model-fetch"]),
         .executable(name: "cassini-whistle-worker", targets: ["cassini-whistle-worker"]),
         .library(name: "CassiniRecording", targets: ["CassiniRecording"]),
@@ -24,7 +25,8 @@ let package = Package(
     targets: [
         .target(name: "CassiniKit"),
         .target(name:"CassiniSherpaBridge",publicHeadersPath:"include"),
-        .target(name:"CassiniParakeet",dependencies:["CassiniSherpaBridge","CassiniWhistle"]),
+        .executableTarget(name:"cassini-parakeet-worker",dependencies:["CassiniParakeet","CassiniTranscription","CassiniWhistle"]),
+        .target(name:"CassiniParakeet",dependencies:["CassiniSherpaBridge","CassiniWhistle","CassiniTranscription"]),
         .testTarget(name:"CassiniParakeetTests",dependencies:["CassiniParakeet","CassiniTranscription","CassiniLibrary"],resources:[.copy("Goldens")]),
         .target(name:"CassiniZstd",exclude:["LICENSE","UPSTREAM.md","SHA256SUMS"],publicHeadersPath:"include",cSettings:[.define("ZSTD_LEGACY_SUPPORT",to:"0"),.define("ZSTD_DISABLE_ASM")]),
         .target(name:"CassiniModels",dependencies:["CassiniKit","CassiniZstd"]),

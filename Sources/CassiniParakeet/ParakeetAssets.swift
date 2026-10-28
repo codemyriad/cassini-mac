@@ -2,6 +2,7 @@
 import Foundation
 import CryptoKit
 import Security
+import CassiniWhistle
 import MachO
 import Darwin
 
@@ -27,7 +28,8 @@ public struct ParakeetAssets {
     let library: URL
     let ort: URL
     let model: URL
-    private init(library: URL, ort: URL, model: URL) { self.library = library; self.ort = ort; self.model = model }
+    public let signedBundle: SignedSpeechBundle?
+    private init(library: URL, ort: URL, model: URL, signedBundle: SignedSpeechBundle? = nil) { self.library = library; self.ort = ort; self.model = model; self.signedBundle = signedBundle }
     public static func forWorker(arguments: [String]) throws -> Self {
         var count: UInt32 = 0
         _ = _NSGetExecutablePath(nil,&count)
@@ -51,28 +53,21 @@ public struct ParakeetAssets {
         return try validated(runtime:root,model:model)
     }
     private static func bundled(app: URL, executable: URL, model: URL) throws -> Self {
-        var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(app as CFURL,[],&code) == errSecSuccess, let code,
-              SecStaticCodeCheckValidity(code,SecCSFlags(rawValue:kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode),nil) == errSecSuccess else { throw ParakeetFailure.invalidRuntime }
-        let root = try contained("Contents/Frameworks/Parakeet",in:app)
-        let resources = try contained("Contents/Resources/Parakeet",in:app)
-        let manifest = try JSONDecoder().decode([String:String].self,from:regularData(contained("bundle-sha256.json",in:resources),maximum:65536))
-        for name in ParakeetPin.runtimes.keys {
-            guard manifest[name] == sha(try regularData(contained(name,in:root),maximum:128 << 20)) else { throw ParakeetFailure.invalidRuntime }
-        }
-        let expectedExecutable = try contained("Contents/MacOS/cassini-parakeet-worker",in:app)
-        guard executable.lastPathComponent == "cassini-parakeet-worker",
-              executable.standardizedFileURL.path == expectedExecutable.path,
-              manifest["cassini-parakeet-worker"] == sha(try regularData(executable,maximum:64 << 20)) else { throw ParakeetFailure.invalidRuntime }
-        return try validated(runtime:root,model:model)
+        let seal = try SignedSpeechBundle.currentWorker()
+        guard seal.app.path == app.path, seal.executable.path == executable.path else { throw ParakeetFailure.invalidRuntime }
+        for name in ParakeetPin.runtimes.keys { _ = try seal.framework(name,manifest:"Parakeet") }
+        return try validated(runtime:app.appendingPathComponent("Contents/Frameworks"),model:model,signedBundle:seal)
     }
-    private static func validated(runtime: URL, model: URL) throws -> Self {
+    private static func validated(runtime: URL, model: URL, signedBundle: SignedSpeechBundle? = nil) throws -> Self {
         let root = model.resolvingSymlinksInPath()
-        for (name,pin) in ParakeetPin.files {
-            let file = try contained(name,in:root)
-            guard try digest(file,size:pin.bytes) == pin.sha256 else { throw ParakeetFailure.invalidModel }
-        }
-        return .init(library:try contained("libsherpa-onnx-c-api.dylib",in:runtime),ort:try contained("libonnxruntime.dylib",in:runtime),model:root)
+        do {
+            for (name,pin) in ParakeetPin.files {
+                let file = try contained(name,in:root)
+                guard try digest(file,size:pin.bytes) == pin.sha256 else { throw ParakeetFailure.invalidModel }
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch { throw ParakeetFailure.invalidModel }
+        return .init(library:try contained("libsherpa-onnx-c-api.dylib",in:runtime),ort:try contained("libonnxruntime.dylib",in:runtime),model:root,signedBundle:signedBundle)
     }
     private static func contained(_ name: String, in root: URL) throws -> URL {
         let url = root.appendingPathComponent(name).standardizedFileURL

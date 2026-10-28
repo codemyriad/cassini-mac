@@ -25,8 +25,9 @@ public struct WhistleAssets {
     let model: Data
     let resources: URL
     let bundleContents: URL?
-    private init(library: URL, model: Data, resources: URL, bundleContents: URL? = nil) {
-        self.library = library; self.model = model; self.resources = resources; self.bundleContents = bundleContents
+    let signedBundle: SignedSpeechBundle?
+    private init(library: URL, model: Data, resources: URL, bundleContents: URL? = nil, signedBundle: SignedSpeechBundle? = nil) {
+        self.library = library; self.model = model; self.resources = resources; self.bundleContents = bundleContents; self.signedBundle = signedBundle
     }
     public static func forWorker(arguments: [String]) throws -> Self {
         var count: UInt32 = 0
@@ -53,22 +54,14 @@ public struct WhistleAssets {
         return .init(library: library, model: model, resources:root)
     }
     private static func bundled(app: URL, executable: URL) throws -> Self {
-        var code: SecStaticCode?
-        let created = SecStaticCodeCreateWithPath(app as CFURL, [], &code)
-        guard created == errSecSuccess, let code else { throw WhistleFailure.library("bundle signature unavailable: \(created)") }
-        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode)
-        let status = SecStaticCodeCheckValidity(code, flags, nil)
-        guard status == errSecSuccess else { throw WhistleFailure.library("bundle signature/resource verification failed: \(status)") }
-        let resource = try contained("Contents/Resources/Whistle", in: app)
-        let manifest = try JSONDecoder().decode([String: String].self, from: WhistleIO.readRegular(try contained("bundle-sha256.json", in: resource), maximum: 65536))
-        let library = try contained("Contents/Frameworks/libneedle3.dylib", in: app)
-        let libraryBytes = try WhistleIO.readRegular(library, maximum: 16 * 1024 * 1024)
-        let model = try modelBytes(at: contained("whistle.cact", in: resource))
-        guard manifest["libneedle3.dylib"] == sha(libraryBytes), manifest["whistle.cact"] == WhistlePins.model,
-              manifest["cassini-whistle-worker"] == sha(try WhistleIO.readRegular(executable, maximum: 64 * 1024 * 1024)) else {
-            throw WhistleFailure.library("signed bundle checksum mismatch")
-        }
-        return .init(library: library, model: model, resources:resource, bundleContents:app.appendingPathComponent("Contents"))
+        let seal = try SignedSpeechBundle.currentWorker()
+        guard seal.app.path == app.path, seal.executable.path == executable.path else { throw WhistleFailure.library("worker path mismatch") }
+        let resource = try seal.resources("Whistle")
+        let manifest = try seal.manifest("Whistle")
+        let library = try seal.framework("libneedle3.dylib",manifest:"Whistle")
+        let model = try modelBytes(at:contained("whistle.cact",in:resource))
+        guard manifest["whistle.cact"] == WhistlePins.model else { throw WhistleFailure.library("signed model checksum mismatch") }
+        return .init(library:library,model:model,resources:resource,bundleContents:app.appendingPathComponent("Contents"),signedBundle:seal)
     }
     private static func contained(_ path: String, in root: URL) throws -> URL {
         let url = root.appendingPathComponent(path).standardizedFileURL
