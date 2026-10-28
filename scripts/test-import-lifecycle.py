@@ -12,6 +12,6 @@ r=subprocess.run([str(a.app.resolve()/'Contents/MacOS/Cassini'),'--import-lifecy
 a.output.parent.mkdir(parents=True,exist_ok=True);a.output.with_suffix('.stderr.txt').write_text(r.stderr)
 assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
 report=json.loads(r.stdout)
-assert all(report[k] for k in ['queueMetadataOffMain','metadataBeforeWorker','repeatedWriteDownImportsOnce','shutdownWaitsForImport'])
+assert all(report[k] for k in ['queueMetadataOffMain','metadataBeforeWorker','repeatedWriteDownImportsOnce','shutdownWaitsForImport','queuedIntentSurvivesQuit'])
 assert report['audioDevicesOpened'] is False
 a.output.write_text(json.dumps(report,indent=2)+'\n');print('PASS queue metadata off-main, owned/coalesced imports and shutdown cleanup')

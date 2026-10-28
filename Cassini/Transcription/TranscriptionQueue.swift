@@ -25,9 +25,13 @@ import Darwin
     var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
     func beginShutdown() {
         guard !closing else { return }; closing = true
-        pending.removeAll(); task?.cancel()
+        task?.cancel(); preparePending()
     }
-    func waitForShutdown() async { await preparation?.value; await task?.value }
+    func waitForShutdown() async {
+        await preparation?.value
+        pending.removeAll(); prepared.removeAll()
+        await task?.value
+    }
     #if DEBUG
     @ObservationIgnored private var failedFixtureOnce = false
     #endif
@@ -51,17 +55,16 @@ import Darwin
         LibraryImportCoordinator.shared.open(original,writingDown:true,retaining:detail)
     }
     private func preparePending() {
-        guard preparation == nil, !closing else { return }
+        guard preparation == nil else { return }
         preparation = Task {
             defer { preparation = nil }
-            while !closing, let meeting = pending.first(where:{ !prepared.contains($0.folder.path) }) {
+            while let meeting = pending.first(where:{ !prepared.contains($0.folder.path) }) {
                 do {
                     if ![.queued,.running].contains(meeting.state.transcript) {
                         try await Task.detached(priority:.userInitiated) {
                             try MeetingTranscriber.setStatus(directory:meeting.folder,id:meeting.id,status:"queued")
                         }.value
                     }
-                    guard !closing else { break }
                     prepared.insert(meeting.folder.path); startNext()
                 } catch {
                     pending.removeAll { $0.folder.path == meeting.folder.path }; known.remove(meeting.folder.path)
@@ -152,16 +155,26 @@ import Darwin
             // A second accepted import is owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
+            let waiting = try RecordingSession(parent:root,title:"Queued before Quit",source:"macos")
+            try waiting.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+            try waiting.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try waiting.finish()
+            try MeetingMetadataWriter(directory:waiting.directory,id:waiting.manifest.id).createIfNeeded()
+            let waitingMeeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == waiting.manifest.id }))
+            let held = open(waiting.directory.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard held >= 0, flock(held,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
+            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(held,LOCK_UN); close(held) }
+            queue.enqueue(waitingMeeting)
             importer.open(another)
             await Task.yield()
             importer.beginShutdown(); queue.beginShutdown()
             await importer.waitForShutdown(); await queue.waitForShutdown()
             guard !importer.isBusy, !queue.isBusy else { throw POSIXError(.EBUSY) }
+            guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == waiting.manifest.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             for name in try FileManager.default.contentsOfDirectory(atPath:root.path) where name.hasPrefix("Received-") {
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown(); await importer.waitForShutdown(); await queue.waitForShutdown()
