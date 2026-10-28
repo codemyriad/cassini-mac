@@ -47,7 +47,7 @@ final class PipelineTests: XCTestCase {
         XCTAssertEqual(gate.flush().last?.reason, "flush")
     }
     func testTextExceptionRejectsOtherWordsInputsAndGoldens() throws {
-        let policy = try MacTextExceptions.load(root), rule = try XCTUnwrap(policy.exceptions.first)
+        let policy = try WhistleTextExceptions.load(root), rule = try XCTUnwrap(policy.exceptions.first)
         let segment = SpeechSegment(startSample: 318976, endSample: 458240, reason: "silence")
         XCTAssertNotNil(policy.entry(golden: rule.golden, goldenHash: rule.goldenSha256, segmentIndex: 5, segment: segment, actualHash: rule.segmentInputSha256, referenceHash: rule.segmentInputSha256))
         XCTAssertNil(policy.entry(golden: rule.golden, goldenHash: rule.goldenSha256, segmentIndex: 5, segment: segment, actualHash: "wrong", referenceHash: rule.segmentInputSha256))
@@ -57,14 +57,23 @@ final class PipelineTests: XCTestCase {
         func permits(_ index: Int, _ text: String = "ask") -> Bool {
             policy.permitsWord(golden: rule.golden, goldenHash: rule.goldenSha256, index: index, actual: text, expected: "as", segments: segments, hashes: hashes)
         }
-        XCTAssertTrue(permits(37)); XCTAssertFalse(permits(36)); XCTAssertFalse(permits(38)); XCTAssertFalse(permits(37,"another"))
+        XCTAssertTrue(permits(37)); XCTAssertTrue(permits(37,"as")); XCTAssertFalse(permits(36)); XCTAssertFalse(permits(38)); XCTAssertFalse(permits(37,"another"))
         hashes[5] = [:]; XCTAssertFalse(permits(37))
         hashes[5] = ["actual":rule.segmentInputSha256,"expected":rule.segmentInputSha256]
         segments[5] = .init(startSample: 318975,endSample: 458240,reason:"silence"); XCTAssertFalse(permits(37))
     }
+    func testSharedTextExceptionManifestIsHashBound() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:false)
+        defer { try? FileManager.default.removeItem(at:directory) }
+        let name = "whistle-text-exceptions.json"
+        var bytes = try Data(contentsOf:root.appendingPathComponent(name)); bytes.append(32)
+        try bytes.write(to:directory.appendingPathComponent(name))
+        XCTAssertThrowsError(try WhistleTextExceptions.load(directory))
+    }
     func testBothPinnedModelGoldens() throws {
         guard let directory = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
-        let policy = try MacTextExceptions.load(root)
+        let policy = try WhistleTextExceptions.load(root)
         let arguments = ["--assets", directory]
         let assets = try VADAssets.forWorker(arguments: arguments)
         let detector = try SpeechDetector(assets: assets)

@@ -4,9 +4,9 @@ import CryptoKit
 import CassiniWhistle
 import CassiniTranscription
 
-/// D11.4 is deliberately narrower than a text-normalisation rule. The actual
+/// D11.5 is deliberately narrower than a text-normalisation rule. The actual
 /// recognizer output is never changed; this is only a golden-test exception.
-struct MacTextExceptions: Decodable {
+struct WhistleTextExceptions: Decodable {
     let version: Int
     let decision: String
     let platform: String
@@ -18,15 +18,25 @@ struct MacTextExceptions: Decodable {
         let segmentInputSha256: String
         let wordIndex: Int
         let expectedWord: String, actualWord: String
+        let allowedWords: [String]
         let expectedSegmentText: String, actualSegmentText: String
     }
     static func load(_ root: URL) throws -> Self {
-        let bytes = try Data(contentsOf: root.appendingPathComponent("mac-text-exceptions.json"))
+        let bytes = try Data(contentsOf: root.appendingPathComponent("whistle-text-exceptions.json"))
         let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
-        guard digest == "3df3f885587d6e997f3d9b90551b0d54bff3083435010daf4fd468d199023f78" else { throw TranscriptionFailure.runtime("unapproved text exception manifest") }
+        guard digest == "fde2d870983855c11833703772d3a5c0a0ad79f9b54752442b1d6131914f09a3" else { throw TranscriptionFailure.runtime("unapproved text exception manifest") }
         let policy = try JSONDecoder().decode(Self.self, from: bytes)
-        guard policy.version == 1, policy.decision == "D11.4", policy.platform == "macos", policy.enginePins == WhistleAssets.sourcePins,
-              policy.exceptions.count == 1 else { throw TranscriptionFailure.runtime("text exception does not match this engine") }
+        let pins = WhistleAssets.sourcePins
+        guard policy.version == 1, policy.decision == "D11.5", policy.platform == "any",
+              policy.enginePins["engineVersion"] == pins["engineVersion"],
+              policy.enginePins["modelSha256"] == pins["modelSha256"],
+              policy.enginePins["macArm64LibrarySha256"] == pins["arm64LibrarySha256"],
+              policy.enginePins["macX86_64LibrarySha256"] == pins["x86_64LibrarySha256"],
+              policy.enginePins.count == 5, policy.enginePins["linuxX86_64LibneedleSha256"] != nil,
+              policy.exceptions.count == 1,
+              policy.exceptions[0].allowedWords == [policy.exceptions[0].expectedWord,policy.exceptions[0].actualWord] else {
+            throw TranscriptionFailure.runtime("text exception does not match this engine")
+        }
         return policy
     }
     func entry(golden: String, goldenHash: String, segmentIndex: Int, segment: SpeechSegment, actualHash: String, referenceHash: String) -> Entry? {
@@ -39,6 +49,6 @@ struct MacTextExceptions: Decodable {
         guard let rule = exceptions.first, index == rule.wordIndex, segments.indices.contains(rule.segmentIndex), hashes.indices.contains(rule.segmentIndex),
               let actualHash = hashes[rule.segmentIndex]["actual"], let expectedHash = hashes[rule.segmentIndex]["expected"],
               let scoped = entry(golden: golden, goldenHash: goldenHash, segmentIndex: rule.segmentIndex, segment: segments[rule.segmentIndex], actualHash: actualHash, referenceHash: expectedHash) else { return false }
-        return actual == scoped.actualWord && expected == scoped.expectedWord
+        return scoped.allowedWords.contains(actual) && expected == scoped.expectedWord
     }
 }
