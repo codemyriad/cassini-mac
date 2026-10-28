@@ -155,4 +155,23 @@ child.wait()
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception:
+        # Preserve the original failure. A second, debugger-owned public JFK
+        # probe gives a native backtrace when hosted CrashReporter is disabled.
+        try:
+            worker = Path(sys.argv[sys.argv.index('--worker')+1]).resolve()
+            bundle = Path(sys.argv[sys.argv.index('--bundle')+1]).resolve()
+            report = Path(sys.argv[sys.argv.index('--report')+1]).resolve()
+            directory = report.parent/'whistle-crashes'; directory.mkdir(parents=True,exist_ok=True)
+            requests = directory/'debug-requests.jsonl'
+            requests.write_text(''.join(json.dumps(dict(id=str(i),wav=str(ROOT/'Tests/CassiniWhistleTests/Fixtures/jfk.wav')))+'\n' for i in range(2)))
+            command = ['xcrun','lldb','--batch','-o',
+                       'process launch -i '+str(requests)+' -o '+str(directory/'debug-stdout.txt')+' -e '+str(directory/'debug-stderr.txt'),
+                       '-o','thread backtrace all','--',str(worker),'--assets',str(bundle)]
+            debug = subprocess.run(command,env=worker_env(),capture_output=True,text=True,timeout=90)
+            (directory/'lldb.txt').write_text(debug.stdout+'\n'+debug.stderr)
+        except Exception as diagnostic_error:
+            print('Worker diagnostic could not complete:',repr(diagnostic_error),file=sys.stderr)
+        raise
