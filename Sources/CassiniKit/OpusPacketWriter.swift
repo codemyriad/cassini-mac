@@ -95,9 +95,17 @@ public enum OpusStreamFile {
         var histogram: [Int:Int] = [:], count = 0
         try packets(data) { index,packet in
             guard index >= 2 else { return }; count += 1
-            guard let samples = packet.withUnsafeBytes({ OpusAudioDigest.packetSamples($0) }) else { throw AudioDigestError.malformedPacket(index,"duration") }
-            let channels = packet[0] & 4 == 0 ? 1 : 2
-            let rate = Int((Double(packet.count) * 8 * 48000 / Double(samples) / Double(channels)).rounded(.toNearestOrAwayFromZero))
+            let packetSamples: Int? = packet.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Int? in
+                OpusAudioDigest.packetSamples(bytes)
+            }
+            guard let samples = packetSamples else { throw AudioDigestError.malformedPacket(index,"duration") }
+            let channels: Int = (packet[0] & 4) == 0 ? 1 : 2
+            // Keep the same operations/rounding while bounding Swift 6.1's
+            // constraint solver, used by the hosted Xcode 16.4 toolchain.
+            let bits: Double = Double(packet.count) * 8.0
+            let bitsPerSecond: Double = bits * 48_000.0 / Double(samples)
+            let perChannel: Double = bitsPerSecond / Double(channels)
+            let rate: Int = Int(perChannel.rounded(.toNearestOrAwayFromZero))
             histogram[rate,default:0] += 1
         }
         return (histogram,count)
