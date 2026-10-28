@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { answerWithTone, tonePower } from '../../browser-protocol/scenarios/tones.mjs';
 import { saveFailure } from './artifacts.mjs';
+import { toneWindow } from './tone-window.cjs';
 // Optional integration test: npm install playwright in a temporary directory, then set
 // PLAYWRIGHT_MODULE to its index.mjs. Uses only generated tones, never the microphone.
 import assert from 'node:assert/strict';
@@ -162,8 +164,8 @@ try {
       assert.ok(interval.every(byte => byte === 0), 'mute is silent at the persisted sample position');
     }
     const expected = track.kind === 'remote' ? 880 : (track.id === locals[0].id ? 440 : 660);
-    const samples = Math.min(12000, track.frames - 4800);
-    const power = frequency => tonePower(wav, track.sampleRate, frequency, 4800, samples);
+    const { first, count } = toneWindow(wav, track.sampleRate);
+    const power = frequency => tonePower(wav, track.sampleRate, frequency, first, count);
     assert.ok(power(expected) > 0.001, `source contains ${expected} Hz`);
     for (const other of [440, 660, 880].filter(tone => tone !== expected)) {
       assert.ok(power(other) < power(expected) * 0.01, `${track.kind}: ${other} Hz bleed below one percent`);
