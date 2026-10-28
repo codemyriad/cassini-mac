@@ -2,6 +2,7 @@
 #if DEBUG
 import AppKit
 import CassiniLibrary
+import CassiniRecording
 
 /// Real app/controller/metadata/power/registration proof with RAM inputs only.
 /// This complements XCTest; it does not claim to test Finder keystroke delivery.
@@ -28,6 +29,10 @@ import CassiniLibrary
             let scanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([id:.recording]))
             let meeting = try scanner.scan().meetings.first.unwrap("live Library meeting")
             let model = RecordingPageModel.editor(for:meeting)
+            model.title = "Temporary title"; model.changeTitle(); await RecordingPageModel.flushAll()
+            model.title = ""; model.changeTitle(); await RecordingPageModel.flushAll()
+            let cleared = try JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as! [String:Any]
+            try require(cleared["title"] is NSNull && cleared["titleSource"] as? String == "meeting-window","clearing the title removes the user override")
             model.title = "Comfort probe title"; model.changeTitle()
             model.notesText = "First note"; model.changeNotes()
             await RecordingPageModel.flushAll()
@@ -55,9 +60,36 @@ import CassiniLibrary
             let saved = try LibraryScanner(root:root).scan().meetings.first.unwrap("saved meeting")
             try require(saved.state.lifecycle == .saved && saved.canPlaySession && saved.title == model.title && saved.notes == updated.notes,"saved title, notes and playable audio")
             runtime.stop()
+            // Independent synthetic browser source: no browser, device or live
+            // desktop is involved. A quiet source must still advance its clock.
+            let browser = try RecordingSession(parent:root,title:"Private browser",source:"chromium")
+            try browser.addTrack(id:"a",label:"A",kind:"remote",sampleRate:16000,channels:1)
+            try browser.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
+            let browserScanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.recording]))
+            let browserMeeting = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("private browser meeting")
+            let editor = RecordingPageModel.editor(for:browserMeeting), elapsed = editor.elapsedMs
+            try await Task.sleep(for:.milliseconds(1100))
+            try require(!editor.native && editor.elapsedMs >= elapsed + 1000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
+            try browser.addTrack(id:"b",label:"B",kind:"remote",sampleRate:16000,channels:1)
+            try browser.appendNative(id:"b",pcm:Data(repeating:0,count:3200),offsetMs:0)
+            let newer = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("changed browser source list")
+            try require(RecordingPageModel.editor(for:newer) === editor,"browser updates keep unsaved editor state")
+            editor.update(newer)
+            for _ in 0..<80 { if editor.voiceCount == 2 { break }; try await Task.sleep(for:.milliseconds(25)) }
+            try require(editor.voiceCount == 2,"browser source count updates")
+            editor.notesText = "Browser note"; editor.changeNotes(); await RecordingPageModel.flushAll()
+            let noted = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("browser note")
+            try require((noted.notes.first?.atMs ?? 0) >= elapsed + 1000,"browser notes use advancing time")
+            let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.saving]))
+                .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
+            editor.update(saving)
+            let savingTime = editor.elapsedMs
+            try await Task.sleep(for:.milliseconds(60))
+            try require(savingTime >= elapsed + 1000 && editor.elapsedMs == savingTime,"browser Saving holds the last recording time")
+            try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))
-            let report: [String:Any] = ["recordingComfort":true,"shortcutRegistered":true,"noteTimesPreserved":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
+            let report: [String:Any] = ["recordingComfort":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             exit(0)
         } catch {

@@ -13,7 +13,8 @@ private actor RecordingEdits {
     func title(_ title: String, token: Int) throws {
         guard token > titleToken else { return }; titleToken = token
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
-            metadata["title"] = title; metadata["titleSource"] = "user"
+            metadata["title"] = title.isEmpty ? NSNull() : title as Any
+            metadata["titleSource"] = title.isEmpty ? "meeting-window" : "user"
         }
     }
     func notes(_ notes: [RecordingNotes.Line], token: Int) throws {
@@ -29,6 +30,8 @@ private actor RecordingEdits {
 @MainActor @Observable final class RecordingPageModel {
     private static var editors: [String:RecordingPageModel] = [:]
     static func editor(for meeting: LibraryMeeting) -> RecordingPageModel {
+        // View initializers look this up during rendering; lookup must not
+        // publish observed changes back into the same render pass.
         if let model = editors[meeting.folder.path] { return model }
         // Keep the current editor across Back/Open, even before the watcher has
         // observed its last write. Retain older editors only while writes settle.
@@ -42,7 +45,7 @@ private actor RecordingEdits {
         for model in models { model.flush() }
         for model in models { await model.titleTask?.value; await model.notesTask?.value }
     }
-    let meeting: LibraryMeeting
+    private(set) var meeting: LibraryMeeting
     var title: String
     var notesText: String
     var voiceCount: Int = 0
@@ -55,6 +58,10 @@ private actor RecordingEdits {
     @ObservationIgnored private var notesGeneration = 0
     @ObservationIgnored private var titleDirty = false
     @ObservationIgnored private var notesDirty = false
+    @ObservationIgnored private var voiceTask: Task<Void,Never>?
+    @ObservationIgnored private var sourceGeneration = 0
+    @ObservationIgnored private var liveAnchor = ProcessInfo.processInfo.systemUptime
+    @ObservationIgnored private var liveElapsed: Int64 = 0
     private init(_ meeting: LibraryMeeting) {
         self.meeting = meeting; title = meeting.title ?? UXText.text("library.untitled")
         edits = RecordingEdits(directory: meeting.folder, id: meeting.id)
@@ -62,18 +69,39 @@ private actor RecordingEdits {
         let displayed = initial.map { UXText.text("recording.notes.entry", ["position":LibraryFormat.position($0.atMs ?? 0),"text":$0.text]) }.joined(separator: "\n")
         notesText = displayed
         notes = RecordingNotes(lines:initial,displayed:displayed)
+        liveElapsed = meeting.state.liveMs ?? meeting.durationMs ?? 0
         #if DEBUG
         frozen = LibraryLaunchContext.current.screenshot
         #endif
         if frozen { voiceCount = 4 } // Published Recording board's frozen source-count state.
-        else if meeting.isBrowserCapture,
-                let data = try? WhistleIO.readRegular(meeting.folder.appendingPathComponent("session.json"), maximum: 1_048_576),
-                let manifest = try? RecordingLoader.decode(data) {
-            voiceCount = manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count
-        } else { voiceCount = 0 }
+        else { refreshVoices() }
+    }
+    func update(_ meeting: LibraryMeeting) {
+        let elapsed = elapsedMs
+        self.meeting = meeting
+        liveElapsed = max(elapsed,meeting.state.liveMs ?? 0); liveAnchor = ProcessInfo.processInfo.systemUptime
+        if !frozen { refreshVoices() }
+    }
+    private func refreshVoices() {
+        guard meeting.isBrowserCapture else { voiceCount = 0; return }
+        voiceTask?.cancel(); sourceGeneration += 1
+        let revision = sourceGeneration, folder = meeting.folder
+        voiceTask = Task { [weak self] in
+            let count = await Task.detached {
+                guard let data = try? WhistleIO.readRegular(folder.appendingPathComponent("session.json"),maximum:1_048_576),
+                      let manifest = try? RecordingLoader.decode(data) else { return 0 }
+                return manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count
+            }.value
+            guard let self, !Task.isCancelled, revision == self.sourceGeneration else { return }
+            self.voiceCount = count; self.voiceTask = nil
+        }
     }
     var native: Bool { RecordingController.shared.directory?.lastPathComponent == meeting.libraryKey }
-    var elapsedMs: Int64 { native ? RecordingController.shared.elapsedMs : meeting.state.liveMs ?? 0 }
+    var elapsedMs: Int64 {
+        if native { return RecordingController.shared.elapsedMs }
+        if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? liveElapsed }
+        return liveElapsed + Int64(max(0,ProcessInfo.processInfo.systemUptime - liveAnchor) * 1000)
+    }
     var microphone: Float { native ? RecordingController.shared.levels["microphone",default:0] : 0 }
     var output: Float { native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0) }
     var microphoneSilent: Bool { native ? RecordingController.shared.microphoneSilent : frozen }
@@ -100,14 +128,15 @@ private actor RecordingEdits {
     }
     func flush() { if titleDirty { scheduleTitle(immediate:true) }; if notesDirty { scheduleNotes(immediate:true) } }
     private func scheduleTitle(immediate: Bool = false) {
-        titleTask?.cancel(); titleGeneration += 1; let generation = titleGeneration, value = displayTitle
+        titleTask?.cancel(); titleGeneration += 1
+        let generation = titleGeneration, value = title.trimmingCharacters(in:.whitespacesAndNewlines)
         titleTask = Task {
             defer { if titleGeneration == generation { titleTask = nil } }
             do {
                 if !immediate { try await Task.sleep(for:.milliseconds(400)) }
                 try Task.checkCancellation(); try await edits.title(value,token:generation)
                 guard titleGeneration == generation else { return }; titleDirty = false
-                if native { RecordingController.shared.title = value }
+                if native { RecordingController.shared.title = displayTitle }
             } catch is CancellationError {} catch { NSApp.presentError(error) }
         }
     }

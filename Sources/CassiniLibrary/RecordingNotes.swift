@@ -31,8 +31,16 @@ public struct RecordingNotes: Sendable {
             else { oldIndex = nil }
             let previous = oldIndex.flatMap { old.indices.contains($0) ? old[$0] : nil }
             let stamp = previous?.atMs.map(prefix)
-            let body = stamp.flatMap { line.hasPrefix($0) ? String(line.dropFirst($0.count)) : nil } ?? line
-            return Line(atMs:previous?.atMs ?? (body.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? nil : max(0,atMs)),text:body)
+            let body = stamp.flatMap { stamp -> String? in
+                if line.hasPrefix(stamp) { return String(line.dropFirst(stamp.count)) }
+                let time = stamp.trimmingCharacters(in:.whitespaces)
+                guard line.hasPrefix(time) else { return nil }
+                let remainder = line.dropFirst(time.count)
+                guard remainder.isEmpty || remainder.first?.isWhitespace == true else { return nil }
+                return String(remainder.drop(while:\.isWhitespace))
+            } ?? line
+            let empty = body.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty
+            return Line(atMs:empty ? nil : previous?.atMs ?? max(0,atMs),text:body)
         }
         displayed = next
     }

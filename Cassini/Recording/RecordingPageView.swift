@@ -76,6 +76,7 @@ struct RecordingPageView: View {
         }.background(Color(nsColor:.textBackgroundColor))
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .onAppear {
+                model.update(detail.meeting)
                 if RecordCoordinator.shared.focusNotesWhenOpened { notesFocused = true; RecordCoordinator.shared.focusNotesWhenOpened = false }
             }
             .onChange(of:RecordCoordinator.shared.focusNotesWhenOpened) { _,focus in
@@ -83,6 +84,8 @@ struct RecordingPageView: View {
             }
             .onChange(of:notesFocused) { _,focused in if !focused { model.formatNotes(); model.flush() } }
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
+            .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
+            .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
     }
     private func caption(_ id: String) -> some View { Text(UXText.text(id)).font(.system(size:11.5,weight:.bold)).foregroundStyle(LibraryTheme.dim) }
