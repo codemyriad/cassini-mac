@@ -10,7 +10,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
  def log_message(self,*_):pass
  def do_GET(self):
   with lock:
-   with a.log.open('a') as f:f.write(json.dumps({'path':self.path,'range':self.headers.get('Range'),'ifRange':self.headers.get('If-Range'),'encoding':self.headers.get('Accept-Encoding')})+'\n')
+   with a.log.open('a') as f:f.write(json.dumps({'path':self.path,'range':self.headers.get('Range'),'ifRange':self.headers.get('If-Range'),'encoding':self.headers.get('Accept-Encoding'),'userAgent':self.headers.get('User-Agent')})+'\n')
   if self.path=='/manifest.json':
    value=json.loads((root/'manifest.json').read_text());base=f'http://127.0.0.1:{self.server.server_port}'
    value['base_url']=base

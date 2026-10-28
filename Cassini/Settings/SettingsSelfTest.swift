@@ -178,7 +178,7 @@ import CassiniKit
             _ = try send(["type":"audio","id":"remote","sequence":0,"offsetMs":0,"pcm":Data([0,0,64,1]).base64EncodedString()])
             _ = try send(["type":"stop"])
             try check(ModelNotices.menuConfigured,"native About menu reaches model notices")
-            try check(ModelNotices.files.count >= 7 && ModelNotices.files.allSatisfy { (try? Data(contentsOf:$0).isEmpty) == false },"bundled model/decoder notices reachable")
+            try check(ModelNotices.files.count >= 6 && ModelNotices.files.allSatisfy { (try? Data(contentsOf:$0).isEmpty) == false },"bundled model/decoder notices reachable")
             // Simulate Quit: stop the move scheduler first, then let the jobs
             // finalize at their unchanged paths. A separate app launch resumes.
             LibraryMoveCoordinator.shared.beginShutdown(); await LibraryMoveCoordinator.shared.waitForShutdown()

@@ -10,17 +10,28 @@ import CassiniModels
         item.target = Action.shared; item.action = #selector(Action.show(_:))
     }
     static var files: [URL] {
-        let paths = [("NOTICE","txt","Licenses"),("Zstandard-LICENSE","txt","Licenses"),
+        let paths = [("Zstandard-LICENSE","txt","Licenses"),
                      ("NOTICE",nil,"Whistle"),("LICENSE",nil,"Whistle"),("Silero-LICENSE",nil,"Whistle"),
                      ("ONNXRuntime-LICENSE",nil,"Whistle"),("ONNXRuntime-ThirdPartyNotices","txt","Whistle")]
         return paths.compactMap { Bundle.main.url(forResource:$0.0,withExtension:$0.1,subdirectory:$0.2) }
-            + ModelStorage.notices(in:ModelStorage.appData)
+
     }
-    static var credits: NSAttributedString {
+    static var credits: NSAttributedString { credits(appData:ModelStorage.appData) }
+    static func credits(appData: URL) -> NSAttributedString {
         let text = NSMutableAttributedString()
         for file in files {
             let name = file.path.contains("/models/") ? file.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent + "/NOTICE.txt" : file.pathComponents.suffix(2).joined(separator:"/")
             text.append(NSAttributedString(string:name,attributes:[.link:file,.font:NSFont.systemFont(ofSize:12)]))
+            text.append(NSAttributedString(string:"\n"))
+        }
+        // Each installed revision carries dist's full NOTICE. The download
+        // link is conditional; bundled Whistle is not a downloaded model.
+        let notices = ModelStorage.notices(in:appData)
+        if let notice = notices.max(by:{
+            ((try? $0.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate) ?? .distantPast) <
+            ((try? $1.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+        }) {
+            text.append(NSAttributedString(string:UXText.text("about.modelNotices"),attributes:[.link:notice,.font:NSFont.systemFont(ofSize:12)]))
             text.append(NSAttributedString(string:"\n"))
         }
         return text

@@ -48,6 +48,7 @@ private func fails(_ run: () async throws -> Void) async -> Error? { do { try aw
         _ = try await downloader.install(pin)
         #expect(server.requests.filter { ($0["path"] as? String)?.hasPrefix("/models/") == true }.count == before)
         #expect(server.requests.allSatisfy { $0["encoding"] as? String == "identity" })
+        #expect(server.requests.allSatisfy { $0["userAgent"] as? String == ModelHTTP.userAgent })
         #expect(!server.requests.contains { ($0["path"] as? String)?.contains("example.invalid") == true })
         try await downloader.remove(pin); #expect(!FileManager.default.fileExists(atPath:result.path)); #expect(ModelStorage.notices(in:server.appData).isEmpty)
         _ = try await downloader.install(pin); #expect(FileManager.default.fileExists(atPath:result.path))
