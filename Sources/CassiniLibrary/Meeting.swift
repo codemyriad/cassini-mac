@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CassiniKit
 
 public enum MeetingLifecycle: String, Codable, Sendable { case recording, saving, saved }
 public enum MeetingOrigin: String, Codable, Sendable { case own, received }
@@ -84,9 +85,10 @@ public struct LibraryAudioTrack: Sendable, Equatable {
     public let frameCount: UInt64?
     public let sourceID: String?
     public let sourceKind: String?
-    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil) {
+    public let sourceTrackID: String?
+    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil) {
         self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount
-        self.sourceID = sourceID; self.sourceKind = sourceKind
+        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID
     }
 }
 public struct LibraryMeeting: Sendable {
@@ -117,6 +119,7 @@ public struct LibraryMeeting: Sendable {
     public var transcriptModel: String? = nil
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
+    public var captureEvents: [CaptureEvent] = []
     /// Producer completion is independent of whether an app activity adapter is
     /// currently connected. Never automatically transcribe a growing capture.
     public var captureFinalized = false

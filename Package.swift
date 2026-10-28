@@ -24,12 +24,15 @@ let package = Package(
         .library(name: "CassiniRecording", targets: ["CassiniRecording"]),
         .executable(name: "cassini-browser-host", targets: ["cassini-browser-host"]),
         .executable(name: "cassini-inspect", targets: ["cassini-inspect"]),
+        // Build-only persistence probe; never embedded in Cassini.app.
+        .executable(name:"cassini-session-transition-probe",targets:["cassini-session-transition-probe"]),
         // Build-only UX10 entitlement spike; never embedded in Cassini.app.
         .executable(name: "cassini-browser-setup-probe-client", targets: ["cassini-browser-setup-probe-client"]),
         .executable(name: "cassini-browser-setup-probe-service", targets: ["cassini-browser-setup-probe-service"]),
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .executableTarget(name:"cassini-session-transition-probe",dependencies:["CassiniRecording","CassiniKit"],path:"Spikes/SessionTransitions"),
         .target(name:"CassiniBrowserControl",dependencies:["CassiniKit","CassiniLibrary"]),
         .executableTarget(name:"cassini-control-host",dependencies:["CassiniBrowserControl"]),
         .testTarget(name:"CassiniBrowserControlTests",dependencies:["CassiniBrowserControl","CassiniKit"]),
@@ -62,7 +65,7 @@ let package = Package(
         .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers", "CassiniRecording"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors"), .copy("ExportGolden")]),
         .target(name: "CassiniRecording", dependencies: ["CassiniKit"]),
         .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording", "CassiniLibrary"]),
-        .testTarget(name: "CassiniRecordingTests", dependencies: ["CassiniRecording"]),
+        .testTarget(name: "CassiniRecordingTests", dependencies: ["CassiniRecording","CassiniKit","CassiniLibrary"], resources:[.copy("SessionEvents")]),
         .executableTarget(name: "cassini-inspect", dependencies: ["CassiniKit"]),
         .testTarget(
             name: "CassiniKitTests",
