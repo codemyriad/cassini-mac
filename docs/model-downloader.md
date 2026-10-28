@@ -49,4 +49,10 @@ objects with a local zstd CLI; CI uses committed bytes and needs no zstd install
 
 The Mac-only loopback initializer and disk-budget injection are internal module
 interfaces used by tests, unavailable to the app's production downloader caller.
+The direct Settings app probe first re-signs the generated Debug host with
+`codesign --force --sign - --options 0 --timestamp=none --entitlements
+Cassini/Cassini.entitlements APP`. Its script verifies the exact profile before
+launch: it must not rely on the extra read-root/test-manager entitlements Xcode
+injects for UI testing. This does not grant any device or OS permission.
+
 Both architecture builds are useful; an Intel compile is not an Intel execution.
