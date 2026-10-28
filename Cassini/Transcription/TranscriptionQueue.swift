@@ -20,6 +20,7 @@ import Darwin
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var preparation: Task<Void,Never>?
     @ObservationIgnored private var prepared = Set<String>()
+    @ObservationIgnored private var schedulingFailures = Set<String>()
     @ObservationIgnored private var closing = false
     var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
     func beginShutdown() {
@@ -34,13 +35,14 @@ import Darwin
         guard automatic, !closing else { return }
         let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
-        for meeting in candidates { enqueue(meeting) }
+        for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {
         guard !closing, !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
               active?.path != meeting.folder.path, !pending.contains(where: { $0.folder.path == meeting.folder.path }) else { return }
         if retry { known.remove(meeting.folder.path) }
         guard known.insert(meeting.folder.path).inserted else { return }
+        schedulingFailures.remove(meeting.folder.path)
         pending.append(meeting); preparePending()
     }
     func writeDown(_ detail: MeetingDetailModel) {
@@ -63,6 +65,7 @@ import Darwin
                     prepared.insert(meeting.folder.path); startNext()
                 } catch {
                     pending.removeAll { $0.folder.path == meeting.folder.path }; known.remove(meeting.folder.path)
+                    schedulingFailures.insert(meeting.folder.path)
                     if !closing { NSApp.presentError(error) }; startNext()
                 }
             }
@@ -126,10 +129,10 @@ import Darwin
             let meeting = try require(LibraryScanner(root:root).scan().meetings.first)
             let fd = open(session.directory.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
             guard fd >= 0, flock(fd,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
-            Thread.detachNewThread { Thread.sleep(forTimeInterval:0.3); flock(fd,LOCK_UN); close(fd) }
+            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(fd,LOCK_UN); close(fd) }
             let began = ProcessInfo.processInfo.systemUptime
             queue.enqueue(meeting)
-            guard ProcessInfo.processInfo.systemUptime - began < 0.15 else { throw POSIXError(.ETIMEDOUT) }
+            guard ProcessInfo.processInfo.systemUptime - began < 0.6 else { throw POSIXError(.ETIMEDOUT) }
             try await wait { queue.active != nil }
             let document = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as! [String:Any]
             guard (document["transcript"] as? [String:Any])?["status"] as? String == "queued" else { throw POSIXError(.EINVAL) }
