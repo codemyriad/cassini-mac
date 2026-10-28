@@ -34,10 +34,13 @@ public enum MeetingPresentation {
         }
         return result
     }
-    /// Interim external-file reading, without an import or app-owned sidecar.
+    /// Meeting data for directly opened files, without an app-owned sidecar.
     public static func external(_ file: CassiniFile, url: URL) -> LibraryMeeting {
-        let valid = ![.invalidCassiniMetadata, .staleAudio, .unknownCassiniFormat].contains(file.state)
-        let body = valid ? file.defaultTranscript?.load.transcript : nil
+        let trusted = file.state == .ok
+        let timed = file.transcripts.filter { $0.entry.format == "cassini.words.v1" }
+        let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
+        let body = trusted && !emptyTimed ? file.defaultTranscript?.load.transcript : nil
+        let status: TranscriptStatus = emptyTimed || file.state == .plainAudio ? .none : (body != nil ? .done : .damaged)
         let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
             .enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
         var ids: [String] = []
@@ -48,9 +51,11 @@ public enum MeetingPresentation {
         var duration: Int64?
         if case .success(let digest)? = file.audioDigest { duration = Int64(digest.durationMs) }
         let title = file.manifest?.meeting.title ?? file.tags?["TITLE"] ?? url.deletingPathExtension().lastPathComponent
-        var result = LibraryMeeting(id: UUID(uuidString: file.manifest?.meeting.id ?? "") ?? UUID(),
+        // An unverifiable identifier must not become a fresh export identity.
+        let id = trusted ? file.manifest.flatMap { UUID(uuidString:$0.meeting.id) } : nil
+        var result = LibraryMeeting(id: id ?? UUID(),
             folder: url.deletingLastPathComponent().appendingPathComponent("External-" + url.lastPathComponent),
-            state: .init(origin: .received, transcript: body != nil ? .done : (file.state == .plainAudio ? .none : .damaged), audioAvailable: duration != nil),
+            state: .init(origin: .received, transcript: status, audioAvailable: duration != nil),
             title: title, start: file.manifest.flatMap { recordingDate($0.meeting.createdAtUtc) }, durationMs: duration,
             speakers: speakers, quote: nil, notes: [], audioFiles: [url], issues: [])
         result.metadataReadOnly = true; result.transcriptItems = words
