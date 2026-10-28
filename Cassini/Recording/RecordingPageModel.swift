@@ -5,10 +5,6 @@ import CassiniRecording
 import CassiniWhistle
 import Observation
 
-private struct TimedRecordingNote: Equatable, Sendable {
-    var atMs: Int64?
-    var text: String
-}
 private actor RecordingEdits {
     let directory: URL
     let id: UUID
@@ -20,7 +16,7 @@ private actor RecordingEdits {
             metadata["title"] = title; metadata["titleSource"] = "user"
         }
     }
-    func notes(_ notes: [TimedRecordingNote], token: Int) throws {
+    func notes(_ notes: [RecordingNotes.Line], token: Int) throws {
         guard token > notesToken else { return }; notesToken = token
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
             metadata["notes"] = notes.compactMap { note -> [String:Any]? in
@@ -31,19 +27,20 @@ private actor RecordingEdits {
     }
 }
 @MainActor @Observable final class RecordingPageModel {
-    private struct Weak { weak var model: RecordingPageModel? }
-    private static var editors: [String:Weak] = [:]
+    private static var editors: [String:RecordingPageModel] = [:]
     static func editor(for meeting: LibraryMeeting) -> RecordingPageModel {
-        if let model = editors[meeting.folder.path]?.model { return model }
+        if let model = editors[meeting.folder.path] { return model }
+        // Keep the current editor across Back/Open, even before the watcher has
+        // observed its last write. Retain older editors only while writes settle.
+        editors = editors.filter { $0.value.titleTask != nil || $0.value.notesTask != nil }
         let model = RecordingPageModel(meeting)
-        editors[meeting.folder.path] = Weak(model: model); return model
+        editors[meeting.folder.path] = model; return model
     }
-    static var hasPendingEdits: Bool { editors.values.contains { $0.model?.titleTask != nil || $0.model?.notesTask != nil } }
+    static var hasPendingEdits: Bool { editors.values.contains { $0.titleTask != nil || $0.notesTask != nil } }
     static func flushAll() async {
-        let models = editors.values.compactMap(\.model)
+        let models = Array(editors.values)
         for model in models { model.flush() }
         for model in models { await model.titleTask?.value; await model.notesTask?.value }
-        editors = editors.filter { $0.value.model != nil }
     }
     let meeting: LibraryMeeting
     var title: String
@@ -51,7 +48,7 @@ private actor RecordingEdits {
     var voiceCount: Int = 0
     private(set) var frozen = false
     @ObservationIgnored private let edits: RecordingEdits
-    @ObservationIgnored private var notes: [TimedRecordingNote]
+    @ObservationIgnored private var notes: RecordingNotes
     @ObservationIgnored private var titleTask: Task<Void,Never>?
     @ObservationIgnored private var notesTask: Task<Void,Never>?
     @ObservationIgnored private var titleGeneration = 0
@@ -61,8 +58,10 @@ private actor RecordingEdits {
     private init(_ meeting: LibraryMeeting) {
         self.meeting = meeting; title = meeting.title ?? UXText.text("library.untitled")
         edits = RecordingEdits(directory: meeting.folder, id: meeting.id)
-        notes = meeting.notes.map { .init(atMs: $0.atMs, text: $0.text) }
-        notesText = meeting.notes.map { UXText.text("recording.notes.entry", ["position":LibraryFormat.position($0.atMs),"text":$0.text]) }.joined(separator: "\n")
+        let initial = meeting.notes.flatMap { note in note.text.components(separatedBy:"\n").map { RecordingNotes.Line(atMs:note.atMs,text:$0) } }
+        let displayed = initial.map { UXText.text("recording.notes.entry", ["position":LibraryFormat.position($0.atMs ?? 0),"text":$0.text]) }.joined(separator: "\n")
+        notesText = displayed
+        notes = RecordingNotes(lines:initial,displayed:displayed)
         #if DEBUG
         frozen = LibraryLaunchContext.current.screenshot
         #endif
@@ -85,20 +84,15 @@ private actor RecordingEdits {
     }
     func changeNotes() {
         guard !frozen else { return }
-        let lines = notesText.components(separatedBy: "\n")
-        notes = lines.enumerated().map { index, line in
-            let old = notes.indices.contains(index) ? notes[index] : TimedRecordingNote(atMs:nil,text:"")
-            let prefix = old.atMs.map { LibraryFormat.position($0) + "  " }
-            let body = prefix.flatMap { line.hasPrefix($0) ? String(line.dropFirst($0.count)) : nil } ?? line
-            return .init(atMs: old.atMs ?? (body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : elapsedMs), text: String(String.UnicodeScalarView(body.unicodeScalars.prefix(100000))))
-        }
+        notes.edit(notesText,atMs:elapsedMs) { LibraryFormat.position($0) + "  " }
         notesDirty = true; scheduleNotes()
     }
     func formatNotes() {
-        notesText = notes.map { note in
+        notesText = notes.lines.map { note in
             guard let at = note.atMs else { return note.text }
             return UXText.text("recording.notes.entry", ["position":LibraryFormat.position(at),"text":note.text])
         }.joined(separator:"\n")
+        notes.reformat(notesText)
     }
     func flush() { if titleDirty { scheduleTitle(immediate:true) }; if notesDirty { scheduleNotes(immediate:true) } }
     private func scheduleTitle(immediate: Bool = false) {
@@ -114,7 +108,7 @@ private actor RecordingEdits {
         }
     }
     private func scheduleNotes(immediate: Bool = false) {
-        notesTask?.cancel(); notesGeneration += 1; let generation = notesGeneration, value = notes
+        notesTask?.cancel(); notesGeneration += 1; let generation = notesGeneration, value = notes.lines
         notesTask = Task {
             defer { if notesGeneration == generation { notesTask = nil } }
             do {

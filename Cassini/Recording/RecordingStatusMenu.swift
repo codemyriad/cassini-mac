@@ -11,6 +11,7 @@ struct RecordingMenuPayload: Codable, Sendable {
     let actions: [Action]
     let noSleep: String?
     let assertionHeld: Bool
+    var json: String { (try? String(data:JSONEncoder().encode(self),encoding:.utf8)) ?? "{}" }
     @MainActor init(recorder: RecordingController, runtime: RecordingRuntime) {
         header = UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(recorder.elapsedMs)])
         title = recorder.title
@@ -30,13 +31,21 @@ struct RecordingMenuPayload: Codable, Sendable {
 
 struct RecordingStatusLabel: View {
     @State private var recorder = RecordingController.shared
+    @State private var elapsedMs: Int64 = 0
     var body: some View {
-        TimelineView(.periodic(from:.now,by:1)) { _ in
-            HStack(spacing:5) {
-                Circle().fill(LibraryTheme.red).frame(width:8,height:8)
-                Text(LibraryFormat.liveBadge(recorder.elapsedMs)).monospacedDigit().fontWeight(.semibold)
-            }.accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(recorder.elapsedMs)]))
-        }
+        HStack(spacing:5) {
+            Circle().fill(LibraryTheme.red).frame(width:8,height:8)
+            Text(LibraryFormat.liveBadge(elapsedMs)).monospacedDigit().fontWeight(.semibold)
+        }.accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(elapsedMs)]))
+            .accessibilityIdentifier("recording-menu-bar")
+            .task {
+                // TimelineView inside a MenuBarExtra label can re-enter the
+                // status-button update loop during app launch on current macOS.
+                while !Task.isCancelled {
+                    elapsedMs = recorder.elapsedMs
+                    do { try await Task.sleep(for:.seconds(1)) } catch { return }
+                }
+            }
     }
 }
 struct RecordingStatusMenu: View {
@@ -64,8 +73,15 @@ struct RecordingStatusMenu: View {
                 if let line = recorder.diskLine { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.amber).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
                 if let line = payload.noSleep { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,6).accessibilityIdentifier("recording-no-sleep") }
             }.font(.system(size:13)).padding(10).frame(width:300).accessibilityElement(children:.contain)
-                .accessibilityLabel(UXText.text("hidden.menu.a11y"))
+                .accessibilityLabel(UXText.text("hidden.menu.a11y")).accessibilityIdentifier("recording-menu-payload")
+                .accessibilityValue(fixturePayload(payload))
         }
+    }
+    private func fixturePayload(_ payload: RecordingMenuPayload) -> String {
+        #if DEBUG
+        if RecordingFixture.enabled { return payload.json }
+        #endif
+        return ""
     }
     @ViewBuilder private func action(_ item: RecordingMenuPayload.Action) -> some View {
         let button = Button {
