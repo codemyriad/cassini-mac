@@ -42,13 +42,31 @@ import Darwin
             guard !model.visible, model.speaker == nil, !model.own else { throw POSIXError(.EINVAL) }
             MeetingNavigation.shared.back()
             guard hasSelectAll(NSApp.mainMenu) else { throw POSIXError(.ENOTSUP) }
+            let startup = FailFirstIndex(), failures = FailureCount()
+            let recovering = LibrarySearchModel(makeIndex:{ try startup.create($0) },reportFailure:{ _ in failures.value += 1 })
+            recovering.visible = true; recovering.query = "budget"; recovering.speaker = "Marta"
+            recovering.update(LibraryStore.shared.meetings)
+            try await wait { !recovering.searching && failures.value == 1 }
+            recovering.refresh()
+            try await wait { !recovering.searching && recovering.hits.count == 4 }
+            guard failures.value == 1 else { throw POSIXError(.EINVAL) }
+            recovering.close()
             let report: [String:Any] = ["realAppFTS5":true,"places":4,"meetings":3,"d14Order":[4000,872000,1870000,527000],
-                                      "andFilters":true,"selectAllPreserved":true,"navigationClosesSearch":true,"hitSeekMs":872000,"filtersResetOnClose":true,"audioDevicesOpened":false]
+                                      "andFilters":true,"selectAllPreserved":true,"navigationClosesSearch":true,"hitSeekMs":872000,"filtersResetOnClose":true,"indexFailureRecovers":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             FileHandle.standardError.write(Data("Search app self-test failed: \(error)\n".utf8)); exit(1)
         }
     }
+    private final class FailFirstIndex: @unchecked Sendable {
+        private let lock = NSLock(); private var first = true
+        func create(_ cache: URL) throws -> SearchIndex {
+            lock.lock(); let fail = first; first = false; lock.unlock()
+            if fail { throw POSIXError(.EIO) }
+            return try SearchIndex(cache:cache)
+        }
+    }
+    @MainActor private final class FailureCount { var value = 0 }
     private static func hasSelectAll(_ menu: NSMenu?) -> Bool {
         menu?.items.contains { item in
             (item.keyEquivalent.lowercased() == "a" && item.keyEquivalentModifierMask.contains(.command)) || hasSelectAll(item.submenu)

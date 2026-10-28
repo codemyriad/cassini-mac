@@ -77,6 +77,10 @@ struct SearchTests {
         #expect(try await index.search("* NEAR()").isEmpty)
         #expect(try await index.search("...").isEmpty)
         #expect(try await index.search(" ").isEmpty)
+        #expect(try await index.search("\0").isEmpty)
+        let pasted = try await index.search("cafe\0budget").map(\.id)
+        let spaced = try await index.search("cafe budget").map(\.id)
+        #expect(pasted == spaced)
     }
     @Test func changedRemovedAndRenamedMeetingsDoNotLeaveStaleHits() async throws {
         let fixture = try SearchFixture(); let all = try fixture.meetings()
