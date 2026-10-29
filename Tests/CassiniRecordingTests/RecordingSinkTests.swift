@@ -106,6 +106,29 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
         #expect(writer.recordingProblem?.contains("10 ms") == true)
     }
 
+    @Test func pausePadsDroppedTailOnceAndResumeKeepsTheSameWriter() throws {
+        let writer = SinkWriter(); writer.stall = true
+        let failures = Failures()
+        let sink = RecordingSink(session:writer,capacitySeconds:0.01,originHostTime:1) { failures.add($0) }
+        let input = try buffer(channels:1,frames:80)
+        sink.receive(input,hostTime:1,id:"a",label:"A",kind:"microphone")
+        #expect(writer.entered.wait(timeout:.now()+2) == .success)
+        sink.receive(input,hostTime:1+AVAudioTime.hostTime(forSeconds:0.01),id:"a",label:"A",kind:"microphone")
+        writer.release.signal()
+        try sink.pause()
+        #expect(writer.finishes == 0)
+        #expect(writer.chunks.count == 2)
+        #expect(writer.chunks.last?.1.allSatisfy { $0 == 0 } == true)
+        sink.receive(input,hostTime:1+AVAudioTime.hostTime(forSeconds:0.02),id:"a",label:"A",kind:"microphone")
+        try sink.resume()
+        sink.receive(input,hostTime:1+AVAudioTime.hostTime(forSeconds:0.02),id:"a",label:"A",kind:"microphone")
+        #expect(throws:(any Error).self) { try sink.finish(problem:nil) }
+        #expect(writer.bytes == 3*80*2)
+        #expect(writer.chunks.map { $0.2 } == [0,10,20])
+        #expect(writer.formats.count == 1); #expect(writer.finishes == 1)
+        #expect(failures.count == 0)
+    }
+
     @Test func failureOnceAndLateCallbacksAreHarmless() throws {
         let writer = SinkWriter(); writer.reject = true
         let failures = Failures()

@@ -7,6 +7,18 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testLossStampIsOwnedByTheProducerAndDoesNotRestartOnRepeatedObservation() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Loss stamp",microphone:false)
+        let before = ProcessInfo.processInfo.systemUptime
+        try owner.browserLost(atMs:0)
+        let lost = try XCTUnwrap(owner.snapshot.browserLostUptime)
+        XCTAssertGreaterThanOrEqual(lost,before)
+        XCTAssertLessThanOrEqual(lost,ProcessInfo.processInfo.systemUptime)
+        try owner.browserLost(atMs:1000)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,lost)
+        try await owner.finish()
+    }
     func testNativeGapCountsSurviveOwnedSpanFinalizationAndReload() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Owned gap",microphone:true,browser:false)

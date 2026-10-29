@@ -73,6 +73,13 @@ public struct RecordingSource: Sendable {
     }
 }
 
+/// The new metadata was published; callers must keep the committed source state
+/// even if a subsequent directory sync or retiring file close reports an error.
+public struct RecordingTransitionCommittedError: LocalizedError {
+    public let underlying: Error
+    public var errorDescription: String? { underlying.localizedDescription }
+}
+
 public enum RecordingError: LocalizedError {
     case invalid(String)
     case limit(String)
@@ -91,9 +98,10 @@ public final class RecordingSession {
     private var writers: [String: WAVWriter] = [:]
     private var finished = false
     private var lastCheckpoint = Date.distantPast
+    private var metadataRevision: UInt64 = 0
     /// Build-only process-crash probes observe persistence boundaries. This is
     /// not exposed through native messaging or any app setting.
-    @_spi(Testing) public var checkpointObserver: ((RecordingCheckpointPhase) -> Void)?
+    @_spi(Testing) public var checkpointObserver: ((RecordingCheckpointPhase) throws -> Void)?
 
     public init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
         directory = parent.appendingPathComponent("Recording-\(id.uuidString.lowercased())", isDirectory: true)
@@ -131,35 +139,51 @@ public final class RecordingSession {
             else { throw RecordingError.invalid("Invalid or duplicate audio source.") }
         }
         var staged: [(RecordingTrack,WAVWriter)] = []
+        var created: [URL] = []
+        let before = manifest, oldWriters = writers, revision = metadataRevision
+        var committedIssue: Error?
         do {
             for source in sources {
-                let filename = "track-\(UUID().uuidString).wav"
-                let writer = try WAVWriter(url:directory.appendingPathComponent(filename),sampleRate:source.sampleRate,channels:source.channels)
-                var track = RecordingTrack(id:source.id,label:Self.cleanLabel(source.label),kind:source.kind,file:filename,sampleRate:source.sampleRate,channels:source.channels,startOffsetMs:nil,frames:0)
-                track.labelSource = source.labelSource ?? (manifest.source == "chromium" ? "browser" : "device")
+                let file = "track-" + UUID().uuidString.lowercased() + ".wav"
+                let url = directory.appendingPathComponent(file); created.append(url)
+                let writer = try WAVWriter(url:url,sampleRate:source.sampleRate,channels:source.channels)
+                var track = RecordingTrack(id:source.id,label:Self.cleanLabel(source.label),kind:source.kind,file:file,
+                    sampleRate:source.sampleRate,channels:source.channels,startOffsetMs:nil,frames:0)
                 track.sourceTrackId = source.sourceTrackId
+                track.labelSource = source.labelSource ?? (manifest.source == "chromium" ? "browser" : "device")
                 if source.endsImmediately { try writer.close(); track.ended = true }
                 staged.append((track,writer))
             }
-        } catch {
-            for (track,writer) in staged { try? writer.close(); try? FileManager.default.removeItem(at:directory.appendingPathComponent(track.file)) }
-            throw error
-        }
-        checkpointObserver?(.filesCreated)
-        for id in ids {
-            try writers[id]?.close(); writers.removeValue(forKey:id)
-            if let index = manifest.tracks.firstIndex(where:{ $0.id == id }) {
-                let track = manifest.tracks[index]
-                manifest.tracks[index].ended = true
-                manifest.tracks[index].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames)/Double(track.sampleRate)*1000 }
+            try checkpointObserver?(.filesCreated)
+            // Old handles remain open through publication, so a rejected
+            // checkpoint can restore the exact metadata and keep appending.
+            for id in ids {
+                if let index = manifest.tracks.firstIndex(where:{ $0.id == id }) {
+                    let track = manifest.tracks[index]
+                    manifest.tracks[index].ended = true
+                    manifest.tracks[index].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames)/Double(track.sampleRate)*1000 }
+                }
             }
+            for (track,writer) in staged {
+                if track.ended != true { writers[track.id] = writer }
+                manifest.tracks.append(track)
+            }
+            if !events.isEmpty { manifest.events = (manifest.events ?? []) + events }
+            try checkpoint()
+        } catch {
+            if metadataRevision == revision {
+                manifest = before; writers = oldWriters
+                for (_,writer) in staged { try? writer.close() }
+                for url in created { try? FileManager.default.removeItem(at:url) }
+                throw error
+            }
+            committedIssue = error
         }
-        for (track,writer) in staged {
-            if track.ended != true { writers[track.id] = writer }
-            manifest.tracks.append(track)
+        for id in ids {
+            do { try oldWriters[id]?.close() } catch { committedIssue = committedIssue ?? error }
+            writers.removeValue(forKey:id)
         }
-        if !events.isEmpty { manifest.events = (manifest.events ?? []) + events }
-        try checkpoint()
+        if let committedIssue { throw RecordingTransitionCommittedError(underlying:committedIssue) }
     }
 
     /// Interleaved signed 16-bit little-endian samples, with a timestamp on the session timeline.
@@ -233,7 +257,7 @@ public final class RecordingSession {
         encoder.dateEncodingStrategy = .iso8601
         // Commit audio before metadata so frames never advertise unsynced audio.
         for writer in writers.values { try writer.synchronize() }
-        checkpointObserver?(.audioSynchronized)
+        try checkpointObserver?(.audioSynchronized)
         let temporary = directory.appendingPathComponent(".session-\(UUID().uuidString).tmp")
         defer { try? FileManager.default.removeItem(at: temporary) }
         let data = try encoder.encode(manifest)
@@ -242,9 +266,10 @@ public final class RecordingSession {
         }
         let handle = try FileHandle(forWritingTo: temporary)
         do { try durableSync(handle); try handle.close() } catch { try? handle.close(); throw error }
-        checkpointObserver?(.metadataSynchronized)
+        try checkpointObserver?(.metadataSynchronized)
         guard rename(temporary.path, directory.appendingPathComponent("session.json").path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        checkpointObserver?(.metadataPublished)
+        metadataRevision &+= 1
+        try checkpointObserver?(.metadataPublished)
         let descriptor = open(directory.path, O_RDONLY)
         if descriptor >= 0 { defer { Darwin.close(descriptor) }; if fsync(descriptor) != 0 && errno != EINVAL { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) } }
         lastCheckpoint = Date()

@@ -61,7 +61,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        try await control.send(["type":"meetings","meetings":active ? [["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":1]] : []])
+        try await control.send(["type":"meetings","meetings":active || audio != nil ? [["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":active ? 1 : 0]] : []])
     }
     func status(interrupted: Bool = false) -> [String:Any] {
         var packet: [String:Any] = ["type":"status","recording":audio != nil,"tabId":audio == nil ? NSNull() : 2,"path":path as Any? ?? NSNull(),"message":"Fixture status"]
@@ -156,6 +156,23 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await one.emit(); try await Task.sleep(for:.milliseconds(100))
             try require(collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } == micEnd,"Me off stops native admission")
+            stage = "reject unavailable replacement input"
+            let beforeChoice = first.owner.snapshot.manifest
+            CaptureFixture.microphoneStartsAllowed = false
+            var rejectedChoice = false
+            do { try await collection.select(first.snapshot.manifest.id,me:true,others:false) }
+            catch { rejectedChoice = true }
+            CaptureFixture.microphoneStartsAllowed = true
+            try require(rejectedChoice && !first.owner.snapshot.me && first.owner.snapshot.others,"Failed microphone keeps Others selected")
+            try require(first.owner.snapshot.manifest.events?.count == beforeChoice.events?.count && first.owner.snapshot.manifest.tracks.count == beforeChoice.tracks.count,"Rejected selection publishes no events or tracks")
+            let remoteTrack = try first.owner.snapshot.manifest.tracks.first { $0.kind == "remote" }.unwrap()
+            let remoteURL = first.owner.snapshot.directory.appendingPathComponent(remoteTrack.file)
+            let browserBefore = try FileManager.default.attributesOfItem(atPath:remoteURL.path)[.size] as? UInt64 ?? 0
+            try await one.emit()
+            let browserAfter = try FileManager.default.attributesOfItem(atPath:remoteURL.path)[.size] as? UInt64 ?? 0
+            try require(browserAfter > browserBefore,"Browser audio continues after rejected input")
+            report["failedSourceChangeKeepsSelectionAndAudio"] = true
+            stage = "accept replacement input"
             try await collection.select(first.snapshot.manifest.id,me:true,others:false)
             try await one.emit()
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
@@ -222,13 +239,35 @@ final class CaptureProbeProcess: @unchecked Sendable {
             _ = try await one.performNext()
             try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty }
             try require(two.captureID == successfulToken,"Retry must not restart the successful meeting")
+            stage = "hang up while the tab stays open"
+            try await one.meetings(false)
+            let ended = try await one.performNext()
+            try require(ended["action"]?.string == "stop","Call end requests Stop instead of fallback")
+            try await wait { collection.captures.count == 1 }
+            try await two.emit()
+            try require(two.captureID == successfulToken,"Call end leaves the other meeting recording")
+            report["hangupStopsOnlyEndedMeeting"] = true
             collection.stopAll()
-            _ = try await one.performNext(); _ = try await two.performNext()
+            _ = try await two.performNext()
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
             report["partialFailureRetriesOnlyThatMeeting"] = true
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            stage = "expire fallback whose browser never returns"
+            try await one.meetings(true)
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await one.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
+            let expiring = try collection.captures.values.first.unwrap()
+            try await one.loseBrowser()
+            try await wait { expiring.owner.snapshot.browserLostUptime != nil && expiring.owner.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } }
+            let lostAt = try expiring.owner.snapshot.browserLostUptime.unwrap()
+            await one.control.end()
+            try await wait { !collection.peers.contains { $0.id == expiring.key?.peer } }
+            collection.pollLifetimeForTesting(at:lostAt + 30.01)
+            try await wait { collection.captures.isEmpty }
+            report["unobservedFallbackExpires"] = true
             stage = "denied microphone and disk reserve"
             CaptureFixture.microphoneAllowed = false
             let beforeMicStarts = CaptureFixture.microphoneStarts
@@ -236,7 +275,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
             try require(CaptureFixture.microphoneStarts == beforeMicStarts,"Denied microphone did not start a device driver")
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
-            try require(fallbacks == [second.snapshot.manifest.id],"A normal native start must not announce browser fallback")
+            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id],"Only the two browser losses announce fallback; a normal native start does not")
             report["nativeStartDoesNotReportFallback"] = true
             collection.applyDiskBudgetForTesting(DiskBudget(total:100<<30,free:0,bytesPerSecond:16000))
             await collection.stopAndWait()

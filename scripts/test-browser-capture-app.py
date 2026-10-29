@@ -37,10 +37,27 @@ a.output.parent.mkdir(parents=True,exist_ok=True)
 a.output.with_suffix('.stderr.txt').write_text(stderr)
 assert process.returncode == 0, (process.returncode,stdout,stderr)
 report = json.loads(stdout)
-for name in ['twoProfilesSameTabIndependent','realSelectionUsesOwnedInputLifecycle','pageStopLeavesOtherMeetingRecording',
-    'fallbackAndWorkerRecoveryKeepOneFolder','newCallAutoStartAndNotificationStop','deniedMicKeepsOthersRecording',
-    'nothingStartedLeavesNoLibraryEntry','partialFailureRetriesOnlyThatMeeting','diskReserveStopsAndKeeps','nativeMessagingProcesses','exactProductProfile','nativeStopsBeforeBrowserFlush','nativeStartDoesNotReportFallback',
-    'activeMoveRejectsRecording','recordingFollowsRelocatedBookmark','offlineLibraryIsNotRecreated']:
+for name in [
+    'twoProfilesSameTabIndependent',
+    'realSelectionUsesOwnedInputLifecycle',
+    'pageStopLeavesOtherMeetingRecording',
+    'fallbackAndWorkerRecoveryKeepOneFolder',
+    'newCallAutoStartAndNotificationStop',
+    'deniedMicKeepsOthersRecording',
+    'nothingStartedLeavesNoLibraryEntry',
+    'partialFailureRetriesOnlyThatMeeting',
+    'diskReserveStopsAndKeeps',
+    'nativeMessagingProcesses',
+    'exactProductProfile',
+    'nativeStopsBeforeBrowserFlush',
+    'nativeStartDoesNotReportFallback',
+    'activeMoveRejectsRecording',
+    'recordingFollowsRelocatedBookmark',
+    'offlineLibraryIsNotRecreated',
+    'hangupStopsOnlyEndedMeeting',
+    'unobservedFallbackExpires',
+    'failedSourceChangeKeepsSelectionAndAudio',
+]:
     assert report[name] is True, (name,report)
 assert report['audioDevicesOpened'] is False and report['browserProfilesTouched'] is False
 report['nativeArchitecture'] = os.uname().machine

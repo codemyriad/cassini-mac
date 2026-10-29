@@ -17,6 +17,8 @@ import CassiniRecording
         let generation: UUID
         let driver: any CaptureInput
         let sink: RecordingSink
+        var paused = false
+        var stage: StagedNativeWriter? = nil
     }
     private let capture: OwnedBrowserCapture
     private let origin: UInt64
@@ -45,19 +47,84 @@ import CassiniRecording
         guard atMs.isFinite, atMs >= 0, me || others else { throw RecordingError.invalid("Invalid recording selection.") }
         let requested = ProcessInfo.processInfo.systemUptime
         try await enqueue {
-            guard !self.closed, self.capture.snapshot.phase == .recording, me || others else { throw BrowserIPCError.closed }
-            // Acquire permission before changing an otherwise working selection.
-            var prepared: (any CaptureInput)?
-            if me && (!self.capture.snapshot.me || self.failedSides.contains(.me)) {
-                let driver = self.microphone(); try await self.authorize(driver); prepared = driver
+            guard !self.closed, self.capture.snapshot.phase == .recording else { throw BrowserIPCError.closed }
+            let before = self.capture.snapshot
+            var prepared: [CaptureSide:Input] = [:]
+            var paused: Set<CaptureSide> = []
+            let previousFailures = self.failedSides
+            do {
+                if others && !before.browserAlive && (self.inputs[.others] == nil || self.failedSides.contains(.others)) {
+                    prepared[.others] = try await self.prepare(.others,driver:self.system())
+                }
+                if me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
+                    prepared[.me] = try await self.prepare(.me,driver:self.microphone())
+                }
                 guard !self.closed else { throw BrowserIPCError.closed }
+                for side in prepared.keys where self.failedSides.contains(side) { try await self.end(side) }
+                for side in [CaptureSide.me,.others] where (side == .me ? !me : !others) && self.inputs[side] != nil {
+                    let value = self.inputs[side]!
+                    self.inputs[side]?.paused = true; paused.insert(side)
+                    value.driver.stop()
+                    let sink = value.sink
+                    try await Task.detached { try sink.pause() }.value
+                }
+                guard !self.closed else { throw BrowserIPCError.closed }
+                guard prepared.values.allSatisfy({ $0.stage?.recordingProblem == nil }) else {
+                    throw RecordingError.invalid("The new audio input stopped before the selection could be applied.")
+                }
+                let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime-requested)*1000
+                try await self.capture.select(me:me,others:others,atMs:appliedAt,reservingNative:Set(prepared.keys))
+            } catch {
+                for value in prepared.values { await self.discard(value) }
+                if !self.closed {
+                    self.failedSides = previousFailures
+                    for side in paused {
+                        guard let value = self.inputs[side] else { continue }
+                        do {
+                            try value.sink.resume()
+                            try value.driver.start(sink:value.sink,failure:self.report(side,generation:value.generation,stage:value.stage))
+                            self.inputs[side]?.paused = false
+                        } catch { self.failedSides.insert(side); self.failure(error.localizedDescription) }
+                    }
+                }
+                throw error
             }
-            if prepared != nil { try await self.end(.me) }
-            if !me { try await self.end(.me) }
-            if !others { try await self.end(.others) }
-            let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime - requested)*1000
-            try await self.capture.select(me:me,others:others,atMs:appliedAt)
-            try await self.reconcile(preparedMicrophone:prepared)
+            // Selection is committed. Old inputs were drained without closing
+            // their files, and can now be retired without losing their tail.
+            for side in paused { do { try await self.end(side) } catch { self.failure(error.localizedDescription) } }
+            for (side,value) in prepared {
+                guard !self.closed else { await self.discard(value); continue }
+                self.inputs[side] = value; self.failedSides.remove(side)
+                guard let stage = value.stage else { continue }
+                let writer = self.capture.nativeWriter(side:side)
+                do { try await Task.detached { try stage.activate(writer) }.value }
+                catch { self.report(side,generation:value.generation,stage:stage)(error.localizedDescription) }
+            }
+        }
+    }
+    private func prepare(_ side: CaptureSide, driver: any CaptureInput) async throws -> Input {
+        try await authorize(driver)
+        guard !closed else { throw BrowserIPCError.closed }
+        let generation = UUID(), stage = StagedNativeWriter()
+        let report = report(side,generation:generation,stage:stage)
+        let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report)
+        let value = Input(generation:generation,driver:driver,sink:sink,stage:stage)
+        do {
+            try driver.start(sink:sink,failure:report)
+            await Task.detached { sink.flush() }.value
+            guard !closed, stage.recordingProblem == nil else { throw RecordingError.invalid("The new audio input could not start.") }
+            return value
+        } catch { await discard(value); throw error }
+    }
+    private func discard(_ value: Input) async {
+        value.driver.stop(); value.stage?.discard()
+        let sink = value.sink
+        try? await Task.detached { try sink.finish(problem:nil) }.value
+    }
+    private func report(_ side: CaptureSide, generation: UUID, stage: StagedNativeWriter? = nil) -> @Sendable (String) -> Void {
+        { [weak self] message in
+            stage?.fail(message)
+            Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
         }
     }
     public func stop() async throws {
@@ -151,7 +218,7 @@ import CassiniRecording
     private func end(_ side: CaptureSide, problem: String? = nil) async throws {
         failedSides.remove(side)
         guard let input = inputs.removeValue(forKey:side) else { return }
-        input.driver.stop()
+        if !input.paused { input.driver.stop() }
         let sink = input.sink
         try await Task.detached(priority:.userInitiated) { try sink.finish(problem:problem) }.value
     }
