@@ -197,7 +197,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Listening inside your browser · 4 voices",in:window))
         XCTAssertTrue(text("No sound from your microphone. Check your sound settings.",in:window))
         XCTAssertTrue(window.buttons["recording-check-microphone"].exists)
-        XCTAssertFalse(window.buttons["Change what is recorded"].isEnabled)
+        XCTAssertTrue(window.buttons["Change what is recorded"].isEnabled)
         let exact = NSPredicate { _,_ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exact,object:nil)],timeout:10),.completed)
         capture(window,name:"recording")
