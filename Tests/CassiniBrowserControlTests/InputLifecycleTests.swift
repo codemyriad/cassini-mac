@@ -31,6 +31,23 @@ import CassiniRecording
     func stop() { stops += 1; sink = nil }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testTurningMeOffAfterACountedGapStillAppliesSelection() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Turn off after gap",microphone:true)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        try await inputs.start()
+        mic.emit(at:1.1)
+        do { try await inputs.select(me:false,others:true,atMs:1200) }
+        catch { try? await inputs.stop(); try? await owner.finish(); throw error }
+        XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.gapFrames,8000)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.ended,true)
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertEqual(owner.snapshot.manifest.problemKind,"gap")
+    }
     @MainActor func testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

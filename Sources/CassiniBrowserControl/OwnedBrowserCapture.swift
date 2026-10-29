@@ -273,9 +273,11 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     private let owner: OwnedBrowserCapture
     private let side: CaptureSide
     private var spans: [String:String] = [:]
-    private var problem: String?
     init(owner: OwnedBrowserCapture, side: CaptureSide) { self.owner = owner; self.side = side }
-    var recordingProblem: String? { problem }
+    // Ending a span records diagnostics on its meeting owner. A preserved gap
+    // or counted queue loss must not reject the user's source-off transition.
+    // Actual write/checkpoint errors still throw from append/endNative.
+    var recordingProblem: String? { nil }
     func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws {
         guard spans[id] == nil, kind == (side == .me ? "microphone" : "system") else { throw RecordingError.invalid("Invalid native source role.") }
         spans[id] = try owner.nativeTrack(side:side,label:label,rate:sampleRate,channels:channels)
@@ -289,6 +291,6 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     }
     func finish(problem: String?) throws { try finish(problem:problem,kind:nil) }
     func finish(problem: String?, kind: String?) throws {
-        self.problem = problem; try owner.endNative(Array(spans.values),problem:problem,kind:kind); spans.removeAll()
+        try owner.endNative(Array(spans.values),problem:problem,kind:kind); spans.removeAll()
     }
 }
