@@ -126,6 +126,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         guard CaptureFixture.enabled, let root = RecordingFixture.root else { NSApp.terminate(nil); return }
         let collection = CaptureCollection.shared
         var profiles: [CaptureProbeProfile] = []
+        var routingRoots: [URL] = []
         var report: [String:Any] = [:]
         var stage = "start protected service"
         do {
@@ -290,18 +291,60 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let after = try folders(root)
             try require(after == before,"No samples means no new Library folder")
             report["nothingStartedLeavesNoLibraryEntry"] = true
-            stage = "shutdown"
             for profile in profiles { await profile.finish() }
             profiles = []
+            stage = "Library move admission"
+            CaptureFixture.microphoneAllowed = true; CaptureFixture.systemAllowed = true
+            let startsBeforeMove = CaptureFixture.microphoneStarts + CaptureFixture.systemStarts
+            collection.setLibraryMoveBlocked(true)
+            var moveRejected = false
+            do { try await collection.record() } catch { moveRejected = true }
+            collection.setLibraryMoveBlocked(false)
+            try require(moveRejected && collection.captures.isEmpty && CaptureFixture.microphoneStarts + CaptureFixture.systemStarts == startsBeforeMove,"Move guard rejects capture before any input starts")
+            report["activeMoveRejectsRecording"] = true
+            stage = "relocated Library and retained bookmark"
+            let destination = root.deletingLastPathComponent().appendingPathComponent("CassiniCaptureDestination-" + UUID().uuidString)
+            let renamed = destination.appendingPathExtension("renamed")
+            routingRoots = [destination,renamed]
+            try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)
+            let bookmark = try destination.bookmarkData(options:.withSecurityScope,includingResourceValuesForKeys:nil,relativeTo:nil)
+            try LibraryLocation(primary:destination,bookmarks:[destination.path:bookmark]).write(file:LibraryLaunchContext.locationFile)
+            try await collection.record()
+            try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.frames > 0 } == true }
+            try require(collection.first?.snapshot.directory.deletingLastPathComponent().resolvingSymlinksInPath().path == destination.resolvingSymlinksInPath().path,"Recording uses the relocated Library")
+            let relocatedID = try (collection.first?.snapshot.manifest.id).unwrap()
+            try await wait { LibraryStore.shared.meetings.contains { $0.id == relocatedID && $0.state.lifecycle == .recording } }
+            await collection.stopAndWait()
+            try FileManager.default.moveItem(at:destination,to:renamed)
+            try await collection.record()
+            try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.frames > 0 } == true }
+            try require(collection.first?.snapshot.directory.deletingLastPathComponent().resolvingSymlinksInPath().path == renamed.resolvingSymlinksInPath().path,"Capture follows the renamed bookmark")
+            let renamedID = try (collection.first?.snapshot.manifest.id).unwrap()
+            try await wait { LibraryStore.shared.meetings.contains { $0.id == renamedID && $0.state.lifecycle == .recording && $0.folder.deletingLastPathComponent().resolvingSymlinksInPath().path == renamed.resolvingSymlinksInPath().path } }
+            try require(!FileManager.default.fileExists(atPath:destination.path),"Old published path is never recreated")
+            await collection.stopAndWait()
+            report["recordingFollowsRelocatedBookmark"] = true
+            stage = "offline Library"
+            try FileManager.default.removeItem(at:renamed)
+            var offlineRejected = false
+            do { try await collection.record() } catch { offlineRejected = true }
+            try require(offlineRejected && collection.captures.isEmpty,"Offline Library rejects recording")
+            try require(!FileManager.default.fileExists(atPath:destination.path) && !FileManager.default.fileExists(atPath:renamed.path),"Offline Library is not recreated")
+            report["offlineLibraryIsNotRecreated"] = true
+            try LibraryLocation(primary:root).write(file:LibraryLaunchContext.locationFile)
+            LibraryStore.shared.reloadLocation()
+            stage = "shutdown"
             await collection.shutdown()
             LibraryStore.shared.stop()
             report["audioDevicesOpened"] = false; report["browserProfilesTouched"] = false
             report["nativeMessagingProcesses"] = true; report["exactProductProfile"] = true
             try FileHandle.standardOutput.write(contentsOf:JSONSerialization.data(withJSONObject:report,options:.sortedKeys))
             try FileManager.default.removeItem(at:root)
+            for url in routingRoots { try? FileManager.default.removeItem(at:url) }
         } catch {
             for profile in profiles { await profile.finish() }
             await collection.shutdown()
+            for url in routingRoots { try? FileManager.default.removeItem(at:url) }
             try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n").utf8))
             exit(1)
         }

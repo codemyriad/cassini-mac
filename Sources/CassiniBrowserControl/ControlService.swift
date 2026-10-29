@@ -17,9 +17,11 @@ public final class BrowserControlService: @unchecked Sendable {
     private let changed: @Sendable ([BrowserControlPeerSnapshot]) -> Void
     private let audio: (any BrowserAudioHandler)?
     private let completed: @Sendable (BrowserControlOutcome,Bool) -> Void
+    private let canStart: @Sendable () -> Bool
     public init(changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void,
-                completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil) {
-        self.changed = changed; self.completed = completed; self.audio = audio; queue.setSpecific(key:key,value:1)
+                completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil,
+                canStart: @escaping @Sendable () -> Bool = { true }) {
+        self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {
         try sync {
@@ -46,13 +48,17 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     public func recordAll(microphone: Bool, choices: [BrowserMeetingKey:Bool] = [:], issued: @escaping @Sendable ([BrowserControlRequest]) -> Void = { _ in }) {
         queue.async { [self] in
+            guard canStart() else { issued([]); return }
             let requests = registry.startAll(microphone:microphone,choices:choices)
             send(requests); publish(); issued(requests)
         }
     }
     public func recordMeeting(_ key: BrowserMeetingKey, microphone: Bool) {
         queue.async { [self] in
-            do { send([try registry.start(key,microphone:microphone)]); publish() }
+            do {
+                guard canStart() else { throw BrowserIPCError.unavailable }
+                send([try registry.start(key,microphone:microphone)]); publish()
+            }
             catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
@@ -99,7 +105,7 @@ public final class BrowserControlService: @unchecked Sendable {
     private func reconcile() {
         registry.setRetainedCaptureIDs(audio?.retainedCaptureIDs ?? [])
         send(registry.drainStops())
-        if autoRecord { send(registry.automaticStarts(microphone:microphone),automatic:true) }
+        if autoRecord && canStart() { send(registry.automaticStarts(microphone:microphone),automatic:true) }
         publish()
     }
     private func send(_ requests: [BrowserControlRequest], automatic isAutomatic: Bool = false) {
@@ -129,6 +135,7 @@ public final class BrowserControlService: @unchecked Sendable {
         // An unacknowledged Start may already be recording. Reconnect reconciles
         // fresh status; it never resends that command or stops its audio host.
         for id in peers { connections[id]?.close(); disconnect(id) }
+        reconcile()
     }
     private func publish() { changed(registry.snapshots) }
     deinit {

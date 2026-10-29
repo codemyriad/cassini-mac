@@ -29,4 +29,19 @@ public enum LibraryRouting {
         }
         return destination
     }
+    /// The sandboxed app resolves its own bookmark at creation time and keeps
+    /// this lease for the complete capture. Hosts keep using the path-only API.
+    public static func withRecordingAccess<T>(file: URL = LibraryLocation.standardFile, defaultRoot: URL = LibraryLocation.standardRoot,
+                                             _ body: (URL,LibraryAccess) throws -> T) throws -> T {
+        try withLock(file:file,exclusive:false,wait:false) {
+            let location = try LibraryLocation.read(file:file,defaultRoot:defaultRoot)
+            let access = try LibraryAccess(location,tolerateMissingPrevious:true)
+            let destination = access.roots[0]
+            if location.primary.path != defaultRoot.path || location.bookmarks[location.primary.path] != nil {
+                var directory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath:destination.path,isDirectory:&directory),directory.boolValue else { throw POSIXError(.ENOENT) }
+            }
+            return try body(destination,access)
+        }
+    }
 }

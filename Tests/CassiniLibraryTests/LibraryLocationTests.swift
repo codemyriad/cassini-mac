@@ -5,6 +5,38 @@ import Testing
 @testable import CassiniLibrary
 
 struct LibraryLocationTests {
+    @Test func recordingAccessRejectsMissingRelocatedRootWithoutRecreatingIt() throws {
+        let fixture = try Fixture(), config = fixture.root.appendingPathComponent("AppData/location.json")
+        let destination = fixture.root.appendingPathComponent("Offline/Library")
+        try LibraryLocation(primary:destination).write(file:config)
+        #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Missing destination must not be admitted") } }
+        #expect(!FileManager.default.fileExists(atPath:destination.deletingLastPathComponent().path))
+    }
+    @Test func recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication() throws {
+        let fixture = try Fixture(), config = fixture.root.appendingPathComponent("AppData/location.json")
+        let old = fixture.root.appendingPathComponent("Old"), moved = fixture.root.appendingPathComponent("Renamed")
+        try FileManager.default.createDirectory(at:old,withIntermediateDirectories:false)
+        let bookmark = try old.bookmarkData(options:.withSecurityScope,includingResourceValuesForKeys:nil,relativeTo:nil)
+        try LibraryLocation(primary:old,bookmarks:[old.path:bookmark]).write(file:config)
+        try FileManager.default.moveItem(at:old,to:moved)
+        try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { destination,lease in
+            #expect(destination.resolvingSymlinksInPath().path == moved.resolvingSymlinksInPath().path)
+            #expect(lease.roots.first == destination)
+            #expect(!FileManager.default.fileExists(atPath:old.path))
+        }
+        try LibraryRouting.withLock(file:config,exclusive:true) {
+            #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+        }
+    }
+    @Test func firstRunRecordingAccessAllowsOnlyTheUnconfiguredDefaultToBeCreated() throws {
+        let fixture = try Fixture(), config = fixture.root.appendingPathComponent("AppData/location.json")
+        let first = fixture.root.appendingPathComponent("NewDefault")
+        try LibraryRouting.withRecordingAccess(file:config,defaultRoot:first) { destination,_ in
+            #expect(destination.resolvingSymlinksInPath().path == first.resolvingSymlinksInPath().path)
+            #expect(!FileManager.default.fileExists(atPath:destination.path))
+        }
+        #expect(!FileManager.default.fileExists(atPath:first.path))
+    }
     @Test func appAndHostReadTheSamePrivateLocationAndRetainFailedRoots() throws {
         let fixture = try Fixture(), config = fixture.root.appendingPathComponent("AppData/location.json")
         let original = try LibraryLocation.read(file:config,defaultRoot:fixture.root)
