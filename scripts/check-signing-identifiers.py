@@ -15,6 +15,10 @@ parser.add_argument('--require-hardened-runtime', action='store_true', help='Als
 args = parser.parse_args()
 app = args.app
 prefix = 'io.codemyriad.cassini'
+root = Path(__file__).resolve().parent.parent
+profiles = {'':'Cassini/Cassini.entitlements','.quicklook':'QuickLook/CassiniQuickLook.entitlements',
+    '.browser-setup':'BrowserSetup/BrowserSetup.entitlements','.models':'ModelDownloads/ModelDownloads.entitlements',
+    '.whistle-worker':'Whistle/worker.entitlements','.parakeet-worker':'Whistle/worker.entitlements'}
 bundles = {
     '.': '',
     'Contents/PlugIns/CassiniQuickLook.appex': '.quicklook',
@@ -40,6 +44,11 @@ def signature(path, expected, require_runtime=False):
     if any(line.startswith('Authority=') for line in result.stderr.splitlines()):
         assert 'runtime' in flags, path
         assert fields.get('Timestamp'), (path, 'missing secure timestamp')
+    profile_result = subprocess.run(['codesign','-d','--entitlements',':-',str(path)],check=True,capture_output=True)
+    actual_profile = plistlib.loads(profile_result.stdout) if profile_result.stdout.strip() else {}
+    file = profiles.get(expected.removeprefix(prefix))
+    expected_profile = plistlib.loads((root/file).read_bytes()) if file else {}
+    assert actual_profile == expected_profile, (path,'Product entitlements differ',actual_profile,expected_profile)
     return fields
 
 for relative, suffix in bundles.items():
@@ -65,4 +74,4 @@ for engine, paths in {
             for chunk in iter(lambda: stream.read(1024 * 1024), b''):
                 digest.update(chunk)
         assert digest.hexdigest() == manifest[name], (engine, name, 'signed bytes changed')
-print('PASS eight io.codemyriad signing identifiers, bundle IDs and final worker hashes')
+print('PASS eight io.codemyriad signing identifiers, exact product profiles, bundle IDs and final worker hashes')

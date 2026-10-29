@@ -10,6 +10,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+PROFILES = {'':'Cassini/Cassini.entitlements','.quicklook':'QuickLook/CassiniQuickLook.entitlements',
+    '.browser-setup':'BrowserSetup/BrowserSetup.entitlements','.models':'ModelDownloads/ModelDownloads.entitlements',
+    '.whistle-worker':'Whistle/worker.entitlements','.parakeet-worker':'Whistle/worker.entitlements'}
 
 class SigningIdentifiersTests(unittest.TestCase):
     def setUp(self):
@@ -44,8 +47,12 @@ class SigningIdentifiersTests(unittest.TestCase):
             (resources/'bundle-sha256.json').write_text(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}))
         for relative, suffix in reversed(self.bundles):
             self.sign(self.app/relative, 'io.codemyriad.cassini'+suffix)
-    def sign(self, path, identifier):
-        subprocess.run(['codesign','--force','--sign','-','--timestamp=none','--options','runtime','-i',identifier,str(path)],check=True,capture_output=True)
+    def sign(self, path, identifier, override=None):
+        command=['codesign','--force','--sign','-','--timestamp=none','--options','runtime','-i',identifier]
+        suffix=identifier.removeprefix('io.codemyriad.cassini')
+        profile=override or (ROOT/PROFILES[suffix] if suffix in PROFILES else None)
+        if profile:command+=['--entitlements',str(profile)]
+        subprocess.run(command+[str(path)],check=True,capture_output=True)
     def inspect(self, strict=False):
         command=['python3',str(ROOT/'scripts/check-signing-identifiers.py'),str(self.app)]
         if strict:command.append('--require-hardened-runtime')
@@ -62,9 +69,16 @@ class SigningIdentifiersTests(unittest.TestCase):
     def testAdHocRuntimePolicyAndStrictFlagCheck(self):
         service=self.app/'Contents/XPCServices/CassiniModelDownloads.xpc'
         subprocess.run(['codesign','--force','--sign','-','--timestamp=none','--options','0',
-            '-i','io.codemyriad.cassini.models',str(service)],check=True,capture_output=True)
+            '-i','io.codemyriad.cassini.models','--entitlements',str(ROOT/'ModelDownloads/ModelDownloads.entitlements'),str(service)],check=True,capture_output=True)
         result=self.inspect();self.assertEqual(result.returncode,0,result.stderr)
         result=self.inspect(strict=True);self.assertNotEqual(result.returncode,0);self.assertIn('missing hardened runtime',result.stderr)
+    def testInjectedTestingEntitlementsAreRejected(self):
+        profile=plistlib.loads((ROOT/'Cassini/Cassini.entitlements').read_bytes())
+        profile['com.apple.security.temporary-exception.files.absolute-path.read-only']=['/']
+        profile['com.apple.security.temporary-exception.mach-lookup.global-name']=['com.apple.testmanagerd']
+        file=self.root/'test-exceptions.plist';file.write_bytes(plistlib.dumps(profile))
+        self.sign(self.app,'io.codemyriad.cassini',override=file)
+        result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('Product entitlements differ',result.stderr)
     def testXcodeProductSigningSettings(self):
         result=subprocess.run(['xcodebuild','-showBuildSettings','-json','-project',str(ROOT/'Cassini.xcodeproj'),'-alltargets'],
             check=True,capture_output=True,text=True,timeout=90)
@@ -82,6 +96,12 @@ class SigningIdentifiersTests(unittest.TestCase):
             if name in ['CassiniBrowserHost','CassiniControlHost','CassiniWhistleWorker','CassiniParakeetWorker']:
                 self.assertIn('-i '+settings['PRODUCT_BUNDLE_IDENTIFIER'],settings['OTHER_CODE_SIGN_FLAGS'],name)
         self.assertEqual(found,set(expected))
+        override=subprocess.run(['xcodebuild','-showBuildSettings','-json','-project',str(ROOT/'Cassini.xcodeproj'),
+            '-alltargets','CASSINI_APP_HARDENED_RUNTIME=NO'],check=True,capture_output=True,text=True,timeout=90)
+        for entry in json.loads(override.stdout):
+            name=entry['target']
+            if name in expected:self.assertEqual(entry['buildSettings']['ENABLE_HARDENED_RUNTIME'],
+                'NO' if name in ['Cassini','CassiniWindowScreenshots'] else 'YES',name)
     def testWrongServiceBundleIdentifierIsRejected(self):
         path=self.app/'Contents/XPCServices/CassiniModelDownloads.xpc/Contents/Info.plist'
         info=plistlib.loads(path.read_bytes());info['CFBundleIdentifier']='com.example.unrelated';path.write_bytes(plistlib.dumps(info))
