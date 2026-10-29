@@ -12,6 +12,7 @@ public struct BrowserMeeting: Equatable, Sendable {
     public let title: String
     public let url: String
     public let sourceCount: Int
+    public let heard: Bool
 }
 /// Reported paths are advisory status, never filesystem destinations or grants.
 public struct BrowserCaptureStatus: Equatable, Sendable {
@@ -58,7 +59,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     private struct PeerState: Sendable {
         let peer: BrowserPeer
-        var hello = false, independent = false, reconciled = false
+        var hello = false, independent = false, callEvidence = false, reconciled = false
         var statusRevision: UInt64 = 0
         var commandOrder: UInt64 = 0, lastResultOrder: UInt64 = 0
         var meetings: [BrowserMeeting] = []
@@ -109,6 +110,7 @@ public struct BrowserControlRegistry: Sendable {
             if let raw = json["capabilities"], !raw.isNull {
                 guard let values = raw.array, values.allSatisfy({ $0.string != nil }) else { throw BrowserControlStateError.malformed }
                 peer.independent = values.contains { $0.string == "independent-sessions-v1" }
+                peer.callEvidence = values.contains { $0.string == "call-evidence-v1" }
             }
             peer.hello = true
         case "meetings":
@@ -120,7 +122,12 @@ public struct BrowserControlRegistry: Sendable {
                 let url = try Self.string(value["url"],maximum:2048)
                 guard let parts = URLComponents(string:url), ["http","https"].contains(parts.scheme?.lowercased() ?? ""),
                       parts.host?.isEmpty == false, found.insert(tab).inserted else { throw BrowserControlStateError.malformed }
-                return .init(key:.init(peer:id,tabID:tab),title:title,url:url,sourceCount:try Self.integer(value["sourceCount"],maximum:4096))
+                let heard: Bool
+                if let raw = value["heard"] {
+                    guard let boolean = raw.bool else { throw BrowserControlStateError.malformed }
+                    heard = boolean
+                } else { heard = false }
+                return .init(key:.init(peer:id,tabID:tab),title:title,url:url,sourceCount:try Self.integer(value["sourceCount"],maximum:4096),heard:heard)
             }
             peer.meetings = meetings
             peer.autoAttempted.formIntersection(Set(meetings.filter { $0.sourceCount > 0 }.map { $0.key.tabID }))
@@ -227,7 +234,7 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func automaticStarts(microphone: Bool) -> [BrowserControlRequest] {
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where peer.reconciled && peer.independent {
-            for meeting in peer.meetings where meeting.sourceCount > 0 && !peer.autoAttempted.contains(meeting.key.tabID) && !peer.requestedStops.contains(meeting.key.tabID) {
+            for meeting in peer.meetings where meeting.sourceCount > 0 && (!peer.callEvidence || meeting.heard) && !peer.autoAttempted.contains(meeting.key.tabID) && !peer.requestedStops.contains(meeting.key.tabID) {
                 keys.append(meeting.key)
             }
         }
