@@ -36,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--recording-comfort-self-test") {
             Task { @MainActor in await RecordingComfortSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--trash-self-test") {
+            Task { @MainActor in await TrashSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--import-lifecycle-self-test") {
             Task { @MainActor in await ImportLifecycleSelfTest.run() }; return
         }
@@ -78,11 +81,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let imports = LibraryImportCoordinator.shared
             let exports = MeetingExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || RecordingPageModel.hasPendingEdits
+            let wait = RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             exports.beginShutdown()
             moves.beginShutdown()
+            MeetingTrashCoordinator.shared.beginShutdown()
             queue.beginShutdown()
             guard wait else { return .terminateNow }
             confirmingQuit = true
@@ -95,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await imports.waitForShutdown()
                     await exports.waitForShutdown()
                     await moves.waitForShutdown()
+                    await MeetingTrashCoordinator.shared.waitForShutdown()
                     self?.confirmingQuit = false; sender.reply(toApplicationShouldTerminate:true)
                 }
             }
@@ -110,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if stop {
                         CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
+                        MeetingTrashCoordinator.shared.beginShutdown()
                         MeetingExportCoordinator.shared.beginShutdown()
                         LibraryImportCoordinator.shared.beginShutdown()
                         TranscriptionQueue.shared.beginShutdown()
@@ -119,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         await LibraryImportCoordinator.shared.waitForShutdown()
                         await MeetingExportCoordinator.shared.waitForShutdown()
                         await LibraryMoveCoordinator.shared.waitForShutdown()
+                        await MeetingTrashCoordinator.shared.waitForShutdown()
                     }
                     self?.confirmingQuit = false
                     sender.reply(toApplicationShouldTerminate: stop)
@@ -136,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LibraryImportCoordinator.shared.beginShutdown()
             MeetingExportCoordinator.shared.beginShutdown()
             LibraryMoveCoordinator.shared.beginShutdown()
+            MeetingTrashCoordinator.shared.beginShutdown()
             SessionPlaybackController.stopAll(); RecordingController.shared.stop()
             CaptureCollection.shared.beginShutdown()
         }

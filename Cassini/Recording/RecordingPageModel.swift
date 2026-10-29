@@ -39,6 +39,13 @@ private actor RecordingEdits {
         let model = RecordingPageModel(meeting)
         editors[meeting.folder.path] = model; return model
     }
+    static func discard(for folder: URL) async {
+        guard let model = editors.removeValue(forKey:folder.path) else { return }
+        model.discarded = true
+        model.titleDirty = false; model.notesDirty = false
+        model.titleTask?.cancel(); model.notesTask?.cancel(); model.voiceTask?.cancel()
+        await model.titleTask?.value; await model.notesTask?.value
+    }
     static var hasPendingEdits: Bool { editors.values.contains { $0.titleTask != nil || $0.notesTask != nil } }
     static func flushAll() async {
         let models = Array(editors.values)
@@ -53,6 +60,7 @@ private actor RecordingEdits {
         if let owned { return owned.snapshot.manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count }
         return cachedVoiceCount
     }
+    private var discarded = false
     private(set) var frozen = false
     @ObservationIgnored private let edits: RecordingEdits
     @ObservationIgnored private var notes: RecordingNotes
@@ -145,7 +153,7 @@ private actor RecordingEdits {
     var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }
     func changeTitle() {
         title = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500)))
-        guard !frozen else { return }
+        guard !frozen, !discarded else { return }
         // Publish the current user input immediately; persistence is debounced.
         // Older writes cannot replace this value after a later binding update.
         if native { RecordingController.shared.title = displayTitle }
@@ -153,7 +161,7 @@ private actor RecordingEdits {
         titleDirty = true; scheduleTitle()
     }
     func changeNotes() {
-        guard !frozen else { return }
+        guard !frozen, !discarded else { return }
         let undo = (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
         let restoration: RecordingNotes.Restoration? = undo?.isUndoing == true ? .undo : (undo?.isRedoing == true ? .redo : nil)
         notes.edit(notesText,atMs:elapsedMs,restoration:restoration) { LibraryFormat.position($0) + "  " }
@@ -173,7 +181,7 @@ private actor RecordingEdits {
         }.joined(separator:"\n")
         notes.reformat(notesText)
     }
-    func flush() { if titleDirty { scheduleTitle(immediate:true) }; if notesDirty { scheduleNotes(immediate:true) } }
+    func flush() { guard !discarded else { return }; if titleDirty { scheduleTitle(immediate:true) }; if notesDirty { scheduleNotes(immediate:true) } }
     private func scheduleTitle(immediate: Bool = false) {
         titleTask?.cancel(); titleGeneration += 1
         let generation = titleGeneration, value = title.trimmingCharacters(in:.whitespacesAndNewlines)

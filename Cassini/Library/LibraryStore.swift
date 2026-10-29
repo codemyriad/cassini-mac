@@ -211,5 +211,17 @@ final class LibraryStore {
             for root in [context.root] + context.previousRoots { refresh(affected:root.appendingPathComponent("Recording-" + id.uuidString.lowercased())) }
         }
     }
+    func removed(_ meeting: LibraryMeeting) {
+        let ordered = meetings
+        let index = ordered.firstIndex { $0.libraryKey == meeting.libraryKey } ?? 0
+        let next = ordered.dropFirst(index + 1).first ?? ordered.prefix(index).last
+        stop() // An in-flight old snapshot must not resurrect the removed row.
+        for (root, scan) in rootSnapshots {
+            rootSnapshots[root] = .init(meetings:scan.meetings.filter { $0.folder != meeting.folder },issues:scan.issues)
+        }
+        if let snapshot { self.snapshot = .init(meetings:snapshot.meetings.filter { $0.folder != meeting.folder },issues:snapshot.issues) }
+        selectedKey = next?.libraryKey; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
+        revision &+= 1; start()
+    }
     func excerpt(_ meeting: LibraryMeeting) -> [LibraryTranscriptTurn] { Array(meeting.transcriptTurns.prefix(3)) }
 }

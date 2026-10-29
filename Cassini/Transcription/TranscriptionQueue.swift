@@ -24,6 +24,20 @@ import Darwin
     @ObservationIgnored private var schedulingFailures = Set<String>()
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var paused = false
+    @ObservationIgnored private var trashing = Set<String>()
+    func cancel(meeting folder: URL) async {
+        let path = folder.path
+        trashing.insert(path)
+        pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        let child = active?.path == path ? task : nil
+        child?.cancel()
+        await preparation?.value
+        await child?.value
+        pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+    }
+    func releaseTrashed(_ folder: URL) {
+        trashing.remove(folder.path); known.remove(folder.path); schedulingFailures.remove(folder.path)
+    }
     var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
     func beginShutdown() {
         guard !closing else { return }; closing = true
@@ -47,12 +61,13 @@ import Darwin
     func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic, !closing, !paused else { return }
+        known.formIntersection(Set(meetings.map { $0.folder.path }).union(pending.map { $0.folder.path }).union(active.map { [$0.path] } ?? []))
         let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
         for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {
-        guard !closing, !paused, !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
+        guard !closing, !paused, !trashing.contains(meeting.folder.path), !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
               active?.path != meeting.folder.path, !pending.contains(where: { $0.folder.path == meeting.folder.path }) else { return }
         if retry { known.remove(meeting.folder.path) }
         guard known.insert(meeting.folder.path).inserted else { return }

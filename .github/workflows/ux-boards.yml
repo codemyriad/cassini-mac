@@ -54,6 +54,9 @@ jobs:
     - name: Private import and queue lifecycle without devices
       if: always()
       run: python3 scripts/test-import-lifecycle.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/import-lifecycle.json
+    - name: Actual sandbox Trash, Undo and Finder Put Back without devices
+      if: always()
+      run: python3 scripts/test-trash-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/trash-app.json
     - name: Private Settings and Library relocation without devices
       if: always()
       run: |

@@ -15,6 +15,8 @@ enum LibraryTheme {
 }
 struct LibraryView: View {
     @State private var search = LibrarySearchModel.shared
+    @State private var trash = MeetingTrashCoordinator.shared
+    @Environment(\.undoManager) private var undoManager
     @State private var exporter = MeetingExportCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
@@ -41,7 +43,7 @@ struct LibraryView: View {
                 .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
-        .safeAreaInset(edge:.top,spacing:0) { CaptureFailureBanner() }
+        .safeAreaInset(edge:.top,spacing:0) { CaptureFailureBanner(); trashFailure }
         .frame(minWidth: 760, minHeight: 480)
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("library.title"))
         .toolbar(removing: .title)
@@ -89,8 +91,12 @@ struct LibraryView: View {
                             }
                             Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
                                 .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export")
-                            Button {} label: { Image(systemName: "ellipsis").frame(width: 28, height: 30) }.buttonStyle(.plain)
-                                .disabled(true).accessibilityLabel(UXText.text("meeting.moreActions"))
+                            Menu {
+                                if trash.canTrash(detail.meeting) {
+                                    Section { trashButton(detail.meeting) }
+                                }
+                            } label: { Image(systemName:"ellipsis").frame(width:28,height:30) }
+                                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions"))
                         }
                     }.frame(width: max(480, toolbarWidth - 110))
                 }
@@ -177,6 +183,26 @@ struct LibraryView: View {
         }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
+    private func trashButton(_ meeting: LibraryMeeting) -> some View {
+        Button(UXText.text("common.moveToTrash")) {
+            store.selectedKey = meeting.libraryKey
+            trash.move(meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
+        }.accessibilityIdentifier("move-to-trash")
+    }
+    @ViewBuilder private var trashFailure: some View {
+        if let meeting = trash.failure, (navigation.detail?.meeting.libraryKey ?? store.selectedKey) == meeting.libraryKey {
+            HStack(spacing:12) {
+                Text(UXText.text(trash.unsupported ? "meeting.trashUnsupported" : "meeting.trashFailed"))
+                Spacer()
+                if trash.unsupported {
+                    Button(UXText.text("meeting.showInFiles")) { NSWorkspace.shared.activateFileViewerSelecting([meeting.folder]) }
+                } else {
+                    Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }.disabled(!trash.canTrash(meeting))
+                }
+            }.padding(12).foregroundStyle(LibraryTheme.amber).background(LibraryTheme.amberTint)
+                .accessibilityIdentifier("trash-failure")
+        }
+    }
     private var toolbarTitle: some View {
         Text(UXText.text(search.visible ? "search.title" : "library.title")).font(.system(size: 15, weight: .bold))
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
@@ -190,6 +216,12 @@ struct LibraryView: View {
                             row(meeting).tag(meeting.libraryKey)
                                 .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
                                 .onTapGesture(count:2) { if meeting.state.lifecycle != .saved { navigation.open(meeting) } }
+                                .contextMenu {
+                                    Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
+                                        .disabled(!MeetingExportCoordinator.canExport(meeting))
+                                        .onAppear { store.selectedKey = meeting.libraryKey }
+                                    if trash.canTrash(meeting) { Divider(); trashButton(meeting) }
+                                }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)
                                     .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
