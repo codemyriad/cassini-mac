@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""M3 integration check: disposable, non-login macOS account and standard Chrome paths.
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Legacy developer-host check: disposable account and standard Chrome paths.
+The end-user package uses in-app Connect, covered by the signed XPC/app probes.
 Run with sudo. Removes only the account/home created by this invocation.
 """
 import argparse, json, os, pathlib, shutil, struct, subprocess, tempfile, uuid
@@ -39,18 +41,20 @@ try:
     root_run('/usr/bin/ditto', '-x', '-k', str(archive), str(workspace))
     release = workspace / 'Cassini'
     host = release / 'Cassini.app/Contents/MacOS/cassini-browser-host'
-    installer = release / 'Install Browser Host.command'
+    assert not (release/'BrowserExtension').exists() and not (release/'Install Browser Host.command').exists()
+    assert (release/'COPYING').read_bytes() == (pathlib.Path(__file__).resolve().parent.parent/'COPYING').read_bytes()
+    installer = pathlib.Path(__file__).resolve().parent.parent / 'Distribution/Install Browser Host.command'
     chrome = home / 'Library/Application Support/Google/Chrome'
     ok(as_user('/bin/mkdir', '-p', chrome))
     extension_id = 'a' * 32
-    ok(as_user('/bin/bash', installer, extension_id))
+    ok(as_user('/usr/bin/env', 'CASSINI_APP_PATH=' + str(release/'Cassini.app'), '/bin/bash', installer, extension_id))
     path = chrome / 'NativeMessagingHosts/com.codemyriad.cassini.json'
     manifest = json.loads(path.read_text())
     assert pathlib.Path(manifest['path']).resolve() == host.resolve(), manifest
     assert manifest['allowed_origins'] == [f'chrome-extension://{extension_id}/']
     assert path.stat().st_uid == uid and path.stat().st_mode & 0o777 == 0o600
     assert not (home / 'Library/Application Support/Microsoft Edge').exists()
-    result['checks'].append('installer uses bundled helper and standard user Chrome NativeMessagingHosts path')
+    result['checks'].append('source-tree developer installer uses bundled helper and standard Chrome paths')
     packets = [dict(type='start', title='M3 clean-account test'), dict(type='track', id='x', kind='tab', sampleRate=48000, channels=1),
                dict(type='audio', id='x', sequence=0, offsetMs=0, pcm='AQACAA=='), dict(type='stop')]
     wire = b''
@@ -67,11 +71,11 @@ try:
     metadata = json.loads((session / 'session.json').read_text())
     assert metadata['state'] == 'completed' and metadata['tracks'][0]['frames'] == 2
     result['checks'].append('bundled Release host records and finalizes in the actual clean account')
-    ok(as_user('/bin/bash', installer, '--uninstall'))
+    ok(as_user('/usr/bin/env', 'CASSINI_APP_PATH=' + str(release/'Cassini.app'), '/bin/bash', installer, '--uninstall'))
     assert not path.exists() and (session / 'session.json').exists()
     result['checks'].append('uninstall removes registration and retains recordings')
     result['status'] = 'passed'
-    result['scope'] = 'Actual clean macOS account, command installer and native stdio. Interactive Chrome loading/Gatekeeper approval remain manual.'
+    result['scope'] = 'Actual clean macOS account, source-tree developer installer and native stdio. End-user in-app Connect is a separate signed XPC/app gate; no interactive browser/Gatekeeper assertion.'
 except Exception as error:
     result['status'] = 'failed'; result['error'] = str(error)
 finally:
