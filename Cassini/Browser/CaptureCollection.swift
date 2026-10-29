@@ -347,9 +347,11 @@ private final class CaptureFiles: @unchecked Sendable {
             if outcome.ok { failedMeetings.removeValue(forKey:outcome.key) }
             else { failedMeetings[outcome.key] = peers.flatMap(\.meetings).first { $0.key == outcome.key }?.title ?? UXText.text("library.untitled") }
             if !automatic {
-                manualCompleted.insert(outcome.key); manualPending.remove(outcome.key)
-                if outcome.ok { manualSucceeded.insert(outcome.key) }
-                finishAttempt()
+                if !manualIssued || manualPending.contains(outcome.key) {
+                    manualCompleted.insert(outcome.key); manualPending.remove(outcome.key)
+                    if outcome.ok { manualSucceeded.insert(outcome.key) }
+                    finishAttempt()
+                }
             } else if !outcome.ok { recordFailed = !isRecording }
         }
         if automatic && outcome.action == .start && outcome.ok { pendingAuto.insert(outcome.key); announce() }
@@ -360,7 +362,11 @@ private final class CaptureFiles: @unchecked Sendable {
         recordFailed = manualSucceeded.isEmpty && !isRecording && !failedMeetings.isEmpty
     }
     func retry(_ key: BrowserMeetingKey) {
+        guard !shuttingDown,!starting,failedMeetings[key] != nil else { return }
         recordFailed = false
+        requestingRecord = true; manualIssued = true
+        manualPending = [key]; manualCompleted = []; manualSucceeded = []
+        attemptHasAudio = isRecording
         service.recordMeeting(key,microphone:microphones[key] ?? true)
     }
     private func announce() {

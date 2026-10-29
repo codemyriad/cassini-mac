@@ -67,6 +67,7 @@ for name in [
     'pendingSystemSourceIsNotPermissionFailure',
     'failedSystemSourceShowsPermissionGuidance',
     'companionSuggestionTracksConnection',
+    'failedRetryDoesNotInheritStoppedSuccess',
 ]:
     assert report[name] is True, (name,report)
 assert report['audioDevicesOpened'] is False and report['browserProfilesTouched'] is False

@@ -53,11 +53,13 @@ public struct BrowserControlRegistry: Sendable {
     private struct Pending: Sendable {
         let request: BrowserControlRequest
         let statusRevision: UInt64
+        let order: UInt64
     }
     private struct PeerState: Sendable {
         let peer: BrowserPeer
         var hello = false, independent = false, reconciled = false
         var statusRevision: UInt64 = 0
+        var commandOrder: UInt64 = 0, lastResultOrder: UInt64 = 0
         var meetings: [BrowserMeeting] = []
         var captures: [BrowserCaptureStatus] = []
         var interrupted: [BrowserCaptureStatus] = []
@@ -121,14 +123,14 @@ public struct BrowserControlRegistry: Sendable {
             }
             peer.meetings = meetings
             peer.autoAttempted.formIntersection(Set(meetings.filter { $0.sourceCount > 0 }.map { $0.key.tabID }))
+            peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
+            peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
+            peer.autoAttempted.formUnion(peer.pending.values.map { $0.request.key.tabID })
+            peer.autoAttempted.formUnion(peer.requestedStops)
         case "status":
             guard peer.hello else { throw BrowserControlStateError.malformed }
             peer.captures = try Self.captures(json,peer:id)
-            if let raw = json["interrupted"], !raw.isNull {
-                guard let list = raw.array, list.count <= 100 else { throw BrowserControlStateError.malformed }
-                let wrapper = JSON.object([("type",.string("status")),("recording",.bool(false)),("tabId",.null),("path",.null),("message",.string("")),("sessions",.array(list))])
-                peer.interrupted = try Self.captures(wrapper,peer:id,includeInactive:true)
-            } else { peer.interrupted = [] }
+            peer.interrupted = try Self.interrupted(json,peer:id)
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
             peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
             peer.statusRevision &+= 1
@@ -141,11 +143,17 @@ public struct BrowserControlRegistry: Sendable {
             let error = try Self.optionalString(json["error"],maximum:2000)
             if let status = json["status"], !status.isNull {
                 let captures = try Self.captures(status,peer:id)
+                let interrupted = try Self.interrupted(status,peer:id)
                 // An asynchronous command result may carry an older replacement
                 // snapshot. Never resurrect captures removed by a newer status.
-                if peer.statusRevision == pending.statusRevision {
-                    peer.captures = captures
+                // Issue order also matters when two independent results share
+                // the same full-status baseline. Accept newer results in either
+                // arrival order; an older one cannot replace the newer snapshot.
+                if peer.statusRevision == pending.statusRevision && pending.order >= peer.lastResultOrder {
+                    peer.captures = captures; peer.interrupted = interrupted
+                    peer.lastResultOrder = pending.order
                     peer.autoAttempted.formUnion(captures.map { $0.key.tabID })
+                    peer.autoAttempted.formUnion(interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
                 }
             }
             peer.pending.removeValue(forKey:requestID)
@@ -164,7 +172,8 @@ public struct BrowserControlRegistry: Sendable {
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision)
+        peer.commandOrder &+= 1
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder)
         peer.autoAttempted.insert(key.tabID)
         peers[key.peer] = peer
         return request
@@ -180,7 +189,8 @@ public struct BrowserControlRegistry: Sendable {
         if peer.pending.values.contains(where:{ $0.request.key == key && $0.request.action == .stop }) { peers[key.peer] = peer; return nil }
         let request = try Self.command(key,action:.stop,independent:peer.independent,microphone:false)
         guard peer.pending.count < 128 else { peers[key.peer] = peer; return nil }
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision)
+        peer.commandOrder &+= 1
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder)
         peers[key.peer] = peer
         return request
     }
@@ -245,6 +255,12 @@ public struct BrowserControlRegistry: Sendable {
     }
     private static func optionalString(_ value: JSON?, maximum: Int) throws -> String? {
         guard let value, !value.isNull else { return nil }; return try string(value,maximum:maximum)
+    }
+    private static func interrupted(_ json: JSON, peer: UUID) throws -> [BrowserCaptureStatus] {
+        guard let raw = json["interrupted"],!raw.isNull else { return [] }
+        guard let list = raw.array,list.count <= 100 else { throw BrowserControlStateError.malformed }
+        let wrapper = JSON.object([("type",.string("status")),("recording",.bool(false)),("tabId",.null),("path",.null),("message",.string("")),("sessions",.array(list))])
+        return try captures(wrapper,peer:peer,includeInactive:true)
     }
     private static func captures(_ json: JSON, peer: UUID, includeInactive: Bool = false) throws -> [BrowserCaptureStatus] {
         guard json["type"]?.string == "status", let recording = json["recording"]?.bool else { throw BrowserControlStateError.malformed }

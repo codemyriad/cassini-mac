@@ -288,6 +288,8 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(!collection.recordFailed,"One failed meeting must not become an all-failed message")
             let successfulToken = two.captureID, retryKey = try collection.failedMeetings.keys.first.unwrap()
             collection.retry(retryKey)
+            try require(collection.starting,"Targeted retry keeps Try again disabled while pending")
+            collection.retry(retryKey) // A second click cannot issue another command.
             _ = try await one.performNext()
             try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty }
             try require(two.captureID == successfulToken,"Retry must not restart the successful meeting")
@@ -304,6 +306,25 @@ final class CaptureProbeProcess: @unchecked Sendable {
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
             report["partialFailureRetriesOnlyThatMeeting"] = true
+            try await one.meetings(false); try await two.meetings(false)
+            try await wait { !collection.hasCalls }
+            stage = "retry failure after the successful meeting has stopped"
+            one.nextStartFails = true
+            try await one.meetings(true); try await two.meetings(true)
+            try await wait { collection.peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.count == 2 }
+            try await collection.record(); _ = try await one.performNext(); _ = try await two.performNext()
+            try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting }
+            let failedKey = try collection.failedMeetings.keys.first.unwrap()
+            let successful = try collection.captures.keys.first.unwrap()
+            collection.stop(successful); _ = try await two.performNext()
+            await collection.stopAndWait()
+            one.nextStartFails = true
+            collection.retry(failedKey)
+            try require(collection.starting,"Retry owns its pending attempt")
+            _ = try await one.performNext()
+            try await wait { collection.recordFailed && !collection.starting }
+            try require(collection.captures.isEmpty,"A failed retry after Stop does not inherit the prior success")
+            report["failedRetryDoesNotInheritStoppedSuccess"] = true
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
             stage = "expire fallback whose browser never returns"
