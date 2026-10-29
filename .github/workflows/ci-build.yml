@@ -106,6 +106,7 @@ jobs:
             CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/debug-build.log
           # Strip build-for-testing exceptions from the actual product profiles.
           codesign --force --sign - --options 0 --timestamp=none --entitlements ModelDownloads/ModelDownloads.entitlements build/Build/Products/Debug/Cassini.app/Contents/XPCServices/CassiniModelDownloads.xpc
+          codesign --force --sign - --options 0 --timestamp=none --entitlements BrowserSetup/BrowserSetup.entitlements build/Build/Products/Debug/Cassini.app/Contents/XPCServices/CassiniBrowserSetup.xpc
           codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
           codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
           python3 scripts/ci-products.py pack debug build/ci-upload/debug
@@ -134,6 +135,7 @@ jobs:
             CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/release-build.log
           # Strip build-for-testing exceptions from the actual product profiles.
           codesign --force --sign - --options 0 --timestamp=none --entitlements ModelDownloads/ModelDownloads.entitlements build/Build/Products/Release/Cassini.app/Contents/XPCServices/CassiniModelDownloads.xpc
+          codesign --force --sign - --options 0 --timestamp=none --entitlements BrowserSetup/BrowserSetup.entitlements build/Build/Products/Release/Cassini.app/Contents/XPCServices/CassiniBrowserSetup.xpc
           codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Release/Cassini.app
           codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
           python3 scripts/ci-products.py pack release build/ci-upload/release

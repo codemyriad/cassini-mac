@@ -62,8 +62,13 @@ targets:
         product: CassiniSearch
       - target: CassiniModelDownloads
         embed: true
+      - target: CassiniBrowserSetup
+        embed: true
       - target: CassiniQuickLook
       - target: CassiniBrowserHost
+        link: false
+        embed: false
+      - target: CassiniControlHost
         link: false
         embed: false
       - target: CassiniWhistleWorker
@@ -80,10 +85,13 @@ targets:
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH"
           cp "$BUILT_PRODUCTS_DIR/cassini-browser-host" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/cassini-browser-host"
+          cp "$BUILT_PRODUCTS_DIR/cassini-control-host" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/cassini-control-host"
         inputFiles:
           - "$(BUILT_PRODUCTS_DIR)/cassini-browser-host"
+          - "$(BUILT_PRODUCTS_DIR)/cassini-control-host"
         outputFiles:
           - "$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/cassini-browser-host"
+          - "$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/cassini-control-host"
       - name: Bundle pinned Whistle worker and engine
         script: bash "$SRCROOT/scripts/bundle-whistle.sh"
         basedOnDependencyAnalysis: false
@@ -170,6 +178,41 @@ targets:
         PRODUCT_NAME: cassini-browser-host
         SKIP_INSTALL: true
         ENABLE_HARDENED_RUNTIME: true
+  CassiniControlHost:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/cassini-control-host
+    dependencies:
+      - package: CassiniKit
+        product: CassiniBrowserControl
+    settings:
+      base:
+        PRODUCT_NAME: cassini-control-host
+        SKIP_INSTALL: true
+        ENABLE_HARDENED_RUNTIME: true
+  CassiniBrowserSetup:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - path: BrowserSetup
+        excludes: ["Info.plist", "*.entitlements"]
+    dependencies:
+      - package: CassiniKit
+        product: CassiniBrowserSetup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.browser-setup
+        PRODUCT_NAME: CassiniBrowserSetup
+        CODE_SIGN_ENTITLEMENTS: BrowserSetup/BrowserSetup.entitlements
+    info:
+      path: BrowserSetup/Info.plist
+      properties:
+        CFBundleDisplayName: Cassini browser setup
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        XPCService:
+          ServiceType: Application
   CassiniWhistleWorker:
     type: tool
     platform: macOS
