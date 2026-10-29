@@ -22,7 +22,7 @@ final class Probe: NSObject, BrowserSetupProbeProtocol {
                 let directory = root.appendingPathComponent("Library/Application Support/" + browser + "/NativeMessagingHosts")
                 // The harness creates parent directories, never user profiles.
                 try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
-                for name in ["com.codemyriad.cassini","com.codemyriad.cassini.control"] {
+                for name in ["io.codemyriad.cassini","io.codemyriad.cassini.control"] {
                     let manifest: [String:Any] = ["name":name,"description":"Generated Cassini setup probe","type":"stdio","path":executable,
                         "allowed_origins":["chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/"]]
                     let file = directory.appendingPathComponent(name + ".json")

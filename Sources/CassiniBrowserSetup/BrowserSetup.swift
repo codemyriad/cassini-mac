@@ -18,8 +18,8 @@ public struct BrowserSetupInstallation {
     private let hosts: [(String,URL)]
     public init(home: URL, contents: URL) {
         self.home = home
-        hosts = [("com.codemyriad.cassini",contents.appendingPathComponent("MacOS/cassini-browser-host")),
-                 ("com.codemyriad.cassini.control",contents.appendingPathComponent("MacOS/cassini-control-host"))]
+        hosts = [("io.codemyriad.cassini",contents.appendingPathComponent("MacOS/cassini-browser-host")),
+                 ("io.codemyriad.cassini.control",contents.appendingPathComponent("MacOS/cassini-control-host"))]
     }
     public static var accountHome: URL? {
         guard let entry = getpwuid(getuid()), let path = entry.pointee.pw_dir else { return nil }
@@ -79,12 +79,24 @@ public struct BrowserSetupInstallation {
                 let manifest: [String:Any] = ["name":name,"description":"Cassini local meeting recorder","path":url.path,"type":"stdio","allowed_origins":[Self.origin]]
                 publications.append(.init(directory:directory.fd,name:file,old:old,data:try JSONSerialization.data(withJSONObject:manifest,options:[.sortedKeys])))
             }
+            // D27: only retire registrations written by Cassini. A matching
+            // extension origin alone does not establish ownership. Unsafe,
+            // malformed and unrelated legacy entries remain untouched.
+            for name in ["com.codemyriad.cassini","com.codemyriad.cassini.control"] {
+                let file = name + ".json"
+                guard let old = try? Self.read(directory.fd,file),
+                      let manifest = try? JSONSerialization.jsonObject(with:old) as? [String:Any],
+                      manifest["name"] as? String == name,
+                      let path = manifest["path"] as? String,
+                      hosts.contains(where:{ $0.1.lastPathComponent == URL(fileURLWithPath:path).lastPathComponent }) else { continue }
+                publications.append(.init(directory:directory.fd,name:file,old:old,data:nil))
+            }
         }
         var published: [Publication] = []
         do {
             for publication in publications {
                 try beforePublish(published.count)
-                try Self.write(publication.data,directory:publication.directory,name:publication.name)
+                try Self.publish(publication.data,directory:publication.directory,name:publication.name)
                 published.append(publication)
             }
         } catch {
@@ -94,17 +106,16 @@ public struct BrowserSetupInstallation {
             var rollbackFailed = false
             for publication in published.reversed() {
                 do {
-                    if let old = publication.old { try Self.write(old,directory:publication.directory,name:publication.name) }
-                    else if unlinkat(publication.directory,publication.name,0) != 0 && errno != ENOENT { throw BrowserSetupError.unavailable }
+                    try Self.publish(publication.old,directory:publication.directory,name:publication.name)
                 } catch { rollbackFailed = true }
             }
             if rollbackFailed { throw BrowserSetupError.unavailable }
             throw error
         }
-        return publications.count
+        return directories.count * hosts.count
     }
     private struct Directory { let fd: Int32 }
-    private struct Publication { let directory: Int32; let name: String; let old: Data?; let data: Data }
+    private struct Publication { let directory: Int32; let name: String; let old: Data?; let data: Data? }
     private static func openDirectory(_ url: URL) throws -> Int32 {
         guard url.isFileURL, url.path.hasPrefix("/") else { throw BrowserSetupError.unsafePath }
         var fd = open("/",O_SEARCH | O_CLOEXEC)
@@ -136,6 +147,10 @@ public struct BrowserSetupInstallation {
             guard data.count + count <= 65536 else { throw BrowserSetupError.tooLarge }
             data.append(contentsOf:buffer.prefix(count))
         }
+    }
+    private static func publish(_ data: Data?, directory: Int32, name: String) throws {
+        if let data { try write(data,directory:directory,name:name) }
+        else if unlinkat(directory,name,0) != 0 && errno != ENOENT { throw BrowserSetupError.unavailable }
     }
     private static func write(_ data: Data, directory: Int32, name: String) throws {
         let temporary = ".cassini-connect-" + UUID().uuidString

@@ -17,7 +17,7 @@ import threading
 
 ROOT = Path(__file__).resolve().parent.parent
 BROWSERS = ['Google/Chrome', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser']
-HOSTS = ['com.codemyriad.cassini', 'com.codemyriad.cassini.control']
+HOSTS = ['io.codemyriad.cassini', 'io.codemyriad.cassini.control']
 ORIGIN = 'chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--skip-build', action='store_true')

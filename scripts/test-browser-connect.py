@@ -14,7 +14,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 BROWSERS = ['Google/Chrome', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser']
-HOSTS = {'com.codemyriad.cassini': 'cassini-browser-host', 'com.codemyriad.cassini.control': 'cassini-control-host'}
+HOSTS = {'io.codemyriad.cassini': 'cassini-browser-host', 'io.codemyriad.cassini.control': 'cassini-control-host'}
 ORIGIN = 'chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/'
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--app', type=Path, help='Actual restored Debug app; required on hosted CI')
@@ -89,6 +89,19 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     # The fixture owner can write these paths. Only the signed parent is denied.
     positive = home/'Library/Application Support/Google/Chrome/NativeMessagingHosts/client-must-not-write'
     positive.write_bytes(b'positive'); positive.unlink()
+    # Seed only the generated fixture. The product service must remove its
+    # own old registrations but preserve an unrelated file with our origin.
+    unrelated = {}
+    for browser in BROWSERS:
+        directory = home/'Library/Application Support'/browser/'NativeMessagingHosts'
+        for host, executable in HOSTS.items():
+            old = host.replace('io.codemyriad.', 'com.codemyriad.', 1)
+            (directory/(old+'.json')).write_text(json.dumps(dict(name=old,
+                path='/Old Cassini.app/Contents/MacOS/'+executable,
+                allowed_origins=['chrome-extension://old-origin/'])))
+        other = directory/'unrelated.host.json'
+        other.write_text(json.dumps(dict(name='com.codemyriad.cassini',path='/elsewhere/other-host',allowed_origins=[ORIGIN])))
+        unrelated[other] = other.read_bytes()
     for attempt in range(2):
         result = subprocess.run([str(binary), str(home)], capture_output=True, text=True, timeout=30)
         a.output.parent.mkdir(parents=True, exist_ok=True)
@@ -104,10 +117,14 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
                 manifest = json.loads(file.read_text())
                 assert manifest == dict(name=host, description='Cassini local meeting recorder',
                     path=str(app/'Contents/MacOS'/executable), type='stdio', allowed_origins=[ORIGIN])
+            for host in HOSTS:
+                old = host.replace('io.codemyriad.', 'com.codemyriad.', 1)
+                assert not (directory/(old+'.json')).exists()
+            assert (directory/'unrelated.host.json').read_bytes() == unrelated[directory/'unrelated.host.json']
             assert not positive.exists()
     report.update(fixtureOnly=True, actualBundledService=bool(a.app), twoIdempotentConnects=True,
         browserProfilesTouched=False, audioDevicesOpened=False, appWindowsOpened=False,
-        exactProductParentProfile=True, scopedDirectories=4, helperNetworkEntitlements=False,
+        exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=4, helperNetworkEntitlements=False,
         nativeArchitecture=os.uname().machine)
     a.output.write_text(json.dumps(report, indent=2)+'\n')
     print('PASS fixed-path production Connect RPC: eight manifests, repeat setup, parent denied, wrong host rejected')

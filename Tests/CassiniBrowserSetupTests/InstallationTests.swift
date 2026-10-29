@@ -24,11 +24,68 @@ final class InstallationTests: XCTestCase {
         for browser in browsers { try FileManager.default.createDirectory(at:leaf(browser).deletingLastPathComponent(),withIntermediateDirectories:true) }
     }
     private var installation: BrowserSetupInstallation { .init(home:home,contents:contents) }
+    private func legacy(_ browser: String, name: String = "com.codemyriad.cassini", manifestName: String? = nil, executable: String = "cassini-browser-host") throws -> URL {
+        let directory = leaf(browser)
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+        let file = directory.appendingPathComponent(name + ".json")
+        let data = try JSONSerialization.data(withJSONObject:["name":manifestName ?? name,"path":"/Old Cassini.app/Contents/MacOS/" + executable,"allowed_origins":["chrome-extension://different-origin/"]])
+        try data.write(to:file); try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
+        return file
+    }
+    func testOwnLegacyManifestsAreRemovedWithoutMatchingOrigins() throws {
+        try prepare()
+        var old: [URL] = []
+        for browser in BrowserSetupInstallation.browsers {
+            old.append(try legacy(browser))
+            old.append(try legacy(browser,name:"com.codemyriad.cassini.control",executable:"cassini-control-host"))
+        }
+        XCTAssertEqual(try installation.install(),8)
+        for file in old { XCTAssertFalse(FileManager.default.fileExists(atPath:file.path)) }
+        XCTAssertEqual(try installation.install(),8)
+    }
+    func testLegacyOwnershipRequiresFileNameManifestNameAndOwnExecutable() throws {
+        try prepare()
+        let mismatch = try legacy("Google/Chrome",manifestName:"another.host")
+        let executable = try legacy("Chromium",executable:"another-host")
+        let name = try legacy("Microsoft Edge",name:"unrelated.host",manifestName:"com.codemyriad.cassini")
+        let corrupt = try legacy("BraveSoftware/Brave-Browser")
+        try Data("not JSON".utf8).write(to:corrupt)
+        let files = try [mismatch,executable,name,corrupt].map { ($0,try Data(contentsOf:$0)) }
+        XCTAssertEqual(try installation.install(),8)
+        for (file,data) in files { XCTAssertEqual(try Data(contentsOf:file),data) }
+    }
+    func testLegacyDeletionRollsBackTogetherWithNewManifests() throws {
+        try prepare()
+        let first = try legacy("Google/Chrome")
+        let second = try legacy("Google/Chrome",name:"com.codemyriad.cassini.control",executable:"cassini-control-host")
+        let expected = try [first,second].map { ($0,try Data(contentsOf:$0)) }
+        XCTAssertThrowsError(try installation.install { index in
+            if !FileManager.default.fileExists(atPath:second.path) { throw CocoaError(.fileWriteOutOfSpace) }
+        })
+        for (file,data) in expected { XCTAssertEqual(try Data(contentsOf:file),data) }
+        for browser in BrowserSetupInstallation.browsers {
+            XCTAssertFalse(FileManager.default.fileExists(atPath:leaf(browser).appendingPathComponent("io.codemyriad.cassini.json").path))
+        }
+    }
+    func testUnsafeLegacyEntriesAreLeftAlone() throws {
+        try prepare()
+        let outside = root.appendingPathComponent("keep");try Data("keep".utf8).write(to:outside)
+        let symlink = try legacy("Google/Chrome");try FileManager.default.removeItem(at:symlink)
+        try FileManager.default.createSymbolicLink(at:symlink,withDestinationURL:outside)
+        let pipe = try legacy("Chromium");try FileManager.default.removeItem(at:pipe);XCTAssertEqual(mkfifo(pipe.path,0o600),0)
+        let linked = try legacy("Microsoft Edge");try FileManager.default.removeItem(at:linked);try FileManager.default.linkItem(at:outside,to:linked)
+        let oversized = try legacy("BraveSoftware/Brave-Browser");try Data(repeating:0,count:65537).write(to:oversized)
+        XCTAssertEqual(try installation.install(),8)
+        XCTAssertEqual(try Data(contentsOf:outside),Data("keep".utf8))
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath:symlink.path),outside.path)
+        var info = stat();XCTAssertEqual(lstat(pipe.path,&info),0);XCTAssertEqual(info.st_mode & S_IFMT,S_IFIFO)
+        XCTAssertTrue(FileManager.default.fileExists(atPath:linked.path));XCTAssertEqual(try Data(contentsOf:oversized).count,65537)
+    }
     func testRegistersBothHostsWithPinnedOriginAndPrivateModesInAllFourBrowsers() throws {
         try prepare()
         XCTAssertEqual(try installation.install(),8)
         for browser in BrowserSetupInstallation.browsers {
-            for (name,executable) in [("com.codemyriad.cassini","cassini-browser-host"),("com.codemyriad.cassini.control","cassini-control-host")] {
+            for (name,executable) in [("io.codemyriad.cassini","cassini-browser-host"),("io.codemyriad.cassini.control","cassini-control-host")] {
                 let file = leaf(browser).appendingPathComponent(name + ".json")
                 let object = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
                 XCTAssertEqual(object["allowed_origins"] as? [String],[BrowserSetupInstallation.origin])
@@ -42,7 +99,7 @@ final class InstallationTests: XCTestCase {
     func testRepeatConnectRepairsAStalePathAndSkipsBrowsersThatNeverRan() throws {
         try prepare(["Google/Chrome"])
         XCTAssertEqual(try installation.install(),2)
-        let file = leaf("Google/Chrome").appendingPathComponent("com.codemyriad.cassini.json")
+        let file = leaf("Google/Chrome").appendingPathComponent("io.codemyriad.cassini.json")
         try Data("old app location".utf8).write(to:file)
         XCTAssertEqual(try installation.install(),2)
         XCTAssertTrue(try String(contentsOf:file,encoding:.utf8).contains("cassini-browser-host"))
@@ -52,7 +109,7 @@ final class InstallationTests: XCTestCase {
         try prepare(); _ = try installation.install()
         var expected: [URL:Data] = [:]
         for browser in BrowserSetupInstallation.browsers {
-            for name in ["com.codemyriad.cassini","com.codemyriad.cassini.control"] {
+            for name in ["io.codemyriad.cassini","io.codemyriad.cassini.control"] {
                 let file = leaf(browser).appendingPathComponent(name + ".json")
                 let old = Data(("previous " + browser + name).utf8); try old.write(to:file); expected[file] = old
             }
@@ -60,7 +117,7 @@ final class InstallationTests: XCTestCase {
         XCTAssertThrowsError(try installation.install { index in if index == 5 { throw CocoaError(.fileWriteOutOfSpace) } })
         for (file,old) in expected { XCTAssertEqual(try Data(contentsOf:file),old) }
         for browser in BrowserSetupInstallation.browsers {
-            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:leaf(browser).path).sorted(),[".cassini-connect.lock","com.codemyriad.cassini.control.json","com.codemyriad.cassini.json"])
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:leaf(browser).path).sorted(),[".cassini-connect.lock","io.codemyriad.cassini.control.json","io.codemyriad.cassini.json"])
         }
     }
     func testFreshPartialFailureRemovesEarlierNewManifests() throws {
@@ -74,11 +131,11 @@ final class InstallationTests: XCTestCase {
         try prepare()
         let directory = leaf("Google/Chrome")
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:false)
-        let manifest = directory.appendingPathComponent("com.codemyriad.cassini.control.json")
+        let manifest = directory.appendingPathComponent("io.codemyriad.cassini.control.json")
         let outside = root.appendingPathComponent("untouched"); try Data("keep".utf8).write(to:outside)
         try FileManager.default.createSymbolicLink(at:manifest,withDestinationURL:outside)
         XCTAssertThrowsError(try installation.install()); XCTAssertEqual(try Data(contentsOf:outside),Data("keep".utf8))
-        XCTAssertFalse(FileManager.default.fileExists(atPath:directory.appendingPathComponent("com.codemyriad.cassini.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath:directory.appendingPathComponent("io.codemyriad.cassini.json").path))
         try FileManager.default.removeItem(at:manifest); XCTAssertEqual(mkfifo(manifest.path,0o600),0)
         XCTAssertThrowsError(try installation.install())
     }
@@ -113,7 +170,7 @@ final class InstallationTests: XCTestCase {
         try prepare(["Google/Chrome"])
         let directory = leaf("Google/Chrome")
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:false)
-        let file = directory.appendingPathComponent("com.codemyriad.cassini.json")
+        let file = directory.appendingPathComponent("io.codemyriad.cassini.json")
         let outside = root.appendingPathComponent("other-file"); try Data("keep".utf8).write(to:outside)
         try FileManager.default.linkItem(at:outside,to:file)
         XCTAssertThrowsError(try installation.install())
