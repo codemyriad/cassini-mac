@@ -65,10 +65,15 @@ import CassiniModels
             let held = open(lockFile.path,O_RDWR | O_CREAT | O_CLOEXEC,0o600)
             guard held >= 0,flock(held,LOCK_EX | LOCK_NB) == 0 else { if held >= 0 { close(held) }; throw POSIXError(.EIO) }
             let previousMessage = models.message
-            Thread.detachNewThread { Thread.sleep(forTimeInterval:0.25); flock(held,LOCK_UN); close(held) }
+            let release = DispatchSemaphore(value:0)
+            defer { release.signal() }
+            Thread.detachNewThread { _ = release.wait(timeout:.now()+5); flock(held,LOCK_UN); close(held) }
             models.remove()
+            try FileManager.default.removeItem(at:SpeechModelController.modelDirectory.appendingPathComponent("NOTICE.txt"))
+            await models.reloadInventory() // Reopening Settings cannot start a second cleanup during Remove.
             try await Task.sleep(for:.milliseconds(50))
             guard models.busy,models.downloaded,models.message == previousMessage else { throw POSIXError(.EINVAL) }
+            release.signal()
             await models.waitForOperation()
             guard !models.usesParakeet, !models.downloaded,
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path),

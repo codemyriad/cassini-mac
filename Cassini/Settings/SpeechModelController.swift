@@ -39,7 +39,7 @@ import CassiniTranscription
         return Int64(try! ModelManifest.plan(Data(contentsOf:url),pin:.parakeetUltra).compressedBytes)
     }
     func refresh() async {
-        guard !refreshed else { return }
+        guard !refreshed,!busy else { return }
         if inventory == nil {
             let model = Self.modelDirectory, jobs = Self.jobsDirectory, appData = Self.appData
             let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
@@ -123,16 +123,21 @@ import CassiniTranscription
         invalidateInventory()
         let wasSelected = usesParakeet
         generation = UUID(); chooseParakeet(false)
+        let cleanupGeneration = generation
         busy = true
-        defer { busy = false }
+        defer { if cleanupGeneration == generation { busy = false } }
         do {
             let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
             let plan = try ModelManifest.plan(Data(contentsOf:manifest),pin:.parakeetUltra)
             let removed = try await ModelDownloader(appData:Self.appData).removeInvalid(plan)
+            guard cleanupGeneration == generation else { return }
             downloaded = !removed; refreshed = true; failedDownload = false
             if !removed { chooseParakeet(wasSelected) }
             else if wasSelected { message = UXText.text("models.parakeetUltra.invalidFallback") }
-        } catch { refreshed = false; NSApp.presentError(error) }
+        } catch {
+            guard cleanupGeneration == generation else { return }
+            refreshed = false; NSApp.presentError(error)
+        }
     }
     private func invalidateInventory() { inventory?.cancel(); inventory = nil; refreshed = false }
     #if DEBUG
