@@ -86,7 +86,9 @@ jobs:
           compression-level: 0
       - name: Test signing identifier and shipped-byte checks on generated code
         if: matrix.arch == 'arm64'
-        run: python3 scripts/test-signing-identifiers.py
+        run: |
+          python3 scripts/test-signing-identifiers.py
+          python3 scripts/test-native-host-staging.py
       - name: Prepare identical bundled Library fixtures
         if: matrix.arch == 'arm64'
         run: |

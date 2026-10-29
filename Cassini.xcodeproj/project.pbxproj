@@ -1007,6 +1007,7 @@
 		};
 		9C428EA4197ADEEDAC5EAE08 /* Bundle native messaging host */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);

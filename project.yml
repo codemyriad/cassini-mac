@@ -89,6 +89,7 @@ targets:
         script: bash "$SRCROOT/scripts/bundle-opus.sh"
         basedOnDependencyAnalysis: false
       - name: Bundle native messaging host
+        basedOnDependencyAnalysis: false
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH"
           cp "$BUILT_PRODUCTS_DIR/cassini-browser-host" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/cassini-browser-host"
