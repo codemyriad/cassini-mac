@@ -34,7 +34,7 @@ class Selection(unittest.TestCase):
                     self.assertTrue(changes.select('pull_request', 'base', PATHS, [example])[area])
 
     def test_direct_workflow_scripts_and_app_privacy_changes_run_their_consumers(self):
-        for area, workflow in [('boards','ux-boards'),('whistle','ux-whistle')]:
+        for area, workflow in [('boards','ux-boards'),('whistle','ux-whistle'),('browser_setup','ux-browser-setup')]:
             body = (ROOT/'.github/workflows'/f'{workflow}.yml').read_text()
             for script in re.findall(r'python3\s+(scripts/[\w.-]+\.py)',body):
                 with self.subTest(area=area,script=script):

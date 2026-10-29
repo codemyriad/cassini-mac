@@ -16,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if CommandLine.arguments.contains("--browser-capture-self-test") {
+            Task { @MainActor in await CaptureSelfTest.run() }; return
+        }
         if RecordingFixture.enabled { NSLog("Hosted recording fixture launch: %@", CommandLine.arguments) }
         if CommandLine.arguments.contains("--fixture-library-recording"), !RecordingFixture.enabled || RecordingFixture.root == nil {
             NSLog("Invalid hosted recording fixture: enabled=%d, root=%@, arguments=%@", RecordingFixture.enabled, String(describing: RecordingFixture.root), CommandLine.arguments)
@@ -64,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RecordingRuntime.shared.start()
         LibraryStore.shared.reloadLocation()
         LibraryMoveCoordinator.shared.start()
+        CaptureNotifications.shared.configure()
+        Task { await CaptureCollection.shared.start() }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -73,7 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let imports = LibraryImportCoordinator.shared
             let exports = MeetingExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = RecordingController.shared.isSaving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || RecordingPageModel.hasPendingEdits
+            let wait = RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || RecordingPageModel.hasPendingEdits
+            CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             exports.beginShutdown()
             moves.beginShutdown()
@@ -84,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     await RecordingPageModel.flushAll()
                     await RecordingController.shared.finishTask?.value
+                    await CaptureCollection.shared.shutdown()
                     await queue.waitForShutdown()
                     await imports.waitForShutdown()
                     await exports.waitForShutdown()
@@ -101,11 +108,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
                 Task { @MainActor in
                     if stop {
+                        CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
                         MeetingExportCoordinator.shared.beginShutdown()
                         LibraryImportCoordinator.shared.beginShutdown()
                         TranscriptionQueue.shared.beginShutdown()
                         await RecordingConfirmation.stopAndWait()
+                        await CaptureCollection.shared.shutdown()
                         await TranscriptionQueue.shared.waitForShutdown()
                         await LibraryImportCoordinator.shared.waitForShutdown()
                         await MeetingExportCoordinator.shared.waitForShutdown()
@@ -128,7 +137,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MeetingExportCoordinator.shared.beginShutdown()
             LibraryMoveCoordinator.shared.beginShutdown()
             SessionPlaybackController.stopAll(); RecordingController.shared.stop()
+            CaptureCollection.shared.beginShutdown()
         }
+    }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        MainActor.assumeIsolated { CaptureCollection.shared.retryFromSettings() }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

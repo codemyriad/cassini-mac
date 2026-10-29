@@ -16,3 +16,21 @@ public struct DiskBudget: Equatable, Sendable {
         } else { minutesLeft = shouldStop ? 0 : nil }
     }
 }
+
+/// Track each folder independently so removing one capture does not reset the
+/// others' rates. Callers sum these by filesystem volume before budgeting free
+/// space; two concurrent meetings must not each assume exclusive disk use.
+public struct CaptureWriteRates: Sendable {
+    private var previous: [UUID:(TimeInterval,UInt64)] = [:]
+    public init() {}
+    public mutating func observe(bytes: [UUID:UInt64], at uptime: TimeInterval, initialRates: [UUID:Double] = [:]) -> [UUID:Double] {
+        var rates: [UUID:Double] = [:]
+        for (id,count) in bytes {
+            if let (before,old) = previous[id], count >= old, uptime.isFinite, uptime > before {
+                rates[id] = Double(count-old)/max(0.1,uptime-before)
+            } else { rates[id] = max(0,initialRates[id] ?? 0) }
+        }
+        previous = bytes.mapValues { (uptime,$0) }
+        return rates
+    }
+}

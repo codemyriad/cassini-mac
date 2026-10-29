@@ -9,9 +9,10 @@ struct CassiniApp: App {
     @State private var recorder = RecordingController.shared
 
     var body: some Scene {
-        let captureActive = recorder.isRecording
+        let captureActive = RecordingOverview.active
         #if DEBUG
         let suppressWindow = CommandLine.arguments.contains("--recording-saving-self-test") ||
+            CommandLine.arguments.contains("--browser-capture-self-test") ||
             CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test")
         #else
         let suppressWindow = false

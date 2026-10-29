@@ -3,6 +3,32 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testCompanionSetupBoard() throws {
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniCompanionBoard","YES"]); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let setup = window.buttons["Set up"]
+        XCTAssertTrue(setup.waitForExistence(timeout:20),app.debugDescription); setup.click()
+        XCTAssertTrue(window.sheets.staticTexts["Hear each person on their own"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(text("Done. Cassini is in Chrome.",in:window))
+        XCTAssertTrue(window.sheets.buttons["companion-connect"].exists)
+        XCTAssertFalse(window.sheets.buttons["Done"].isEnabled)
+        capture(window,name:"companion-setup")
+        window.sheets.buttons["Not now"].click()
+        XCTAssertTrue(window.buttons["meeting-back"].exists)
+    }
+    @MainActor func testWhatIsRecordedBoard() throws {
+        let app = try launch("recording",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"], change = window.buttons["recording-change-sources"]
+        XCTAssertTrue(change.waitForExistence(timeout:20),app.debugDescription); change.click()
+        XCTAssertTrue(window.sheets.staticTexts["What is recorded"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(window.sheets.buttons["capture-choice-me"].exists)
+        XCTAssertTrue(window.sheets.buttons["capture-choice-others"].exists)
+        XCTAssertTrue(window.sheets.buttons["capture-choice-both"].exists)
+        XCTAssertTrue(text("Listening inside your browser",in:window))
+        capture(window,name:"what-is-recorded")
+        window.sheets.buttons["Done"].click()
+        XCTAssertTrue(window.buttons["recording-change-sources"].exists)
+    }
     override func setUpWithError() throws {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
@@ -171,7 +197,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Listening inside your browser · 4 voices",in:window))
         XCTAssertTrue(text("No sound from your microphone. Check your sound settings.",in:window))
         XCTAssertTrue(window.buttons["recording-check-microphone"].exists)
-        XCTAssertFalse(window.buttons["Change what is recorded"].isEnabled)
+        XCTAssertTrue(window.buttons["Change what is recorded"].isEnabled)
         let exact = NSPredicate { _,_ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exact,object:nil)],timeout:10),.completed)
         capture(window,name:"recording")

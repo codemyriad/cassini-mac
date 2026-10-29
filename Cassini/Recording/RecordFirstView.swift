@@ -24,8 +24,8 @@ import CassiniLibrary
     private var parent = LibraryLaunchContext.current.root
     func request(parent: URL, showRecording: Bool = true) {
         let recorder = RecordingController.shared
-        if recorder.isRecording { recorder.stop(); return }
-        guard recorder.canStart else { return }
+        if RecordingOverview.active || RecordingOverview.starting { RecordingOverview.stop(); return }
+        guard RecordingOverview.canStart else { return }
         self.parent = parent
         openRecordingWhenReady = showRecording
         recorder.prepareDiskInfo(parent: parent)
@@ -34,14 +34,14 @@ import CassiniLibrary
     }
     func requestFromAnywhere() {
         let recorder = RecordingController.shared
-        if recorder.isRecording { recorder.stop(); return }
-        guard recorder.canStart else { return }
+        if RecordingOverview.active || RecordingOverview.starting { RecordingOverview.stop(); return }
+        guard RecordingOverview.canStart else { return }
         let introduction = !RecordingPreferences.skipFirst
         if introduction { MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps: true) }
         request(parent: LibraryLocationModel.shared.roots[0], showRecording: introduction)
     }
     func openCurrent(focusNotes: Bool = false) {
-        guard let folder = RecordingController.shared.directory else { return }
+        guard let folder = RecordingOverview.directory else { return }
         focusNotesWhenOpened = focusNotes
         if let meeting = LibraryStore.shared.meetings.first(where: { $0.libraryKey == folder.lastPathComponent }) {
             MeetingNavigation.shared.open(meeting); NSApp.activate(ignoringOtherApps: true)
@@ -51,7 +51,16 @@ import CassiniLibrary
         }
     }
     func confirm() { showingFirst = false; DispatchQueue.main.async { self.begin() } }
-    private func begin() { MeetingNavigation.shared.back(); let parent = LibraryLocationModel.shared.roots[0]; Task { await RecordingController.shared.start(parent: parent) } }
+    private func begin() {
+        MeetingNavigation.shared.back()
+        let parent = LibraryLocationModel.shared.roots[0]
+        Task {
+            #if DEBUG
+            if RecordingFixture.enabled { await RecordingController.shared.start(parent:parent); return }
+            #endif
+            do { try await CaptureCollection.shared.record() } catch { /* Catalog failure banner owns presentation. */ }
+        }
+    }
 }
 
 struct RecordFirstView: View {
@@ -68,7 +77,11 @@ struct RecordFirstView: View {
                 Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(.secondary)
                 source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.description", caption: "recordFirst.mic.caption")
                 Divider()
-                source(icon: "display", title: "recordFirst.sound.title", description: "recordFirst.sound.description", caption: "recordFirst.sound.caption")
+                if CaptureCollection.shared.hasCalls {
+                    source(icon:"macwindow",title:"common.theOthers",description:"whatIsRecorded.othersHeard.browserMixed.description",caption:nil)
+                } else {
+                    source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.description",caption:"recordFirst.sound.caption")
+                }
             }
             HStack(spacing: 10) {
                 Spacer()
@@ -83,13 +96,13 @@ struct RecordFirstView: View {
         }.font(.system(size: 13)).padding(28).frame(width: 520)
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("recordFirst.title"))
     }
-    private func source(icon: String, title: String, description: String, caption: String) -> some View {
+    private func source(icon: String, title: String, description: String, caption: String?) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: icon).frame(width: 36, height: 36).background(Color.secondary.opacity(0.07), in: Circle()).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(UXText.text(title)).fontWeight(.semibold)
                 Text(UXText.text(description)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
-                Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                if let caption { Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal:false,vertical:true) }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -106,16 +119,16 @@ struct LiveRecordingPill: View {
                 Button { if frozenMs == nil { RecordCoordinator.shared.openCurrent() } } label: {
                     HStack(spacing:8) {
                         Circle().fill(LibraryTheme.red).frame(width:9,height:9)
-                        Text(LibraryFormat.liveBadge(frozenMs ?? RecordingController.shared.elapsedMs)).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
+                        Text(LibraryFormat.liveBadge(frozenMs ?? RecordingOverview.elapsedMs)).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
                     }
                 }.buttonStyle(.plain).accessibilityIdentifier("recording-open-current")
-                    .accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(frozenMs ?? RecordingController.shared.elapsedMs)]))
+                    .accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(frozenMs ?? RecordingOverview.elapsedMs)]))
                     .accessibilityHint(UXText.text("hidden.openCassini"))
                 VStack(spacing:4) {
                     meter(microphone,label:"common.yourMicrophone",silent:frozenMs != nil || RecordingController.shared.microphoneSilent)
                     meter(output,label:"recordFirst.sound.title")
                 }.frame(width:30)
-                Button(UXText.text("common.stop")) { if frozenMs == nil { RecordingController.shared.stop() } }
+                Button(UXText.text("common.stop")) { if frozenMs == nil { RecordingOverview.stop() } }
                     .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 10).frame(height: 26)
                     .background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 5)).accessibilityIdentifier("recording-stop")
             }.padding(.horizontal, 10).frame(height: 34).background(LibraryTheme.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))

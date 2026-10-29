@@ -44,8 +44,17 @@ public final class BrowserControlService: @unchecked Sendable {
     public func setAutoRecord(_ enabled: Bool, microphone: Bool) {
         queue.async { [self] in autoRecord = enabled; self.microphone = microphone; reconcile() }
     }
-    public func recordAll(microphone: Bool) {
-        queue.async { [self] in send(registry.startAll(microphone:microphone)); publish() }
+    public func recordAll(microphone: Bool, choices: [BrowserMeetingKey:Bool] = [:], issued: @escaping @Sendable ([BrowserControlRequest]) -> Void = { _ in }) {
+        queue.async { [self] in
+            let requests = registry.startAll(microphone:microphone,choices:choices)
+            send(requests); publish(); issued(requests)
+        }
+    }
+    public func recordMeeting(_ key: BrowserMeetingKey, microphone: Bool) {
+        queue.async { [self] in
+            do { send([try registry.start(key,microphone:microphone)]); publish() }
+            catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
+        }
     }
     public func stopMeeting(_ meeting: BrowserMeetingKey) {
         queue.async { [self] in
@@ -88,6 +97,7 @@ public final class BrowserControlService: @unchecked Sendable {
         } catch { connection.close(); disconnect(connection.peer.id) }
     }
     private func reconcile() {
+        registry.setRetainedCaptureIDs(audio?.retainedCaptureIDs ?? [])
         send(registry.drainStops())
         if autoRecord { send(registry.automaticStarts(microphone:microphone),automatic:true) }
         publish()

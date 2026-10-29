@@ -5,6 +5,23 @@ import CassiniRecording
 @testable import CassiniLibrary
 
 struct RecordingLibraryTests {
+    @Test func preparationIsHiddenAndIncrementalPromotionUsesTheRealProducerPhase() throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:parent) }
+        let session = try RecordingSession(parent:parent,title:"Pending",source:"macos")
+        let phases = PreparingActivity(id:session.manifest.id)
+        let scanner = LibraryScanner(root:parent,activity:phases)
+        #expect(try scanner.scan().meetings.isEmpty)
+        try session.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:0,count:1600),offsetMs:0)
+        phases.set(.recording)
+        #expect(try scanner.scan(affected:session.directory).meetings.first?.state.lifecycle == .recording)
+        phases.set(.preparing)
+        #expect(try scanner.scan(affected:session.directory).meetings.isEmpty,"Preparation must evict any cached row")
+        phases.set(.saving)
+        #expect(try scanner.scan(affected:session.directory).meetings.first?.state.lifecycle == .saving)
+        try session.finish()
+    }
     @Test func nativeCaptureIsVisibleThroughoutItsLifetimeAndMetadataIsPrivate() throws {
         let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: parent) }
@@ -42,4 +59,12 @@ struct RecordingLibraryTests {
         #expect(throws: (any Error).self) { try writer.createIfNeeded() }
         #expect(try Data(contentsOf: f.folder.appendingPathComponent("session.json")) == capture)
     }
+}
+private final class PreparingActivity: CaptureActivityProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private let id: UUID
+    private var phase: CaptureActivity = .preparing
+    init(id: UUID) { self.id = id }
+    func set(_ phase: CaptureActivity) { lock.withLock { self.phase = phase } }
+    func snapshot() -> [UUID:CaptureActivity] { lock.withLock { [id:phase] } }
 }

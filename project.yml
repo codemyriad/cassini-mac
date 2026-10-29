@@ -53,6 +53,10 @@ targets:
       - package: CassiniKit
         product: CassiniRecording
       - package: CassiniKit
+        product: CassiniBrowserControl
+      - package: CassiniKit
+        product: CassiniBrowserSetup
+      - package: CassiniKit
         product: CassiniExport
       - package: CassiniKit
         product: CassiniModels

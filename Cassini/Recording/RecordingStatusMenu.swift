@@ -10,14 +10,15 @@ struct RecordingMenuPayload: Codable, Sendable {
     let levels: [Level]
     let actions: [Action]
     let noSleep: String?
+    let sourceLines: [String]?
     let assertionHeld: Bool
     var json: String { (try? String(data:JSONEncoder().encode(self),encoding:.utf8)) ?? "{}" }
     @MainActor init(recorder: RecordingController, runtime: RecordingRuntime) {
-        header = UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(recorder.elapsedMs)])
-        title = recorder.title
+        header = UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(RecordingOverview.elapsedMs)])
+        title = RecordingOverview.title
         levels = [
-            .init(label:UXText.text("common.yourMicrophone"),value:recorder.levels["microphone",default:0],silent:recorder.microphoneSilent),
-            .init(label:UXText.text("common.theOthers"),value:recorder.levels["output",default:0],silent:false)
+            .init(label:UXText.text("common.yourMicrophone"),value:RecordingOverview.levels["microphone",default:0],silent:recorder.microphoneSilent),
+            .init(label:UXText.text("common.theOthers"),value:RecordingOverview.levels["output",default:0],silent:false)
         ]
         actions = [
             .init(id:"stop",title:UXText.text("hidden.menu.stopRecording"),shortcut:runtime.shortcut.registered ? RecordingShortcut.glyph : nil),
@@ -26,6 +27,14 @@ struct RecordingMenuPayload: Codable, Sendable {
         ]
         assertionHeld = runtime.power.held
         noSleep = assertionHeld ? UXText.text("hidden.menu.noSleep") : nil
+        var lines: [String] = []
+        if let first = CaptureCollection.shared.first {
+            if first.input.failedSides.contains(.me) { lines.append(UXText.text("errors.micPermission.line")) }
+            if first.snapshot.others && !first.snapshot.browserAlive {
+                lines.append(UXText.text(first.input.failedSides.contains(.others) ? "errors.othersPermission.line" : "errors.othersFallback.line"))
+            }
+        }
+        sourceLines = lines.isEmpty ? nil : lines
     }
 }
 
@@ -42,7 +51,7 @@ struct RecordingStatusLabel: View {
                 // TimelineView inside a MenuBarExtra label can re-enter the
                 // status-button update loop during app launch on current macOS.
                 while !Task.isCancelled {
-                    elapsedMs = recorder.elapsedMs
+                    elapsedMs = RecordingOverview.elapsedMs
                     do { try await Task.sleep(for:.seconds(1)) } catch { return }
                 }
             }
@@ -73,7 +82,11 @@ struct RecordingStatusMenu: View {
                 }
                 Divider()
                 ForEach(payload.actions) { item in action(item) }
-                if let line = recorder.diskLine { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.amber).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
+                if let lines = payload.sourceLines {
+                    Divider()
+                    ForEach(Array(lines.enumerated()),id:\.offset) { _,line in Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
+                }
+                if let line = RecordingOverview.diskLine { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.amber).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
                 if let line = payload.noSleep { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,6).accessibilityIdentifier("recording-no-sleep") }
             }.font(.system(size:13)).padding(10).frame(width:300).accessibilityElement(children:.contain)
                 .accessibilityLabel(UXText.text("hidden.menu.a11y")).accessibilityIdentifier("recording-menu-payload")
@@ -90,7 +103,7 @@ struct RecordingStatusMenu: View {
         let button = Button {
             dismiss()
             switch item.id {
-            case "stop": recorder.stop()
+            case "stop": RecordingOverview.stop()
             case "note": RecordCoordinator.shared.openCurrent(focusNotes:true)
             default: RecordCoordinator.shared.openCurrent()
             }

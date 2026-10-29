@@ -26,7 +26,7 @@ private final class NativeFixtureInputs: @unchecked Sendable {
         do { try sink?.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
     }
 }
-private final class NativeAudioClient {
+private final class NativeAudioClient: @unchecked Sendable {
     let process = Process()
     let input = Pipe(), output = Pipe(), errors = Pipe()
     init(root: URL) throws {
@@ -56,12 +56,12 @@ private final class NativeAudioClient {
 private final class AudioFixture {
     let root: URL, ipc: URL, broker: BrowserAudioBroker, service: BrowserControlService
     var clients: [NativeAudioClient] = []
-    init(stop: BrowserNativeStop? = nil) throws {
+    init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniBrokerTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         ipc = root.appendingPathComponent("ipc")
         let library = root.appendingPathComponent("Library"), inputs = NativeFixtureInputs()
-        broker = BrowserAudioBroker(make:{ title,mic in try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) })
+        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) })
         service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)
         try service.start(root:ipc)
     }
@@ -73,6 +73,28 @@ private final class AudioFixture {
     }
 }
 final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
+    func testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory() async throws {
+        let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0), finished = StopCount()
+        let fixture = try AudioFixture(beforeCreate:{ entered.signal(); _ = release.wait(timeout:.now() + 5) })
+        do {
+            let client = try fixture.client(), broker = fixture.broker
+            let starting = Task.detached { try client.request(self.start("pending-folder")) }
+            XCTAssertEqual(entered.wait(timeout:.now() + 3),.success)
+            broker.closeAdmission()
+            let closing = Task { await broker.finishAll(); finished.increment() }
+            try await Task.sleep(for:.milliseconds(50))
+            XCTAssertEqual(finished.value,0,"Quit must wait for the owned folder factory")
+            release.signal()
+            let response = try await starting.value
+            await closing.value
+            XCTAssertEqual(finished.value,1); XCTAssertTrue(broker.activeCaptures.isEmpty)
+            let saved = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(response["path"]?.string)))
+            XCTAssertNotEqual(saved.state,"recording")
+            let rejected = try fixture.client()
+            XCTAssertEqual(try rejected.request(start("after-shutdown"))["code"]?.string,"state")
+        } catch { release.signal(); await fixture.finish(); throw error }
+        await fixture.finish()
+    }
     func testConcurrentAppStopsAndQuitShareOneNativeDrain() async throws {
         let calls = StopCount()
         let fixture = try AudioFixture(stop:{ _,reply in

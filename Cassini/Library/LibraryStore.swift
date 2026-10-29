@@ -24,6 +24,7 @@ struct LibraryLaunchContext {
         var context = Self()
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--browser-capture-self-test") { context.scansLibrary = CaptureFixture.enabled }
         if arguments.contains(where: { ["--recording-saving-self-test", "--parakeet-self-test", "--models-network-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
             ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
             context.scansLibrary = false
@@ -71,7 +72,10 @@ private final class NativeActivity: CaptureActivityProviding, @unchecked Sendabl
     private var phases: [UUID: CaptureActivity]
     init(_ phases: [UUID: CaptureActivity]) { self.phases = phases }
     func replace(_ phases: [UUID: CaptureActivity]) { lock.lock(); self.phases = phases; lock.unlock() }
-    func snapshot() -> [UUID: CaptureActivity] { lock.lock(); defer { lock.unlock() }; return phases }
+    func snapshot() -> [UUID: CaptureActivity] {
+        lock.lock(); let value = phases; lock.unlock()
+        return value.merging(CaptureActivityStore.shared.snapshot()) { _,owned in owned }
+    }
 }
 @MainActor @Observable
 final class LibraryStore {
@@ -182,6 +186,7 @@ final class LibraryStore {
         var phases: [UUID: CaptureActivity] = [:]
         let generation = epoch
         withObservationTracking {
+            phases = CaptureCollection.shared.activity
             if recorder.isRecording || recorder.isSaving, let folder = recorder.directory,
                let id = UUID(uuidString: String(folder.lastPathComponent.dropFirst("Recording-".count))) { phases[id] = recorder.isSaving ? .saving : .recording }
         } onChange: { [weak self] in

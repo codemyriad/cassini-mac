@@ -4,6 +4,7 @@ import CassiniKit
 import CassiniRecording
 
 public protocol BrowserAudioHandler: Sendable {
+    var retainedCaptureIDs: [String] { get }
     func connected(_ connection: BrowserPipeConnection)
     func received(_ data: Data, from connection: BrowserPipeConnection)
     func disconnected(_ peer: BrowserPeer)
@@ -12,6 +13,9 @@ public struct BrowserAudioStart: Sendable {
     public let captureID: String
     public let timelineOriginMs: Int
     public let microphone: Bool
+    public init(captureID: String, timelineOriginMs: Int, microphone: Bool) {
+        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone
+    }
 }
 public typealias BrowserNativeStop = @Sendable (OwnedBrowserCapture,@escaping @Sendable (String?) -> Void) -> Void
 
@@ -24,6 +28,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private var reservations: [Data:UUID] = [:]
     private var identities: [UUID:Data] = [:]
     private let finalization = CaptureFinalization()
+    private let creating = DispatchGroup()
+    private var admissionClosed = false
     private let make: @Sendable (String,Bool) throws -> OwnedBrowserCapture
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
@@ -35,6 +41,20 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     public var activeCaptures: [OwnedBrowserCapture] {
         lock.lock(); defer { lock.unlock() }; return Array(captures.values)
     }
+    public var retainedCaptureIDs: [String] {
+        lock.withLock { identities.values.compactMap { String(data:$0,encoding:.utf8) } }
+    }
+    /// Native standalone capture shares the same finalization owner without a
+    /// browser reservation. No browser-provided path can enter this API.
+    public func ownNative(_ capture: OwnedBrowserCapture) throws {
+        try lock.withLock {
+            let snapshot = capture.snapshot
+            guard !admissionClosed, snapshot.manifest.source == "macos", snapshot.phase == .recording,
+                  captures[snapshot.manifest.id] == nil else { throw BrowserIPCError.unavailable }
+            captures[snapshot.manifest.id] = capture
+        }
+    }
+    public func closeAdmission() { lock.withLock { admissionClosed = true } }
     public func connected(_ connection: BrowserPipeConnection) {
         guard connection.peer.role == .audio else { connection.close(); return }
         lock.lock(); defer { lock.unlock() }
@@ -54,8 +74,9 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     fileprivate func begin(_ info: BrowserAudioStart, title: String, peer: UUID) throws -> OwnedBrowserCapture {
         let identity = Data(info.captureID.utf8)
         lock.lock()
-        guard reservations[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is already active.") }
-        reservations[identity] = peer; lock.unlock()
+        guard !admissionClosed, reservations[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
+        reservations[identity] = peer; creating.enter(); lock.unlock()
+        defer { creating.leave() }
         let capture: OwnedBrowserCapture
         do { capture = try make(title,info.microphone) }
         catch {
@@ -86,11 +107,13 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
-    public func finishAll(problem: String? = nil) async {
+    @discardableResult public func finishAll(problem: String? = nil) async -> [OwnedCaptureSnapshot] {
+        await withCheckedContinuation { continuation in creating.notify(queue:.global()) { continuation.resume() } }
         let values = activeCaptures
         await withTaskGroup(of:Void.self) { group in
             for capture in values { group.addTask { try? await self.finish(capture,problem:problem) } }
         }
+        return values.map(\.snapshot)
     }
 }
 /// App Stop, a browser Stop and Quit may arrive together. They share one native

@@ -48,7 +48,11 @@ private actor RecordingEdits {
     private(set) var meeting: LibraryMeeting
     var title: String
     var notesText: String
-    var voiceCount: Int = 0
+    private var cachedVoiceCount: Int = 0
+    var voiceCount: Int {
+        if let owned { return owned.snapshot.manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count }
+        return cachedVoiceCount
+    }
     private(set) var frozen = false
     @ObservationIgnored private let edits: RecordingEdits
     @ObservationIgnored private var notes: RecordingNotes
@@ -73,7 +77,7 @@ private actor RecordingEdits {
         #if DEBUG
         frozen = LibraryLaunchContext.current.screenshot
         #endif
-        if frozen { voiceCount = 4 } // Published Recording board's frozen source-count state.
+        if frozen { cachedVoiceCount = 4 } // Published Recording board's frozen source-count state.
         else { refreshVoices() }
     }
     func update(_ meeting: LibraryMeeting) {
@@ -87,7 +91,8 @@ private actor RecordingEdits {
         if !frozen { refreshVoices() }
     }
     private func refreshVoices() {
-        guard meeting.isBrowserCapture else { voiceCount = 0; return }
+        guard meeting.isBrowserCapture else { cachedVoiceCount = 0; return }
+        guard owned == nil else { return }
         voiceTask?.cancel(); sourceGeneration += 1
         let revision = sourceGeneration, folder = meeting.folder
         voiceTask = Task { [weak self] in
@@ -97,20 +102,30 @@ private actor RecordingEdits {
                 return manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count
             }.value
             guard let self, !Task.isCancelled, revision == self.sourceGeneration else { return }
-            self.voiceCount = count; self.voiceTask = nil
+            self.cachedVoiceCount = count; self.voiceTask = nil
         }
     }
     var native: Bool {
         RecordingController.shared.directory?.standardizedFileURL.path == meeting.folder.standardizedFileURL.path
     }
+    var owned: LiveCapture? { CaptureCollection.shared.captures[meeting.id] }
+    var canStop: Bool { native || owned != nil }
+    var saving: Bool { owned.map { $0.savingSinceMs != nil || $0.snapshot.phase == .saving } ?? (native && RecordingController.shared.isSaving) }
+    var me: Bool { owned?.snapshot.me ?? true }
+    var others: Bool { owned?.snapshot.others ?? true }
+    func stop() { if owned != nil { CaptureCollection.shared.stop(meeting.id) } else if native { RecordingController.shared.stop() } }
     var elapsedMs: Int64 {
+        if let owned { return owned.elapsedMs }
         if native { return RecordingController.shared.elapsedMs }
         if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? liveElapsed }
         return liveElapsed + Int64(max(0,ProcessInfo.processInfo.systemUptime - liveAnchor) * 1000)
     }
-    var microphone: Float { native ? RecordingController.shared.levels["microphone",default:0] : 0 }
-    var output: Float { native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0) }
-    var microphoneSilent: Bool { native ? RecordingController.shared.microphoneSilent : frozen }
+    var microphone: Float { owned?.levels[.me] ?? (native ? RecordingController.shared.levels["microphone",default:0] : 0) }
+    var output: Float { owned?.levels[.others] ?? (native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0)) }
+    var microphoneSilent: Bool {
+        if let owned { return owned.snapshot.me && ProcessInfo.processInfo.systemUptime - owned.lastMicSound >= 20 }
+        return native ? RecordingController.shared.microphoneSilent : frozen
+    }
     var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }
     func changeTitle() {
         title = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500)))
@@ -118,6 +133,7 @@ private actor RecordingEdits {
         // Publish the current user input immediately; persistence is debounced.
         // Older writes cannot replace this value after a later binding update.
         if native { RecordingController.shared.title = displayTitle }
+        if owned != nil { CaptureCollection.shared.title(meeting.id,displayTitle) }
         titleDirty = true; scheduleTitle()
     }
     func changeNotes() {

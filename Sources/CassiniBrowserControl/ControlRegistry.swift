@@ -29,6 +29,7 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public let independent: Bool
     public let meetings: [BrowserMeeting]
     public let captures: [BrowserCaptureStatus]
+    public let interrupted: [BrowserCaptureStatus]
 }
 public enum BrowserControlAction: String, Sendable { case start, stop }
 public struct BrowserControlRequest: Sendable {
@@ -59,17 +60,32 @@ public struct BrowserControlRegistry: Sendable {
         var statusRevision: UInt64 = 0
         var meetings: [BrowserMeeting] = []
         var captures: [BrowserCaptureStatus] = []
+        var interrupted: [BrowserCaptureStatus] = []
         var pending: [String:Pending] = [:]
         var autoAttempted: Set<Int> = []
         var requestedStops: Set<Int> = []
     }
     private var peers: [UUID:PeerState] = [:]
+    private var retainedCaptureIDs: Set<Data> = []
     public private(set) var outcomes: [BrowserControlOutcome] = []
     public init() {}
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures)
+            .init(id:$0.peer.id,browser:$0.peer.browser,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted)
         }
+    }
+    public mutating func setRetainedCaptureIDs(_ ids: [String]) {
+        retainedCaptureIDs = Set(ids.map { Data($0.utf8) })
+        for id in Array(peers.keys) {
+            guard var peer = peers[id] else { continue }
+            // A recovered tab whose app-owned folder is on system fallback is
+            // already covered. Stop must not immediately auto-restart that call.
+            peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
+            peers[id] = peer
+        }
+    }
+    private static func retained(_ capture: BrowserCaptureStatus, ids: Set<Data>) -> Bool {
+        capture.captureID.map { ids.contains(Data($0.utf8)) } ?? false
     }
     public mutating func connect(_ peer: BrowserPeer) throws {
         guard peer.role == .control, peers[peer.id] == nil, peers.count < 128 else { throw BrowserControlStateError.unavailable }
@@ -108,7 +124,13 @@ public struct BrowserControlRegistry: Sendable {
         case "status":
             guard peer.hello else { throw BrowserControlStateError.malformed }
             peer.captures = try Self.captures(json,peer:id)
+            if let raw = json["interrupted"], !raw.isNull {
+                guard let list = raw.array, list.count <= 100 else { throw BrowserControlStateError.malformed }
+                let wrapper = JSON.object([("type",.string("status")),("recording",.bool(false)),("tabId",.null),("path",.null),("message",.string("")),("sessions",.array(list))])
+                peer.interrupted = try Self.captures(wrapper,peer:id,includeInactive:true)
+            } else { peer.interrupted = [] }
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
+            peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
             peer.statusRevision &+= 1
             peer.reconciled = true
         case "result":
@@ -137,6 +159,7 @@ public struct BrowserControlRegistry: Sendable {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         guard peer.independent else { throw BrowserControlStateError.incompatible }
+        guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
         guard peer.meetings.contains(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone)
@@ -174,9 +197,9 @@ public struct BrowserControlRegistry: Sendable {
         return keys.compactMap { try? start($0,microphone:microphone) }
     }
     /// Explicit Record takes all active meetings, independently of the auto switch.
-    public mutating func startAll(microphone: Bool) -> [BrowserControlRequest] {
+    public mutating func startAll(microphone: Bool, choices: [BrowserMeetingKey:Bool] = [:]) -> [BrowserControlRequest] {
         let keys = snapshots.filter { $0.reconciled && $0.independent }.flatMap { $0.meetings.filter { $0.sourceCount > 0 }.map(\.key) }
-        return keys.compactMap { try? start($0,microphone:microphone) }
+        return keys.compactMap { try? start($0,microphone:choices[$0] ?? microphone) }
     }
     public mutating func stopAll() -> [BrowserControlRequest] {
         var keys = Set<BrowserMeetingKey>()
@@ -223,7 +246,7 @@ public struct BrowserControlRegistry: Sendable {
     private static func optionalString(_ value: JSON?, maximum: Int) throws -> String? {
         guard let value, !value.isNull else { return nil }; return try string(value,maximum:maximum)
     }
-    private static func captures(_ json: JSON, peer: UUID) throws -> [BrowserCaptureStatus] {
+    private static func captures(_ json: JSON, peer: UUID, includeInactive: Bool = false) throws -> [BrowserCaptureStatus] {
         guard json["type"]?.string == "status", let recording = json["recording"]?.bool else { throw BrowserControlStateError.malformed }
         guard json["tabId"] != nil, json["path"] != nil else { throw BrowserControlStateError.malformed }
         if let tab = json["tabId"], !tab.isNull { _ = try integer(tab) }
@@ -249,7 +272,7 @@ public struct BrowserControlRegistry: Sendable {
             guard value["tabId"]?.isNull != true else { return nil }
             let tab = try integer(value["tabId"])
             guard found.insert(tab).inserted else { throw BrowserControlStateError.malformed }
-            guard recording || stopping else { return nil }
+            guard recording || stopping || includeInactive else { return nil }
             return .init(key:.init(peer:peer,tabID:tab),captureID:capture,path:path,recording:recording,stopping:stopping,tracks:tracks)
         }
     }

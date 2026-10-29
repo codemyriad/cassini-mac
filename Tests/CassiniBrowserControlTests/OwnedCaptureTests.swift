@@ -7,6 +7,62 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testFailedNativeSystemPublishesNoneOnceAndUserRetryPublishesActualSamples() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try OwnedBrowserCapture(parent:root,title:"Native system lost",microphone:false,browser:false)
+        let first = capture.nativeWriter(side:.others)
+        try first.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try first.appendNative(id:"output",pcm:Data(repeating:1,count:160),offsetMs:0)
+        try first.finish(problem:"Generated system failure")
+        try await capture.systemUnavailable(atMs:10)
+        let count = capture.snapshot.manifest.events?.count
+        try await capture.systemUnavailable(atMs:15)
+        XCTAssertEqual(capture.snapshot.manifest.events?.count,count)
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"none")
+        let retry = capture.nativeWriter(side:.others)
+        try retry.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try retry.appendNative(id:"output",pcm:Data(repeating:1,count:160),offsetMs:20)
+        try retry.finish(problem:nil); try await capture.finish()
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"system")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"user")
+    }
+    func testNativeSourceAndUserResumePublishOnlyActualSystemBuffers() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try OwnedBrowserCapture(parent:root,title:"Native",microphone:true,browser:false)
+        XCTAssertTrue(capture.snapshot.needsSystem); XCTAssertEqual(capture.snapshot.manifest.source,"macos")
+        XCTAssertEqual(capture.snapshot.manifest.events?.first?.source,"none")
+        let first = capture.nativeWriter(side:.others)
+        try first.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        XCTAssertEqual(capture.snapshot.manifest.events?.count,2)
+        try first.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:0)
+        try first.finish(problem:nil)
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"start")
+        try await capture.select(me:true,others:false,atMs:1000)
+        try await capture.select(me:true,others:true,atMs:2000)
+        let resumed = capture.nativeWriter(side:.others)
+        try resumed.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try resumed.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:2000)
+        try resumed.finish(problem:nil); try await capture.finish()
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"user")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"system")
+        XCTAssertTrue(capture.snapshot.manifest.tracks.allSatisfy { $0.sourceTrackId == nil })
+    }
+    func testMicResumeTrimsBufferedSamplesFromTheOffInterval() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try OwnedBrowserCapture(parent:root,title:"Mic resume",microphone:true)
+        let first = capture.nativeWriter(side:.me)
+        try first.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
+        try first.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:0)
+        try first.finish(problem:nil)
+        try await capture.select(me:false,others:true,atMs:1000)
+        try await capture.select(me:true,others:true,atMs:2000)
+        let resumed = capture.nativeWriter(side:.me)
+        try resumed.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
+        try resumed.appendNative(id:"mic",pcm:Data(repeating:0x34,count:16000),offsetMs:1500)
+        try resumed.finish(problem:nil); try await capture.finish()
+        let track = try XCTUnwrap(capture.snapshot.manifest.tracks.last)
+        XCTAssertEqual(track.startOffsetMs,2000); XCTAssertEqual(track.frames,4000)
+    }
     func temporary() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniOwnedTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700]); return root
