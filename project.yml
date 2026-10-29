@@ -204,6 +204,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.browser-setup
         PRODUCT_NAME: CassiniBrowserSetup
+        PRODUCT_MODULE_NAME: CassiniBrowserSetupService
         CODE_SIGN_ENTITLEMENTS: BrowserSetup/BrowserSetup.entitlements
     info:
       path: BrowserSetup/Info.plist
