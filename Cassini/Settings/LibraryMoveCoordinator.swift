@@ -117,6 +117,7 @@ import CassiniLibrary
     }
     private func run(destination: FileAccessLease?, selection: Selection) {
         guard !busy, !closing else { return }; busy = true
+        CaptureCollection.shared.setLibraryMoveBlocked(true)
         task = Task {
             let location = LibraryLocationModel.shared
             do {
@@ -167,7 +168,8 @@ import CassiniLibrary
             TranscriptionQueue.shared.resumeAfterMove(); LibraryImportCoordinator.shared.resumeAfterMove()
             TranscriptionQueue.shared.consider(LibraryStore.shared.meetings,automatic:!LibraryStore.shared.context.screenshot)
             withExtendedLifetime(destination) {}
-            busy = false; task = nil; maybeRetryDeferred()
+            busy = false; CaptureCollection.shared.setLibraryMoveBlocked(false)
+            task = nil; maybeRetryDeferred()
         }
     }
 }

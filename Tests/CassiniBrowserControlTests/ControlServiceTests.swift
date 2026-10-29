@@ -10,7 +10,30 @@ private final class NotificationCount: @unchecked Sendable {
     func increment() { lock.lock(); count += 1; lock.unlock() }
     var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
+private final class Admission: @unchecked Sendable {
+    private let lock = NSLock()
+    private var allowed = false
+    func set(_ value: Bool) { lock.withLock { allowed = value } }
+    func read() -> Bool { lock.withLock { allowed } }
+}
 final class ControlServiceTests: XCTestCase {
+    func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let admission = Admission()
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },canStart:{ admission.read() })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:true)
+        let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
+        try hello(client); try send(status(false),client)
+        XCTAssertThrowsError(try receive(client,seconds:0.2))
+        let issued = expectation(description:"Blocked manual start returns no requests")
+        service.recordAll(microphone:true) { requests in XCTAssertTrue(requests.isEmpty); issued.fulfill() }
+        wait(for:[issued],timeout:2)
+        XCTAssertThrowsError(try receive(client,seconds:0.2))
+        admission.set(true)
+        service.setAutoRecord(true,microphone:true)
+        XCTAssertEqual(try receive(client)["action"]?.string,"start")
+    }
     func temporary() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniServiceTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:url,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])

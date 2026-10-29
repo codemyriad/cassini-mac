@@ -29,18 +29,25 @@ struct LiveCapture {
 private final class CaptureFiles: @unchecked Sendable {
     private let lock = NSLock()
     private var closed = false
+    private var moving = false
     let locationFile: URL, defaultRoot: URL
     init(file: URL, root: URL) { locationFile = file; defaultRoot = root }
     func close() { lock.lock(); closed = true; lock.unlock() }
+    func setMoving(_ moving: Bool) { lock.withLock { self.moving = moving } }
+    func canStart() -> Bool {
+        guard lock.withLock({ !closed && !moving }) else { return false }
+        return (try? LibraryRouting.withRecordingAccess(file:locationFile,defaultRoot:defaultRoot) { _,_ in true }) == true
+    }
     func create(title: String, microphone: Bool, browser: Bool = true, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void) throws -> OwnedBrowserCapture {
-        guard lock.withLock({ !closed }) else { throw BrowserIPCError.closed }
-        return try LibraryRouting.withLock(file:locationFile,exclusive:false,wait:false) {
-            guard lock.withLock({ !closed }) else { throw BrowserIPCError.closed }
-            let location = try LibraryLocation.read(file:locationFile,defaultRoot:defaultRoot)
+        guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
+        return try LibraryRouting.withRecordingAccess(file:locationFile,defaultRoot:defaultRoot) { destination,access in
+            guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
             let id = UUID()
             CaptureActivityStore.shared.set(id,.preparing)
             do {
-                let owner = try OwnedBrowserCapture(parent:location.primary,title:title,microphone:microphone,browser:browser,id:id,changed:changed)
+                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,changed:{ [access] snapshot in
+                    withExtendedLifetime(access) { changed(snapshot) }
+                })
                 do { try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded() }
                 catch { try? FileManager.default.removeItem(at:owner.snapshot.directory); throw error }
                 return owner
@@ -96,7 +103,7 @@ private final class CaptureFiles: @unchecked Sendable {
         DispatchQueue.main.async { self?.replacePeers(peers) }
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
-    },audio:broker)
+    },audio:broker,canStart:{ [files] in files.canStart() })
     var connected: Bool { peers.contains { $0.reconciled } }
     var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.meetings.contains { $0.sourceCount > 0 } } }
     var isRecording: Bool { captures.values.contains { $0.snapshot.phase == .recording && $0.savingSinceMs == nil } }
@@ -121,6 +128,8 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func record() async throws {
         guard !shuttingDown, !starting else { return }
+        LibraryLocationModel.shared.reload()
+        guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else { throw BrowserIPCError.unavailable }
         requestingRecord = true
         SessionPlaybackController.stopAll(); PlayerController.pauseActive()
         recordFailed = false
@@ -214,12 +223,19 @@ private final class CaptureFiles: @unchecked Sendable {
         if let key = value.key { microphones[key] = me }
         if resumingMe { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
     }
+    func setLibraryMoveBlocked(_ blocked: Bool) {
+        files.setMoving(blocked)
+        // Reconcile auto-record after a move without changing its preference.
+        if !blocked, started { service.setAutoRecord(autoRecord,microphone:true) }
+    }
     private func created(_ owner: OwnedBrowserCapture, info: BrowserAudioStart) async {
         let snapshot = owner.snapshot, id = snapshot.manifest.id
         guard !shuttingDown, snapshot.phase == .recording else {
             try? await broker.finish(owner); settle(owner.snapshot); return
         }
         let now = ProcessInfo.processInfo.systemUptime
+        let parent = snapshot.directory.deletingLastPathComponent().standardizedFileURL.path
+        if !LibraryLocationModel.shared.roots.contains(where:{ $0.standardizedFileURL.path == parent }) { LibraryStore.shared.reloadLocation() }
         startPolling()
         let origin = max(0,min(now,now - max(0,(Date().timeIntervalSince1970*1000 - Double(info.timelineOriginMs))/1000)))
         let input = CaptureInputLifecycle(capture:owner,originHostTime:AVAudioTime.hostTime(forSeconds:origin),microphone:{ Self.nativeInput(.me) },system:{ Self.nativeInput(.others) },failure:{ [weak self] _ in
