@@ -16,7 +16,6 @@ settings:
     DEVELOPMENT_TEAM: ""
     OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
-    CASSINI_APP_HARDENED_RUNTIME: YES
     SWIFT_STRICT_CONCURRENCY: targeted
 packages:
   CassiniKit:
@@ -151,7 +150,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini
         PRODUCT_NAME: Cassini
-        ENABLE_HARDENED_RUNTIME: "$(CASSINI_APP_HARDENED_RUNTIME)"
+        ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
         GENERATE_INFOPLIST_FILE: false
   CassiniWindowScreenshots:

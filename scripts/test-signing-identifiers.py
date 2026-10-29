@@ -46,10 +46,12 @@ class SigningIdentifiersTests(unittest.TestCase):
             self.sign(self.app/relative, 'io.codemyriad.cassini'+suffix)
     def sign(self, path, identifier):
         subprocess.run(['codesign','--force','--sign','-','--timestamp=none','--options','runtime','-i',identifier,str(path)],check=True,capture_output=True)
-    def inspect(self):
-        return subprocess.run(['python3',str(ROOT/'scripts/check-signing-identifiers.py'),str(self.app)],capture_output=True,text=True)
+    def inspect(self, strict=False):
+        command=['python3',str(ROOT/'scripts/check-signing-identifiers.py'),str(self.app)]
+        if strict:command.append('--require-hardened-runtime')
+        return subprocess.run(command,capture_output=True,text=True)
     def testValidFinishedBundle(self):
-        result = self.inspect();self.assertEqual(result.returncode,0,result.stderr)
+        result = self.inspect(strict=True);self.assertEqual(result.returncode,0,result.stderr)
     def testWrongHelperSigningIdentifierIsRejected(self):
         self.sign(self.app/'Contents/MacOS/cassini-browser-host','com.example.unrelated')
         result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('com.example.unrelated',result.stderr)
@@ -57,11 +59,29 @@ class SigningIdentifiersTests(unittest.TestCase):
         worker=self.app/'Contents/MacOS/cassini-whistle-worker'
         with worker.open('ab') as stream:stream.write(b'changed after build')
         result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('signed bytes changed',result.stderr)
-    def testMissingServiceHardenedRuntimeIsRejected(self):
+    def testAdHocRuntimePolicyAndStrictFlagCheck(self):
         service=self.app/'Contents/XPCServices/CassiniModelDownloads.xpc'
         subprocess.run(['codesign','--force','--sign','-','--timestamp=none','--options','0',
             '-i','io.codemyriad.cassini.models',str(service)],check=True,capture_output=True)
-        result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('missing hardened runtime',result.stderr)
+        result=self.inspect();self.assertEqual(result.returncode,0,result.stderr)
+        result=self.inspect(strict=True);self.assertNotEqual(result.returncode,0);self.assertIn('missing hardened runtime',result.stderr)
+    def testXcodeProductSigningSettings(self):
+        result=subprocess.run(['xcodebuild','-showBuildSettings','-json','-project',str(ROOT/'Cassini.xcodeproj'),'-alltargets'],
+            check=True,capture_output=True,text=True,timeout=90)
+        expected={'Cassini':'','CassiniQuickLook':'.quicklook','CassiniBrowserSetup':'.browser-setup',
+            'CassiniModelDownloads':'.models','CassiniBrowserHost':'.browser-host','CassiniControlHost':'.control-host',
+            'CassiniWhistleWorker':'.whistle-worker','CassiniParakeetWorker':'.parakeet-worker','CassiniWindowScreenshots':'.screenshots'}
+        found=set()
+        for entry in json.loads(result.stdout):
+            name=entry['target'];settings=entry['buildSettings']
+            if name not in expected:continue
+            found.add(name);self.assertEqual(settings['PRODUCT_BUNDLE_IDENTIFIER'],'io.codemyriad.cassini'+expected[name])
+            self.assertEqual(settings['ENABLE_HARDENED_RUNTIME'],'NO' if name=='CassiniWindowScreenshots' else 'YES',name)
+            self.assertEqual(settings['CODE_SIGN_INJECT_BASE_ENTITLEMENTS'],'YES' if name=='CassiniWindowScreenshots' else 'NO',name)
+            self.assertIn('--timestamp',settings['OTHER_CODE_SIGN_FLAGS'],name)
+            if name in ['CassiniBrowserHost','CassiniControlHost','CassiniWhistleWorker','CassiniParakeetWorker']:
+                self.assertIn('-i '+settings['PRODUCT_BUNDLE_IDENTIFIER'],settings['OTHER_CODE_SIGN_FLAGS'],name)
+        self.assertEqual(found,set(expected))
     def testWrongServiceBundleIdentifierIsRejected(self):
         path=self.app/'Contents/XPCServices/CassiniModelDownloads.xpc/Contents/Info.plist'
         info=plistlib.loads(path.read_bytes());info['CFBundleIdentifier']='com.example.unrelated';path.write_bytes(plistlib.dumps(info))

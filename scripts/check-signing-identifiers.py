@@ -11,6 +11,7 @@ import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app', type=Path)
+parser.add_argument('--require-hardened-runtime', action='store_true', help='Also require runtime flags for ad-hoc fixture code')
 args = parser.parse_args()
 app = args.app
 prefix = 'io.codemyriad.cassini'
@@ -45,9 +46,9 @@ for relative, suffix in bundles.items():
     bundle = app / relative
     info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
     assert info['CFBundleIdentifier'] == prefix + suffix, (bundle, info['CFBundleIdentifier'])
-    signature(bundle, prefix + suffix, suffix in ['.browser-setup','.models'])
+    signature(bundle, prefix + suffix, args.require_hardened_runtime)
 for name, suffix in tools.items():
-    signature(app / 'Contents/MacOS' / name, prefix + suffix)
+    signature(app / 'Contents/MacOS' / name, prefix + suffix, args.require_hardened_runtime)
 # Worker signing is part of the build, before the manifest is written. Signing
 # after restoration or packaging would invalidate these exact shipped hashes.
 for engine, paths in {

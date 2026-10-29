@@ -106,7 +106,7 @@ jobs:
           set -o pipefail
           xcodebuild build-for-testing -project Cassini.xcodeproj -scheme CassiniScreenshots -configuration Debug \
             -destination 'platform=macOS' -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CASSINI_APP_HARDENED_RUNTIME=NO 2>&1 | tee build/debug-build.log
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/debug-build.log
           codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
           python3 scripts/check-signing-identifiers.py build/Build/Products/Debug/Cassini.app
           python3 scripts/ci-products.py pack debug build/ci-upload/debug
@@ -132,7 +132,7 @@ jobs:
           PYTHON
           xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Release \
             -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CASSINI_APP_HARDENED_RUNTIME=NO 2>&1 | tee build/release-build.log
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/release-build.log
           codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
           python3 scripts/check-signing-identifiers.py build/Build/Products/Release/Cassini.app
           python3 scripts/ci-products.py pack release build/ci-upload/release
