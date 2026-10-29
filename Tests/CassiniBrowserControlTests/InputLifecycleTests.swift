@@ -32,6 +32,27 @@ import CassiniRecording
     func stop() { stops += 1; sink = nil }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testRejectedBrowserResumeRestartsOldMicWithoutEndingItsTrack() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Resume rollback",microphone:true)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        try await inputs.start()
+        try await inputs.select(me:true,others:false,atMs:100)
+        for index in 0..<63 { try owner.browserTrack(id:"r\(index)",label:"Other",kind:"remote",sampleRate:8000,channels:1) }
+        let before = owner.snapshot.manifest
+        mic.firstAt = 0.1
+        do { try await inputs.select(me:false,others:true,atMs:200); XCTFail("Browser resume must exceed track limit") } catch {}
+        XCTAssertTrue(owner.snapshot.me); XCTAssertFalse(owner.snapshot.others)
+        XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
+        XCTAssertEqual(mic.starts,2); XCTAssertEqual(mic.stops,1)
+        XCTAssertFalse(inputs.failedSides.contains(.me))
+        try await inputs.stop(); try await owner.finish()
+        let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
+        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
+    }
     @MainActor func testFailedSystemReplacementKeepsMicrophoneRunningInItsExistingTrack() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

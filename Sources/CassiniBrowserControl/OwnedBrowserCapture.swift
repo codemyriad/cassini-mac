@@ -97,7 +97,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                   ["remote","media","tab"].contains(kind), (8000...192000).contains(sampleRate), (1...2).contains(channels) else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
             let span = UUID().uuidString.lowercased()
-            try recording.transition(starting:[.init(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:id,labelSource:"browser",endsImmediately:!others)])
+            try commitTransition(starting:[.init(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:id,labelSource:"browser",endsImmediately:!others)])
             browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,rate:sampleRate,channels:channels,span:others ? span : nil)
             publish()
         }
@@ -171,10 +171,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if newOthers != self.others {
                 events.append(.init(atMs:time,type:"othersSource",source:!newOthers ? "none" : self.browserAlive ? "browser" : "none",reason:newOthers && !self.browserAlive ? self.fallbackReason ?? "user" : "user"))
             }
-            do { try self.recording.transition(starting:starts,ending:ends,events:events) }
-            catch let error as RecordingTransitionCommittedError {
-                self.nativeProblem = self.nativeProblem ?? error.localizedDescription; self.nativeProblemKind = "io"
-            }
+            try self.commitTransition(starting:starts,ending:ends,events:events)
             for id in Array(self.browserSources.keys) {
                 if !newOthers { self.browserSources[id]?.span = nil }
                 else if let span = spans[id] { self.browserSources[id]?.span = span }
@@ -194,7 +191,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard phase == .recording, browserAlive else { return }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid loss time.") }
             let events: [CaptureEvent] = others ? [.init(atMs:eventTime(atMs),type:"othersSource",source:"none",reason:"lost")] : []
-            try recording.transition(ending:browserSources.values.compactMap(\.span),events:events)
+            try commitTransition(ending:browserSources.values.compactMap(\.span),events:events)
             for id in Array(browserSources.keys) { browserSources[id]?.span = nil }
             browserAlive = false; fallbackReason = "lost"; browserLostUptime = lost; publish()
         }
@@ -205,7 +202,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard self.phase == .recording, self.others, !self.browserAlive else { return }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid source time.") }
             guard self.recording.manifest.events?.last(where:{ $0.type == "othersSource" })?.source != "none" else { return }
-            try self.recording.transition(events:[.init(atMs:self.eventTime(atMs),type:"othersSource",source:"none",reason:"lost")])
+            try self.commitTransition(events:[.init(atMs:self.eventTime(atMs),type:"othersSource",source:"none",reason:"lost")])
             self.systemReason = "user"
             self.publish()
         }
@@ -240,7 +237,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                     bytes = Data(pcm.dropFirst(trim*span.channels*2)); offset += Double(trim)/Double(span.rate)*1000
                 }
                 let events: [CaptureEvent] = span.side == .others ? [.init(atMs:offset,type:"othersSource",source:"system",reason:systemReason)] : []
-                try recording.transition(starting:[.init(id:id,label:span.label,kind:span.side == .me ? "microphone" : "system",sampleRate:span.rate,channels:span.channels,labelSource:"device")],events:events)
+                try commitTransition(starting:[.init(id:id,label:span.label,kind:span.side == .me ? "microphone" : "system",sampleRate:span.rate,channels:span.channels,labelSource:"device")],events:events)
                 span.registered = true; nativeSpans[id] = span
             }
             try recording.appendNative(id:id,pcm:bytes,offsetMs:offset); publish(force:first)
@@ -253,7 +250,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try sync {
             guard phase == .recording else { return }
             let live = ids.filter { nativeSpans[$0]?.registered == true }
-            if !live.isEmpty { try recording.transition(ending:live) }
+            if !live.isEmpty { try commitTransition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }
             reservedNative.remove(side)
             if let problem, !problem.isEmpty {
@@ -274,6 +271,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:kind) }
             catch { self.phase = .saved; self.publish(); throw error }
             self.phase = .saved; self.publish()
+        }
+    }
+    // Once the metadata rename succeeds, source state must follow it even if
+    // directory sync/retiring-file close fails. Preserve the diagnostic for Stop.
+    private func commitTransition(starting: [RecordingSource] = [], ending: [String] = [], events: [CaptureEvent] = []) throws {
+        do { try recording.transition(starting:starting,ending:ending,events:events) }
+        catch let error as RecordingTransitionCommittedError {
+            nativeProblem = nativeProblem ?? error.localizedDescription; nativeProblemKind = "io"
         }
     }
     private func eventTime(_ requested: Double) -> Double {

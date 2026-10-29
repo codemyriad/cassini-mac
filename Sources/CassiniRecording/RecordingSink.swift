@@ -165,7 +165,7 @@ public final class RecordingSink: @unchecked Sendable {
         lock.unlock()
     }
 
-    // Internal deterministic drain for package tests; never called from the audio callback.
+    // Drain before activating a prepared input; never called from the audio callback.
     public func flush() { queue.sync {} }
 
     /// Pause a live source without finalizing its file. A rejected source
