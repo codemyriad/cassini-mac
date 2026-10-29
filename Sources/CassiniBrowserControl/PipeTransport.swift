@@ -76,7 +76,7 @@ public final class BrowserPipeConnection: @unchecked Sendable {
         writer = DispatchQueue(label:"com.codemyriad.cassini.pipe-write." + peer.id.uuidString)
         readerDone.enter()
     }
-    public func send(_ data: Data) throws {
+    public func send(_ data: Data, closeAfter: Bool = false) throws {
         let packet = try FrameIO.normalized(data)
         lock.lock()
         guard !stopped else { lock.unlock(); throw BrowserIPCError.closed }
@@ -86,7 +86,7 @@ public final class BrowserPipeConnection: @unchecked Sendable {
         queued += packet.count
         writer.async { [self] in
             defer { lock.lock(); queued -= packet.count; lock.unlock() }
-            do { try FrameIO.writeFrame(output,data:packet,cancel:cancellation) }
+            do { try FrameIO.writeFrame(output,data:packet,cancel:cancellation); if closeAfter { close() } }
             catch { close() }
         }
         lock.unlock()
@@ -241,6 +241,7 @@ final class PipeEndpoint: ControlEndpoint, @unchecked Sendable {
     private let input: Int32, output: Int32, lease: Int32, serverLease: Int32
     private let cancellation = Cancellation()
     private let folder: URL
+    private let writeSeconds: UInt64
     init(root: URL, role: BrowserPeerRole, browser: String?) throws {
         try PipeFiles.directory(root)
         let clients = root.appendingPathComponent("clients",isDirectory:true); try PipeFiles.directory(clients)
@@ -267,13 +268,14 @@ final class PipeEndpoint: ControlEndpoint, @unchecked Sendable {
         let writeFD = try PipeFiles.openFile(published.appendingPathComponent("request"),flags:O_WRONLY,kind:S_IFIFO); descriptors.append(writeFD)
         Darwin.close(dummy); descriptors.removeAll { $0 == dummy }
         input = readFD; output = writeFD; lease = leaseFD; serverLease = server; folder = published
+        writeSeconds = role == .audio ? 15 : 5
         adopted = true
     }
     deinit {
         Darwin.close(input); Darwin.close(output); Darwin.close(lease); Darwin.close(serverLease)
         PipeFiles.retire(folder)
     }
-    func send(_ data: Data) throws { try FrameIO.writeFrame(output,data:FrameIO.normalized(data),cancel:cancellation) }
+    func send(_ data: Data) throws { try FrameIO.writeFrame(output,data:FrameIO.normalized(data),cancel:cancellation,seconds:writeSeconds) }
     func receive() throws -> Data? { try receive(deadline:nil) }
     func receive(deadline: UInt64?) throws -> Data? { try FrameIO.read(input,cancel:cancellation,deadline:deadline).map { try FrameIO.normalized($0) } }
     func stop() { cancellation.cancel() }

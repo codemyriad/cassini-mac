@@ -33,7 +33,7 @@ let package = Package(
     targets: [
         .target(name: "CassiniKit"),
         .executableTarget(name:"cassini-session-transition-probe",dependencies:["CassiniRecording","CassiniKit"],path:"Spikes/SessionTransitions"),
-        .target(name:"CassiniBrowserControl",dependencies:["CassiniKit","CassiniLibrary"]),
+        .target(name:"CassiniBrowserControl",dependencies:["CassiniKit","CassiniLibrary","CassiniRecording"]),
         .executableTarget(name:"cassini-control-host",dependencies:["CassiniBrowserControl"]),
         .testTarget(name:"CassiniBrowserControlTests",dependencies:["CassiniBrowserControl","CassiniKit"]),
         .target(name:"CassiniBrowserSetupProbe",path:"Spikes/BrowserSetup/Protocol"),
@@ -64,7 +64,7 @@ let package = Package(
         .testTarget(name: "CassiniPlaybackTests", dependencies: ["CassiniPlayback", "CassiniLibrary"]),
         .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers", "CassiniRecording"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors"), .copy("ExportGolden")]),
         .target(name: "CassiniRecording", dependencies: ["CassiniKit"]),
-        .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording", "CassiniLibrary"]),
+        .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording", "CassiniLibrary","CassiniBrowserControl"]),
         .testTarget(name: "CassiniRecordingTests", dependencies: ["CassiniRecording","CassiniKit","CassiniLibrary"], resources:[.copy("SessionEvents")]),
         .executableTarget(name: "cassini-inspect", dependencies: ["CassiniKit"]),
         .testTarget(

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CassiniKit
 import Darwin
 import CassiniLibrary
 
@@ -64,22 +65,47 @@ private final class HostState: @unchecked Sendable {
     let cancellation = Cancellation()
     private let lock = NSLock()
     private var failure: String?
-    func fail(_ error: Error) { lock.lock(); if failure == nil { failure = String(describing:error) }; lock.unlock(); cancellation.cancel() }
+    private var reported = false
+    private var errorCode = "io"
+    func reportProtocolError() { lock.lock(); reported = true; lock.unlock(); fail(BrowserIPCError.closed) }
+    func needsErrorFrame() -> String? { lock.lock(); defer { lock.unlock() }; return failure != nil && !reported ? errorCode : nil }
+    func fail(_ error: Error) {
+        lock.lock()
+        if failure == nil {
+            failure = String(describing:error)
+            if let ipc = error as? BrowserIPCError, case .framing = ipc { errorCode = "framing" }
+        }
+        lock.unlock(); cancellation.cancel()
+    }
     func error() -> String? { lock.lock(); defer { lock.unlock() }; return failure }
 }
 
 public enum BrowserControlHost {
     public static func run(environment: [String:String] = ProcessInfo.processInfo.environment) -> Int32 {
+        NativeHostBridge.run(role:.control,initial:nil,environment:environment)
+    }
+}
+public enum BrowserAudioHost {
+    public static func usesBroker(_ data: Data) -> Bool {
+        guard let message = try? JSONParser.parse(data) else { return false }
+        return message["type"]?.string == "start" && message["independent"]?.bool == true
+    }
+    public static func run(firstRequest: Data, environment: [String:String] = ProcessInfo.processInfo.environment) -> Int32 {
+        NativeHostBridge.run(role:.audio,initial:firstRequest,environment:environment)
+    }
+}
+private enum NativeHostBridge {
+    static func run(role: BrowserPeerRole, initial: Data?, environment: [String:String]) -> Int32 {
         // Both framed stdout and protected pipe writes must report EPIPE rather
         // than killing the process before its owned IPC lease can be released.
         signal(SIGPIPE,SIG_IGN)
         let state = HostState(), readers = DispatchGroup()
         var endpoint: (any ControlEndpoint)?
         do {
-            if let path = environment["CASSINI_CONTROL_SOCKET"], !path.isEmpty { endpoint = try TestSocketEndpoint(path:path) }
+            if role == .control, let path = environment["CASSINI_CONTROL_SOCKET"], !path.isEmpty { endpoint = try TestSocketEndpoint(path:path) }
             else {
                 let root = environment["CASSINI_CONTROL_PIPE_ROOT"].map { URL(fileURLWithPath:$0,isDirectory:true) } ?? PipeFiles.standardRoot
-                endpoint = try PipeEndpoint(root:root,role:.control,browser:BrowserCompanionConnection.parentBrowserName)
+                endpoint = try PipeEndpoint(root:root,role:role,browser:BrowserCompanionConnection.parentBrowserName)
             }
             guard let connection = endpoint else { throw BrowserIPCError.unavailable }
             try FrameIO.prepare(STDIN_FILENO); try FrameIO.prepare(STDOUT_FILENO)
@@ -89,18 +115,28 @@ public enum BrowserControlHost {
                 do {
                     while !state.cancellation.isCancelled, let data = try connection.receive() {
                         try FrameIO.writeFrame(STDOUT_FILENO,data:data,cancel:state.cancellation)
+                        if role == .audio, (try? JSONParser.parse(data)["type"]?.string) == "error" {
+                            state.reportProtocolError(); connection.stop(); break
+                        }
                     }
                 } catch { if !state.cancellation.isCancelled { state.fail(error) } }
             }
             do {
+                if let initial { try connection.send(initial) }
                 while !state.cancellation.isCancelled, let data = try FrameIO.read(STDIN_FILENO,cancel:state.cancellation) {
                     try connection.send(data)
                 }
             } catch { if !state.cancellation.isCancelled { state.fail(error) } }
         } catch { state.fail(error) }
         state.cancellation.cancel(); endpoint?.stop()
-        _ = readers.wait(timeout:.now() + 2)
-        if let error = state.error() { FileHandle.standardError.write(Data(("Cassini control host: " + error + "\n").utf8)); return 78 }
+        let drained = readers.wait(timeout:.now() + 2) == .success
+        if role == .audio, drained, let code = state.needsErrorFrame() {
+            let response = JSON.object([("type",.string("error")),("code",.string(code)),("message",.string("The browser audio connection was interrupted."))])
+            if let data = try? response.encoded(maximumBytes:FrameIO.maximum) {
+                try? FrameIO.writeFrame(STDOUT_FILENO,data:data,cancel:Cancellation())
+            }
+        }
+        if let error = state.error() { FileHandle.standardError.write(Data(("Cassini native host: " + error + "\n").utf8)); return 78 }
         return 0
     }
 }

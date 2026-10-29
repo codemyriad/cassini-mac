@@ -20,10 +20,11 @@ enum FrameIO {
     }
     static func normalized(_ data: Data) throws -> Data {
         guard !data.isEmpty, data.count <= maximum else { throw BrowserIPCError.framing }
-        let json = try JSONParser.parse(data)
+        let json: JSON
+        do { json = try JSONParser.parse(data) } catch { throw BrowserIPCError.framing }
         guard json.object != nil else { throw BrowserIPCError.framing }
         if json["type"]?.string == "hello", json["version"]?.int != 1 { throw BrowserIPCError.framing }
-        return try json.encoded(maximumBytes:maximum)
+        do { return try json.encoded(maximumBytes:maximum) } catch { throw BrowserIPCError.framing }
     }
     static func wait(_ fd: Int32, _ events: Int16, cancel: Cancellation, deadline: UInt64? = nil, alive: (@Sendable () -> Bool)? = nil) throws {
         while true {
@@ -78,10 +79,10 @@ enum FrameIO {
             }
         }
     }
-    static func writeFrame(_ fd: Int32, data: Data, cancel: Cancellation) throws {
+    static func writeFrame(_ fd: Int32, data: Data, cancel: Cancellation, seconds: UInt64 = 5) throws {
         guard !data.isEmpty, data.count <= maximum else { throw BrowserIPCError.framing }
         var length = UInt32(data.count).littleEndian
         var output = withUnsafeBytes(of:&length) { Data($0) }; output.append(data)
-        try write(fd,bytes:output,cancel:cancel)
+        try write(fd,bytes:output,cancel:cancel,seconds:seconds)
     }
 }

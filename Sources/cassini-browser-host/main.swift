@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniRecording
+import CassiniBrowserControl
 import CassiniLibrary
 import Foundation
 import MachO
@@ -38,6 +39,8 @@ if arguments.first == "--install-extension" || arguments.first == "--uninstall-e
 // stdout belongs exclusively to Chrome's length-prefixed protocol.
 var host: BrowserRecordingHost?
 do {
+    let first = try NativeMessageFraming.read(from:.standardInput)
+    if let first, BrowserAudioHost.usesBroker(first) { exit(BrowserAudioHost.run(firstRequest:first)) }
     let connection = arguments.first?.hasPrefix("chrome-extension://") == true
         ? try? BrowserCompanionConnection(browser:BrowserCompanionConnection.parentBrowserName) : nil
     defer { withExtendedLifetime(connection) {} }
@@ -47,11 +50,13 @@ do {
         }
     }; host = recorder
 
-    while let data = try NativeMessageFraming.read(from: .standardInput) {
+    func respond(_ data: Data) throws {
         let response = try recorder.receive(data)
         try? connection?.update(recordingDirectory:recorder.session?.manifest.state == "recording" ? recorder.session?.directory : nil)
-        try NativeMessageFraming.write(JSONSerialization.data(withJSONObject: response), to: .standardOutput)
+        try NativeMessageFraming.write(JSONSerialization.data(withJSONObject:response),to:.standardOutput)
     }
+    if let first { try respond(first) }
+    while let data = try NativeMessageFraming.read(from:.standardInput) { try respond(data) }
     try recorder.disconnect()
 } catch {
     try? host?.disconnect(problem: error.localizedDescription)
