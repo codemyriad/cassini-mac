@@ -312,11 +312,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.record()
             try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.frames > 0 } == true }
             try require(collection.first?.snapshot.directory.deletingLastPathComponent().resolvingSymlinksInPath().path == destination.resolvingSymlinksInPath().path,"Recording uses the relocated Library")
+            let relocatedID = try (collection.first?.snapshot.manifest.id).unwrap()
+            try await wait { LibraryStore.shared.meetings.contains { $0.id == relocatedID && $0.state.lifecycle == .recording } }
             await collection.stopAndWait()
             try FileManager.default.moveItem(at:destination,to:renamed)
             try await collection.record()
             try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.frames > 0 } == true }
             try require(collection.first?.snapshot.directory.deletingLastPathComponent().resolvingSymlinksInPath().path == renamed.resolvingSymlinksInPath().path,"Capture follows the renamed bookmark")
+            let renamedID = try (collection.first?.snapshot.manifest.id).unwrap()
+            try await wait { LibraryStore.shared.meetings.contains { $0.id == renamedID && $0.state.lifecycle == .recording && $0.folder.deletingLastPathComponent().resolvingSymlinksInPath().path == renamed.resolvingSymlinksInPath().path } }
             try require(!FileManager.default.fileExists(atPath:destination.path),"Old published path is never recreated")
             await collection.stopAndWait()
             report["recordingFollowsRelocatedBookmark"] = true
