@@ -30,12 +30,12 @@ except subprocess.TimeoutExpired as error:
 (args.output/'recording-comfort-stderr.txt').write_text(result.stderr)
 assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
 report = json.loads(result.stdout)
-for name in ('recordingComfort', 'sameNameCaptureIsolation', 'shortcutRegistered', 'noteTimesPreserved', 'titleReset', 'browserClockAndSources', 'diskWarningLifecycle', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
+for name in ('recordingComfort', 'sameNameCaptureIsolation', 'shortcutRegistered', 'existingNotesPreserved', 'titleReset', 'browserClockAndSources', 'diskWarningLifecycle', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
     assert report[name] is True, (name, report)
 menu = report['menu']
 assert menu['assertionHeld'] is True and menu['levels'][0]['silent'] is True
-assert [action['id'] for action in menu['actions']] == ['stop', 'note', 'open']
+assert [action['id'] for action in menu['actions']] == ['stop', 'open']
 assert menu['actions'][0]['shortcut'] == '⌥⌘R'
 (args.output/'recording-comfort.json').write_text(json.dumps(report, indent=2)+'\n')
 (args.output/'recording-menu.json').write_text(json.dumps(menu, indent=2)+'\n')
-print('PASS real RAM capture, title/notes, 20-second silence, global registration, IOPM lease and Stop/Saving')
+print('PASS real RAM capture, title, preserved notes, 20-second silence, global registration, IOPM lease and Stop/Saving')

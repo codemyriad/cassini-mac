@@ -150,6 +150,27 @@ struct MeetingExportTests {
         let hashes = try JSONDecoder().decode([String:String].self,from:Data(contentsOf:dir.appendingPathComponent("unsigned-sha256.json")))
         return try .builtForTests(directory:dir,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
     }
+    @Test func existingNotesSurviveTitleAndSpeakerEditsAndStillExport() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let original = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let first = try LibraryImport.copy(original,into:root.appendingPathComponent("Library"))
+        let writer = try MeetingMetadataWriter(directory:first.folder,id:first.id)
+        let notes: [[String:Any]] = [["atMs":120,"text":" Keep this note\nwith its whitespace. "],["atMs":10,"text":"Earlier note — café"]]
+        let expected = try JSONSerialization.data(withJSONObject:notes,options:.sortedKeys)
+        try writer.transaction { $0["notes"] = notes }
+        try writer.transaction { $0["title"] = "Edited title"; $0["titleSource"] = "user" }
+        try writer.transaction { $0["speakers"] = [["id":"track-original","name":"Ana","provenance":"user","colourIndex":0]] }
+        let metadata = try JSONSerialization.jsonObject(with:Data(contentsOf:first.folder.appendingPathComponent("meeting.json"))) as! [String:Any]
+        #expect(try JSONSerialization.data(withJSONObject:metadata["notes"]!,options:.sortedKeys) == expected)
+        let edited = try #require(LibraryScanner(root:first.folder.deletingLastPathComponent()).scan().meetings.first)
+        let exported = try MeetingFileExporter.cassini(edited,assets:nil,temporaryRoot:root)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.state == .ok)
+        let carried = try #require(file.manifest?.raw["x"]?["gocassini.com"]?["notes"])
+        #expect(try JSONParser.parse(expected) == carried)
+        let imported = try LibraryImport.copy(exported.url,into:root.appendingPathComponent("RoundTrip"))
+        #expect(imported.notes == edited.notes && imported.notes.map(\.atMs) == [120,10])
+    }
     @Test func stereoOpusRetagKeepsDigestChannelsNotesAndOtherExtensions() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let original = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))

@@ -10,7 +10,7 @@ r=subprocess.run(command,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),cap
 a.output.parent.mkdir(parents=True,exist_ok=True);a.output.with_suffix('.stderr.txt').write_text(r.stderr)
 assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
 report=json.loads(r.stdout)
-for key in ['recordingClockAdvances','savingUsesProducerEnd','lifecycleOnlySavingHolds','notesUseStoppedTime']:assert report[key] is True,report
+for key in ['recordingClockAdvances','savingUsesProducerEnd','lifecycleOnlySavingHolds']:assert report[key] is True,report
 assert report['audioDevicesOpened'] is False and report['documentWindowsOpened'] is False,report
 a.output.write_text(json.dumps(report,indent=2)+'\n')
-print('PASS signed app: Saving uses the producer end, freezes on reopen and stamps notes at the stopped time')
+print('PASS signed app: Saving uses the producer end, freezes on reopen')

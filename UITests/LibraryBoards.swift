@@ -245,9 +245,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["Change what is recorded"].isEnabled)
         let exact = NSPredicate { _,_ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exact,object:nil)],timeout:10),.completed)
+        XCTAssertFalse(window.textViews["recording-notes"].exists)
+        XCTAssertFalse(text("Pinned to the moment you type it.",in:window))
         capture(window,name:"recording")
     }
-    @MainActor func testRecordingTitleNotesAndHiddenControls() throws {
+    @MainActor func testRecordingTitleAndHiddenControls() throws {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
@@ -259,13 +261,12 @@ final class LibraryBoards: XCTestCase {
         let title = window.textFields["recording-title"]
         XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
-        let notes = window.textViews["recording-notes"]
-        notes.click(); notes.typeText("A note to keep")
+        XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
         window.buttons["recording-open-current"].click()
         XCTAssertTrue(title.waitForExistence(timeout:10))
         XCTAssertEqual(title.value as? String,"Title from the live page")
-        XCTAssertTrue((notes.value as? String ?? "").contains("A note to keep"))
+        XCTAssertFalse(window.textViews["recording-notes"].exists)
         app.typeKey("h",modifierFlags:.command)
         let status = app.descendants(matching:.any)["recording-menu-bar"]
         XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription); status.click()
@@ -278,13 +279,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(body["title"] as? String,"Title from the live page")
         XCTAssertEqual(body["noSleep"] as? String,"Your Mac will not sleep while Cassini records.")
         let actions = try XCTUnwrap(body["actions"] as? [[String:Any]])
-        XCTAssertEqual(actions.compactMap { $0["id"] as? String },["stop","note","open"])
+        XCTAssertEqual(actions.compactMap { $0["id"] as? String },["stop","open"])
         XCTAssertEqual(actions.first?["shortcut"] as? String,"⌥⌘R")
         let dump = XCTAttachment(data:data,uniformTypeIdentifier:"public.json")
         dump.name = "recording-menu.json"; dump.lifetime = .keepAlways; add(dump)
-        app.buttons["recording-menu-note"].click()
-        XCTAssertTrue(notes.waitForExistence(timeout:10))
-        notes.typeText("\nFrom the hidden menu")
+        app.buttons["recording-menu-open"].click()
+        XCTAssertTrue(title.waitForExistence(timeout:10))
         app.typeKey("h",modifierFlags:.command)
         let finder = XCUIApplication(bundleIdentifier:"com.apple.finder"); finder.activate()
         finder.typeKey("r",modifierFlags:[.option,.command])
@@ -298,57 +298,6 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
         window.buttons["recording-stop"].click()
-    }
-    @MainActor func testNativeNotesPasteUndoAndBodyStartInsertionKeepExactTimes() throws {
-        struct Note: Codable, Equatable { let atMs: Int64?; let text: String }
-        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
-        defer { app.terminate() }
-        let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
-        window.buttons["first-run-record"].click()
-        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
-        window.sheets.buttons["record-first-start"].click()
-        let notes = window.textViews["recording-notes"], title = window.textFields["recording-title"]
-        XCTAssertTrue(notes.waitForExistence(timeout:10),app.debugDescription)
-        notes.click(); notes.typeText("First"); title.click()
-        let payload = window.staticTexts["recording-notes-fixture-payload"]
-        XCTAssertTrue(payload.waitForExistence(timeout:5),app.debugDescription)
-        func all() throws -> [Note] {
-            let text = try XCTUnwrap(payload.value as? String)
-            return try JSONDecoder().decode([Note].self,from:Data(text.utf8))
-        }
-        func read() throws -> [Note] { try all().filter { !$0.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty } }
-        func wait(_ predicate: @escaping () -> Bool) {
-            let condition = NSPredicate { _,_ in predicate() }
-            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:condition,object:nil)],timeout:10),.completed,app.debugDescription)
-        }
-        wait { (try? read().map(\.text)) == ["First"] && (notes.value as? String ?? "").hasSuffix("  First") }
-        let original = try read(), rendered = try XCTUnwrap(notes.value as? String)
-        XCTAssertNotNil(original.first?.atMs)
-        let board = NSPasteboard.general, previous = board.string(forType:.string)
-        defer { board.clearContents(); if let previous { board.setString(previous,forType:.string) } }
-        board.clearContents(); board.setString("Intro\n" + rendered + " updated",forType:.string)
-        notes.click(); app.typeKey("a",modifierFlags:.command); app.typeKey("v",modifierFlags:.command)
-        wait { (try? read().map(\.text)) == ["Intro","First updated"] }
-        let pasted = try read()
-        XCTAssertEqual(pasted[1].atMs,original[0].atMs)
-        app.typeKey("z",modifierFlags:.command)
-        wait { (try? read()) == original }
-        app.typeKey("z",modifierFlags:[.command,.shift])
-        wait { (try? read()) == pasted }
-        app.typeKey("z",modifierFlags:.command)
-        wait { (try? read()) == original }
-        let restoredText = try XCTUnwrap(notes.value as? String)
-        let body = try XCTUnwrap(restoredText.range(of:"First"))
-        app.typeKey(.upArrow,modifierFlags:.command)
-        for _ in 0..<body.lowerBound.utf16Offset(in:restoredText) { app.typeKey(.rightArrow,modifierFlags:[]) }
-        app.typeKey(.return,modifierFlags:[])
-        wait { (try? all().count) == 2 && (try? read()) == original }
-        XCTAssertTrue((notes.value as? String ?? "").contains("\n"))
-        let report = try JSONEncoder().encode(["original":original,"paste":pasted,"afterSplit":try read()])
-        let evidence = XCTAttachment(data:report,uniformTypeIdentifier:"public.json")
-        evidence.name = "native-note-timestamps.json"; evidence.lifetime = .keepAlways; add(evidence)
-        window.buttons["recording-page-stop"].click()
     }
     @MainActor func testRecordFirstBoard() throws {
         let app = try launch("record-first", fixture: "first-record"); defer { app.terminate() }

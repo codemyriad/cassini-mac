@@ -10,7 +10,6 @@ struct RecordingPageView: View {
     @State private var model: RecordingPageModel
     @State private var recorder = RecordingController.shared
     @FocusState private var titleFocused: Bool
-    @FocusState private var notesFocused: Bool
     init(detail: MeetingDetailModel, format: LibraryFormat) {
         self.detail = detail; self.format = format
         _model = State(initialValue: RecordingPageModel.editor(for: detail.meeting))
@@ -74,22 +73,7 @@ struct RecordingPageView: View {
                         } else { Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true } }
                     }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-source-notice")
                 }
-                VStack(alignment:.leading,spacing:6) {
-                    caption("recording.notes.label")
-                    TextEditor(text:Binding(get:{ model.notesText },set:{ value in
-                        model.notesText = value; model.changeNotes()
-                    })).font(.system(size:13)).monospacedDigit().scrollContentBackground(.hidden)
-                        .padding(8).frame(height:80).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:6))
-                        .overlay { RoundedRectangle(cornerRadius:6).stroke(Color.secondary.opacity(0.25)) }
-                        .focused($notesFocused).accessibilityLabel(UXText.text("recording.notes.label")).accessibilityIdentifier("recording-notes")
-                        .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
-                    Text(UXText.text("recording.notes.caption")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
-                    #if DEBUG
-                    if RecordingFixture.enabled {
-                        RecordingNotesFixturePayload(json:model.fixtureNotesJSON).frame(width:1,height:1).opacity(0.01)
-                    }
-                    #endif
-                }
+
             }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
         }.background(Color(nsColor:.textBackgroundColor))
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
@@ -101,14 +85,7 @@ struct RecordingPageView: View {
                     HStack { Spacer(); Button(UXText.text("common.close")) { explainingFallback = false }.keyboardShortcut(.defaultAction) }
                 }.font(.system(size:13)).padding(26).frame(width:480).onExitCommand { explainingFallback = false }
             }
-            .onAppear {
-                model.update(detail.meeting)
-                if RecordCoordinator.shared.focusNotesWhenOpened { notesFocused = true; RecordCoordinator.shared.focusNotesWhenOpened = false }
-            }
-            .onChange(of:RecordCoordinator.shared.focusNotesWhenOpened) { _,focus in
-                if focus { notesFocused = true; RecordCoordinator.shared.focusNotesWhenOpened = false }
-            }
-            .onChange(of:notesFocused) { _,focused in if !focused { model.formatNotes(); model.flush() } }
+            .onAppear { model.update(detail.meeting) }
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
             .onChange(of:detail.meeting.state.lifecycle) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
@@ -162,15 +139,3 @@ struct RecordingLevelMeter: View {
         }.accessibilityRepresentation { ProgressView(value:Double(max(0,min(1,level)))).accessibilityLabel(label) }
     }
 }
-
-#if DEBUG
-/// Exact model timestamps for the hosted native editor test, never ordinary UI.
-private struct RecordingNotesFixturePayload: NSViewRepresentable {
-    let json: String
-    func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(labelWithString:json)
-        field.setAccessibilityIdentifier("recording-notes-fixture-payload"); return field
-    }
-    func updateNSView(_ field: NSTextField, context: Context) { field.stringValue = json }
-}
-#endif

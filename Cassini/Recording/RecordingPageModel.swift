@@ -8,22 +8,13 @@ import Observation
 private actor RecordingEdits {
     let directory: URL
     let id: UUID
-    private var titleToken = 0, notesToken = 0
+    private var titleToken = 0
     init(directory: URL, id: UUID) { self.directory = directory; self.id = id }
     func title(_ title: String, token: Int) throws {
         guard token > titleToken else { return }; titleToken = token
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
             metadata["title"] = title.isEmpty ? NSNull() : title as Any
             metadata["titleSource"] = title.isEmpty ? "meeting-window" : "user"
-        }
-    }
-    func notes(_ notes: [RecordingNotes.Line], token: Int) throws {
-        guard token > notesToken else { return }; notesToken = token
-        try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
-            metadata["notes"] = notes.compactMap { note -> [String:Any]? in
-                guard let time = note.atMs, !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-                return ["atMs":time,"text":note.text]
-            }
         }
     }
 }
@@ -35,26 +26,25 @@ private actor RecordingEdits {
         if let model = editors[meeting.folder.path] { return model }
         // Keep the current editor across Back/Open, even before the watcher has
         // observed its last write. Retain older editors only while writes settle.
-        editors = editors.filter { $0.value.titleTask != nil || $0.value.notesTask != nil }
+        editors = editors.filter { $0.value.titleTask != nil }
         let model = RecordingPageModel(meeting)
         editors[meeting.folder.path] = model; return model
     }
     static func discard(for folder: URL) async {
         guard let model = editors.removeValue(forKey:folder.path) else { return }
         model.discarded = true
-        model.titleDirty = false; model.notesDirty = false
-        model.titleTask?.cancel(); model.notesTask?.cancel(); model.voiceTask?.cancel()
-        await model.titleTask?.value; await model.notesTask?.value
+        model.titleDirty = false
+        model.titleTask?.cancel(); model.voiceTask?.cancel()
+        await model.titleTask?.value
     }
-    static var hasPendingEdits: Bool { editors.values.contains { $0.titleTask != nil || $0.notesTask != nil } }
+    static var hasPendingEdits: Bool { editors.values.contains { $0.titleTask != nil } }
     static func flushAll() async {
         let models = Array(editors.values)
         for model in models { model.flush() }
-        for model in models { await model.titleTask?.value; await model.notesTask?.value }
+        for model in models { await model.titleTask?.value }
     }
     private(set) var meeting: LibraryMeeting
     var title: String
-    var notesText: String
     private var cachedVoiceCount: Int = 0
     var voiceCount: Int {
         if let owned { return owned.snapshot.manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count }
@@ -63,13 +53,9 @@ private actor RecordingEdits {
     private var discarded = false
     private(set) var frozen = false
     @ObservationIgnored private let edits: RecordingEdits
-    @ObservationIgnored private var notes: RecordingNotes
     @ObservationIgnored private var titleTask: Task<Void,Never>?
-    @ObservationIgnored private var notesTask: Task<Void,Never>?
     @ObservationIgnored private var titleGeneration = 0
-    @ObservationIgnored private var notesGeneration = 0
     @ObservationIgnored private var titleDirty = false
-    @ObservationIgnored private var notesDirty = false
     @ObservationIgnored private var voiceTask: Task<Void,Never>?
     @ObservationIgnored private var sourceGeneration = 0
     @ObservationIgnored private var liveAnchor = ProcessInfo.processInfo.systemUptime
@@ -77,10 +63,6 @@ private actor RecordingEdits {
     private init(_ meeting: LibraryMeeting) {
         self.meeting = meeting; title = meeting.title ?? UXText.text("library.untitled")
         edits = RecordingEdits(directory: meeting.folder, id: meeting.id)
-        let initial = meeting.notes.flatMap { note in note.text.components(separatedBy:"\n").map { RecordingNotes.Line(atMs:note.atMs,text:$0) } }
-        let displayed = initial.map { UXText.text("recording.notes.entry", ["position":LibraryFormat.position($0.atMs ?? 0),"text":$0.text]) }.joined(separator: "\n")
-        notesText = displayed
-        notes = RecordingNotes(lines:initial,displayed:displayed)
         liveElapsed = meeting.state.liveMs ?? meeting.durationMs ?? 0
         #if DEBUG
         frozen = LibraryLaunchContext.current.screenshot
@@ -160,28 +142,7 @@ private actor RecordingEdits {
         if owned != nil { CaptureCollection.shared.title(meeting.id,displayTitle) }
         titleDirty = true; scheduleTitle()
     }
-    func changeNotes() {
-        guard !frozen, !discarded else { return }
-        let undo = (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
-        let restoration: RecordingNotes.Restoration? = undo?.isUndoing == true ? .undo : (undo?.isRedoing == true ? .redo : nil)
-        notes.edit(notesText,atMs:elapsedMs,restoration:restoration) { LibraryFormat.position($0) + "  " }
-        notesDirty = true; scheduleNotes()
-    }
-    #if DEBUG
-    var fixtureNotesJSON: String {
-        _ = notesText // Track the same edits as the native editor binding.
-        let value: [[String:Any]] = notes.lines.map { ["atMs":$0.atMs.map { NSNumber(value:$0) } ?? NSNull(),"text":$0.text] }
-        return String(decoding:(try? JSONSerialization.data(withJSONObject:value,options:[.sortedKeys])) ?? Data("[]".utf8),as:UTF8.self)
-    }
-    #endif
-    func formatNotes() {
-        notesText = notes.lines.map { note in
-            guard let at = note.atMs else { return note.text }
-            return UXText.text("recording.notes.entry", ["position":LibraryFormat.position(at),"text":note.text])
-        }.joined(separator:"\n")
-        notes.reformat(notesText)
-    }
-    func flush() { guard !discarded else { return }; if titleDirty { scheduleTitle(immediate:true) }; if notesDirty { scheduleNotes(immediate:true) } }
+    func flush() { guard !discarded else { return }; if titleDirty { scheduleTitle(immediate:true) } }
     private func scheduleTitle(immediate: Bool = false) {
         titleTask?.cancel(); titleGeneration += 1
         let generation = titleGeneration, value = title.trimmingCharacters(in:.whitespacesAndNewlines)
@@ -192,17 +153,6 @@ private actor RecordingEdits {
                 try Task.checkCancellation(); try await edits.title(value,token:generation)
                 guard titleGeneration == generation else { return }; titleDirty = false
                 if native { RecordingController.shared.title = displayTitle }
-            } catch is CancellationError {} catch { NSApp.presentError(error) }
-        }
-    }
-    private func scheduleNotes(immediate: Bool = false) {
-        notesTask?.cancel(); notesGeneration += 1; let generation = notesGeneration, value = notes.lines
-        notesTask = Task {
-            defer { if notesGeneration == generation { notesTask = nil } }
-            do {
-                if !immediate { try await Task.sleep(for:.milliseconds(400)) }
-                try Task.checkCancellation(); try await edits.notes(value,token:generation)
-                if notesGeneration == generation { notesDirty = false }
             } catch is CancellationError {} catch { NSApp.presentError(error) }
         }
     }

@@ -3072,58 +3072,6 @@
    "status": "drawn"
   },
   {
-   "id": "recording.notes.caption",
-   "en": "Each note is pinned to the moment you type it.",
-   "platforms": [
-    "gnome",
-    "mac"
-   ],
-   "role": "caption",
-   "boards": [
-    "Recording",
-    "Recording-mac"
-   ],
-   "milestone": "UX6",
-   "note": "Small dim caption under the notes area. Notes are stored with their position in the app-owned meeting.json (HARMONY 4).",
-   "status": "drawn"
-  },
-  {
-   "id": "recording.notes.entry",
-   "en": "{position}  {text}",
-   "platforms": [
-    "gnome",
-    "mac"
-   ],
-   "role": "line",
-   "boards": [
-    "Recording",
-    "Recording-mac"
-   ],
-   "milestone": "UX6",
-   "placeholders": {
-    "position": "format.position when typing started (e.g. 00:11:40)",
-    "text": "what the person typed"
-   },
-   "note": "A structural template, not prose: the position, TWO spaces, then the text, one note per line. Not drawn: the separator between notes and how the position is inserted while typing. Keep both apps identical.",
-   "status": "drawn"
-  },
-  {
-   "id": "recording.notes.label",
-   "en": "Notes",
-   "platforms": [
-    "gnome",
-    "mac"
-   ],
-   "role": "label",
-   "boards": [
-    "Recording",
-    "Recording-mac"
-   ],
-   "milestone": "UX6",
-   "note": "Small bold dim label above the notes text area. Notes in the Meeting view are not drawn (HARMONY 11).",
-   "status": "drawn"
-  },
-  {
    "id": "recording.others.browserVoices",
    "en": "Listening inside your browser · {n} voices",
    "platforms": [
