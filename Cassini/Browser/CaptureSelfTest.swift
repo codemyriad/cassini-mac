@@ -126,6 +126,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         guard CaptureFixture.enabled, let root = RecordingFixture.root else { NSApp.terminate(nil); return }
         let collection = CaptureCollection.shared
         var profiles: [CaptureProbeProfile] = []
+        var deferredRoot: URL?
         var report: [String:Any] = [:]
         var stage = "start protected service"
         do {
@@ -141,6 +142,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await one.ready(); try await two.ready()
             try await wait { collection.peers.filter(\.reconciled).count == 2 && collection.hasCalls }
             stage = "start two profiles"
+            CaptureFixture.silentMicrophone = true
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
             try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
@@ -150,6 +152,50 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let second = try collection.captures.values.first { $0.snapshot.manifest.title == two.title }.unwrap()
             try require(first.snapshot.directory != second.snapshot.directory,"Profiles have distinct owned folders")
             report["twoProfilesSameTabIndependent"] = true
+            stage = "owned recording surfaces and real silent-mic interval"
+            try require(RecordingOverview.active && RecordingOverview.recordCommandTitle == UXText.text("common.stop"),"File Record command reflects an owned recording")
+            try require(LibraryMoveCoordinator.shared.requiresRecordingConfirmation,"Move requires confirmation during an owned capture")
+            try await wait { LibraryStore.shared.selected.map { collection.captures[$0.id] != nil } == true }
+            let originalMeeting = try LibraryStore.shared.meetings.first { $0.id == first.snapshot.manifest.id }.unwrap()
+            let originalEditor = RecordingPageModel.editor(for:originalMeeting)
+            let duplicates = root.appendingPathComponent(".same-id-other-root")
+            let duplicate = try RecordingSession(parent:duplicates,title:"Other folder",source:"macos",id:first.snapshot.manifest.id)
+            try duplicate.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:8000,channels:1)
+            try duplicate.appendNative(id:"mic",pcm:Data(repeating:1,count:160),offsetMs:0); try duplicate.finish()
+            try MeetingMetadataWriter(directory:duplicate.directory,id:duplicate.manifest.id).createIfNeeded()
+            let otherMeeting = try LibraryScanner(root:duplicates).scan().meetings.first.unwrap()
+            try require(originalEditor.owned != nil && RecordingPageModel.editor(for:otherMeeting).owned == nil,"Recording controls match the folder as well as UUID")
+            report["ownedEditorUsesFolderIdentity"] = true
+            MeetingNavigation.shared.open(originalMeeting)
+            try await Task.sleep(for:.seconds(20.25))
+            try require(RecordingOverview.microphoneSilent && originalEditor.microphoneSilent,"Owned silent microphone is shown after twenty real seconds")
+            try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
+            CaptureFixture.silentMicrophone = false
+            try await wait { !RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent }
+            report["ownedSilenceMatchesMenuAndPage"] = true
+            stage = "background deferred move preserves unrelated work"
+            let previous = root.deletingLastPathComponent().appendingPathComponent("CassiniDeferredCapture-" + UUID().uuidString)
+            deferredRoot = previous
+            let deferred = try RecordingSession(parent:previous,title:"Deferred copy",source:"macos")
+            try deferred.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:8000,channels:1)
+            try deferred.appendNative(id:"mic",pcm:Data(repeating:0,count:160),offsetMs:0); try deferred.finish()
+            let deferredMetadata = try MeetingMetadataWriter(directory:deferred.directory,id:deferred.manifest.id)
+            try deferredMetadata.createIfNeeded()
+            try Data("{\"items\":[{\"speaker\":\"mic\",\"startMs\":0,\"endMs\":1,\"text\":\"Private\"}]}".utf8).write(to:deferred.directory.appendingPathComponent("transcript.json"))
+            try deferredMetadata.transaction { $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]] }
+            try LibraryLocation(primary:root,previous:[previous],pendingMoves:[.init(source:previous,folderName:deferred.directory.lastPathComponent)]).write(file:LibraryLaunchContext.locationFile)
+            LibraryStore.shared.reloadLocation()
+            try await wait { LibraryStore.shared.loaded }
+            MeetingNavigation.shared.open(originalMeeting)
+            let exporter = MeetingExportCoordinator.shared
+            exporter.show(otherMeeting)
+            try require(exporter.showing,"Private export presentation is active before background Move")
+            LibraryMoveCoordinator.shared.maybeRetryDeferred()
+            try await wait { !LibraryMoveCoordinator.shared.busy && LibraryMoveCoordinator.shared.waitingCount == 0 }
+            try require(exporter.showing && MeetingNavigation.shared.detail?.meeting.folder.standardizedFileURL.path == originalMeeting.folder.standardizedFileURL.path,"Background Move keeps unrelated navigation and export presentation")
+            try require(FileManager.default.fileExists(atPath:root.appendingPathComponent(deferred.directory.lastPathComponent).path),"Deferred recording moved to the Library")
+            exporter.cancel()
+            report["deferredMovePreservesUnrelatedViewAndExport"] = true
             stage = "change per-meeting sources"
             try await collection.select(first.snapshot.manifest.id,me:false,others:true)
             let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
@@ -162,6 +208,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["realSelectionUsesOwnedInputLifecycle"] = true
             stage = "stop only first meeting"
             collection.stop(first.snapshot.manifest.id)
+            try require(MeetingNavigation.shared.detail == nil,"Stop returns the viewed recording to the Library")
+            try require(RecordingOverview.saving && !LibraryMoveCoordinator.shared.canChoose,"Move is disabled while an owned recording saves")
+            report["ownedStopReturnsToLibraryBeforeFlush"] = true
             try await wait { first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.allSatisfy { $0.ended == true } }
             let stoppedMicFrames = first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await Task.sleep(for:.milliseconds(100))
@@ -250,6 +299,16 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
             try require(fallbacks == [second.snapshot.manifest.id],"A normal native start must not announce browser fallback")
             report["nativeStartDoesNotReportFallback"] = true
+            let nativeMenu = RecordingMenuPayload(recorder:.shared,runtime:.shared)
+            try require(nativeMenu.sourceLines?.contains(UXText.text("errors.othersFallback.line")) != true,"A normal native menu does not claim browser fallback")
+            stage = "denied microphone is not silence"
+            try await Task.sleep(for:.seconds(20.25))
+            try require(!RecordingOverview.microphoneSilent && RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == false,"Denied microphone never becomes a silence warning")
+            report["deniedMicIsNotSilent"] = true
+            let total: UInt64 = 100 << 30
+            collection.applyDiskBudgetForTesting(DiskBudget(total:total,free:total/50 + 16000*60*10,bytesPerSecond:16000))
+            try require(RecordingOverview.diskLine == UXText.text("errors.diskLow.line",["n":"10"]),"Library and preview use the owned disk warning")
+            report["ownedDiskWarningUsesOverview"] = true
             collection.applyDiskBudgetForTesting(DiskBudget(total:100<<30,free:0,bytesPerSecond:16000))
             await collection.stopAndWait()
             report["deniedMicKeepsOthersRecording"] = true
@@ -273,9 +332,11 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["nativeMessagingProcesses"] = true; report["exactProductProfile"] = true
             try FileHandle.standardOutput.write(contentsOf:JSONSerialization.data(withJSONObject:report,options:.sortedKeys))
             try FileManager.default.removeItem(at:root)
+            if let deferredRoot { try? FileManager.default.removeItem(at:deferredRoot) }
         } catch {
             for profile in profiles { await profile.finish() }
             await collection.shutdown()
+            if let deferredRoot { try? FileManager.default.removeItem(at:deferredRoot) }
             try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n").utf8))
             exit(1)
         }

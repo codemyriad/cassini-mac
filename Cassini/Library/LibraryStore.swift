@@ -71,7 +71,10 @@ private final class NativeActivity: CaptureActivityProviding, @unchecked Sendabl
     private let lock = NSLock()
     private var phases: [UUID: CaptureActivity]
     init(_ phases: [UUID: CaptureActivity]) { self.phases = phases }
-    func replace(_ phases: [UUID: CaptureActivity]) { lock.lock(); self.phases = phases; lock.unlock() }
+    func replace(_ phases: [UUID: CaptureActivity]) -> [UUID:CaptureActivity] {
+        lock.lock(); defer { lock.unlock() }
+        let before = self.phases; self.phases = phases; return before
+    }
     func snapshot() -> [UUID: CaptureActivity] {
         lock.lock(); let value = phases; lock.unlock()
         return value.merging(CaptureActivityStore.shared.snapshot()) { _,owned in owned }
@@ -195,11 +198,15 @@ final class LibraryStore {
                 self.observeNativeRecorder()
             }
         }
-        if recorder.isRecording, let folder = recorder.directory, !activity.snapshot().keys.contains(where: { $0.uuidString.lowercased() == String(folder.lastPathComponent.dropFirst("Recording-".count)) }) {
-            selectedKey = folder.lastPathComponent
-        }
         let changedIDs = Set(activity.snapshot().keys).union(phases.keys)
-        activity.replace(phases)
+        let before = activity.replace(phases)
+        let newlyRecording = Set(phases.filter { $0.value == .recording && before[$0.key] != .recording }.keys)
+        var newestOwner: URL?
+        if recorder.isRecording, let folder = recorder.directory, let id = UUID(uuidString:String(folder.lastPathComponent.dropFirst("Recording-".count))),newlyRecording.contains(id) { newestOwner = folder }
+        if let owned = CaptureCollection.shared.captures.values.filter({ newlyRecording.contains($0.snapshot.manifest.id) }).min(by:{ $0.originUptime < $1.originUptime }) { newestOwner = owned.snapshot.directory }
+        if let folder = newestOwner {
+            selectedKey = folder.lastPathComponent; selectionFolderWhenAvailable = LibraryLocation.canonical(folder)
+        }
         for id in changedIDs {
             for root in [context.root] + context.previousRoots { refresh(affected:root.appendingPathComponent("Recording-" + id.uuidString.lowercased())) }
         }

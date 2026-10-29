@@ -101,7 +101,7 @@ private struct SettingsLibraryView: View {
                         catch { NSApp.presentError(error) }
                     }
                     Button(UXText.text("settings.library.move")) { move.choose(parent:NSApp.keyWindow) }
-                        .disabled(move.busy || recorder.isStarting || recorder.isSaving).accessibilityIdentifier("settings-move-library")
+                        .disabled(!move.canChoose).accessibilityIdentifier("settings-move-library")
                     if move.busy { ProgressView().controlSize(.small); Text(UXText.text("settings.library.move.moving")) }
                 }
                 if let problem = location.problem { Text(problem).foregroundStyle(LibraryTheme.amber) }

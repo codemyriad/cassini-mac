@@ -108,7 +108,10 @@ private actor RecordingEdits {
     var native: Bool {
         RecordingController.shared.directory?.standardizedFileURL.path == meeting.folder.standardizedFileURL.path
     }
-    var owned: LiveCapture? { CaptureCollection.shared.captures[meeting.id] }
+    var owned: LiveCapture? {
+        guard let capture = CaptureCollection.shared.captures[meeting.id], capture.snapshot.directory.standardizedFileURL.path == meeting.folder.standardizedFileURL.path else { return nil }
+        return capture
+    }
     var canStop: Bool { native || owned != nil }
     var saving: Bool { owned.map { $0.savingSinceMs != nil || $0.snapshot.phase == .saving } ?? (native && RecordingController.shared.isSaving) }
     var me: Bool { owned?.snapshot.me ?? true }
@@ -123,7 +126,7 @@ private actor RecordingEdits {
     var microphone: Float { owned?.levels[.me] ?? (native ? RecordingController.shared.levels["microphone",default:0] : 0) }
     var output: Float { owned?.levels[.others] ?? (native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0)) }
     var microphoneSilent: Bool {
-        if let owned { return owned.snapshot.me && ProcessInfo.processInfo.systemUptime - owned.lastMicSound >= 20 }
+        if let owned { return owned.microphoneSilent }
         return native ? RecordingController.shared.microphoneSilent : frozen
     }
     var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }

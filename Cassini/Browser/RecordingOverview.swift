@@ -7,7 +7,12 @@ import Foundation
     static var active: Bool { RecordingController.shared.isRecording || CaptureCollection.shared.isRecording }
     static var starting: Bool { RecordingController.shared.isStarting || CaptureCollection.shared.starting }
     static var saving: Bool { RecordingController.shared.isSaving || CaptureCollection.shared.isSaving }
-    static var canStart: Bool { !active && !starting && !saving && RecordingController.shared.canStart }
+    static var recordCommandTitle: String { UXText.text(active ? "common.stop" : "common.record") }
+    static var microphoneSilent: Bool {
+        if let first = CaptureCollection.shared.first, !RecordingController.shared.isRecording || first.elapsedMs > RecordingController.shared.elapsedMs { return first.microphoneSilent }
+        return RecordingController.shared.microphoneSilent
+    }
+    static var canStart: Bool { !active && !starting && !saving && !LibraryMoveCoordinator.shared.busy && RecordingController.shared.canStart }
     static var elapsedMs: Int64 {
         max(RecordingController.shared.isRecording ? RecordingController.shared.elapsedMs : 0,CaptureCollection.shared.first?.elapsedMs ?? 0)
     }

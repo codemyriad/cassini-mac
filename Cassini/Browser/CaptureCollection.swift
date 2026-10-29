@@ -21,6 +21,9 @@ struct LiveCapture {
     var diskMinutes: Int?
     var fallbackAnnounced = false
     var savingSinceMs: Int64?
+    @MainActor var microphoneSilent: Bool {
+        snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
+    }
     var elapsedMs: Int64 {
         if let savingSinceMs { return savingSinceMs }
         return Int64(max(0,ProcessInfo.processInfo.systemUptime-originUptime)*1000)
@@ -167,6 +170,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func stop(_ id: UUID) {
         guard let value = captures[id], stopping[id] == nil else { return }
+        MeetingNavigation.shared.captureBeganSaving(at:value.snapshot.directory)
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
@@ -248,6 +252,7 @@ private final class CaptureFiles: @unchecked Sendable {
         let id = snapshot.manifest.id
         guard captures[id] != nil else { if snapshot.phase == .saved { settle(snapshot) }; return }
         captures[id]?.snapshot = snapshot
+        if snapshot.phase == .saving { MeetingNavigation.shared.captureBeganSaving(at:snapshot.directory) }
         if snapshot.phase == .saved {
             settle(snapshot)
             return
