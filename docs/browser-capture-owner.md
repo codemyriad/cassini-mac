@@ -42,3 +42,19 @@ user Library, browser profile or desktop. They launch the actual native-host
 binary to check concurrent folders, independent Stop, management EOF, browser
 loss, malformed frames/metadata and nonzero error exit. Native ARM and Intel
 hosted consumers run the same suite from D20 build artifacts.
+
+`CaptureInputLifecycle` now serializes each meeting's native-side changes. It
+stops device admission, awaits its sink drain off the main actor, and only then
+publishes an off transition. Enabling Me obtains permission before changing a
+working selection. Stop invalidates a pending permission reply; it cannot start
+a late microphone. Permission/queue delay is included in the applied event time.
+Native Me resume also trims a device buffer that overlaps the excluded interval.
+The regression was first observed red (1,500 ms / 8,000 frames), then fixed to
+2,000 ms / 4,000 frames for the same generated packet.
+
+Separate Mac microphone/system drivers implement those input roles. Neither is
+instantiated by the app yet. The microphone uses an independent AVAudioEngine;
+the system-only driver uses the existing AudioProcessTap and contains no mic
+fallback. The generated-input tests check this lifecycle without opening either
+real API. Native system-tap behavior under muted output remains unvalidated;
+there is no new pre-mute guarantee for that existing native capture path.

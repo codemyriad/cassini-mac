@@ -3,7 +3,7 @@ import Foundation
 import CassiniKit
 import CassiniRecording
 
-public enum CaptureSide: Sendable { case me, others }
+public enum CaptureSide: Hashable, Sendable { case me, others }
 public enum OwnedCapturePhase: Sendable { case recording, saving, saved }
 public struct OwnedCaptureSnapshot: Sendable {
     public let manifest: RecordingManifest
@@ -44,6 +44,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var fallbackReason: String?
     private var phase: OwnedCapturePhase = .recording
     private var resumeAt: Double = 0
+    private var meResumeAt: Double = 0
     private var nativeProblem: String?
     private let changed: @Sendable (OwnedCaptureSnapshot) -> Void
     private let notifications: DispatchQueue
@@ -122,6 +123,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard newMe != self.me || newOthers != self.others else { return }
             let time = self.eventTime(atMs)
             let resuming = newOthers && !self.others
+            let resumingMe = newMe && !self.me
             var ends: [String] = []
             if !newMe { ends += self.nativeSpans.filter { $0.value.side == .me && $0.value.registered }.map(\.key) }
             if !newOthers {
@@ -148,6 +150,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me ? newMe : newOthers }
             self.me = newMe; self.others = newOthers
             if resuming { self.resumeAt = time }
+            if resumingMe { self.meResumeAt = time }
             self.publish()
         }
     }
@@ -183,8 +186,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             var bytes = pcm, offset = offsetMs
             let first = !span.registered
             if !span.registered {
-                if span.side == .others {
-                    let earliest = recording.manifest.events?.last?.atMs ?? 0
+                let earliest = span.side == .others ? recording.manifest.events?.last?.atMs ?? 0 : meResumeAt
+                if earliest > offsetMs {
                     let trim = min(pcm.count/(span.channels*2),max(0,Int(ceil((earliest-offsetMs)*Double(span.rate)/1000))))
                     guard trim*span.channels*2 < pcm.count else { return }
                     bytes = Data(pcm.dropFirst(trim*span.channels*2)); offset += Double(trim)/Double(span.rate)*1000
