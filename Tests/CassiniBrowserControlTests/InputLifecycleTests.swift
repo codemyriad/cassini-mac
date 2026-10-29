@@ -216,7 +216,8 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.start()
         try owner.browserTrack(id:"r",label:"Other",kind:"remote",sampleRate:8000,channels:1)
         try await inputs.select(me:false,others:true,atMs:100)
-        XCTAssertEqual(microphones[0].stops,1); XCTAssertEqual(owner.snapshot.manifest.tracks.first?.ended,true)
+        XCTAssertEqual(microphones[0].stops,1)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.ended,true)
         microphones[0].emit(at:0.1) // Stopped driver has no route to a sink.
         try owner.browserAudio(id:"r",sequence:0,offsetMs:100,pcm:Data(repeating:0,count:1600))
         try await inputs.select(me:true,others:true,atMs:200)

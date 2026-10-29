@@ -54,7 +54,18 @@ import CassiniRecording
             let activeFolder = try recorder.directory.unwrap("active native folder")
             let duplicateRoot = root.deletingLastPathComponent().appendingPathComponent("same-name-other-root")
             try FileManager.default.createDirectory(at:duplicateRoot,withIntermediateDirectories:false)
-            try FileManager.default.copyItem(at:activeFolder,to:duplicateRoot.appendingPathComponent(activeFolder.lastPathComponent))
+            let duplicateFolder = duplicateRoot.appendingPathComponent(activeFolder.lastPathComponent)
+            try FileManager.default.createDirectory(at:duplicateFolder,withIntermediateDirectories:false)
+            // Copy a published manifest and only its persistent tracks. A live
+            // writer can rename/remove .session-*.tmp between enumeration and
+            // a recursive copy; those staging files are not fixture input.
+            let metadata = try Data(contentsOf:activeFolder.appendingPathComponent("session.json"))
+            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+            let snapshot = try decoder.decode(RecordingManifest.self,from:metadata)
+            try metadata.write(to:duplicateFolder.appendingPathComponent("session.json"))
+            for track in snapshot.tracks {
+                try FileManager.default.copyItem(at:activeFolder.appendingPathComponent(track.file),to:duplicateFolder.appendingPathComponent(track.file))
+            }
             let duplicate = try LibraryScanner(root:duplicateRoot).scan().meetings.first.unwrap("same-name duplicate")
             let otherEditor = RecordingPageModel.editor(for:duplicate)
             try require(duplicate.libraryKey == model.meeting.libraryKey && model.native && !otherEditor.native,"native capture identity includes its folder, not only its basename")
