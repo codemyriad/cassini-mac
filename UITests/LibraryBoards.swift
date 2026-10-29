@@ -30,7 +30,7 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testMeetingTrashAndSearchKeyboardGuard() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let more = window.menuButtons["More actions"]
+        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
         XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription)
         more.click()
         XCTAssertTrue(app.menuItems["Move to Trash"].exists)

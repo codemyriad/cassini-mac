@@ -16,16 +16,17 @@ music=Path.home()/'Music';music.mkdir(exist_ok=True)
 config=music/f'CassiniTrashBookmark-{key}.json'
 putback=music/f'CassiniTrashPutBack-{key}.json'
 external=Path(tempfile.mkdtemp(prefix='cassini-trash-external-',dir=root/'build'))
-# The external directory and its security-scoped bookmark come from outside the
-# sandbox. The app receives only the bookmark, as it would from NSOpenPanel.
+# Use Apple’s implicit bookmark IPC handoff. Cassini resolves it and creates
+# its own app-scoped persistent bookmark; app-scoped bookmarks cannot be
+# shared between differently signed processes. No sandbox entitlement is added.
 helper=external/'bookmark.swift'
 helper.write_text('''import Foundation
 let url = URL(fileURLWithPath:CommandLine.arguments[1])
-let data = try url.bookmarkData(options:.withSecurityScope,includingResourceValuesForKeys:nil,relativeTo:nil)
+let data = try url.bookmarkData(options:[],includingResourceValuesForKeys:nil,relativeTo:nil)
 print(data.base64EncodedString())
 ''')
 bookmark=subprocess.check_output(['swift',str(helper),str(external)],text=True).strip()
-config.write_text(json.dumps(dict(version=1,primaryPath=str(external),previousPaths=[],bookmarks={str(external):bookmark},pendingMoves=[])))
+config.write_text(json.dumps(dict(handoff=bookmark)))
 command=[str(a.app.resolve()/'Contents/MacOS/Cassini'),'--trash-self-test','--fixture-library-recording',
          '-CassiniCaptureID',key,'-CassiniSettingsID',key,'-CassiniTrashRelocationFile',str(config),
          '-CassiniTranscriptionFixture','YES','-CassiniSlowTranscription','YES','-ApplePersistenceIgnoreState','YES']

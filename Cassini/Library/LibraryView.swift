@@ -96,7 +96,7 @@ struct LibraryView: View {
                                     Section { trashButton(detail.meeting) }
                                 }
                             } label: { Image(systemName:"ellipsis").frame(width:28,height:30) }
-                                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions"))
+                                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions")).accessibilityIdentifier("meeting-more-actions")
                         }
                     }.frame(width: max(480, toolbarWidth - 110))
                 }

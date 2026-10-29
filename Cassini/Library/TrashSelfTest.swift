@@ -85,7 +85,14 @@ import CryptoKit
             try check(trash.failure == nil && !FileManager.default.fileExists(atPath:retry.folder.path),"retry succeeds")
             report["failurePreservesSourceAndRetry"] = true
             phase = "relocation bookmark"
-            let relocation = try LibraryLocation.read(file:URL(fileURLWithPath:file))
+            let handoff = try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:file))) as! [String:Any]
+            guard let bytes = (handoff["handoff"] as? String).flatMap({ Data(base64Encoded:$0) }) else { throw Failure.check("implicit bookmark") }
+            var stale = false
+            let received = try URL(resolvingBookmarkData:bytes,options:[],relativeTo:nil,bookmarkDataIsStale:&stale)
+            defer { received.stopAccessingSecurityScopedResource() }
+            let persistent = try received.bookmarkData(options:.withSecurityScope,includingResourceValuesForKeys:nil,relativeTo:nil)
+            let relocation = LibraryLocation(primary:received,bookmarks:[received.path:persistent])
+            try relocation.write(file:URL(fileURLWithPath:file))
             let access = try LibraryAccess(relocation)
             try relocation.write(file:LibraryLaunchContext.locationFile)
             store.reloadLocation(); try await wait { store.loaded && !store.offline }
