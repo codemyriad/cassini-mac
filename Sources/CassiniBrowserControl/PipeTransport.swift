@@ -98,7 +98,6 @@ public final class BrowserPipeConnection: @unchecked Sendable {
             defer { if let dummy { Darwin.close(dummy) }; Darwin.close(input); Darwin.close(lease); readerDone.leave(); close() }
             do {
                 while !cancellation.isCancelled {
-                    if !ownsLease && !PipeFiles.held(lease) { break }
                     // Poll the lease without abandoning a partially read frame.
                     let packet = try FrameIO.read(input,cancel:cancellation,alive:{ [self] in ownsLease || PipeFiles.held(lease) })
                     guard let packet else { break }
@@ -148,6 +147,7 @@ public final class BrowserPipeServer: @unchecked Sendable {
     public func start() throws {
         guard lease == -1, !cancellation.isCancelled else { throw BrowserIPCError.unavailable }
         signal(SIGPIPE,SIG_IGN)
+        try FileManager.default.createDirectory(at:root.deletingLastPathComponent(),withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
         try PipeFiles.directory(root,create:true)
         let clients = root.appendingPathComponent("clients",isDirectory:true)
         try PipeFiles.directory(clients,create:true)
@@ -189,7 +189,14 @@ public final class BrowserPipeServer: @unchecked Sendable {
             let folder = clients.appendingPathComponent(name,isDirectory:true)
             do {
                 try PipeFiles.directory(folder)
-                let leaseFD = try PipeFiles.openFile(folder.appendingPathComponent("lease"),flags:O_RDWR)
+                let leaseURL = folder.appendingPathComponent("lease")
+                let leaseFD: Int32
+                do { leaseFD = try PipeFiles.openFile(leaseURL,flags:O_RDWR) }
+                catch {
+                    var info = stat()
+                    if lstat(leaseURL.path,&info) != 0 && errno == ENOENT { PipeFiles.retire(folder) }
+                    continue
+                }
                 guard PipeFiles.held(leaseFD) else { Darwin.close(leaseFD); PipeFiles.retire(folder); continue }
                 var descriptors = [leaseFD]
                 var adopted = false
@@ -208,7 +215,7 @@ public final class BrowserPipeServer: @unchecked Sendable {
                 let ready = try JSONEncoder().encode(["ready":id.uuidString.lowercased()])
                 try FrameIO.writeFrame(output,data:ready,cancel:cancellation)
                 let retired = self.retired
-                let connection = BrowserPipeConnection(peer:peer,input:input,output:output,lease:leaseFD,dummy:dummy,ownsLease:false,
+                let connection = BrowserPipeConnection(peer:peer,input:input,output:output,lease:leaseFD,dummy:dummy,ownsLease:false,folder:folder,
                     received:received,ended:{ [weak self] peer in
                         self?.queue.async { [weak self] in self?.peers.removeValue(forKey:peer.id) }
                         self?.disconnected(peer)

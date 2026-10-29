@@ -20,6 +20,7 @@ struct LiveCapture {
     var lastMicSound: TimeInterval = ProcessInfo.processInfo.systemUptime
     var diskMinutes: Int?
     var fallbackAnnounced = false
+    var lifetime = BrowserCallLifetime()
     var savingSinceMs: Int64?
     var elapsedMs: Int64 {
         if let savingSinceMs { return savingSinceMs }
@@ -311,7 +312,7 @@ private final class CaptureFiles: @unchecked Sendable {
         microphones = microphones.filter { meetings.contains($0.key) }
         for id in Array(captures.keys) {
             if let value = captures[id] {
-                let key = key(for:value.captureID); captures[id]?.key = key
+                let key = key(for:value.captureID) ?? value.key; captures[id]?.key = key
                 if let key { microphones[key] = value.owner.snapshot.me }
             }
         }
@@ -348,7 +349,7 @@ private final class CaptureFiles: @unchecked Sendable {
             }
         }
     }
-    private func poll() {
+    private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         for id in Array(captures.keys) {
             guard let value = captures[id] else { continue }
             let status = value.input.status()
@@ -357,6 +358,12 @@ private final class CaptureFiles: @unchecked Sendable {
                 captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
             }
             if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
+            if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
+                let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
+                let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
+                if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
+                    lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id) }
+            }
         }
     }
     func title(_ id: UUID, _ text: String) { captures[id]?.displayTitle = text }
@@ -369,6 +376,9 @@ private final class CaptureFiles: @unchecked Sendable {
         RecordingDiskWatch.updateWarning(line)
     }
     #if DEBUG
+    func pollLifetimeForTesting(at now: TimeInterval) {
+        guard CaptureFixture.enabled else { return }; poll(at:now)
+    }
     func applyDiskBudgetForTesting(_ budget: DiskBudget) {
         guard CaptureFixture.enabled else { return }; applyDiskBudget(Array(captures.keys),budget)
     }

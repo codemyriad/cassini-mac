@@ -67,6 +67,19 @@ private final class HostState: @unchecked Sendable {
     private var failure: String?
     private var reported = false
     private var errorCode = "io"
+    private let replies = NSCondition()
+    private var pending = 0
+    func submittedRequest() { replies.lock(); pending += 1; replies.unlock() }
+    func forwardedResponse() { replies.lock(); pending = max(0,pending-1); replies.broadcast(); replies.unlock() }
+    func readerFinished() { cancellation.cancel(); replies.lock(); replies.broadcast(); replies.unlock() }
+    func drainResponses(seconds: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        replies.lock(); defer { replies.unlock() }
+        while pending > 0 && !cancellation.isCancelled {
+            if !replies.wait(until:deadline) { return false }
+        }
+        return pending == 0
+    }
     func reportProtocolError() { lock.lock(); reported = true; lock.unlock(); fail(BrowserIPCError.closed) }
     func needsErrorFrame() -> String? { lock.lock(); defer { lock.unlock() }; return failure != nil && !reported ? errorCode : nil }
     func fail(_ error: Error) {
@@ -75,7 +88,7 @@ private final class HostState: @unchecked Sendable {
             failure = String(describing:error)
             if let ipc = error as? BrowserIPCError, case .framing = ipc { errorCode = "framing" }
         }
-        lock.unlock(); cancellation.cancel()
+        lock.unlock(); readerFinished()
     }
     func error() -> String? { lock.lock(); defer { lock.unlock() }; return failure }
 }
@@ -111,10 +124,11 @@ private enum NativeHostBridge {
             try FrameIO.prepare(STDIN_FILENO); try FrameIO.prepare(STDOUT_FILENO)
             readers.enter()
             DispatchQueue.global(qos:.userInitiated).async {
-                defer { readers.leave(); state.cancellation.cancel() }
+                defer { readers.leave(); state.readerFinished() }
                 do {
                     while !state.cancellation.isCancelled, let data = try connection.receive() {
                         try FrameIO.writeFrame(STDOUT_FILENO,data:data,cancel:state.cancellation)
+                        if role == .audio { state.forwardedResponse() }
                         if role == .audio, (try? JSONParser.parse(data)["type"]?.string) == "error" {
                             state.reportProtocolError(); connection.stop(); break
                         }
@@ -122,10 +136,15 @@ private enum NativeHostBridge {
                 } catch { if !state.cancellation.isCancelled { state.fail(error) } }
             }
             do {
-                if let initial { try connection.send(initial) }
+                if let initial { if role == .audio { state.submittedRequest() }; try connection.send(initial) }
                 while !state.cancellation.isCancelled, let data = try FrameIO.read(STDIN_FILENO,cancel:state.cancellation) {
+                    if role == .audio { state.submittedRequest() }
                     try connection.send(data)
                 }
+                // EOF closes admission, not already accepted requests. Keep
+                // the peer lease and response reader until every reply (in
+                // particular stopped after fsync) has reached browser stdout.
+                if role == .audio, state.error() == nil, !state.drainResponses(seconds:65) { throw BrowserIPCError.timeout }
             } catch { if !state.cancellation.isCancelled { state.fail(error) } }
         } catch { state.fail(error) }
         state.cancellation.cancel(); endpoint?.stop()

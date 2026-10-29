@@ -38,7 +38,7 @@ private final class HostAccess {
     init(_ bookmark: Data, expected: URL) throws {
         var stale = false
         url = try URL(resolvingBookmarkData:bookmark,options:[.withoutUI],relativeTo:nil,bookmarkDataIsStale:&stale)
-        guard !stale, url.isFileURL, url.standardizedFileURL.path == expected.standardizedFileURL.path else { throw BrowserSetupError.invalidHost }
+        guard !stale, url.isFileURL, url.resolvingSymlinksInPath().path == expected.resolvingSymlinksInPath().path else { throw BrowserSetupError.invalidHost }
         started = url.startAccessingSecurityScopedResource()
     }
     deinit { if started { url.stopAccessingSecurityScopedResource() } }
