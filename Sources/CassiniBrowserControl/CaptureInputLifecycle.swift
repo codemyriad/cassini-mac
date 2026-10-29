@@ -69,6 +69,9 @@ import CassiniRecording
                     try await Task.detached { try sink.pause() }.value
                 }
                 guard !self.closed else { throw BrowserIPCError.closed }
+                guard prepared.values.allSatisfy({ $0.stage?.recordingProblem == nil }) else {
+                    throw RecordingError.invalid("The new audio input stopped before the selection could be applied.")
+                }
                 let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime-requested)*1000
                 try await self.capture.select(me:me,others:others,atMs:appliedAt,reservingNative:Set(prepared.keys))
             } catch {

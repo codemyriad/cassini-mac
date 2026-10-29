@@ -13,6 +13,7 @@ import CassiniRecording
     var sink: RecordingSink?
     var failure: (@Sendable (String) -> Void)?
     var failingStart = false
+    var onStop: (() -> Void)?
     var firstAt: Double = 0
     let origin: UInt64
     init(_ kind: String, origin: UInt64) { self.kind = kind; self.origin = origin }
@@ -29,9 +30,29 @@ import CassiniRecording
         for index in 0..<800 { buffer.floatChannelData![0][index] = 0.25 }
         sink?.receive(buffer,hostTime:origin + AVAudioTime.hostTime(forSeconds:seconds),id:kind,label:kind,kind:kind)
     }
-    func stop() { stops += 1; sink = nil }
+    func stop() { stops += 1; sink = nil; onStop?() }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testReplacementFailureDuringOldInputDrainRollsBackToItsExistingWriter() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Candidate lost during drain",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        try await inputs.start(); try await inputs.select(me:true,others:false,atMs:100)
+        let before = owner.snapshot.manifest
+        mic.firstAt = 0.1
+        mic.onStop = { system.failure?("Generated replacement lost during old input drain") }
+        do { try await inputs.select(me:false,others:true,atMs:200); XCTFail("Lost replacement must reject the choice") } catch {}
+        mic.onStop = nil
+        XCTAssertTrue(owner.snapshot.me); XCTAssertFalse(owner.snapshot.others)
+        XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
+        XCTAssertEqual(mic.starts,2)
+        try await inputs.stop(); try await owner.finish()
+        let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
+        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
+    }
     @MainActor func testRejectedBrowserResumeRestartsOldMicWithoutEndingItsTrack() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
