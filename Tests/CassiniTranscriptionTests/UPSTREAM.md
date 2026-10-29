@@ -1,17 +1,23 @@
-Shared D11 goldens copied verbatim from cassini-coordination/ux-draft/whistle,
-including SHA256SUMS. D11.3 requires exact segments/text/count, identical
-segment input SHA256 before allowing at most 80 ms word-time movement.
-JFK audio is public-domain US federal government material.
+Shared D11/D26.1 goldens and SHA256SUMS are copied verbatim from
+cassini-coordination/ux-draft/whistle at coordination commit 7e7000f. The approved
+Silero-only high-pass changes the first pipeline segment start 14336 to 13824;
+raw WAVs, the FIR output and recogniser input remain unchanged. Segments, text,
+word counts and segment input SHA256 remain exact; D11.3 permits 80 ms word-time
+movement only after input hashes match. JFK audio is public-domain US federal
+government material.
 
-Fixtures/jfk-received.opus is a plain Opus derivative of the public-domain JFK
-fixture, made without capture: ffmpeg -i Goldens/jfk.wav -ac 1 -ar 48000 -c:a
-libopus -b:a 32k -application audio Fixtures/jfk-received.opus. It exercises
-Received import, offline Opus decode, the production pipeline and Speaker 1.
+whistle-text-exceptions.json SHA256
+448aeaeaae178621e3296bc9cdc0463172bbdc35525aed74becdef31541c0b56
+permits only as/ask at word 37 / segment 5 under its exact audio/golden/engine pins.
+D26.1 rebinds only the approved golden digest; the allowed text/range and input
+hash are unchanged. Production recogniser output is never rewritten.
 
-D11.5 whistle-text-exceptions.json copied verbatim from coordination commit c12b02d.
-SHA256 fde2d870983855c11833703772d3a5c0a0ad79f9b54752442b1d6131914f09a3.
-The coordinator's shared exception permits only as/ask at word37, segment5, with
-the same input/golden hashes and engine/model/library pins. It replaces the
-Mac-only compatibility copy. Original SHA256SUMS and shared goldens are unchanged;
-production recognizer output is never rewritten. Linux pins remain part of the
-hash-bound shared manifest; Mac tests check the matching Mac engine pins.
+Fixtures/DC contains the two unmodified public synthetic D26.1 WAVs and the
+spec from coordination commit 196c179. Tests cover asserts a-e, whole-frame-only input
+hashes, state/reset, raw recognition scratch and continuous AC peak metering.
+No personal recording is used.
+
+Fixtures/jfk-received.opus is a plain Opus derivative of the public JFK fixture,
+made without capture: ffmpeg -i Goldens/jfk.wav -ac 1 -ar 48000 -c:a libopus
+-b:a 32k -application audio Fixtures/jfk-received.opus. It exercises Received
+import, offline Opus decode, the production pipeline and Speaker 1.

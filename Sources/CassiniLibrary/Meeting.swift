@@ -137,7 +137,11 @@ public struct LibraryMeeting: Sendable {
         let nonempty = audioTracks.filter { $0.frameCount != 0 }
         return state.origin == .own && state.lifecycle == .saved && !nonempty.isEmpty && nonempty.allSatisfy { $0.startOffsetMs != nil }
     }
-    public var canWriteDown: Bool { state.canWriteDown }
+    public var hasNoSpeech: Bool {
+        state.lifecycle == .saved && state.transcript == .done && transcriptItems.isEmpty &&
+        state.audioAvailable == true && !audioFiles.isEmpty
+    }
+    public var canWriteDown: Bool { state.canWriteDown || (hasNoSpeech && !metadataReadOnly) }
     public var speakerNames: [String] { speakers.map(\.displayName) }
 }
 public struct LibraryTranscriptTurn: Equatable, Sendable {

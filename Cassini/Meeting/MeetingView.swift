@@ -43,6 +43,10 @@ struct MeetingView: View {
                 Divider()
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
+                        if meeting.hasNoSpeech {
+                            NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil)
+                                .disabled(LibraryMoveCoordinator.shared.busy)
+                        }
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
                         if showsCompanionSuggestion { companionCard }
                         ForEach(model.turns) { turn in
@@ -147,6 +151,21 @@ struct MeetingView: View {
                 .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(Color(nsColor: .windowBackgroundColor))
             .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
+    }
+}
+
+struct NoSpeechTranscriptLine: View {
+    let action: (() -> Void)?
+    var body: some View {
+        HStack(alignment:.firstTextBaseline,spacing:12) {
+            Text(UXText.text("transcript.noSpeech")).foregroundStyle(.secondary)
+                .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
+                .accessibilityIdentifier("transcript-no-speech")
+            if let action {
+                Button(UXText.text("transcript.writeDownAgain"),action:action).buttonStyle(.bordered)
+                    .accessibilityIdentifier("transcript-write-down-again")
+            }
+        }
     }
 }
 

@@ -100,12 +100,23 @@ import CassiniModels
                   models.message == UXText.text("models.parakeetUltra.invalidFallback"),
                   RecordingPreferences.defaults.string(forKey:"CassiniSpeechModel") == "whistle",
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
+            let quiet = try meeting(root:root,title:"DC-only empty transcript",dcOnly:true)
+            queue.enqueue(quiet); try await wait { !queue.isBusy }
+            let empty = try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })
+            guard let empty,empty.hasNoSpeech,empty.canWriteDown,!empty.canQueueAutomatically else { throw POSIXError(.EINVAL) }
+            let before = try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json"))
+            let detail = MeetingDetailModel(meeting:empty,frozen:true)
+            queue.writeDown(detail); queue.writeDown(detail)
+            guard queue.isBusy else { throw POSIXError(.EINVAL) } // Must clear the prior completed job's known key.
+            try await wait { !queue.isBusy }
+            guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })?.hasNoSpeech == true,
+                  try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json")) != before else { throw POSIXError(.EINVAL) }
             let report: [String:Any] = ["sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
                 "installedModelDoesNotSelect":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,
                 "invalidModelRetriesWhistle":true,"invalidModelDeleted":true,"choicePersisted":true,
                 "metadataAndAudioPreserved":true,"audioDevicesOpened":false,
                 "unusedDamagedInstallationRecovers":true,"removeMessageFollowsDiskCommit":true,
-                "inventoryPreservesAcceptedModel":true]
+                "inventoryPreservesAcceptedModel":true,"emptyTranscriptRetryRequeues":true]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             queue.beginShutdown(); await queue.waitForShutdown()
@@ -125,10 +136,15 @@ import CassiniModels
         try JSONEncoder().encode(FixtureReceipt(pin:plan.pin,files:plan.files)).write(to:target.appendingPathComponent("receipt.json"))
         try Data("Private model fixture: moondream/parakeet-ultra, CC-BY-4.0.\nhttps://huggingface.co/moondream/parakeet-ultra\n".utf8).write(to:target.appendingPathComponent("NOTICE.txt"))
     }
-    private static func meeting(root: URL,title: String) throws -> LibraryMeeting {
+    private static func meeting(root: URL,title: String,dcOnly: Bool = false) throws -> LibraryMeeting {
         let session = try RecordingSession(parent:root,title:title,source:"macos")
         try session.addTrack(id:"microphone",label:"Microphone",kind:"microphone",sampleRate:16000,channels:1)
-        let pcm = try Data(contentsOf:Bundle.main.resourceURL!.appendingPathComponent("Whistle/jfk.wav")).dropFirst(44)
+        let pcm: Data
+        if dcOnly {
+            var sample = Int16(-2060).littleEndian
+            let pair = withUnsafeBytes(of:&sample) { Data($0) }
+            pcm = (0..<16000).reduce(into:Data()) { result,_ in result.append(pair) }
+        } else { pcm = Data(try Data(contentsOf:Bundle.main.resourceURL!.appendingPathComponent("Whistle/jfk.wav")).dropFirst(44)) }
         for at in stride(from:0,to:pcm.count,by:64000) {
             let start = pcm.startIndex + at, end = min(pcm.endIndex,start + 64000)
             try session.append(id:"microphone",pcm:Data(pcm[start..<end]),offsetMs:Double(at)/32)

@@ -48,6 +48,30 @@ struct NativeSourceTimeline {
 /// Owns admission/format/timeline state under `lock`; all writer access is on `queue`.
 /// Disk stalls have a ten-second per-source memory budget. Overflow becomes counted silence
 /// on that source's sample timeline, without stopping unrelated sources or blocking audio IO.
+private struct ACLevelChannel {
+    var sum = 0.0, minimum = Double.infinity, maximum = -Double.infinity
+    mutating func receive(_ sample: Float) {
+        let value = Double(sample.isFinite ? sample : 0)
+        sum += value; minimum = min(minimum,value); maximum = max(maximum,value)
+    }
+    func peak(count: Int) -> Float {
+        let mean = sum / Double(count)
+        return Float(max(abs(minimum-mean),abs(maximum-mean)))
+    }
+}
+/// AC peak over continuous 100 ms windows, independently centred per channel.
+private struct ACLevelWindow {
+    var left = ACLevelChannel(), right = ACLevelChannel(), count = 0
+    mutating func receive(_ value: Float, channel: Int) {
+        if channel == 0 { left.receive(value) } else { right.receive(value) }
+    }
+    mutating func endFrame(channels: Int, window: Int) -> Float? {
+        count += 1
+        guard count >= window else { return nil }
+        let value = max(left.peak(count:count),channels == 2 ? right.peak(count:count) : 0)
+        self = Self(); return min(1,value)
+    }
+}
 public final class RecordingSink: @unchecked Sendable {
     private struct Source {
         let rate: Double
@@ -61,6 +85,7 @@ public final class RecordingSink: @unchecked Sendable {
         var lastInputFrames: UInt64 = 0
         var submittedEnd: UInt64 = 0
         var registered = false
+        var meter = ACLevelWindow()
     }
     private let queue = DispatchQueue(label: "com.codemyriad.cassini.recording-writer", qos: .userInitiated)
     private let lock = NSLock()
@@ -138,20 +163,21 @@ public final class RecordingSink: @unchecked Sendable {
         source.submittedEnd = source.timeline.frames
         let register = !source.registered
         source.registered = true
-        sources[id] = source
-        var peak: Float = 0
+        var peak: Float?
         var pcm = Data(count: Int(frames) * outputChannels * 2)
         pcm.withUnsafeMutableBytes { raw in
             let samples = raw.bindMemory(to: Int16.self)
             for frame in 0..<Int(frames) {
                 for channel in 0..<outputChannels {
                     let value = buffer.format.isInterleaved ? input[0][frame * Int(inputChannels) + channel] : input[channel][frame]
-                    if value.isFinite { peak = max(peak, abs(value)) }
+                    source.meter.receive(value,channel:channel)
                     samples[frame * outputChannels + channel] = Int16((max(-1, min(1, value.isFinite ? value : 0)) * 32767).rounded()).littleEndian
                 }
+                if let value = source.meter.endFrame(channels:outputChannels,window:max(1,Int(rate/10))) { peak = max(peak ?? 0,value) }
             }
         }
-        levels[id] = min(1, peak)
+        sources[id] = source
+        if let peak { levels[id] = max(levels[id,default:0],peak) }
         // Enqueue before releasing admission lock: finish can never overtake an admitted copy.
         queue.async { [self, pcm] in
             defer { lock.lock(); sources[id]?.pendingFrames -= frames; lock.unlock() }

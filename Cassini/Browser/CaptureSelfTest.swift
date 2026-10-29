@@ -144,6 +144,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.peers.filter(\.reconciled).count == 2 && collection.hasCalls }
             stage = "start two profiles"
             CaptureFixture.silentMicrophone = true
+            CaptureFixture.microphoneDC = -2060.0/32768
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
             try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
@@ -176,6 +177,8 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
             CaptureFixture.silentMicrophone = false
             try await wait { !RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent }
+            CaptureFixture.microphoneDC = 0
+            report["micDCDoesNotMaskSilence"] = true
             report["ownedSilenceMatchesMenuAndPage"] = true
             stage = "background deferred move preserves unrelated work"
             let previous = root.deletingLastPathComponent().appendingPathComponent("CassiniDeferredCapture-" + UUID().uuidString)

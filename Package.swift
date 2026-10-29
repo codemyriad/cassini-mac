@@ -47,7 +47,7 @@ let package = Package(
         .target(name:"CassiniSherpaBridge",publicHeadersPath:"include"),
         .executableTarget(name:"cassini-parakeet-worker",dependencies:["CassiniParakeet","CassiniTranscription","CassiniWhistle"]),
         .target(name:"CassiniParakeet",dependencies:["CassiniSherpaBridge","CassiniWhistle","CassiniTranscription","CassiniModels"]),
-        .testTarget(name:"CassiniParakeetTests",dependencies:["CassiniParakeet","CassiniTranscription","CassiniLibrary"],resources:[.copy("Goldens")]),
+        .testTarget(name:"CassiniParakeetTests",dependencies:["CassiniParakeet","CassiniTranscription","CassiniLibrary"],exclude:["UPSTREAM.md"],resources:[.copy("Goldens")]),
         .target(name:"CassiniZstd",exclude:["LICENSE","UPSTREAM.md","SHA256SUMS"],publicHeadersPath:"include",cSettings:[.define("ZSTD_LEGACY_SUPPORT",to:"0"),.define("ZSTD_DISABLE_ASM")]),
         .target(name:"CassiniModels",dependencies:["CassiniKit","CassiniZstd"]),
         .executableTarget(name:"cassini-model-fetch",dependencies:["CassiniModels"]),

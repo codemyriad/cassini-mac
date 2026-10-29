@@ -324,6 +324,11 @@ struct LibraryView: View {
                         .disabled(meeting.transcriptItems.isEmpty || LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("preview-read-transcript")
                 }
+                if meeting.hasNoSpeech {
+                    Divider()
+                    NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.enqueue(meeting,retry:true) } : nil)
+                        .disabled(LibraryMoveCoordinator.shared.busy)
+                }
                 if !meeting.transcriptItems.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
                         Divider()

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Foundation
 import Testing
@@ -45,6 +46,32 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
 }
 
 @Suite struct RecordingSinkTests {
+    @Test func dcOffsetIsSilentWithoutChangingRecordedSamples() throws {
+        let input = try buffer(channels:1,frames:800)
+        for i in 0..<800 { input.floatChannelData![0][i] = -2060.0/32768 }
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        sink.receive(input,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        try sink.finish(problem:nil)
+        #expect(sink.status().levels["mic"] == 0)
+        #expect(writer.chunks[0].1.withUnsafeBytes { $0.bindMemory(to:Int16.self).allSatisfy { Int16(littleEndian:$0) == -2060 } })
+    }
+    @Test(arguments:[false,true]) func acPeakCentresChannelsAndCarriesAcrossCallbacks(interleaved: Bool) throws {
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        for (index,value) in [Float(0.1),0.2].enumerated() {
+            let frames: UInt32 = index == 0 ? 320 : 480
+            let input = try buffer(channels:2,interleaved:interleaved,frames:frames)
+            for i in 0..<Int(frames) {
+                for channel in 0..<2 { input.floatChannelData![interleaved ? 0 : channel][interleaved ? i*2+channel : i] = value + (channel == 0 ? -0.3 : 0.5) }
+            }
+            sink.receive(input,hostTime:1+AVAudioTime.hostTime(forSeconds:index == 0 ? 0 : 0.04),id:"mic",label:"Mic",kind:"microphone")
+        }
+        try sink.finish(problem:nil)
+        let peak = try #require(sink.status().levels["mic"])
+        #expect(abs(peak-0.06) < 0.000001)
+        #expect(writer.bytes == 800*2*2)
+    }
     @Test(arguments: [false, true]) func quantizationAndMultichannelSelection(interleaved: Bool) throws {
         for channels: UInt32 in [1, 2, 4] {
             let input = try buffer(channels: channels, interleaved: interleaved, frames: 6)

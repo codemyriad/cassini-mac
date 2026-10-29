@@ -37,8 +37,28 @@ public struct MeetingResampler {
     }
 }
 
+/// D26.1 / WebRTC APM: binary64 Direct Form I, left-to-right, without FMA.
+/// Only Silero sees this signal. The recognisers and mono.f32 retain raw PCM.
+struct SileroInputHighPass {
+    private var x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0
+    mutating func process(_ frame: [Float]) -> [Float] {
+        frame.map { sample in
+            let x = Double(sample)
+            var y = 0.9726138984998437 * x
+            y += -1.9452277969996874 * x1
+            y += 0.9726138984998437 * x2
+            y -= -1.9444776577670935 * y1
+            y -= 0.9459779362322813 * y2
+            if y > -1e-25 && y < 1e-25 { y = 0 }
+            x2 = x1; x1 = x; y2 = y1; y1 = y
+            return Float(y)
+        }
+    }
+}
 public final class SpeechDetector {
+    public static let inputFilterVersion = "silero-input-hpf-butter2-100hz-v1"
     private let detector: OpaquePointer
+    private var inputFilter = SileroInputHighPass()
     public init(assets: VADAssets) throws {
         try WhistleEnvironment.validateLive()
         var error = [CChar](repeating: 0, count: 2048)
@@ -46,11 +66,12 @@ public final class SpeechDetector {
         self.detector = detector
     }
     deinit { cassini_vad_destroy(detector) }
-    public func reset() { cassini_vad_reset(detector) }
+    public func reset() { inputFilter = .init(); cassini_vad_reset(detector) }
     public func probability(_ frame: [Float]) throws -> Float {
         guard frame.count == 512 else { throw TranscriptionFailure.audioFormat }
+        let filtered = inputFilter.process(frame)
         var value: Float = 0, error = [CChar](repeating: 0, count: 2048)
-        guard cassini_vad_probability(detector, frame, &value, &error, error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString: error)) }
+        guard cassini_vad_probability(detector, filtered, &value, &error, error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString: error)) }
         return value
     }
 }
