@@ -22,6 +22,9 @@ struct LiveCapture {
     var fallbackAnnounced = false
     var lifetime = BrowserCallLifetime()
     var savingSinceMs: Int64?
+    @MainActor var microphoneSilent: Bool {
+        snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
+    }
     var elapsedMs: Int64 {
         if let savingSinceMs { return savingSinceMs }
         return Int64(max(0,ProcessInfo.processInfo.systemUptime-originUptime)*1000)
@@ -177,6 +180,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func stop(_ id: UUID) {
         guard let value = captures[id], stopping[id] == nil else { return }
+        MeetingNavigation.shared.captureBeganSaving(at:value.snapshot.directory)
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
@@ -266,6 +270,7 @@ private final class CaptureFiles: @unchecked Sendable {
         let id = snapshot.manifest.id
         guard captures[id] != nil else { if snapshot.phase == .saved { settle(snapshot) }; return }
         captures[id]?.snapshot = snapshot
+        if snapshot.phase == .saving { MeetingNavigation.shared.captureBeganSaving(at:snapshot.directory) }
         if snapshot.phase == .saved {
             settle(snapshot)
             return
@@ -343,9 +348,11 @@ private final class CaptureFiles: @unchecked Sendable {
             if outcome.ok { failedMeetings.removeValue(forKey:outcome.key) }
             else { failedMeetings[outcome.key] = peers.flatMap(\.meetings).first { $0.key == outcome.key }?.title ?? UXText.text("library.untitled") }
             if !automatic {
-                manualCompleted.insert(outcome.key); manualPending.remove(outcome.key)
-                if outcome.ok { manualSucceeded.insert(outcome.key) }
-                finishAttempt()
+                if !manualIssued || manualPending.contains(outcome.key) {
+                    manualCompleted.insert(outcome.key); manualPending.remove(outcome.key)
+                    if outcome.ok { manualSucceeded.insert(outcome.key) }
+                    finishAttempt()
+                }
             } else if !outcome.ok { recordFailed = !isRecording }
         }
         if automatic && outcome.action == .start && outcome.ok { pendingAuto.insert(outcome.key); announce() }
@@ -356,7 +363,11 @@ private final class CaptureFiles: @unchecked Sendable {
         recordFailed = manualSucceeded.isEmpty && !isRecording && !failedMeetings.isEmpty
     }
     func retry(_ key: BrowserMeetingKey) {
+        guard !shuttingDown,!starting,failedMeetings[key] != nil else { return }
         recordFailed = false
+        requestingRecord = true; manualIssued = true
+        manualPending = [key]; manualCompleted = []; manualSucceeded = []
+        attemptHasAudio = isRecording
         service.recordMeeting(key,microphone:microphones[key] ?? true)
     }
     private func announce() {

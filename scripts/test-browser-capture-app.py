@@ -57,6 +57,17 @@ for name in [
     'hangupStopsOnlyEndedMeeting',
     'unobservedFallbackExpires',
     'failedSourceChangeKeepsSelectionAndAudio',
+    'firstBrowserPacketMakesRecordingVisible',
+    'ownedEditorUsesFolderIdentity',
+    'ownedSilenceMatchesMenuAndPage',
+    'ownedStopReturnsToLibraryBeforeFlush',
+    'deniedMicIsNotSilent',
+    'ownedDiskWarningUsesOverview',
+    'deferredMovePreservesUnrelatedViewAndExport',
+    'pendingSystemSourceIsNotPermissionFailure',
+    'failedSystemSourceShowsPermissionGuidance',
+    'companionSuggestionTracksConnection',
+    'failedRetryDoesNotInheritStoppedSuccess',
 ]:
     assert report[name] is True, (name,report)
 assert report['audioDevicesOpened'] is False and report['browserProfilesTouched'] is False

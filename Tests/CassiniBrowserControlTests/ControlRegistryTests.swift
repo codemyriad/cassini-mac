@@ -5,6 +5,51 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class ControlRegistryTests: XCTestCase {
+    func testTransientZeroDiscoveryCannotArmAnActiveCallForAutoRestart() throws {
+        var state = BrowserControlRegistry(); try ready(&state)
+        try send(status([2]),&state)
+        try send(["type":"meetings","meetings":[["tabId":2,"title":"Wake-up","url":"https://meet.example/2","sourceCount":0]]],&state)
+        // The extension's own Stop reports status; it does not call the app's
+        // explicit stop(), which would independently re-arm suppression.
+        try send(status([]),&state)
+        try meetings([2],&state)
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+    }
+    func testTransientZeroDiscoveryPreservesRetainedInterruptedCallSuppression() throws {
+        var state = BrowserControlRegistry(); try ready(&state)
+        state.setRetainedCaptureIDs(["capture-2"])
+        var snapshot = status([])
+        snapshot["interrupted"] = [["recording":false,"tabId":2,"captureId":"capture-2","path":NSNull(),"message":"Interrupted"]]
+        try send(snapshot,&state)
+        try meetings([],&state)
+        state.setRetainedCaptureIDs([])
+        try send(status([]),&state)
+        try meetings([2],&state)
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+    }
+    func testCommandSnapshotsRespectIssueOrderWithoutAnInterveningStatus() throws {
+        for reversed in [false,true] {
+            var state = BrowserControlRegistry(); try ready(&state,tabs:[2,3])
+            let requests = state.startAll(microphone:true)
+            if reversed {
+                try result(requests[1],&state,status:status([2,3]))
+                try result(requests[0],&state,status:status([2]))
+            } else {
+                try result(requests[0],&state,status:status([2]))
+                try result(requests[1],&state,status:status([2,3]))
+            }
+            XCTAssertEqual(state.snapshots.first?.captures.map { $0.key.tabID },[2,3])
+        }
+    }
+    func testResultSnapshotIncludesRetainedInterruptedCaptures() throws {
+        var state = BrowserControlRegistry(); try ready(&state)
+        let request = try XCTUnwrap(state.startAll(microphone:true).first)
+        state.setRetainedCaptureIDs(["capture-2"])
+        var snapshot = status([])
+        snapshot["interrupted"] = [["recording":false,"tabId":2,"captureId":"capture-2","path":NSNull(),"message":"Interrupted"]]
+        try result(request,&state,ok:false,status:snapshot)
+        XCTAssertEqual(state.snapshots.first?.interrupted.first?.captureID,"capture-2")
+    }
     func testBatchUsesEachMeetingsMicrophoneChoice() throws {
         var state = BrowserControlRegistry(); try ready(&state,tabs:[2,3])
         let requests = state.startAll(microphone:true,choices:[.init(peer:peer,tabID:2):false])

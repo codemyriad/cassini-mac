@@ -17,7 +17,7 @@ struct RecordingMenuPayload: Codable, Sendable {
         header = UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(RecordingOverview.elapsedMs)])
         title = RecordingOverview.title
         levels = [
-            .init(label:UXText.text("common.yourMicrophone"),value:RecordingOverview.levels["microphone",default:0],silent:recorder.microphoneSilent),
+            .init(label:UXText.text("common.yourMicrophone"),value:RecordingOverview.levels["microphone",default:0],silent:RecordingOverview.microphoneSilent),
             .init(label:UXText.text("common.theOthers"),value:RecordingOverview.levels["output",default:0],silent:false)
         ]
         actions = [
@@ -31,7 +31,8 @@ struct RecordingMenuPayload: Codable, Sendable {
         if let first = CaptureCollection.shared.first {
             if first.input.failedSides.contains(.me) { lines.append(UXText.text("errors.micPermission.line")) }
             if first.snapshot.others && !first.snapshot.browserAlive {
-                lines.append(UXText.text(first.input.failedSides.contains(.others) ? "errors.othersPermission.line" : "errors.othersFallback.line"))
+                if first.input.failedSides.contains(.others) { lines.append(UXText.text("errors.othersPermission.line")) }
+                else if first.snapshot.fallbackReason != nil { lines.append(UXText.text("errors.othersFallback.line")) }
             }
         }
         sourceLines = lines.isEmpty ? nil : lines
