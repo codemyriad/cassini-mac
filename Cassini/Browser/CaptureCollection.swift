@@ -240,7 +240,8 @@ private final class CaptureFiles: @unchecked Sendable {
         }
         let now = ProcessInfo.processInfo.systemUptime
         let parent = snapshot.directory.deletingLastPathComponent().standardizedFileURL.path
-        if !LibraryLocationModel.shared.roots.contains(where:{ $0.standardizedFileURL.path == parent }) { LibraryStore.shared.reloadLocation() }
+        let context = LibraryStore.shared.context
+        if !([context.root] + context.previousRoots).contains(where:{ $0.standardizedFileURL.path == parent }) { LibraryStore.shared.reloadLocation() }
         startPolling()
         let origin = max(0,min(now,now - max(0,(Date().timeIntervalSince1970*1000 - Double(info.timelineOriginMs))/1000)))
         let input = CaptureInputLifecycle(capture:owner,originHostTime:AVAudioTime.hostTime(forSeconds:origin),microphone:{ Self.nativeInput(.me) },system:{ Self.nativeInput(.others) },failure:{ [weak self] _ in
