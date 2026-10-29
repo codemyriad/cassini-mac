@@ -48,6 +48,16 @@ def signature(path, expected, require_runtime=False):
     actual_profile = plistlib.loads(profile_result.stdout) if profile_result.stdout.strip() else {}
     file = profiles.get(expected.removeprefix(prefix))
     expected_profile = plistlib.loads((root/file).read_bytes()) if file else {}
+    if expected.removeprefix(prefix) in ['.browser-host','.control-host']:
+        # Xcode can attach this identity even to an otherwise empty tool
+        # profile. It grants no sandbox capability; validate it rather than
+        # accepting any testing exceptions beside it.
+        if 'com.apple.application-identifier' in actual_profile:
+            identity = actual_profile.pop('com.apple.application-identifier')
+            allowed = {expected}
+            team = fields.get('TeamIdentifier')
+            if team and team != 'not set':allowed.add(team+'.'+expected)
+            assert identity in allowed, (path,'Unexpected native host application identifier',identity)
     assert actual_profile == expected_profile, (path,'Product entitlements differ',actual_profile,expected_profile)
     return fields
 

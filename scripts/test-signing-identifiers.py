@@ -79,6 +79,15 @@ class SigningIdentifiersTests(unittest.TestCase):
         file=self.root/'test-exceptions.plist';file.write_bytes(plistlib.dumps(profile))
         self.sign(self.app,'io.codemyriad.cassini',override=file)
         result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('Product entitlements differ',result.stderr)
+    def testNativeHostIdentityDoesNotPermitTestingExceptions(self):
+        profile={'com.apple.application-identifier':'io.codemyriad.cassini.browser-host'}
+        file=self.root/'host.plist';file.write_bytes(plistlib.dumps(profile))
+        host=self.app/'Contents/MacOS/cassini-browser-host'
+        self.sign(host,'io.codemyriad.cassini.browser-host',override=file)
+        result=self.inspect();self.assertEqual(result.returncode,0,result.stderr)
+        profile['com.apple.security.temporary-exception.files.absolute-path.read-only']=['/']
+        file.write_bytes(plistlib.dumps(profile));self.sign(host,'io.codemyriad.cassini.browser-host',override=file)
+        result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('Product entitlements differ',result.stderr)
     def testXcodeProductSigningSettings(self):
         result=subprocess.run(['xcodebuild','-showBuildSettings','-json','-project',str(ROOT/'Cassini.xcodeproj'),'-alltargets'],
             check=True,capture_output=True,text=True,timeout=90)
@@ -95,6 +104,8 @@ class SigningIdentifiersTests(unittest.TestCase):
             self.assertIn('--timestamp',settings['OTHER_CODE_SIGN_FLAGS'],name)
             if name in ['CassiniBrowserHost','CassiniControlHost','CassiniWhistleWorker','CassiniParakeetWorker']:
                 self.assertIn('-i '+settings['PRODUCT_BUNDLE_IDENTIFIER'],settings['OTHER_CODE_SIGN_FLAGS'],name)
+            if name in ['CassiniBrowserHost','CassiniControlHost']:
+                self.assertEqual(plistlib.loads((ROOT/settings['CODE_SIGN_ENTITLEMENTS']).read_bytes()),{})
         self.assertEqual(found,set(expected))
         override=subprocess.run(['xcodebuild','-showBuildSettings','-json','-project',str(ROOT/'Cassini.xcodeproj'),
             '-alltargets','CASSINI_APP_HARDENED_RUNTIME=NO'],check=True,capture_output=True,text=True,timeout=90)

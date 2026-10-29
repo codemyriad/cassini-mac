@@ -187,6 +187,7 @@ targets:
         OTHER_CODE_SIGN_FLAGS: "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)"
         PRODUCT_NAME: cassini-browser-host
         SKIP_INSTALL: true
+        CODE_SIGN_ENTITLEMENTS: BrowserSetup/NativeHost.entitlements
         ENABLE_HARDENED_RUNTIME: true
   CassiniControlHost:
     type: tool
@@ -202,6 +203,7 @@ targets:
         OTHER_CODE_SIGN_FLAGS: "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)"
         PRODUCT_NAME: cassini-control-host
         SKIP_INSTALL: true
+        CODE_SIGN_ENTITLEMENTS: BrowserSetup/NativeHost.entitlements
         ENABLE_HARDENED_RUNTIME: true
   CassiniBrowserSetup:
     type: xpc-service
