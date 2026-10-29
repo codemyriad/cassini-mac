@@ -85,6 +85,7 @@ import CassiniRecording
         try await withCheckedThrowingContinuation { continuation in
             authorizations[id] = continuation
             Task { @MainActor [weak self] in
+                guard self?.authorizations[id] != nil else { return }
                 let result: Result<Void,Error>
                 do { try await driver.authorize(); result = .success(()) }
                 catch { result = .failure(error) }
