@@ -50,6 +50,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var resumeAt: Double = 0
     private var meResumeAt: Double = 0
     private var nativeProblem: String?
+    private var nativeProblemKind: String?
     private let changed: @Sendable (OwnedCaptureSnapshot) -> Void
     private let notifications: DispatchQueue
     private var lastPublished = DispatchTime.now().uptimeNanoseconds
@@ -226,13 +227,20 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             try recording.appendNative(id:id,pcm:bytes,offsetMs:offset); publish(force:first)
         }
     }
-    fileprivate func endNative(_ ids: [String], problem: String?) throws {
+    fileprivate func reportNativeLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
+        sync { recording.reportLoss(id:id,droppedFrames:droppedFrames,gapFrames:gapFrames) }
+    }
+    fileprivate func endNative(_ ids: [String], problem: String?, kind: String? = nil) throws {
         try sync {
             guard phase == .recording else { return }
             let live = ids.filter { nativeSpans[$0]?.registered == true }
             if !live.isEmpty { try recording.transition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }
-            if let problem, !problem.isEmpty { nativeProblem = nativeProblem ?? problem }
+            if let problem, !problem.isEmpty {
+                nativeProblem = nativeProblem ?? problem
+                let value = kind ?? "capture"
+                if nativeProblemKind == nil || value == "io" || nativeProblemKind == "gap" { nativeProblemKind = value }
+            }
             publish()
         }
     }
@@ -240,7 +248,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard self.phase != .saved else { return }
             self.phase = .saving; self.publish()
-            do { try self.recording.finish(problem:problem ?? self.nativeProblem) }
+            do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:self.nativeProblemKind == "io" ? "io" : problem == nil ? self.nativeProblemKind : nil) }
             catch { self.phase = .saved; self.publish(); throw error }
             self.phase = .saved; self.publish()
         }
@@ -271,5 +279,12 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws {
         guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs)
     }
-    func finish(problem: String?) throws { self.problem = problem; try owner.endNative(Array(spans.values),problem:problem); spans.removeAll() }
+    func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
+        guard let span = spans[id] else { return }
+        owner.reportNativeLoss(id:span,droppedFrames:droppedFrames,gapFrames:gapFrames)
+    }
+    func finish(problem: String?) throws { try finish(problem:problem,kind:nil) }
+    func finish(problem: String?, kind: String?) throws {
+        self.problem = problem; try owner.endNative(Array(spans.values),problem:problem,kind:kind); spans.removeAll()
+    }
 }

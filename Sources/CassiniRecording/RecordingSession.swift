@@ -30,7 +30,9 @@ public struct RecordingTrack: Codable, Identifiable, Sendable {
     public var ended: Bool? = nil
     public var labelSource: String? = nil
     public var sourceTrackId: String? = nil
-    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId }
+    public var droppedFrames: UInt64? = nil
+    public var gapFrames: UInt64? = nil
+    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames }
 }
 
 extension RecordingManifest {
@@ -54,6 +56,8 @@ extension RecordingTrack {
         startOffsetMs = try c.decodeIfPresent(Double.self,forKey:.startOffsetMs); frames = try c.decode(UInt64.self,forKey:.frames)
         endOffsetMs = try c.decodeIfPresent(Double.self,forKey:.endOffsetMs); ended = try c.decodeIfPresent(Bool.self,forKey:.ended)
         labelSource = try c.decodeIfPresent(String.self,forKey:.labelSource)
+        droppedFrames = try? c.decode(UInt64.self,forKey:.droppedFrames)
+        gapFrames = try? c.decode(UInt64.self,forKey:.gapFrames)
         sourceTrackId = (try? c.decode(String.self,forKey:.sourceTrackId)).flatMap { !$0.isEmpty && $0.utf8.count <= 200 ? $0 : nil }
     }
 }
@@ -192,7 +196,13 @@ public final class RecordingSession {
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
     }
 
-    public func finish(problem: String? = nil) throws {
+    public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
+        guard let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else { return }
+        manifest.tracks[index].droppedFrames = droppedFrames > 0 ? droppedFrames : nil
+        manifest.tracks[index].gapFrames = gapFrames > 0 ? gapFrames : nil
+    }
+    public func finish(problem: String? = nil) throws { try finish(problem:problem,kind:nil) }
+    public func finish(problem: String?, kind: String?) throws {
         guard !finished else { return }
         finished = true
         var failure: Error?
@@ -207,7 +217,7 @@ public final class RecordingSession {
             manifest.tracks[i].ended = true
             manifest.tracks[i].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames) / Double(track.sampleRate) * 1000 }
         }
-        manifest.problemKind = failure != nil ? "io" : (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
+        manifest.problemKind = failure != nil ? "io" : kind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
         manifest.state = manifest.problem == nil ? "completed" : "interrupted"
         try checkpoint()
         if let failure { throw failure }

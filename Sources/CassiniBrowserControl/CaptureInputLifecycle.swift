@@ -76,7 +76,7 @@ import CassiniRecording
             try await self.reconcile()
         }
     }
-    public typealias Status = (levels: [String:Float],frames: [String:UInt64],droppedMs: Double,warnings: [String])
+    public typealias Status = (levels: [String:Float],frames: [String:UInt64],droppedMs: Double,gapMs: Double,warnings: [String])
     public func status() -> [CaptureSide:Status] {
         inputs.mapValues { $0.sink.status() }
     }
