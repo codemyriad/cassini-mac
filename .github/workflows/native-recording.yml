@@ -38,9 +38,11 @@ jobs:
       - name: Native session and writer tests
         run: swift test --filter 'Recording'
       - uses: actions/setup-node@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
         with:
           node-version: '22'
       - name: Real tab capture with DrMeyers output device
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
         env:
           CASSINI_TEST_PROFILE_ROOT: ${{ runner.temp }}/cassini-browser-profiles-${{ github.run_id }}
         run: |
