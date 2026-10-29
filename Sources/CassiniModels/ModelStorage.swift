@@ -2,6 +2,15 @@
 import Foundation
 
 public enum ModelStorage {
+    /// Offline inventory. The app may skip the large hashes for its initial
+    /// Settings row; accepted inference jobs still verify their pinned files.
+    public static func isInstalled(_ plan: ModelPlan, in appData: URL, verifyHashes: Bool = true) -> Bool {
+        let models = appData.appendingPathComponent("models"), revisions = models.appendingPathComponent(plan.pin.id)
+        let folder = revisions.appendingPathComponent(plan.pin.sourceSHA256)
+        guard ModelFiles.existingDirectory(models),ModelFiles.existingDirectory(revisions),ModelFiles.existingDirectory(folder) else { return false }
+        do { try ModelDownloader.validateInstalled(folder,plan:plan,verifyHashes:verifyHashes); return true }
+        catch { return false }
+    }
     /// Foundation resolves Application Support inside the app's container for
     /// sandbox builds. Models are app data, never part of the meeting Library.
     public static var appData: URL {

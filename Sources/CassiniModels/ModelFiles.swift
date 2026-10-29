@@ -20,15 +20,16 @@ enum ModelFiles {
         guard mkdir(root.path,0o700) == 0 || errno == EEXIST else { throw POSIXError(.EACCES) }
         try directory(root)
     }
-    static func size(_ url: URL) throws -> UInt64? {
+    static func size(_ url: URL, allowingInferenceLinks: Bool = false) throws -> UInt64? {
         var info = stat()
         if lstat(url.path,&info) != 0 { if errno == ENOENT { return nil }; throw POSIXError(.EACCES) }
-        guard info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1, info.st_size >= 0 else { throw ModelDownloadError.unsafePath }
+        let linksAllowed = info.st_nlink == 1 || (allowingInferenceLinks && info.st_nlink > 1 && info.st_uid == getuid())
+        guard info.st_mode & S_IFMT == S_IFREG, linksAllowed, info.st_size >= 0 else { throw ModelDownloadError.unsafePath }
         return UInt64(info.st_size)
     }
-    static func digest(_ url: URL) throws -> String {
+    static func digest(_ url: URL, allowingInferenceLinks: Bool = false) throws -> String {
         let fd = open(url.path,O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
-        guard fd >= 0, try size(url) != nil else { if fd >= 0 { close(fd) }; throw ModelDownloadError.unsafePath }
+        guard fd >= 0, try size(url,allowingInferenceLinks:allowingInferenceLinks) != nil else { if fd >= 0 { close(fd) }; throw ModelDownloadError.unsafePath }
         let input = FileHandle(fileDescriptor:fd,closeOnDealloc:true); defer { try? input.close() }
         var hash = SHA256()
         while let data = try input.read(upToCount:1 << 20), !data.isEmpty { try Task.checkCancellation(); hash.update(data:data) }
