@@ -13,7 +13,9 @@ import CassiniBrowserSetup
     var working: Bool { background.state == .settingUp }
     var failed: Bool { if case .failed = background.state { true } else { false } }
     func start() {
-        guard !LibraryLaunchContext.current.screenshot, !started else { return }
+        // AppDelegate excludes screenshot fixtures before calling this path.
+        // Do not resolve Library locations/bookmarks just to start browser setup.
+        guard !started else { return }
         started = true; trigger()
     }
     func trigger() {
