@@ -27,6 +27,25 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(wav[204..<16204].allSatisfy { $0 == 0 })
         XCTAssertTrue(wav[16204...].contains { $0 != 0 })
     }
+    func testFailedNativeSystemPublishesNoneOnceAndUserRetryPublishesActualSamples() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try OwnedBrowserCapture(parent:root,title:"Native system lost",microphone:false,browser:false)
+        let first = capture.nativeWriter(side:.others)
+        try first.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try first.appendNative(id:"output",pcm:Data(repeating:1,count:160),offsetMs:0)
+        try first.finish(problem:"Generated system failure")
+        try await capture.systemUnavailable(atMs:10)
+        let count = capture.snapshot.manifest.events?.count
+        try await capture.systemUnavailable(atMs:15)
+        XCTAssertEqual(capture.snapshot.manifest.events?.count,count)
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"none")
+        let retry = capture.nativeWriter(side:.others)
+        try retry.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try retry.appendNative(id:"output",pcm:Data(repeating:1,count:160),offsetMs:20)
+        try retry.finish(problem:nil); try await capture.finish()
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"system")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"user")
+    }
     func testNativeSourceAndUserResumePublishOnlyActualSystemBuffers() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Native",microphone:true,browser:false)

@@ -184,13 +184,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         }
     }
     public func nativeWriter(side: CaptureSide) -> any RecordingSinkWriter { NativeSpanWriter(owner:self,side:side) }
-    public func systemUnavailable(atMs: Double) throws {
-        try sync {
-            guard phase == .recording, others, !browserAlive else { return }
+    public func systemUnavailable(atMs: Double) async throws {
+        try await operation {
+            guard self.phase == .recording, self.others, !self.browserAlive else { return }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid source time.") }
-            guard recording.manifest.events?.last(where:{ $0.type == "othersSource" })?.source != "none" else { return }
-            try recording.transition(events:[.init(atMs:eventTime(atMs),type:"othersSource",source:"none",reason:"lost")])
-            publish()
+            guard self.recording.manifest.events?.last(where:{ $0.type == "othersSource" })?.source != "none" else { return }
+            try self.recording.transition(events:[.init(atMs:self.eventTime(atMs),type:"othersSource",source:"none",reason:"lost")])
+            self.systemReason = "user"
+            self.publish()
         }
     }
     public func nativeSink(side: CaptureSide, originHostTime: UInt64,
