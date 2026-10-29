@@ -17,6 +17,7 @@ let package = Package(
         .library(name: "CassiniParakeet", targets: ["CassiniParakeet"]),
         .library(name: "CassiniModels", targets: ["CassiniModels"]),
         .library(name: "CassiniBrowserControl", targets: ["CassiniBrowserControl"]),
+        .library(name: "CassiniBrowserSetup", targets: ["CassiniBrowserSetup"]),
         .executable(name: "cassini-control-host", targets: ["cassini-control-host"]),
         .executable(name: "cassini-parakeet-worker", targets: ["cassini-parakeet-worker"]),
         .executable(name: "cassini-model-fetch", targets: ["cassini-model-fetch"]),
@@ -32,6 +33,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .target(name:"CassiniBrowserSetup"),
+        .testTarget(name:"CassiniBrowserSetupTests",dependencies:["CassiniBrowserSetup"]),
+        .executableTarget(name:"cassini-browser-setup-service",dependencies:["CassiniBrowserSetup"],path:"BrowserSetup",exclude:["Info.plist","BrowserSetup.entitlements"]),
+        .executableTarget(name:"cassini-browser-connect-probe",dependencies:["CassiniBrowserSetup"],path:"Spikes/BrowserConnect"),
         .executableTarget(name:"cassini-session-transition-probe",dependencies:["CassiniRecording","CassiniKit"],path:"Spikes/SessionTransitions"),
         .target(name:"CassiniBrowserControl",dependencies:["CassiniKit","CassiniLibrary","CassiniRecording"]),
         .executableTarget(name:"cassini-control-host",dependencies:["CassiniBrowserControl"]),

@@ -103,6 +103,11 @@
     ".github/workflows/ux-parakeet.yml"
   ],
   "browser_setup": [
+    "BrowserSetup/**",
+    "Spikes/BrowserConnect/**",
+    "scripts/test-browser-connect.py",
+    "Sources/CassiniBrowserSetup/**",
+    "Tests/CassiniBrowserSetupTests/**",
     "Sources/CassiniBrowserControl/**",
     "Sources/CassiniRecording/**",
     "Sources/cassini-browser-host/**",
