@@ -26,11 +26,13 @@ tools = {
     'cassini-parakeet-worker': '.parakeet-worker',
 }
 
-def signature(path, expected):
+def signature(path, expected, require_runtime=False):
     result = subprocess.run(['codesign', '-d', '--verbose=4', str(path)],
                             check=True, capture_output=True, text=True)
     fields = dict(line.split('=', 1) for line in result.stderr.splitlines() if '=' in line)
     assert fields.get('Identifier') == expected, (path, fields.get('Identifier'), expected)
+    if require_runtime:
+        assert '(runtime)' in result.stderr, (path, 'missing hardened runtime')
     if any(line.startswith('Authority=') for line in result.stderr.splitlines()):
         assert 'runtime' in fields.get('CodeDirectory v', '') or '(runtime)' in result.stderr, path
         assert fields.get('Timestamp'), (path, 'missing secure timestamp')
@@ -40,7 +42,7 @@ for relative, suffix in bundles.items():
     bundle = app / relative
     info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
     assert info['CFBundleIdentifier'] == prefix + suffix, (bundle, info['CFBundleIdentifier'])
-    signature(bundle, prefix + suffix)
+    signature(bundle, prefix + suffix, suffix in ['.browser-setup','.models'])
 for name, suffix in tools.items():
     signature(app / 'Contents/MacOS' / name, prefix + suffix)
 # Worker signing is part of the build, before the manifest is written. Signing

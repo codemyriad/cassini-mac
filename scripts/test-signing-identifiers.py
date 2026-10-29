@@ -45,7 +45,7 @@ class SigningIdentifiersTests(unittest.TestCase):
         for relative, suffix in reversed(self.bundles):
             self.sign(self.app/relative, 'io.codemyriad.cassini'+suffix)
     def sign(self, path, identifier):
-        subprocess.run(['codesign','--force','--sign','-','--timestamp=none','-i',identifier,str(path)],check=True,capture_output=True)
+        subprocess.run(['codesign','--force','--sign','-','--timestamp=none','--options','runtime','-i',identifier,str(path)],check=True,capture_output=True)
     def inspect(self):
         return subprocess.run(['python3',str(ROOT/'scripts/check-signing-identifiers.py'),str(self.app)],capture_output=True,text=True)
     def testValidFinishedBundle(self):
@@ -57,6 +57,11 @@ class SigningIdentifiersTests(unittest.TestCase):
         worker=self.app/'Contents/MacOS/cassini-whistle-worker'
         with worker.open('ab') as stream:stream.write(b'changed after build')
         result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('signed bytes changed',result.stderr)
+    def testMissingServiceHardenedRuntimeIsRejected(self):
+        service=self.app/'Contents/XPCServices/CassiniModelDownloads.xpc'
+        subprocess.run(['codesign','--force','--sign','-','--timestamp=none','--options','0',
+            '-i','io.codemyriad.cassini.models',str(service)],check=True,capture_output=True)
+        result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('missing hardened runtime',result.stderr)
     def testWrongServiceBundleIdentifierIsRejected(self):
         path=self.app/'Contents/XPCServices/CassiniModelDownloads.xpc/Contents/Info.plist'
         info=plistlib.loads(path.read_bytes());info['CFBundleIdentifier']='com.example.unrelated';path.write_bytes(plistlib.dumps(info))
