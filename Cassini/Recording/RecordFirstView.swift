@@ -125,7 +125,7 @@ struct LiveRecordingPill: View {
                     .accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(frozenMs ?? RecordingOverview.elapsedMs)]))
                     .accessibilityHint(UXText.text("hidden.openCassini"))
                 VStack(spacing:4) {
-                    meter(microphone,label:"common.yourMicrophone",silent:frozenMs != nil || RecordingController.shared.microphoneSilent)
+                    meter(microphone,label:"common.yourMicrophone",silent:frozenMs != nil || RecordingOverview.microphoneSilent)
                     meter(output,label:"recordFirst.sound.title")
                 }.frame(width:30)
                 Button(UXText.text("common.stop")) { if frozenMs == nil { RecordingOverview.stop() } }

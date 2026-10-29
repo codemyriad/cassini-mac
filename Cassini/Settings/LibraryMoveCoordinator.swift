@@ -7,6 +7,8 @@ import CassiniLibrary
     static let shared = LibraryMoveCoordinator()
     struct FailureGroup: Identifiable { let root: URL; let names: Set<String>; var id: String { root.path } }
     private(set) var busy = false
+    var canChoose: Bool { !busy && chooser == nil && !closing && !RecordingOverview.starting && !RecordingOverview.saving }
+    var requiresRecordingConfirmation: Bool { RecordingOverview.active }
     var waitingCount: Int { LibraryLocationModel.shared.location.pendingMoves.filter { $0.phase == .pending }.count }
     var failures: [FailureGroup] {
         Dictionary(grouping:LibraryLocationModel.shared.location.pendingMoves.filter { $0.phase == .failed },by:\.sourcePath)
@@ -33,9 +35,7 @@ import CassiniLibrary
         if waitingCount > 0 { run(destination:nil,selection:.pending) }
     }
     func choose(parent: NSWindow?) {
-        guard !busy, chooser == nil else { return }
-        let recorder = RecordingController.shared
-        guard !recorder.isStarting, !recorder.isSaving else { return }
+        guard canChoose else { return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.canCreateDirectories = true; panel.allowsMultipleSelection = false
         panel.directoryURL = LibraryLocationModel.shared.roots[0].deletingLastPathComponent(); chooser = panel
@@ -43,7 +43,7 @@ import CassiniLibrary
             guard let self else { return }; self.chooser = nil
             guard response == .OK, let url = panel.url, !self.closing else { return }
             let lease = FileAccessLease(url)
-            if RecordingController.shared.isRecording {
+            if self.requiresRecordingConfirmation {
                 let alert = NSAlert(); self.confirmation = alert; alert.messageText = UXText.text("confirm.moveLibrary.title")
                 alert.informativeText = UXText.text("confirm.moveLibrary.body")
                 alert.addButton(withTitle:UXText.text("confirm.moveLibrary.primary")).keyEquivalent = "\r"
@@ -121,9 +121,11 @@ import CassiniLibrary
         task = Task {
             let location = LibraryLocationModel.shared
             do {
-                RecordCoordinator.shared.showingFirst = false
-                MeetingExportCoordinator.shared.cancel(); await MeetingExportCoordinator.shared.waitForShutdown()
-                LibrarySearchModel.shared.close(); MeetingNavigation.shared.back(); SessionPlaybackController.stopAll()
+                if destination != nil {
+                    RecordCoordinator.shared.showingFirst = false
+                    MeetingExportCoordinator.shared.cancel(); await MeetingExportCoordinator.shared.waitForShutdown()
+                    LibrarySearchModel.shared.close(); MeetingNavigation.shared.back(); SessionPlaybackController.stopAll()
+                }
                 await RecordingPageModel.flushAll()
                 await LibraryImportCoordinator.shared.pauseForMove()
                 await TranscriptionQueue.shared.pauseForMove() // preserves the active child/path

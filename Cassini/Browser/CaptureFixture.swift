@@ -11,6 +11,7 @@ import CassiniBrowserControl
     }
     static var microphoneAllowed = true
     static var microphoneStartsAllowed = true
+    static var silentMicrophone = false
     static var systemAllowed = true
     static var microphoneStarts = 0
     static var systemStarts = 0
@@ -40,7 +41,7 @@ import CassiniBrowserControl
         let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
         let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:160)!
         buffer.frameLength = 160
-        for index in 0..<160 { buffer.floatChannelData![0][index] = side == .me ? 0.12 : 0.33 }
+        for index in 0..<160 { buffer.floatChannelData![0][index] = side == .me ? (CaptureFixture.silentMicrophone ? 0 : 0.12) : 0.33 }
         // Input stamps follow the generated source frames, not timer delivery.
         sink?.receive(buffer,hostTime:origin + AVAudioTime.hostTime(forSeconds:Double(frames)/8000),id:side == .me ? "microphone" : "output",label:side == .me ? "Generated mic" : "Generated system",kind:side == .me ? "microphone" : "system")
         frames += 160
