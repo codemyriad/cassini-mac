@@ -8,7 +8,7 @@ import CassiniLibrary
         #if DEBUG
         if let defaults = SettingsFixture.defaults { return defaults }
         if RecordingFixture.enabled, let id = LibraryLaunchContext.argument("-CassiniCaptureID") {
-            return UserDefaults(suiteName: "com.codemyriad.cassini-mac.capture-fixture." + id)!
+            return UserDefaults(suiteName: "io.codemyriad.cassini.capture-fixture." + id)!
         }
         #endif
         return .standard

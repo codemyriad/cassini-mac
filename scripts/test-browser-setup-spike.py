@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='browser-setup-spike-', dir=build) as te
     relative_home = home.relative_to(account_home)
     for browser in BROWSERS:
         (home / 'Library/Application Support' / browser / 'NativeMessagingHosts').mkdir(parents=True, mode=0o700)
-    identifier = 'com.codemyriad.cassini-browser-setup-spike'
+    identifier = 'io.codemyriad.cassini-browser-setup-spike'
     app = temporary / 'BrowserSetupProbe.app'
     service = app / 'Contents/XPCServices/BrowserSetupProbe.xpc'
     client_binary = app / 'Contents/MacOS/ProbeClient'

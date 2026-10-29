@@ -60,7 +60,7 @@ final class ModelDownloadConnection: NSObject, CassiniModelDownloadService, @unc
         if case ModelDownloadError.diskSpace(let required,let available) = error {
             code = 1; info["required"] = NSNumber(value:required); info["available"] = NSNumber(value:available)
         }
-        return NSError(domain:"com.codemyriad.Cassini.ModelDownload",code:code,userInfo:info)
+        return NSError(domain:"io.codemyriad.cassini.model-download",code:code,userInfo:info)
     }
     #if DEBUG
     func probeEnvironment(port: UInt16, destinationBookmark: Data, expectedDirectory: String, reply: @escaping @Sendable (Bool,Bool,NSError?) -> Void) {

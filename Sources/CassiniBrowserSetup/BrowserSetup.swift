@@ -11,7 +11,7 @@ public enum BrowserSetupError: Error { case unavailable, unsafePath, invalidHost
 /// destination, extension ID, executable or shell command. Two bookmarks transfer
 /// access to exactly the sibling bundled hosts, checked against its own bundle.
 public struct BrowserSetupInstallation {
-    public static let serviceName = "com.codemyriad.cassini-mac.browser-setup"
+    public static let serviceName = "io.codemyriad.cassini.browser-setup"
     public static let origin = "chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/"
     public static let browsers = ["Google/Chrome","Chromium","Microsoft Edge","BraveSoftware/Brave-Browser"]
     private let home: URL

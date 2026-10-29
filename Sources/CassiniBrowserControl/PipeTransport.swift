@@ -73,7 +73,7 @@ public final class BrowserPipeConnection: @unchecked Sendable {
         self.peer = peer; self.input = input; self.output = output; self.lease = lease
         requestDummy = dummy; self.ownsLease = ownsLease; self.folder = folder
         self.received = received; self.ended = ended
-        writer = DispatchQueue(label:"com.codemyriad.cassini.pipe-write." + peer.id.uuidString)
+        writer = DispatchQueue(label:"io.codemyriad.cassini.pipe-write." + peer.id.uuidString)
         readerDone.enter()
     }
     public func send(_ data: Data, closeAfter: Bool = false) throws {
@@ -125,7 +125,7 @@ public final class BrowserPipeConnection: @unchecked Sendable {
 public final class BrowserPipeServer: @unchecked Sendable {
     public static var standardRoot: URL { PipeFiles.standardRoot }
     public let root: URL
-    private let queue = DispatchQueue(label:"com.codemyriad.cassini.pipe-discovery")
+    private let queue = DispatchQueue(label:"io.codemyriad.cassini.pipe-discovery")
     private let queueKey = DispatchSpecificKey<UInt8>()
     private let cancellation = Cancellation()
     private var lease: Int32 = -1

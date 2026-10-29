@@ -90,7 +90,7 @@ public final class RecordingSink: @unchecked Sendable {
         var reportedMeterFrames: UInt64 = 0
         var lastCompletePeak: Float?
     }
-    private let queue = DispatchQueue(label: "com.codemyriad.cassini.recording-writer", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "io.codemyriad.cassini.recording-writer", qos: .userInitiated)
     private let lock = NSLock()
     private var failed = false
     private var failureMessage: String?

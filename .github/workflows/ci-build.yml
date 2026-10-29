@@ -84,6 +84,9 @@ jobs:
           path: build/ci-upload/parakeet
           retention-days: 3
           compression-level: 0
+      - name: Test signing identifier and shipped-byte checks on generated code
+        if: matrix.arch == 'arm64'
+        run: python3 scripts/test-signing-identifiers.py
       - name: Prepare identical bundled Library fixtures
         if: matrix.arch == 'arm64'
         run: |
@@ -103,12 +106,9 @@ jobs:
           set -o pipefail
           xcodebuild build-for-testing -project Cassini.xcodeproj -scheme CassiniScreenshots -configuration Debug \
             -destination 'platform=macOS' -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/debug-build.log
-          # Strip build-for-testing exceptions from the actual product profiles.
-          codesign --force --sign - --options 0 --timestamp=none --entitlements ModelDownloads/ModelDownloads.entitlements build/Build/Products/Debug/Cassini.app/Contents/XPCServices/CassiniModelDownloads.xpc
-          codesign --force --sign - --options 0 --timestamp=none --entitlements BrowserSetup/BrowserSetup.entitlements build/Build/Products/Debug/Cassini.app/Contents/XPCServices/CassiniBrowserSetup.xpc
-          codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES ENABLE_HARDENED_RUNTIME=NO 2>&1 | tee build/debug-build.log
           codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
+          python3 scripts/check-signing-identifiers.py build/Build/Products/Debug/Cassini.app
           python3 scripts/ci-products.py pack debug build/ci-upload/debug
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
@@ -132,12 +132,9 @@ jobs:
           PYTHON
           xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Release \
             -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES 2>&1 | tee build/release-build.log
-          # Strip build-for-testing exceptions from the actual product profiles.
-          codesign --force --sign - --options 0 --timestamp=none --entitlements ModelDownloads/ModelDownloads.entitlements build/Build/Products/Release/Cassini.app/Contents/XPCServices/CassiniModelDownloads.xpc
-          codesign --force --sign - --options 0 --timestamp=none --entitlements BrowserSetup/BrowserSetup.entitlements build/Build/Products/Release/Cassini.app/Contents/XPCServices/CassiniBrowserSetup.xpc
-          codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Release/Cassini.app
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES ENABLE_HARDENED_RUNTIME=NO 2>&1 | tee build/release-build.log
           codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
+          python3 scripts/check-signing-identifiers.py build/Build/Products/Release/Cassini.app
           python3 scripts/ci-products.py pack release build/ci-upload/release
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'

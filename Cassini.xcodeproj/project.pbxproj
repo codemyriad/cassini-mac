@@ -209,6 +209,7 @@
 		0A2CF8935408378DD526CC43 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		0CFDFBED5CFF6924BDF895A8 /* ExportSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSelfTest.swift; sourceTree = "<group>"; };
 		0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSelfTest.swift; sourceTree = "<group>"; };
+		0EAA064AC3BAF718DA22391F /* cassini-mac-bundle-ids */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-bundle-ids"; path = .; sourceTree = SOURCE_ROOT; };
 		127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiskWatch.swift; sourceTree = "<group>"; };
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1306467A5EEEC9D698F5B4E9 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
@@ -218,7 +219,6 @@
 		1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
 		202F303D76A9CA142F725248 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		21929C6877BBEF114C88FE47 /* RecordingPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPageView.swift; sourceTree = "<group>"; };
-		73624C6A0199DCB33266F36E /* cassini-mac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac"; path = .; sourceTree = SOURCE_ROOT; };
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
 		34535028E93902028522FD50 /* LibraryLocationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryLocationModel.swift; sourceTree = "<group>"; };
@@ -666,7 +666,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				73624C6A0199DCB33266F36E /* cassini-mac */,
+				0EAA064AC3BAF718DA22391F /* cassini-mac-bundle-ids */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -1244,7 +1244,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniControlHost;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.control-host";
 				PRODUCT_NAME = "cassini-control-host";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1256,12 +1257,13 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BrowserSetup/BrowserSetup.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = BrowserSetup/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.browser-setup";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.browser-setup";
 				PRODUCT_MODULE_NAME = CassiniBrowserSetupService;
 				PRODUCT_NAME = CassiniBrowserSetup;
 				SDKROOT = macosx;
@@ -1281,7 +1283,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.quicklook";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini.quicklook;
 				PRODUCT_NAME = CassiniQuickLook;
 				SDKROOT = macosx;
 			};
@@ -1296,7 +1298,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniBrowserHost;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.browser-host";
 				PRODUCT_NAME = "cassini-browser-host";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1312,7 +1315,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniParakeetWorker;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.parakeet-worker";
 				PRODUCT_NAME = "cassini-parakeet-worker";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1353,6 +1357,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
@@ -1379,6 +1384,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) --timestamp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -1401,7 +1407,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.quicklook";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini.quicklook;
 				PRODUCT_NAME = CassiniQuickLook;
 				SDKROOT = macosx;
 			};
@@ -1412,12 +1418,13 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ModelDownloads/ModelDownloads.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = ModelDownloads/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.models";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini.models;
 				PRODUCT_NAME = CassiniModelDownloads;
 				SDKROOT = macosx;
 			};
@@ -1427,6 +1434,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1435,7 +1443,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.screenshots";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini.screenshots;
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = Cassini;
 			};
@@ -1446,12 +1454,13 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ModelDownloads/ModelDownloads.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = ModelDownloads/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.models";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini.models;
 				PRODUCT_NAME = CassiniModelDownloads;
 				SDKROOT = macosx;
 			};
@@ -1470,7 +1479,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini;
 				PRODUCT_NAME = Cassini;
 				SDKROOT = macosx;
 			};
@@ -1481,12 +1490,13 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BrowserSetup/BrowserSetup.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = BrowserSetup/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.browser-setup";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.browser-setup";
 				PRODUCT_MODULE_NAME = CassiniBrowserSetupService;
 				PRODUCT_NAME = CassiniBrowserSetup;
 				SDKROOT = macosx;
@@ -1497,6 +1507,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1505,7 +1516,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.screenshots";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini.screenshots;
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = Cassini;
 			};
@@ -1520,7 +1531,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniParakeetWorker;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.parakeet-worker";
 				PRODUCT_NAME = "cassini-parakeet-worker";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1536,7 +1548,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniWhistleWorker;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.whistle-worker";
 				PRODUCT_NAME = "cassini-whistle-worker";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1556,7 +1569,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac";
+				PRODUCT_BUNDLE_IDENTIFIER = io.codemyriad.cassini;
 				PRODUCT_NAME = Cassini;
 				SDKROOT = macosx;
 			};
@@ -1596,6 +1609,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
@@ -1615,6 +1629,7 @@
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) --timestamp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -1633,7 +1648,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniControlHost;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.control-host";
 				PRODUCT_NAME = "cassini-control-host";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1649,7 +1665,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniBrowserHost;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.browser-host";
 				PRODUCT_NAME = "cassini-browser-host";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1665,7 +1682,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.codemyriad.CassiniWhistleWorker;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.codemyriad.cassini.whistle-worker";
 				PRODUCT_NAME = "cassini-whistle-worker";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;

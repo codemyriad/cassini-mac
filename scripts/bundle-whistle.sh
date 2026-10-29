@@ -37,7 +37,7 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then
     if [ "$identity" = - ]; then timestamp=(--timestamp=none); options=(--options 0); fi
     codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" "$library"
     codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" "$vadlibrary"
-    codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
+    codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" -i "$PRODUCT_BUNDLE_IDENTIFIER.whistle-worker" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
 fi
 # Record what is actually shipped, including signatures, separately from source pins.
 python3 - "$destination" "$worker" "$library" "$vadlibrary" <<'PY'
