@@ -165,8 +165,34 @@ public final class RecordingSink: @unchecked Sendable {
         lock.unlock()
     }
 
-    // Internal deterministic drain for package tests; never called from the audio callback.
-    func flush() { queue.sync {} }
+    // Drain before activating a prepared input; never called from the audio callback.
+    public func flush() { queue.sync {} }
+
+    /// Pause a live source without finalizing its file. A rejected source
+    /// transaction can restart its driver on this same sample timeline.
+    public func pause() throws {
+        lock.lock(); accepting = false; let snapshot = sources; lock.unlock()
+        try queue.sync { try padTail(snapshot) }
+        lock.lock()
+        for (id,value) in snapshot { sources[id]?.submittedEnd = value.timeline.frames }
+        lock.unlock()
+    }
+    public func resume() throws {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished, !failed else { throw RecordingError.invalid(failureMessage ?? "The input cannot resume.") }
+        accepting = true
+    }
+    private func padTail(_ snapshot: [String:Source]) throws {
+        for (id,source) in snapshot where source.registered && source.submittedEnd < source.timeline.frames {
+            var frame = source.submittedEnd
+            while frame < source.timeline.frames {
+                let count = min(UInt64(8192),source.timeline.frames-frame)
+                try writer.appendNative(id:id,pcm:Data(repeating:0,count:Int(count)*source.outputChannels*2),
+                    offsetMs:source.timeline.startOffsetMs + Double(frame)/source.rate*1000)
+                frame += count
+            }
+        }
+    }
 
     public func status() -> (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, gapMs: Double, warnings: [String]) {
         lock.lock(); defer { lock.unlock() }
@@ -198,15 +224,7 @@ public final class RecordingSink: @unchecked Sendable {
             // A drop at the tail has no following chunk to create its gap. Preserve it here.
             var paddingFailure: Error?
             do {
-            for (id, source) in snapshot where source.registered && source.submittedEnd < source.timeline.frames {
-                var frame = source.submittedEnd
-                while frame < source.timeline.frames {
-                    let count = min(UInt64(8192), source.timeline.frames - frame)
-                    try writer.appendNative(id: id, pcm: Data(repeating: 0, count: Int(count) * source.outputChannels * 2),
-                                            offsetMs: source.timeline.startOffsetMs + Double(frame) / source.rate * 1000)
-                    frame += count
-                }
-            }
+            try padTail(snapshot)
             } catch { paddingFailure = error }
             let lost = snapshot.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
             let gaps = snapshot.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }
