@@ -63,8 +63,9 @@ public struct RecordingSource: Sendable {
     public let sampleRate: Int, channels: Int
     public let sourceTrackId: String?
     public let labelSource: String?
-    public init(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil) {
-        self.id = id; self.label = label; self.kind = kind; self.sampleRate = sampleRate; self.channels = channels; self.sourceTrackId = sourceTrackId; self.labelSource = labelSource
+    public let endsImmediately: Bool
+    public init(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, endsImmediately: Bool = false) {
+        self.id = id; self.label = label; self.kind = kind; self.sampleRate = sampleRate; self.channels = channels; self.sourceTrackId = sourceTrackId; self.labelSource = labelSource; self.endsImmediately = endsImmediately
     }
 }
 
@@ -133,6 +134,7 @@ public final class RecordingSession {
                 var track = RecordingTrack(id:source.id,label:Self.cleanLabel(source.label),kind:source.kind,file:filename,sampleRate:source.sampleRate,channels:source.channels,startOffsetMs:nil,frames:0)
                 track.labelSource = source.labelSource ?? (manifest.source == "chromium" ? "browser" : "device")
                 track.sourceTrackId = source.sourceTrackId
+                if source.endsImmediately { try writer.close(); track.ended = true }
                 staged.append((track,writer))
             }
         } catch {
@@ -148,7 +150,10 @@ public final class RecordingSession {
                 manifest.tracks[index].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames)/Double(track.sampleRate)*1000 }
             }
         }
-        for (track,writer) in staged { writers[track.id] = writer; manifest.tracks.append(track) }
+        for (track,writer) in staged {
+            if track.ended != true { writers[track.id] = writer }
+            manifest.tracks.append(track)
+        }
         if !events.isEmpty { manifest.events = (manifest.events ?? []) + events }
         try checkpoint()
     }

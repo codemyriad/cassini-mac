@@ -15,20 +15,24 @@ public final class BrowserControlService: @unchecked Sendable {
     private var automatic: Set<String> = []
     private var autoRecord = false, microphone = true
     private let changed: @Sendable ([BrowserControlPeerSnapshot]) -> Void
+    private let audio: (any BrowserAudioHandler)?
     private let completed: @Sendable (BrowserControlOutcome,Bool) -> Void
     public init(changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void,
-                completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void) {
-        self.changed = changed; self.completed = completed; queue.setSpecific(key:key,value:1)
+                completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil) {
+        self.changed = changed; self.completed = completed; self.audio = audio; queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {
         try sync {
             guard server == nil else { throw BrowserIPCError.unavailable }
             let transport = BrowserPipeServer(root:root,connected:{ [weak self] connection in
-                self?.queue.async { [weak self] in self?.connect(connection) }
+                if connection.peer.role == .audio { self?.audio?.connected(connection); if self?.audio == nil { connection.close() } }
+                else { self?.queue.async { [weak self] in self?.connect(connection) } }
             },received:{ [weak self] connection,data in
-                self?.queue.async { [weak self] in self?.receive(data,from:connection) }
+                if connection.peer.role == .audio { self?.audio?.received(data,from:connection) }
+                else { self?.queue.async { [weak self] in self?.receive(data,from:connection) } }
             },disconnected:{ [weak self] peer in
-                self?.queue.async { [weak self] in self?.disconnect(peer.id) }
+                if peer.role == .audio { self?.audio?.disconnected(peer) }
+                else { self?.queue.async { [weak self] in self?.disconnect(peer.id) } }
             })
             try transport.start(); server = transport
             let source = DispatchSource.makeTimerSource(queue:queue)

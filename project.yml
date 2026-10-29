@@ -160,6 +160,8 @@ targets:
       - path: Sources/cassini-browser-host
     dependencies:
       - package: CassiniKit
+        product: CassiniBrowserControl
+      - package: CassiniKit
         product: CassiniRecording
       - package: CassiniKit
         product: CassiniLibrary
