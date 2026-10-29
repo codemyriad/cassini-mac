@@ -11,7 +11,7 @@ final class BrowserSetupClient: @unchecked Sendable {
     private var finished = false
     func connect() async throws {
         let contents = Bundle.main.bundleURL.appendingPathComponent("Contents")
-        let bookmarks = try await Task.detached {
+        let bookmarks = try await Task.detached(priority:.utility) {
             try ["cassini-browser-host","cassini-control-host"].map {
                 try contents.appendingPathComponent("MacOS/" + $0).bookmarkData(options:[],includingResourceValuesForKeys:nil,relativeTo:nil)
             }

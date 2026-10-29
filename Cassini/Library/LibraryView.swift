@@ -43,7 +43,13 @@ struct LibraryView: View {
                 .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
-        .safeAreaInset(edge:.top,spacing:0) { CaptureFailureBanner(); trashFailure }
+        .safeAreaInset(edge:.top,spacing:0) {
+            CaptureFailureBanner(); trashFailure
+            if !store.context.screenshot && navigation.detail == nil && !search.visible {
+                BrowserConnectionStateView(identifier:"library-browser-status")
+                    .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,18).padding(.vertical,8)
+            }
+        }
         .frame(minWidth: 760, minHeight: 480)
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("library.title"))
         .toolbar(removing: .title)

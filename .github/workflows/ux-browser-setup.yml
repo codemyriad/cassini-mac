@@ -44,6 +44,15 @@ jobs:
         run: python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
       - name: Production setup service with exact bundled host grants
         run: python3 scripts/test-browser-connect.py --skip-build --app build/Build/Products/Debug/Cassini.app --output build/browser-connect-report.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Chromium for background registration check
+        run: |
+          npm ci --prefix BrowserExtension/tests
+          BrowserExtension/tests/node_modules/.bin/playwright install chromium
+      - name: Installed app connects to fresh browser without a click
+        run: node scripts/test-browser-background.mjs build/Build/Products/Debug/Cassini.app build/browser-background-report.json
       - name: Product app capture ownership without devices
         run: python3 scripts/test-browser-capture-app.py build/Build/Products/Debug/Cassini.app --output build/browser-capture-app.json
       - uses: actions/upload-artifact@v5
@@ -55,5 +64,7 @@ jobs:
             build/browser-setup-report.stderr.txt
             build/browser-connect-report.json
             build/browser-connect-report.stderr.txt
+            build/browser-background-report.json
+            build/browser-background-report.json.stderr.txt
             build/browser-capture-app.json
             build/browser-capture-app.stderr.txt

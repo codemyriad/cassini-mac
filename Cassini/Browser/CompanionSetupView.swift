@@ -1,32 +1,58 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import Observation
+import CassiniBrowserSetup
 
 @MainActor @Observable final class CompanionSetup {
     enum Presenter { case library, settings }
     static let shared = CompanionSetup()
     var presenter: Presenter?
-    private(set) var working = false
-    private(set) var failed = false
-    @ObservationIgnored private var task: Task<Void,Never>?
-    func connect() {
-        guard !LibraryLaunchContext.current.screenshot else { return }
-        guard !working else { return }; working = true; failed = false
-        task = Task {
-            defer { working = false; task = nil }
-            do {
-                await CaptureCollection.shared.start()
-                try await BrowserSetupClient().connect()
-                let deadline = ProcessInfo.processInfo.systemUptime + 75
-                while !CaptureCollection.shared.connected && ProcessInfo.processInfo.systemUptime < deadline {
-                    try await Task.sleep(for:.milliseconds(100))
+    @ObservationIgnored let background = BackgroundBrowserSetup { try await BrowserSetupClient().connect() }
+    private(set) var started = false
+    private(set) var suggestedBrowser: String?
+    var working: Bool { background.state == .settingUp }
+    var failed: Bool { if case .failed = background.state { true } else { false } }
+    func start() {
+        guard !LibraryLaunchContext.current.screenshot, !started else { return }
+        started = true; trigger()
+    }
+    func trigger() {
+        guard started else { return }
+        background.trigger()
+        Task {
+            let name = await Task.detached(priority:.utility) { () -> String? in
+                for (id,name) in [("com.google.Chrome","Chrome"),("org.chromium.Chromium","Chromium"),("com.microsoft.edgemac","Microsoft Edge"),("com.brave.Browser","Brave")] {
+                    if NSWorkspace.shared.urlForApplication(withBundleIdentifier:id) != nil { return name }
                 }
-                try Task.checkCancellation()
-                failed = !CaptureCollection.shared.connected
-            } catch is CancellationError {} catch { failed = true }
+                return nil as String?
+            }.value
+            suggestedBrowser = name
         }
     }
-    func close() { task?.cancel(); presenter = nil }
+    func connect() { trigger() }
+    func close() { presenter = nil }
+    func stop() { background.stop() }
+    var stateLine: String {
+        let names = Set(CaptureCollection.shared.peers.filter(\.reconciled).compactMap(\.browser))
+        if CaptureCollection.shared.connected {
+            return names.count == 1 ? UXText.text("browser.state.connected",["browser":names.first!]) : UXText.text("browser.state.connectedGeneric")
+        }
+        switch background.state {
+        case .settingUp: return UXText.text("browser.state.settingUp")
+        case .waiting: return UXText.text("browser.state.waiting")
+        case .failed(let failure):
+            let key: String = switch failure {
+            case .noBrowser: "browser.state.reason.noBrowser"
+            case .unwritable: "browser.state.reason.unwritable"
+            case .unsafe: "browser.state.reason.unsafe"
+            case .temporary: "browser.state.reason.temporary"
+            }
+            return UXText.text("browser.state.failed",["reason":UXText.text(key)])
+        }
+    }
+    var addLabel: String {
+        suggestedBrowser.map { UXText.text("browser.state.add",["browser":$0]) } ?? UXText.text("browser.state.addGeneric")
+    }
     func add() {
         guard !LibraryLaunchContext.current.screenshot else { return }
         let url = URL(string:"https://chromewebstore.google.com/detail/pcafdaahfhjiolfpfnlhmljfgoabbaij")!
@@ -63,8 +89,8 @@ struct CompanionSetupView: View {
                 }
                 Divider()
                 step(2,done:connected,title:"companion.connectStep.title",caption:connectCaption) {
-                    if !connected {
-                        Button(UXText.text(setup.failed ? "common.tryAgain" : "companion.connect")) { setup.connect() }
+                    if !connected && setup.failed {
+                        Button(UXText.text("common.tryAgain")) { setup.connect() }
                             .buttonStyle(.borderedProminent).disabled(setup.working).accessibilityIdentifier("companion-connect")
                     }
                 }
@@ -90,7 +116,7 @@ struct CompanionSetupView: View {
         let formatter = ListFormatter(); formatter.locale = Locale(identifier:"en_GB")
         return UXText.text("companion.addStep.doneSeveral",["browsers":formatter.string(from:browsers) ?? browsers.joined(separator:", ")])
     }
-    private var connectCaption: String { UXText.text(connected ? "companion.connectStep.done" : setup.working ? "companion.connectStep.connecting" : setup.failed ? "companion.connectStep.failed" : "companion.connectStep.caption") }
+    private var connectCaption: String { setup.stateLine }
     private func step<Content:View>(_ number: Int, done: Bool, title: String, caption: String, @ViewBuilder action: () -> Content) -> some View {
         HStack(spacing:14) {
             ZStack {

@@ -102,6 +102,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
         other = directory/'unrelated.host.json'
         other.write_text(json.dumps(dict(name='com.codemyriad.cassini',path='/elsewhere/other-host',allowed_origins=[ORIGIN])))
         unrelated[other] = other.read_bytes()
+    manifest_stats = {}
     for attempt in range(2):
         result = subprocess.run([str(binary), str(home)], capture_output=True, text=True, timeout=30)
         a.output.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +115,11 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
             for host, executable in HOSTS.items():
                 file = directory/(host+'.json')
                 assert stat.S_IMODE(file.stat().st_mode) == 0o600
+                observed = (file.stat().st_mtime_ns, file.stat().st_ino)
+                if attempt:
+                    assert observed == manifest_stats[file], ('Unchanged manifest was rewritten', file)
+                else:
+                    manifest_stats[file] = observed
                 manifest = json.loads(file.read_text())
                 assert manifest == dict(name=host, description='Cassini local meeting recorder',
                     path=str(app/'Contents/MacOS'/executable), type='stdio', allowed_origins=[ORIGIN])
@@ -123,7 +129,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
             assert (directory/'unrelated.host.json').read_bytes() == unrelated[directory/'unrelated.host.json']
             assert not positive.exists()
     report.update(fixtureOnly=True, actualBundledService=bool(a.app), twoIdempotentConnects=True,
-        browserProfilesTouched=False, audioDevicesOpened=False, appWindowsOpened=False,
+        identicalMtimesPreserved=True, browserProfilesTouched=False, audioDevicesOpened=False, appWindowsOpened=False,
         exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=4, helperNetworkEntitlements=False,
         nativeArchitecture=os.uname().machine)
     a.output.write_text(json.dumps(report, indent=2)+'\n')

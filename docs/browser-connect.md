@@ -38,3 +38,16 @@ private modes, repeated setup and denied parent writes are asserted. Hosted
 native ARM/Intel consumers use the actual built Debug service/hosts and exact
 parent product profile from same-run artifacts. The older XPC scope/network
 probe remains. No user browser profile, device, Library or app window is opened.
+
+
+## Background registration (D31)
+
+The app launches a utility-priority setup attempt at normal launch and on activation. Launch after an update or move uses the current bundle's two host paths. All triggers reset the retry delay; overlapping triggers coalesce behind the current attempt. Only the XPC helper can inspect or update the four browser registration directories. Chromium-family browsers on macOS share a NativeMessagingHosts directory at the user-data root across their profiles, so there is no per-Default/Profile-N registration.
+
+Registration compares the parsed manifest with the desired dictionary before publishing. Matching JSON keeps its bytes, inode and mtime, including when its formatting differs. The existing two-host transaction, lock and ownership-limited legacy cleanup remain.
+
+Transient service or I/O failures retry after `min(300, 5 * 2^n)` seconds with an independent uniform multiplier in `[0.8, 1.2]`. A launch/activation/Try again event resets `n` to zero and cancels any old timer. Missing profiles, permission/read-only failures and unsafe configuration stop timed retry until a trigger. No background attempt opens a dialog or sends a notification. Successful registration waits for the extension; an absent extension is not a setup failure.
+
+Settings > Browser and the Library show the connection state. Try again is available only after a setup failure; waiting for the extension offers Add. The existing companion explanation remains available from a saved meeting.
+
+`CassiniBrowserSetupTests` covers fake-clock retry/reset/cancellation, serial off-main work, permanent errors, missing manifests, mtime/inode preservation and changed paths/origins. The hosted browser setup workflow also stages the signed app at a changed path and launches it beside a real extension in a fresh disposable Chromium profile; it requires a reconciled native management connection with no click and no audio capture. `scripts/test-browser-background.mjs` refuses to run outside GitHub-hosted CI.

@@ -3,7 +3,7 @@ import Foundation
 import CassiniBrowserSetup
 
 final class BrowserSetupConnection: NSObject, CassiniBrowserSetupService, @unchecked Sendable {
-    private static let queue = DispatchQueue(label:"io.codemyriad.cassini.browser-install")
+    private static let queue = DispatchQueue(label:"io.codemyriad.cassini.browser-install",qos:.utility)
     func connect(audioHostBookmark: Data, controlHostBookmark: Data, reply: @escaping @Sendable (Int,NSError?) -> Void) {
         Self.queue.async {
             do {
@@ -23,11 +23,7 @@ final class BrowserSetupConnection: NSObject, CassiniBrowserSetupService, @unche
                 let count = try BrowserSetupInstallation(home:home,contents:contents).install()
                 reply(count,nil)
             } catch {
-                #if DEBUG
-                reply(0,NSError(domain:"io.codemyriad.cassini.browser-setup",code:1,userInfo:[NSLocalizedDescriptionKey:String(describing:error)]))
-                #else
-                reply(0,NSError(domain:"io.codemyriad.cassini.browser-setup",code:1))
-                #endif
+                reply(0,BrowserSetupFailure(error).nsError)
             }
         }
     }
