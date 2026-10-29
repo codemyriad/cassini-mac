@@ -39,7 +39,14 @@ final class ControlHostTests: XCTestCase {
         }
     }
     func testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput() throws {
-        try exercise { process,_,_,server in
+        try exercise { process,input,output,server in
+            // Broker acceptance precedes the client's final FIFO open. Prove
+            // that the host is fully connected before testing idle shutdown;
+            // otherwise stopping here can race initialization, not idle I/O.
+            try FrameIO.prepare(output.fileHandleForReading.fileDescriptor)
+            let packet = Data("{\"type\":\"hello\",\"version\":1}".utf8)
+            try FrameIO.writeFrame(input.fileHandleForWriting.fileDescriptor,data:packet,cancel:Cancellation())
+            XCTAssertEqual(try FrameIO.read(output.fileHandleForReading.fileDescriptor,cancel:Cancellation(),deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000),packet)
             server.stop()
             assertExit(process,status:0)
         }
