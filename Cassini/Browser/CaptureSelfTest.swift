@@ -272,12 +272,12 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try LibraryLocation(primary:destination,bookmarks:[destination.path:bookmark]).write(file:LibraryLaunchContext.locationFile)
             try await collection.record()
             try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.frames > 0 } == true }
-            try require(collection.first?.snapshot.directory.deletingLastPathComponent().standardizedFileURL.path == destination.standardizedFileURL.path,"Recording uses the relocated Library")
+            try require(collection.first?.snapshot.directory.deletingLastPathComponent().resolvingSymlinksInPath().path == destination.resolvingSymlinksInPath().path,"Recording uses the relocated Library")
             await collection.stopAndWait()
             try FileManager.default.moveItem(at:destination,to:renamed)
             try await collection.record()
             try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.frames > 0 } == true }
-            try require(collection.first?.snapshot.directory.deletingLastPathComponent().standardizedFileURL.path == renamed.standardizedFileURL.path,"Capture follows the renamed bookmark")
+            try require(collection.first?.snapshot.directory.deletingLastPathComponent().resolvingSymlinksInPath().path == renamed.resolvingSymlinksInPath().path,"Capture follows the renamed bookmark")
             try require(!FileManager.default.fileExists(atPath:destination.path),"Old published path is never recreated")
             await collection.stopAndWait()
             report["recordingFollowsRelocatedBookmark"] = true
