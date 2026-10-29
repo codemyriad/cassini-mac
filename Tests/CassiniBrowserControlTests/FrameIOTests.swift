@@ -6,6 +6,27 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class FrameIOTests: XCTestCase {
+    func testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained() throws {
+        var descriptors: [Int32] = [-1,-1]; XCTAssertEqual(pipe(&descriptors),0)
+        let input = descriptors[0], output = descriptors[1]
+        defer { close(input); close(output) }
+        try FrameIO.prepare(input)
+        let packet = Data("{\"race\":true}".utf8)
+        XCTAssertEqual(try FrameIO.read(input,cancel:Cancellation(),alive:{
+            try? FrameIO.writeFrame(output,data:packet,cancel:Cancellation())
+            return false
+        }),packet)
+    }
+    func testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds() throws {
+        var descriptors: [Int32] = [-1,-1]; XCTAssertEqual(pipe(&descriptors),0)
+        defer { close(descriptors[0]) }
+        try FrameIO.prepare(descriptors[0])
+        let packet = Data("{\"final\":true}".utf8)
+        try FrameIO.writeFrame(descriptors[1],data:packet,cancel:Cancellation())
+        close(descriptors[1])
+        XCTAssertEqual(try FrameIO.read(descriptors[0],cancel:Cancellation(),alive:{ false }),packet)
+        XCTAssertNil(try FrameIO.read(descriptors[0],cancel:Cancellation(),alive:{ false }))
+    }
     func testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer() throws {
         var descriptors: [Int32] = [-1,-1]
         XCTAssertEqual(pipe(&descriptors),0)

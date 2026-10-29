@@ -42,16 +42,22 @@ enum FrameIO {
     }
     static func exact(_ fd: Int32, count: Int, cancel: Cancellation, allowEOF: Bool = false, deadline: UInt64? = nil, alive: (@Sendable () -> Bool)? = nil) throws -> Data? {
         var output = Data(), bytes = [UInt8](repeating:0,count:min(count,16384))
+        var peerEnded = false
         while output.count < count {
             if cancel.isCancelled { throw BrowserIPCError.closed }
-            if let alive, !alive() { throw BrowserIPCError.closed }
             if let deadline, DispatchTime.now().uptimeNanoseconds >= deadline { throw BrowserIPCError.timeout }
             // A nonblocking FIFO read reports EOF even when Darwin poll does
             // not report a readiness event for its last writer disappearing.
             let size = Darwin.read(fd,&bytes,min(bytes.count,count-output.count))
             if size < 0 && errno == EINTR { continue }
             if size < 0 && errno == EAGAIN {
-                try wait(fd,Int16(POLLIN),cancel:cancel,deadline:deadline,alive:alive)
+                if peerEnded { throw BrowserIPCError.closed }
+                if let alive, !alive() {
+                    // The last writer can exit between read(EAGAIN) and the
+                    // lease check. Try once more to drain its final bytes.
+                    peerEnded = true; continue
+                }
+                try wait(fd,Int16(POLLIN),cancel:cancel,deadline:deadline)
                 continue
             }
             if size == 0, output.isEmpty && allowEOF { return nil }
