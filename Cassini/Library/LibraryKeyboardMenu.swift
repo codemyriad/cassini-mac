@@ -24,6 +24,7 @@ import CassiniLibrary
         if trash.canTrash(meeting) {
             menu.addItem(.separator())
             let removeItem = NSMenuItem(title:UXText.text("common.moveToTrash"),action:#selector(Action.perform(_:)),keyEquivalent:"")
+            removeItem.identifier = NSUserInterfaceItemIdentifier("library-keyboard-trash")
             removeItem.target = remove; menu.addItem(removeItem)
         }
         let rect = table.rect(ofRow:table.selectedRow)

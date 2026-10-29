@@ -151,7 +151,7 @@ import Darwin
             try await wait { store.loaded }
             trash.move(deferred,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && !LibraryLocationModel.shared.location.pendingMoves.contains { $0.id == deferred.folder.path },"pending move discarded")
-            try check(LibraryLocationModel.shared.roots.contains(primary),"Put Back previous root retained")
+            try check(LibraryLocationModel.shared.roots.contains { LibraryLocation.canonical($0).path == LibraryLocation.canonical(primary).path },"Put Back previous root retained")
             report["pendingMoveDiscarded"] = true
             report["sandboxCases"] = outcomes; report["primaryAndBookmarkedTrash"] = true
             report["sandboxUndoVerifiedOrAbsent"] = true
