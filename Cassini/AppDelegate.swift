@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         #if DEBUG
         if CommandLine.arguments.contains("--browser-background-self-test") {
+            startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
             Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return
         }
         if CommandLine.arguments.contains("--browser-capture-self-test") {
@@ -74,7 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LibraryStore.shared.reloadLocation()
         LibraryMoveCoordinator.shared.start()
         CaptureNotifications.shared.configure()
-        Task { await CaptureCollection.shared.start() }
+        startBrowserConnection()
+    }
+
+    @MainActor private func startBrowserConnection(root: URL? = nil) {
+        Task { await CaptureCollection.shared.start(root:root) }
         CompanionSetup.shared.start()
     }
 
