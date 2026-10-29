@@ -249,7 +249,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard self.phase != .saved else { return }
             self.phase = .saving; self.publish()
-            do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:self.nativeProblemKind == "io" ? "io" : problem == nil ? self.nativeProblemKind : nil) }
+            // The broker can echo the input drain's already recorded diagnostic.
+            // Preserve its classification; a different external failure is capture.
+            let kind = self.nativeProblemKind == "io" || problem == nil || problem == self.nativeProblem ? self.nativeProblemKind : nil
+            do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:kind) }
             catch { self.phase = .saved; self.publish(); throw error }
             self.phase = .saved; self.publish()
         }

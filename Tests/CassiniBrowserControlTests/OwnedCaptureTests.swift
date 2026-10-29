@@ -17,8 +17,11 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         for index in 0..<80 { buffer.floatChannelData![0][index] = 0.25 }
         sink.receive(buffer,hostTime:1,id:"mic",label:"Me",kind:"microphone")
         sink.receive(buffer,hostTime:1 + AVAudioTime.hostTime(forSeconds:1.01),id:"mic",label:"Me",kind:"microphone")
-        XCTAssertThrowsError(try sink.finish(problem:nil))
-        try await capture.finish()
+        let broker = BrowserAudioBroker(make:{ _,_ in capture },created:{ _,_ in },stopNative:{ _,reply in
+            do { try sink.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
+        })
+        try broker.ownNative(capture)
+        try await broker.finish(capture)
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
         XCTAssertEqual(manifest.state,"interrupted"); XCTAssertEqual(manifest.problemKind,"gap")
         let track = try XCTUnwrap(manifest.tracks.first)
