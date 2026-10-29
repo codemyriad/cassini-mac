@@ -61,7 +61,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        try await control.send(["type":"meetings","meetings":active ? [["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":1]] : []])
+        try await control.send(["type":"meetings","meetings":active || audio != nil ? [["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":active ? 1 : 0]] : []])
     }
     func status(interrupted: Bool = false) -> [String:Any] {
         var packet: [String:Any] = ["type":"status","recording":audio != nil,"tabId":audio == nil ? NSNull() : 2,"path":path as Any? ?? NSNull(),"message":"Fixture status"]
@@ -221,8 +221,16 @@ final class CaptureProbeProcess: @unchecked Sendable {
             _ = try await one.performNext()
             try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty }
             try require(two.captureID == successfulToken,"Retry must not restart the successful meeting")
+            stage = "hang up while the tab stays open"
+            try await one.meetings(false)
+            let ended = try await one.performNext()
+            try require(ended["action"]?.string == "stop","Call end requests Stop instead of fallback")
+            try await wait { collection.captures.count == 1 }
+            try await two.emit()
+            try require(two.captureID == successfulToken,"Call end leaves the other meeting recording")
+            report["hangupStopsOnlyEndedMeeting"] = true
             collection.stopAll()
-            _ = try await one.performNext(); _ = try await two.performNext()
+            _ = try await two.performNext()
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
             report["partialFailureRetriesOnlyThatMeeting"] = true
