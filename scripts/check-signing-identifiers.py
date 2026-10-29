@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -31,10 +32,12 @@ def signature(path, expected, require_runtime=False):
                             check=True, capture_output=True, text=True)
     fields = dict(line.split('=', 1) for line in result.stderr.splitlines() if '=' in line)
     assert fields.get('Identifier') == expected, (path, fields.get('Identifier'), expected)
+    flag_match = re.search(r'\bflags=0x[0-9a-fA-F]+\(([^)]*)\)', result.stderr)
+    flags = set(flag_match.group(1).split(',')) if flag_match else set()
     if require_runtime:
-        assert '(runtime)' in result.stderr, (path, 'missing hardened runtime')
+        assert 'runtime' in flags, (path, 'missing hardened runtime')
     if any(line.startswith('Authority=') for line in result.stderr.splitlines()):
-        assert 'runtime' in fields.get('CodeDirectory v', '') or '(runtime)' in result.stderr, path
+        assert 'runtime' in flags, path
         assert fields.get('Timestamp'), (path, 'missing secure timestamp')
     return fields
 
