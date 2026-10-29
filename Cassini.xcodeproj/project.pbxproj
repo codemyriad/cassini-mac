@@ -100,6 +100,7 @@
 		C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */; };
 		C716177C37D0DAD16234555A /* SettingsFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D368DF652664BF931A5F050 /* SettingsFixture.swift */; };
 		C920349A20ECCF6C7C8A690C /* ModelDownloadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5DA66A372B10969E76428C3 /* ModelDownloadClient.swift */; };
+		CCFA0DA9889584855CF34F1A /* LibraryKeyboardMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */; };
 		CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDC2D28CF9C48F3E7198A41F /* Quartz.framework */; };
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
 		D452A448B93E2DBB03D96E4A /* LibraryImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */; };
@@ -210,6 +211,7 @@
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		0A2CF8935408378DD526CC43 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		0CFDFBED5CFF6924BDF895A8 /* ExportSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSelfTest.swift; sourceTree = "<group>"; };
+		0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryKeyboardMenu.swift; sourceTree = "<group>"; };
 		0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSelfTest.swift; sourceTree = "<group>"; };
 		127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiskWatch.swift; sourceTree = "<group>"; };
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -392,6 +394,7 @@
 				DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */,
 				CD057B32C9901BC49239FFBC /* LegacyOpening.swift */,
 				95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */,
+				0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */,
 				71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */,
 				AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */,
 				65BF49C592097C68C439F4F6 /* MeetingTrashCoordinator.swift */,
@@ -1120,6 +1123,7 @@
 				D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */,
 				335E85C4B4CE9D0332A91D88 /* LegacyOpening.swift in Sources */,
 				D452A448B93E2DBB03D96E4A /* LibraryImportCoordinator.swift in Sources */,
+				CCFA0DA9889584855CF34F1A /* LibraryKeyboardMenu.swift in Sources */,
 				0B6BCBD86C3DB4DE410B64CF /* LibraryLocationModel.swift in Sources */,
 				9ADB134940081C297FC5223C /* LibraryMoveCoordinator.swift in Sources */,
 				78623145E9B8575B41095038 /* LibrarySearchModel.swift in Sources */,

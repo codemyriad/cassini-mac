@@ -65,4 +65,14 @@ final class LibraryTrashTests: XCTestCase {
             XCTAssertThrowsError(try LibraryTrash.move(folder,roots:[root],trash:{ _ in XCTFail(); return nil }))
         }
     }
+    func testCreatesAndHoldsIdleSpeechLockThroughTrashCall() throws {
+        try withFolder { root,folder in
+            _ = try LibraryTrash.move(folder,roots:[root],trash:{ _ in
+                let contender = open(folder.appendingPathComponent(".transcription.lock").path,O_RDWR | O_CLOEXEC)
+                XCTAssertGreaterThanOrEqual(contender,0); defer { close(contender) }
+                XCTAssertNotEqual(flock(contender,LOCK_EX | LOCK_NB),0,"No worker can enter during Trash")
+                return nil
+            })
+        }
+    }
 }

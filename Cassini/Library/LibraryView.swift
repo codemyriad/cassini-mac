@@ -238,6 +238,12 @@ struct LibraryView: View {
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
             }
+            .onKeyPress(keys:[KeyEquivalent("\u{F70D}"),KeyEquivalent("\u{F735}")]) { key in
+                guard key.key != KeyEquivalent("\u{F70D}") || (key.modifiers.contains(.shift) && key.modifiers.intersection([.command,.control,.option]).isEmpty),
+                      !(NSApp.keyWindow?.firstResponder is NSText), let meeting = store.selected,
+                      LibraryKeyboardMenu.show(meeting,trash:trash,undo:undoManager) else { return .ignored }
+                return .handled
+            }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(LibraryTheme.sidebar)

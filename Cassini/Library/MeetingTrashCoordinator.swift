@@ -14,6 +14,7 @@ import Observation
     var fixtureFailure: Error?
     #endif
     @ObservationIgnored private var task: Task<Void,Never>?
+    @ObservationIgnored private var restoration: Task<Void,Never>?
     @ObservationIgnored private var closing = false
 
     func canTrash(_ meeting: LibraryMeeting?) -> Bool {
@@ -87,9 +88,17 @@ import Observation
         !FileManager.default.fileExists(atPath:original.path)
     }
     private func restore(_ trashed: URL, to original: URL, access: LibraryAccess) {
-        guard !busy, !closing, !LibraryMoveCoordinator.shared.busy else { return }
-        busy = true
-        task = Task {
+        guard !closing else { return }
+        let preceding = restoration
+        restoration = Task {
+            await preceding?.value
+            // Undo must not silently disappear if another Trash or Library Move
+            // is still finishing. Serialize the restoration after it instead.
+            while busy || LibraryMoveCoordinator.shared.busy {
+                if closing { return }
+                try? await Task.sleep(for:.milliseconds(25))
+            }
+            guard !closing else { return }; busy = true
             do {
                 try await Task.detached { [access] in
                     defer { withExtendedLifetime(access) {} }
@@ -100,9 +109,9 @@ import Observation
                 }.value
                 LibraryStore.shared.refresh(affected:original)
             } catch { NSApp.presentError(error) }
-            busy = false; task = nil
+            busy = false
         }
     }
     func beginShutdown() { closing = true }
-    func waitForShutdown() async { await task?.value }
+    func waitForShutdown() async { await task?.value; await restoration?.value }
 }
