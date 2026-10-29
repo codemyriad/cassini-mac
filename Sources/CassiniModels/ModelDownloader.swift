@@ -67,6 +67,15 @@ public actor ModelDownloader {
     }
     public func cancel(_ pin: ModelPin) { operations[pin]?.task.cancel() }
     public func remove(_ pin: ModelPin) async throws {
+        _ = try await remove(pin,unlessValid:nil)
+    }
+    /// Recheck after acquiring the revision lock: an old inventory result must
+    /// not delete an installation another helper finished in the meantime.
+    public func removeInvalid(_ plan: ModelPlan) async throws -> Bool {
+        guard operations[plan.pin] == nil else { throw ModelDownloadError.busy }
+        return try await remove(plan.pin,unlessValid:plan)
+    }
+    private func remove(_ pin: ModelPin, unlessValid plan: ModelPlan?) async throws -> Bool {
         guard pin.valid else { throw ModelDownloadError.manifest }
         guard removing.insert(pin).inserted else { throw ModelDownloadError.busy }
         defer { removing.remove(pin) }
@@ -74,16 +83,21 @@ public actor ModelDownloader {
         try ModelFiles.directory(dataRoot)
         let modelRoot = dataRoot.appendingPathComponent("models/" + pin.id,isDirectory:true)
         try ModelFiles.directory(modelRoot)
-        let lock = try Self.lock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock")); defer { close(lock) }
+        let lock = try await Self.removalLock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock")); defer { close(lock) }
         let installed = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
         if FileManager.default.fileExists(atPath:installed.path) {
             try ModelFiles.directory(installed)
-            let retired = modelRoot.appendingPathComponent(".remove-" + UUID().uuidString,isDirectory:true)
-            guard renamex_np(installed.path,retired.path,UInt32(RENAME_EXCL)) == 0 else { throw ModelDownloadError.installation }
-            try FileManager.default.removeItem(at:retired)
+            if let plan {
+                do { try Self.validateInstalled(installed,plan:plan,verifyHashes:true); return false }
+                catch is CancellationError { throw CancellationError() }
+                catch { /* Retire only the still-invalid owned revision. */ }
+            }
+            try Task.checkCancellation()
+            try Self.retire(installed,in:modelRoot)
         }
         let partials = Self.cache(root:dataRoot,pin:pin)
         if FileManager.default.fileExists(atPath:partials.path) { try ModelFiles.directory(partials); try FileManager.default.removeItem(at:partials) }
+        return true
     }
     private static func cache(root: URL, pin: ModelPin) -> URL { root.appendingPathComponent("model-downloads/" + pin.id + "/" + pin.sourceSHA256,isDirectory:true) }
     private static func lock(_ file: URL) throws -> Int32 {
@@ -93,6 +107,41 @@ public actor ModelDownloader {
         guard fstat(fd,&info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { close(fd); throw ModelDownloadError.unsafePath }
         guard flock(fd,LOCK_EX | LOCK_NB) == 0 else { close(fd); throw ModelDownloadError.busy }
         return fd
+    }
+    private static func removalLock(_ file: URL) async throws -> Int32 {
+        let deadline = DispatchTime.now().uptimeNanoseconds + 5_000_000_000
+        while true {
+            try Task.checkCancellation()
+            do { return try lock(file) }
+            catch ModelDownloadError.busy {
+                guard DispatchTime.now().uptimeNanoseconds < deadline else { throw ModelDownloadError.busy }
+                try await Task.sleep(for:.milliseconds(50))
+            }
+        }
+    }
+    private static func retire(_ installed: URL, in modelRoot: URL) throws {
+        try ModelFiles.directory(installed)
+        let retired = modelRoot.appendingPathComponent(".remove-" + UUID().uuidString,isDirectory:true)
+        guard renamex_np(installed.path,retired.path,UInt32(RENAME_EXCL)) == 0 else { throw ModelDownloadError.installation }
+        try FileManager.default.removeItem(at:retired)
+    }
+    static func validateInstalled(_ destination: URL, plan: ModelPlan, verifyHashes: Bool) throws {
+        let receipt = destination.appendingPathComponent("receipt.json")
+        guard let size = try ModelFiles.size(receipt),size <= 1 << 20,
+              try JSONDecoder().decode(Receipt.self,from:Data(contentsOf:receipt)).matches(plan) else { throw ModelDownloadError.installation }
+        for asset in plan.files {
+            var parent = destination.appendingPathComponent(asset.path).deletingLastPathComponent()
+            while parent.path != destination.path {
+                guard ModelFiles.existingDirectory(parent) else { throw ModelDownloadError.unsafePath }
+                parent.deleteLastPathComponent()
+            }
+            let file = destination.appendingPathComponent(asset.path)
+            guard try ModelFiles.size(file) == asset.rawBytes else { throw ModelDownloadError.installation }
+            if verifyHashes,try ModelFiles.digest(file) != asset.rawSHA256 { throw ModelDownloadError.hash }
+        }
+        let notice = destination.appendingPathComponent("NOTICE.txt")
+        guard let size = try ModelFiles.size(notice),size > 0,size <= 2 << 20,
+              String(data:try Data(contentsOf:notice),encoding:.utf8) != nil else { throw ModelDownloadError.installation }
     }
     private static func perform(_ pin: ModelPin, root: URL, origin: ModelOrigin,
                                 budget: @Sendable (URL) throws -> ModelDiskSpace, progress: @escaping @Sendable (ModelDownloadProgress) -> Void) async throws -> URL {
@@ -109,16 +158,18 @@ public actor ModelDownloader {
         progress(.init(receivedBytes:0,totalBytes:plan.compressedBytes,isInstalled:false))
         if FileManager.default.fileExists(atPath:destination.path) {
             try ModelFiles.directory(destination)
-            let receipt = destination.appendingPathComponent("receipt.json")
-            guard let size = try ModelFiles.size(receipt), size <= 1 << 20,
-                  try JSONDecoder().decode(Receipt.self,from:Data(contentsOf:receipt)).matches(plan) else { throw ModelDownloadError.installation }
-            for asset in plan.files {
-                let file = destination.appendingPathComponent(asset.path)
-                guard try ModelFiles.size(file) == asset.rawBytes, try ModelFiles.digest(file) == asset.rawSHA256 else { throw ModelDownloadError.hash }
+            do {
+                try validateInstalled(destination,plan:plan,verifyHashes:true)
+                progress(.init(receivedBytes:plan.compressedBytes,totalBytes:plan.compressedBytes,isInstalled:true))
+                return destination
+            } catch is CancellationError { throw CancellationError() }
+            catch {
+                try Task.checkCancellation()
+                try budget(root).check(required:plan.spaceRequired)
+                // Only an owned non-symlink installation is retired. The
+                // revision lock protects this explicit Download repair.
+                try retire(destination,in:modelRoot)
             }
-            guard (try ModelFiles.size(destination.appendingPathComponent("NOTICE.txt"))) ?? 0 > 0 else { throw ModelDownloadError.installation }
-            progress(.init(receivedBytes:plan.compressedBytes,totalBytes:plan.compressedBytes,isInstalled:true))
-            return destination
         }
         try budget(root).check(required:plan.spaceRequired)
         let partials = cache(root:root,pin:pin); try ModelFiles.directory(partials)

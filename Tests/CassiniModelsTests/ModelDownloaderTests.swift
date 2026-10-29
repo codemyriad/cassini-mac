@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
+import Darwin
 @testable import CassiniModels
 
 private let pin = ModelPin(id:"fixture-model",sourceSHA256:String(repeating:"a",count:64))
@@ -39,6 +40,90 @@ private final class ProgressLog: @unchecked Sendable {
 }
 
 @Suite struct ModelDownloaderTests {
+    @Test(arguments:["weights.bin","receipt.json","NOTICE.txt"]) func retryRepairsAnIncompleteInstallation(_ missing: String) async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        let plan = try await downloader.plan(pin)
+        _ = try await downloader.install(pin)
+        try FileManager.default.removeItem(at:server.destination.appendingPathComponent(missing))
+        let repaired = try await downloader.install(pin)
+        for asset in plan.files { #expect(try ModelFiles.digest(repaired.appendingPathComponent(asset.path)) == asset.rawSHA256) }
+        #expect(try ModelFiles.size(repaired.appendingPathComponent("NOTICE.txt")) != nil)
+        #expect(try ModelFiles.size(repaired.appendingPathComponent("receipt.json")) != nil)
+    }
+    @Test func retryRepairsSameSizeCorruptWeights() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        let plan = try await downloader.plan(pin)
+        _ = try await downloader.install(pin)
+        let weights = server.destination.appendingPathComponent("weights.bin")
+        try Data(repeating:0,count:Int(plan.files[0].rawBytes)).write(to:weights)
+        _ = try await downloader.install(pin)
+        #expect(try ModelFiles.digest(weights) == plan.files[0].rawSHA256)
+    }
+    @Test func removeWaitsForAnExternalCancelledTransferToReleaseTheRevisionLock() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        _ = try await downloader.install(pin)
+        let path = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
+        let fd = open(path.path,O_RDWR | O_CLOEXEC)
+        #expect(fd >= 0); #expect(flock(fd,LOCK_EX | LOCK_NB) == 0)
+        Thread.detachNewThread { Thread.sleep(forTimeInterval:0.15); flock(fd,LOCK_UN); close(fd) }
+        try await server.downloader().remove(pin)
+        #expect(!FileManager.default.fileExists(atPath:server.destination.path))
+    }
+    @Test func cancellationWhileWaitingForRemoveLeavesTheInstallationIntact() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        _ = try await downloader.install(pin)
+        let path = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
+        let fd = open(path.path,O_RDWR | O_CLOEXEC)
+        guard fd >= 0,flock(fd,LOCK_EX | LOCK_NB) == 0 else { if fd >= 0 { close(fd) }; throw ModelDownloadError.busy }
+        defer { flock(fd,LOCK_UN); close(fd) }
+        let task = Task { try await server.downloader().remove(pin) }
+        try await Task.sleep(for:.milliseconds(100)); task.cancel()
+        let error = await fails { try await task.value }
+        #expect(error is CancellationError)
+        #expect(FileManager.default.fileExists(atPath:server.destination.path))
+    }
+    @Test func inventoryRequiresReceiptAndNoticeAndNeverFetchesMetadata() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        let plan = try await downloader.plan(pin)
+        _ = try await downloader.install(pin)
+        let count = server.requests.count
+        #expect(ModelStorage.isInstalled(plan,in:server.appData,verifyHashes:false))
+        for name in ["NOTICE.txt","receipt.json"] {
+            let file = server.destination.appendingPathComponent(name), bytes = try Data(contentsOf:file)
+            try FileManager.default.removeItem(at:file)
+            #expect(!ModelStorage.isInstalled(plan,in:server.appData,verifyHashes:false))
+            try bytes.write(to:file)
+        }
+        #expect(server.requests.count == count)
+    }
+    @Test func repairUnlinksAnUnsafeChildWithoutFollowingItsTarget() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        _ = try await downloader.install(pin)
+        let sentinel = server.root.appendingPathComponent("sentinel"), bytes = Data("Keep this private file".utf8)
+        try bytes.write(to:sentinel)
+        let weights = server.destination.appendingPathComponent("weights.bin")
+        try FileManager.default.removeItem(at:weights)
+        try FileManager.default.createSymbolicLink(at:weights,withDestinationURL:sentinel)
+        _ = try await downloader.install(pin)
+        #expect(try Data(contentsOf:sentinel) == bytes)
+        #expect(try ModelFiles.size(weights) != nil)
+    }
+    @Test func staleInventoryDoesNotRemoveAnInstallationRepairedWhileWaitingForItsLock() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        let plan = try await downloader.plan(pin)
+        _ = try await downloader.install(pin)
+        let weights = server.destination.appendingPathComponent("weights.bin"), original = try Data(contentsOf:server.destination.appendingPathComponent("weights.bin"))
+        try Data(repeating:0,count:original.count).write(to:weights)
+        let lockFile = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
+        let fd = open(lockFile.path,O_RDWR | O_CLOEXEC)
+        guard fd >= 0,flock(fd,LOCK_EX | LOCK_NB) == 0 else { if fd >= 0 { close(fd) }; throw ModelDownloadError.busy }
+        let removal = Task { try await server.downloader().removeInvalid(plan) }
+        try await Task.sleep(for:.milliseconds(100))
+        try original.write(to:weights)
+        flock(fd,LOCK_UN); close(fd)
+        #expect(try await removal.value == false)
+        #expect(ModelStorage.isInstalled(plan,in:server.appData))
+    }
     @Test func progressReportsBytesAndMarksOnlyTheAtomicInstallComplete() async throws {
         let server = try Server("normal"), downloader = try server.downloader(), log = ProgressLog()
         let plan = try await downloader.plan(pin)

@@ -20,7 +20,7 @@ import CassiniTranscription
     @ObservationIgnored private var refreshed = false
     @ObservationIgnored private var client: ModelDownloadClient?
     @ObservationIgnored private var operation: Task<Void,Never>?
-    @ObservationIgnored private var inventory: Task<Bool,Never>?
+    @ObservationIgnored private var inventory: Task<(valid:Bool,exists:Bool),Never>?
     init() { usesParakeet = RecordingPreferences.defaults.string(forKey:Self.preference) == ParakeetPin.transcriptModel }
     static var appData: URL {
         #if DEBUG
@@ -41,19 +41,19 @@ import CassiniTranscription
     func refresh() async {
         guard !refreshed else { return }
         if inventory == nil {
-            let model = Self.modelDirectory, jobs = Self.jobsDirectory
+            let model = Self.modelDirectory, jobs = Self.jobsDirectory, appData = Self.appData
+            let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
             inventory = Task.detached(priority:.utility) {
                 SpeechScratch.removeAbandoned(in:jobs)
-                return ParakeetPin.files.allSatisfy { name,pin in
-                    guard let values = try? FileManager.default.attributesOfItem(atPath:model.appendingPathComponent(name).path) else { return false }
-                    return values[.type] as? FileAttributeType == .typeRegular && (values[.size] as? NSNumber)?.uint64Value == pin.bytes
-                }
+                let plan = try? ModelManifest.plan(Data(contentsOf:manifest),pin:.parakeetUltra)
+                let valid = plan.map { ModelStorage.isInstalled($0,in:appData,verifyHashes:false) } ?? false
+                return (valid,FileManager.default.fileExists(atPath:model.path))
             }
         }
-        let token = generation, present = await inventory!.value
+        let token = generation, status = await inventory!.value
         guard token == generation else { return }
-        inventory = nil; refreshed = true; downloaded = present
-        if usesParakeet && !present { await invalidModel(generation:token) }
+        inventory = nil; refreshed = true; downloaded = status.valid
+        if !status.valid && (usesParakeet || status.exists) { await invalidModel(generation:token) }
     }
     func chooseParakeet(_ value: Bool) {
         guard !value || downloaded else { return }
@@ -62,6 +62,7 @@ import CassiniTranscription
     }
     func download() {
         guard !busy else { return }
+        invalidateInventory()
         generation = UUID(); let token = generation
         busy = true; progress = 0; message = nil; failedDownload = false
         let client = ModelDownloadClient { [weak self] value in
@@ -84,12 +85,15 @@ import CassiniTranscription
     func cancelDownload() { operation?.cancel() }
     func remove() {
         guard !busy else { return }
+        invalidateInventory()
         generation = UUID(); busy = true; chooseParakeet(false)
-        message = UXText.text("models.parakeetUltra.removedFallback"); failedDownload = false
         operation = Task {
             defer { busy = false; operation = nil }
-            do { try await ModelDownloader(appData:Self.appData).remove(.parakeetUltra); downloaded = false; refreshed = true }
-            catch { NSApp.presentError(error) }
+            do {
+                try await ModelDownloader(appData:Self.appData).remove(.parakeetUltra)
+                downloaded = false; refreshed = true; failedDownload = false
+                message = UXText.text("models.parakeetUltra.removedFallback")
+            } catch { refreshed = false; NSApp.presentError(error) }
         }
     }
     struct JobModel {
@@ -116,13 +120,21 @@ import CassiniTranscription
         // An old worker must not remove a replacement download or overwrite the
         // explicit Remove message after the person has changed the installation.
         guard token == generation else { return }
-        generation = UUID(); chooseParakeet(false); downloaded = false; refreshed = true
-        message = UXText.text("models.parakeetUltra.invalidFallback"); failedDownload = false
+        invalidateInventory()
+        let wasSelected = usesParakeet
+        generation = UUID(); chooseParakeet(false)
         busy = true
         defer { busy = false }
-        do { try await ModelDownloader(appData:Self.appData).remove(.parakeetUltra) }
-        catch { NSApp.presentError(error) }
+        do {
+            let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
+            let plan = try ModelManifest.plan(Data(contentsOf:manifest),pin:.parakeetUltra)
+            let removed = try await ModelDownloader(appData:Self.appData).removeInvalid(plan)
+            downloaded = !removed; refreshed = true; failedDownload = false
+            if !removed { chooseParakeet(wasSelected) }
+            else if wasSelected { message = UXText.text("models.parakeetUltra.invalidFallback") }
+        } catch { refreshed = false; NSApp.presentError(error) }
     }
+    private func invalidateInventory() { inventory?.cancel(); inventory = nil; refreshed = false }
     #if DEBUG
     func waitForOperation() async { await operation?.value }
     func reloadInventory() async { refreshed = false; await refresh() }

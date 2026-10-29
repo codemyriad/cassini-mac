@@ -6,6 +6,7 @@ import CassiniLibrary
 import CassiniParakeet
 import CassiniWhistle
 import Darwin
+import CassiniModels
 
 /// Private generated-file proof over the actual queue and signed helpers. Model
 /// bytes arrive through stdin, not a sandbox exemption or a network download.
@@ -42,6 +43,17 @@ import Darwin
             try install(backup)
             models.chooseParakeet(false); await models.refresh()
             guard models.downloaded, !models.usesParakeet else { throw POSIXError(.EINVAL) }
+            // A broken unused installation must not hide Remove and wedge
+            // Download/Try again. Inventory cleans it without a network client.
+            for name in ["tokens.txt","receipt.json","NOTICE.txt"] {
+                try FileManager.default.removeItem(at:SpeechModelController.modelDirectory.appendingPathComponent(name))
+                await models.reloadInventory()
+                guard !models.downloaded,!models.usesParakeet,!models.busy,
+                      !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
+                try install(backup)
+                await models.reloadInventory()
+                guard models.downloaded,!models.usesParakeet else { throw POSIXError(.EINVAL) }
+            }
             models.chooseParakeet(true)
             let first = try meeting(root:root,title:"Parakeet active")
             let second = try meeting(root:root,title:"Whistle queued")
@@ -49,7 +61,15 @@ import Darwin
             try await wait { queue.activeModel == "parakeet" }
             // This is after the production queue accepts and retains the lease,
             // before this worker necessarily finishes hashing/loading the model.
-            models.remove(); await models.waitForOperation()
+            let lockFile = SpeechModelController.modelDirectory.deletingLastPathComponent().appendingPathComponent("." + ParakeetPin.sourceSHA256 + ".lock")
+            let held = open(lockFile.path,O_RDWR | O_CREAT | O_CLOEXEC,0o600)
+            guard held >= 0,flock(held,LOCK_EX | LOCK_NB) == 0 else { if held >= 0 { close(held) }; throw POSIXError(.EIO) }
+            let previousMessage = models.message
+            Thread.detachNewThread { Thread.sleep(forTimeInterval:0.25); flock(held,LOCK_UN); close(held) }
+            models.remove()
+            try await Task.sleep(for:.milliseconds(50))
+            guard models.busy,models.downloaded,models.message == previousMessage else { throw POSIXError(.EINVAL) }
+            await models.waitForOperation()
             guard !models.usesParakeet, !models.downloaded,
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path),
                   models.message == UXText.text("models.parakeetUltra.removedFallback") else { throw POSIXError(.EINVAL) }
@@ -75,7 +95,8 @@ import Darwin
             let report: [String:Any] = ["sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
                 "installedModelDoesNotSelect":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,
                 "invalidModelRetriesWhistle":true,"invalidModelDeleted":true,"choicePersisted":true,
-                "metadataAndAudioPreserved":true,"audioDevicesOpened":false]
+                "metadataAndAudioPreserved":true,"audioDevicesOpened":false,
+                "unusedDamagedInstallationRecovers":true,"removeMessageFollowsDiskCommit":true]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             queue.beginShutdown(); await queue.waitForShutdown()
@@ -86,8 +107,14 @@ import Darwin
         let target = SpeechModelController.modelDirectory
         try FileManager.default.createDirectory(at:target,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
         for name in ParakeetPin.files.keys {
-            guard link(input.appendingPathComponent(name).path,target.appendingPathComponent(name).path) == 0 else { throw POSIXError(.EIO) }
+            let source = input.appendingPathComponent(name), output = target.appendingPathComponent(name)
+            if clonefile(source.path,output.path,0) != 0 { try FileManager.default.copyItem(at:source,to:output) }
         }
+        struct FixtureReceipt: Encodable { let pin: ModelPin; let files: [ModelAsset] }
+        let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
+        let plan = try ModelManifest.plan(Data(contentsOf:manifest),pin:.parakeetUltra)
+        try JSONEncoder().encode(FixtureReceipt(pin:plan.pin,files:plan.files)).write(to:target.appendingPathComponent("receipt.json"))
+        try Data("Private model fixture: moondream/parakeet-ultra, CC-BY-4.0.\nhttps://huggingface.co/moondream/parakeet-ultra\n".utf8).write(to:target.appendingPathComponent("NOTICE.txt"))
     }
     private static func meeting(root: URL,title: String) throws -> LibraryMeeting {
         let session = try RecordingSession(parent:root,title:title,source:"macos")
