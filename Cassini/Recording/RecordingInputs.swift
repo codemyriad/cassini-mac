@@ -81,7 +81,11 @@ import CassiniRecording
             buffer.frameLength = AVAudioFrameCount(count)
             for n in 0..<count {
                 let at = Int(frames) + n
-                buffer.floatChannelData![0][n] = RecordingFixture.transcribes ? (id == "microphone" && at < speech.count ? speech[at] : 0) : level
+                // A constant-valued fixture is DC, not audible sound. Preserve
+                // the same expected peak with a generated 400 Hz AC tone.
+                buffer.floatChannelData![0][n] = RecordingFixture.transcribes
+                    ? (id == "microphone" && at < speech.count ? speech[at] : 0)
+                    : level * Float(cos(2 * Double.pi * 400 * Double(at) / Double(rate)))
             }
             sink.receive(buffer, hostTime: host, id: id, label: id, kind: kind)
         }

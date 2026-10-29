@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Foundation
 import Testing
@@ -45,6 +46,66 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
 }
 
 @Suite struct RecordingSinkTests {
+    @Test func dcOffsetIsSilentWithoutChangingRecordedSamples() throws {
+        let input = try buffer(channels:1,frames:800)
+        for i in 0..<800 { input.floatChannelData![0][i] = -2060.0/32768 }
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        sink.receive(input,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        try sink.finish(problem:nil)
+        #expect(sink.status().levels["mic"] == 0)
+        #expect(writer.chunks[0].1.withUnsafeBytes { $0.bindMemory(to:Int16.self).allSatisfy { Int16(littleEndian:$0) == -2060 } })
+    }
+    @Test(arguments:[false,true]) func acPeakCentresChannelsAndCarriesAcrossCallbacks(interleaved: Bool) throws {
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        for (index,value) in [Float(0.1),0.2].enumerated() {
+            let frames: UInt32 = index == 0 ? 320 : 480
+            let input = try buffer(channels:2,interleaved:interleaved,frames:frames)
+            for i in 0..<Int(frames) {
+                for channel in 0..<2 { input.floatChannelData![interleaved ? 0 : channel][interleaved ? i*2+channel : i] = value + (channel == 0 ? -0.3 : 0.5) }
+            }
+            sink.receive(input,hostTime:1+AVAudioTime.hostTime(forSeconds:index == 0 ? 0 : 0.04),id:"mic",label:"Mic",kind:"microphone")
+        }
+        try sink.finish(problem:nil)
+        let peak = try #require(sink.status().levels["mic"])
+        #expect(abs(peak-0.06) < 0.000001)
+        #expect(writer.bytes == 800*2*2)
+    }
+    @Test func pollingMidWindowKeepsMeasuredPeakOnlyWithFreshPCM() throws {
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        func emit(_ count: UInt32, sound: Bool) throws {
+            let input = try buffer(channels:1,frames:count)
+            for i in 0..<Int(count) { input.floatChannelData![0][i] = sound ? (i.isMultiple(of:2) ? 0.25 : -0.25) : -2060.0/32768 }
+            sink.receive(input,hostTime:0,id:"mic",label:"Mic",kind:"microphone")
+        }
+        try emit(800,sound:true)
+        #expect(sink.status().levels["mic"] == 0.25)
+        try emit(160,sound:true)
+        #expect(sink.status().levels["mic"] == 0.25)
+        #expect(sink.status().levels.isEmpty)
+        try emit(640,sound:false); _ = sink.status()
+        try emit(800,sound:false)
+        #expect(sink.status().levels["mic"] == 0)
+        try emit(160,sound:false)
+        #expect(sink.status().levels["mic"] == 0)
+        #expect(sink.status().levels.isEmpty)
+        try sink.finish(problem:nil)
+    }
+    @Test func inputDiscontinuityDoesNotReuseAnOldSoundPeakForDC() throws {
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        let sound = try buffer(channels:1,frames:800)
+        for i in 0..<800 { sound.floatChannelData![0][i] = i.isMultiple(of:2) ? 0.25 : -0.25 }
+        sink.receive(sound,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        #expect(sink.status().levels["mic"] == 0.25)
+        let dc = try buffer(channels:1,frames:160)
+        for i in 0..<160 { dc.floatChannelData![0][i] = -2060.0/32768 }
+        sink.receive(dc,hostTime:1+AVAudioTime.hostTime(forSeconds:2),id:"mic",label:"Mic",kind:"microphone")
+        #expect(sink.status().levels.isEmpty)
+        #expect(throws:(any Error).self) { try sink.finish(problem:nil) }
+    }
     @Test(arguments: [false, true]) func quantizationAndMultichannelSelection(interleaved: Bool) throws {
         for channels: UInt32 in [1, 2, 4] {
             let input = try buffer(channels: channels, interleaved: interleaved, frames: 6)

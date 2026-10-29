@@ -5,6 +5,39 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class ControlRegistryTests: XCTestCase {
+    func testSuccessfulStopRetiresItsCaptureDespiteAnInterveningStatus() throws {
+        var state = BrowserControlRegistry(); try ready(&state,tabs:[2,3])
+        try send(status([2,3]),&state)
+        let stopped = try XCTUnwrap(state.stop(.init(peer:peer,tabID:2)))
+        // A still-recording snapshot can arrive while Stop is flushing. Its
+        // revision must not make a successful Stop leave the old capture live.
+        try send(status([2,3]),&state)
+        try result(stopped,&state,status:status([3]))
+        XCTAssertEqual(state.snapshots.first?.captures.map(\.key.tabID),[3])
+        XCTAssertEqual(state.stopAll().map(\.key.tabID),[3],"Stop all must not enqueue another Stop for the completed capture")
+    }
+    func testOldStopAcknowledgementPreservesAReplacementCapture() throws {
+        var state = BrowserControlRegistry(); try ready(&state)
+        try send(status([2]),&state)
+        let stopped = try XCTUnwrap(state.stop(.init(peer:peer,tabID:2)))
+        var newer = status([2])
+        var sessions = newer["sessions"] as! [[String:Any]]
+        sessions[0]["captureId"] = "replacement-capture"
+        newer["sessions"] = sessions
+        try send(newer,&state)
+        try result(stopped,&state,status:status([]))
+        XCTAssertEqual(state.snapshots.first?.captures.first?.captureID,"replacement-capture")
+    }
+    func testStopWhileStartIsPendingBindsTheStartedCaptureIdentity() throws {
+        var state = BrowserControlRegistry(); try ready(&state)
+        let started = try state.start(.init(peer:peer,tabID:2),microphone:true)
+        let stopped = try XCTUnwrap(state.stop(started.key))
+        try result(started,&state,status:status([2]))
+        try send(status([2]),&state)
+        try result(stopped,&state,status:status([]))
+        XCTAssertTrue(state.snapshots.first?.captures.isEmpty == true)
+        XCTAssertTrue(state.stopAll().isEmpty,"An acknowledged queued Stop must not leave a duplicate command for the next call")
+    }
     func testTransientZeroDiscoveryCannotArmAnActiveCallForAutoRestart() throws {
         var state = BrowserControlRegistry(); try ready(&state)
         try send(status([2]),&state)

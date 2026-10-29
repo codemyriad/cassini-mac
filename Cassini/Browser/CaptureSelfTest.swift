@@ -4,16 +4,21 @@ import AppKit
 import CassiniKit
 import CassiniRecording
 import CassiniLibrary
+import Darwin
 
 /// Native framing through the actual bundled executables; no capture APIs or
 /// browser profiles are involved. All blocking pipe operations leave UI actor.
 final class CaptureProbeProcess: @unchecked Sendable {
     private let process = Process(), input = Pipe(), output = Pipe(), errors = Pipe()
     private let queue = DispatchQueue(label:"com.codemyriad.cassini.capture-probe." + UUID().uuidString)
+    private let lifecycle = NSLock()
+    private var ending = false
     init(_ name: String, root: URL) throws {
         process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + name)
         process.environment = ["CASSINI_CONTROL_PIPE_ROOT":root.path]
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
+        let fd = output.fileHandleForReading.fileDescriptor, flags = fcntl(output.fileHandleForReading.fileDescriptor,F_GETFL)
+        guard flags >= 0,fcntl(fd,F_SETFL,flags | O_NONBLOCK) == 0 else { throw POSIXError(.EIO) }
         try process.run()
     }
     func send(_ json: [String:Any]) async throws {
@@ -25,13 +30,39 @@ final class CaptureProbeProcess: @unchecked Sendable {
     func read() async throws -> JSON {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { continuation.resume(with:Result {
-                guard let data = try NativeMessageFraming.read(from:self.output.fileHandleForReading) else { throw CocoaError(.fileReadCorruptFile) }
+                let deadline = DispatchTime.now().uptimeNanoseconds + 8_000_000_000
+                let header = try self.exact(4,deadline:deadline)
+                let count = header.withUnsafeBytes { UInt32(littleEndian:$0.loadUnaligned(as:UInt32.self)) }
+                guard count > 0,count <= NativeMessageFraming.maximumBytes else { throw CocoaError(.fileReadCorruptFile) }
+                let data = try self.exact(Int(count),deadline:deadline)
                 return try JSONParser.parse(data)
             }) }
         }
     }
+    private func exact(_ count: Int, deadline: UInt64) throws -> Data {
+        var data = Data(), bytes = [UInt8](repeating:0,count:min(count,8192))
+        let fd = output.fileHandleForReading.fileDescriptor
+        while data.count < count {
+            guard !lifecycle.withLock({ ending }) else { throw CocoaError(.userCancelled) }
+            guard DispatchTime.now().uptimeNanoseconds < deadline else {
+                throw BrowserProtocolError("fixture-timeout","Timed out reading " + (process.executableURL?.lastPathComponent ?? "private child"))
+            }
+            let size = Darwin.read(fd,&bytes,min(bytes.count,count-data.count))
+            if size > 0 { data.append(contentsOf:bytes.prefix(size)); continue }
+            if size < 0,errno == EINTR { continue }
+            if size < 0,errno == EAGAIN {
+                var item = pollfd(fd:fd,events:Int16(POLLIN),revents:0)
+                let result = poll(&item,1,100)
+                guard result >= 0 || errno == EINTR else { throw POSIXError(.EIO) }
+                continue
+            }
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return data
+    }
     func request(_ json: [String:Any]) async throws -> JSON { try await send(json); return try await read() }
     func end() async {
+        lifecycle.withLock { ending = true }
         await withCheckedContinuation { continuation in
             queue.async {
                 try? self.input.fileHandleForWriting.close()
@@ -73,6 +104,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
     func performNext() async throws -> JSON {
         let command = try await control.read()
         guard let request = command["requestId"]?.string, let action = command["action"]?.string else { throw CocoaError(.fileReadCorruptFile) }
+        try? FileHandle.standardError.write(contentsOf:Data("Capture fixture command: \(title) \(action) \(request)\n".utf8))
         if action == "start", nextStartFails {
             nextStartFails = false
             try await control.send(["type":"result","requestId":request,"ok":false,"error":"Generated start failure","status":status()])
@@ -129,7 +161,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
         var routingRoots: [URL] = []
         var deferredRoot: URL?
         var report: [String:Any] = [:]
-        var stage = "start protected service"
+        var stage = "start protected service" {
+            didSet { try? FileHandle.standardError.write(contentsOf:Data("CaptureSelfTest progress: \(stage)\n".utf8)) }
+        }
         do {
             try await Task.detached {
                 try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
@@ -144,6 +178,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.peers.filter(\.reconciled).count == 2 && collection.hasCalls }
             stage = "start two profiles"
             CaptureFixture.silentMicrophone = true
+            CaptureFixture.microphoneDC = -2060.0/32768
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
             try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
@@ -176,6 +211,8 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
             CaptureFixture.silentMicrophone = false
             try await wait { !RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent }
+            CaptureFixture.microphoneDC = 0
+            report["micDCDoesNotMaskSilence"] = true
             report["ownedSilenceMatchesMenuAndPage"] = true
             stage = "background deferred move preserves unrelated work"
             let previous = root.deletingLastPathComponent().appendingPathComponent("CassiniDeferredCapture-" + UUID().uuidString)
@@ -278,12 +315,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
-            stage = "partial failure and targeted retry"
+            stage = "partial failure: discover both calls"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)
             try await wait { collection.peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.count == 2 }
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
+            stage = "partial failure: settle one failure and one owned recording"
             try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting }
             try require(!collection.recordFailed,"One failed meeting must not become an all-failed message")
             let successfulToken = two.captureID, retryKey = try collection.failedMeetings.keys.first.unwrap()
@@ -291,6 +329,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(collection.starting,"Targeted retry keeps Try again disabled while pending")
             collection.retry(retryKey) // A second click cannot issue another command.
             _ = try await one.performNext()
+            stage = "partial retry: settle two owned recordings"
             try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty }
             try require(two.captureID == successfulToken,"Retry must not restart the successful meeting")
             stage = "hang up while the tab stays open"
@@ -460,11 +499,18 @@ final class CaptureProbeProcess: @unchecked Sendable {
             for url in routingRoots { try? FileManager.default.removeItem(at:url) }
             if let deferredRoot { try? FileManager.default.removeItem(at:deferredRoot) }
         } catch {
+            // Snapshot before teardown retires peers/owners. These are private
+            // generated fixture identities, not production recording telemetry.
+            let state: [String:Any] = ["stage":stage,"starting":collection.starting,"recording":collection.isRecording,"recordFailed":collection.recordFailed,
+                "failed":collection.failedMeetings.map { ["peer":$0.key.peer.uuidString,"tabId":$0.key.tabID,"title":$0.value] },
+                "owned":collection.captures.values.map { ["id":$0.snapshot.manifest.id.uuidString,"phase":String(describing:$0.snapshot.phase),"frames":$0.snapshot.manifest.tracks.reduce(UInt64(0)) { $0+$1.frames },"browserAlive":$0.snapshot.browserAlive] as [String:Any] },
+                "peers":collection.peers.map { ["id":$0.id.uuidString,"reconciled":$0.reconciled,"meetings":$0.meetings.map { ["tabId":$0.key.tabID,"sourceCount":$0.sourceCount] },"captures":$0.captures.count] as [String:Any] }]
+            let diagnostics = (try? JSONSerialization.data(withJSONObject:state,options:[.sortedKeys])).flatMap { String(data:$0,encoding:.utf8) } ?? "unavailable"
             for profile in profiles { await profile.finish() }
             await collection.shutdown()
             for url in routingRoots { try? FileManager.default.removeItem(at:url) }
             if let deferredRoot { try? FileManager.default.removeItem(at:deferredRoot) }
-            try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n").utf8))
+            try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n" + diagnostics + "\n").utf8))
             exit(1)
         }
         NSApp.terminate(nil)

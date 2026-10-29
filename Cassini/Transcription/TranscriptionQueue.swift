@@ -61,7 +61,7 @@ import Darwin
     }
     func writeDown(_ detail: MeetingDetailModel) {
         guard !closing, !paused, detail.meeting.canWriteDown else { return }
-        guard let original = detail.fileURL else { enqueue(detail.meeting, retry: detail.meeting.state.transcript == .failed); return }
+        guard let original = detail.fileURL else { enqueue(detail.meeting, retry: detail.meeting.state.transcript == .failed || detail.meeting.hasNoSpeech); return }
         LibraryImportCoordinator.shared.open(original,writingDown:true,retaining:detail)
     }
     private func preparePending() {

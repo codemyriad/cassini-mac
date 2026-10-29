@@ -24,7 +24,7 @@ struct WhistleTextExceptions: Decodable {
     static func load(_ root: URL) throws -> Self {
         let bytes = try Data(contentsOf: root.appendingPathComponent("whistle-text-exceptions.json"))
         let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
-        guard digest == "fde2d870983855c11833703772d3a5c0a0ad79f9b54752442b1d6131914f09a3" else { throw TranscriptionFailure.runtime("unapproved text exception manifest") }
+        guard digest == "448aeaeaae178621e3296bc9cdc0463172bbdc35525aed74becdef31541c0b56" else { throw TranscriptionFailure.runtime("unapproved text exception manifest") }
         let policy = try JSONDecoder().decode(Self.self, from: bytes)
         let pins = WhistleAssets.sourcePins
         guard policy.version == 1, policy.decision == "D11.5", policy.platform == "any",

@@ -60,6 +60,7 @@ for name in [
     'firstBrowserPacketMakesRecordingVisible',
     'ownedEditorUsesFolderIdentity',
     'ownedSilenceMatchesMenuAndPage',
+    'micDCDoesNotMaskSilence',
     'ownedStopReturnsToLibraryBeforeFlush',
     'deniedMicIsNotSilent',
     'ownedDiskWarningUsesOverview',
