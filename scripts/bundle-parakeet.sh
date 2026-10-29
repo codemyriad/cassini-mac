@@ -19,7 +19,7 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then
     options=(--options runtime --timestamp)
     if [ "$identity" = - ]; then options=(--options 0 --timestamp=none); fi
     for name in libsherpa-onnx-c-api.dylib libonnxruntime.dylib; do codesign --force --sign "$identity" "${options[@]}" "$frameworks/$name"; done
-    codesign --force --sign "$identity" "${options[@]}" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
+    codesign --force --sign "$identity" "${options[@]}" -i "$PRODUCT_BUNDLE_IDENTIFIER.parakeet-worker" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
 fi
 python3 - "$resources" "$worker" "$frameworks" <<'PY'
 import hashlib,json,sys

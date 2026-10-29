@@ -5,9 +5,9 @@ import CassiniModels
 /// Networking belongs to the XPC service. The UI and its inference children
 /// retain their sandbox's network denial. This object owns one install request.
 final class ModelDownloadClient: NSObject, CassiniModelDownloadProgress, @unchecked Sendable {
-    static let serviceName = "com.codemyriad.cassini-mac.models"
+    static let serviceName = "io.codemyriad.cassini.models"
     private let connection = NSXPCConnection(serviceName:serviceName)
-    private let queue = DispatchQueue(label:"com.codemyriad.cassini.model-request")
+    private let queue = DispatchQueue(label:"io.codemyriad.cassini.model-request")
     private let changed: @Sendable (Double) -> Void
     private var pending: CheckedContinuation<URL,Error>?
     private var cancelled = false
@@ -72,7 +72,7 @@ final class ModelDownloadClient: NSObject, CassiniModelDownloadProgress, @unchec
     }
     private static func decode(_ error: NSError) -> Error {
         if error.domain == NSCocoaErrorDomain, error.code == NSUserCancelledError { return CancellationError() }
-        if error.domain == "com.codemyriad.Cassini.ModelDownload", error.code == 1,
+        if error.domain == "io.codemyriad.cassini.model-download", error.code == 1,
            let required = error.userInfo["required"] as? NSNumber, let available = error.userInfo["available"] as? NSNumber {
             return ModelDownloadError.diskSpace(required:required.uint64Value,available:available.uint64Value)
         }

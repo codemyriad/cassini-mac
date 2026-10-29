@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CoreServices
 import CassiniLibrary
@@ -10,7 +11,7 @@ public final class LibraryWatcher: LibraryWatching, @unchecked Sendable {
         init(_ owner: LibraryWatcher) { self.owner = owner }
     }
     public let root: URL
-    private let queue = DispatchQueue(label: "com.codemyriad.cassini.library-watch")
+    private let queue = DispatchQueue(label: "io.codemyriad.cassini.library-watch")
     private let queueKey = DispatchSpecificKey<Bool>()
     private var stream: FSEventStreamRef?
     private var watched: [String] = []

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import CoreAudio
 
@@ -20,7 +21,7 @@ final class AudioProcessTap {
     private var device: AudioObjectID = 0
     private var callback: AudioDeviceIOProcID?
     private var formatListener: AudioObjectPropertyListenerBlock?
-    private let queue = DispatchQueue(label: "com.codemyriad.cassini.audio-tap", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "io.codemyriad.cassini.audio-tap", qos: .userInitiated)
 
     static func processes() throws -> [AudioProcess] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,

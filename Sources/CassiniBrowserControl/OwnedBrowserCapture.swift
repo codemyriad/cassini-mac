@@ -66,8 +66,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         me = microphone; self.changed = changed
         browserAlive = browser
         systemReason = browser ? "lost" : "start"
-        queue = DispatchQueue(label:"com.codemyriad.cassini.capture." + recording.manifest.id.uuidString)
-        notifications = DispatchQueue(label:"com.codemyriad.cassini.capture-notify." + recording.manifest.id.uuidString)
+        queue = DispatchQueue(label:"io.codemyriad.cassini.capture." + recording.manifest.id.uuidString)
+        notifications = DispatchQueue(label:"io.codemyriad.cassini.capture-notify." + recording.manifest.id.uuidString)
         try recording.transition(events:[.init(atMs:0,type:"othersSource",source:browser ? "browser" : "none",reason:"start"),
             .init(atMs:0,type:"selection",reason:"start",me:microphone,others:true)])
         cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,fallbackReason:nil,browserLostUptime:nil,browserLevel:0,levelTimestamp:0)

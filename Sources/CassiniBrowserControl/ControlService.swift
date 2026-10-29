@@ -5,7 +5,7 @@ import CassiniKit
 /// Owns only browser management. Each audio session will have a separate owner;
 /// closing this service never sends Stop or finalizes an audio writer.
 public final class BrowserControlService: @unchecked Sendable {
-    private let queue = DispatchQueue(label:"com.codemyriad.cassini.control-state")
+    private let queue = DispatchQueue(label:"io.codemyriad.cassini.control-state")
     private let key = DispatchSpecificKey<UInt8>()
     private var server: BrowserPipeServer?
     private var timer: DispatchSourceTimer?

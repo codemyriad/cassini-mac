@@ -10,7 +10,7 @@ import Darwin
 /// browser profiles are involved. All blocking pipe operations leave UI actor.
 final class CaptureProbeProcess: @unchecked Sendable {
     private let process = Process(), input = Pipe(), output = Pipe(), errors = Pipe()
-    private let queue = DispatchQueue(label:"com.codemyriad.cassini.capture-probe." + UUID().uuidString)
+    private let queue = DispatchQueue(label:"io.codemyriad.cassini.capture-probe." + UUID().uuidString)
     private let lifecycle = NSLock()
     private var ending = false
     init(_ name: String, root: URL) throws {

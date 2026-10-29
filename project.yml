@@ -1,6 +1,6 @@
 name: Cassini
 options:
-  bundleIdPrefix: com.codemyriad
+  bundleIdPrefix: io.codemyriad.cassini
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
@@ -14,6 +14,9 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
+    OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
+    CASSINI_APP_HARDENED_RUNTIME: YES
     SWIFT_STRICT_CONCURRENCY: targeted
 packages:
   CassiniKit:
@@ -86,6 +89,7 @@ targets:
         script: bash "$SRCROOT/scripts/bundle-opus.sh"
         basedOnDependencyAnalysis: false
       - name: Bundle native messaging host
+        basedOnDependencyAnalysis: false
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH"
           cp "$BUILT_PRODUCTS_DIR/cassini-browser-host" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/cassini-browser-host"
@@ -146,9 +150,9 @@ targets:
         com.apple.security.assets.music.read-write: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini
         PRODUCT_NAME: Cassini
-        ENABLE_HARDENED_RUNTIME: true
+        ENABLE_HARDENED_RUNTIME: "$(CASSINI_APP_HARDENED_RUNTIME)"
         COMBINE_HIDPI_IMAGES: true
         GENERATE_INFOPLIST_FILE: false
   CassiniWindowScreenshots:
@@ -161,9 +165,10 @@ targets:
       - target: Cassini
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.screenshots
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.screenshots
         GENERATE_INFOPLIST_FILE: true
         TEST_TARGET_NAME: Cassini
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: true
         ENABLE_HARDENED_RUNTIME: false
   CassiniBrowserHost:
     type: tool
@@ -179,8 +184,11 @@ targets:
         product: CassiniLibrary
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.browser-host
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)"
         PRODUCT_NAME: cassini-browser-host
         SKIP_INSTALL: true
+        CODE_SIGN_ENTITLEMENTS: BrowserSetup/NativeHost.entitlements
         ENABLE_HARDENED_RUNTIME: true
   CassiniControlHost:
     type: tool
@@ -192,8 +200,11 @@ targets:
         product: CassiniBrowserControl
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.control-host
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)"
         PRODUCT_NAME: cassini-control-host
         SKIP_INSTALL: true
+        CODE_SIGN_ENTITLEMENTS: BrowserSetup/NativeHost.entitlements
         ENABLE_HARDENED_RUNTIME: true
   CassiniBrowserSetup:
     type: xpc-service
@@ -206,7 +217,8 @@ targets:
         product: CassiniBrowserSetup
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.browser-setup
+        ENABLE_HARDENED_RUNTIME: true
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.browser-setup
         PRODUCT_NAME: CassiniBrowserSetup
         PRODUCT_MODULE_NAME: CassiniBrowserSetupService
         CODE_SIGN_ENTITLEMENTS: BrowserSetup/BrowserSetup.entitlements
@@ -230,6 +242,8 @@ targets:
         product: CassiniTranscription
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.whistle-worker
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)"
         PRODUCT_NAME: cassini-whistle-worker
         SKIP_INSTALL: true
         ENABLE_HARDENED_RUNTIME: true
@@ -247,6 +261,8 @@ targets:
         product: CassiniWhistle
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.parakeet-worker
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)"
         PRODUCT_NAME: cassini-parakeet-worker
         SKIP_INSTALL: true
         ENABLE_HARDENED_RUNTIME: true
@@ -285,7 +301,7 @@ targets:
         com.apple.security.files.user-selected.read-only: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.quicklook
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.quicklook
         PRODUCT_NAME: CassiniQuickLook
         ENABLE_HARDENED_RUNTIME: true
         GENERATE_INFOPLIST_FILE: false
@@ -300,7 +316,8 @@ targets:
         product: CassiniModels
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.codemyriad.cassini-mac.models
+        ENABLE_HARDENED_RUNTIME: true
+        PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini.models
         PRODUCT_NAME: CassiniModelDownloads
         CODE_SIGN_ENTITLEMENTS: ModelDownloads/ModelDownloads.entitlements
     info:

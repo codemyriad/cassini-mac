@@ -23,7 +23,7 @@ import CassiniModels
             try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
             defer {
                 try? FileManager.default.removeItem(at:root); try? FileManager.default.removeItem(at:dataRoot)
-                if let id = SettingsFixture.id { SettingsFixture.defaults?.removePersistentDomain(forName:"com.codemyriad.cassini-mac.settings-fixture." + id.uuidString) }
+                if let id = SettingsFixture.id { SettingsFixture.defaults?.removePersistentDomain(forName:"io.codemyriad.cassini.settings-fixture." + id.uuidString) }
             }
             try await Task.detached(priority:.utility) {
                 try FileManager.default.createDirectory(at:backup,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])

@@ -206,7 +206,7 @@ import CassiniKit
         LibraryMoveCoordinator.shared.beginShutdown(); await LibraryMoveCoordinator.shared.waitForShutdown()
         await recorder.stopAndWait(); queue.beginShutdown(); await queue.waitForShutdown()
         runtime.stop(); LibraryStore.shared.stop()
-        SettingsFixture.defaults?.removePersistentDomain(forName:"com.codemyriad.cassini-mac.settings-fixture." + id.uuidString)
+        SettingsFixture.defaults?.removePersistentDomain(forName:"io.codemyriad.cassini.settings-fixture." + id.uuidString)
         if let blockedFolder { _ = chmod(blockedFolder.path,0o700) }
         if failure != nil { for url in [original,destination,config.deletingLastPathComponent()] { try? FileManager.default.removeItem(at:url) } }
         if let failure { FileHandle.standardError.write(Data("Settings proof failed during \(phase): \(failure)\n".utf8)); exit(1) }

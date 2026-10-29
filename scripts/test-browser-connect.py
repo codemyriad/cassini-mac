@@ -61,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     binary = app/'Contents/MacOS/ProbeClient'
     binary.parent.mkdir(parents=True)
     shutil.copy2(ROOT/'.build/debug/cassini-browser-connect-probe', binary)
-    plist(app/'Contents/Info.plist', dict(CFBundleIdentifier='com.codemyriad.cassini-mac', CFBundleExecutable='ProbeClient',
+    plist(app/'Contents/Info.plist', dict(CFBundleIdentifier='io.codemyriad.cassini', CFBundleExecutable='ProbeClient',
         CFBundlePackageType='APPL', CFBundleVersion='1', LSBackgroundOnly=True))
     if a.app:
         shutil.copytree(a.app/'Contents/XPCServices/CassiniBrowserSetup.xpc', service)
@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
         service_binary = service/'Contents/MacOS/CassiniBrowserSetup'
         service_binary.parent.mkdir(parents=True)
         shutil.copy2(ROOT/'.build/debug/cassini-browser-setup-service', service_binary)
-        plist(service/'Contents/Info.plist', dict(CFBundleIdentifier='com.codemyriad.cassini-mac.browser-setup',
+        plist(service/'Contents/Info.plist', dict(CFBundleIdentifier='io.codemyriad.cassini.browser-setup',
             CFBundleExecutable='CassiniBrowserSetup', CFBundlePackageType='XPC!', CFBundleVersion='1', XPCService=dict(ServiceType='Application')))
     info = plistlib.loads((service/'Contents/Info.plist').read_bytes())
     info['CassiniSetupFixtureHome'] = str(home)

@@ -30,6 +30,6 @@ enum SettingsFixture {
             FileHandle.standardOutput.write(output + Data([10])); exit(0)
         }
     }
-    static var defaults: UserDefaults? { id.flatMap { UserDefaults(suiteName:"com.codemyriad.cassini-mac.settings-fixture." + $0.uuidString) } }
+    static var defaults: UserDefaults? { id.flatMap { UserDefaults(suiteName:"io.codemyriad.cassini.settings-fixture." + $0.uuidString) } }
 }
 #endif
