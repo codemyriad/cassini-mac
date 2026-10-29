@@ -72,6 +72,27 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
         #expect(abs(peak-0.06) < 0.000001)
         #expect(writer.bytes == 800*2*2)
     }
+    @Test func pollingMidWindowKeepsMeasuredPeakOnlyWithFreshPCM() throws {
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        func emit(_ count: UInt32, sound: Bool) throws {
+            let input = try buffer(channels:1,frames:count)
+            for i in 0..<Int(count) { input.floatChannelData![0][i] = sound ? (i.isMultiple(of:2) ? 0.25 : -0.25) : -2060.0/32768 }
+            sink.receive(input,hostTime:0,id:"mic",label:"Mic",kind:"microphone")
+        }
+        try emit(800,sound:true)
+        #expect(sink.status().levels["mic"] == 0.25)
+        try emit(160,sound:true)
+        #expect(sink.status().levels["mic"] == 0.25)
+        #expect(sink.status().levels.isEmpty)
+        try emit(640,sound:false); _ = sink.status()
+        try emit(800,sound:false)
+        #expect(sink.status().levels["mic"] == 0)
+        try emit(160,sound:false)
+        #expect(sink.status().levels["mic"] == 0)
+        #expect(sink.status().levels.isEmpty)
+        try sink.finish(problem:nil)
+    }
     @Test(arguments: [false, true]) func quantizationAndMultichannelSelection(interleaved: Bool) throws {
         for channels: UInt32 in [1, 2, 4] {
             let input = try buffer(channels: channels, interleaved: interleaved, frames: 6)

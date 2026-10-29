@@ -70,7 +70,7 @@ import CassiniRecording
             let otherEditor = RecordingPageModel.editor(for:duplicate)
             try require(duplicate.libraryKey == model.meeting.libraryKey && model.native && !otherEditor.native,"native capture identity includes its folder, not only its basename")
             let payload = RecordingMenuPayload(recorder:recorder,runtime:runtime)
-            try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state")
+            try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state (power=\(payload.assertionHeld), levels=\(payload.levels), recorder=\(recorder.levels))")
             try require(payload.actions.map(\.id) == ["stop","note","open"] && payload.actions.first?.shortcut == "⌥⌘R","menu actions")
             let total: UInt64 = 100 << 30, reserve = total / 50
             FileHandle.standardError.write(Data("Private disk probe: checking native warning presentation\n".utf8))

@@ -4,16 +4,21 @@ import AppKit
 import CassiniKit
 import CassiniRecording
 import CassiniLibrary
+import Darwin
 
 /// Native framing through the actual bundled executables; no capture APIs or
 /// browser profiles are involved. All blocking pipe operations leave UI actor.
 final class CaptureProbeProcess: @unchecked Sendable {
     private let process = Process(), input = Pipe(), output = Pipe(), errors = Pipe()
     private let queue = DispatchQueue(label:"com.codemyriad.cassini.capture-probe." + UUID().uuidString)
+    private let lifecycle = NSLock()
+    private var ending = false
     init(_ name: String, root: URL) throws {
         process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + name)
         process.environment = ["CASSINI_CONTROL_PIPE_ROOT":root.path]
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
+        let fd = output.fileHandleForReading.fileDescriptor, flags = fcntl(output.fileHandleForReading.fileDescriptor,F_GETFL)
+        guard flags >= 0,fcntl(fd,F_SETFL,flags | O_NONBLOCK) == 0 else { throw POSIXError(.EIO) }
         try process.run()
     }
     func send(_ json: [String:Any]) async throws {
@@ -25,13 +30,39 @@ final class CaptureProbeProcess: @unchecked Sendable {
     func read() async throws -> JSON {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { continuation.resume(with:Result {
-                guard let data = try NativeMessageFraming.read(from:self.output.fileHandleForReading) else { throw CocoaError(.fileReadCorruptFile) }
+                let deadline = DispatchTime.now().uptimeNanoseconds + 8_000_000_000
+                let header = try self.exact(4,deadline:deadline)
+                let count = header.withUnsafeBytes { UInt32(littleEndian:$0.loadUnaligned(as:UInt32.self)) }
+                guard count > 0,count <= NativeMessageFraming.maximumBytes else { throw CocoaError(.fileReadCorruptFile) }
+                let data = try self.exact(Int(count),deadline:deadline)
                 return try JSONParser.parse(data)
             }) }
         }
     }
+    private func exact(_ count: Int, deadline: UInt64) throws -> Data {
+        var data = Data(), bytes = [UInt8](repeating:0,count:min(count,8192))
+        let fd = output.fileHandleForReading.fileDescriptor
+        while data.count < count {
+            guard !lifecycle.withLock({ ending }) else { throw CocoaError(.userCancelled) }
+            guard DispatchTime.now().uptimeNanoseconds < deadline else {
+                throw BrowserProtocolError("fixture-timeout","Timed out reading " + (process.executableURL?.lastPathComponent ?? "private child"))
+            }
+            let size = Darwin.read(fd,&bytes,min(bytes.count,count-data.count))
+            if size > 0 { data.append(contentsOf:bytes.prefix(size)); continue }
+            if size < 0,errno == EINTR { continue }
+            if size < 0,errno == EAGAIN {
+                var item = pollfd(fd:fd,events:Int16(POLLIN),revents:0)
+                let result = poll(&item,1,100)
+                guard result >= 0 || errno == EINTR else { throw POSIXError(.EIO) }
+                continue
+            }
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return data
+    }
     func request(_ json: [String:Any]) async throws -> JSON { try await send(json); return try await read() }
     func end() async {
+        lifecycle.withLock { ending = true }
         await withCheckedContinuation { continuation in
             queue.async {
                 try? self.input.fileHandleForWriting.close()
@@ -73,6 +104,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
     func performNext() async throws -> JSON {
         let command = try await control.read()
         guard let request = command["requestId"]?.string, let action = command["action"]?.string else { throw CocoaError(.fileReadCorruptFile) }
+        try? FileHandle.standardError.write(contentsOf:Data("Capture fixture command: \(title) \(action) \(request)\n".utf8))
         if action == "start", nextStartFails {
             nextStartFails = false
             try await control.send(["type":"result","requestId":request,"ok":false,"error":"Generated start failure","status":status()])
@@ -129,7 +161,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
         var routingRoots: [URL] = []
         var deferredRoot: URL?
         var report: [String:Any] = [:]
-        var stage = "start protected service"
+        var stage = "start protected service" {
+            didSet { try? FileHandle.standardError.write(contentsOf:Data("CaptureSelfTest progress: \(stage)\n".utf8)) }
+        }
         do {
             try await Task.detached {
                 try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])

@@ -86,6 +86,9 @@ public final class RecordingSink: @unchecked Sendable {
         var submittedEnd: UInt64 = 0
         var registered = false
         var meter = ACLevelWindow()
+        var meteredFrames: UInt64 = 0
+        var reportedMeterFrames: UInt64 = 0
+        var lastCompletePeak: Float?
     }
     private let queue = DispatchQueue(label: "com.codemyriad.cassini.recording-writer", qos: .userInitiated)
     private let lock = NSLock()
@@ -173,9 +176,12 @@ public final class RecordingSink: @unchecked Sendable {
                     source.meter.receive(value,channel:channel)
                     samples[frame * outputChannels + channel] = Int16((max(-1, min(1, value.isFinite ? value : 0)) * 32767).rounded()).littleEndian
                 }
-                if let value = source.meter.endFrame(channels:outputChannels,window:max(1,Int(rate/10))) { peak = max(peak ?? 0,value) }
+                if let value = source.meter.endFrame(channels:outputChannels,window:max(1,Int(rate/10))) {
+                    peak = max(peak ?? 0,value); source.lastCompletePeak = value
+                }
             }
         }
+        source.meteredFrames += frames
         sources[id] = source
         if let peak { levels[id] = max(levels[id,default:0],peak) }
         // Enqueue before releasing admission lock: finish can never overtake an admitted copy.
@@ -224,7 +230,16 @@ public final class RecordingSink: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         let lost = sources.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
         let gaps = sources.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }
-        let result = (levels, sourceFrames, lost, gaps, warnings.sorted())
+        var available = levels
+        for (id,var source) in sources {
+            // Polling between completed 100 ms windows must not blink a live
+            // source to zero. Reuse its last whole-window peak only when new
+            // PCM arrived; no new samples means no fresh sound observation.
+            if source.meteredFrames > source.reportedMeterFrames, available[id] == nil,
+               let peak = source.lastCompletePeak { available[id] = peak }
+            source.reportedMeterFrames = source.meteredFrames; sources[id] = source
+        }
+        let result = (available, sourceFrames, lost, gaps, warnings.sorted())
         levels = [:]
         return result
     }
