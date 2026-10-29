@@ -7,6 +7,22 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testFirstBrowserPacketPublishesWithoutMicrophoneAndSnapshotTracksEveryAck() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let firstAudio = expectation(description:"First browser PCM changes preparing to recording")
+        let capture = try OwnedBrowserCapture(parent:root,title:"First browser packet",microphone:false,changed:{ snapshot in
+            if snapshot.manifest.tracks.first?.frames == 80 { firstAudio.fulfill() }
+        })
+        try capture.browserTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        try capture.browserAudio(id:"remote",sequence:0,offsetMs:0,pcm:Data(repeating:0x12,count:160))
+        XCTAssertEqual(capture.snapshot.manifest.tracks.first?.frames,80)
+        XCTAssertEqual(capture.snapshot.manifest.tracks.first?.startOffsetMs,0)
+        XCTAssertGreaterThan(capture.snapshot.browserLevel,0)
+        try capture.browserAudio(id:"remote",sequence:1,offsetMs:10,pcm:Data(repeating:0x12,count:160))
+        XCTAssertEqual(capture.snapshot.manifest.tracks.first?.frames,160)
+        await fulfillment(of:[firstAudio],timeout:2)
+        try await capture.finish()
+    }
     func testNativeGapCountsSurviveOwnedSpanFinalizationAndReload() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Owned gap",microphone:true,browser:false)

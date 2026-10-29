@@ -78,12 +78,12 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     private func publish(force: Bool = true) {
         let now = DispatchTime.now().uptimeNanoseconds
-        guard force || now - lastPublished >= 250_000_000 else { return }
-        lastPublished = now
         let uptime = ProcessInfo.processInfo.systemUptime
         let peak = others && browserAlive ? browserPeaks.values.filter { uptime - $0.1 <= 1 }.map(\.0).max() ?? 0 : 0
         let value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,fallbackReason:fallbackReason,browserLevel:peak,levelTimestamp:browserPeaks.values.map(\.1).max() ?? 0)
         snapshotLock.lock(); cached = value; snapshotLock.unlock()
+        guard force || now - lastPublished >= 250_000_000 else { return }
+        lastPublished = now
         notifications.async { [changed] in changed(value) }
     }
     public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws {
@@ -110,11 +110,13 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard delta >= -tolerance, delta <= Int64(source.rate)*60 else { throw BrowserProtocolError("chunk","Audio source clock is out of range.") }
             if delta > tolerance { source.frames += delta }
             let normalized = start + Double(source.frames)/Double(source.rate)*1000
+            var firstSamples = false
             if browserAlive && others, let span = source.span {
                 // A packet buffered before the user turned a side back on must
                 // not write the excluded interval into its new span.
                 let trim = min(pcm.count/(source.channels*2),max(0,Int(ceil((resumeAt-normalized)*Double(source.rate)/1000))))
                 if trim*source.channels*2 < pcm.count {
+                    firstSamples = recording.manifest.tracks.first { $0.id == span }?.frames == 0
                     try recording.append(id:span,pcm:Data(pcm.dropFirst(trim*source.channels*2)),offsetMs:normalized + Double(trim)/Double(source.rate)*1000)
                     let admitted = pcm.dropFirst(trim*source.channels*2)
                     var peak: Float = 0
@@ -129,7 +131,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             source.clockStart = start; source.frames += Int64(pcm.count/(source.channels*2)); source.nextSequence += 1
             browserSources[Data(id.utf8)] = source
-            publish(force:false)
+            publish(force:firstSamples)
         }
     }
     /// Device owners stop admission and drain their native sink before disabling

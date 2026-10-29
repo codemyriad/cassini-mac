@@ -228,8 +228,21 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["partialFailureRetriesOnlyThatMeeting"] = true
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
-            stage = "denied microphone and disk reserve"
+            stage = "first browser packet with denied microphone"
             CaptureFixture.microphoneAllowed = false
+            try await one.meetings(true)
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await one.performNext()
+            try await wait { collection.captures.count == 1 && !collection.starting }
+            let browserOnly = try collection.captures.values.first.unwrap()
+            try await wait { collection.activity[browserOnly.snapshot.manifest.id] == .recording && LibraryStore.shared.meetings.contains { $0.id == browserOnly.snapshot.manifest.id && $0.state.lifecycle == .recording } }
+            try require(browserOnly.owner.snapshot.manifest.tracks.filter { $0.kind == "remote" }.reduce(UInt64(0)) { $0 + $1.frames } == 800,"The sole browser packet is visible without a native input")
+            try require(!collection.recordFailed,"Actual browser PCM clears the failed-start state")
+            report["firstBrowserPacketMakesRecordingVisible"] = true
+            collection.stop(browserOnly.snapshot.manifest.id); _ = try await one.performNext()
+            await collection.stopAndWait()
+            try await one.meetings(false); try await wait { !collection.hasCalls }
+            stage = "denied microphone and disk reserve"
             let beforeMicStarts = CaptureFixture.microphoneStarts
             try await collection.record()
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
