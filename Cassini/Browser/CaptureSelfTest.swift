@@ -236,6 +236,20 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["partialFailureRetriesOnlyThatMeeting"] = true
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            stage = "expire fallback whose browser never returns"
+            try await one.meetings(true)
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await one.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
+            let expiring = try collection.captures.values.first.unwrap()
+            try await one.loseBrowser()
+            try await wait { expiring.owner.snapshot.browserLostUptime != nil && expiring.owner.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } }
+            let lostAt = try expiring.owner.snapshot.browserLostUptime.unwrap()
+            await one.control.end()
+            try await wait { !collection.peers.contains { $0.id == expiring.key?.peer } }
+            collection.pollLifetimeForTesting(at:lostAt + 30.01)
+            try await wait { collection.captures.isEmpty }
+            report["unobservedFallbackExpires"] = true
             stage = "denied microphone and disk reserve"
             CaptureFixture.microphoneAllowed = false
             let beforeMicStarts = CaptureFixture.microphoneStarts

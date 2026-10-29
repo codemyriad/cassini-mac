@@ -349,7 +349,7 @@ private final class CaptureFiles: @unchecked Sendable {
             }
         }
     }
-    private func poll() {
+    private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         for id in Array(captures.keys) {
             guard let value = captures[id] else { continue }
             let status = value.input.status()
@@ -361,7 +361,7 @@ private final class CaptureFiles: @unchecked Sendable {
             if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
-                if captures[id]?.lifetime.shouldStop(now:ProcessInfo.processInfo.systemUptime,browserAlive:value.snapshot.browserAlive,
+                if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
                     lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id) }
             }
         }
@@ -376,6 +376,9 @@ private final class CaptureFiles: @unchecked Sendable {
         RecordingDiskWatch.updateWarning(line)
     }
     #if DEBUG
+    func pollLifetimeForTesting(at now: TimeInterval) {
+        guard CaptureFixture.enabled else { return }; poll(at:now)
+    }
     func applyDiskBudgetForTesting(_ budget: DiskBudget) {
         guard CaptureFixture.enabled else { return }; applyDiskBudget(Array(captures.keys),budget)
     }
