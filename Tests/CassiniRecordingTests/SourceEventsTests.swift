@@ -7,6 +7,15 @@ import CassiniLibrary
 @testable import CassiniRecording
 
 final class SourceEventsTests: XCTestCase {
+    func testProducerUUIDCannotOverwriteAnExistingFolder() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let id = UUID(), first = try RecordingSession(parent:root,title:"Keep",source:"macos",id:id)
+        let file = first.directory.appendingPathComponent("session.json"), before = try Data(contentsOf:file)
+        XCTAssertThrowsError(try RecordingSession(parent:root,title:"Replace",source:"macos",id:id))
+        XCTAssertEqual(try Data(contentsOf:file),before)
+        try first.finish()
+    }
     func fixture(_ name: String) throws -> Data {
         try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:name,withExtension:nil,subdirectory:"SessionEvents")))
     }

@@ -92,7 +92,7 @@ private let recordingHotKeySignature: OSType = 0x43415353
     }
     private func observe() {
         guard started else { return }
-        let active = withObservationTracking { RecordingController.shared.isRecording || RecordingPageFixture.enabled } onChange: { [weak self] in
+        let active = withObservationTracking { RecordingOverview.active || RecordingPageFixture.enabled } onChange: { [weak self] in
             Task { @MainActor in self?.observe() }
         }
         power.setRecording(active)

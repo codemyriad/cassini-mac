@@ -46,7 +46,7 @@ public struct MeetingState: Codable, Equatable, Sendable {
     }
     public var canWriteDown: Bool { lifecycle == .saved && [.none, .failed].contains(transcript) && audioAvailable != false }
 }
-public enum CaptureActivity: Sendable { case recording, saving }
+public enum CaptureActivity: Equatable, Sendable { case preparing, recording, saving }
 public protocol CaptureActivityProviding: Sendable {
     func snapshot() -> [UUID: CaptureActivity]
 }

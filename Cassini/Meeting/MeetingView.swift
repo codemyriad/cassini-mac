@@ -119,7 +119,7 @@ struct MeetingView: View {
                 Text(UXText.text("meeting.companionCard.body")).lineSpacing(4)
                 HStack(spacing: 16) {
                     Button(UXText.text("meeting.companionCard.setUp")) {
-                        NSWorkspace.shared.open(URL(string: "https://github.com/codemyriad/cassini-mac#record-meetings-in-your-browser")!)
+                        CompanionSetup.shared.presenter = .library
                     }.buttonStyle(.plain).fontWeight(.semibold).foregroundStyle(.white)
                         .padding(.horizontal, 14).frame(height: 32).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
                     Button(UXText.text("common.notNow")) { suggestionDismissed = true }.buttonStyle(.plain).foregroundStyle(Color.accentColor)

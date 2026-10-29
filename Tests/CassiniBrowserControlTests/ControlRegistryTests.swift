@@ -5,6 +5,36 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class ControlRegistryTests: XCTestCase {
+    func testBatchUsesEachMeetingsMicrophoneChoice() throws {
+        var state = BrowserControlRegistry(); try ready(&state,tabs:[2,3])
+        let requests = state.startAll(microphone:true,choices:[.init(peer:peer,tabID:2):false])
+        XCTAssertEqual(requests.count,2)
+        for request in requests { XCTAssertEqual(try JSONParser.parse(request.data)["microphone"]?.bool,request.key.tabID == 3) }
+    }
+    func testRecoveredWorkerCannotRestartTheSameCallWhileItsOwnedFolderUsesFallback() throws {
+        var state = BrowserControlRegistry()
+        state.setRetainedCaptureIDs(["capture-2"])
+        try hello(&state); try meetings([2,3],&state)
+        var snapshot = status([])
+        snapshot["interrupted"] = [["recording":false,"tabId":2,"captureId":"capture-2","path":"/untrusted-advisory","message":"Interrupted"]]
+        try send(snapshot,&state)
+        XCTAssertEqual(state.snapshots.first?.interrupted.first?.captureID,"capture-2")
+        XCTAssertTrue(state.snapshots.first?.captures.isEmpty == true)
+        XCTAssertThrowsError(try state.start(.init(peer:peer,tabID:2),microphone:true))
+        XCTAssertEqual(state.automaticStarts(microphone:true).map { $0.key.tabID },[3])
+        state.setRetainedCaptureIDs([])
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty,"Saving fallback must not auto-restart the same call")
+        XCTAssertEqual(try state.start(.init(peer:peer,tabID:2),microphone:false).key.tabID,2,"Explicit Record may start again after Stop")
+    }
+    func testRetainedCaptureIdentityDoesNotSuppressSameTabInAnotherProfile() throws {
+        var state = BrowserControlRegistry(); try hello(&state); try meetings([2],&state)
+        var snapshot = status([])
+        snapshot["interrupted"] = [["recording":false,"tabId":2,"captureId":"retained","path":NSNull(),"message":"Interrupted"]]
+        try send(snapshot,&state)
+        state.setRetainedCaptureIDs(["retained"])
+        let other = UUID(); try hello(&state,peer:other); try meetings([2],&state,peer:other); try send(status([]),&state,peer:other)
+        XCTAssertEqual(state.startAll(microphone:false).map { $0.key.peer },[other])
+    }
     let peer = UUID()
     func send(_ value: [String:Any], _ state: inout BrowserControlRegistry, peer: UUID? = nil) throws {
         try state.receive(JSONSerialization.data(withJSONObject:value),from:peer ?? self.peer)

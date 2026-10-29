@@ -11,8 +11,11 @@ entries={e['id']:e for e in json.loads(raw)['entries']}
 # Catalog v5 still labels its later UX6 milestone pending. Keep the shared bytes
 # verbatim, and limit this exception to the exact message selected by D7.
 decision_approved={'errors.diskStopped.line'}
+# D22 explicitly gives the Mac Why dialog one common.close button. The catalog
+# still tags that older common entry GNOME-only; keep its published bytes.
+platform_decision_approved={'common.close'}
 for file in (root/'Cassini').rglob('*.swift'):
     for key in re.findall(r'UXText\.text\("([^"]+)"',file.read_text()):
         assert key in entries and (entries[key]['status']!='pending' or key in decision_approved), (file,key)
-        assert 'mac' in entries[key]['platforms'], (file,key)
+        assert 'mac' in entries[key]['platforms'] or key in platform_decision_approved, (file,key)
 print('Shared catalog hash and every used Mac string id verified')

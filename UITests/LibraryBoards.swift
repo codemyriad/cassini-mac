@@ -3,6 +3,32 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testCompanionSetupBoard() throws {
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniCompanionBoard","YES"]); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let setup = window.buttons["Set up"]
+        XCTAssertTrue(setup.waitForExistence(timeout:20),app.debugDescription); setup.click()
+        XCTAssertTrue(window.sheets.staticTexts["Hear each person on their own"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(text("Done. Cassini is in Chrome.",in:window))
+        XCTAssertTrue(window.sheets.buttons["companion-connect"].exists)
+        XCTAssertFalse(window.sheets.buttons["Done"].isEnabled)
+        capture(window,name:"companion-setup")
+        window.sheets.buttons["Not now"].click()
+        XCTAssertTrue(window.buttons["meeting-back"].exists)
+    }
+    @MainActor func testWhatIsRecordedBoard() throws {
+        let app = try launch("recording",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"], change = window.buttons["recording-change-sources"]
+        XCTAssertTrue(change.waitForExistence(timeout:20),app.debugDescription); change.click()
+        XCTAssertTrue(window.sheets.staticTexts["What is recorded"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(window.sheets.buttons["capture-choice-me"].exists)
+        XCTAssertTrue(window.sheets.buttons["capture-choice-others"].exists)
+        XCTAssertTrue(window.sheets.buttons["capture-choice-both"].exists)
+        XCTAssertTrue(text("Listening inside your browser",in:window))
+        capture(window,name:"what-is-recorded")
+        window.sheets.buttons["Done"].click()
+        XCTAssertTrue(window.buttons["recording-change-sources"].exists)
+    }
     override func setUpWithError() throws {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")

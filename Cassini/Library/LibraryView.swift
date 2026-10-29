@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var toolbarWidth: CGFloat = 1120
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
+    @State private var companionSetup = CompanionSetup.shared
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -40,6 +41,7 @@ struct LibraryView: View {
                 .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
+        .safeAreaInset(edge:.top,spacing:0) { CaptureFailureBanner() }
         .frame(minWidth: 760, minHeight: 480)
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("library.title"))
         .toolbar(removing: .title)
@@ -50,8 +52,8 @@ struct LibraryView: View {
                         .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("recording-back")
                 }
                 ToolbarItem(placement:.navigation) {
-                    if recorder.isRecording, let started = recorder.startedAt {
-                        LiveRecordingPill(started:started,microphone:recorder.levels["microphone",default:0],output:recorder.levels["output",default:0])
+                    if RecordingOverview.active, let started = RecordingOverview.startedAt {
+                        LiveRecordingPill(started:started,microphone:RecordingOverview.levels["microphone",default:0],output:RecordingOverview.levels["output",default:0])
                     } else if store.context.screenshot {
                         LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
                     } else { ProgressView().controlSize(.small) }
@@ -68,7 +70,7 @@ struct LibraryView: View {
                                 .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
                                 .accessibilityIdentifier("meeting-back")
                             Spacer(minLength: 0)
-                            if recorder.isRecording { Button(UXText.text("common.stop")) { recorder.stop() } }
+                            if RecordingOverview.active { Button(UXText.text("common.stop")) { RecordingOverview.stop() } }
                             else { recordButton(big: false) }
                         }.frame(width: 169)
                         VStack(alignment: .leading, spacing: 1) {
@@ -123,6 +125,7 @@ struct LibraryView: View {
         })
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
+        .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
         .onAppear {
             SettingsNavigation.shared.open = { openSettings(); NSApp.activate(ignoringOtherApps:true) }
             search.update(store.meetings)
@@ -141,8 +144,8 @@ struct LibraryView: View {
             search.update(store.meetings)
             sessionPlayback.reconcile(store.selected, offline: store.offline)
             navigation.update(store.meetings, offline: store.offline)
-            if recordCoordinator.openRecordingWhenReady, recorder.isRecording,
-               let current = store.meetings.first(where: { $0.libraryKey == recorder.directory?.lastPathComponent }) {
+            if recordCoordinator.openRecordingWhenReady, RecordingOverview.active,
+               let current = store.meetings.first(where: { $0.libraryKey == RecordingOverview.directory?.lastPathComponent }) {
                 recordCoordinator.openRecordingWhenReady = false; navigation.open(current)
             }
             #if DEBUG
@@ -215,9 +218,9 @@ struct LibraryView: View {
     }
     private var toolbarControl: some View {
         Group {
-            if recorder.isRecording, let started = recorder.startedAt {
-                LiveRecordingPill(started: started, microphone: recorder.levels["microphone", default: 0], output: recorder.levels["output", default: 0])
-            } else if recorder.isSaving {
+            if RecordingOverview.active, let started = RecordingOverview.startedAt {
+                LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
+            } else if RecordingOverview.saving {
                 HStack { ProgressView().controlSize(.small); Text(UXText.text("states.badge.saving")) }.frame(height: 34)
             } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
                 // Read-only header placeholder until UX5 owns transport/levels.
@@ -384,7 +387,7 @@ struct LibraryView: View {
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
                 .foregroundStyle(big ? .white : Color(nsColor: .labelColor))
                 .background(big ? LibraryTheme.red : LibraryTheme.chip, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
-        }.buttonStyle(.plain).disabled(!recorder.canStart).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }

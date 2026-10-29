@@ -56,6 +56,17 @@ private struct SettingsRecordingView: View {
                     Toggle(UXText.text("settings.recording.firstRecord.title"),isOn:Binding(get:{ !skipFirst },set:{ skipFirst = !$0 }))
                         .labelsHidden().toggleStyle(.switch).accessibilityIdentifier("settings-explain-recording")
                 }
+                Divider()
+                HStack(alignment:.top,spacing:18) {
+                    VStack(alignment:.leading,spacing:6) {
+                        Text(UXText.text("settings.recording.autoRecord.title"))
+                        Text(UXText.text("settings.recording.autoRecord.subtitle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                    }
+                    Spacer()
+                    Toggle(UXText.text("settings.recording.autoRecord.title"),isOn:Binding(get:{ CaptureCollection.shared.autoRecord },set:{ enabled in
+                        Task { do { try await CaptureCollection.shared.setAutoRecord(enabled) } catch { NSApp.presentError(error) } }
+                    })).labelsHidden().toggleStyle(.switch).accessibilityIdentifier("settings-auto-record")
+                }
             }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
         }.sheet(isPresented:$navigation.capturingShortcut) {
             VStack(alignment:.leading,spacing:18) {
@@ -110,8 +121,13 @@ private struct SettingsLibraryView: View {
 }
 private struct SettingsBrowserView: View {
     @State private var companion = BrowserCompanionSnapshot()
+    @State private var companionSetup = CompanionSetup.shared
     private var status: String {
-        guard companion.connected else { return UXText.text("settings.browser.status.notSetUp") }
+        guard companion.connected || CaptureCollection.shared.connected else { return UXText.text("settings.browser.status.notSetUp") }
+        if CaptureCollection.shared.connected {
+            let names = Set(CaptureCollection.shared.peers.filter(\.reconciled).compactMap(\.browser))
+            return names.count == 1 ? UXText.text("settings.browser.status.connected",["browser":names.first!]) : UXText.text("settings.browser.status.connectedGeneric")
+        }
         return companion.browser.map { UXText.text("settings.browser.status.connected",["browser":$0]) } ?? UXText.text("settings.browser.status.connectedGeneric")
     }
     var body: some View {
@@ -122,7 +138,7 @@ private struct SettingsBrowserView: View {
                     Text(status).accessibilityIdentifier("settings-browser-status")
                     Spacer()
                     Button(UXText.text("meeting.companionCard.setUp")) {
-                        NSWorkspace.shared.open(URL(string:"https://github.com/codemyriad/cassini-mac#record-meetings-in-your-browser")!)
+                        CompanionSetup.shared.presenter = .settings
                     }
                 }
             }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
@@ -132,7 +148,7 @@ private struct SettingsBrowserView: View {
                 companion = await Task.detached(priority:.utility) { BrowserCompanionConnection.snapshot(directory:directory) }.value
                 do { try await Task.sleep(for:.seconds(2)) } catch { return }
             }
-        }
+        }.sheet(isPresented:Binding(get:{ companionSetup.presenter == .settings },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
     }
 }
 private struct SettingsTranscriptionView: View {

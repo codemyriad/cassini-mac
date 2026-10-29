@@ -7,7 +7,7 @@ import AppKit
         #if DEBUG
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1", CommandLine.arguments.contains("--fixture-recording-active") { return !fixtureStopped }
         #endif
-        return RecordingController.shared.isRecording || RecordingController.shared.isStarting
+        return RecordingOverview.active || RecordingOverview.starting
     }
     #if DEBUG
     private static var fixtureStopped = false
@@ -16,10 +16,10 @@ import AppKit
         #if DEBUG
         fixtureStopped = true
         #endif
-        RecordingController.shared.stop()
+        RecordingOverview.stop()
     }
     static func stopAndWait() async {
-        stop(); await RecordingPageModel.flushAll(); await RecordingController.shared.finishTask?.value
+        stop(); await RecordingPageModel.flushAll(); await RecordingOverview.stopAndWait()
     }
     static func ask(window: NSWindow?, completion: @escaping (Bool) -> Void) {
         let alert = NSAlert()

@@ -3,6 +3,8 @@ import SwiftUI
 import CassiniLibrary
 
 struct RecordingPageView: View {
+    @State private var changingCapture = false
+    @State private var explainingFallback = false
     let detail: MeetingDetailModel
     let format: LibraryFormat
     @State private var model: RecordingPageModel
@@ -23,22 +25,23 @@ struct RecordingPageView: View {
                         VStack(alignment:.leading,spacing:2) {
                             Text(LibraryFormat.liveBig(model.elapsedMs)).font(.system(size:44,weight:.semibold)).monospacedDigit().tracking(-0.9)
                                 .accessibilityIdentifier("recording-big-timer")
-                            if let started = recorder.startedAt ?? detail.meeting.start {
+                            if let started = (model.native ? recorder.startedAt : nil) ?? detail.meeting.start {
                                 Text(UXText.text("recording.since",["time":format.rowTime(started)]))
                                     .font(.system(size:13)).foregroundStyle(LibraryTheme.dim)
                             }
                         }
                         Spacer(minLength:12)
-                        Button { if model.native { recorder.stop() } } label: {
+                        Button { model.stop() } label: {
                             HStack(spacing:10) {
                                 RoundedRectangle(cornerRadius:2).fill(.white).frame(width:12,height:12)
-                                Text(UXText.text((recorder.isSaving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
+                                Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
                             }.padding(.horizontal,26).frame(height:48).foregroundStyle(.white).background(LibraryTheme.red,in:Capsule())
-                        }.buttonStyle(.plain).disabled(recorder.isSaving || detail.meeting.state.lifecycle == .saving || (!model.native && !model.frozen))
+                        }.buttonStyle(.plain).disabled(model.saving || detail.meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
                             .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
                     }
                 }
-                if let line = recorder.diskLine { Text(line).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
+                if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
+                if let owned = model.owned, owned.input.failedSides.contains(.me) { CapturePermissionNotice(side:.me) }
                 VStack(alignment:.leading,spacing:6) {
                     caption("recording.title.label")
                     TextField("",text:Binding(get:{ model.title },set:{ value in
@@ -57,10 +60,19 @@ struct RecordingPageView: View {
                     Divider()
                     source(microphone:false)
                     Divider()
-                    Button(UXText.text("recording.changeWhatIsRecorded")) {}.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
-                        .foregroundStyle(Color.accentColor).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading).disabled(true)
+                    Button(UXText.text("recording.changeWhatIsRecorded")) { changingCapture = true }.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
+                        .foregroundStyle(Color.accentColor).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading).disabled(model.owned == nil && !model.frozen)
+                        .accessibilityIdentifier("recording-change-sources")
                 }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:10))
                     .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(Color.secondary.opacity(0.25)) }
+                if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive {
+                    HStack(alignment:.top,spacing:8) {
+                        Text(UXText.text(owned.input.failedSides.contains(.others) ? "errors.othersPermission.line" : "errors.othersFallback.line")).fixedSize(horizontal:false,vertical:true)
+                        if owned.input.failedSides.contains(.others) {
+                            Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
+                        } else { Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true } }
+                    }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-source-notice")
+                }
                 VStack(alignment:.leading,spacing:6) {
                     caption("recording.notes.label")
                     TextEditor(text:Binding(get:{ model.notesText },set:{ value in
@@ -80,6 +92,14 @@ struct RecordingPageView: View {
             }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
         }.background(Color(nsColor:.textBackgroundColor))
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
+            .sheet(isPresented:$changingCapture) { WhatIsRecordedView(model:model) }
+            .sheet(isPresented:$explainingFallback) {
+                VStack(alignment:.leading,spacing:18) {
+                    Text(UXText.text("errors.othersFallback.why.title")).font(.system(size:20,weight:.bold))
+                    Text(UXText.text("errors.othersFallback.why.body")).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                    HStack { Spacer(); Button(UXText.text("common.close")) { explainingFallback = false }.keyboardShortcut(.defaultAction) }
+                }.font(.system(size:13)).padding(26).frame(width:480).onExitCommand { explainingFallback = false }
+            }
             .onAppear {
                 model.update(detail.meeting)
                 if RecordCoordinator.shared.focusNotesWhenOpened { notesFocused = true; RecordCoordinator.shared.focusNotesWhenOpened = false }
@@ -97,17 +117,20 @@ struct RecordingPageView: View {
     private func caption(_ id: String) -> some View { Text(UXText.text(id)).font(.system(size:11.5,weight:.bold)).foregroundStyle(LibraryTheme.dim) }
     private func source(microphone: Bool) -> some View {
         let silent = microphone && model.microphoneSilent
+        let enabled = microphone ? model.me : model.others
+        let browser = model.owned?.snapshot.browserAlive ?? detail.meeting.isBrowserCapture
         let amber = LibraryTheme.amber
         return HStack(spacing:14) {
             Image(systemName:microphone ? "mic" : "macwindow").font(.system(size:16)).frame(width:20).foregroundStyle(silent ? amber : Color.primary).accessibilityHidden(true)
             VStack(alignment:.leading,spacing:2) {
                 Text(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers")).fontWeight(.semibold)
-                if silent {
+                if !enabled { Text(UXText.text("whatIsRecorded.othersHeard.none.title")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim) }
+                else if silent {
                     Text(UXText.text("errors.micSilentRow.line")).font(.system(size:11.5,weight:.semibold)).foregroundStyle(amber).fixedSize(horizontal:false,vertical:true)
                 } else if !microphone {
                     HStack(spacing:4) {
-                        if detail.meeting.isBrowserCapture { Image(systemName:"checkmark").accessibilityHidden(true) }
-                        Text(UXText.text(detail.meeting.isBrowserCapture ? "recording.others.browserVoices" : "recordFirst.sound.title",["n":String(model.voiceCount)]))
+                        if browser { Image(systemName:"checkmark").accessibilityHidden(true) }
+                        Text(UXText.text(browser ? (model.voiceCount > 0 ? "recording.others.browserVoices" : "common.listeningInsideBrowser") : "recordFirst.sound.title",["n":String(model.voiceCount)]))
                     }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
                 }
             }.frame(maxWidth:.infinity,alignment:.leading)

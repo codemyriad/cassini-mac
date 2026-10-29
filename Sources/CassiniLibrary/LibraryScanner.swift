@@ -48,6 +48,7 @@ public struct LibraryScanner: Sendable {
         }
         for folder in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let (id, received) = Self.identity(folder.lastPathComponent) else { continue }
+            if !received, case .preparing? = activities[id] { continue }
             guard let info = try? pathInfo(folder) else { continue }
             if info.st_mode & S_IFMT == S_IFLNK { snapshot.issues[folder] = [.unsafePath]; continue }
             guard info.st_mode & S_IFMT == S_IFDIR else { continue }
@@ -143,6 +144,7 @@ public struct LibraryScanner: Sendable {
             titleCandidates.append(capture.title)
             meeting.start = capture.start; meeting.audioFiles = capture.files; meeting.audioTracks = capture.tracks; meeting.durationMs = capture.endMs
             switch activity {
+            case .preparing?: return nil
             case .recording?: meeting.state.lifecycle = .recording
             case .saving?: meeting.state.lifecycle = .saving
             case nil: meeting.state.lifecycle = .saved

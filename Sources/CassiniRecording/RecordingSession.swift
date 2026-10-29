@@ -91,14 +91,14 @@ public final class RecordingSession {
     /// not exposed through native messaging or any app setting.
     @_spi(Testing) public var checkpointObserver: ((RecordingCheckpointPhase) -> Void)?
 
-    public init(parent: URL, title: String, source: String) throws {
-        let id = UUID()
+    public init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
         directory = parent.appendingPathComponent("Recording-\(id.uuidString.lowercased())", isDirectory: true)
         manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))),
                                      source: source, state: "recording", tracks: [])
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-                                               attributes: [.posixPermissions: 0o700])
-        try checkpoint()
+        try FileManager.default.createDirectory(at:parent,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+        guard mkdir(directory.path,0o700) == 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+        do { try checkpoint() }
+        catch { try? FileManager.default.removeItem(at:directory); throw error }
     }
 
     public func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws {

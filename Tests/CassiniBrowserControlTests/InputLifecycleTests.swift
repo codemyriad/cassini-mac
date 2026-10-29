@@ -11,6 +11,7 @@ import CassiniRecording
     var permission: CheckedContinuation<Void,Error>?
     var holdPermission = false, denied = false
     var sink: RecordingSink?
+    var failure: (@Sendable (String) -> Void)?
     var firstAt: Double = 0
     let origin: UInt64
     init(_ kind: String, origin: UInt64) { self.kind = kind; self.origin = origin }
@@ -19,7 +20,7 @@ import CassiniRecording
         if denied { throw CocoaError(.fileReadNoPermission) }
         if holdPermission { try await withCheckedThrowingContinuation { permission = $0 } }
     }
-    func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws { self.sink = sink; starts += 1; emit(at:firstAt) }
+    func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws { self.sink = sink; self.failure = failure; starts += 1; emit(at:firstAt) }
     func emit(at seconds: Double) {
         let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
         let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:800)!
@@ -30,6 +31,65 @@ import CassiniRecording
     func stop() { stops += 1; sink = nil }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Retry only Me",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        mic.denied = true
+        do { try await inputs.start(); XCTFail("Denied microphone must fail") } catch {}
+        XCTAssertEqual(system.starts,1)
+        mic.denied = false
+        try await inputs.retry(.me)
+        XCTAssertEqual(mic.starts,1); XCTAssertEqual(system.starts,1); XCTAssertEqual(system.stops,0)
+        let previousFailure = mic.failure
+        try await inputs.select(me:false,others:true,atMs:100)
+        mic.firstAt = 0.3
+        try await inputs.select(me:true,others:true,atMs:200)
+        previousFailure?("Late callback from the stopped microphone")
+        try await Task.sleep(for:.milliseconds(50))
+        XCTAssertFalse(inputs.failedSides.contains(.me)); XCTAssertEqual(mic.stops,1)
+        system.emit(at:0.1)
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.frames,1600)
+        XCTAssertEqual(owner.snapshot.manifest.state,"completed")
+    }
+    @MainActor func testLateMicFailureStopsOnlyItsInputAndRetainsSystemSamples() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"One input lost",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        try await inputs.start()
+        mic.failure?("Generated microphone failure")
+        let deadline = Date().addingTimeInterval(3)
+        while !inputs.failedSides.contains(.me) && Date() < deadline { try await Task.sleep(for:.milliseconds(5)) }
+        XCTAssertTrue(inputs.failedSides.contains(.me)); XCTAssertEqual(mic.stops,1)
+        XCTAssertEqual(system.stops,0)
+        system.emit(at:0.1)
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.frames,1600)
+        XCTAssertEqual(owner.snapshot.manifest.state,"interrupted")
+    }
+    @MainActor func testDeniedMicrophoneDoesNotPreventSystemFallbackOrKeepRequestingPermission() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Partial permission",microphone:true)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        mic.denied = true
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        do { try await inputs.start(); XCTFail("Mic permission must fail") } catch {}
+        try owner.browserLost(atMs:0)
+        try await inputs.update(); try await inputs.update()
+        XCTAssertEqual(mic.authorized,1); XCTAssertEqual(system.starts,1)
+        XCTAssertEqual(inputs.failedSides,[.me])
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.kind),["system"])
+    }
     @MainActor func testTwoMeetingsOwnTheirNativeInputsAndOnlyTheLostOneStartsSystem() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

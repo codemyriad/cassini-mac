@@ -7,6 +7,27 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testNativeSourceAndUserResumePublishOnlyActualSystemBuffers() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try OwnedBrowserCapture(parent:root,title:"Native",microphone:true,browser:false)
+        XCTAssertTrue(capture.snapshot.needsSystem); XCTAssertEqual(capture.snapshot.manifest.source,"macos")
+        XCTAssertEqual(capture.snapshot.manifest.events?.first?.source,"none")
+        let first = capture.nativeWriter(side:.others)
+        try first.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        XCTAssertEqual(capture.snapshot.manifest.events?.count,2)
+        try first.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:0)
+        try first.finish(problem:nil)
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"start")
+        try await capture.select(me:true,others:false,atMs:1000)
+        try await capture.select(me:true,others:true,atMs:2000)
+        let resumed = capture.nativeWriter(side:.others)
+        try resumed.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try resumed.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:2000)
+        try resumed.finish(problem:nil); try await capture.finish()
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"user")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"system")
+        XCTAssertTrue(capture.snapshot.manifest.tracks.allSatisfy { $0.sourceTrackId == nil })
+    }
     func testMicResumeTrimsBufferedSamplesFromTheOffInterval() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Mic resume",microphone:true)
