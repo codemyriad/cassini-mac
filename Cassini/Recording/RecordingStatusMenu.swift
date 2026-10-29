@@ -22,7 +22,6 @@ struct RecordingMenuPayload: Codable, Sendable {
         ]
         actions = [
             .init(id:"stop",title:UXText.text("hidden.menu.stopRecording"),shortcut:runtime.shortcut.registered ? RecordingShortcut.glyph : nil),
-            .init(id:"note",title:UXText.text("hidden.menu.addNote"),shortcut:nil),
             .init(id:"open",title:UXText.text("hidden.openCassini"),shortcut:nil)
         ]
         assertionHeld = runtime.power.held
@@ -105,7 +104,6 @@ struct RecordingStatusMenu: View {
             dismiss()
             switch item.id {
             case "stop": RecordingOverview.stop()
-            case "note": RecordCoordinator.shared.openCurrent(focusNotes:true)
             default: RecordCoordinator.shared.openCurrent()
             }
         } label: {

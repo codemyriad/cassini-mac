@@ -83,7 +83,6 @@ import Darwin
             phase = "active trash"
             let editor = RecordingPageModel.editor(for:active)
             editor.title = "Pending hidden title"; editor.changeTitle()
-            editor.notesText = "Pending hidden note"; editor.changeNotes()
             MeetingNavigation.shared.open(active)
             MeetingExportCoordinator.shared.show(active)
             trash.move(active,undoManager:nil); await trash.waitForShutdown()

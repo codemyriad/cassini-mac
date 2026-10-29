@@ -34,15 +34,13 @@ import CassiniRecording
             let cleared = try JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as! [String:Any]
             try require(cleared["title"] is NSNull && cleared["titleSource"] as? String == "meeting-window","clearing the title removes the user override")
             model.title = "Comfort probe title"; model.changeTitle()
-            model.notesText = "First note"; model.changeNotes()
-            await RecordingPageModel.flushAll()
-            let firstMeeting = try scanner.scan().meetings.first.unwrap("meeting with a saved note")
-            let first = try firstMeeting.notes.first.unwrap("saved first note")
-            try await Task.sleep(for:.milliseconds(300))
-            model.notesText = "First note edited\nSecond note"; model.changeNotes()
+            // A prior version's notes are data, not an editable live draft.
+            let existingNotes: [[String:Any]] = [["atMs":12,"text":"Keep this note\nexactly"],["atMs":3,"text":" Earlier note "]]
+            try MeetingMetadataWriter(directory:folder,id:id).transaction { $0["notes"] = existingNotes }
             await RecordingPageModel.flushAll()
             let updated = try scanner.scan().meetings.first.unwrap("updated Library meeting")
-            try require(updated.notes.count == 2 && updated.notes[0].atMs == first.atMs && updated.notes[1].atMs > updated.notes[0].atMs,"note times retained")
+            let afterTitle = try JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as! [String:Any]
+            try require(try JSONSerialization.data(withJSONObject:afterTitle["notes"]!,options:.sortedKeys) == JSONSerialization.data(withJSONObject:existingNotes,options:.sortedKeys),"title edit preserves existing notes exactly")
             try require(updated.title == model.title && recorder.title == model.title,"title persisted and published")
             try require(RecordingPageModel.editor(for:updated) === model,"Back/Open retains editor")
             for window in NSApp.windows { window.orderOut(nil) }
@@ -71,7 +69,7 @@ import CassiniRecording
             try require(duplicate.libraryKey == model.meeting.libraryKey && model.native && !otherEditor.native,"native capture identity includes its folder, not only its basename")
             let payload = RecordingMenuPayload(recorder:recorder,runtime:runtime)
             try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state (power=\(payload.assertionHeld), levels=\(payload.levels), recorder=\(recorder.levels))")
-            try require(payload.actions.map(\.id) == ["stop","note","open"] && payload.actions.first?.shortcut == "⌥⌘R","menu actions")
+            try require(payload.actions.map(\.id) == ["stop","open"] && payload.actions.first?.shortcut == "⌥⌘R","menu actions")
             let total: UInt64 = 100 << 30, reserve = total / 50
             FileHandle.standardError.write(Data("Private disk probe: checking native warning presentation\n".utf8))
             recorder.applyDiskBudgetForTesting(DiskBudget(total:total,free:reserve + 300_000_000,bytesPerSecond:1_000_000))
@@ -108,9 +106,6 @@ import CassiniRecording
             editor.update(newer)
             for _ in 0..<80 { if editor.voiceCount == 2 { break }; try await Task.sleep(for:.milliseconds(25)) }
             try require(editor.voiceCount == 2,"browser source count updates")
-            editor.notesText = "Browser note"; editor.changeNotes(); await RecordingPageModel.flushAll()
-            let noted = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("browser note")
-            try require((noted.notes.first?.atMs ?? 0) >= elapsed + 1000,"browser notes use advancing time")
             let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.saving]))
                 .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
             editor.update(saving)
@@ -124,7 +119,7 @@ import CassiniRecording
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))
-            let report: [String:Any] = ["recordingComfort":true,"sameNameCaptureIsolation":true,"shortcutRegistered":true,"noteTimesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
+            let report: [String:Any] = ["recordingComfort":true,"sameNameCaptureIsolation":true,"shortcutRegistered":true,"existingNotesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             exit(0)
         } catch {
@@ -159,14 +154,13 @@ import CassiniRecording
             guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
             var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
             editor.update(noStart)
-            editor.notesText = "Note while saving"; editor.changeNotes()
+            editor.title = "Title while saving"; editor.changeTitle()
             await RecordingPageModel.flushAll()
-            let noted = try LibraryScanner(root:root).scan().meetings.first.unwrap("noted fixture")
-            guard editor.elapsedMs == 100, noted.notes.first?.atMs == 100 else { throw POSIXError(.EINVAL) }
+            guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
             try session.finish()
             let visible = NSApp.windows.filter { $0.isVisible && !(String(describing:type(of:$0)) == "NSStatusBarWindow" && $0.level == .statusBar) }
             guard visible.isEmpty else { throw NSError(domain:"SavingProbeVisibleWindow",code:1,userInfo:[NSLocalizedDescriptionKey:visible.map { $0.title + " class=" + String(describing:type(of:$0)) + " level=" + String($0.level.rawValue) }.joined(separator:", ")]) }
-            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"notesUseStoppedTime":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
+            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch { FileHandle.standardError.write(Data("Saving clock probe failed: \(error)\n".utf8)); exit(1) }
     }

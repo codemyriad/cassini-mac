@@ -20,7 +20,6 @@ import CassiniLibrary
     static let shared = RecordCoordinator()
     var showingFirst = false
     var openRecordingWhenReady = false
-    var focusNotesWhenOpened = false
     private var parent = LibraryLaunchContext.current.root
     func request(parent: URL, showRecording: Bool = true) {
         let recorder = RecordingController.shared
@@ -40,9 +39,8 @@ import CassiniLibrary
         if introduction { MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps: true) }
         request(parent: LibraryLocationModel.shared.roots[0], showRecording: introduction)
     }
-    func openCurrent(focusNotes: Bool = false) {
+    func openCurrent() {
         guard let folder = RecordingOverview.directory else { return }
-        focusNotesWhenOpened = focusNotes
         if let meeting = LibraryStore.shared.meetings.first(where: { $0.libraryKey == folder.lastPathComponent }) {
             MeetingNavigation.shared.open(meeting); NSApp.activate(ignoringOtherApps: true)
         } else {
