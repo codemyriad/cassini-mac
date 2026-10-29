@@ -226,7 +226,7 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { @MainActor in
                 guard let self, let value = self.captures[id] else { return }
                 self.captures[id]?.sourceProblem = true
-                if value.input.failedSides.contains(.others) { try? value.owner.systemUnavailable(atMs:Double(value.elapsedMs)) }
+                if value.input.failedSides.contains(.others) { try? await value.owner.systemUnavailable(atMs:Double(value.elapsedMs)) }
                 if !value.snapshot.browserAlive && !value.input.hasRunningInputs { self.stop(id) }
             }
         })

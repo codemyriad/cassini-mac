@@ -127,7 +127,11 @@ final class CaptureProbeProcess: @unchecked Sendable {
         let collection = CaptureCollection.shared
         var profiles: [CaptureProbeProfile] = []
         var report: [String:Any] = [:]
+        var stage = "start protected service"
         do {
+            try await Task.detached {
+                try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+            }.value
             LibraryStore.shared.start()
             let pipe = root.appendingPathComponent(".control")
             await collection.start(root:pipe)
@@ -136,6 +140,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             profiles = [one,two]
             try await one.ready(); try await two.ready()
             try await wait { collection.peers.filter(\.reconciled).count == 2 && collection.hasCalls }
+            stage = "start two profiles"
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
             try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
@@ -145,6 +150,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let second = try collection.captures.values.first { $0.snapshot.manifest.title == two.title }.unwrap()
             try require(first.snapshot.directory != second.snapshot.directory,"Profiles have distinct owned folders")
             report["twoProfilesSameTabIndependent"] = true
+            stage = "change per-meeting sources"
             try await collection.select(first.snapshot.manifest.id,me:false,others:true)
             let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await one.emit(); try await Task.sleep(for:.milliseconds(100))
@@ -154,6 +160,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
             try await one.emit()
             report["realSelectionUsesOwnedInputLifecycle"] = true
+            stage = "stop only first meeting"
             collection.stop(first.snapshot.manifest.id)
             _ = try await one.performNext()
             try await wait { collection.captures[first.snapshot.manifest.id] == nil && collection.captures[second.snapshot.manifest.id] != nil }
@@ -162,9 +169,11 @@ final class CaptureProbeProcess: @unchecked Sendable {
             var automatic: [UUID] = [], fallbacks: [UUID] = []
             collection.onAutomaticStart = { automatic.append($0) }; collection.onFallback = { fallbacks.append($0) }
             try await collection.setAutoRecord(true)
+            stage = "browser loss and system fallback"
             try await two.loseBrowser()
             try await wait { collection.captures[second.snapshot.manifest.id]?.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } == true }
             try require(collection.captures[second.snapshot.manifest.id]?.snapshot.directory == second.snapshot.directory,"Fallback retains the folder")
+            stage = "reconcile worker recovery"
             try await two.reconnectInterrupted()
             try await wait {
                 guard let key = collection.captures[second.snapshot.manifest.id]?.key else { return false }
@@ -178,6 +187,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             _ = try await two.performNext()
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
+            stage = "auto-start new call and notification Stop"
             try await one.meetings(false); try await two.meetings(false)
             try await Task.sleep(for:.milliseconds(100))
             try await one.meetings(true)
@@ -192,6 +202,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            stage = "partial failure and targeted retry"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)
             try await wait { collection.peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.count == 2 }
@@ -211,6 +222,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["partialFailureRetriesOnlyThatMeeting"] = true
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            stage = "denied microphone and disk reserve"
             CaptureFixture.microphoneAllowed = false
             let beforeMicStarts = CaptureFixture.microphoneStarts
             try await collection.record()
@@ -224,12 +236,14 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["diskReserveStopsAndKeeps"] = true
             try await wait { collection.captures.isEmpty }
             let before = try folders(root)
+            stage = "nothing started leaves no folder"
             CaptureFixture.systemAllowed = false
             try await collection.record()
             try await wait { collection.recordFailed && collection.captures.isEmpty }
             let after = try folders(root)
             try require(after == before,"No samples means no new Library folder")
             report["nothingStartedLeavesNoLibraryEntry"] = true
+            stage = "shutdown"
             for profile in profiles { await profile.finish() }
             profiles = []
             await collection.shutdown()
@@ -241,7 +255,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         } catch {
             for profile in profiles { await profile.finish() }
             await collection.shutdown()
-            try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest: " + String(describing:error) + "\n").utf8))
+            try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n").utf8))
             exit(1)
         }
         NSApp.terminate(nil)
