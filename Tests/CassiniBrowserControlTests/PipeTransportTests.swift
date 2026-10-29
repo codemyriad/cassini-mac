@@ -15,6 +15,41 @@ private final class Peers: @unchecked Sendable {
 }
 
 final class PipeTransportTests: XCTestCase {
+    func testFreshHomeWithoutMusicCanStartTheProtectedBroker() throws {
+        let base = try temporary(); defer { try? FileManager.default.removeItem(at:base) }
+        let root = base.appendingPathComponent("FreshHome/Music/.cassini-browser-control")
+        let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in try peer.send(data) },disconnected:{ _ in })
+        try server.start(); defer { server.stop() }
+        let client = try PipeEndpoint(root:root,role:.control,browser:nil)
+        let packet = Data("{\"fresh\":true}".utf8)
+        try client.send(packet); XCTAssertEqual(try client.receive(),packet)
+    }
+    func testPublishedDirectoryWhoseLeaseWasRemovedIsRetired() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clients = root.appendingPathComponent("clients"), orphan = clients.appendingPathComponent(UUID().uuidString)
+        try PipeFiles.directory(clients,create:true); try PipeFiles.directory(orphan,create:true)
+        XCTAssertEqual(mkfifo(orphan.appendingPathComponent("request").path,0o600),0)
+        let server = BrowserPipeServer(root:root,connected:{ _ in XCTFail("No lease means no peer") },received:{ _,_ in },disconnected:{ _ in })
+        try server.start(); defer { server.stop() }
+        let deadline = Date().addingTimeInterval(2)
+        while FileManager.default.fileExists(atPath:orphan.path) && Date() < deadline { Thread.sleep(forTimeInterval:0.01) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath:orphan.path))
+    }
+    func testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let peers = Peers(), gone = expectation(description:"closed peer retired")
+        let server = BrowserPipeServer(root:root,connected:{ peers.add($0.peer.id) },received:{ peer,_ in peer.close() },disconnected:{ _ in gone.fulfill() })
+        try server.start(); defer { server.stop() }
+        let client = try PipeEndpoint(root:root,role:.control,browser:nil)
+        let folders = try FileManager.default.contentsOfDirectory(at:root.appendingPathComponent("clients"),includingPropertiesForKeys:nil)
+        let folder = try XCTUnwrap(folders.first { UUID(uuidString:$0.lastPathComponent) != nil })
+        try client.send(Data("{\"close\":true}".utf8))
+        wait(for:[gone],timeout:3)
+        XCTAssertFalse(FileManager.default.fileExists(atPath:folder.path))
+        Thread.sleep(forTimeInterval:0.35) // Three discovery passes with the client still retained.
+        XCTAssertEqual(peers.all().count,1)
+        withExtendedLifetime(client) {}
+    }
     func temporary() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniPipeTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])

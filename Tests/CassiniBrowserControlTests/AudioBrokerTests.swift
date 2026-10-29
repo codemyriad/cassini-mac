@@ -73,6 +73,26 @@ private final class AudioFixture {
     }
 }
 final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
+    func testPipelinedRequestsDrainAllRepliesBeforeInputEOFExitsZero() async throws {
+        let fixture = try AudioFixture(stop:{ _,reply in
+            DispatchQueue.global().asyncAfter(deadline:.now()+0.1) { reply(nil) }
+        })
+        do {
+            let client = try fixture.client()
+            for request in [start("pipelined-eof"),track(),audio(),["type":"stop"]] {
+                try FrameIO.writeFrame(client.input.fileHandleForWriting.fileDescriptor,data:JSONSerialization.data(withJSONObject:request),cancel:Cancellation())
+            }
+            try client.input.fileHandleForWriting.close()
+            let responses = try (0..<4).map { _ in try client.read() }
+            XCTAssertEqual(responses.compactMap { $0["type"]?.string },["started","ack","ack","stopped"])
+            let path = try XCTUnwrap(responses.first?["path"]?.string)
+            client.end()
+            XCTAssertEqual(client.process.terminationStatus,0)
+            let saved = try RecordingLoader.load(directory:URL(fileURLWithPath:path))
+            XCTAssertEqual(saved.state,"completed"); XCTAssertEqual(saved.tracks.first?.frames,8000)
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
     func testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory() async throws {
         let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0), finished = StopCount()
         let fixture = try AudioFixture(beforeCreate:{ entered.signal(); _ = release.wait(timeout:.now() + 5) })
