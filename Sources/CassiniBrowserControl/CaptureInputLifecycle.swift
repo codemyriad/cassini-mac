@@ -26,6 +26,8 @@ import CassiniRecording
     private var inputs: [CaptureSide:Input] = [:]
     private var tail: Task<Void,Never>?
     private var closed = false
+    private var stopping: Task<Void,Error>?
+    private var authorizations: [UUID:CheckedContinuation<Void,Error>] = [:]
     public private(set) var failedSides: Set<CaptureSide> = []
     public var hasRunningInputs: Bool { inputs.keys.contains { !failedSides.contains($0) } }
     public init(capture: OwnedBrowserCapture, originHostTime: UInt64,
@@ -47,7 +49,7 @@ import CassiniRecording
             // Acquire permission before changing an otherwise working selection.
             var prepared: (any CaptureInput)?
             if me && (!self.capture.snapshot.me || self.failedSides.contains(.me)) {
-                let driver = self.microphone(); try await driver.authorize(); prepared = driver
+                let driver = self.microphone(); try await self.authorize(driver); prepared = driver
                 guard !self.closed else { throw BrowserIPCError.closed }
             }
             if prepared != nil { try await self.end(.me) }
@@ -59,13 +61,35 @@ import CassiniRecording
         }
     }
     public func stop() async throws {
-        closed = true // A pending permission reply cannot start a late input.
-        try await enqueue {
-            var first: Error?
-            for side in [CaptureSide.me,.others] {
-                do { try await self.end(side) } catch { first = first ?? error }
+        closed = true
+        let waiting = Array(authorizations.values); authorizations.removeAll()
+        for request in waiting { request.resume(throwing:BrowserIPCError.closed) }
+        if let stopping { try await stopping.value; return }
+        let task = Task { @MainActor in
+            try await self.enqueue {
+                var first: Error?
+                for side in [CaptureSide.me,.others] {
+                    do { try await self.end(side) } catch { first = first ?? error }
+                }
+                if let first { throw first }
             }
-            if let first { throw first }
+        }
+        stopping = task
+        try await task.value
+    }
+    /// The OS request can outlive Stop. Only this waiter is cancelled: a late
+    /// reply cannot start a driver or prevent existing inputs from draining.
+    private func authorize(_ driver: any CaptureInput) async throws {
+        guard !closed else { throw BrowserIPCError.closed }
+        let id = UUID()
+        try await withCheckedThrowingContinuation { continuation in
+            authorizations[id] = continuation
+            Task { @MainActor [weak self] in
+                let result: Result<Void,Error>
+                do { try await driver.authorize(); result = .success(()) }
+                catch { result = .failure(error) }
+                self?.authorizations.removeValue(forKey:id)?.resume(with:result)
+            }
         }
     }
     public func retry(_ side: CaptureSide) async throws {
@@ -83,20 +107,20 @@ import CassiniRecording
     private func reconcile(preparedMicrophone: (any CaptureInput)? = nil) async throws {
         guard !closed, capture.snapshot.phase == .recording else { return }
         var first: Error?
+        if capture.snapshot.needsSystem && inputs[.others] == nil && !failedSides.contains(.others) {
+          do {
+            let driver = system(); try await self.authorize(driver)
+            guard !closed, capture.snapshot.needsSystem else { return }
+            try begin(.others,driver:driver)
+          } catch { if closed { return }; failedSides.insert(.others); first = first ?? error }
+        }
         if capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
           do {
             let driver = preparedMicrophone ?? microphone()
-            if preparedMicrophone == nil { try await driver.authorize() }
+            if preparedMicrophone == nil { try await self.authorize(driver) }
             guard !closed, capture.snapshot.phase == .recording else { return }
             try begin(.me,driver:driver)
-          } catch { failedSides.insert(.me); first = error }
-        }
-        if capture.snapshot.needsSystem && inputs[.others] == nil && !failedSides.contains(.others) {
-          do {
-            let driver = system(); try await driver.authorize()
-            guard !closed, capture.snapshot.needsSystem else { return }
-            try begin(.others,driver:driver)
-          } catch { failedSides.insert(.others); first = first ?? error }
+          } catch { if closed { return }; failedSides.insert(.me); first = first ?? error }
         }
         if let first { throw first }
     }

@@ -162,6 +162,12 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["realSelectionUsesOwnedInputLifecycle"] = true
             stage = "stop only first meeting"
             collection.stop(first.snapshot.manifest.id)
+            try await wait { first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.allSatisfy { $0.ended == true } }
+            let stoppedMicFrames = first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
+            try await Task.sleep(for:.milliseconds(100))
+            try require(first.owner.snapshot.phase == .recording,"Browser tail remains pending in the fixture")
+            try require(first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } == stoppedMicFrames,"Native microphone stops before the browser flush")
+            report["nativeStopsBeforeBrowserFlush"] = true
             _ = try await one.performNext()
             try await wait { collection.captures[first.snapshot.manifest.id] == nil && collection.captures[second.snapshot.manifest.id] != nil }
             try await two.emit()
