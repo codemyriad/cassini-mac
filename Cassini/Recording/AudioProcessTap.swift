@@ -104,7 +104,8 @@ final class AudioProcessTap {
                 guard input.pointee.mNumberBuffers > 0, asbd.mBytesPerFrame > 0 else { return }
                 let frames = input.pointee.mBuffers.mDataByteSize / asbd.mBytesPerFrame
                 guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: input) else { return }
-                receive(buffer, time.pointee.mHostTime)
+                let stamp = time.pointee
+                receive(buffer, stamp.mFlags.contains(.hostTimeValid) ? stamp.mHostTime : 0)
             }, "Installing audio callback")
             try audioCheck(AudioDeviceStart(device, callback), "Starting system audio")
             return format

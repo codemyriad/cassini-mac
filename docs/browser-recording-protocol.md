@@ -7,8 +7,9 @@ raw-JSON vectors and the exact shared extension snapshot. See the
 
 Mac implementation: `Sources/CassiniRecording/BrowserProtocol.swift` and
 `Sources/cassini-browser-host/main.swift`. Native host ID: `com.codemyriad.cassini`.
-The Mac browser host writes `~/Music/Cassini/Recording-<UUID>`. The app opens these through
-an explicit folder picker; microphone/system recordings use a user-selected destination.
+The app-owned browser host and native recorder write independent `Recording-<UUID>` folders
+into the selected Library (initially `~/Music/Cassini`). The scoped in-app Connect action
+installs the fixed browser/control host pair. See [the companion implementation](browser-companion.md).
 
-Installation, tested paths and hardware limitations are in the repository README.
+Verification scope and hardware limitations are in the companion implementation notes.
 This raw recording-session format does not imply transcription or Cassini Opus export.

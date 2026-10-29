@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Foundation
 
@@ -6,7 +7,14 @@ public protocol RecordingSinkWriter: AnyObject {
     func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws
     func finish(problem: String?) throws
+    func finish(problem: String?, kind: String?) throws
+    func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64)
     var recordingProblem: String? { get }
+}
+
+extension RecordingSinkWriter {
+    public func finish(problem: String?, kind: String?) throws { try finish(problem: problem) }
+    public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {}
 }
 
 extension RecordingSession: RecordingSinkWriter {
@@ -14,12 +22,21 @@ extension RecordingSession: RecordingSinkWriter {
 }
 
 /// A native device's sample clock supplies continuity. Host time only anchors its first buffer.
-/// Subsequent host times are diagnostic; ordinary device-clock drift must never add silence
+/// Subsequent host-time jumps preserve missing input time; ordinary device-clock drift must never add silence
 /// or trigger the browser protocol's out-of-order protection.
 struct NativeSourceTimeline {
     let sampleRate: Double
     let startOffsetMs: Double
     private(set) var frames: UInt64 = 0
+
+    static func missingFrames(sampleRate: Double, hostOffsetMs: Double, previousHostMs: Double, previousInputFrames: UInt64) -> UInt64 {
+        let lag = hostOffsetMs - previousHostMs - Double(previousInputFrames) / sampleRate * 1000
+        guard lag > 0 else { return 0 }
+        let frames = (lag * sampleRate / 1000).rounded()
+        return frames >= sampleRate ? UInt64(frames) : 0
+    }
+
+    mutating func insertGap(frames count: UInt64) { frames += count }
 
     mutating func advance(frames count: UInt64) -> Double {
         let offset = startOffsetMs + Double(frames) / sampleRate * 1000
@@ -39,6 +56,9 @@ public final class RecordingSink: @unchecked Sendable {
         var timeline: NativeSourceTimeline
         var pendingFrames: UInt64 = 0
         var droppedFrames: UInt64 = 0
+        var gapFrames: UInt64 = 0
+        var lastHostOffset: Double?
+        var lastInputFrames: UInt64 = 0
         var submittedEnd: UInt64 = 0
         var registered = false
     }
@@ -90,6 +110,21 @@ public final class RecordingSink: @unchecked Sendable {
         guard source.rate == rate, source.inputChannels == inputChannels else {
             lock.unlock(); fail("The audio device format changed. Start a new recording with the current device."); return
         }
+        if hostTime != 0, let previous = source.lastHostOffset {
+            // Detect a jump between callbacks, not accumulated slow device drift. A fixed
+            // session-start lag would misclassify 10h at +50ppm (1.8s) as lost input.
+            let gap = NativeSourceTimeline.missingFrames(sampleRate: rate, hostOffsetMs: hostOffset,
+                                                         previousHostMs: previous, previousInputFrames: source.lastInputFrames)
+            if gap > 0 {
+                source.timeline.insertGap(frames: gap)
+                source.gapFrames += gap
+                warnings.insert("\(label): a host-time gap was preserved as counted silence.")
+            }
+        }
+        // Arrival time can anchor a source with no host stamp, but cannot establish
+        // an input discontinuity. Break the comparison chain until stamps return.
+        source.lastHostOffset = hostTime == 0 ? nil : hostOffset
+        source.lastInputFrames = frames
         let offset = source.timeline.advance(frames: frames)
         if abs(hostOffset - offset) >= 250 { warnings.insert("\(label): device time differs from the sample timeline; sample continuity was preserved.") }
         sourceFrames[id] = source.timeline.frames
@@ -133,10 +168,11 @@ public final class RecordingSink: @unchecked Sendable {
     // Internal deterministic drain for package tests; never called from the audio callback.
     func flush() { queue.sync {} }
 
-    public func status() -> (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, warnings: [String]) {
+    public func status() -> (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, gapMs: Double, warnings: [String]) {
         lock.lock(); defer { lock.unlock() }
         let lost = sources.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
-        let result = (levels, sourceFrames, lost, warnings.sorted())
+        let gaps = sources.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }
+        let result = (levels, sourceFrames, lost, gaps, warnings.sorted())
         levels = [:]
         return result
     }
@@ -149,6 +185,7 @@ public final class RecordingSink: @unchecked Sendable {
         lock.unlock()
         if first { onFailure(message) }
     }
+
 
     public func finish(problem: String?) throws {
         lock.lock()
@@ -172,10 +209,13 @@ public final class RecordingSink: @unchecked Sendable {
             }
             } catch { paddingFailure = error }
             let lost = snapshot.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
+            let gaps = snapshot.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }
+            let gapNote = gaps > 0 ? "Recording saved with \(Int(gaps.rounded())) ms of host-time gap; the timeline contains silence." : nil
+            for (id, source) in snapshot { writer.reportLoss(id: id, droppedFrames: source.droppedFrames, gapFrames: source.gapFrames) }
             let loss = lost > 0 ? "Recording saved with \(Int(lost.rounded())) ms of audio lost during a disk stall; the gaps contain silence." : nil
             lock.lock(); let recordedFailure = failureMessage; lock.unlock()
-            let issue = [problem ?? recordedFailure, loss, paddingFailure?.localizedDescription].compactMap { $0 }.joined(separator: " ")
-            try writer.finish(problem: issue.isEmpty ? nil : issue)
+            let issue = [problem ?? recordedFailure, loss, gapNote, paddingFailure?.localizedDescription].compactMap { $0 }.joined(separator: " ")
+            try writer.finish(problem: issue.isEmpty ? nil : issue, kind: lost > 0 || paddingFailure != nil ? "io" : (gaps > 0 ? "gap" : nil))
             if let paddingFailure { throw paddingFailure }
             if problem == nil, let issue = writer.recordingProblem { throw RecordingError.invalid(issue) }
         }

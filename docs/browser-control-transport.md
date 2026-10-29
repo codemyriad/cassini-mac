@@ -1,14 +1,14 @@
 # Browser-control transport groundwork
 
 `CassiniBrowserControl` and `cassini-control-host` provide the private app/native-host
-transport for UX10. They do not yet install browser manifests, run an app broker,
-start recordings, or appear in Cassini.app. The shared control v1 messages remain
-unchanged; the independent-session capability and recording writer follow separately.
+transport for UX10. They now connect to the per-meeting app broker described in
+[browser-companion.md](browser-companion.md). The bundled scoped setup service installs
+the fixed manifests; the independent-session capability keeps audio owners separate.
 
 The sandboxed app's existing Music-directory access can support a private FIFO
 broker without adding a network entitlement. A separate, disposable XPC experiment
-proved that primitive on the development Mac; the production app integration still
-needs its own signed, fresh hosted test. The Unix-socket alternative was denied by
+proved that primitive on the development Mac; the production integration uses the unchanged app profile and adds hosted signed-app
+checks with RAM-only inputs. The Unix-socket alternative was denied by
 the sandbox even with a server entitlement. The scope spike is documented in
 [browser-setup-spike.md](browser-setup-spike.md).
 
@@ -68,8 +68,7 @@ an audio Stop. Native recording lifetime belongs to the recording broker.
 The driver must call `drainStops()` after command completions/timeouts. Stop intent
 survives a full 128-request window, so stopping 100 pending starts sends an initial
 batch and drains the remaining Stops as capacity becomes available. A failed Start
-is never blindly resent: it may already have created a capture. This state module
-is not yet connected to the app or to audio writers.
+is never blindly resent: it may already have created a capture. The app collection and audio broker connect this state to owned recording lifetimes.
 
 `BrowserControlService` drives that state over the private FIFO server. Its callbacks
 run on the service queue; app observers must hop to the main actor. The completion
@@ -77,10 +76,6 @@ callback's Boolean identifies an automatic request. A notification is appropriat
 only after an automatic Start completes successfully. Commands expire after 30
 seconds by retiring their management peer: fresh connection status then reconciles
 any recording that already started. This does not disconnect the separate PCM host.
-Auto-record starts disabled, and no service is launched by the app in this PR.
+Auto-record starts disabled and is enabled explicitly in Settings > Recording.
 
-The app vendors the coordinator-approved protocol 0.2 snapshot `206c560`. Its
-canonical extension tests run beside the canonical vectors; the installed extension
-is checked byte for byte by `verify.py`, and the Mac-only tone-window tests run
-alongside those shared tests. Shared PR16 separately fixes the independent test's
-installed-layout path and a cross-tab management stall; it awaits GNOME review.
+The app vendors coordinator-approved shared main `56814d5`, including independent command queues, S-6 events, startup-loss fallback and native-gap metadata. The extension remains 0.2.0 in source; the coordinator owns the store release bump. Canonical extension tests run beside the shared vectors; verify.py checks the installed extension byte for byte and binds the full snapshot to the exact upstream Git commit.

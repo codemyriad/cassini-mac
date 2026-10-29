@@ -129,8 +129,6 @@ private final class CaptureFiles: @unchecked Sendable {
         recordGeneration += 1
         let generation = recordGeneration
         do {
-            // Denying Me does not prevent the other sources from recording.
-            await authorizeMicrophone()
             guard !shuttingDown, generation == recordGeneration else { requestingRecord = false; return }
             if available && hasCalls {
                 service.recordAll(microphone:true,choices:microphones) { [weak self] requests in
@@ -162,11 +160,10 @@ private final class CaptureFiles: @unchecked Sendable {
         autoGeneration += 1
         let generation = autoGeneration
         autoRecord = enabled; RecordingPreferences.defaults.set(enabled,forKey:"CassiniAutoRecord")
+        service.setAutoRecord(enabled,microphone:true)
         if enabled { await CaptureNotifications.shared.authorize() }
         guard !shuttingDown, generation == autoGeneration else { return }
         if enabled { await authorizeMicrophone() }
-        guard !shuttingDown, generation == autoGeneration else { return }
-        service.setAutoRecord(enabled,microphone:true)
     }
     func stop(_ id: UUID) {
         guard let value = captures[id], stopping[id] == nil else { return }
@@ -175,6 +172,9 @@ private final class CaptureFiles: @unchecked Sendable {
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
         if let key = value.key { service.stopMeeting(key) }
         let task = Task { [weak self] in
+            // Native inputs stop at the user's request, independently of a
+            // delayed page flush. Broker finalization reuses this same drain.
+            try? await value.input.stop()
             // The browser Stop flushes its pending PCM and normally finalizes
             // this owner itself. Keep admission open until that tail arrives.
             let deadline = ProcessInfo.processInfo.systemUptime + (value.snapshot.browserAlive && value.key != nil ? 12 : 0)
@@ -262,7 +262,7 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { [weak self] in do { try await input.update() } catch { self?.captures[id]?.sourceProblem = true } }
         }
         let source = CaptureSourceState(events:snapshot.manifest.events ?? [],atMs:Double(captures[id]?.elapsedMs ?? 0))
-        if source.source == "system", captures[id]?.savingSinceMs == nil, captures[id]?.fallbackAnnounced == false {
+        if source.source == "system", snapshot.fallbackReason != nil, captures[id]?.savingSinceMs == nil, captures[id]?.fallbackAnnounced == false {
             captures[id]?.fallbackAnnounced = true; onFallback?(id)
         }
     }

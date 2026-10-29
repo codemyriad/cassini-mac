@@ -7,6 +7,29 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testNativeGapCountsSurviveOwnedSpanFinalizationAndReload() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try OwnedBrowserCapture(parent:root,title:"Owned gap",microphone:true,browser:false)
+        let sink = capture.nativeSink(side:.me,originHostTime:1,failure:{ _ in })
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:8000,channels:1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:80))
+        buffer.frameLength = 80
+        for index in 0..<80 { buffer.floatChannelData![0][index] = 0.25 }
+        sink.receive(buffer,hostTime:1,id:"mic",label:"Me",kind:"microphone")
+        sink.receive(buffer,hostTime:1 + AVAudioTime.hostTime(forSeconds:1.01),id:"mic",label:"Me",kind:"microphone")
+        let broker = BrowserAudioBroker(make:{ _,_ in capture },created:{ _,_ in },stopNative:{ _,reply in
+            do { try sink.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
+        })
+        try broker.ownNative(capture)
+        try await broker.finish(capture)
+        let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
+        XCTAssertEqual(manifest.state,"interrupted"); XCTAssertEqual(manifest.problemKind,"gap")
+        let track = try XCTUnwrap(manifest.tracks.first)
+        XCTAssertEqual(track.gapFrames,8000); XCTAssertEqual(track.frames,8160)
+        let wav = try Data(contentsOf:capture.snapshot.directory.appendingPathComponent(track.file))
+        XCTAssertTrue(wav[204..<16204].allSatisfy { $0 == 0 })
+        XCTAssertTrue(wav[16204...].contains { $0 != 0 })
+    }
     func testFailedNativeSystemPublishesNoneOnceAndUserRetryPublishesActualSamples() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Native system lost",microphone:false,browser:false)

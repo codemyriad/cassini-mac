@@ -1,26 +1,26 @@
-tree 65bf5ff9d74a713e81175a6f52a27fa928f3afb2
-parent a20ccb4cf28ee72335975cbbb6b91a33d9504ba3
-parent cf6381a793fd3afad160dc42f7bd6f70020d84f5
-author Silvio Tomatis <silviot@gmail.com> 1793230038 +0100
-committer GitHub <noreply@github.com> 1793230038 +0100
+tree d321cfa2352e122540c6ec8a7e356df7ba7e454a
+parent bba499aca8fab4795858bf1302f09ffd4964ccf2
+parent 3c65dc854598b076dba5260f336c07f6394e368d
+author Silvio Tomatis <silviot@gmail.com> 1793242362 +0100
+committer GitHub <noreply@github.com> 1793242362 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4oTWCRC1aQ7uu5UhlAAAmNgQADI/vyqiw/UWsNkdQt2zsCLO
- boLncZxjcePxVsB9+ov+YTRXy+GD8G5lKMc82BUFiBxWWk+0Xa6/D8DIdJWbReH/
- WQS2tbWvwDrD7MgTYvLw3ATP5Lwcx+9RBLVkpFcBs8eqyzUdKrvlURcN+fVMJXt3
- go+DTRSAox9cP9ywVZOju+79rr8IQh6DiqkTi8g9D+4d9ZM1sSgITkA58R0RLg3k
- 9g5W6zNXAYLcGBkeixnXy01wJUHBD/9MEDqfXqks/LxSWg0NX9GlCi3W8gcI9y+2
- lw7Sp5SHzQ7bXlZZuuc2KJKbVU8ljRSYkyQZOm0LNW5FKWIY2b5BXRTpWYGJMOk4
- zZnrC6ZPXLez2a0lEdCV1BEs6OVyLgH0J/3WokFrE+nTl428NzbcobtIig6qg0TR
- DYPc6Rl1sNQ8LfOHsyWer7FSbfRD/wiE38w0ANEUL7/VrbkZns0vmQKd8RFQ+JK3
- 7ocob+S+R270gCWuMFWFoH0awL9wRJ5uZKo+z/hOaDxo95s3qEabK3gi5/m0SrEB
- VYEQCUlYvKjiaIvumMr+n0LZrkAte60KWmK+szJ4naq022GNR+H5fHupiISZLlvA
- 2k5C+Y41tp8tPbQ0RAczBdUz/zQPz273ZFtX+5UEsOvikZWL+rJHTyRs1/shAd/m
- NOpdZ7OMKdtvNl6Mbzf0
- =G0oO
+ wsFcBAABCAAQBQJq4rT6CRC1aQ7uu5UhlAAAVG4QACTJ4pDALWwHDGdKPIcfO2uo
+ MQC7gBbluojsaAB2800fAwAAf5Lq/aLtSaK/Y58IzGOhF7VxEp9xzngCLuGTxiog
+ cK45CF/+rdupReK9xlfjvKTVJQZtunV4yWtbkXEmEIlXJsn8fPiHpEW7TqWZLrSX
+ yNFEASZnL/O1o+xNMQd3XT9+jQvAddsrRBZy0arJjuY2vFLewIuMlzBgcZUDv1Uz
+ 8mUruWewZ7JuC9jhUPQ1B0k1al9lMZFaQO1CoErKmYQeKvZFrTAmpZYj7kXjHbYI
+ kC2SNziZM5QpZWa0GUJQLMDT7AlB65c/oe1kK3gDC6YKFd1MgXivDjq1aLqg56Yz
+ cu/TCyXzDrrL3wlcaP6an6A+TrnCCCDpHiKoLLPuhlaCvar6jJh7O1lPPEaOB11s
+ g/jKVcDD0hhcaBqR1DtALAscIv/bA+11RbzvvCKv+w8OsQzfDeApS3X2BkRgJ3Ro
+ LOmgsiSq4fPa5djMfq7prH/JT9OMCKrhina3TCKLdUQdUDdxEkiPrEon/f7qzvXB
+ oezDTwiXrjgqHc4EKZE9fpoqaLq7biw3bPHA3L5wNzUH+EqjNTPejZVJW4Bglxq8
+ pSIObVeAJ4nWBt/fnoG55nEg17vL5aaw73AmxCBzVurgGm2gfp7JEqLZDQJeFmBM
+ Kns7iv12WExuupN5HTbu
+ =qZLp
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #16 from codemyriad/fix/independent-control-queues
+Merge pull request #7 from codemyriad/native-gap-clarification
 
-Avoid cross-tab blocking in independent control commands
+M2 N7: preserve native host-time gaps in the shared session format

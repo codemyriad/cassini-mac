@@ -89,10 +89,13 @@ jobs:
 
           ### Browser recording
 
-          The archive also includes BrowserExtension, Install Browser Host.command, and setup
-          instructions. Load the extension in chrome://extensions, then run the installer with
-          its extension ID. The bundled host requires no Swift compiler, Xcode or Python.
-          Keep the extension folder in a permanent location. Re-run setup after moving the app.
+          Open **Cassini → Settings → Browser companion → Set up**. Choose **Add** to install
+          the companion from the Chrome Web Store, then **Connect** in Cassini. Supported
+          browsers are Chrome, Chromium, Edge and Brave. Reload meeting tabs opened before
+          setup. Record in Cassini starts every active browser meeting separately; each
+          recording page can stop its own meeting or change what is recorded. No developer
+          mode, terminal command, compiler, Xcode or Python is needed. Use Connect again if
+          the companion disconnects after moving the app.
 
           ### Updating
 

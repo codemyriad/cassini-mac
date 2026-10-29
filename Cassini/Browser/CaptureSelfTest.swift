@@ -162,6 +162,12 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["realSelectionUsesOwnedInputLifecycle"] = true
             stage = "stop only first meeting"
             collection.stop(first.snapshot.manifest.id)
+            try await wait { first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.allSatisfy { $0.ended == true } }
+            let stoppedMicFrames = first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
+            try await Task.sleep(for:.milliseconds(100))
+            try require(first.owner.snapshot.phase == .recording,"Browser tail remains pending in the fixture")
+            try require(first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } == stoppedMicFrames,"Native microphone stops before the browser flush")
+            report["nativeStopsBeforeBrowserFlush"] = true
             _ = try await one.performNext()
             try await wait { collection.captures[first.snapshot.manifest.id] == nil && collection.captures[second.snapshot.manifest.id] != nil }
             try await two.emit()
@@ -229,6 +235,8 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
             try require(CaptureFixture.microphoneStarts == beforeMicStarts,"Denied microphone did not start a device driver")
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
+            try require(fallbacks == [second.snapshot.manifest.id],"A normal native start must not announce browser fallback")
+            report["nativeStartDoesNotReportFallback"] = true
             collection.applyDiskBudgetForTesting(DiskBudget(total:100<<30,free:0,bytesPerSecond:16000))
             await collection.stopAndWait()
             report["deniedMicKeepsOthersRecording"] = true

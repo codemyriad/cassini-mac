@@ -31,6 +31,23 @@ import CassiniRecording
     func stop() { stops += 1; sink = nil }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testTurningMeOffAfterACountedGapStillAppliesSelection() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Turn off after gap",microphone:true)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        try await inputs.start()
+        mic.emit(at:1.1)
+        do { try await inputs.select(me:false,others:true,atMs:1200) }
+        catch { try? await inputs.stop(); try? await owner.finish(); throw error }
+        XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.gapFrames,8000)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.ended,true)
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertEqual(owner.snapshot.manifest.problemKind,"gap")
+    }
     @MainActor func testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
@@ -165,7 +182,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
     @MainActor func testStopDuringPermissionWaitPreventsALateMicrophoneStart() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Pending permission",microphone:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Pending permission",microphone:true,browser:false)
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         mic.holdPermission = true
@@ -174,9 +191,17 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let deadline = Date().addingTimeInterval(2)
         while mic.permission == nil && Date() < deadline { await Task.yield() }
         guard mic.permission != nil else { XCTFail("Permission request did not start"); throw BrowserIPCError.timeout }
-        let stopping = Task { try await inputs.stop() }
-        await Task.yield(); mic.permission?.resume(); mic.permission = nil
+        let systemStartedBeforeReply = system.starts
+        var stopped = false
+        let stopping = Task { try await inputs.stop(); stopped = true }
+        let stopDeadline = Date().addingTimeInterval(2)
+        while !stopped && Date() < stopDeadline { try await Task.sleep(for:.milliseconds(5)) }
+        let stoppedBeforeReply = stopped
+        mic.permission?.resume(); mic.permission = nil
         try await starting.value; try await stopping.value; try await owner.finish()
-        XCTAssertEqual(mic.starts,0); XCTAssertTrue(owner.snapshot.manifest.tracks.isEmpty)
+        XCTAssertTrue(stoppedBeforeReply,"Stop must not require an answer to the permission prompt")
+        XCTAssertEqual(systemStartedBeforeReply,1,"Available Others must not wait for microphone permission")
+        XCTAssertEqual(mic.starts,0); XCTAssertEqual(system.stops,1)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.kind),["system"])
     }
 }

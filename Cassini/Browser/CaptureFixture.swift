@@ -20,6 +20,8 @@ import CassiniBrowserControl
     let side: CaptureSide
     private var timer: Timer?
     private var sink: RecordingSink?
+    private var origin: UInt64 = 0
+    private var frames: UInt64 = 0
     init(_ side: CaptureSide) { self.side = side }
     func authorize() async throws {
         if side == .me && !CaptureFixture.microphoneAllowed { throw CocoaError(.fileReadNoPermission) }
@@ -27,6 +29,7 @@ import CassiniBrowserControl
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if side == .others && !CaptureFixture.systemAllowed { throw CocoaError(.fileReadNoPermission) }
         self.sink = sink
+        origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime); frames = 0
         if side == .me { CaptureFixture.microphoneStarts += 1 } else { CaptureFixture.systemStarts += 1 }
         emit()
         timer = Timer.scheduledTimer(withTimeInterval:0.02,repeats:true) { [weak self] _ in MainActor.assumeIsolated { self?.emit() } }
@@ -36,7 +39,9 @@ import CassiniBrowserControl
         let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:160)!
         buffer.frameLength = 160
         for index in 0..<160 { buffer.floatChannelData![0][index] = side == .me ? 0.12 : 0.33 }
-        sink?.receive(buffer,hostTime:AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime),id:side == .me ? "microphone" : "output",label:side == .me ? "Generated mic" : "Generated system",kind:side == .me ? "microphone" : "system")
+        // Input stamps follow the generated source frames, not timer delivery.
+        sink?.receive(buffer,hostTime:origin + AVAudioTime.hostTime(forSeconds:Double(frames)/8000),id:side == .me ? "microphone" : "output",label:side == .me ? "Generated mic" : "Generated system",kind:side == .me ? "microphone" : "system")
+        frames += 160
     }
     func stop() { timer?.invalidate(); timer = nil; sink = nil }
 }

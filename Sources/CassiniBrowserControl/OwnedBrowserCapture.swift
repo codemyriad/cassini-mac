@@ -50,6 +50,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var resumeAt: Double = 0
     private var meResumeAt: Double = 0
     private var nativeProblem: String?
+    private var nativeProblemKind: String?
     private let changed: @Sendable (OwnedCaptureSnapshot) -> Void
     private let notifications: DispatchQueue
     private var lastPublished = DispatchTime.now().uptimeNanoseconds
@@ -227,13 +228,20 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             try recording.appendNative(id:id,pcm:bytes,offsetMs:offset); publish(force:first)
         }
     }
-    fileprivate func endNative(_ ids: [String], problem: String?) throws {
+    fileprivate func reportNativeLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
+        sync { recording.reportLoss(id:id,droppedFrames:droppedFrames,gapFrames:gapFrames) }
+    }
+    fileprivate func endNative(_ ids: [String], problem: String?, kind: String? = nil) throws {
         try sync {
             guard phase == .recording else { return }
             let live = ids.filter { nativeSpans[$0]?.registered == true }
             if !live.isEmpty { try recording.transition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }
-            if let problem, !problem.isEmpty { nativeProblem = nativeProblem ?? problem }
+            if let problem, !problem.isEmpty {
+                nativeProblem = nativeProblem ?? problem
+                let value = kind ?? "capture"
+                if nativeProblemKind == nil || value == "io" || nativeProblemKind == "gap" { nativeProblemKind = value }
+            }
             publish()
         }
     }
@@ -241,7 +249,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard self.phase != .saved else { return }
             self.phase = .saving; self.publish()
-            do { try self.recording.finish(problem:problem ?? self.nativeProblem) }
+            // The broker can echo the input drain's already recorded diagnostic.
+            // Preserve its classification; a different external failure is capture.
+            let kind = self.nativeProblemKind == "io" || problem == nil || problem == self.nativeProblem ? self.nativeProblemKind : nil
+            do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:kind) }
             catch { self.phase = .saved; self.publish(); throw error }
             self.phase = .saved; self.publish()
         }
@@ -262,9 +273,11 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     private let owner: OwnedBrowserCapture
     private let side: CaptureSide
     private var spans: [String:String] = [:]
-    private var problem: String?
     init(owner: OwnedBrowserCapture, side: CaptureSide) { self.owner = owner; self.side = side }
-    var recordingProblem: String? { problem }
+    // Ending a span records diagnostics on its meeting owner. A preserved gap
+    // or counted queue loss must not reject the user's source-off transition.
+    // Actual write/checkpoint errors still throw from append/endNative.
+    var recordingProblem: String? { nil }
     func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws {
         guard spans[id] == nil, kind == (side == .me ? "microphone" : "system") else { throw RecordingError.invalid("Invalid native source role.") }
         spans[id] = try owner.nativeTrack(side:side,label:label,rate:sampleRate,channels:channels)
@@ -272,5 +285,12 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws {
         guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs)
     }
-    func finish(problem: String?) throws { self.problem = problem; try owner.endNative(Array(spans.values),problem:problem); spans.removeAll() }
+    func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
+        guard let span = spans[id] else { return }
+        owner.reportNativeLoss(id:span,droppedFrames:droppedFrames,gapFrames:gapFrames)
+    }
+    func finish(problem: String?) throws { try finish(problem:problem,kind:nil) }
+    func finish(problem: String?, kind: String?) throws {
+        try owner.endNative(Array(spans.values),problem:problem,kind:kind); spans.removeAll()
+    }
 }

@@ -65,7 +65,8 @@ struct RecordingPageView: View {
                         .accessibilityIdentifier("recording-change-sources")
                 }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:10))
                     .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(Color.secondary.opacity(0.25)) }
-                if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive {
+                if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive,
+                   owned.input.failedSides.contains(.others) || owned.snapshot.fallbackReason != nil {
                     HStack(alignment:.top,spacing:8) {
                         Text(UXText.text(owned.input.failedSides.contains(.others) ? "errors.othersPermission.line" : "errors.othersFallback.line")).fixedSize(horizontal:false,vertical:true)
                         if owned.input.failedSides.contains(.others) {
