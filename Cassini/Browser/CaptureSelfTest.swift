@@ -384,7 +384,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             collection.applyDiskBudgetForTesting(DiskBudget(total:100<<30,free:0,bytesPerSecond:16000))
             await collection.stopAndWait()
             report["deniedMicKeepsOthersRecording"] = true
-            try require(collection.diskStopped,"Reserve Stop keeps its reason after saving")
+            try require(collection.diskStopped && RecordingOverview.diskLine == UXText.text("errors.diskStopped.line") && RecordingOverview.libraryDiskLine == nil,"Reserve Stop keeps its reason without duplicating the Library banner")
             report["diskReserveStopsAndKeeps"] = true
             try await wait { collection.captures.isEmpty }
             let before = try folders(root)

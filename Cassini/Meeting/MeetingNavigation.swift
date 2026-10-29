@@ -62,7 +62,7 @@ import Observation
         detail.reconcile(offline:offline)
     }
     func captureBeganSaving(at folder: URL) {
-        if detail?.meeting.folder.standardizedFileURL.path == folder.standardizedFileURL.path { back() }
+        if let detail, detail.fileURL == nil, detail.meeting.folder.standardizedFileURL.path == folder.standardizedFileURL.path { back() }
     }
     func back() { readTask?.cancel(); readTask = nil; loading = false; detail?.close(); detail = nil }
 }

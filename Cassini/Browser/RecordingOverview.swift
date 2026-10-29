@@ -43,6 +43,8 @@ import Foundation
         }
         return RecordingController.shared.diskLine
     }
+    // The Library already has the persistent Stop banner above its content.
+    static var libraryDiskLine: String? { CaptureCollection.shared.diskStopped ? nil : diskLine }
     static func stop() { RecordingController.shared.stop(); CaptureCollection.shared.stopAll() }
     static func stopAndWait() async {
         stop(); await RecordingController.shared.finishTask?.value
