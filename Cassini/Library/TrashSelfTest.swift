@@ -39,8 +39,10 @@ import Darwin
                     let folder = URL(fileURLWithPath:item["original"] as! String)
                     let location = item["kind"] as? String == "music" ? LibraryLocation(primary:primary) : relocation
                     try location.write(file:LibraryLaunchContext.locationFile); store.reloadLocation()
-                    try await wait { store.loaded && store.meetings.contains { $0.folder == folder } }
-                    let meeting = store.meetings.first { $0.folder == folder }!
+                    let path = LibraryLocation.canonical(folder).path
+                    do { try await wait { store.loaded && store.meetings.contains { LibraryLocation.canonical($0.folder).path == path } } }
+                    catch { throw Failure.check("Put Back missing \(path); loaded=\(store.loaded), offline=\(store.offline), root=\(store.context.root.path), seen=\(store.meetings.map { $0.folder.path })") }
+                    let meeting = store.meetings.first { LibraryLocation.canonical($0.folder).path == path }!
                     let bytes = try Data(contentsOf:folder.appendingPathComponent("session.json"))
                     try check(SHA256.hash(data:bytes).map { String(format:"%02x",$0) }.joined() == item["sessionSHA256"] as? String,"Put Back byte preservation")
                     try check(meeting.canPlaySession,"Put Back playable again")

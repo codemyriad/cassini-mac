@@ -96,7 +96,7 @@ struct LibraryView: View {
                                     Section { trashButton(detail.meeting) }
                                 }
                             } label: { Image(systemName:"ellipsis").frame(width:28,height:30) }
-                                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions")).accessibilityIdentifier("meeting-more-actions")
+                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions")).accessibilityIdentifier("meeting-more-actions")
                         }
                     }.frame(width: max(480, toolbarWidth - 110))
                 }
@@ -214,6 +214,7 @@ struct LibraryView: View {
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
+                                .background { if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() } }
                                 .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
                                 .onTapGesture(count:2) { if meeting.state.lifecycle != .saved { navigation.open(meeting) } }
                                 .contextMenu {
@@ -237,12 +238,6 @@ struct LibraryView: View {
                     Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
-            }
-            .onKeyPress(keys:[KeyEquivalent("\u{F70D}"),KeyEquivalent("\u{F735}")]) { key in
-                guard key.key != KeyEquivalent("\u{F70D}") || (key.modifiers.contains(.shift) && key.modifiers.intersection([.command,.control,.option]).isEmpty),
-                      !(NSApp.keyWindow?.firstResponder is NSText), let meeting = store.selected,
-                      LibraryKeyboardMenu.show(meeting,trash:trash,undo:undoManager) else { return .ignored }
-                return .handled
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)

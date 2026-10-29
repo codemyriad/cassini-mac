@@ -160,6 +160,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
+        if let window = event.window ?? NSApp.keyWindow,
+           window.accessibilityIdentifier() == "cassini-library-window",
+           window.attachedSheet == nil, NSApp.modalWindow == nil,
+           !(window.firstResponder is NSText), MeetingNavigation.shared.detail == nil,
+           !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
+           event.modifierFlags.intersection([.command,.option,.control]).isEmpty,
+           ((event.keyCode == 109 && event.modifierFlags.contains(.shift)) || event.charactersIgnoringModifiers == "\u{F735}"),
+           let meeting = LibraryStore.shared.selected,
+           LibraryKeyboardMenu.show(meeting,trash:MeetingTrashCoordinator.shared,undo:window.undoManager) { return nil }
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
               [49, 123, 124].contains(event.keyCode),
               let window = event.window else { return event }

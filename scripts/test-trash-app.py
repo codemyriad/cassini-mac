@@ -38,6 +38,7 @@ def run(args,label):
     assert result.returncode==0,(result.returncode,result.stdout,result.stderr)
     return json.loads(result.stdout)
 report=run(command,'trash')
+a.output.with_suffix('.before-putback.json').write_text(json.dumps(report,indent=2)+'\n')
 for name in ['ok','queuedCancelIsPerMeeting','activeCancelWaitsForChild','hiddenEditsDiscarded','meetingAndExportClosed',
              'failurePreservesSourceAndRetry','unrelatedMetadataDoesNotDelayTrash','pendingMoveDiscarded','primaryAndBookmarkedTrash','sandboxUndoVerifiedOrAbsent']:
     assert report[name] is True,(name,report)
