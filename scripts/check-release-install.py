@@ -48,7 +48,7 @@ try:
     ok(as_user('/bin/mkdir', '-p', chrome))
     extension_id = 'a' * 32
     ok(as_user('/usr/bin/env', 'CASSINI_APP_PATH=' + str(release/'Cassini.app'), '/bin/bash', installer, extension_id))
-    path = chrome / 'NativeMessagingHosts/com.codemyriad.cassini.json'
+    path = chrome / 'NativeMessagingHosts/io.codemyriad.cassini.json'
     manifest = json.loads(path.read_text())
     assert pathlib.Path(manifest['path']).resolve() == host.resolve(), manifest
     assert manifest['allowed_origins'] == [f'chrome-extension://{extension_id}/']

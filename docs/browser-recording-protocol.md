@@ -6,7 +6,7 @@ raw-JSON vectors and the exact shared extension snapshot. See the
 [snapshot instructions](../browser-protocol/README.md) for SHA verification and adoption.
 
 Mac implementation: `Sources/CassiniRecording/BrowserProtocol.swift` and
-`Sources/cassini-browser-host/main.swift`. Native host ID: `com.codemyriad.cassini`.
+`Sources/cassini-browser-host/main.swift`. Native host ID: `io.codemyriad.cassini`.
 The app-owned browser host and native recorder write independent `Recording-<UUID>` folders
 into the selected Library (initially `~/Music/Cassini`). The scoped in-app Connect action
 installs the fixed browser/control host pair. See [the companion implementation](browser-companion.md).

@@ -38,8 +38,8 @@ try {
   // This does not install a host or an extension into the user's everyday browser profile.
   const hostDirectory = path.join(profile, 'NativeMessagingHosts');
   await mkdir(hostDirectory, { recursive: true });
-  await writeFile(path.join(hostDirectory, 'com.codemyriad.cassini.json'), JSON.stringify({
-    name: 'com.codemyriad.cassini', description: 'Cassini integration test',
+  await writeFile(path.join(hostDirectory, 'io.codemyriad.cassini.json'), JSON.stringify({
+    name: 'io.codemyriad.cassini', description: 'Cassini integration test',
     path: process.env.CASSINI_NATIVE_HOST || path.join(root, '.build/debug/cassini-browser-host'),
     type: 'stdio', allowed_origins: [`chrome-extension://${extensionId}/`]
   }));

@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// macOS user-level Native Messaging registration. The shipped executable needs no compiler,
 /// Python, or shell subprocess to install itself. Never changes browser profile preferences.
 public struct BrowserHostInstallation {
-    public static let hostName = "com.codemyriad.cassini"
+    public static let hostName = "io.codemyriad.cassini"
     public static let browsers = ["Google/Chrome", "Chromium", "Microsoft Edge", "BraveSoftware/Brave-Browser"]
     public let supportDirectory: URL
     public let executable: URL

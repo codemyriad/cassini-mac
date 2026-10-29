@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
 @testable import CassiniRecording
@@ -18,6 +19,7 @@ import Testing
         #expect(paths.count == 1)
         let data = try Data(contentsOf: paths[0])
         let manifest = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(manifest["name"] as? String == "io.codemyriad.cassini")
         #expect(manifest["path"] as? String == executable.resolvingSymlinksInPath().path)
         #expect(manifest["allowed_origins"] as? [String] == ["chrome-extension://" + String(repeating: "a", count: 32) + "/"])
         #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("Library/Application Support/Microsoft Edge").path))
