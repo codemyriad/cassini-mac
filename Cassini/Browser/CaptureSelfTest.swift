@@ -281,12 +281,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
-            stage = "partial failure and targeted retry"
+            stage = "partial failure: discover both calls"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)
             try await wait { collection.peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.count == 2 }
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
+            stage = "partial failure: settle one failure and one owned recording"
             try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting }
             try require(!collection.recordFailed,"One failed meeting must not become an all-failed message")
             let successfulToken = two.captureID, retryKey = try collection.failedMeetings.keys.first.unwrap()
@@ -294,6 +295,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(collection.starting,"Targeted retry keeps Try again disabled while pending")
             collection.retry(retryKey) // A second click cannot issue another command.
             _ = try await one.performNext()
+            stage = "partial retry: settle two owned recordings"
             try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty }
             try require(two.captureID == successfulToken,"Retry must not restart the successful meeting")
             stage = "hang up while the tab stays open"
@@ -463,11 +465,18 @@ final class CaptureProbeProcess: @unchecked Sendable {
             for url in routingRoots { try? FileManager.default.removeItem(at:url) }
             if let deferredRoot { try? FileManager.default.removeItem(at:deferredRoot) }
         } catch {
+            // Snapshot before teardown retires peers/owners. These are private
+            // generated fixture identities, not production recording telemetry.
+            let state: [String:Any] = ["stage":stage,"starting":collection.starting,"recording":collection.isRecording,"recordFailed":collection.recordFailed,
+                "failed":collection.failedMeetings.map { ["peer":$0.key.peer.uuidString,"tabId":$0.key.tabID,"title":$0.value] },
+                "owned":collection.captures.values.map { ["id":$0.snapshot.manifest.id.uuidString,"phase":String(describing:$0.snapshot.phase),"frames":$0.snapshot.manifest.tracks.reduce(UInt64(0)) { $0+$1.frames },"browserAlive":$0.snapshot.browserAlive] as [String:Any] },
+                "peers":collection.peers.map { ["id":$0.id.uuidString,"reconciled":$0.reconciled,"meetings":$0.meetings.map { ["tabId":$0.key.tabID,"sourceCount":$0.sourceCount] },"captures":$0.captures.count] as [String:Any] }]
+            let diagnostics = (try? JSONSerialization.data(withJSONObject:state,options:[.sortedKeys])).flatMap { String(data:$0,encoding:.utf8) } ?? "unavailable"
             for profile in profiles { await profile.finish() }
             await collection.shutdown()
             for url in routingRoots { try? FileManager.default.removeItem(at:url) }
             if let deferredRoot { try? FileManager.default.removeItem(at:deferredRoot) }
-            try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n").utf8))
+            try? FileHandle.standardError.write(contentsOf:Data(("CaptureSelfTest [" + stage + "]: " + String(describing:error) + "\n" + diagnostics + "\n").utf8))
             exit(1)
         }
         NSApp.terminate(nil)
