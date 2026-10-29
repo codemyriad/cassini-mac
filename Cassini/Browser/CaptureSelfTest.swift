@@ -150,6 +150,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let second = try collection.captures.values.first { $0.snapshot.manifest.title == two.title }.unwrap()
             try require(first.snapshot.directory != second.snapshot.directory,"Profiles have distinct owned folders")
             report["twoProfilesSameTabIndependent"] = true
+            let suggestionMeeting = try LibraryStore.shared.meetings.first { $0.id == first.snapshot.manifest.id }.unwrap()
+            let suggestionView = MeetingView(model:MeetingDetailModel(meeting:suggestionMeeting,frozen:true),format:LibraryStore.shared.format)
+            try require(!suggestionView.showsCompanionSuggestion,"A connected companion does not show Set up again")
             stage = "change per-meeting sources"
             try await collection.select(first.snapshot.manifest.id,me:false,others:true)
             let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
@@ -269,8 +272,16 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["unobservedFallbackExpires"] = true
             stage = "denied microphone and disk reserve"
             CaptureFixture.microphoneAllowed = false
+            CaptureFixture.systemBuffersAllowed = false
             let beforeMicStarts = CaptureFixture.microphoneStarts
             try await collection.record()
+            let pending = try collection.captures.values.first.unwrap()
+            let pendingMeeting = try LibraryScanner(root:root).scan().meetings.first { $0.id == pending.snapshot.manifest.id }.unwrap()
+            let pendingEditor = RecordingPageModel.editor(for:pendingMeeting)
+            try require(pending.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source == "none","System fixture has not delivered its first buffer")
+            try require(!pendingEditor.othersUnavailable && pendingEditor.othersPathTitle == UXText.text("whatIsRecorded.othersHeard.system.title") && pendingEditor.othersPathBody == UXText.text("whatIsRecorded.othersHeard.system.description"),"Starting system audio does not claim permission was denied")
+            CaptureFixture.systemBuffersAllowed = true
+            report["pendingSystemSourceIsNotPermissionFailure"] = true
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
             try require(CaptureFixture.microphoneStarts == beforeMicStarts,"Denied microphone did not start a device driver")
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
@@ -290,9 +301,22 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let after = try folders(root)
             try require(after == before,"No samples means no new Library folder")
             report["nothingStartedLeavesNoLibraryEntry"] = true
+            stage = "failed System input retains microphone and permission description"
+            CaptureFixture.microphoneAllowed = true
+            try await collection.record()
+            try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } == true }
+            let partial = try collection.captures.values.first.unwrap()
+            let partialMeeting = try LibraryScanner(root:root).scan().meetings.first { $0.id == partial.snapshot.manifest.id }.unwrap()
+            let partialEditor = RecordingPageModel.editor(for:partialMeeting)
+            try require(partialEditor.othersUnavailable && partialEditor.othersPathBody == UXText.text("errors.othersPermission.line"),"Actual System failure shows permission guidance while microphone continues")
+            await collection.stopAndWait()
+            report["failedSystemSourceShowsPermissionGuidance"] = true
             stage = "shutdown"
             for profile in profiles { await profile.finish() }
             profiles = []
+            try await wait { !collection.connected }
+            try require(suggestionView.showsCompanionSuggestion,"An undismissed setup suggestion returns when disconnected")
+            report["companionSuggestionTracksConnection"] = true
             await collection.shutdown()
             LibraryStore.shared.stop()
             report["audioDevicesOpened"] = false; report["browserProfilesTouched"] = false

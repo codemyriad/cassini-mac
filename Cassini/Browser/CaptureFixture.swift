@@ -12,6 +12,7 @@ import CassiniBrowserControl
     static var microphoneAllowed = true
     static var microphoneStartsAllowed = true
     static var systemAllowed = true
+    static var systemBuffersAllowed = true
     static var microphoneStarts = 0
     static var systemStarts = 0
 }
@@ -37,6 +38,8 @@ import CassiniBrowserControl
         timer = Timer.scheduledTimer(withTimeInterval:0.02,repeats:true) { [weak self] _ in MainActor.assumeIsolated { self?.emit() } }
     }
     private func emit() {
+        guard side != .others || CaptureFixture.systemBuffersAllowed else { return }
+        if frames == 0 { origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime) }
         let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
         let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:160)!
         buffer.frameLength = 160

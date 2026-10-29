@@ -6,6 +6,7 @@ struct MeetingView: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
     @AppStorage("CassiniCompanionSuggestionDismissed") private var suggestionDismissed = false
+    var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
     private var shares: [String: Int] { model.shares }
     private var currentTurn: Int? {
@@ -43,7 +44,7 @@ struct MeetingView: View {
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
-                        if !suggestionDismissed { companionCard }
+                        if showsCompanionSuggestion { companionCard }
                         ForEach(model.turns) { turn in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 4) {
