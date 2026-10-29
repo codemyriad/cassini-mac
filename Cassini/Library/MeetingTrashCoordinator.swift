@@ -43,9 +43,7 @@ import Observation
                 let access = try LibraryAccess(location.location,tolerateMissingPrevious:true)
                 if MeetingNavigation.shared.detail?.meeting.folder == meeting.folder { MeetingNavigation.shared.back() }
                 SessionPlaybackController.stopAll()
-                if MeetingExportCoordinator.shared.meeting?.folder == meeting.folder {
-                    MeetingExportCoordinator.shared.cancel(); await MeetingExportCoordinator.shared.waitForShutdown()
-                }
+                await MeetingExportCoordinator.shared.discard(meeting.folder)
                 await TranscriptionQueue.shared.cancel(meeting:meeting.folder)
                 await RecordingPageModel.discard(for:meeting.folder)
                 previousMoves = location.location.pendingMoves

@@ -39,7 +39,7 @@ def run(args,label):
     return json.loads(result.stdout)
 report=run(command,'trash')
 for name in ['ok','queuedCancelIsPerMeeting','activeCancelWaitsForChild','hiddenEditsDiscarded','meetingAndExportClosed',
-             'failurePreservesSourceAndRetry','pendingMoveDiscarded','primaryAndBookmarkedTrash','sandboxUndoVerifiedOrAbsent']:
+             'failurePreservesSourceAndRetry','unrelatedMetadataDoesNotDelayTrash','pendingMoveDiscarded','primaryAndBookmarkedTrash','sandboxUndoVerifiedOrAbsent']:
     assert report[name] is True,(name,report)
 assert report['audioDevicesOpened'] is False
 assert {c['kind'] for c in report['sandboxCases']}=={'music','bookmark'}

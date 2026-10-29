@@ -4,6 +4,7 @@ import AppKit
 import CassiniLibrary
 import CassiniRecording
 import CryptoKit
+import Darwin
 
 /// Runs only in the signed app on disposable hosted runners. Generated audio
 /// files are never played and no capture APIs, personal files or devices open.
@@ -56,11 +57,26 @@ import CryptoKit
             let waiting = try generate(primary,title:"Queued transcription")
             queue.enqueue(waiting)
             try await wait { (try? LibraryScanner(root:primary).scan().meetings.first { $0.id == waiting.id }?.state.transcript) == .queued }
-            phase = "queued trash"
+            phase = "queued trash with unrelated metadata blocked"
+            let blocked = try generate(primary,title:"Unrelated metadata preparation")
+            let held = open(blocked.folder.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard held >= 0, flock(held,LOCK_EX | LOCK_NB) == 0 else { throw Failure.check("metadata lock") }
+            defer { flock(held,LOCK_UN); close(held) }
+            queue.enqueue(blocked)
+            try await wait { queue.preparingFixtureFolder == blocked.folder }
+            var released = false
+            let fallbackRelease = Task {
+                try? await Task.sleep(for:.seconds(2))
+                if !Task.isCancelled { flock(held,LOCK_UN); released = true }
+            }
             let stillActive = queue.active
             trash.move(waiting,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && !FileManager.default.fileExists(atPath:waiting.folder.path),"queued meeting trashed")
             try check(queue.active == stillActive,"unrelated transcription still runs")
+            let returnedWithoutOtherMetadata = !released
+            fallbackRelease.cancel(); flock(held,LOCK_UN)
+            try check(returnedWithoutOtherMetadata,"Trash does not wait for another meeting’s metadata lock")
+            report["unrelatedMetadataDoesNotDelayTrash"] = true
             report["queuedCancelIsPerMeeting"] = true
             phase = "active trash"
             let editor = RecordingPageModel.editor(for:active)
@@ -70,10 +86,13 @@ import CryptoKit
             MeetingExportCoordinator.shared.show(active)
             trash.move(active,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && queue.active != active.folder,"active child ended before trash")
-            try check(MeetingNavigation.shared.detail == nil && !MeetingExportCoordinator.shared.showing,"meeting and export closed")
+            try check(MeetingNavigation.shared.detail == nil && !MeetingExportCoordinator.shared.showing && MeetingExportCoordinator.shared.meeting == nil,"meeting and export closed")
             await RecordingPageModel.flushAll()
             try check(!FileManager.default.fileExists(atPath:active.folder.path),"hidden edits cannot recreate meeting")
             report["activeCancelWaitsForChild"] = true; report["hiddenEditsDiscarded"] = true; report["meetingAndExportClosed"] = true
+            try await wait { queue.active == blocked.folder }
+            trash.move(blocked,undoManager:nil); await trash.waitForShutdown()
+            try check(trash.failure == nil && queue.active == nil,"another queued job continued and can stop independently")
             phase = "failure"
             let retry = try generate(primary,title:"Trash retry")
             trash.fixtureFailure = CocoaError(.featureUnsupported)
