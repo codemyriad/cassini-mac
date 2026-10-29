@@ -59,6 +59,9 @@ import CassiniModels
             let second = try meeting(root:root,title:"Whistle queued")
             queue.enqueue(first)
             try await wait { queue.activeModel == "parakeet" }
+            await models.reloadInventory()
+            guard models.downloaded,models.usesParakeet,
+                  FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
             // This is after the production queue accepts and retains the lease,
             // before this worker necessarily finishes hashing/loading the model.
             let lockFile = SpeechModelController.modelDirectory.deletingLastPathComponent().appendingPathComponent("." + ParakeetPin.sourceSHA256 + ".lock")
@@ -101,7 +104,8 @@ import CassiniModels
                 "installedModelDoesNotSelect":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,
                 "invalidModelRetriesWhistle":true,"invalidModelDeleted":true,"choicePersisted":true,
                 "metadataAndAudioPreserved":true,"audioDevicesOpened":false,
-                "unusedDamagedInstallationRecovers":true,"removeMessageFollowsDiskCommit":true]
+                "unusedDamagedInstallationRecovers":true,"removeMessageFollowsDiskCommit":true,
+                "inventoryPreservesAcceptedModel":true]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             queue.beginShutdown(); await queue.waitForShutdown()

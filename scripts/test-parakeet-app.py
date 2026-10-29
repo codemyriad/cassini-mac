@@ -37,7 +37,7 @@ assert not failures and not sender.is_alive(),failures
 report=json.loads(output)
 for name in ['sandboxedBundledParakeet','installedModelDoesNotSelect','removePreservesAcceptedJob','queuedJobUsesWhistle',
              'invalidModelRetriesWhistle','invalidModelDeleted','choicePersisted','metadataAndAudioPreserved',
-             'unusedDamagedInstallationRecovers','removeMessageFollowsDiskCommit']:
+             'unusedDamagedInstallationRecovers','removeMessageFollowsDiskCommit','inventoryPreservesAcceptedModel']:
     assert report[name] is True,(name,report)
 assert report['parakeetWords']>10 and report['audioDevicesOpened'] is False
 a.report.write_text(json.dumps(report,indent=2)+'\n')

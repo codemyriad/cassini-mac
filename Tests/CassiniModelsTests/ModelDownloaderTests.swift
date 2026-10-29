@@ -40,6 +40,29 @@ private final class ProgressLog: @unchecked Sendable {
 }
 
 @Suite struct ModelDownloaderTests {
+    @Test func acceptedInferenceLinksDoNotInvalidateOrRedownloadAnInstalledModel() async throws {
+        let server = try Server("normal"), downloader = try server.downloader()
+        let plan = try await downloader.plan(pin)
+        _ = try await downloader.install(pin)
+        let weights = server.destination.appendingPathComponent("weights.bin"), lease = server.root.appendingPathComponent("accepted-job-weights")
+        let bytes = try Data(contentsOf:weights)
+        #expect(link(weights.path,lease.path) == 0)
+        #expect(ModelStorage.isInstalled(plan,in:server.appData,verifyHashes:false))
+        #expect(ModelStorage.isInstalled(plan,in:server.appData))
+        let transfers = server.requests.filter { ($0["path"] as? String)?.hasSuffix(".zst") == true }.count
+        #expect(transfers > 0)
+        #expect(try await downloader.removeInvalid(plan) == false)
+        _ = try await downloader.install(pin)
+        #expect(server.requests.filter { ($0["path"] as? String)?.hasSuffix(".zst") == true }.count == transfers)
+        let stream = try FileHandle(forWritingTo:lease)
+        try stream.write(contentsOf:Data([bytes[0] ^ 0xff]))
+        #expect(!ModelStorage.isInstalled(plan,in:server.appData))
+        try stream.seek(toOffset:0); try stream.write(contentsOf:bytes.prefix(1)); try stream.close()
+        #expect(ModelStorage.isInstalled(plan,in:server.appData))
+        try await downloader.remove(pin)
+        #expect(!FileManager.default.fileExists(atPath:server.destination.path))
+        #expect(try Data(contentsOf:lease) == bytes)
+    }
     @Test(arguments:["weights.bin","receipt.json","NOTICE.txt"]) func retryRepairsAnIncompleteInstallation(_ missing: String) async throws {
         let server = try Server("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)

@@ -136,8 +136,10 @@ public actor ModelDownloader {
                 parent.deleteLastPathComponent()
             }
             let file = destination.appendingPathComponent(asset.path)
-            guard try ModelFiles.size(file) == asset.rawBytes else { throw ModelDownloadError.installation }
-            if verifyHashes,try ModelFiles.digest(file) != asset.rawSHA256 { throw ModelDownloadError.hash }
+            // Accepted inference jobs retain immutable model assets through hard
+            // links. Receipts, notices and transfer/staging files stay single-link.
+            guard try ModelFiles.size(file,allowingInferenceLinks:true) == asset.rawBytes else { throw ModelDownloadError.installation }
+            if verifyHashes,try ModelFiles.digest(file,allowingInferenceLinks:true) != asset.rawSHA256 { throw ModelDownloadError.hash }
         }
         let notice = destination.appendingPathComponent("NOTICE.txt")
         guard let size = try ModelFiles.size(notice),size > 0,size <= 2 << 20,
