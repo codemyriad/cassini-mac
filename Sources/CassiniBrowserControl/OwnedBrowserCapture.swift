@@ -12,6 +12,7 @@ public struct OwnedCaptureSnapshot: Sendable {
     public let me: Bool, others: Bool
     public let browserAlive: Bool
     public let fallbackReason: String?
+    public let browserLostUptime: TimeInterval?
     public let browserLevel: Float
     public let levelTimestamp: TimeInterval
     public var needsSystem: Bool { phase == .recording && others && !browserAlive && !manifest.tracks.contains { $0.kind == "system" && $0.ended != true } }
@@ -45,6 +46,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var nativeSpans: [String:NativeSpan] = [:]
     private var me: Bool, others = true, browserAlive = true
     private var fallbackReason: String?
+    private var browserLostUptime: TimeInterval?
     private var systemReason = "lost"
     private var phase: OwnedCapturePhase = .recording
     private var resumeAt: Double = 0
@@ -66,7 +68,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         notifications = DispatchQueue(label:"com.codemyriad.cassini.capture-notify." + recording.manifest.id.uuidString)
         try recording.transition(events:[.init(atMs:0,type:"othersSource",source:browser ? "browser" : "none",reason:"start"),
             .init(atMs:0,type:"selection",reason:"start",me:microphone,others:true)])
-        cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,fallbackReason:nil,browserLevel:0,levelTimestamp:0)
+        cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,fallbackReason:nil,browserLostUptime:nil,browserLevel:0,levelTimestamp:0)
         queue.setSpecific(key:key,value:1)
     }
     public var snapshot: OwnedCaptureSnapshot {
@@ -82,7 +84,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         lastPublished = now
         let uptime = ProcessInfo.processInfo.systemUptime
         let peak = others && browserAlive ? browserPeaks.values.filter { uptime - $0.1 <= 1 }.map(\.0).max() ?? 0 : 0
-        let value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,fallbackReason:fallbackReason,browserLevel:peak,levelTimestamp:browserPeaks.values.map(\.1).max() ?? 0)
+        let value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,fallbackReason:fallbackReason,browserLostUptime:browserLostUptime,browserLevel:peak,levelTimestamp:browserPeaks.values.map(\.1).max() ?? 0)
         snapshotLock.lock(); cached = value; snapshotLock.unlock()
         notifications.async { [changed] in changed(value) }
     }
@@ -174,13 +176,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         }
     }
     public func browserLost(atMs: Double) throws {
+        let lost = ProcessInfo.processInfo.systemUptime
         try sync {
             guard phase == .recording, browserAlive else { return }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid loss time.") }
             let events: [CaptureEvent] = others ? [.init(atMs:eventTime(atMs),type:"othersSource",source:"none",reason:"lost")] : []
             try recording.transition(ending:browserSources.values.compactMap(\.span),events:events)
             for id in Array(browserSources.keys) { browserSources[id]?.span = nil }
-            browserAlive = false; fallbackReason = "lost"; publish()
+            browserAlive = false; fallbackReason = "lost"; browserLostUptime = lost; publish()
         }
     }
     public func nativeWriter(side: CaptureSide) -> any RecordingSinkWriter { NativeSpanWriter(owner:self,side:side) }
