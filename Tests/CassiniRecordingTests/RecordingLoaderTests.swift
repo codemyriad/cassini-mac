@@ -53,6 +53,22 @@ import Testing
         #expect(manifest.tracks.allSatisfy { $0.ended == true && $0.labelSource == "device" })
     }
 
+    @Test(arguments: ["macos", "gnome"]) func sharedNativeGapFixture(source: String) throws {
+        let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let fixture = root.appendingPathComponent("browser-protocol/conformance/native-session-gap")
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.copyItem(at:fixture,to:copy)
+        defer { try? FileManager.default.removeItem(at:copy) }
+        if source == "gnome" { try Data(contentsOf:copy.appendingPathComponent("session-gnome.json")).write(to:copy.appendingPathComponent("session.json")) }
+        let before = try Data(contentsOf:copy.appendingPathComponent("session.json"))
+        let manifest = try RecordingLoader.load(directory:copy)
+        #expect(manifest.source == source && manifest.state == "interrupted" && manifest.problemKind == "gap")
+        #expect(manifest.tracks.map(\.frames) == [24000,24000])
+        #expect(manifest.tracks.map(\.gapFrames) == [nil,8000])
+        #expect(manifest.tracks.map(\.droppedFrames) == [nil,nil])
+        #expect(try Data(contentsOf:copy.appendingPathComponent("session.json")) == before)
+    }
+
     @Test(arguments: [Data(), Data("{broken".utf8)]) func recoversCorruptManifest(data: Data) throws {
         let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: parent) }
