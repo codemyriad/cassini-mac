@@ -54,6 +54,7 @@ public struct BrowserControlRegistry: Sendable {
         let request: BrowserControlRequest
         let statusRevision: UInt64
         let order: UInt64
+        let stopCaptureID: String?
     }
     private struct PeerState: Sendable {
         let peer: BrowserPeer
@@ -144,6 +145,18 @@ public struct BrowserControlRegistry: Sendable {
             if let status = json["status"], !status.isNull {
                 let captures = try Self.captures(status,peer:id)
                 let interrupted = try Self.interrupted(status,peer:id)
+                if pending.request.action == .start, ok,
+                   let identity = captures.first(where:{ $0.key == pending.request.key })?.captureID {
+                    // Stop can be queued before Start has published its ID.
+                    // Bind that later Stop to this exact successful Start, not
+                    // to an unrelated replacement seen in a newer snapshot.
+                    for id in Array(peer.pending.keys) {
+                        guard let stop = peer.pending[id],stop.request.action == .stop,
+                              stop.request.key == pending.request.key,stop.order > pending.order,
+                              stop.stopCaptureID == nil else { continue }
+                        peer.pending[id] = .init(request:stop.request,statusRevision:stop.statusRevision,order:stop.order,stopCaptureID:identity)
+                    }
+                }
                 // An asynchronous command result may carry an older replacement
                 // snapshot. Never resurrect captures removed by a newer status.
                 // Issue order also matters when two independent results share
@@ -157,7 +170,21 @@ public struct BrowserControlRegistry: Sendable {
                 }
             }
             peer.pending.removeValue(forKey:requestID)
-            if pending.request.action == .stop && ok { peer.requestedStops.remove(pending.request.key.tabID) }
+            if pending.request.action == .stop && ok {
+                peer.requestedStops.remove(pending.request.key.tabID)
+                // A still-recording full status may have advanced the baseline
+                // while this Stop flushed. Its success still retires that exact
+                // capture; otherwise Stop All can send another Stop between the
+                // acknowledgement and the following empty status. Never retire
+                // a replacement capture which now occupies the same tab.
+                if let stopped = pending.stopCaptureID {
+                    let identity = Data(stopped.utf8)
+                    let before = peer.captures.count + peer.interrupted.count
+                    peer.captures.removeAll { $0.key == pending.request.key && $0.captureID.map { Data($0.utf8) } == identity }
+                    peer.interrupted.removeAll { $0.key == pending.request.key && $0.captureID.map { Data($0.utf8) } == identity }
+                    if before != peer.captures.count + peer.interrupted.count { peer.statusRevision &+= 1 }
+                }
+            }
             appendOutcome(.init(requestID:requestID,key:pending.request.key,action:pending.request.action,ok:ok,error:error))
         default: return // Forward-compatible messages are not management actions.
         }
@@ -173,7 +200,7 @@ public struct BrowserControlRegistry: Sendable {
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder)
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil)
         peer.autoAttempted.insert(key.tabID)
         peers[key.peer] = peer
         return request
@@ -190,7 +217,8 @@ public struct BrowserControlRegistry: Sendable {
         let request = try Self.command(key,action:.stop,independent:peer.independent,microphone:false)
         guard peer.pending.count < 128 else { peers[key.peer] = peer; return nil }
         peer.commandOrder &+= 1
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder)
+        let target = (peer.captures + peer.interrupted).first { $0.key == key }?.captureID
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:target)
         peers[key.peer] = peer
         return request
     }

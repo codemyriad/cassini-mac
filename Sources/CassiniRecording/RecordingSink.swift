@@ -146,6 +146,7 @@ public final class RecordingSink: @unchecked Sendable {
             if gap > 0 {
                 source.timeline.insertGap(frames: gap)
                 source.gapFrames += gap
+                source.meter = .init(); source.lastCompletePeak = nil; levels.removeValue(forKey:id)
                 warnings.insert("\(label): a host-time gap was preserved as counted silence.")
             }
         }

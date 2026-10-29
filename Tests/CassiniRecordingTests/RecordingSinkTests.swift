@@ -93,6 +93,19 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
         #expect(sink.status().levels.isEmpty)
         try sink.finish(problem:nil)
     }
+    @Test func inputDiscontinuityDoesNotReuseAnOldSoundPeakForDC() throws {
+        let writer = SinkWriter(), failures = Failures()
+        let sink = RecordingSink(session:writer,originHostTime:1) { failures.add($0) }
+        let sound = try buffer(channels:1,frames:800)
+        for i in 0..<800 { sound.floatChannelData![0][i] = i.isMultiple(of:2) ? 0.25 : -0.25 }
+        sink.receive(sound,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        #expect(sink.status().levels["mic"] == 0.25)
+        let dc = try buffer(channels:1,frames:160)
+        for i in 0..<160 { dc.floatChannelData![0][i] = -2060.0/32768 }
+        sink.receive(dc,hostTime:1+AVAudioTime.hostTime(forSeconds:2),id:"mic",label:"Mic",kind:"microphone")
+        #expect(sink.status().levels.isEmpty)
+        #expect(throws:(any Error).self) { try sink.finish(problem:nil) }
+    }
     @Test(arguments: [false, true]) func quantizationAndMultichannelSelection(interleaved: Bool) throws {
         for channels: UInt32 in [1, 2, 4] {
             let input = try buffer(channels: channels, interleaved: interleaved, frames: 6)
