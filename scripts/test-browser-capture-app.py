@@ -64,6 +64,9 @@ for name in [
     'deniedMicIsNotSilent',
     'ownedDiskWarningUsesOverview',
     'deferredMovePreservesUnrelatedViewAndExport',
+    'pendingSystemSourceIsNotPermissionFailure',
+    'failedSystemSourceShowsPermissionGuidance',
+    'companionSuggestionTracksConnection',
 ]:
     assert report[name] is True, (name,report)
 assert report['audioDevicesOpened'] is False and report['browserProfilesTouched'] is False

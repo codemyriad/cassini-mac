@@ -46,10 +46,10 @@ struct WhatIsRecordedView: View {
             VStack(alignment:.leading,spacing:8) {
                 Text(UXText.text("whatIsRecorded.othersHeard.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(LibraryTheme.dim)
                 HStack(alignment:.top,spacing:14) {
-                    Image(systemName:model.others ? "checkmark" : "speaker.slash").fontWeight(.semibold).foregroundStyle(Color.accentColor).frame(width:14).padding(.top,2).accessibilityHidden(true)
+                    Image(systemName:model.others && !model.othersUnavailable ? "checkmark" : "speaker.slash").fontWeight(.semibold).foregroundStyle(Color.accentColor).frame(width:14).padding(.top,2).accessibilityHidden(true)
                     VStack(alignment:.leading,spacing:4) {
-                        Text(pathTitle).fontWeight(.bold)
-                        Text(pathBody).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).lineSpacing(3).fixedSize(horizontal:false,vertical:true)
+                        Text(model.othersPathTitle).fontWeight(.bold)
+                        Text(model.othersPathBody).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).lineSpacing(3).fixedSize(horizontal:false,vertical:true)
                     }
                     Spacer(minLength:0)
                 }.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:8))
@@ -67,17 +67,6 @@ struct WhatIsRecordedView: View {
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("whatIsRecorded.title"))
             .accessibilityIdentifier("what-is-recorded-dialog")
             .onExitCommand { if !working { dismiss() } }
-    }
-    private var source: String? { model.owned.flatMap { CaptureSourceState(events:$0.snapshot.manifest.events ?? [],atMs:Double(model.elapsedMs)).source } }
-    private var browser: Bool { source.map { $0 == "browser" } ?? model.meeting.isBrowserCapture }
-    private var pathTitle: String { UXText.text(!model.others || source == "none" ? "whatIsRecorded.othersHeard.none.title" : browser ? "common.listeningInsideBrowser" : "whatIsRecorded.othersHeard.system.title") }
-    private var pathBody: String {
-        let key: String
-        if !model.others { key = "whatIsRecorded.othersHeard.none.description" }
-        else if source == "none" { key = "errors.othersPermission.line" }
-        else if browser { key = model.voiceCount > 1 ? "whatIsRecorded.othersHeard.browser.description" : "whatIsRecorded.othersHeard.browserMixed.description" }
-        else { key = model.owned?.snapshot.fallbackReason == nil ? "whatIsRecorded.othersHeard.system.description" : "whatIsRecorded.othersHeard.fallback.description" }
-        return UXText.text(key)
     }
     private func apply(_ choice: CaptureChoice) {
         guard !working else { return }; working = true
