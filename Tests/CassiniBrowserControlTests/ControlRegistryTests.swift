@@ -113,6 +113,69 @@ final class ControlRegistryTests: XCTestCase {
         let other = UUID(); try hello(&state,peer:other); try meetings([2],&state,peer:other); try send(status([]),&state,peer:other)
         XCTAssertEqual(state.startAll(microphone:false).map { $0.key.peer },[other])
     }
+    func testEvidenceAwareAutoWaitsForAudioWhileManualRecordStillWorks() throws {
+        for manual in [false,true] {
+            var state = BrowserControlRegistry()
+            try evidenceHello(&state)
+            try evidenceMeeting(&state,heard:false)
+            try send(status([]),&state)
+            XCTAssertEqual(state.snapshots.first?.meetings.count,1,"Pre-join stays listed")
+            XCTAssertTrue(state.automaticStarts(microphone:false).isEmpty)
+            if manual {
+                XCTAssertEqual(state.startAll(microphone:false).map { $0.key.tabID },[2],"Explicit Record is unchanged")
+            } else {
+                try evidenceMeeting(&state,heard:true)
+                let requests = state.automaticStarts(microphone:false)
+                XCTAssertEqual(requests.map { $0.key.tabID },[2])
+                XCTAssertTrue(state.automaticStarts(microphone:false).isEmpty,"One auto attempt per call")
+            }
+        }
+    }
+    func testEvidenceMissingFailsClosedForAutoOnly() throws {
+        var state = BrowserControlRegistry(); try evidenceHello(&state)
+        try meetings([2],&state); try send(status([]),&state)
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+        XCTAssertEqual(try state.start(.init(peer:peer,tabID:2),microphone:true).key.tabID,2)
+    }
+    func testEvidenceNeverChangesLegacyAutoPolicyOrSourceCountGate() throws {
+        var legacy = BrowserControlRegistry(); try ready(&legacy)
+        try evidenceMeeting(&legacy,heard:false)
+        XCTAssertEqual(legacy.automaticStarts(microphone:true).count,1)
+        var aware = BrowserControlRegistry(); try evidenceHello(&aware)
+        try evidenceMeeting(&aware,heard:true,count:0); try send(status([]),&aware)
+        XCTAssertTrue(aware.automaticStarts(microphone:true).isEmpty)
+        XCTAssertTrue(aware.startAll(microphone:true).isEmpty)
+    }
+    func testEvidenceHandoffAndTransientLossCannotRestartStoppedCall() throws {
+        var state = BrowserControlRegistry(); try evidenceHello(&state)
+        try evidenceMeeting(&state,heard:true); try send(status([]),&state)
+        let start = try XCTUnwrap(state.automaticStarts(microphone:true).first)
+        try result(start,&state,status:status([2]))
+        // Connected peer replacement keeps the extension's heard latch. Neither
+        // handoff nor a transient false value changes the app's Stop suppression.
+        try evidenceMeeting(&state,heard:true)
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+        let stop = try XCTUnwrap(state.stop(start.key)); try result(stop,&state,status:status([]))
+        try evidenceMeeting(&state,heard:false); try evidenceMeeting(&state,heard:true)
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+        XCTAssertTrue(state.snapshots.first?.captures.isEmpty == true)
+    }
+    func testEvidenceIsStrictBooleanAndScopedToCompanion() throws {
+        var state = BrowserControlRegistry(); try evidenceHello(&state)
+        try evidenceMeeting(&state,heard:false); try send(status([]),&state)
+        let other = UUID(); try hello(&state,peer:other); try meetings([2],&state,peer:other); try send(status([]),&state,peer:other)
+        XCTAssertEqual(state.automaticStarts(microphone:true).map { $0.key.peer },[other])
+        for invalid: Any in [1,"true",NSNull()] {
+            XCTAssertThrowsError(try send(["type":"meetings","meetings":[["tabId":2,"title":"Pre-join","url":"https://meet.example/2","sourceCount":1,"heard":invalid]]],&state))
+        }
+    }
+    func evidenceHello(_ state: inout BrowserControlRegistry) throws {
+        try state.connect(.init(id:peer,role:.control,browser:"Chrome"))
+        try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","call-evidence-v1"]],&state)
+    }
+    func evidenceMeeting(_ state: inout BrowserControlRegistry, heard: Bool, count: Int = 1) throws {
+        try send(["type":"meetings","meetings":[["tabId":2,"title":"Pre-join","url":"https://meet.example/2","sourceCount":count,"heard":heard]]],&state)
+    }
     let peer = UUID()
     func send(_ value: [String:Any], _ state: inout BrowserControlRegistry, peer: UUID? = nil) throws {
         try state.receive(JSONSerialization.data(withJSONObject:value),from:peer ?? self.peer)
