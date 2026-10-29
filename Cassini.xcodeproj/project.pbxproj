@@ -1215,6 +1215,7 @@
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.browser-setup";
+				PRODUCT_MODULE_NAME = CassiniBrowserSetupService;
 				PRODUCT_NAME = CassiniBrowserSetup;
 				SDKROOT = macosx;
 			};
@@ -1439,6 +1440,7 @@
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.codemyriad.cassini-mac.browser-setup";
+				PRODUCT_MODULE_NAME = CassiniBrowserSetupService;
 				PRODUCT_NAME = CassiniBrowserSetup;
 				SDKROOT = macosx;
 			};
