@@ -3,6 +3,51 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testMoveToTrashMenusAndFirstRun() throws {
+        let extra = ["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString]
+        let app = try launch("first-run",fixture:"empty",extra:extra); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
+        window.buttons["first-run-record"].click()
+        window.sheets.buttons["record-first-start"].click()
+        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10))
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertFalse(app.menuItems["Move to Trash"].isEnabled,"Recording cannot be trashed")
+        app.typeKey(.escape,modifierFlags:[])
+        window.buttons["recording-stop"].click()
+        XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:10))
+        let row = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-Recording-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout:10),app.debugDescription)
+        row.rightClick()
+        XCTAssertTrue(app.menuItems["Export…"].exists)
+        XCTAssertTrue(window.menuItems["move-to-trash"].isEnabled)
+        capture(window,name:"trash")
+        app.typeKey(.escape,modifierFlags:[])
+        row.click()
+        app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
+        XCTAssertTrue(app.menuItems["library-keyboard-trash"].waitForExistence(timeout:5),"Shift-F10 opens the selected row menu")
+        XCTAssertTrue(app.menuItems["library-keyboard-trash"].isEnabled)
+        app.typeKey(.escape,modifierFlags:[])
+        app.typeKey(.delete,modifierFlags:.command)
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertFalse(window.sheets.firstMatch.exists,"No confirmation")
+        capture(window,name:"trash-after")
+    }
+    @MainActor func testMeetingTrashAndSearchKeyboardGuard() throws {
+        let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription)
+        more.click()
+        XCTAssertTrue(window.menuItems["move-to-trash"].exists)
+        capture(window,name:"trash-meeting")
+        app.typeKey(.escape,modifierFlags:[])
+        window.buttons["meeting-back"].click()
+        app.typeKey("f",modifierFlags:.command)
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertFalse(app.menuItems["Move to Trash"].isEnabled,"Search and text focus retain delete")
+        app.typeKey(.escape,modifierFlags:[])
+    }
     @MainActor func testCompanionSetupBoard() throws {
         let app = try launch("meeting",fixture:"main",extra:["-CassiniCompanionBoard","YES"]); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]

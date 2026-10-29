@@ -58,6 +58,11 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         showing = false; estimateTask?.cancel(); presentationTask?.cancel()
         openPanel?.cancel(nil); savePanel?.cancel(nil); task?.cancel()
     }
+    func discard(_ folder: URL) async {
+        guard meeting?.folder == folder else { return }
+        cancel(); await waitForShutdown()
+        meeting = nil; estimatedBytes = nil
+    }
     func beginShutdown() { closing = true; cancel() }
     func waitForShutdown() async { await presentationTask?.value; await task?.value }
     func dismissForQuit() async {

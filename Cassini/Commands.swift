@@ -21,6 +21,10 @@ struct AppCommands: Commands {
         CommandGroup(after: .newItem) {
             Button(UXText.text("common.exportEllipsis")) { if let meeting = exportMeeting { MeetingExportCoordinator.shared.show(meeting) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!MeetingExportCoordinator.canExport(exportMeeting))
+            Button(UXText.text("common.moveToTrash")) {
+                let trash = MeetingTrashCoordinator.shared
+                if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }
+            }.keyboardShortcut(.delete,modifiers:.command).disabled(!MeetingTrashCoordinator.shared.commandEnabled)
         }
         CommandGroup(after: .sidebar) {
             Button(UXText.text("common.backToLibrary")) {

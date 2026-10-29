@@ -31,7 +31,8 @@
     "scripts/test-search-app.py",
     "scripts/test-import-lifecycle.py",
     "scripts/test-settings-app.py",
-    "scripts/test-recording-saving.py"
+    "scripts/test-recording-saving.py",
+    "scripts/test-trash-app.py"
   ],
   "exports": [
     "Sources/**",

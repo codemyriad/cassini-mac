@@ -20,10 +20,26 @@ import Darwin
     @ObservationIgnored private var known = Set<String>()
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var preparation: Task<Void,Never>?
+    @ObservationIgnored private var preparing: (folder: URL, work: Task<Void,Error>)?
     @ObservationIgnored private var prepared = Set<String>()
     @ObservationIgnored private var schedulingFailures = Set<String>()
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var paused = false
+    @ObservationIgnored private var trashing = Set<String>()
+    func cancel(meeting folder: URL) async {
+        let path = folder.path
+        trashing.insert(path)
+        pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        let child = active?.path == path ? task : nil
+        child?.cancel()
+        let metadata = preparing?.folder.path == path ? preparing?.work : nil
+        _ = try? await metadata?.value
+        await child?.value
+        pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+    }
+    func releaseTrashed(_ folder: URL) {
+        trashing.remove(folder.path); known.remove(folder.path); schedulingFailures.remove(folder.path)
+    }
     var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
     func beginShutdown() {
         guard !closing else { return }; closing = true
@@ -35,6 +51,7 @@ import Darwin
         await task?.value
     }
     #if DEBUG
+    var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
     @ObservationIgnored private var failedFixtureOnce = false
     #endif
     // Persist accepted queue intent before any inactive folder can move.
@@ -47,12 +64,13 @@ import Darwin
     func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic, !closing, !paused else { return }
+        known.formIntersection(Set(meetings.map { $0.folder.path }).union(pending.map { $0.folder.path }).union(active.map { [$0.path] } ?? []))
         let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
         for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {
-        guard !closing, !paused, !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
+        guard !closing, !paused, !trashing.contains(meeting.folder.path), !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
               active?.path != meeting.folder.path, !pending.contains(where: { $0.folder.path == meeting.folder.path }) else { return }
         if retry { known.remove(meeting.folder.path) }
         guard known.insert(meeting.folder.path).inserted else { return }
@@ -70,16 +88,21 @@ import Darwin
             defer { preparation = nil }
             while let meeting = pending.first(where:{ !prepared.contains($0.folder.path) }) {
                 do {
+                    defer { preparing = nil }
                     if ![.queued,.running].contains(meeting.state.transcript) {
-                        try await Task.detached(priority:.userInitiated) {
+                        let work = Task.detached(priority:.userInitiated) {
                             try MeetingTranscriber.setStatus(directory:meeting.folder,id:meeting.id,status:"queued")
-                        }.value
+                        }
+                        preparing = (meeting.folder,work)
+                        try await work.value
                     }
-                    prepared.insert(meeting.folder.path); startNext()
+                    if !trashing.contains(meeting.folder.path), pending.contains(where:{ $0.folder == meeting.folder }) {
+                        prepared.insert(meeting.folder.path); startNext()
+                    }
                 } catch {
                     pending.removeAll { $0.folder.path == meeting.folder.path }; known.remove(meeting.folder.path)
                     schedulingFailures.insert(meeting.folder.path)
-                    if !closing { NSApp.presentError(error) }; startNext()
+                    if !closing, !trashing.contains(meeting.folder.path) { NSApp.presentError(error) }; startNext()
                 }
             }
         }

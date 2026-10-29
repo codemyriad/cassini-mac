@@ -80,6 +80,16 @@ import CassiniLibrary
         reload()
         if let problem { throw NSError(domain:"CassiniLibraryLocation",code:1,userInfo:[NSLocalizedDescriptionKey:problem]) }
     }
+    // Trash must discard an intent without releasing a previous-root bookmark:
+    // Finder Put Back and an available Undo must still be discoverable.
+    func setMovesPreservingRoots(_ moves: [LibraryPendingMove]) throws {
+        var value = location; value.pendingMoves = moves
+        try LibraryRouting.withLock(file:LibraryLaunchContext.locationFile,exclusive:true,wait:false) {
+            try value.write(file:LibraryLaunchContext.locationFile)
+        }
+        reload()
+        if let problem { throw NSError(domain:"CassiniLibraryLocation",code:1,userInfo:[NSLocalizedDescriptionKey:problem]) }
+    }
     func replaceMoves(_ moves: [LibraryPendingMove]) throws {
         let sources = Set(moves.map(\.sourcePath))
         let paths = location.roots.dropFirst().filter { sources.contains($0.path) }

@@ -36,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--recording-comfort-self-test") {
             Task { @MainActor in await RecordingComfortSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--trash-self-test") {
+            Task { @MainActor in await TrashSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--import-lifecycle-self-test") {
             Task { @MainActor in await ImportLifecycleSelfTest.run() }; return
         }
@@ -78,11 +81,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let imports = LibraryImportCoordinator.shared
             let exports = MeetingExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || RecordingPageModel.hasPendingEdits
+            let wait = RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             exports.beginShutdown()
             moves.beginShutdown()
+            MeetingTrashCoordinator.shared.beginShutdown()
             queue.beginShutdown()
             guard wait else { return .terminateNow }
             confirmingQuit = true
@@ -95,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await imports.waitForShutdown()
                     await exports.waitForShutdown()
                     await moves.waitForShutdown()
+                    await MeetingTrashCoordinator.shared.waitForShutdown()
                     self?.confirmingQuit = false; sender.reply(toApplicationShouldTerminate:true)
                 }
             }
@@ -110,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if stop {
                         CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
+                        MeetingTrashCoordinator.shared.beginShutdown()
                         MeetingExportCoordinator.shared.beginShutdown()
                         LibraryImportCoordinator.shared.beginShutdown()
                         TranscriptionQueue.shared.beginShutdown()
@@ -119,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         await LibraryImportCoordinator.shared.waitForShutdown()
                         await MeetingExportCoordinator.shared.waitForShutdown()
                         await LibraryMoveCoordinator.shared.waitForShutdown()
+                        await MeetingTrashCoordinator.shared.waitForShutdown()
                     }
                     self?.confirmingQuit = false
                     sender.reply(toApplicationShouldTerminate: stop)
@@ -136,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LibraryImportCoordinator.shared.beginShutdown()
             MeetingExportCoordinator.shared.beginShutdown()
             LibraryMoveCoordinator.shared.beginShutdown()
+            MeetingTrashCoordinator.shared.beginShutdown()
             SessionPlaybackController.stopAll(); RecordingController.shared.stop()
             CaptureCollection.shared.beginShutdown()
         }
@@ -152,6 +160,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
+        if let window = event.window ?? NSApp.keyWindow,
+           window.accessibilityIdentifier() == "cassini-library-window",
+           window.attachedSheet == nil, NSApp.modalWindow == nil,
+           !(window.firstResponder is NSText), MeetingNavigation.shared.detail == nil,
+           !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
+           event.modifierFlags.intersection([.command,.option,.control]).isEmpty,
+           ((event.keyCode == 109 && event.modifierFlags.contains(.shift)) || event.charactersIgnoringModifiers == "\u{F735}"),
+           let meeting = LibraryStore.shared.selected,
+           LibraryKeyboardMenu.show(meeting,trash:MeetingTrashCoordinator.shared,undo:window.undoManager) { return nil }
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
               [49, 123, 124].contains(event.keyCode),
               let window = event.window else { return event }
