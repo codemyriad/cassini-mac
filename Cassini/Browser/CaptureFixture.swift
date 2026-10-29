@@ -10,6 +10,7 @@ import CassiniBrowserControl
         RecordingFixture.enabled && RecordingFixture.root != nil && CommandLine.arguments.contains("--browser-capture-self-test")
     }
     static var microphoneAllowed = true
+    static var microphoneStartsAllowed = true
     static var systemAllowed = true
     static var microphoneStarts = 0
     static var systemStarts = 0
@@ -27,6 +28,7 @@ import CassiniBrowserControl
         if side == .me && !CaptureFixture.microphoneAllowed { throw CocoaError(.fileReadNoPermission) }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
+        if side == .me && !CaptureFixture.microphoneStartsAllowed { throw CocoaError(.fileReadUnknown) }
         if side == .others && !CaptureFixture.systemAllowed { throw CocoaError(.fileReadNoPermission) }
         self.sink = sink
         origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime); frames = 0

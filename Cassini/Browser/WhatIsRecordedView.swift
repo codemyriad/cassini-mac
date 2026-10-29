@@ -13,6 +13,7 @@ struct WhatIsRecordedView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var working = false
     @State private var permissionSide: CaptureSide?
+    @State private var failedChoice: CaptureChoice?
     private var choice: CaptureChoice { model.me && model.others ? .both : model.me ? .me : .others }
     var body: some View {
         VStack(alignment:.leading,spacing:18) {
@@ -53,6 +54,13 @@ struct WhatIsRecordedView: View {
                     Spacer(minLength:0)
                 }.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:8))
             }
+            if let failedChoice {
+                HStack(alignment:.top) {
+                    Text(UXText.text("whatIsRecorded.changeFailed")).fixedSize(horizontal:false,vertical:true)
+                    Spacer(minLength:8)
+                    Button(UXText.text("common.tryAgain")) { apply(failedChoice) }.disabled(working)
+                }.foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-choice-failed")
+            }
             if let permissionSide { CapturePermissionNotice(side:permissionSide) }
             HStack { Spacer(); Button(UXText.text("common.done")) { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction).disabled(working) }
         }.font(.system(size:13)).padding(26).frame(width:480)
@@ -77,9 +85,10 @@ struct WhatIsRecordedView: View {
             defer { working = false }
             do {
                 try await CaptureCollection.shared.select(model.meeting.id,me:choice != .others,others:choice != .me)
-                permissionSide = nil
+                permissionSide = nil; failedChoice = nil
             } catch {
-                permissionSide = model.owned?.input.failedSides.contains(.others) == true && CaptureSettings.microphoneAllowed ? .others : choice == .others ? .others : .me
+                failedChoice = choice
+                permissionSide = choice != .others && !CaptureSettings.microphoneAllowed ? .me : nil
             }
         }
     }

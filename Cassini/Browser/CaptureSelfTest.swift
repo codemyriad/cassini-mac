@@ -155,6 +155,23 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await one.emit(); try await Task.sleep(for:.milliseconds(100))
             try require(collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } == micEnd,"Me off stops native admission")
+            stage = "reject unavailable replacement input"
+            let beforeChoice = first.owner.snapshot.manifest
+            CaptureFixture.microphoneStartsAllowed = false
+            var rejectedChoice = false
+            do { try await collection.select(first.snapshot.manifest.id,me:true,others:false) }
+            catch { rejectedChoice = true }
+            CaptureFixture.microphoneStartsAllowed = true
+            try require(rejectedChoice && !first.owner.snapshot.me && first.owner.snapshot.others,"Failed microphone keeps Others selected")
+            try require(first.owner.snapshot.manifest.events?.count == beforeChoice.events?.count && first.owner.snapshot.manifest.tracks.count == beforeChoice.tracks.count,"Rejected selection publishes no events or tracks")
+            let remoteTrack = try first.owner.snapshot.manifest.tracks.first { $0.kind == "remote" }.unwrap()
+            let remoteURL = first.owner.snapshot.directory.appendingPathComponent(remoteTrack.file)
+            let browserBefore = try FileManager.default.attributesOfItem(atPath:remoteURL.path)[.size] as? UInt64 ?? 0
+            try await one.emit()
+            let browserAfter = try FileManager.default.attributesOfItem(atPath:remoteURL.path)[.size] as? UInt64 ?? 0
+            try require(browserAfter > browserBefore,"Browser audio continues after rejected input")
+            report["failedSourceChangeKeepsSelectionAndAudio"] = true
+            stage = "accept replacement input"
             try await collection.select(first.snapshot.manifest.id,me:true,others:false)
             try await one.emit()
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
