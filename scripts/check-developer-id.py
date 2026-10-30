@@ -3,6 +3,7 @@
 """Inspect every shipped Mach-O without executing it."""
 from pathlib import Path
 import plistlib
+import json
 import re
 import subprocess
 import sys
@@ -10,6 +11,12 @@ import sys
 MAGIC = {b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca', b'\xca\xfe\xba\xbf', b'\xbf\xba\xfe\xca'}
 
 def inspect(app):
+    info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
+    catalog = json.loads((app/'Contents/Resources/UX/strings.json').read_text())
+    name = next(entry['en'] for entry in catalog['entries'] if entry['id'] == 'app.name')
+    assert name == 'Cassini talk', 'Unexpected public product name'
+    assert all(info[key] == name for key in ['CFBundleName', 'CFBundleDisplayName']), 'Bundle name differs from catalog'
+    assert info['CFBundleIdentifier'] == 'io.codemyriad.cassini', 'Unexpected product identity'
     count = 0
     for file in sorted(app.rglob('*')):
         if file.is_symlink() or not file.is_file():

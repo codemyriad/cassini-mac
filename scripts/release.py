@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parent.parent
 SECRETS = Path.home()/'.config/cassini/secrets'
 TEAM = '4LS8W738Y3'
+PRODUCT_NAME = next(entry['en'] for entry in json.loads((ROOT/'Cassini/Resources/UX/strings.json').read_text())['entries'] if entry['id'] == 'app.name')
 BASE_URL = 'https://cassini.talk/download/mac'
 SPARKLE = 'http://www.andymatuschak.org/xml-namespaces/sparkle'
 ET.register_namespace('sparkle', SPARKLE)
@@ -68,8 +69,8 @@ def release_urls(base_url, version):
     parts = urlparse(base)
     if parts.query or parts.params or any(part in ('.', '..') for part in parts.path.split('/')):
         raise ValueError('Expected an HTTPS directory URL without a query or path traversal')
-    return dict(base=base, feed=base+'/appcast.xml', download=base+'/Cassini-'+version+'.dmg',
-        latest=base+'/Cassini.dmg', notes=base+'/notes/'+version+'.html')
+    return dict(base=base, feed=base+'/appcast.xml', download=base+'/Cassini-talk-'+version+'.dmg',
+        latest=base+'/Cassini-talk.dmg', notes=base+'/notes/'+version+'.html')
 
 
 def sha256_file(path):
@@ -94,16 +95,16 @@ def verify_signature(path, signature, public_key=ROOT/'Distribution/sparkle-publ
 
 
 def publication_plan(output, urls, version, signature, notes=False):
-    files = ['Cassini-'+version+'.dmg', 'Cassini.dmg', 'appcast.xml']
+    files = ['Cassini-talk-'+version+'.dmg', 'Cassini-talk.dmg', 'appcast.xml']
     if notes:
         files.append('notes/'+version+'.html')
     hashes = {name: sha256_file(output/name) for name in files}
-    if hashes[files[0]] != hashes['Cassini.dmg']:
+    if hashes[files[0]] != hashes['Cassini-talk.dmg']:
         raise ValueError('Latest DMG differs from the immutable versioned DMG')
     size = (output/files[0]).stat().st_size
     steps = [dict(action='upload', file=files[0], url=urls['download'], overwrite=False),
         dict(action='verifyHTTPS', url=urls['download'], bytes=size, sha256=hashes[files[0]], edSignature=signature),
-        dict(action='upload', file='Cassini.dmg', url=urls['latest'], overwrite=True)]
+        dict(action='upload', file='Cassini-talk.dmg', url=urls['latest'], overwrite=True)]
     if notes:
         steps.append(dict(action='upload', file='notes/'+version+'.html', url=urls['notes'], overwrite=False))
     steps.append(dict(action='upload', file='appcast.xml', url=urls['feed'], overwrite=True))
@@ -123,7 +124,7 @@ def verify_uploaded_download(output, public_key=ROOT/'Distribution/sparkle-publi
     # Never publish the latest alias or feed on the strength of a local check.
     report = json.loads((output/'release.json').read_text())
     urls = release_urls(report['baseURL'], report['version'])
-    local = output/('Cassini-'+report['version']+'.dmg')
+    local = output/('Cassini-talk-'+report['version']+'.dmg')
     size = local.stat().st_size
     if size != report['bytes'] or sha256_file(local) != report['sha256']:
         raise ValueError('Local release no longer matches its report')
@@ -179,9 +180,9 @@ def appcast(archive, signature, version, build, download_url, now=None, release_
         raise ValueError('Invalid Ed25519 signature')
     root = ET.Element('rss', version='2.0')
     channel = ET.SubElement(root, 'channel')
-    ET.SubElement(channel, 'title').text = 'Cassini for Mac'
+    ET.SubElement(channel, 'title').text = PRODUCT_NAME+' for Mac'
     item = ET.SubElement(channel, 'item')
-    ET.SubElement(item, 'title').text = 'Cassini '+version
+    ET.SubElement(item, 'title').text = PRODUCT_NAME+' '+version
     ET.SubElement(item, '{'+SPARKLE+'}version').text = str(build)
     ET.SubElement(item, '{'+SPARKLE+'}shortVersionString').text = version
     ET.SubElement(item, '{'+SPARKLE+'}minimumSystemVersion').text = '15.0'
@@ -246,7 +247,7 @@ def release(args):
     run(['python3', ROOT/'scripts/check-developer-id.py', app])
     run(['codesign', '--verify', '--deep', '--strict', app])
     # No post-build re-signing: worker manifests already bind signed bytes.
-    submission = output/'Cassini-notary.zip'
+    submission = output/'Cassini-talk-notary.zip'
     run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', app, submission])
     # ZIPs cannot be stapled. Submit the zip, then staple its original app.
     submit_and_wait(submission, credentials, output/'app-notary.json')
@@ -257,16 +258,16 @@ def release(args):
         run(['ditto', app, stage/'Cassini.app'])
         (stage/'Applications').symlink_to('/Applications', target_is_directory=True)
         shutil.copy2(ROOT/'COPYING', stage/'COPYING')
-        dmg = output/('Cassini-'+args.version+'.dmg')
-        run(['hdiutil', 'create', '-volname', 'Cassini', '-srcfolder', stage, '-fs', 'APFS', '-format', 'ULFO', dmg], timeout=600)
+        dmg = output/('Cassini-talk-'+args.version+'.dmg')
+        run(['hdiutil', 'create', '-volname', PRODUCT_NAME, '-srcfolder', stage, '-fs', 'APFS', '-format', 'ULFO', dmg], timeout=600)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)
     notarize(dmg, credentials, output/'dmg-notary.json')
     run(['codesign', '--verify', '--strict', dmg])
     signature = run([tools/'sign_update', '--ed-key-file', key, '-p', dmg], timeout=180).decode().strip()
     run([tools/'sign_update', '--verify', '--ed-key-file', key, dmg, signature], timeout=180)
     verify_signature(dmg, signature)
-    copy_new(dmg, output/'Cassini.dmg')
-    verify_signature(output/'Cassini.dmg', signature)
+    copy_new(dmg, output/'Cassini-talk.dmg')
+    verify_signature(output/'Cassini-talk.dmg', signature)
     if args.release_notes:
         (output/'notes').mkdir()
         copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
@@ -279,7 +280,7 @@ def release(args):
     (output/'release.json').write_text(json.dumps(dict(commit=run(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip(),
         version=args.version, build=args.build, baseURL=urls['base'], bytes=dmg.stat().st_size,
         edSignature=signature, sha256=checksum, notarized=True, cleanVMChecked=False),indent=2)+'\n')
-    print('Notarized and stapled '+dmg.name+' and identical Cassini.dmg; SHA256 '+checksum)
+    print('Notarized and stapled '+dmg.name+' and identical Cassini-talk.dmg; SHA256 '+checksum)
     print('Clean-VM install/browser/update checks and publication are still required.')
 
 

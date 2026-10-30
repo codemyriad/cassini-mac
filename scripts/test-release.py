@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import importlib.util
 import io
 import json
+import plistlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -30,9 +31,13 @@ class ReleaseTests(unittest.TestCase):
             self.assertFalse(args.output.exists())
 
     def testApprovedLayoutAndConfigurableBase(self):
+        self.assertEqual(release.PRODUCT_NAME, 'Cassini talk')
+        info = plistlib.loads((ROOT/'Cassini/Info.plist').read_bytes())
+        for key in ['CFBundleName', 'CFBundleDisplayName']:
+            self.assertEqual(info[key], release.PRODUCT_NAME)
         self.assertEqual(release.release_urls(release.BASE_URL+'/', '0.1.2'), dict(
             base='https://cassini.talk/download/mac', feed='https://cassini.talk/download/mac/appcast.xml',
-            download='https://cassini.talk/download/mac/Cassini-0.1.2.dmg', latest='https://cassini.talk/download/mac/Cassini.dmg',
+            download='https://cassini.talk/download/mac/Cassini-talk-0.1.2.dmg', latest='https://cassini.talk/download/mac/Cassini-talk.dmg',
             notes='https://cassini.talk/download/mac/notes/0.1.2.html'))
         self.assertEqual(release.release_urls('https://fixture.example/other', '2.0')['feed'], 'https://fixture.example/other/appcast.xml')
         for base in ['http://example.org/mac', 'https://u:p@example.org/mac', 'https://example.org/mac?x=1', 'https://example.org/../mac']:
@@ -43,28 +48,28 @@ class ReleaseTests(unittest.TestCase):
     def testPublicationOrderAndImmutableLocalCopies(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
-            versioned = output/'Cassini-1.0.dmg'; versioned.write_bytes(b'signed archive fixture')
-            release.copy_new(versioned, output/'Cassini.dmg')
-            with self.assertRaises(FileExistsError): release.copy_new(versioned, output/'Cassini.dmg')
+            versioned = output/'Cassini-talk-1.0.dmg'; versioned.write_bytes(b'signed archive fixture')
+            release.copy_new(versioned, output/'Cassini-talk.dmg')
+            with self.assertRaises(FileExistsError): release.copy_new(versioned, output/'Cassini-talk.dmg')
             (output/'notes').mkdir(); (output/'notes/1.0.html').write_text('<p>Notes</p>')
             (output/'appcast.xml').write_bytes(b'<rss/>')
             release.publication_plan(output, release.release_urls(release.BASE_URL, '1.0'), '1.0', 'A'*86+'==', notes=True)
             plan = json.loads((output/'publication.json').read_text())
             self.assertEqual([(s['action'], s.get('file')) for s in plan['steps']], [
-                ('upload','Cassini-1.0.dmg'), ('verifyHTTPS',None), ('upload','Cassini.dmg'),
+                ('upload','Cassini-talk-1.0.dmg'), ('verifyHTTPS',None), ('upload','Cassini-talk.dmg'),
                 ('upload','notes/1.0.html'), ('upload','appcast.xml')])
             self.assertFalse(plan['steps'][0]['overwrite'])
             self.assertEqual(plan['steps'][1]['bytes'], len(b'signed archive fixture'))
             self.assertEqual(plan['steps'][1]['sha256'], release.sha256_file(versioned))
             sums = dict(line.split('  ', 1)[::-1] for line in (output/'SHA256SUMS').read_text().splitlines())
-            self.assertEqual(sums['Cassini-1.0.dmg'], sums['Cassini.dmg'])
-            (output/'Cassini.dmg').write_bytes(b'other bytes')
+            self.assertEqual(sums['Cassini-talk-1.0.dmg'], sums['Cassini-talk.dmg'])
+            (output/'Cassini-talk.dmg').write_bytes(b'other bytes')
             with self.assertRaises(ValueError):
                 release.publication_plan(output, release.release_urls(release.BASE_URL, '1.0'), '1.0', 'A'*86+'==')
 
     def testOptionalNotesAreLinkedOnlyWhenPresent(self):
         with tempfile.TemporaryDirectory() as temporary:
-            archive = Path(temporary)/'Cassini-1.0.dmg'; archive.write_bytes(b'fixture')
+            archive = Path(temporary)/'Cassini-talk-1.0.dmg'; archive.write_bytes(b'fixture')
             args = (archive, 'A'*86+'==', '1.0', 2, release.release_urls(release.BASE_URL, '1.0')['download'])
             tag = 'channel/item/{'+release.SPARKLE+'}releaseNotesLink'
             self.assertIsNone(ET.fromstring(release.appcast(*args)).find(tag))
@@ -73,7 +78,7 @@ class ReleaseTests(unittest.TestCase):
 
     def testHTTPSRedirectCannotDowngrade(self):
         from urllib.request import Request
-        request = Request('https://cassini.talk/download/mac/Cassini-1.0.dmg')
+        request = Request('https://cassini.talk/download/mac/Cassini-talk-1.0.dmg')
         with self.assertRaises(ValueError):
             release.HTTPSRedirects().redirect_request(request, None, 302, 'Found', {}, 'http://example.org/archive')
         redirected = release.HTTPSRedirects().redirect_request(request, None, 302, 'Found', {}, 'https://cdn.example.org/archive')
@@ -85,10 +90,10 @@ class ReleaseTests(unittest.TestCase):
         if not tools.exists(): self.skipTest('Fetch pinned Sparkle tools before this cryptographic check')
         class Response(io.BytesIO):
             status = 200
-            def geturl(self): return 'https://cassini.talk/download/mac/Cassini-1.0.dmg'
+            def geturl(self): return 'https://cassini.talk/download/mac/Cassini-talk-1.0.dmg'
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary); data = b'actual signed fixture bytes'
-            archive = folder/'Cassini-1.0.dmg'; archive.write_bytes(data)
+            archive = folder/'Cassini-talk-1.0.dmg'; archive.write_bytes(data)
             seed = folder/'seed'; public = folder/'public'
             seed.write_text(base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')).decode()); seed.chmod(0o600)
             public.write_text('11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=')
@@ -98,7 +103,7 @@ class ReleaseTests(unittest.TestCase):
             opener = Mock(); opener.open.return_value = Response(data)
             checked = release.verify_uploaded_download(folder, public, opener)
             self.assertTrue(checked['edSignatureVerified'])
-            opener.open.assert_called_once_with('https://cassini.talk/download/mac/Cassini-1.0.dmg', timeout=60)
+            opener.open.assert_called_once_with('https://cassini.talk/download/mac/Cassini-talk-1.0.dmg', timeout=60)
             # No private seed is needed by either verifier after signing.
             seed.unlink()
             for damaged in [data[:-1], b'x'+data[1:], data+b'extra']:
@@ -141,12 +146,14 @@ class ReleaseTests(unittest.TestCase):
 
     def testAppcastUsesActualFileSizeEscapesAndBindsBuild(self):
         with tempfile.TemporaryDirectory() as temporary:
-            archive=Path(temporary)/'Cassini.dmg';archive.write_bytes(b'12345')
-            data=release.appcast(archive,'A'*86+'==','0.1.2',42,'https://example.org/Cassini.dmg?a=1&b=2',datetime(2026,10,30,tzinfo=timezone.utc))
+            archive=Path(temporary)/'Cassini-talk.dmg';archive.write_bytes(b'12345')
+            data=release.appcast(archive,'A'*86+'==','0.1.2',42,'https://example.org/Cassini-talk.dmg?a=1&b=2',datetime(2026,10,30,tzinfo=timezone.utc))
             root=ET.fromstring(data);item=root.find('channel/item');enclosure=item.find('enclosure')
+            self.assertEqual(root.find('channel/title').text, 'Cassini talk for Mac')
+            self.assertEqual(item.find('title').text, 'Cassini talk 0.1.2')
             self.assertEqual(item.find('{'+release.SPARKLE+'}version').text,'42')
             self.assertEqual(enclosure.attrib['length'],'5')
-            self.assertEqual(enclosure.attrib['url'],'https://example.org/Cassini.dmg?a=1&b=2')
+            self.assertEqual(enclosure.attrib['url'],'https://example.org/Cassini-talk.dmg?a=1&b=2')
             self.assertEqual(enclosure.attrib['{'+release.SPARKLE+'}edSignature'],'A'*86+'==')
             self.assertEqual(item.find('{'+release.SPARKLE+'}minimumSystemVersion').text,'15.0')
     def testMalformedSignatureRejected(self):
@@ -191,11 +198,11 @@ class ReleaseTests(unittest.TestCase):
             command=[str(tools),'--verify','--ed-key-file',str(seed),str(data),signed]
             self.assertEqual(subprocess.run(command,capture_output=True).returncode,0)
             feed=folder/'appcast.xml'
-            feed.write_bytes(release.appcast(data,signed,'1.0',2,'https://example.org/Cassini.dmg'))
+            feed.write_bytes(release.appcast(data,signed,'1.0',2,'https://example.org/Cassini-talk.dmg'))
             subprocess.run([str(tools),'--ed-key-file',str(seed),str(feed)],check=True,capture_output=True)
             verify_feed=[str(tools),'--verify','--ed-key-file',str(seed),str(feed)]
             self.assertEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
-            feed.write_bytes(feed.read_bytes().replace(b'Cassini for Mac',b'Tampered title'))
+            feed.write_bytes(feed.read_bytes().replace(b'Cassini talk for Mac',b'Tampered title'))
             self.assertNotEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
             data.write_bytes(b'tampered bytes');self.assertNotEqual(subprocess.run(command,capture_output=True).returncode,0)
 

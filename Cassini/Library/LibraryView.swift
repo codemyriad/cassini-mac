@@ -52,7 +52,7 @@ struct LibraryView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 480)
-        .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("library.title"))
+        .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("app.name"))
         .toolbar(removing: .title)
         .toolbar {
             if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {

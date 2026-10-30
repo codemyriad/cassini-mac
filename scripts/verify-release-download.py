@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Read-only HTTPS verification before publishing Cassini.dmg and the appcast."""
+"""Read-only HTTPS verification before publishing Cassini-talk.dmg and the appcast."""
 import argparse
 import json
 from pathlib import Path

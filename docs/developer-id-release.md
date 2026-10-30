@@ -46,7 +46,7 @@ signature is made after stapling the DMG. The appcast itself is also signed.
 
 The base URL is configurable; the script derives the feed, versioned DMG,
 latest copy and optional notes paths from it. Output includes the immutable
-`Cassini-<version>.dmg`, a byte-identical `Cassini.dmg` copy, `appcast.xml`,
+`Cassini-talk-<version>.dmg`, a byte-identical `Cassini-talk.dmg` copy, `appcast.xml`,
 `SHA256SUMS`, `release.json`, and the ordered `publication.json` checklist.
 Both DMGs are checked against the public Ed25519 key. Optional
 `--release-notes path/to/notes.html` copies that HTML to
@@ -57,7 +57,7 @@ advertised. No versioned artifact or existing staging directory is overwritten.
 Once notarization and clean-VM QA have passed and access is supplied, publish in
 this order:
 
-1. Upload `Cassini-<version>.dmg` to `/download/mac/`; never overwrite it.
+1. Upload `Cassini-talk-<version>.dmg` to `/download/mac/`; never overwrite it.
 2. Verify the actual HTTPS download before changing the latest copy or feed:
 
    ```sh
@@ -68,7 +68,7 @@ this order:
    and verifies Ed25519 with the public app key. It rejects HTTP downgrades,
    truncated/extra/changed bytes and invalid signatures. It uses no signing
    secret or keychain, and launches no app.
-3. Upload `Cassini.dmg` as a copy of that same verified DMG.
+3. Upload `Cassini-talk.dmg` as a copy of that same verified DMG.
 4. If supplied, upload `notes/<version>.html` before the feed references it.
 5. Upload `appcast.xml` **last**. Do not offer an update until its immutable
    download has passed step2. Stop on any failed step; the scripts have no uploader.

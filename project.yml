@@ -136,8 +136,8 @@ targets:
         SURequireSignedFeed: true
         SUShowReleaseNotes: false
         SUEnableSystemProfiling: false
-        CFBundleName: Cassini
-        CFBundleDisplayName: Cassini
+        CFBundleName: Cassini talk
+        CFBundleDisplayName: Cassini talk
         CassiniStoreListingPublic: "$(CASSINI_STORE_LISTING_PUBLIC)"
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"

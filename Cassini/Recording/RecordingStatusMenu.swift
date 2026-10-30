@@ -89,7 +89,7 @@ struct RecordingStatusMenu: View {
                 if let line = RecordingOverview.diskLine { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.amber).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
                 if let line = payload.noSleep { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,6).accessibilityIdentifier("recording-no-sleep") }
             }.font(.system(size:13)).padding(10).frame(width:300).accessibilityElement(children:.contain)
-                .accessibilityLabel(UXText.text("hidden.menu.a11y")).accessibilityIdentifier("recording-menu-payload")
+                .accessibilityLabel(UXText.text("app.name")).accessibilityIdentifier("recording-menu-payload")
                 .accessibilityValue(fixturePayload(payload))
         }
     }
