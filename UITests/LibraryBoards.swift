@@ -224,16 +224,16 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testOpeningMeetingWithoutWords() throws {
         let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let weekly = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Weekly sync, product team","Weekly sync, product team")).firstMatch
+        let weekly = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000008").firstMatch
         XCTAssertTrue(weekly.waitForExistence(timeout:20)); weekly.doubleClick()
         XCTAssertTrue(window.buttons["meeting-write-down"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
         XCTAssertTrue(window.buttons["meeting-export"].isEnabled)
         app.menuBars.menuBarItems["File"].click(); XCTAssertTrue(app.menuItems["Rename…"].isEnabled); app.typeKey(.escape,modifierFlags:[])
         window.buttons["meeting-back"].click()
-        let client = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Client call, Rossi & Partners","Client call, Rossi & Partners")).firstMatch
+        let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         client.click(); XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5))
-        let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        let budget = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch
         budget.click(); app.typeKey(.return,modifierFlags:[])
         XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertEqual(window.staticTexts["meeting-title"].value as? String,"Budget review")

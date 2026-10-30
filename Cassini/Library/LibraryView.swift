@@ -242,15 +242,6 @@ struct LibraryView: View {
                             row(meeting).tag(meeting.libraryKey)
                                 .background { if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() } }
                                 .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
-                                .onTapGesture(count:2) { readTranscript(meeting) }
-                                .contextMenu {
-                                    Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
-                                        .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
-                                    Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
-                                        .disabled(!MeetingExportCoordinator.canExport(meeting))
-                                        .onAppear { store.selectedKey = meeting.libraryKey }
-                                    if trash.canTrash(meeting) { Divider(); trashButton(meeting) }
-                                }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)
                                     .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
@@ -268,6 +259,19 @@ struct LibraryView: View {
                 }
             }
             .listStyle(.sidebar)
+            .contextMenu(forSelectionType:String.self) { keys in
+                if let key = keys.first, let meeting = store.meetings.first(where:{ $0.libraryKey == key }) {
+                    Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = key; rename.show(meeting) }
+                        .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
+                    Button(UXText.text("common.exportEllipsis")) { store.selectedKey = key; exporter.show(meeting) }
+                        .disabled(!MeetingExportCoordinator.canExport(meeting))
+                        .onAppear { store.selectedKey = key }
+                    if trash.canTrash(meeting) { Divider(); trashButton(meeting) }
+                }
+            } primaryAction: { keys in
+                if !LibraryMoveCoordinator.shared.busy, let key = keys.first,
+                   let meeting = store.meetings.first(where:{ $0.libraryKey == key }) { readTranscript(meeting) }
+            }
             .onKeyPress(.return) {
                 guard let selected = store.selected, !LibraryMoveCoordinator.shared.busy else { return .ignored }
                 readTranscript(selected); return .handled
