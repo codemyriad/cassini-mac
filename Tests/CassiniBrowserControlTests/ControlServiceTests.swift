@@ -18,6 +18,34 @@ private final class Admission: @unchecked Sendable {
     func read() -> Bool { lock.withLock { allowed } }
 }
 final class ControlServiceTests: XCTestCase {
+    func testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let oldReady = expectation(description:"Old capture status"), newReady = expectation(description:"Replacement capture status")
+        oldReady.assertForOverFulfill = false; newReady.assertForOverFulfill = false
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        // Observe the first peer UUID from its actual published local metadata.
+        let service = BrowserControlService(changed:{ peers in
+            guard let peer = peers.first, peer.captures.first?.captureID == "capture" else { return }
+            if peer.captures.first?.path == "/replacement-status" { newReady.fulfill() }
+            else { oldReady.fulfill() }
+        },completed:{ _,_ in })
+        try service.start(root:root); defer { service.stop() }
+        let first = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        let folder = try XCTUnwrap(FileManager.default.contentsOfDirectory(at:root.appendingPathComponent("clients"),includingPropertiesForKeys:nil).first { UUID(uuidString:$0.lastPathComponent) != nil })
+        let oldKey = BrowserMeetingKey(peer:try XCTUnwrap(UUID(uuidString:folder.lastPathComponent)),tabID:2)
+        try hello(first); try send(status(true),first)
+        wait(for:[oldReady],timeout:3)
+        let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(second)
+        var replacement = status(true)
+        var sessions = replacement["sessions"] as! [[String:Any]]
+        sessions[0]["path"] = "/replacement-status"; replacement["sessions"] = sessions
+        try send(replacement,second)
+        wait(for:[newReady],timeout:3)
+        service.stopMeeting(oldKey,captureID:"capture")
+        XCTAssertEqual(try receive(second)["action"]?.string,"stop")
+        XCTAssertThrowsError(try receive(first,seconds:0.2))
+    }
     func testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let bound = expectation(description:"First status binds before audio registration")
