@@ -17,7 +17,7 @@ settings:
     OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
     CASSINI_APP_HARDENED_RUNTIME: YES
-    CASSINI_UPDATE_FEED: https://gocassini.com/PLACEHOLDER/mac/appcast.xml
+    CASSINI_UPDATE_FEED: https://cassini.talk/download/mac/appcast.xml
     CASSINI_UPDATES_ENABLED: NO
     SWIFT_STRICT_CONCURRENCY: targeted
     CASSINI_STORE_LISTING_PUBLIC: NO

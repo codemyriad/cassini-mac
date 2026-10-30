@@ -15,11 +15,13 @@ import stat
 import subprocess
 import tempfile
 from urllib.parse import urlparse
+import urllib.request
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent.parent
 SECRETS = Path.home()/'.config/cassini/secrets'
 TEAM = '4LS8W738Y3'
+BASE_URL = 'https://cassini.talk/download/mac'
 SPARKLE = 'http://www.andymatuschak.org/xml-namespaces/sparkle'
 ET.register_namespace('sparkle', SPARKLE)
 
@@ -59,6 +61,92 @@ def https_url(value):
     return value
 
 
+def release_urls(base_url, version):
+    if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){1,2}', version):
+        raise ValueError('Expected a numeric release version')
+    base = https_url(base_url).rstrip('/')
+    parts = urlparse(base)
+    if parts.query or parts.params or any(part in ('.', '..') for part in parts.path.split('/')):
+        raise ValueError('Expected an HTTPS directory URL without a query or path traversal')
+    return dict(base=base, feed=base+'/appcast.xml', download=base+'/Cassini-'+version+'.dmg',
+        latest=base+'/Cassini.dmg', notes=base+'/notes/'+version+'.html')
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        while chunk := stream.read(1024*1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def copy_new(source, destination):
+    # A versioned artifact and a staging directory are never reused.
+    with Path(source).open('rb') as source_file, Path(destination).open('xb') as target:
+        shutil.copyfileobj(source_file, target)
+    if Path(source).stat().st_size != Path(destination).stat().st_size or sha256_file(source) != sha256_file(destination):
+        raise ValueError('Release copy differs from its signed source')
+
+
+def verify_signature(path, signature, public_key=ROOT/'Distribution/sparkle-public-key.txt'):
+    # Public-key verification needs neither the production seed nor a keychain.
+    run(['xcrun', 'swift', ROOT/'scripts/verify-update-signature.swift', public_key, signature, path], timeout=180)
+
+
+def publication_plan(output, urls, version, signature, notes=False):
+    files = ['Cassini-'+version+'.dmg', 'Cassini.dmg', 'appcast.xml']
+    if notes:
+        files.append('notes/'+version+'.html')
+    hashes = {name: sha256_file(output/name) for name in files}
+    if hashes[files[0]] != hashes['Cassini.dmg']:
+        raise ValueError('Latest DMG differs from the immutable versioned DMG')
+    size = (output/files[0]).stat().st_size
+    steps = [dict(action='upload', file=files[0], url=urls['download'], overwrite=False),
+        dict(action='verifyHTTPS', url=urls['download'], bytes=size, sha256=hashes[files[0]], edSignature=signature),
+        dict(action='upload', file='Cassini.dmg', url=urls['latest'], overwrite=True)]
+    if notes:
+        steps.append(dict(action='upload', file='notes/'+version+'.html', url=urls['notes'], overwrite=False))
+    steps.append(dict(action='upload', file='appcast.xml', url=urls['feed'], overwrite=True))
+    (output/'publication.json').write_text(json.dumps(dict(version=version, baseURL=urls['base'], steps=steps), indent=2)+'\n')
+    (output/'SHA256SUMS').write_text(''.join(digest+'  '+name+'\n' for name, digest in hashes.items()))
+    return hashes[files[0]]
+
+
+class HTTPSRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        https_url(new_url)
+        return super().redirect_request(request, response, code, message, headers, new_url)
+
+
+def verify_uploaded_download(output, public_key=ROOT/'Distribution/sparkle-public-key.txt', opener=None):
+    # Read-only GET, invoked separately only after the immutable DMG is uploaded.
+    # Never publish the latest alias or feed on the strength of a local check.
+    report = json.loads((output/'release.json').read_text())
+    urls = release_urls(report['baseURL'], report['version'])
+    local = output/('Cassini-'+report['version']+'.dmg')
+    size = local.stat().st_size
+    if size != report['bytes'] or sha256_file(local) != report['sha256']:
+        raise ValueError('Local release no longer matches its report')
+    verify_signature(local, report['edSignature'], public_key)
+    opener = opener or urllib.request.build_opener(HTTPSRedirects())
+    with tempfile.TemporaryDirectory(prefix='cassini-https-check-') as temporary:
+        downloaded = Path(temporary)/'download.dmg'
+        with opener.open(urls['download'], timeout=60) as response, downloaded.open('xb') as target:
+            https_url(response.geturl())
+            if response.status != 200:
+                raise ValueError('Expected a complete HTTPS download')
+            count = 0
+            while chunk := response.read(min(1024*1024, size-count+1)):
+                count += len(chunk)
+                if count > size:
+                    raise ValueError('HTTPS download exceeds the signed artifact length')
+                target.write(chunk)
+        if count != size or sha256_file(downloaded) != report['sha256']:
+            raise ValueError('HTTPS download differs from the signed artifact')
+        verify_signature(downloaded, report['edSignature'], public_key)
+    return dict(url=urls['download'], bytes=size, sha256=report['sha256'], edSignatureVerified=True)
+
+
 def notary_credentials(path):
     config = json.loads(private_file(path).read_text())
     key = private_file(Path(config['key']).expanduser())
@@ -86,7 +174,7 @@ def notarize(path, credentials, report):
     run(['xcrun', 'stapler', 'validate', path], timeout=180)
 
 
-def appcast(archive, signature, version, build, download_url, now=None):
+def appcast(archive, signature, version, build, download_url, now=None, release_notes_url=None):
     if not re.fullmatch(r'[A-Za-z0-9+/]{86}==', signature):
         raise ValueError('Invalid Ed25519 signature')
     root = ET.Element('rss', version='2.0')
@@ -98,6 +186,8 @@ def appcast(archive, signature, version, build, download_url, now=None):
     ET.SubElement(item, '{'+SPARKLE+'}shortVersionString').text = version
     ET.SubElement(item, '{'+SPARKLE+'}minimumSystemVersion').text = '15.0'
     ET.SubElement(item, 'pubDate').text = format_datetime(now or datetime.now(timezone.utc))
+    if release_notes_url:
+        ET.SubElement(item, '{'+SPARKLE+'}releaseNotesLink').text = https_url(release_notes_url)
     ET.SubElement(item, 'enclosure', {'url': https_url(download_url), 'length': str(archive.stat().st_size),
         'type': 'application/octet-stream', '{'+SPARKLE+'}edSignature': signature})
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)+b'\n'
@@ -121,9 +211,11 @@ def reject_generated_library(path):
 
 
 def release(args):
-    https_url(args.feed_url); https_url(args.download_url)
-    if not re.fullmatch(r'\d+(?:\.\d+){1,2}', args.version) or args.build < 1:
+    urls = release_urls(args.base_url, args.version)
+    if args.build < 1:
         raise ValueError('Expected a numeric version and positive increasing build number')
+    if args.release_notes and not args.release_notes.is_file():
+        raise ValueError('Release notes must name an existing HTML file')
     # Refuse to overwrite or mix artifacts from earlier builds/submissions.
     output = args.output.resolve()
     if output.exists():
@@ -142,7 +234,7 @@ def release(args):
         '-derivedDataPath', derived, '-jobs', '2', 'ARCHS=arm64 x86_64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGNING_ALLOWED=YES',
         'CODE_SIGN_IDENTITY='+identity, 'CODE_SIGN_STYLE=Manual', 'DEVELOPMENT_TEAM='+TEAM,
         'CASSINI_APP_HARDENED_RUNTIME=YES', 'MARKETING_VERSION='+args.version, 'CURRENT_PROJECT_VERSION='+str(args.build),
-        'CASSINI_UPDATE_FEED='+args.feed_url, 'CASSINI_UPDATES_ENABLED=YES']
+        'CASSINI_UPDATE_FEED='+urls['feed'], 'CASSINI_UPDATES_ENABLED=YES']
     # Build logs contain no password/ASC metadata; retain diagnostics for review.
     with (output/'build.log').open('wb') as log:
         result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
@@ -165,22 +257,29 @@ def release(args):
         run(['ditto', app, stage/'Cassini.app'])
         (stage/'Applications').symlink_to('/Applications', target_is_directory=True)
         shutil.copy2(ROOT/'COPYING', stage/'COPYING')
-        dmg = output/'Cassini.dmg'
+        dmg = output/('Cassini-'+args.version+'.dmg')
         run(['hdiutil', 'create', '-volname', 'Cassini', '-srcfolder', stage, '-fs', 'APFS', '-format', 'ULFO', dmg], timeout=600)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)
     notarize(dmg, credentials, output/'dmg-notary.json')
     run(['codesign', '--verify', '--strict', dmg])
     signature = run([tools/'sign_update', '--ed-key-file', key, '-p', dmg], timeout=180).decode().strip()
     run([tools/'sign_update', '--verify', '--ed-key-file', key, dmg, signature], timeout=180)
-    (output/'appcast.xml').write_bytes(appcast(dmg, signature, args.version, args.build, args.download_url))
+    verify_signature(dmg, signature)
+    copy_new(dmg, output/'Cassini.dmg')
+    verify_signature(output/'Cassini.dmg', signature)
+    if args.release_notes:
+        (output/'notes').mkdir()
+        copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
+    (output/'appcast.xml').write_bytes(appcast(dmg, signature, args.version, args.build, urls['download'],
+        release_notes_url=urls['notes'] if args.release_notes else None))
     # Feed signing protects metadata as well as the download. Re-sign after edits.
     run([tools/'sign_update', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
     run([tools/'sign_update', '--verify', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
-    checksum = hashlib.sha256(dmg.read_bytes()).hexdigest()
-    (output/'SHA256SUMS').write_text(checksum+'  Cassini.dmg\n')
+    checksum = publication_plan(output, urls, args.version, signature, notes=bool(args.release_notes))
     (output/'release.json').write_text(json.dumps(dict(commit=run(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip(),
-        version=args.version, build=args.build, sha256=checksum, notarized=True, cleanVMChecked=False),indent=2)+'\n')
-    print('Notarized and stapled Cassini.dmg; SHA256 '+checksum)
+        version=args.version, build=args.build, baseURL=urls['base'], bytes=dmg.stat().st_size,
+        edSignature=signature, sha256=checksum, notarized=True, cleanVMChecked=False),indent=2)+'\n')
+    print('Notarized and stapled '+dmg.name+' and identical Cassini.dmg; SHA256 '+checksum)
     print('Clean-VM install/browser/update checks and publication are still required.')
 
 
@@ -188,8 +287,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version', required=True)
     parser.add_argument('--build', type=int, required=True)
-    parser.add_argument('--feed-url', required=True)
-    parser.add_argument('--download-url', required=True)
+    parser.add_argument('--base-url', default=BASE_URL, help='HTTPS directory for downloads, feed and optional notes')
+    parser.add_argument('--release-notes', type=Path, help='Optional HTML file, copied into notes/<version>.html')
     parser.add_argument('--notary-config', type=Path, default=SECRETS/'notary.json')
     parser.add_argument('--output', type=Path, required=True)
     try:
