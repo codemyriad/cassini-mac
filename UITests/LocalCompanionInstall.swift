@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import XCTest
+import CoreGraphics
 
 /// Real manual-install flow on a disposable hosted Mac. No extension-loading
 /// flags, profile injection, fake peers or capture APIs participate in this gate.
@@ -45,10 +46,12 @@ final class LocalCompanionInstall: XCTestCase {
         attach(app,name:"companion-local-guide")
         guide.buttons["companion-copy-address"].click()
         XCTAssertEqual(NSPasteboard.general.string(forType:.string),"chrome://extensions/")
-        chrome.activate()
-        chrome.typeKey("l",modifierFlags:.command)
-        chrome.typeKey("v",modifierFlags:.command)
-        chrome.typeKey(.return,modifierFlags:[])
+        XCTAssertTrue(chrome.wait(for:.runningForeground,timeout:10),"Copy Address and Open activates the chosen browser")
+        key(0x25,flags:.maskCommand) // L
+        key(0x09,flags:.maskCommand) // V
+        let address = chrome.textFields["Address and search bar"]
+        wait("Chromium receives the copied Extensions address") { (address.value as? String)?.hasPrefix("chrome://extensions") == true }
+        key(0x24) // Return
         // Chromium has exposed cr-toggle as checkbox, switch and pressed button
         // across releases. The action and accessible name stay the same.
         let toggles = [chrome.checkBoxes["Developer mode"],chrome.switches["Developer mode"],chrome.buttons["Developer mode"]]
@@ -67,9 +70,9 @@ final class LocalCompanionInstall: XCTestCase {
         load.click()
         let choose = chrome.buttons["OKButton"]
         XCTAssertTrue(choose.waitForExistence(timeout:10),chrome.debugDescription)
-        chrome.typeKey("g",modifierFlags:[.command,.shift])
-        chrome.typeKey("v",modifierFlags:.command)
-        chrome.typeKey(.return,modifierFlags:[])
+        key(0x05,flags:[.maskCommand,.maskShift]) // G
+        key(0x09,flags:.maskCommand)
+        key(0x24)
         choose.click()
         let extensionID = "pcafdaahfhjiolfpfnlhmljfgoabbaij"
         let identity = chrome.staticTexts.matching(NSPredicate(format:"value CONTAINS %@ OR label CONTAINS %@",extensionID,extensionID)).firstMatch
@@ -125,5 +128,13 @@ final class LocalCompanionInstall: XCTestCase {
     }
     @MainActor private func attach(_ app: XCUIApplication, name: String) {
         let screenshot = XCTAttachment(screenshot:app.screenshot()); screenshot.name = name; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+    @MainActor private func key(_ code: CGKeyCode, flags: CGEventFlags = []) {
+        // XCTest's app-directed typeKey stalls without delivering keys to this
+        // pinned Chromium. Send test-person HID events on the hosted desktop.
+        for down in [true,false] {
+            let event = CGEvent(keyboardEventSource:nil,virtualKey:code,keyDown:down)!
+            event.flags = flags; event.post(tap:.cghidEventTap)
+        }
     }
 }

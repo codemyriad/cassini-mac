@@ -62,7 +62,10 @@ def main():
                 result = subprocess.run(['xcodebuild', 'test-without-building', '-xctestrun', test_run, '-destination', 'platform=macOS',
                     '-parallel-testing-enabled', 'NO', '-only-testing:CassiniWindowScreenshots/LocalCompanionInstall',
                     '-resultBundlePath', output/'Install.xcresult'], env=env, stdout=log, stderr=subprocess.STDOUT, timeout=360)
-            assert result.returncode == 0, 'Real guide failed; inspect xctest.log and Install.xcresult'
+            if result.returncode:
+                lines = (output/'xctest.log').read_text(errors='replace').splitlines()
+                print('\n'.join(line for line in lines if 'error:' in line or 'Failed to' in line), flush=True)
+                raise AssertionError('Real guide failed; inspect xctest.log and Install.xcresult')
             report = json.loads((output/'report.json').read_text())
             assert report['loadedID'] == 'pcafdaahfhjiolfpfnlhmljfgoabbaij' and report['realNativeHandshake']
             assert report['newerAppFolderReplaced'] and report['repeatLaunchDidNotRewrite']
