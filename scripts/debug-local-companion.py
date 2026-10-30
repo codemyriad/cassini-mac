@@ -37,7 +37,8 @@ platform = developer/'Platforms/MacOSX.platform/Developer'
 entitlements = ROOT/'build/guide-runner-entitlements.plist'
 entitlements.write_bytes(subprocess.run(['codesign','-d','--entitlements',':-',runner],check=True,capture_output=True).stdout)
 subprocess.run(['xcrun','swiftc','-emit-library','-module-name','CassiniWindowScreenshots','-swift-version','5',
-    '-target','arm64-apple-macos15.0','-I',platform/'usr/lib','-F',platform/'Library/Frameworks',
+    '-target','arm64-apple-macos15.0','-I',platform/'usr/lib','-L',platform/'usr/lib','-F',platform/'Library/Frameworks',
+    '-Xlinker','-rpath','-Xlinker',platform/'usr/lib',
     '-Xlinker','-rpath','-Xlinker',platform/'Library/Frameworks',
     ROOT/'UITests/LocalCompanionInstall.swift','-o',bundle/'Contents/MacOS'/name],check=True)
 subprocess.run(['codesign','--force','--sign','-','--timestamp=none',bundle],check=True)
