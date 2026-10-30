@@ -6,13 +6,14 @@ on:
       mode:
         description: 'Generated PCM sink only, or sink plus actual process-tap hardware'
         type: choice
-        options: [full, sink-only]
+        options: [full, sink-only, spectrogram-lab]
         default: full
   schedule:
     - cron: '23 2 * * *'
 
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: drmeyers-native-audio
   cancel-in-progress: false
@@ -72,3 +73,46 @@ jobs:
           path: |
             ${{ runner.temp }}/native-artifacts
             BrowserExtension/tests/artifacts
+
+  spectrogram-lab:
+    # Temporary experiment branch only. This never runs on DrMeyers and does
+    # not replace/change any production PR/main/nightly/dispatch test matrix.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/spectrogram-d36' && inputs.mode == 'spectrogram-lab'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          path: baseline
+          ref: abb03cc7b1d702e74a0e0281144a1f629e5dba9b
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-release
+          path: baseline/build/ci-products
+          run-id: 41069782999
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the exact previous build source, pins, toolchain and archive
+        working-directory: baseline
+        run: python3 scripts/ci-products.py unpack release build/ci-products
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: brew install displayplacer
+      - run: python3 baseline/scripts/hosted-display.py
+      - name: Compile baseline and experimental renderer only, without app or SDK rebuild
+        run: |
+          python3 baseline/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release baseline/probe
+          python3 candidate/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release candidate/probe
+      - name: Compare unchanged A and D measurements on one disposable hosted Mac
+        run: python3 candidate/scripts/spectrogram-lab.py baseline/probe candidate/probe experiment
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: spectrogram-lab
+          path: experiment

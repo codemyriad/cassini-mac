@@ -217,7 +217,8 @@ import Darwin
         // Window/view notifications maintain membership. A single cheap
         // visibility check catches occlusion before its queued notification;
         // rebuilding/filtering every strip each display tick wastes CPU.
-        guard clockView?.visibleForSpectrogram == true else { reconcile(); return }
+        // Experimental notification-only visibility; no WindowServer query
+        // on every display callback. Production visibility hooks are retained.
         guard running, !reduced else { return }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram display link",signpostID:interval)
@@ -393,7 +394,7 @@ import Darwin
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
-        wantsLayer = true; setAccessibilityElement(false)
+        layer = CALayer(); wantsLayer = true; setAccessibilityElement(false)
         for _ in 0..<(style == .pill ? 2 : 1) {
             let item = LaneLayers(); item.clip.masksToBounds = true; item.clip.cornerRadius = 2
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
