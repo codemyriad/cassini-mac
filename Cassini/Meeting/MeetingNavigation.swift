@@ -113,6 +113,12 @@ import Observation
         if frozen { fixturePosition = ms; return }
         audio.prepare(playbackMeeting); audio.seek(toMs: Double(ms))
     }
+    func playFrom(_ ms: Int) {
+        let ms = max(0,min(durationMs,ms))
+        if frozen { fixturePosition = ms; fixturePlaying = true; return }
+        PlayerController.pauseActive()
+        audio.play(playbackMeeting,fromMs:Double(ms))
+    }
     func skip(_ seconds: Int) { seek(positionMs + seconds * 1000) }
     func cycleRate() {
         let rates: [Float] = [1, 1.25, 1.5, 2, 0.75]

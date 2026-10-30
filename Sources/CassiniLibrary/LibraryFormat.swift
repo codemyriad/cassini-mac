@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
-/// HARMONY §6. No process locale or implicit process time zone enters these formats.
+/// Explicit clocks/zones keep fixtures deterministic; wall times follow the user's locale.
 public struct LibraryFormat: Sendable {
     public let timeZone: TimeZone
     public let now: Date
-    public init(timeZone: TimeZone = .current, now: Date = Date()) { self.timeZone = timeZone; self.now = now }
+    public let locale: Locale
+    public init(timeZone: TimeZone = .current, now: Date = Date(), locale: Locale = .current) { self.timeZone = timeZone; self.now = now; self.locale = locale }
     private var calendar: Calendar { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "en_GB"); c.timeZone = timeZone; return c }
     private func date(_ value: Date, pattern: String) -> String {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_GB")
@@ -41,7 +42,11 @@ public struct LibraryFormat: Sendable {
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(at, inSameDayAs: yesterday) { return "Yesterday" }
         return date(at, pattern: calendar.component(.year, from: at) == calendar.component(.year, from: now) ? "EEEE d MMMM" : "EEEE d MMMM yyyy")
     }
-    public func rowTime(_ at: Date) -> String { date(at, pattern: "HH:mm") }
+    public func rowTime(_ at: Date) -> String {
+        let formatter = DateFormatter(); formatter.locale = locale
+        formatter.timeZone = timeZone; formatter.dateStyle = .none; formatter.timeStyle = .short
+        return formatter.string(from:at)
+    }
     public func previewSubtitle(_ at: Date, durationMs: Int64?, received: Bool = false) -> String {
         dayGroup(at) + ", " + rowTime(at) + (durationMs.map { " · " + Self.meetingDuration($0) } ?? "") + (received ? " · Received" : "")
     }
@@ -71,7 +76,8 @@ public struct LibraryFormat: Sendable {
         let unit: Int64 = 1_048_576
         let mb = bytes / unit + (bytes % unit >= unit / 2 ? 1 : 0)
         let value: String
-        if mb < 1000 { value = "\(mb) MB" }
+        if bytes < unit { value = "\(bytes / 1024 + (bytes % 1024 >= 512 ? 1 : 0)) KB" }
+        else if mb < 1000 { value = "\(mb) MB" }
         else {
             let gb: Int64 = 1_073_741_824
             let fractional = (bytes % gb) * 10

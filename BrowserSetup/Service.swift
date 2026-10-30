@@ -8,19 +8,21 @@ final class BrowserSetupConnection: NSObject, CassiniBrowserSetupService, @unche
         Self.queue.async {
             do {
                 guard var home = BrowserSetupInstallation.accountHome else { throw BrowserSetupError.unavailable }
+                var browsers: [String]? = nil
                 #if DEBUG
                 // Only signed fixture metadata chooses a generated home. The
                 // production RPC has no path/command arguments, even in Debug.
                 if let fixture = Bundle.main.object(forInfoDictionaryKey:"CassiniSetupFixtureHome") as? String {
                     guard fixture.contains("/build/browser-connect-fixture-"), fixture.hasPrefix(home.path + "/") else { throw BrowserSetupError.unsafePath }
                     home = URL(fileURLWithPath:fixture,isDirectory:true)
+                    browsers = (Bundle.main.object(forInfoDictionaryKey:"CassiniSetupFixtureBrowsers") as? [String]) ?? BrowserSetupInstallation.browsers
                 }
                 #endif
                 let contents = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
                 let audio = try HostAccess(audioHostBookmark,expected:contents.appendingPathComponent("MacOS/cassini-browser-host"))
                 let control = try HostAccess(controlHostBookmark,expected:contents.appendingPathComponent("MacOS/cassini-control-host"))
                 defer { withExtendedLifetime((audio,control)) {} }
-                let count = try BrowserSetupInstallation(home:home,contents:contents).install()
+                let count = try BrowserSetupInstallation(home:home,contents:contents,browsers:browsers).install()
                 reply(count,nil)
             } catch {
                 reply(0,BrowserSetupFailure(error).nsError)

@@ -6,8 +6,16 @@
 	<true/>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
 	<array>
+		<string>/Library/Application Support/Google</string>
+		<string>/Library/Application Support/Google/Chrome</string>
+		<string>/Library/Application Support/Chromium</string>
+		<string>/Library/Application Support/Google/Chrome for Testing</string>
+		<string>/Library/Application Support/Microsoft Edge</string>
+		<string>/Library/Application Support/BraveSoftware</string>
+		<string>/Library/Application Support/BraveSoftware/Brave-Browser</string>
 		<string>/Library/Application Support/Google/Chrome/NativeMessagingHosts/</string>
 		<string>/Library/Application Support/Chromium/NativeMessagingHosts/</string>
+		<string>/Library/Application Support/Google/Chrome for Testing/NativeMessagingHosts/</string>
 		<string>/Library/Application Support/Microsoft Edge/NativeMessagingHosts/</string>
 		<string>/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/</string>
 	</array>

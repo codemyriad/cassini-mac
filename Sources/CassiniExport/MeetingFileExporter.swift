@@ -24,9 +24,10 @@ public enum MeetingFileExporter {
         guard bytes < Double(Int64.max) else { return nil }; return Int64(bytes)
     }
     public static func markdown(_ meeting: LibraryMeeting, timeZone: TimeZone,
+                                locale: Locale = .current,
                                 temporaryRoot: URL = FileManager.default.temporaryDirectory) throws -> ExportArtifact {
         let artifact = try stage(in:temporaryRoot,filename:"meeting.md")
-        let data = Data(MeetingMarkdown.render(meeting,timeZone:timeZone).utf8)
+        let data = Data(MeetingMarkdown.render(meeting,timeZone:timeZone,locale:locale).utf8)
         guard data.count <= 64 * 1024 * 1024,
               FileManager.default.createFile(atPath:artifact.url.path,contents:data,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.tooLarge }
         return artifact

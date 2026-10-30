@@ -20,6 +20,25 @@ import Testing
     func setRate(_ rate: Float) {}
 }
 @Suite(.serialized) @MainActor struct SessionPlaybackTests {
+    @Test func explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() async {
+        let fake = FakeTransport(), actual = state(fake), meeting = meeting()
+        actual.play(meeting,fromMs:100)
+        actual.play(meeting,fromMs:200)
+        await actual.preparation?.value
+        #expect(fake.lastSeek == 200 && fake.plays == 0)
+        fake.completion?(true)
+        #expect(fake.plays == 1 && actual.isPlaying)
+        actual.toggle(meeting)
+        #expect(!actual.isPlaying)
+        actual.play(meeting,fromMs:300)
+        let obsolete = fake.completion
+        actual.play(meeting,fromMs:400)
+        obsolete?(true)
+        #expect(fake.plays == 1)
+        fake.completion?(true)
+        #expect(fake.lastSeek == 400 && fake.plays == 2 && actual.isPlaying)
+        actual.stop()
+    }
     @Test func playFromASearchHitSurvivesAsynchronousPreparation() async {
         let fake = FakeTransport(), actual = state(fake), meeting = meeting()
         actual.prepare(meeting); actual.seek(toMs:400); actual.toggle(meeting)

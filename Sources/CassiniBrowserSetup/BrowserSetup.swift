@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
+import AppKit
 
 @objc public protocol CassiniBrowserSetupService {
     func connect(audioHostBookmark: Data, controlHostBookmark: Data, reply: @escaping @Sendable (Int,NSError?) -> Void)
@@ -13,11 +14,28 @@ public enum BrowserSetupError: Error { case unavailable, noBrowser, unsafePath, 
 public struct BrowserSetupInstallation {
     public static let serviceName = "io.codemyriad.cassini.browser-setup"
     public static let origin = "chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/"
-    public static let browsers = ["Google/Chrome","Chromium","Microsoft Edge","BraveSoftware/Brave-Browser"]
+    public struct Browser: Sendable {
+        public let bundleID: String
+        public let name: String
+        public let profile: String
+    }
+    public static let supportedBrowsers: [Browser] = [
+        .init(bundleID:"com.google.Chrome",name:"Chrome",profile:"Google/Chrome"),
+        .init(bundleID:"org.chromium.Chromium",name:"Chromium",profile:"Chromium"),
+        .init(bundleID:"com.google.chrome.for.testing",name:"Chrome for Testing",profile:"Google/Chrome for Testing"),
+        .init(bundleID:"com.microsoft.edgemac",name:"Microsoft Edge",profile:"Microsoft Edge"),
+        .init(bundleID:"com.brave.Browser",name:"Brave",profile:"BraveSoftware/Brave-Browser")
+    ]
+    public static let browsers = supportedBrowsers.map(\.profile)
+    public static func installedBrowsers(resolve: (String) -> URL? = { NSWorkspace.shared.urlForApplication(withBundleIdentifier:$0) }) -> [Browser] {
+        supportedBrowsers.filter { resolve($0.bundleID) != nil }
+    }
     private let home: URL
     private let hosts: [(String,URL)]
-    public init(home: URL, contents: URL) {
+    private let profiles: [String]
+    public init(home: URL, contents: URL, browsers: [String]? = nil) {
         self.home = home
+        profiles = browsers ?? Self.installedBrowsers().map(\.profile)
         hosts = [("io.codemyriad.cassini",contents.appendingPathComponent("MacOS/cassini-browser-host")),
                  ("io.codemyriad.cassini.control",contents.appendingPathComponent("MacOS/cassini-control-host"))]
     }
@@ -28,6 +46,8 @@ public struct BrowserSetupInstallation {
     public func install() throws -> Int { try install(beforePublish:{ _ in }) }
     /// Fault injection is a library testing SPI, never an XPC selector.
     @_spi(Testing) public func install(beforePublish: (Int) throws -> Void) throws -> Int {
+        guard Set(profiles).isSubset(of:Set(Self.browsers)) else { throw BrowserSetupError.unsafePath }
+        guard !profiles.isEmpty else { throw BrowserSetupError.noBrowser }
         for (_,url) in hosts {
             // Registration only needs executable metadata. A separate XPC
             // sandbox need not gain read access to the parent app's payload.
@@ -40,11 +60,13 @@ public struct BrowserSetupInstallation {
         }
         var directories: [Directory] = []
         defer { for directory in directories { close(directory.fd) } }
-        for browser in Self.browsers {
+        for browser in profiles {
             let parent = home.appendingPathComponent("Library/Application Support/" + browser)
             do {
-                let parentFD = try Self.openDirectory(parent)
+                let parentFD = try Self.openDirectory(parent,create:true)
                 defer { close(parentFD) }
+                var parentInfo = stat()
+                guard fstat(parentFD,&parentInfo) == 0, parentInfo.st_uid == getuid(), parentInfo.st_mode & 0o022 == 0 else { throw BrowserSetupError.unsafePath }
                 let leaf = "NativeMessagingHosts"
                 if mkdirat(parentFD,leaf,0o700) != 0 && errno != EEXIST { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
                 let fd = openat(parentFD,leaf,O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -53,10 +75,6 @@ public struct BrowserSetupInstallation {
                 guard fstat(fd,&info) == 0, info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFDIR,
                       info.st_mode & 0o022 == 0 else { close(fd); throw BrowserSetupError.unsafePath }
                 directories.append(.init(fd:fd))
-            } catch let error as POSIXError where error.code == .ENOENT {
-                // A supported browser that has never run has no profile tree.
-                // Do not create browser profiles or change their preferences.
-                continue
             }
         }
         guard !directories.isEmpty else { throw BrowserSetupError.noBrowser }
@@ -120,14 +138,18 @@ public struct BrowserSetupInstallation {
     }
     private struct Directory { let fd: Int32 }
     private struct Publication { let directory: Int32; let name: String; let old: Data?; let data: Data? }
-    private static func openDirectory(_ url: URL) throws -> Int32 {
+    private static func openDirectory(_ url: URL, create: Bool = false) throws -> Int32 {
         guard url.isFileURL, url.path.hasPrefix("/") else { throw BrowserSetupError.unsafePath }
         var fd = open("/",O_SEARCH | O_CLOEXEC)
         guard fd >= 0 else { throw Self.pathError() }
         do {
             for component in url.pathComponents.dropFirst() {
                 guard component != ".", component != ".." else { throw BrowserSetupError.unsafePath }
-                let next = openat(fd,component,O_SEARCH | O_NOFOLLOW | O_CLOEXEC)
+                var next = openat(fd,component,O_SEARCH | O_NOFOLLOW | O_CLOEXEC)
+                if next < 0, errno == ENOENT, create {
+                    guard mkdirat(fd,component,0o700) == 0 || errno == EEXIST else { throw Self.pathError() }
+                    next = openat(fd,component,O_SEARCH | O_NOFOLLOW | O_CLOEXEC)
+                }
                 guard next >= 0 else { throw Self.pathError() }
                 close(fd); fd = next
             }

@@ -30,6 +30,35 @@ import AppKit
         if let window { alert.beginSheetModal(for: window) { completion($0 == .alertFirstButtonReturn) } }
         else { completion(alert.runModal() == .alertFirstButtonReturn) }
     }
+    enum QuitChoice { case stop, background, cancel }
+    static func askToQuit(window: NSWindow?, completion: @escaping (QuitChoice) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = UXText.text("confirm.recordingRunning.title")
+        alert.informativeText = UXText.text("confirm.recordingRunning.body")
+        alert.addButton(withTitle:UXText.text("confirm.recordingRunning.primary")).keyEquivalent = "\r"
+        alert.addButton(withTitle:UXText.text("confirm.recordingRunning.secondary")).keyEquivalent = ""
+        var monitor: Any?
+        let complete: (NSApplication.ModalResponse) -> Void = { response in
+            if let token = monitor { NSEvent.removeMonitor(token) }; monitor = nil
+            completion(response == .alertFirstButtonReturn ? .stop : response == .alertSecondButtonReturn ? .background : .cancel)
+        }
+        monitor = NSEvent.addLocalMonitorForEvents(matching:.keyDown) { event in
+            MainActor.assumeIsolated {
+                guard event.keyCode == 53, alert.window.isVisible else { return event }
+                if alert.window.sheetParent != nil { NSApp.endSheet(alert.window,returnCode:NSApplication.ModalResponse.cancel.rawValue) }
+                else { NSApp.stopModal(withCode:.cancel) }
+                return nil
+            }
+        }
+        if let window { alert.beginSheetModal(for:window,completionHandler:complete) }
+        else { complete(alert.runModal()) }
+    }
+    static func closeWindowsKeepingRecording() {
+        for window in NSApp.windows where window.isVisible && window.sheetParent == nil && window.level == .normal {
+            // Explicit background choice, rather than per-window close/Stop.
+            window.close()
+        }
+    }
     static func attach(to window: NSWindow) {
         let id = ObjectIdentifier(window)
         if window.delegate is CloseDelegate { return }

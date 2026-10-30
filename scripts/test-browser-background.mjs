@@ -16,7 +16,10 @@ const output = path.resolve(process.argv[3]);
 const base = await mkdtemp(path.join(root, 'build/browser-background-'));
 const app = path.join(base, 'Installed Cassini.app');
 // The production installer uses the account home (not a sandbox's HOME).
-const profile = path.join(os.userInfo().homedir, 'Library/Application Support/Chromium');
+// Playwright's pinned Chromium distribution is Chrome for Testing, with its
+// own installed bundle ID and default registration root. Never impersonate an
+// installed Chromium app or bypass the production installer's app discovery.
+const profile = path.join(os.userInfo().homedir, 'Library/Application Support/Google/Chrome for Testing');
 const manifests = path.join(profile, 'NativeMessagingHosts');
 const hosts = ['io.codemyriad.cassini', 'io.codemyriad.cassini.control'];
 const controlRoot = path.join(os.userInfo().homedir, 'Library/Containers/io.codemyriad.cassini/Data/tmp', path.basename(base), 'control');
@@ -31,6 +34,12 @@ try {
   execFileSync('ditto', [source, app]);
   execFileSync('codesign', ['--verify', '--deep', '--strict', app]);
   const env = { ...process.env, CASSINI_CONTROL_PIPE_ROOT: controlRoot, CASSINI_HOSTED_SCREENSHOTS: '1' };
+  // Treat the downloaded Chromium app as installed in Launch Services, while
+  // keeping its disposable profile and all interactions on this hosted runner.
+  const chromiumApp = chromium.executablePath().split('/Contents/')[0];
+  const browserInfo = JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', path.join(chromiumApp, 'Contents/Info.plist')], { encoding: 'utf8' }));
+  assert.equal(browserInfo.CFBundleIdentifier, 'com.google.chrome.for.testing');
+  execFileSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', chromiumApp]);
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true, env,
     args: [`--disable-extensions-except=${root}/BrowserExtension`, `--load-extension=${root}/BrowserExtension`]
@@ -56,7 +65,7 @@ try {
     assert.deepEqual(manifest.allowed_origins, ['chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/']);
     assert.equal(manifest.path, path.join(app, 'Contents/MacOS', index === 0 ? 'cassini-browser-host' : 'cassini-control-host'));
   }
-  report.installedAtChangedPath = true; report.freshProfile = true; report.realExtension = true;
+  report.installedAtChangedPath = true; report.freshProfile = true; report.realExtension = true; report.browserBundleID = browserInfo.CFBundleIdentifier;
   report.nativeArchitecture = os.arch();
   await writeFile(output, JSON.stringify(report, null, 2) + '\n');
   console.log('PASS installed app background setup: fresh profile, real extension, no click, no recording');

@@ -65,6 +65,10 @@ struct MeetingView: View {
                                         return .discarded
                                     })
                             }.id(turn.id)
+                                .accessibilityElement(children:.ignore)
+                                .accessibilityLabel([meeting.speakers.first(where:{ $0.id == turn.speaker })?.displayName ?? "",LibraryFormat.position(turn.startMs),turn.items.map(\.text).joined(separator:" ")].joined(separator:", "))
+                                .accessibilityIdentifier("meeting-turn-" + String(turn.id))
+                                .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
                         }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")
@@ -118,7 +122,7 @@ struct MeetingView: View {
     }
     private var companionCard: some View {
         HStack(alignment: .top, spacing: 15) {
-            Image(systemName: "macwindow").foregroundStyle(Color.accentColor).font(.system(size: 18)).padding(.top, 3)
+            Image(systemName: "macwindow").foregroundStyle(Color.accentColor).font(.system(size: 18)).padding(.top, 3).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 Text(UXText.text("meeting.companionCard.title")).fontWeight(.semibold)
                 Text(UXText.text("meeting.companionCard.body")).lineSpacing(4)
@@ -144,13 +148,65 @@ struct MeetingView: View {
             }.accessibilityLabel(UXText.text(model.isPlaying ? "player.pause" : "common.play")).accessibilityIdentifier("meeting-play")
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
             Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
-            Slider(value: Binding(get: { Double(model.positionMs) }, set: { model.seek(Int($0)) }), in: 0...Double(max(1, model.durationMs)))
-                .accessibilityIdentifier("meeting-seek")
+            MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)))
+                .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
             Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5))
             Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_GB")))])) { model.cycleRate() }
                 .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
+                .accessibilityIdentifier("meeting-speed")
+                .accessibilityLabel(UXText.text("player.speed.a11y",["rate":UXText.text("format.playbackRate",["rate":model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier:"en_GB")))])]))
         }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(Color(nsColor: .windowBackgroundColor))
             .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
+    }
+}
+
+/// NSSlider permits a string accessibility value. Keep its numeric thumb model
+/// while exposing time (SwiftUI's value modifier leaves the millisecond number).
+private struct MeetingPositionSlider: NSViewRepresentable {
+    @Binding var position: Double
+    let duration: Double
+    @Environment(\.isEnabled) private var isEnabled
+    final class Coordinator: NSObject {
+        var seek: (Double) -> Void
+        init(seek: @escaping (Double) -> Void) { self.seek = seek }
+        @objc func changed(_ sender: NSSlider) { seek(sender.doubleValue) }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator { position = $0 } }
+    func makeNSView(context: Context) -> TimeSlider {
+        let slider = TimeSlider()
+        slider.isContinuous = true; slider.target = context.coordinator
+        slider.action = #selector(Coordinator.changed(_:))
+        slider.setAccessibilityIdentifier("meeting-seek")
+        slider.setAccessibilityLabel(UXText.text("player.position"))
+        return slider
+    }
+    func updateNSView(_ slider: TimeSlider, context: Context) {
+        context.coordinator.seek = { position = $0 }
+        slider.minValue = 0; slider.maxValue = duration
+        slider.doubleValue = min(duration,max(0,position)); slider.isEnabled = isEnabled
+    }
+    final class TimeSlider: NSSlider {
+        override func accessibilityValue() -> Any? { LibraryFormat.position(Int64(doubleValue)) }
+        override func accessibilityValueDescription() -> String? { LibraryFormat.position(Int64(doubleValue)) }
+        override func setAccessibilityValue(_ value: Any?) {
+            if let number = value as? NSNumber { _ = apply(number.doubleValue) }
+            else if let text = value as? String {
+                let fields = text.split(separator:":",omittingEmptySubsequences:false)
+                let parts = fields.compactMap { Double($0) }
+                if fields.count == 3, parts.count == 3, parts[0] >= 0, (0..<60).contains(parts[1]), (0..<60).contains(parts[2]) {
+                    _ = apply(parts[0]*3600000 + parts[1]*60000 + parts[2]*1000)
+                }
+            }
+        }
+        override func accessibilityPerformIncrement() -> Bool { apply(doubleValue + 10000) }
+        override func accessibilityPerformDecrement() -> Bool { apply(doubleValue - 10000) }
+        private func apply(_ value: Double) -> Bool {
+            guard isEnabled, value.isFinite else { return false }
+            let position = min(maxValue,max(minValue,value))
+            guard position != doubleValue else { return false }
+            doubleValue = position; sendAction(action,to:target)
+            return true
+        }
     }
 }
 

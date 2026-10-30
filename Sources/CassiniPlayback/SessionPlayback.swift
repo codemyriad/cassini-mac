@@ -69,6 +69,14 @@ private final class PreparationLifetime: @unchecked Sendable {
         }
         prepare(meeting, autoplay: true)
     }
+    /// An explicit Play from here action must also resume paused or preparing
+    /// playback. It cannot toggle an already queued Play back off.
+    public func play(_ meeting: LibraryMeeting, fromMs: Double) {
+        guard meeting.canPlaySession, fromMs.isFinite else { return }
+        prepare(meeting)
+        wantsPlay = true
+        seek(toMs:fromMs)
+    }
     public func prepare(_ meeting: LibraryMeeting, autoplay: Bool = false) {
         guard meeting.canPlaySession, key != meeting.libraryKey else { return }
         stop(); Self.active?.stop(); Self.active = self

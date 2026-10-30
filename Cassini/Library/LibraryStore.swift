@@ -103,7 +103,7 @@ final class LibraryStore {
     var meetings: [LibraryMeeting] { snapshot?.meetings ?? [] }
     var groups: [LibraryDayGroup] { snapshot?.groups(format: format) ?? [] }
     var selected: LibraryMeeting? { meetings.first { $0.libraryKey == selectedKey } }
-    var format: LibraryFormat { .init(timeZone: context.timeZone, now: context.now ?? Date()) }
+    var format: LibraryFormat { .init(timeZone: context.timeZone, now: context.now ?? Date(),locale:context.screenshot ? Locale(identifier:"en_GB") : .current) }
     init(context: LibraryLaunchContext = .current) {
         self.context = context
         let activity = NativeActivity(context.activity); self.activity = activity

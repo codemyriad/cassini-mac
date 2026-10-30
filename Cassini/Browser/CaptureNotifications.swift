@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import AppKit
+import Observation
 import UserNotifications
 import CassiniLibrary
 
 final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = CaptureNotifications()
+    #if DEBUG
+    @MainActor @Observable final class FixtureState { var titles: [String] = [] }
+    @MainActor static let fixture = FixtureState()
+    @MainActor static var savedFixtureTitles: [String] { fixture.titles }
+    #endif
     @MainActor func configure() {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
@@ -16,7 +23,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
     }
     @MainActor func authorize() async {
         #if DEBUG
-        if CaptureFixture.enabled { return }
+        if CaptureFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot { return }
         #endif
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options:[.alert])
     }
@@ -28,6 +35,16 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
         guard let value = CaptureCollection.shared.captures[id] else { return }
         post(id,title:value.displayTitle ?? value.snapshot.manifest.title,body:UXText.text("errors.othersFallback.line"),kind:"fallback")
     }
+    @MainActor func saved(folder: URL, title: String) {
+        let message = UXText.text("recording.savedNotification",["title":title])
+        #if DEBUG
+        if CaptureFixture.enabled || RecordingFixture.enabled { Self.fixture.titles.append(message); return }
+        #endif
+        let content = UNMutableNotificationContent()
+        content.title = message
+        content.userInfo = ["meetingKey":folder.lastPathComponent]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier:"saved-" + folder.lastPathComponent,content:content,trigger:nil)) { _ in }
+    }
     @MainActor private func post(_ id: UUID, title: String, body: String, kind: String) {
         let content = UNMutableNotificationContent()
         content.title = title; content.body = body; content.categoryIdentifier = "cassini-capture"
@@ -37,7 +54,14 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let action = response.actionIdentifier
         let id = (response.notification.request.content.userInfo["captureID"] as? String).flatMap(UUID.init(uuidString:))
-        Task { @MainActor in Self.handle(action:action,id:id) }
+        let savedKey = response.notification.request.content.userInfo["meetingKey"] as? String
+        Task { @MainActor in
+            if let savedKey {
+                MeetingNavigation.shared.openLibrary?()
+                if let meeting = LibraryStore.shared.meetings.first(where:{ $0.libraryKey == savedKey }) { MeetingNavigation.shared.open(meeting) }
+                NSApp.activate(ignoringOtherApps:true)
+            } else { Self.handle(action:action,id:id) }
+        }
         completionHandler()
     }
     @MainActor static func handle(action: String, id: UUID?) {

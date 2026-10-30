@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/codemyriad/cassini-gnome",
+  "commit": "61cd202b455f5faf8752f560ce06f66389947af8",
+  "path": "data/icons/hicolor/scalable/apps/com.gocassini.Viewer.svg",
+  "sha256": "836ac3a7b372a34e7d1371694e1fe774f44532ea5166c4ab27033be6a5bc6886",
+  "license": "GPL-3.0-or-later",
+  "adaptation": "Rounded-square macOS grid, rendered by generate-app-icon.swift; document, voices, colours and play badge retained."
+}

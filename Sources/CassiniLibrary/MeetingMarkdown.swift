@@ -4,19 +4,20 @@ import Foundation
 /// Binding S-5 export. This consumes derived labels, never naming provenance or
 /// voiceprints. Dates are absolute and never use the Library's Today/Yesterday.
 public enum MeetingMarkdown {
-    public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone) -> String {
+    public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current) -> String {
         render(title:meeting.title ?? "Untitled meeting",start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes)
+            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,locale:locale)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
-                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote]) -> String {
+                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], locale: Locale = .current) -> String {
         var blocks = ["# " + escape(title)]
         if let start {
             let date = DateFormatter(); date.locale = Locale(identifier:"en_GB")
             date.calendar = Calendar(identifier:.gregorian); date.timeZone = timeZone
-            date.dateFormat = "EEEE d MMMM yyyy, HH:mm"
-            blocks.append(date.string(from:start) + (durationMs.map { " · " + LibraryFormat.meetingDuration($0) } ?? ""))
+            date.dateFormat = "EEEE d MMMM yyyy"
+            let time = LibraryFormat(timeZone:timeZone,locale:locale).rowTime(start)
+            blocks.append(date.string(from:start) + ", " + time + (durationMs.map { " · " + LibraryFormat.meetingDuration($0) } ?? ""))
         }
         let ordered = items.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs

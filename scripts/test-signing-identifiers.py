@@ -45,6 +45,11 @@ class SigningIdentifiersTests(unittest.TestCase):
                 for name in ['silero_vad.onnx','whistle.cact']:
                     path = resources/name;path.write_bytes(b'generated public fixture');paths.append(path)
             (resources/'bundle-sha256.json').write_text(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}))
+        info_file = self.app/'Contents/Info.plist'
+        info = plistlib.loads(info_file.read_bytes()); info['CFBundleIconName'] = 'AppIcon'
+        info_file.write_bytes(plistlib.dumps(info))
+        (self.app/'Contents/Resources/Assets.car').write_bytes(b'generated catalog fixture')
+        (self.app/'Contents/Resources/AppIcon.icns').write_bytes(b'icns\x00\x00\x00\x08')
         for relative, suffix in reversed(self.bundles):
             self.sign(self.app/relative, 'io.codemyriad.cassini'+suffix)
     def sign(self, path, identifier, override=None):

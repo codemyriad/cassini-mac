@@ -11,6 +11,7 @@ struct AppCommands: Commands {
     }
     private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
+        CommandGroup(replacing:.help) { }
         CommandGroup(replacing: .newItem) {
             Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
             Button(RecordingOverview.recordCommandTitle) {
