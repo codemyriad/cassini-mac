@@ -7,9 +7,11 @@ Requires macOS 15 or later. No developer tools are needed.
    then open System Settings > Privacy & Security > Open Anyway for Cassini and
    confirm. Approve only a build you intentionally downloaded here.
 3. To record browser meetings, open Cassini > Settings > Browser companion.
-   Choose Set up, then Add to open Cassini's Chrome Web Store listing. Add the
-   companion to Chrome, Chromium, Edge or Brave, then return to Cassini and
-   choose Connect. Wait for Connected. Reload meeting tabs opened before setup.
+   Choose Add from Cassini and follow the three steps. Cassini supplies the
+   companion; no store account is needed. Copy the Extensions address, open it
+   in the chosen browser, enable Developer mode, then Load unpacked using the
+   copied folder location. Return to Cassini and wait for Connected. Reload
+   meeting tabs opened before setup.
 4. Press Record in Cassini. Every active browser meeting records into its own
    Library entry. When no browser meeting is available, Cassini records the
    microphone and this computer's sound, subject to macOS permission.
@@ -22,8 +24,9 @@ Settings > Library. You can play recordings, write down what was said and export
 portable Cassini files from the app. Existing audio stays available when a
 microphone permission or another meeting fails.
 
-After moving or replacing Cassini.app, use Connect again if the browser companion
-is no longer connected. Installing the app does not start a recording.
+Cassini checks the browser connection in the background after launch and updates.
+Settings > Browser companion shows its state and Try again if a check fails.
+Installing the app does not start a recording.
 
 Cassini for Mac is GPL-3.0-or-later; COPYING contains the licence. Source code and
 build instructions: https://github.com/codemyriad/cassini-mac . Bundled third-party

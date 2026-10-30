@@ -104,6 +104,11 @@
     ".github/workflows/ux-parakeet.yml"
   ],
   "browser_setup": [
+    "Spikes/BrowserGuide/**",
+    "scripts/bundle-browser-companion.py",
+    "scripts/test-local-companion.py",
+    "scripts/hosted-display.py",
+    "UITests/LocalCompanionInstall.swift",
     "Cassini/**",
     "BrowserSetup/**",
     "Spikes/BrowserConnect/**",

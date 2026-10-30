@@ -18,6 +18,7 @@ enum SettingsTab: String, CaseIterable { case recording, transcription, library,
 }
 struct CassiniSettingsView: View {
     @State private var navigation = SettingsNavigation.shared
+    @State private var companion = CompanionSetup.shared
     var body: some View {
         TabView(selection:$navigation.tab) {
             SettingsRecordingView().tabItem { Label(SettingsTab.recording.title,systemImage:SettingsTab.recording.icon) }.tag(SettingsTab.recording)
@@ -34,6 +35,9 @@ struct CassiniSettingsView: View {
                 SettingsFixture.prepare(window)
                 #endif
             })
+            .sheet(isPresented:Binding(get:{ companion.presenter == .settings },set:{ if !$0 { companion.close() } })) {
+                CompanionSetupView()
+            }
     }
 }
 private struct SettingsRecordingView: View {
@@ -125,6 +129,10 @@ private struct SettingsBrowserView: View {
             VStack(alignment:.leading,spacing:16) {
                 Text(UXText.text("settings.browser.description")).foregroundStyle(LibraryTheme.dim).lineSpacing(4)
                 BrowserConnectionStateView(identifier:"settings-browser-status")
+                if CompanionSetup.storeListingPublic {
+                    Button(UXText.text("companion.local.add")) { CompanionSetup.shared.showLocalGuide(from:.settings) }
+                        .buttonStyle(.link).disabled(!CompanionSetup.shared.canAdd)
+                }
             }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
         }
     }

@@ -18,6 +18,8 @@
 		<string>/Library/Application Support/Google/Chrome for Testing/NativeMessagingHosts/</string>
 		<string>/Library/Application Support/Microsoft Edge/NativeMessagingHosts/</string>
 		<string>/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/</string>
+		<string>/Library/Application Support/Cassini</string>
+		<string>/Library/Application Support/Cassini/BrowserCompanion/</string>
 	</array>
 </dict>
 </plist>

@@ -5,6 +5,7 @@ import AppKit
 
 @objc public protocol CassiniBrowserSetupService {
     func connect(audioHostBookmark: Data, controlHostBookmark: Data, reply: @escaping @Sendable (Int,NSError?) -> Void)
+    func prepareCompanion(bookmark: Data, reply: @escaping @Sendable (NSError?) -> Void)
 }
 public enum BrowserSetupError: Error { case unavailable, noBrowser, unsafePath, invalidHost, tooLarge }
 
@@ -138,7 +139,7 @@ public struct BrowserSetupInstallation {
     }
     private struct Directory { let fd: Int32 }
     private struct Publication { let directory: Int32; let name: String; let old: Data?; let data: Data? }
-    private static func openDirectory(_ url: URL, create: Bool = false) throws -> Int32 {
+    static func openDirectory(_ url: URL, create: Bool = false) throws -> Int32 {
         guard url.isFileURL, url.path.hasPrefix("/") else { throw BrowserSetupError.unsafePath }
         var fd = open("/",O_SEARCH | O_CLOEXEC)
         guard fd >= 0 else { throw Self.pathError() }
