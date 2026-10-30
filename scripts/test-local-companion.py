@@ -95,7 +95,7 @@ def main():
             sql = ("INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,"
                 "indirect_object_identifier_type,indirect_object_identifier,flags) VALUES "
                 f"('{service}','{client}',0,2,4,1,0,'UNUSED',0);")
-            subprocess.run(['sudo','-n','sqlite3','/Library/Application Support/com.apple.TCC/TCC.db',sql],check=True)
+            subprocess.run(['sudo','-n','sqlite3','-cmd','.timeout 10000','/Library/Application Support/com.apple.TCC/TCC.db',sql],check=True)
         subprocess.run(['sudo','-n','killall','tccd'],check=False)
         try:
             with (output/'xctest.log').open('wb') as log:
@@ -105,7 +105,11 @@ def main():
             if result.returncode:
                 lines = (output/'xctest.log').read_text(errors='replace').splitlines()
                 print('\n'.join(line for line in lines if any(marker in line for marker in
-                    ['error:','Failed to','Browser focus:','Hosted keyboard post access:'])), flush=True)
+                    ['error:','Failed to','Browser focus:','Hosted keyboard post access:','Hosted interruption:'])), flush=True)
+                with (output/'launch.log').open('wb') as launch_log:
+                    subprocess.run(['log','show','--style','compact','--last','5m','--predicate',
+                        'process == "Cassini" OR subsystem == "com.apple.launchservices" OR subsystem == "com.apple.sandbox.reporting"'],
+                        stdout=launch_log,stderr=subprocess.STDOUT,check=False,timeout=30)
                 raise AssertionError('Real guide failed; inspect xctest.log and Install.xcresult')
             report = json.loads((output/'report.json').read_text())
             assert report['loadedID'] == 'pcafdaahfhjiolfpfnlhmljfgoabbaij' and report['realNativeHandshake']

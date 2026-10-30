@@ -26,6 +26,10 @@ final class LocalCompanionInstall: XCTestCase {
                 if application.state != .notRunning { attach(application,name:name+"-final"); application.terminate() }
             }
         }
+        addUIInterruptionMonitor(withDescription:"Hosted setup interruption diagnostics") { alert in
+            print("Hosted interruption: " + alert.debugDescription)
+            return false // Preserve XCTest's normal handling; grant nothing here.
+        }
         chrome.launch()
         app.launch()
         app.typeKey(",",modifierFlags:.command)
