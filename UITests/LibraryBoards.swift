@@ -104,13 +104,13 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:10),.completed,app.debugDescription)
         title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))
         field.typeText(" "); app.typeKey(.return,modifierFlags:[])
-        let blank = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Untitled meeting" && !field.exists }
+        let blank = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Budget review" && !field.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:blank,object:nil)],timeout:10),.completed,app.debugDescription)
-        XCTAssertTrue(window.staticTexts["meeting-subtitle"].exists,"Untitled meetings retain their date/duration subtitle")
+        XCTAssertTrue(window.staticTexts["meeting-subtitle"].exists,"Restoring the automatic name retains the date/duration subtitle")
         title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))
         XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
         field.typeText("Cancelled name"); app.typeKey(.escape,modifierFlags:[])
-        let cancelled = NSPredicate { _,_ in !field.exists && (title.value as? String ?? title.label) == "Untitled meeting" }
+        let cancelled = NSPredicate { _,_ in !field.exists && (title.value as? String ?? title.label) == "Budget review" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed)
     }
     @MainActor func testRenameReceivedFromRowMenus() throws {

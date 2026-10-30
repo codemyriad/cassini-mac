@@ -32,7 +32,15 @@ public enum MeetingPresentation {
             if result.last?.speaker == item.speaker { result[result.count - 1].items.append(item) }
             else { result.append(.init(id: result.count, speaker: item.speaker, items: [item])) }
         }
-        return result
+        return result.compactMap { turn in
+            let pieces = TranscriptText.quotes(turn.items.map(\.text))
+            let items = zip(turn.items,pieces).compactMap { item,text -> LibraryTranscriptItem? in
+                let text = text.split(whereSeparator: \.isWhitespace).joined(separator:" ")
+                guard !text.isEmpty else { return nil }
+                return .init(speaker:item.speaker,startMs:item.startMs,endMs:item.endMs,text:text)
+            }
+            return items.isEmpty ? nil : Turn(id:turn.id,speaker:turn.speaker,items:items)
+        }
     }
     /// Meeting data for directly opened files, without an app-owned sidecar.
     public static func external(_ file: CassiniFile, url: URL) -> LibraryMeeting {

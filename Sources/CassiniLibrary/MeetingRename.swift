@@ -2,22 +2,20 @@
 import Foundation
 
 public enum MeetingRename {
-    /// An explicit blank name is an explicit user choice of the shared untitled
-    /// label. Keeping a nonempty title preserves v1 reader/schema compatibility
-    /// and prevents the captured title or received filename from reappearing.
-    public static func normalized(_ name: String, untitled: String) -> String {
+    /// A blank editor removes the user override. The scanner derives the
+    /// automatic display name; no localised fallback is ever written to metadata.
+    public static func normalized(_ name: String) -> String? {
         let trimmed = name.trimmingCharacters(in:.whitespacesAndNewlines)
         let limited = String(String.UnicodeScalarView(trimmed.unicodeScalars.prefix(500))).trimmingCharacters(in:.whitespacesAndNewlines)
-        return limited.isEmpty ? untitled : limited
+        return limited.isEmpty ? nil : limited
     }
-    @discardableResult public static func apply(_ name: String, to meeting: LibraryMeeting, untitled: String) throws -> String {
+    public static func apply(_ name: String, to meeting: LibraryMeeting) throws {
         guard meeting.state.lifecycle == .saved, !meeting.metadataReadOnly else { throw POSIXError(.EPERM) }
-        let title = normalized(name,untitled:untitled)
-        guard !title.isEmpty, title.unicodeScalars.count <= 500 else { throw POSIXError(.EINVAL) }
-        guard title != meeting.title else { return title }
+        let title = normalized(name)
+        if let title, title == meeting.title { return }
         try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
-            $0["title"] = title; $0["titleSource"] = "user"
+            $0["title"] = title.map { $0 as Any } ?? NSNull()
+            $0["titleSource"] = title == nil ? "meeting-window" : "user"
         }
-        return title
     }
 }

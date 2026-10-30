@@ -159,7 +159,7 @@ struct MeetingExportTests {
         let expected = try JSONSerialization.data(withJSONObject:notes,options:.sortedKeys)
         try writer.transaction { $0["notes"] = notes }
         let beforeRename = try #require(LibraryScanner(root:first.folder.deletingLastPathComponent()).scan().meetings.first)
-        _ = try MeetingRename.apply("Edited title",to:beforeRename,untitled:"Untitled meeting")
+        try MeetingRename.apply("Edited title",to:beforeRename)
         try writer.transaction { $0["speakers"] = [["id":"track-original","name":"Ana","provenance":"user","colourIndex":0]] }
         let metadata = try JSONSerialization.jsonObject(with:Data(contentsOf:first.folder.appendingPathComponent("meeting.json"))) as! [String:Any]
         #expect(try JSONSerialization.data(withJSONObject:metadata["notes"]!,options:.sortedKeys) == expected)

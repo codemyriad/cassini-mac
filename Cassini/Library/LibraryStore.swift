@@ -145,6 +145,12 @@ final class LibraryStore {
         refresh(affected:meeting.folder)
         return displayed
     }
+    /// Reuse the loaded scanner/cache when deriving an automatic name after a
+    /// metadata edit. A rename must not re-read every received audio file.
+    func scannerForRename(_ meeting: LibraryMeeting) -> LibraryScanner? {
+        let root = LibraryLocation.canonical(meeting.folder.deletingLastPathComponent())
+        return scanners.first { LibraryLocation.canonical($0.key) == root }?.value
+    }
     func refresh(affected: URL? = nil) {
         pending.insert(affected ?? context.root)
         guard !scanning else { return }; scanning = true
