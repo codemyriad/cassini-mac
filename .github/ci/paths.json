@@ -104,6 +104,7 @@
     ".github/workflows/ux-parakeet.yml"
   ],
   "browser_setup": [
+    "scripts/bundle-browser-companion.py",
     "Cassini/**",
     "BrowserSetup/**",
     "Spikes/BrowserConnect/**",

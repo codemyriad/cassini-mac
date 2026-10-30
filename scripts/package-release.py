@@ -13,6 +13,7 @@ assert (app / 'Contents/MacOS/cassini-control-host').is_file(), 'App has no bund
 assert (app / 'Contents/XPCServices/CassiniBrowserSetup.xpc').is_dir(), 'App has no browser setup service'
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
 subprocess.run(['python3', str(root / 'browser-protocol/verify.py'), '--pinned', str(root / 'BrowserExtension')], check=True)
+subprocess.run(['python3', str(root / 'scripts/bundle-browser-companion.py'), '--check', str(app/'Contents/Resources/BrowserCompanion')], check=True)
 archive.parent.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='cassini-release-') as temporary:
     stage = pathlib.Path(temporary) / 'Cassini'; stage.mkdir()

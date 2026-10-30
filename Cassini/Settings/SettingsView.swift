@@ -125,6 +125,10 @@ private struct SettingsBrowserView: View {
             VStack(alignment:.leading,spacing:16) {
                 Text(UXText.text("settings.browser.description")).foregroundStyle(LibraryTheme.dim).lineSpacing(4)
                 BrowserConnectionStateView(identifier:"settings-browser-status")
+                if CompanionSetup.storeListingPublic {
+                    Button(UXText.text("companion.local.add")) { CompanionSetup.shared.showLocalGuide(from:.settings) }
+                        .buttonStyle(.link).disabled(!CompanionSetup.shared.canAdd)
+                }
             }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
         }
     }

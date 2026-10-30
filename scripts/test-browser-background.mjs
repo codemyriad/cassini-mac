@@ -59,6 +59,7 @@ try {
   const report = JSON.parse(stdout);
   assert.equal(report.connectedWithoutClick, true); assert.equal(report.uiActions, 0);
   assert.equal(report.capturedAudio, false); assert.match(report.state, /^Connected/);
+  assert.equal(report.localCompanionPrepared, true);
   for (const [index, host] of hosts.entries()) {
     const manifest = JSON.parse(await readFile(path.join(manifests, host + '.json'), 'utf8'));
     assert.equal(manifest.name, host);

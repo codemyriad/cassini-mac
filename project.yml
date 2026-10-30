@@ -18,6 +18,7 @@ settings:
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
     CASSINI_APP_HARDENED_RUNTIME: YES
     SWIFT_STRICT_CONCURRENCY: targeted
+    CASSINI_STORE_LISTING_PUBLIC: NO
 packages:
   CassiniKit:
     path: .
@@ -87,6 +88,9 @@ targets:
         link: false
         embed: false
     postBuildScripts:
+      - name: Bundle reviewed browser companion
+        basedOnDependencyAnalysis: false
+        script: python3 "$SRCROOT/scripts/bundle-browser-companion.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion"
       - name: Bundle pinned Opus encoder
         script: bash "$SRCROOT/scripts/bundle-opus.sh"
         basedOnDependencyAnalysis: false
@@ -113,6 +117,7 @@ targets:
       properties:
         CFBundleName: Cassini
         CFBundleDisplayName: Cassini
+        CassiniStoreListingPublic: "$(CASSINI_STORE_LISTING_PUBLIC)"
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"

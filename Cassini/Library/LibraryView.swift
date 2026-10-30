@@ -47,7 +47,7 @@ struct LibraryView: View {
         .safeAreaInset(edge:.top,spacing:0) {
             CaptureFailureBanner(); trashFailure
             if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
-                BrowserConnectionStateView(identifier:"library-browser-status")
+                BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
                     .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,18).padding(.vertical,8)
             }
         }

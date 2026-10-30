@@ -16,12 +16,12 @@ import CassiniBrowserSetup
     static func run() async {
         let deadline = ProcessInfo.processInfo.systemUptime + 85
         do {
-            while !CaptureCollection.shared.connected && ProcessInfo.processInfo.systemUptime < deadline {
+            while (!CaptureCollection.shared.connected || !CompanionSetup.shared.prepared) && ProcessInfo.processInfo.systemUptime < deadline {
                 try await Task.sleep(for:.milliseconds(50))
             }
-            guard CaptureCollection.shared.connected, CompanionSetup.shared.started else { throw BrowserSetupError.unavailable }
+            guard CaptureCollection.shared.connected, CompanionSetup.shared.started, CompanionSetup.shared.prepared else { throw BrowserSetupError.unavailable }
             let report: [String:Any] = ["connectedWithoutClick":true,"bundledSetupService":true,"capturedAudio":false,
-                "uiActions":0,"state":CompanionSetup.shared.stateLine]
+                "uiActions":0,"state":CompanionSetup.shared.stateLine,"localCompanionPrepared":true]
             try FileHandle.standardOutput.write(contentsOf:JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             CompanionSetup.shared.stop(); await CaptureCollection.shared.shutdown(); exit(0)
         } catch {
