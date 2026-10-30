@@ -97,7 +97,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
         title.click()
         XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
-        field.typeText("  Board notes  "); app.typeKey(.return,modifierFlags:[])
+        // Avoid macOS's double-space-to-period substitution while still
+        // proving the UI trims both ends. Core cases cover repeated whitespace.
+        field.typeText(" Board notes "); app.typeKey(.return,modifierFlags:[])
         let renamed = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Board notes" && !field.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:10),.completed,app.debugDescription)
         title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))

@@ -35,6 +35,9 @@ import CassiniLibrary
         return canRename(commandMeeting)
     }
     func show(_ meeting: LibraryMeeting, presentation: Presentation = .sheet) {
+        #if DEBUG
+        if MeetingRenameFixture.enabled { NSLog("Hosted rename request: allowed=%d, current=%@, requested=%@",canRename(meeting),String(describing:self.presentation),String(describing:presentation)) }
+        #endif
         guard canRename(meeting), self.presentation == nil else { return }
         self.meeting = meeting; name = meeting.title ?? UXText.text("library.untitled"); self.presentation = presentation
     }
