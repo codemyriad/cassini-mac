@@ -47,6 +47,7 @@ jobs:
             build/vad-downloads
             build/opus-downloads
             build/parakeet-downloads
+            .build/Sparkle
             ~/Library/Caches/Homebrew
           key: pinned-fetches-xcode16.4-${{ hashFiles('Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-*.py', 'project.yml') }}
       - name: Install build tools
@@ -87,6 +88,8 @@ jobs:
       - name: Test signing identifier and shipped-byte checks on generated code
         if: matrix.arch == 'arm64'
         run: |
+          python3 scripts/fetch-sparkle.py
+          python3 scripts/test-release.py
           python3 scripts/test-signing-identifiers.py
           python3 scripts/test-native-host-staging.py
       - name: Prepare identical bundled Library fixtures

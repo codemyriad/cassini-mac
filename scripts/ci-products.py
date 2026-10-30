@@ -19,7 +19,7 @@ PRODUCTS = {
     'debug': ['build/Build/Products/Debug', 'build/Build/Products'],
     'release': ['build/Build/Products/Release'],
 }
-PINS = ['Package.swift', 'Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-opus.py', 'scripts/fetch-vad.py', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'Parakeet/model-manifest.json']
+PINS = ['project.yml', 'scripts/fetch-sparkle.py', 'Distribution/sparkle-public-key.txt', 'Package.swift', 'Whistle/pins.json', 'Opus/pins.json', 'scripts/fetch-opus.py', 'scripts/fetch-vad.py', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'Parakeet/model-manifest.json']
 
 
 def digest(path):
