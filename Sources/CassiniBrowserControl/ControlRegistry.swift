@@ -451,7 +451,8 @@ public struct BrowserControlRegistry: Sendable {
     /// An explicit Stop suppresses auto-restart until discovery says this call
     /// ended. It may cancel a pending Start; it never targets another profile.
     /// nil means already pending or deferred until drainStops() frees capacity.
-    public mutating func stop(_ key: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true, reason: CaptureEndReason = .user) throws -> BrowserControlRequest? {
+    public mutating func stop(_ key: BrowserMeetingKey, captureID: String? = nil, userInitiated explicitIntent: Bool? = nil, reason: CaptureEndReason = .user) throws -> BrowserControlRequest? {
+        let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         let currentCapture = peers[key.peer].flatMap { ($0.captures+$0.interrupted).first { $0.key == key } }?.captureID
         let originalCapture = captureID ?? currentCapture
         if userInitiated { rememberUserStop(key:key,captureID:originalCapture) }
@@ -496,7 +497,8 @@ public struct BrowserControlRegistry: Sendable {
         let keys = snapshots.filter { $0.reconciled && $0.independent }.flatMap { $0.meetings.filter { $0.sourceCount > 0 }.map(\.key) }
         return keys.compactMap { try? start($0,microphone:choices[$0] ?? microphone) }
     }
-    public mutating func stopAll(userInitiated: Bool = true, reason: CaptureEndReason = .user) -> [BrowserControlRequest] {
+    public mutating func stopAll(userInitiated explicitIntent: Bool? = nil, reason: CaptureEndReason = .user) -> [BrowserControlRequest] {
+        let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         if userInitiated {
             for id in Set(unretiredCaptures.keys).union(retainedCaptureIDs) { rememberUserStop(captureID:String(data:id,encoding:.utf8)) }
             for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }

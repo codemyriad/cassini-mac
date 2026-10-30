@@ -71,8 +71,9 @@ and bundled native messaging executables. It uses generated native inputs.
 
 This PR stays draft pending the full hosted gate and a dedicated real Chromium
 navigation/reload test against this app (not only the standalone policy or fake
-control client). The earlier83 Stop-memory fixes must be adopted when they land;
-its automatic/user Stop distinction must survive the rebase. No self-merge.
+control client). The83 Stop-memory fixes are adopted from main44e16c3. Automatic terminal
+reasons do not learn user Stops; explicit Record/Stop and the earlier reconnect
+regressions remain covered by the combined native suite. No self-merge.
 
 Known remaining product work before this draft is ready: revalidate/cancel
 pending source changes when page state changes during authorization or drain.

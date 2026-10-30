@@ -65,7 +65,7 @@ public final class BrowserControlService: @unchecked Sendable {
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }
-    public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true, reason: CaptureEndReason = .user) {
+    public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool? = nil, reason: CaptureEndReason = .user) {
         queue.async { [self] in
             // UI publication may lag the new status by one actor hop. Route a
             // fresh Stop by its exact owned capture, without re-keying requests
