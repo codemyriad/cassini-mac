@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import XCTest
+import CoreGraphics
 
 /// Real manual-install flow on a disposable hosted Mac. No extension-loading
 /// flags, profile injection, fake peers or capture APIs participate in this gate.
@@ -25,6 +26,11 @@ final class LocalCompanionInstall: XCTestCase {
                 if application.state != .notRunning { attach(application,name:name+"-final"); application.terminate() }
             }
         }
+        addUIInterruptionMonitor(withDescription:"Hosted setup interruption diagnostics") { alert in
+            print("Hosted interruption: " + alert.debugDescription)
+            for text in alert.staticTexts.allElementsBoundByIndex { print("Hosted interruption text: \(text.value ?? text.label)") }
+            return false // Preserve XCTest's normal handling; grant nothing here.
+        }
         chrome.launch()
         app.launch()
         app.typeKey(",",modifierFlags:.command)
@@ -45,10 +51,17 @@ final class LocalCompanionInstall: XCTestCase {
         attach(app,name:"companion-local-guide")
         guide.buttons["companion-copy-address"].click()
         XCTAssertEqual(NSPasteboard.general.string(forType:.string),"chrome://extensions/")
-        chrome.activate()
-        chrome.typeKey("l",modifierFlags:.command)
-        chrome.typeKey("v",modifierFlags:.command)
-        chrome.typeKey(.return,modifierFlags:[])
+        print("Browser focus: XCTest=\(chrome.state.rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"), postAccess=\(CGPreflightPostEventAccess())")
+        wait("The actual Copy Address action opens the browser",timeout:10) { chrome.state == .runningForeground }
+        XCTAssertFalse(guide.buttons["Try again"].exists,"The guide must open its selected browser successfully")
+        // The test person selects the browser's title bar before pasting.
+        // Its native address-field value below proves the actual paste target.
+        chrome.windows.firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.01)).click()
+        key(0x25,flags:.maskCommand) // L
+        key(0x09,flags:.maskCommand) // V
+        let address = chrome.textFields["Address and search bar"]
+        wait("Chromium receives the copied Extensions address") { (address.value as? String)?.hasPrefix("chrome://extensions") == true }
+        key(0x24) // Return
         // Chromium has exposed cr-toggle as checkbox, switch and pressed button
         // across releases. The action and accessible name stay the same.
         let toggles = [chrome.checkBoxes["Developer mode"],chrome.switches["Developer mode"],chrome.buttons["Developer mode"]]
@@ -67,9 +80,9 @@ final class LocalCompanionInstall: XCTestCase {
         load.click()
         let choose = chrome.buttons["OKButton"]
         XCTAssertTrue(choose.waitForExistence(timeout:10),chrome.debugDescription)
-        chrome.typeKey("g",modifierFlags:[.command,.shift])
-        chrome.typeKey("v",modifierFlags:.command)
-        chrome.typeKey(.return,modifierFlags:[])
+        key(0x05,flags:[.maskCommand,.maskShift]) // G
+        key(0x09,flags:.maskCommand)
+        key(0x24)
         choose.click()
         let extensionID = "pcafdaahfhjiolfpfnlhmljfgoabbaij"
         let identity = chrome.staticTexts.matching(NSPredicate(format:"value CONTAINS %@ OR label CONTAINS %@",extensionID,extensionID)).firstMatch
@@ -125,5 +138,14 @@ final class LocalCompanionInstall: XCTestCase {
     }
     @MainActor private func attach(_ app: XCUIApplication, name: String) {
         let screenshot = XCTAttachment(screenshot:app.screenshot()); screenshot.name = name; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+    @MainActor private func key(_ code: CGKeyCode, flags: CGEventFlags = []) {
+        // XCTest's app-directed typeKey stalls without delivering keys to this
+        // pinned Chromium. Send test-person HID events on the hosted desktop.
+        guard let path = ProcessInfo.processInfo.environment["CASSINI_LOCAL_GUIDE_KEYS"] else { XCTFail("Missing hosted keyboard helper"); return }
+        let process = Process(); process.executableURL = URL(fileURLWithPath:"/usr/bin/sudo")
+        process.arguments = [path,String(code),String(flags.rawValue)]
+        do { try process.run(); process.waitUntilExit(); XCTAssertEqual(process.terminationStatus,0) }
+        catch { XCTFail("Hosted keyboard failed: \(error)") }
     }
 }
