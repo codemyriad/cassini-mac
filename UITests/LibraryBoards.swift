@@ -117,12 +117,18 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         let row = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-Received-")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout:20),app.debugDescription)
-        row.rightClick(); XCTAssertTrue(app.menuItems["Rename…"].isEnabled); app.typeKey(.escape,modifierFlags:[])
+        row.rightClick(); XCTAssertTrue(app.menuItems["Rename…"].isEnabled); app.menuItems["Rename…"].click()
+        let field = app.textFields["rename-name"]
+        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        let original = field.value as? String
+        field.typeText("Discarded lesson"); app.buttons["Cancel"].click()
+        let cancelled = NSPredicate { _,_ in !field.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed)
         row.click(); app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
         XCTAssertTrue(app.menuItems["library-keyboard-rename"].waitForExistence(timeout:5),app.debugDescription)
         app.menuItems["library-keyboard-rename"].click()
-        let field = app.textFields["rename-name"]
         XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertEqual(field.value as? String,original,"Cancel must not save when the field loses focus")
         field.typeText("Imported lesson"); app.typeKey(.return,modifierFlags:[])
         let updated = NSPredicate { _,_ in !field.exists && window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Imported lesson","Imported lesson")).count >= 2 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:nil)],timeout:10),.completed,app.debugDescription)

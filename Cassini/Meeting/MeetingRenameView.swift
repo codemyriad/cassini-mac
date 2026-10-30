@@ -51,14 +51,13 @@ private struct RenameNameField: NSViewRepresentable {
             if selector == #selector(NSResponder.insertNewline(_:)) { parent.confirm(); return true }
             return false
         }
-        @objc func commit(_ sender: Any?) { parent.confirm() }
     }
     func makeCoordinator() -> Coordinator { .init(self) }
     func makeNSView(context: Context) -> Field {
         let field = Field(); field.stringValue = text; field.isEditable = true; field.isSelectable = true
         field.isBezeled = true; field.bezelStyle = .roundedBezel; field.drawsBackground = true
         field.font = .systemFont(ofSize:13); field.usesSingleLineMode = true
-        field.delegate = context.coordinator; field.target = context.coordinator; field.action = #selector(Coordinator.commit(_:))
+        field.delegate = context.coordinator
         field.setAccessibilityIdentifier("rename-name"); field.setAccessibilityLabel(UXText.text("meeting.rename.field"))
         return field
     }
