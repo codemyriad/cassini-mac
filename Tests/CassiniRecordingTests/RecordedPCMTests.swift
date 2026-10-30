@@ -61,6 +61,8 @@ private final class PCMStalledWriter: RecordingSinkWriter, @unchecked Sendable {
         session.recordedPCM?.offer(inputID:"mic",pcm:data,offsetMs:120.125)
         #expect(probe.snapshot.first?.source.startOffsetMs == 120)
         #expect(probe.snapshot.first?.source.id == "mic")
+        #expect(probe.snapshot.map(\.offset) == [120,120.125])
+        #expect(probe.snapshot.map(\.pcm) == [data,data])
         try session.finish()
     }
     @Test func admittedPictureContinuesDuringAWriterStallAndBudgetLossIsAHole() throws {
@@ -88,9 +90,75 @@ private final class PCMStalledWriter: RecordingSinkWriter, @unchecked Sendable {
         #expect(probe.snapshot.last?.source.id == "stored-span")
         #expect(probe.snapshot.last?.pcm.count == 1600)
     }
+    @Test func bootstrapIsBoundedAndDisappearsImmediatelyWithTheLastView() {
+        let observers = RecordedPCMObservers(), probe = PCMProbe()
+        observers.set(probe)
+        let policy = RecordedPCMPolicy(observers:observers)
+        let packet = Data(repeating:1,count:16384)
+        for n in 0..<80 { policy.offer(inputID:"mic",pcm:packet,offsetMs:Double(n)*100) }
+        #expect(policy.bufferedBytes == 1_048_576)
+        #expect(policy.bootstrapDrops == 16)
+        #expect(probe.snapshot.isEmpty)
+        observers.set(nil)
+        #expect(policy.bufferedBytes == 0)
+        policy.offer(inputID:"mic",pcm:packet,offsetMs:8000)
+        #expect(policy.bufferedBytes == 0)
+        observers.set(probe)
+        policy.publish(.init(id:"actual",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0),for:"mic")
+        #expect(probe.snapshot.isEmpty,"Reopening must not replay hidden history")
+    }
+    @Test func bootstrapLimitsTinyPacketsAndUnknownInputCountAsWellAsBytes() {
+        let observers = RecordedPCMObservers(), probe = PCMProbe()
+        observers.set(probe)
+        let policy = RecordedPCMPolicy(observers:observers)
+        for n in 0..<65 { policy.offer(inputID:"first",pcm:Data([1,2]),offsetMs:Double(n)) }
+        #expect(policy.bufferedBytes == 128 && policy.bootstrapDrops == 1)
+        for n in 0..<64 { policy.offer(inputID:"extra-\(n)",pcm:Data([1,2]),offsetMs:0) }
+        #expect(policy.bufferedBytes == 254 && policy.bootstrapDrops == 2)
+    }
+    @Test func selectionClipsThePrivateBootstrapAtTheActualSampleEvenAfterHours() {
+        let observers = RecordedPCMObservers(), probe = PCMProbe()
+        observers.set(probe)
+        let staged = RecordedPCMPolicy(observers:observers), active = RecordedPCMPolicy(observers:observers)
+        let offset = 12*60*60*1000.0+0.125
+        let pcm = (0..<24).map { Int16($0).littleEndian }.withUnsafeBytes { Data($0) }
+        staged.offer(inputID:"system",pcm:pcm,offsetMs:offset)
+        #expect(probe.snapshot.isEmpty)
+        staged.forward(to:active)
+        #expect(staged.bufferedBytes == 0 && active.bufferedBytes == pcm.count)
+        // Three stereo frames: cancellation error in a long floating-point clock
+        // must not trim a fourth frame or retain pre-selection readiness audio.
+        active.publish(.init(id:"stored",kind:"system",sampleRate:48000,channels:2,
+                             startOffsetMs:offset+3.0/48),for:"system")
+        #expect(probe.snapshot.count == 1)
+        #expect(probe.snapshot.first?.pcm == Data(pcm.dropFirst(12)))
+        #expect(probe.snapshot.first?.offset == offset+3.0/48)
+        #expect(active.bufferedBytes == 0)
+        staged.cancel()
+        staged.offer(inputID:"system",pcm:pcm,offsetMs:offset+100)
+        #expect(probe.snapshot.count == 1 && staged.bufferedBytes == 0)
+    }
+    @Test func concurrentActivationCannotStrandAnOfferInTheOldStage() {
+        let observers = RecordedPCMObservers(), probe = PCMProbe()
+        observers.set(probe)
+        let staged = RecordedPCMPolicy(observers:observers), active = RecordedPCMPolicy(observers:observers)
+        // Force both possible orderings many times without timers or device I/O.
+        let group = DispatchGroup(), producer = DispatchQueue(label:"pcm-test-producer")
+        for n in 0..<32 {
+            group.enter(); producer.async {
+                staged.offer(inputID:"system",pcm:Data([1,2]),offsetMs:Double(n)); group.leave()
+            }
+            if n == 15 { staged.forward(to:active) }
+        }
+        group.wait()
+        #expect(staged.bufferedBytes == 0 && active.bufferedBytes == 64)
+        active.publish(.init(id:"stored",kind:"system",sampleRate:48000,channels:1,startOffsetMs:0),for:"system")
+        #expect(probe.snapshot.count == 32)
+        #expect(probe.snapshot.map(\.offset) == (0..<32).map(Double.init))
+    }
     @Test func closingAViewCannotBePreventedByItsObserverSlot() {
         let observers = RecordedPCMObservers()
-        var probe: PCMProbe? = PCMProbe(); weak var weakProbe = probe
+        var probe: PCMProbe? = PCMProbe(); weak let weakProbe = probe
         observers.set(probe); probe = nil
         #expect(weakProbe == nil)
     }

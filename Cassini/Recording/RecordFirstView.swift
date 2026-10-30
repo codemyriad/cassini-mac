@@ -140,19 +140,25 @@ struct LiveRecordingPill: View {
     let output: Float
     var frozenMs: Int64? = nil
     @State private var elapsedMs: Int64 = 0
+    @State private var previewSpectrogram: RecordingSpectrogram?
     @Environment(\.colorScheme) private var colorScheme
     private var displayedMs: Int64 { frozenMs ?? elapsedMs }
     var body: some View {
         RecordingPillControls(time:LibraryFormat.liveBadge(displayedMs),
             label:UXText.text("recording.pill.open.a11y",["time":LibraryFormat.liveBig(displayedMs)]),
             microphone:microphone,output:output,silent:frozenMs != nil || RecordingOverview.microphoneSilent,
-            controller:frozenMs == nil ? RecordingOverview.spectrogram : nil,
+            controller:frozenMs == nil ? RecordingOverview.spectrogram : previewSpectrogram,
             noSleep:RecordingRuntime.shared.power.held,dark:colorScheme == .dark,
             open:{ if frozenMs == nil { RecordCoordinator.shared.openCurrent() } },
             stop:{ if frozenMs == nil { RecordingOverview.stop() } })
             .fixedSize().frame(height:34)
             .task {
-                guard frozenMs == nil else { return }
+                if let frozenMs {
+                    #if DEBUG
+                    previewSpectrogram = RecordingSpectrogram.frozenPreview(atMs:frozenMs)
+                    #endif
+                    return
+                }
                 while !Task.isCancelled {
                     elapsedMs = RecordingOverview.elapsedMs
                     do { try await Task.sleep(for:.seconds(1)) } catch { return }

@@ -102,7 +102,12 @@ private actor RecordingEdits {
         guard let capture = CaptureCollection.shared.captures[meeting.id], capture.snapshot.directory.standardizedFileURL.path == meeting.folder.standardizedFileURL.path else { return nil }
         return capture
     }
-    var spectrogram: RecordingSpectrogram? { owned?.spectrogram ?? (native ? RecordingController.shared.spectrogram : nil) }
+    var spectrogram: RecordingSpectrogram? {
+        #if DEBUG
+        if frozen { return RecordingSpectrogram.frozenPreview(atMs:elapsedMs) }
+        #endif
+        return owned?.spectrogram ?? (native ? RecordingController.shared.spectrogram : nil)
+    }
     var canStop: Bool { native || owned != nil }
     var saving: Bool { owned.map { $0.savingSinceMs != nil || $0.snapshot.phase == .saving } ?? (native && RecordingController.shared.isSaving) }
     var me: Bool { owned?.snapshot.me ?? true }

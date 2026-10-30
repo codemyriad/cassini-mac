@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import Darwin
 import Accelerate
 import os
 import CassiniRecording
@@ -28,6 +29,8 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private let state = OSAllocatedUnfairLock(initialState:Admission())
     private let queue = DispatchQueue(label:"io.codemyriad.cassini.spectro",qos:.utility)
     private let clock: @Sendable () -> Double
+    private let measureCPU: Bool
+    private var analysisNanoseconds: UInt64 = 0
     private let mailbox = SpectrogramMailbox()
     // Everything below belongs only to queue.
     private var generation: UInt64 = .max
@@ -42,11 +45,12 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private var nextChoiceAt: Double = 0
     private var stoppedAt: Double?
 
-    public init(originUptime: TimeInterval) {
+    public init(originUptime: TimeInterval, measureCPU: Bool = false) {
+        self.measureCPU = measureCPU
         precondition(originUptime.isFinite)
         clock = { max(0,(ProcessInfo.processInfo.systemUptime-originUptime)*1000) }
     }
-    public init(clock: @escaping @Sendable () -> Double) { self.clock = clock }
+    public init(clock: @escaping @Sendable () -> Double, measureCPU: Bool = false) { self.clock = clock; self.measureCPU = measureCPU }
     /// Called by the session's view coordinator only when its aggregate visible
     /// subscriber count crosses zero. The old generation cannot repopulate it.
     public func setVisible(_ value: Bool) {
@@ -98,6 +102,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         public let displayMs: Double, delayMs: Double
         public let analyzedFrames: UInt64, lateColumns: UInt64, droppedBuffers: UInt64, droppedColumns: UInt64
         public let retainedTracks: Int
+        public let analysisNanoseconds: UInt64
     }
     /// Completion is on the utility queue. Callers must reject an obsolete view
     /// generation before dispatching CALayer changes back to the main actor.
@@ -115,7 +120,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             let batch = mailbox.drain()
             completion(.init(me:batch.me,others:batch.others,displayMs:display,delayMs:displayClock.delayMs,
                 analyzedFrames:sources.values.reduce(0) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
-                droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count))
+                droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count,analysisNanoseconds:analysisNanoseconds))
         }
     }
     public func stop(atMs: Double) {
@@ -130,6 +135,8 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     }
     private func consume(_ descriptor: RecordedPCMSource, pcm: Data, offsetMs: Double) {
         guard !endedIDs.contains(descriptor.id) else { return }
+        let cpuStart = measureCPU ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
+        defer { if measureCPU { analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval) }

@@ -105,7 +105,7 @@ import CassiniRecording
     private func prepare(_ side: CaptureSide, driver: any CaptureInput) async throws -> Input {
         try await authorize(driver)
         guard !closed else { throw BrowserIPCError.closed }
-        let generation = UUID(), stage = StagedNativeWriter()
+        let generation = UUID(), stage = StagedNativeWriter(observers:capture.pcmObservers)
         let report = report(side,generation:generation,stage:stage)
         let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report)
         let value = Input(generation:generation,driver:driver,sink:sink,stage:stage)

@@ -24,7 +24,7 @@ private final class AdmittedPCMProbe: RecordedPCMObserver, @unchecked Sendable {
         let root = try parent(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Prepared microphone",microphone:false,browser:false)
         let probe = AdmittedPCMProbe(); capture.pcmObservers.set(probe)
-        let stage = StagedNativeWriter(), bytes = Data(repeating:0,count:1600)
+        let stage = StagedNativeWriter(observers:capture.pcmObservers), bytes = Data(repeating:0,count:1600)
         try stage.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:8000,channels:1)
         try stage.appendNative(id:"mic",pcm:bytes,offsetMs:0)
         try stage.appendNative(id:"mic",pcm:bytes,offsetMs:100)
@@ -35,14 +35,16 @@ private final class AdmittedPCMProbe: RecordedPCMObserver, @unchecked Sendable {
         try stage.activate(capture.nativeWriter(side:.me))
         let track = try #require(capture.snapshot.manifest.tracks.first)
         #expect(track.startOffsetMs == 150 && track.frames == 400)
+        let committed = try #require(probe.snapshot.first)
+        #expect(committed.offset == 150 && committed.pcm.count == 800,"Only actual retained readiness samples may be replayed")
         stage.recordedPCM?.offer(inputID:"mic",pcm:bytes,offsetMs:200)
-        let sample = try #require(probe.snapshot.first)
+        let sample = try #require(probe.snapshot.last)
         #expect(sample.source.id == track.id && sample.source.id != "mic")
         #expect(sample.source.startOffsetMs == 150 && sample.source.channels == 1)
         #expect(sample.offset == 200 && sample.pcm == bytes)
         stage.discard()
         stage.recordedPCM?.offer(inputID:"mic",pcm:bytes,offsetMs:300)
-        #expect(probe.snapshot.count == 1)
+        #expect(probe.snapshot.count == 2)
         try await capture.finish()
     }
     @Test func browserObserverReceivesTheAdmittedSliceAndNewSpanAfterSelection() async throws {

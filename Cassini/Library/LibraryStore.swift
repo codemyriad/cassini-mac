@@ -25,7 +25,7 @@ struct LibraryLaunchContext {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--browser-capture-self-test") { context.scansLibrary = CaptureFixture.enabled }
-        if arguments.contains(where: { ["--recording-saving-self-test", "--parakeet-self-test", "--models-network-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
+        if arguments.contains(where: { ["--spectrogram-self-test", "--recording-saving-self-test", "--parakeet-self-test", "--models-network-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
             ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
             context.scansLibrary = false
         }
