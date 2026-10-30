@@ -9,9 +9,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
-    if: ${{ !inputs.products_ready }}
+    if: ${{ !inputs.products_ready && !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/local-companion-guide') }}
     uses: ./.github/workflows/ci-build.yml
     with:
       parakeet_models: false
@@ -75,3 +76,37 @@ jobs:
             build/browser-capture-app.json
             build/browser-capture-app.stderr.txt
             build/local-companion
+  guide-debug:
+    name: Hosted guide diagnostic (existing signed app)
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/local-companion-guide' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/checkout@v5
+        with:
+          ref: 13ec9ec8951c62f20be319870aaa886d41b95320
+          path: producer
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-debug
+          run-id: 41090840290
+          github-token: ${{ github.token }}
+          path: build/producer-artifacts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          npm ci --prefix BrowserExtension/tests
+          BrowserExtension/tests/node_modules/.bin/playwright install chromium
+          brew install displayplacer
+          python3 scripts/hosted-display.py
+      - run: python3 scripts/debug-local-companion.py
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: local-companion-diagnostic
+          path: build/local-companion
