@@ -158,14 +158,15 @@ struct MeetingExportTests {
         let notes: [[String:Any]] = [["atMs":120,"text":" Keep this note\nwith its whitespace. "],["atMs":10,"text":"Earlier note — café"]]
         let expected = try JSONSerialization.data(withJSONObject:notes,options:.sortedKeys)
         try writer.transaction { $0["notes"] = notes }
-        try writer.transaction { $0["title"] = "Edited title"; $0["titleSource"] = "user" }
+        let beforeRename = try #require(LibraryScanner(root:first.folder.deletingLastPathComponent()).scan().meetings.first)
+        _ = try MeetingRename.apply("Edited title",to:beforeRename,untitled:"Untitled meeting")
         try writer.transaction { $0["speakers"] = [["id":"track-original","name":"Ana","provenance":"user","colourIndex":0]] }
         let metadata = try JSONSerialization.jsonObject(with:Data(contentsOf:first.folder.appendingPathComponent("meeting.json"))) as! [String:Any]
         #expect(try JSONSerialization.data(withJSONObject:metadata["notes"]!,options:.sortedKeys) == expected)
         let edited = try #require(LibraryScanner(root:first.folder.deletingLastPathComponent()).scan().meetings.first)
         let exported = try MeetingFileExporter.cassini(edited,assets:nil,temporaryRoot:root)
         let file = try CassiniReader.read(contentsOf:exported.url)
-        #expect(file.state == .ok)
+        #expect(file.state == .ok && file.manifest?.meeting.title == "Edited title")
         let carried = try #require(file.manifest?.raw["x"]?["gocassini.com"]?["notes"])
         #expect(try JSONParser.parse(expected) == carried)
         let imported = try LibraryImport.copy(exported.url,into:root.appendingPathComponent("RoundTrip"))

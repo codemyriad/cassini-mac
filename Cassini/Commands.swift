@@ -19,6 +19,10 @@ struct AppCommands: Commands {
             }.keyboardShortcut("r", modifiers: .command).disabled(RecordingOverview.saving)
         }
         CommandGroup(after: .newItem) {
+            Button(UXText.text("meeting.renameEllipsis")) {
+                if let meeting = MeetingRenameCoordinator.shared.commandMeeting { MeetingRenameCoordinator.shared.show(meeting) }
+            }.disabled(!MeetingRenameCoordinator.shared.commandEnabled)
+
             Button(UXText.text("common.exportEllipsis")) { if let meeting = exportMeeting { MeetingExportCoordinator.shared.show(meeting) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!MeetingExportCoordinator.canExport(exportMeeting))
             Button(UXText.text("common.moveToTrash")) {
