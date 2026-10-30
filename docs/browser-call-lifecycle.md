@@ -12,14 +12,21 @@ PCM transport cannot restore a source. The device owner supplies the actual
 source, so failed fallback or restoration staging cannot silently change it.
 The production value type passes all 15 unchanged shared vectors (55 steps).
 
+The reader accepts browser restoration and known terminal reasons without
+overwriting the last selected source; later events after end are ignored. The
+writer reserves the last of 1000 event slots for Stop, finalizes accepted PCM,
+then checkpoints one end at or after every known track/prior-event boundary.
+Repeated Stop preserves the reason and bytes. An unpublished I/O failure gets
+one bounded attempt to persist an error end; a published end stays immutable.
+Counted gaps keep their classification and do not turn user Stop into error.
+
 This adoption is in progress. Before enabling `keepOnNavigation`, the app must
 parse capability-scoped `pageState`, preserve legacy peer behavior, integrate
 fallback/restoration with real track transactions and producer loss timestamps,
-and thread terminal reasons through Stop, disk failure and Quit. The actual
-writer must reserve the final event slot, atomically persist exactly one terminal
-event after finalized PCM and cover native as well as browser sessions.
-The reader must preserve the source state across an end event and accept
-`restored` only for a browser source.
+and thread terminal reasons and the stop timeline through Stop, disk failure and
+Quit. File-only CLI checks cover the actual reader/writer and new tests typecheck;
+the complete app/SDK suite and real native/browser stop paths still need hosted
+proof. The standalone policy alone does not prove those paths.
 
 Required hosted integration checks include same-folder restoration, The others
 off, two independent captures, native staging failures, deadline-boundary return,
