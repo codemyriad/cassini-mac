@@ -3,12 +3,17 @@ import SwiftUI
 import Observation
 import CassiniBrowserSetup
 
+@MainActor @Observable private final class PreparedCompanionFolder {
+    var path: String?
+}
+
 @MainActor @Observable final class CompanionSetup {
     enum Presenter { case library, settings }
     static let shared = CompanionSetup()
     var presenter: Presenter?
     @ObservationIgnored let background: BackgroundBrowserSetup
     @ObservationIgnored let localBackground: BackgroundBrowserSetup
+    @ObservationIgnored private let preparedFolder: PreparedCompanionFolder
     var showingLocalGuide = false
     var copiedNotice: String?
     var copyRevision = UUID()
@@ -19,7 +24,7 @@ import CassiniBrowserSetup
         let flag = Bundle.main.object(forInfoDictionaryKey:"CassiniStoreListingPublic")
         return flag as? Bool == true || flag as? String == "YES"
     }
-    var prepared: Bool { localBackground.state == .waiting }
+    var prepared: Bool { localBackground.state == .waiting && preparedFolder.path != nil }
     var preparationFailed: Bool { if case .failed = localBackground.state { return true }; return false }
     var selectedBrowserName: String { selectedBrowser?.name ?? suggestedBrowser ?? "" }
     private static var fixtureKind: String? {
@@ -32,6 +37,8 @@ import CassiniBrowserSetup
         #endif
     }
     private init() {
+        let folder = PreparedCompanionFolder()
+        preparedFolder = folder
         if let kind = Self.fixtureKind {
             background = BackgroundBrowserSetup {
                 if kind == "absent" { throw BrowserSetupFailure.noBrowser }
@@ -44,7 +51,17 @@ import CassiniBrowserSetup
             background.trigger(); localBackground.trigger()
         } else {
             background = BackgroundBrowserSetup { try await BrowserSetupClient().connect() }
-            localBackground = BackgroundBrowserSetup { try await BrowserSetupClient().prepareCompanion() }
+            localBackground = BackgroundBrowserSetup {
+                try await BrowserSetupClient().prepareCompanion()
+                // Directory-backed account lookup can block. Resolve during
+                // preparation on a utility task, never in the clipboard action.
+                let path = try await Task.detached(priority:.utility) {
+                    guard let home = BrowserSetupInstallation.accountHome else { throw BrowserSetupError.unavailable }
+                    return home.appendingPathComponent(LocalCompanionInstallation.relativePath).path
+                }.value
+                try Task.checkCancellation()
+                await MainActor.run { folder.path = path }
+            }
         }
     }
     private(set) var started = false
@@ -150,9 +167,9 @@ import CassiniBrowserSetup
         }
     }
     func copyFolder() {
-        guard prepared, let home = BrowserSetupInstallation.accountHome else { return }
+        guard prepared, let path = preparedFolder.path else { return }
         let pasteboard = NSPasteboard.general; pasteboard.clearContents()
-        guard pasteboard.setString(home.appendingPathComponent(LocalCompanionInstallation.relativePath).path,forType:.string) else { return }
+        guard pasteboard.setString(path,forType:.string) else { return }
         copiedNotice = UXText.text("companion.local.copied"); copyRevision = UUID()
     }
 }
