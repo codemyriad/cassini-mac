@@ -142,7 +142,7 @@ public struct BrowserControlRegistry: Sendable {
         if let context { stoppedCalls.remember(context.call,now:clock()) }
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
-        peers.values.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
+        peers.values.filter { !$0.superseded }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
             .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted)
         }
     }
@@ -303,6 +303,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     public mutating func start(_ key: BrowserMeetingKey, microphone: Bool) throws -> BrowserControlRequest {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
+        guard !peer.superseded else { throw BrowserControlStateError.unavailable }
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         guard peer.independent else { throw BrowserControlStateError.incompatible }
         guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
@@ -323,6 +324,7 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func stop(_ key: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) throws -> BrowserControlRequest? {
         if userInitiated { rememberUserStop(key:key,captureID:captureID) }
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
+        guard !peer.superseded else { throw BrowserControlStateError.unavailable }
         if let captureID, let original = captureCalls[Data(captureID.utf8)],
            knownCalls[key]?.call != original.call { return nil } // An old capture cannot stop the tab's new call.
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
@@ -362,7 +364,7 @@ public struct BrowserControlRegistry: Sendable {
             for id in retainedCaptureIDs { rememberUserStop(captureID:String(data:id,encoding:.utf8)) }
         }
         var keys = Set<BrowserMeetingKey>()
-        for peer in peers.values {
+        for peer in peers.values where !peer.superseded {
             keys.formUnion(peer.captures.map(\.key))
             keys.formUnion(peer.pending.values.map { $0.request.key })
             keys.formUnion(peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) })
@@ -373,7 +375,7 @@ public struct BrowserControlRegistry: Sendable {
     /// command window instead of being lost when many starts are pending.
     public mutating func drainStops() -> [BrowserControlRequest] {
         var keys: [BrowserMeetingKey] = []
-        for peer in peers.values { keys += peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) } }
+        for peer in peers.values where !peer.superseded { keys += peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) } }
         return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:false) }
     }
     private static func ordered(_ a: BrowserMeetingKey, _ b: BrowserMeetingKey) -> Bool {

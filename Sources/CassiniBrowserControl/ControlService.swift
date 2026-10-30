@@ -67,7 +67,14 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) {
         queue.async { [self] in
-            if let request = try? registry.stop(meeting,captureID:captureID,userInitiated:userInitiated) { send([request]) }
+            // UI publication may lag the new status by one actor hop. Route a
+            // fresh Stop by its exact owned capture, without re-keying requests
+            // which were already issued on the old connection.
+            let current = captureID.flatMap { id in
+                registry.snapshots.flatMap { $0.captures + $0.interrupted }
+                    .first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.key
+            } ?? meeting
+            if let request = try? registry.stop(current,captureID:captureID,userInitiated:userInitiated) { send([request]) }
             publish()
         }
     }

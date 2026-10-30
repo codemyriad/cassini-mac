@@ -94,6 +94,7 @@ final class UserStoppedCallTests: XCTestCase {
         var state = state(); let old = try ready(&state)
         try send(status("old-capture"),&state,old)
         let newer = try ready(&state,entries:[(2,"https://meet.example/new")])
+        XCTAssertEqual(state.snapshots.count,1,"A draining superseded connection is not a second meeting profile")
         _ = try state.stop(.init(peer:newer,tabID:2))
         // A draining old host can still report its old page. Neither that
         // inventory nor a late Stop of its capture may erase the new Stop.
