@@ -12,11 +12,11 @@ import CassiniLibrary
     private(set) var working = false
     @ObservationIgnored private var task: Task<Void,Never>?
     @ObservationIgnored private var closing = false
-    var normalized: String { MeetingRename.normalized(name,untitled:UXText.text("library.untitled")) }
+    var normalized: String? { MeetingRename.normalized(name) }
     var canApply: Bool {
         guard let meeting else { return false }
         let original = meeting.title ?? UXText.text("library.untitled")
-        return !working && name != original && normalized != original && canRename(meeting)
+        return !working && name != original && (normalized == nil || normalized != original) && canRename(meeting)
     }
     func canRename(_ meeting: LibraryMeeting?) -> Bool {
         guard !closing, !working, !LibraryMoveCoordinator.shared.busy, !MeetingTrashCoordinator.shared.busy,
@@ -45,17 +45,20 @@ import CassiniLibrary
     func apply() {
         guard canApply, let meeting else { return }
         working = true
-        let name = self.name, untitled = UXText.text("library.untitled"), location = LibraryLocationModel.shared.location
+        let name = self.name, location = LibraryLocationModel.shared.location
+        let scanner = LibraryStore.shared.scannerForRename(meeting) ?? LibraryScanner(root:meeting.folder.deletingLastPathComponent())
         task = Task {
             do {
-                let title = try await Task.detached(priority:.userInitiated) {
+                let updated = try await Task.detached(priority:.userInitiated) {
                     let access = try LibraryAccess(location,tolerateMissingPrevious:true)
                     defer { withExtendedLifetime(access) {} }
                     guard access.roots.contains(where:{ LibraryLocation.canonical($0) == LibraryLocation.canonical(meeting.folder.deletingLastPathComponent()) }) else { throw POSIXError(.EACCES) }
-                    return try MeetingRename.apply(name,to:meeting,untitled:untitled)
+                    try MeetingRename.apply(name,to:meeting)
+                    guard let updated = try scanner.scan(affected:meeting.folder).meetings.first(where:{ $0.folder == meeting.folder }) else { throw POSIXError(.ENOENT) }
+                    return updated
                 }.value
                 if let detail = MeetingNavigation.shared.detail, detail.meeting.folder == meeting.folder, detail.fileURL == nil {
-                    detail.meeting.title = title; detail.meeting.exportTitle = title
+                    detail.meeting.title = updated.title; detail.meeting.exportTitle = updated.exportTitle
                 }
                 LibraryStore.shared.refresh(affected:meeting.folder)
                 presentation = nil; self.meeting = nil

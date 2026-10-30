@@ -159,7 +159,11 @@ public struct LibraryTranscriptTurn: Equatable, Sendable {
                 turns[turns.count - 1].endMs = item.endMs
             } else { turns.append(.init(speaker: item.speaker, startMs: item.startMs, endMs: item.endMs, text: text)) }
         }
-        return turns
+        return turns.compactMap { turn in
+            var turn = turn
+            turn.text = TranscriptText.quotes([turn.text])[0].split(whereSeparator: \.isWhitespace).joined(separator:" ")
+            return turn.text.isEmpty ? nil : turn
+        }
     }
 }
 /// Diagnostic codes only. No raw errors or undrawn UI copy is produced by the core.

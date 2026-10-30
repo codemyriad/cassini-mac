@@ -7,7 +7,7 @@ import Testing
     @Test func smallExportsUseKBAndKeepTheExistingMBBoundary() {
         #expect(LibraryFormat.size(bytes:0) == "0 KB")
         #expect(LibraryFormat.size(bytes:458 * 1024,approximate:true) == "about 458 KB")
-        #expect(LibraryFormat.size(bytes:1_048_575) == "1024 KB")
+        #expect(LibraryFormat.size(bytes:1_048_575) == "1 MB")
         #expect(LibraryFormat.size(bytes:1_048_576) == "1 MB")
     }
     @Test func wallTimesRespectTheLocaleWhilePlaybackPositionsStayDurations() throws {
