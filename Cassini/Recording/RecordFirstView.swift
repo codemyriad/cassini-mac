@@ -2,6 +2,7 @@
 import SwiftUI
 import Observation
 import CassiniLibrary
+import CassiniRecording
 
 @MainActor enum RecordingPreferences {
     static var defaults: UserDefaults {
@@ -83,6 +84,7 @@ import CassiniLibrary
 struct RecordFirstView: View {
     @AppStorage("CassiniSkipRecordFirst",store:RecordingPreferences.defaults) private var skip = false
     @State private var microphoneAllowed = false
+    @State private var systemPreviouslyCaptured = false
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
@@ -98,7 +100,7 @@ struct RecordFirstView: View {
                 if CaptureCollection.shared.hasCalls {
                     source(icon:"macwindow",title:"common.theOthers",description:"whatIsRecorded.othersHeard.browserMixed.description",caption:nil)
                 } else {
-                    source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.description",caption:"recordFirst.sound.caption")
+                    source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.description",caption:systemPreviouslyCaptured ? "recordFirst.allowed" : "recordFirst.sound.caption")
                 }
             }
             HStack(spacing: 10) {
@@ -117,6 +119,7 @@ struct RecordFirstView: View {
             .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in refreshPermission() }
     }
     private func refreshPermission() {
+        systemPreviouslyCaptured = SystemAudioCaptureKnowledge.shared.previouslyCaptured
         #if DEBUG
         if RecordingFixture.enabled, LibraryLaunchContext.argument("-CassiniConsentAllowed") == "YES" { microphoneAllowed = true; return }
         #endif
