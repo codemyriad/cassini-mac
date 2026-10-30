@@ -158,7 +158,7 @@ private final class PCMStalledWriter: RecordingSinkWriter, @unchecked Sendable {
     }
     @Test func closingAViewCannotBePreventedByItsObserverSlot() {
         let observers = RecordedPCMObservers()
-        var probe: PCMProbe? = PCMProbe(); weak let weakProbe = probe
+        var probe: PCMProbe? = PCMProbe(); weak var weakProbe = probe
         observers.set(probe); probe = nil
         #expect(weakProbe == nil)
     }

@@ -57,27 +57,32 @@ public final class SpectrogramTrack {
         precondition(atFrame >= 0)
         if atFrame > positionFrames { skip(frames:atFrame-positionFrames) }
         let trim = Int(min(Int64(samples.count),positionFrames-atFrame))
-        for index in trim..<samples.count {
-            let value = normalized ? samples[index] : (samples[index].isFinite ? max(-1,min(1,samples[index])) : 0)
-            history[write] = value; write = (write+1) & (parameters.size-1)
-            valid = min(parameters.size,valid+1); positionFrames += 1
-            levelSum += Double(value); levelMin = min(levelMin,Double(value)); levelMax = max(levelMax,Double(value))
-            levelCount += 1
-            if levelCount == max(1,parameters.rate/10) {
-                let mean = levelSum/Double(levelCount)
-                latestLevel = Float(min(1,max(abs(levelMin-mean),abs(levelMax-mean))))
-                latestLevelAtFrame = positionFrames; resetLevel()
+        // Borrow once per packet. Array's mutating subscript otherwise checks
+        // uniqueness for every audio sample, including warm unselected tracks.
+        history.withUnsafeMutableBufferPointer { history in
+            for index in trim..<samples.count {
+                let value = normalized ? samples[index] : (samples[index].isFinite ? max(-1,min(1,samples[index])) : 0)
+                history[write] = value; write = (write+1) & (parameters.size-1)
+                valid = min(parameters.size,valid+1); positionFrames += 1
+                levelSum += Double(value); levelMin = min(levelMin,Double(value)); levelMax = max(levelMax,Double(value))
+                levelCount += 1
+                if levelCount == max(1,parameters.rate/10) {
+                    let mean = levelSum/Double(levelCount)
+                    latestLevel = Float(min(1,max(abs(levelMin-mean),abs(levelMax-mean))))
+                    latestLevelAtFrame = positionFrames; resetLevel()
+                }
+                guard positionFrames == nextEnd else { continue }
+                nextEnd += Int64(parameters.hop)
+                guard analyze, valid == parameters.size else { continue }
+                let powers = transform.powers(normalizedHistory:UnsafeBufferPointer(history),startingAt:write)
+                analyzedFrames += 1
+                emit(.init(sampleEnd:positionFrames,
+                    centreMs:startOffsetMs + Double(positionFrames-Int64(parameters.size/2))/Double(parameters.rate)*1000,
+                    slot:parameters.slot(frameEnd:positionFrames,startOffsetMs:startOffsetMs),powers:powers))
             }
-            guard positionFrames == nextEnd else { continue }
-            nextEnd += Int64(parameters.hop)
-            guard analyze, valid == parameters.size else { continue }
-            let powers = transform.powers(normalizedHistory:history,startingAt:write)
-            analyzedFrames += 1
-            emit(.init(sampleEnd:positionFrames,
-                centreMs:startOffsetMs + Double(positionFrames-Int64(parameters.size/2))/Double(parameters.rate)*1000,
-                slot:parameters.slot(frameEnd:positionFrames,startOffsetMs:startOffsetMs),powers:powers))
         }
     }
+
     private func resetLevel() {
         levelCount = 0; levelSum = 0; levelMin = .infinity; levelMax = -.infinity
     }
