@@ -801,7 +801,11 @@ final class LibraryBoards: XCTestCase {
         let app = try launch(name, fixture: fixture); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
-        XCTAssertEqual(window.label, "Cassini talk")
+        // The custom toolbar hides the window title, so its AX label is empty.
+        // Window's own menu still exposes the actual NSWindow title.
+        app.menuBars.menuBarItems["Window"].click()
+        XCTAssertTrue(app.menuItems["Cassini talk"].exists, app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
         let productMenu = app.menuBars.menuBarItems["Cassini talk"]
         XCTAssertTrue(productMenu.exists, app.debugDescription)
         productMenu.click()
