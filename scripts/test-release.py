@@ -14,6 +14,18 @@ spec = importlib.util.spec_from_file_location('release', ROOT/'scripts/release.p
 release = importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
 
 class ReleaseTests(unittest.TestCase):
+    def testGeneratedScreenshotLibrariesCannotEnterARelease(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for relative in ['UITests/Fixtures/Library', 'Cassini.app/Contents/Resources/Fixtures/Library']:
+                path = root/relative
+                release.reject_generated_library(path)
+                path.mkdir(parents=True)
+                with self.assertRaises(ValueError): release.reject_generated_library(path)
+                path.rmdir()
+                path.symlink_to(root/'missing')
+                with self.assertRaises(ValueError): release.reject_generated_library(path)
+
     def testHTTPSOnlyWithoutEmbeddedCredentialsOrPlaceholders(self):
         for url in ['http://example.org/appcast.xml','https://a:b@example.org/x','https://example.org/x#fragment',
                     'https://example.org/PLACEHOLDER/x','https://updates.invalid/x','file:///tmp/x']:

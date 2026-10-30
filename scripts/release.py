@@ -113,6 +113,13 @@ def verify_update_key(key):
     return key
 
 
+def reject_generated_library(path):
+    # A prior screenshot build can leave these generated fixtures in the
+    # source tree or the incremental Release product. Never upload them.
+    if path.exists() or path.is_symlink():
+        raise ValueError('Generated Library fixtures are present; use a clean release source/product')
+
+
 def release(args):
     https_url(args.feed_url); https_url(args.download_url)
     if not re.fullmatch(r'\d+(?:\.\d+){1,2}', args.version) or args.build < 1:
@@ -121,6 +128,7 @@ def release(args):
     output = args.output.resolve()
     if output.exists():
         raise ValueError('Release output already exists; use a new empty destination')
+    reject_generated_library(ROOT/'UITests/Fixtures/Library')
     credentials = notary_credentials(args.notary_config)
     key = verify_update_key(SECRETS/'sparkle-ed25519.key')
     run(['xcrun', 'swift', ROOT/'scripts/check-update-key.swift', key, ROOT/'Distribution/sparkle-public-key.txt'], timeout=60)
@@ -141,6 +149,7 @@ def release(args):
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
     app = derived/'Build/Products/Release/Cassini.app'
+    reject_generated_library(app/'Contents/Resources/Fixtures/Library')
     run(['python3', ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
     run(['python3', ROOT/'scripts/check-developer-id.py', app])
     run(['codesign', '--verify', '--deep', '--strict', app])

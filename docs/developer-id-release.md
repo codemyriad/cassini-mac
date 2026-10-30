@@ -36,7 +36,10 @@ python3 scripts/release.py --version 0.1.0 --build 2 \
 
 The output directory must not already exist. The build log and safe notary
 submission IDs/status are retained there. Credentials and key-tool diagnostics
-are suppressed. No `--deep` signing occurs: nested Sparkle components are signed
+are suppressed. The release refuses generated `UITests/Fixtures/Library` data
+in either the source tree or the final app, including leftovers from a prior
+screenshot or incremental build. Use a clean release checkout/product.
+No `--deep` signing occurs: nested Sparkle components are signed
 inside-out before the app, while engine/worker signatures are made before their
 `bundle-sha256.json` files. There is no post-build re-signing. The download/archive
 signature is made after stapling the DMG. The appcast itself is also signed.
