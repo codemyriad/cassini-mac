@@ -46,11 +46,19 @@ public final class SpectrogramTrack {
     /// Overlap is trimmed; missing input advances time and invalidates history.
     /// Unselected tracks retain history and AC level without performing FFTs.
     public func append(_ samples: UnsafeBufferPointer<Float>, atFrame: Int64, analyze: Bool = true, emit: (SpectrogramPowerFrame) -> Void) {
+        appendCore(samples,atFrame:atFrame,analyze:analyze,normalized:false,emit:emit)
+    }
+    // Only the S16 conversion path calls this: its finite [-1,1] invariant is
+    // guaranteed by the representation, including stereo averaging.
+    func appendNormalized(_ samples: UnsafeBufferPointer<Float>, atFrame: Int64, analyze: Bool, emit: (SpectrogramPowerFrame) -> Void) {
+        appendCore(samples,atFrame:atFrame,analyze:analyze,normalized:true,emit:emit)
+    }
+    private func appendCore(_ samples: UnsafeBufferPointer<Float>, atFrame: Int64, analyze: Bool, normalized: Bool, emit: (SpectrogramPowerFrame) -> Void) {
         precondition(atFrame >= 0)
         if atFrame > positionFrames { skip(frames:atFrame-positionFrames) }
         let trim = Int(min(Int64(samples.count),positionFrames-atFrame))
         for index in trim..<samples.count {
-            let value = samples[index].isFinite ? max(-1,min(1,samples[index])) : 0
+            let value = normalized ? samples[index] : (samples[index].isFinite ? max(-1,min(1,samples[index])) : 0)
             history[write] = value; write = (write+1) & (parameters.size-1)
             valid = min(parameters.size,valid+1); positionFrames += 1
             levelSum += Double(value); levelMin = min(levelMin,Double(value)); levelMax = max(levelMax,Double(value))

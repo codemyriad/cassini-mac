@@ -24,6 +24,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             track = .init(parameters:transform.parameters,startOffsetMs:descriptor.startOffsetMs,transform:transform)
         }
     }
+    private static let signposts = OSLog(subsystem:"io.codemyriad.cassini",category:"Spectrogram")
     private let state = OSAllocatedUnfairLock(initialState:Admission())
     private let queue = DispatchQueue(label:"io.codemyriad.cassini.spectro",qos:.utility)
     private let clock: @Sendable () -> Double
@@ -38,6 +39,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private var displayClock = SpectrogramDisplayClock()
     private var mono: [Float] = [], right: [Float] = []
     private var alignedPCM: [Int16] = []
+    private var nextChoiceAt: Double = 0
     private var stoppedAt: Double?
 
     public init(originUptime: TimeInterval) {
@@ -87,7 +89,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         queue.async { [self] in
             if endedIDs.count < 64 { endedIDs.insert(id) }
             guard let source = sources[id] else { return }
-            source.active = false
+            source.active = false; nextChoiceAt = 0
             if source.lane == .me { meSelection.reset() } else { othersSelection.reset() }
         }
     }
@@ -124,13 +126,17 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private func ensureGeneration(_ value: UInt64) {
         guard generation != value else { return }
         generation = value; sources = [:]; transforms = [:]; mono = []; right = []; alignedPCM = []
-        me.reset(); others.reset(); meSelection.reset(); othersSelection.reset(); displayClock.reset(); mailbox.reset()
+        me.reset(); others.reset(); meSelection.reset(); othersSelection.reset(); nextChoiceAt = 0; displayClock.reset(); mailbox.reset()
     }
     private func consume(_ descriptor: RecordedPCMSource, pcm: Data, offsetMs: Double) {
         guard !endedIDs.contains(descriptor.id) else { return }
+        let interval = OSSignpostID(log:Self.signposts,object:self)
+        os_signpost(.begin,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval)
+        defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval) }
         let arrival = clock()
         guard arrival.isFinite, arrival >= 0 else { return }
-        if sources[descriptor.id] == nil {
+        let inserted = sources[descriptor.id] == nil
+        if inserted {
             guard sources.count < 64, let parameters = try? SpectrogramParameters(rate:descriptor.sampleRate) else { return }
             let transform = transforms[descriptor.sampleRate] ?? SpectrogramTransform(parameters:parameters)
             transforms[descriptor.sampleRate] = transform
@@ -138,9 +144,13 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         }
         guard let source = sources[descriptor.id], source.active, source.descriptor == descriptor else { return }
         source.arrival = arrival
-        let active = sources.values.filter { $0.active && arrival-$0.arrival <= 1000 }
-        let chosenMe = meSelection.choose(levels:Dictionary(uniqueKeysWithValues:active.filter{$0.lane == .me}.map{($0.index,$0.track.latestLevel)}),nowMs:arrival)
-        let chosenOthers = othersSelection.choose(levels:Dictionary(uniqueKeysWithValues:active.filter{$0.lane == .others}.map{($0.index,$0.track.latestLevel)}),nowMs:arrival)
+        if inserted || arrival >= nextChoiceAt {
+            let active = sources.values.filter { $0.active && arrival-$0.arrival <= 1000 }
+            meSelection.choose(levels:Dictionary(uniqueKeysWithValues:active.filter{$0.lane == .me}.map{($0.index,$0.track.latestLevel)}),nowMs:arrival)
+            othersSelection.choose(levels:Dictionary(uniqueKeysWithValues:active.filter{$0.lane == .others}.map{($0.index,$0.track.latestLevel)}),nowMs:arrival)
+            if arrival >= nextChoiceAt { nextChoiceAt = arrival+1000 }
+        }
+        let analyze = source.lane == .me ? meSelection.tracks.contains(source.index) : othersSelection.tracks.contains(source.index)
         let total = pcm.count/(descriptor.channels*2)
         let start = ((offsetMs-descriptor.startOffsetMs)*Double(descriptor.sampleRate)/1000).rounded()
         guard start >= Double(Int64.min/2), start < Double(Int64.max/2) else { return }
@@ -162,8 +172,8 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             }
         }
         mono.withUnsafeBufferPointer { samples in
-            source.track.append(.init(start:samples.baseAddress,count:count),atFrame:max(0,original),
-                analyze:(source.lane == .me ? chosenMe : chosenOthers).contains(source.index)) { frame in
+            source.track.appendNormalized(.init(start:samples.baseAddress,count:count),atFrame:max(0,original),
+                analyze:analyze) { frame in
                 displayClock.observe(centreMs:frame.centreMs,arrivalMs:arrival)
                 (source.lane == .me ? me : others).append(slot:frame.slot,trackIndex:source.index,powers:frame.powers)
             }
