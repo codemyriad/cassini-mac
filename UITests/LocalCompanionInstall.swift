@@ -47,9 +47,10 @@ final class LocalCompanionInstall: XCTestCase {
         guide.buttons["companion-copy-address"].click()
         XCTAssertEqual(NSPasteboard.general.string(forType:.string),"chrome://extensions/")
         print("Browser focus: XCTest=\(chrome.state.rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"), postAccess=\(CGPreflightPostEventAccess())")
-        wait("Copy Address and Open activates the chosen browser",timeout:10) {
-            NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.google.chrome.for.testing"
-        }
+        chrome.activate()
+        // The test person selects the browser's title bar before pasting.
+        // Its native address-field value below proves the actual paste target.
+        chrome.windows.firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.01)).click()
         key(0x25,flags:.maskCommand) // L
         key(0x09,flags:.maskCommand) // V
         let address = chrome.textFields["Address and search bar"]

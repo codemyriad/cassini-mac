@@ -13,6 +13,30 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def private_driver(spec, base):
+    products = spec.parent.resolve()
+    source, = (products/'Debug').glob('*-Runner.app')
+    driver = base/'GuideDriver.app'
+    subprocess.run(['ditto',source,driver],check=True)
+    profile = plistlib.loads(subprocess.run(['codesign','-d','--entitlements',':-',source],check=True,capture_output=True).stdout)
+    # This is the cross-application test person, never the tested Cassini app.
+    # Stage it privately so signed build artifacts and all app/helper profiles
+    # remain unchanged while the driver can use the hosted keyboard helper.
+    profile['com.apple.security.app-sandbox'] = False
+    entitlements = base/'driver-entitlements.plist'
+    entitlements.write_bytes(plistlib.dumps(profile))
+    subprocess.run(['codesign','--force','--sign','-','--options','0','--timestamp=none','--entitlements',entitlements,driver],check=True)
+    subprocess.run(['codesign','--verify','--deep','--strict',driver],check=True)
+    def relocated(value):
+        if isinstance(value,str): return value.replace('__TESTROOT__',str(products)).replace(str(source),str(driver))
+        if isinstance(value,list): return [relocated(v) for v in value]
+        if isinstance(value,dict): return {k:relocated(v) for k,v in value.items()}
+        return value
+    target = base/'Guide.xctestrun'
+    target.write_bytes(plistlib.dumps(relocated(plistlib.loads(spec.read_bytes()))))
+    return target
+
+
 def main():
     assert os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted', 'Disposable hosted Mac only'
     parser = argparse.ArgumentParser(description=__doc__)
@@ -24,6 +48,16 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     keys = output.parent/'local-companion-keys'
     subprocess.run(['clang',ROOT/'Spikes/BrowserGuide/keys.c','-framework','ApplicationServices','-o',keys],check=True)
+    subprocess.run(['codesign','--force','--sign','-','--identifier','io.codemyriad.cassini.tests.keyboard',keys],check=True)
+    # Authorize only this disposable test-person executable to post keyboard
+    # events. No Cassini, browser, microphone or capture permission is changed.
+    client = str(keys).replace("'","''")
+    for service in ['kTCCServicePostEvent','kTCCServiceAccessibility']:
+        sql = ("INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,"
+            "indirect_object_identifier_type,indirect_object_identifier,flags) VALUES "
+            f"('{service}','{client}',1,2,4,1,0,'UNUSED',0);")
+        subprocess.run(['sudo','-n','sqlite3','/Library/Application Support/com.apple.TCC/TCC.db',sql],check=True)
+    subprocess.run(['sudo','-n','killall','tccd'],check=False)
     home = Path.home()
     profile = home/'Library/Application Support/Google/Chrome for Testing'
     companion = home/'Library/Application Support/Cassini/BrowserCompanion'
@@ -59,7 +93,7 @@ def main():
             installed=str(companion/'extension'), newVersion=newer, output=str(output/'report.json'))))
         env = dict(os.environ, TEST_RUNNER_CASSINI_LOCAL_GUIDE_GATE='1', TEST_RUNNER_CASSINI_LOCAL_GUIDE_CONFIG=str(config),
             TEST_RUNNER_CASSINI_LOCAL_GUIDE_KEYS=str(keys))
-        test_run = next((ROOT/'build/Build/Products').glob('*.xctestrun'))
+        test_run = private_driver(next((ROOT/'build/Build/Products').glob('*.xctestrun')),base)
         try:
             with (output/'xctest.log').open('wb') as log:
                 result = subprocess.run(['xcodebuild', 'test-without-building', '-xctestrun', test_run, '-destination', 'platform=macOS',
