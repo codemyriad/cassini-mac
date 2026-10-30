@@ -9,8 +9,9 @@ import CassiniLibrary
     static weak var anchor: NSView?
     private final class Action: NSObject {
         let action: () -> Void
+        private(set) var selected = false
         init(_ action: @escaping () -> Void) { self.action = action }
-        @objc func perform(_ sender: Any?) { action() }
+        @objc func perform(_ sender: Any?) { selected = true }
     }
     static func show(_ meeting: LibraryMeeting, trash: MeetingTrashCoordinator, undo: UndoManager?) -> Bool {
         guard let view = anchor, view.window === NSApp.keyWindow else { return false }
@@ -33,6 +34,11 @@ import CassiniLibrary
         let rect = view.bounds
         withExtendedLifetime((rename,export,remove)) {
             menu.popUp(positioning:nil,at:NSPoint(x:rect.minX + 16,y:rect.maxY),in:view)
+        }
+        // This menu is opened from a key-event monitor. Present sheets only
+        // after both native menu tracking and that key event have unwound.
+        if let selected = [rename,export,remove].first(where: { $0.selected }) {
+            DispatchQueue.main.async { selected.action() }
         }
         return true
     }
