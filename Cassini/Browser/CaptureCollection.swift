@@ -178,8 +178,10 @@ private final class CaptureFiles: @unchecked Sendable {
         guard !shuttingDown, generation == autoGeneration else { return }
         if enabled { await authorizeMicrophone() }
     }
-    func stop(_ id: UUID, userInitiated: Bool = true) {
+    func stop(_ id: UUID, reason: CaptureEndReason = .user, userInitiated explicitIntent: Bool? = nil) {
         guard let value = captures[id] else { return }
+        let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
+        value.owner.requestEnd(reason,atMs:Double(value.elapsedMs))
         // A user's Stop still matters when an automatic Stop is already draining
         // or the control peer has gone away. Preserve the original capture URL.
         if userInitiated { service.rememberUserStop(captureID:value.captureID,key:value.key) }
@@ -188,7 +190,7 @@ private final class CaptureFiles: @unchecked Sendable {
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
-        if let key = value.key { service.stopMeeting(key,captureID:value.captureID,userInitiated:false) }
+        if let key = value.key { service.stopMeeting(key,captureID:value.captureID,userInitiated:false,reason:reason) }
         let task = Task { [weak self] in
             // Native inputs stop at the user's request, independently of a
             // delayed page flush. Broker finalization reuses this same drain.
@@ -206,18 +208,23 @@ private final class CaptureFiles: @unchecked Sendable {
         }
         stopping[id] = task
     }
-    func stopAll() { recordGeneration += 1; requestingRecord = false; service.stopRecordings(); for id in Array(captures.keys) { stop(id) } }
-    func stopAndWait() async {
-        stopAll()
+    func stopAll(reason: CaptureEndReason = .user) {
+        recordGeneration += 1; requestingRecord = false
+        for value in captures.values { value.owner.requestEnd(reason,atMs:Double(value.elapsedMs)) }
+        service.stopRecordings(reason:reason)
+        for id in Array(captures.keys) { stop(id,reason:reason) }
+    }
+    func stopAndWait(reason: CaptureEndReason = .user) async {
+        stopAll(reason:reason)
         while !stopping.isEmpty { for task in Array(stopping.values) { await task.value } }
         while preparingFiles > 0 { try? await Task.sleep(for:.milliseconds(10)) }
         settleSaved()
         for task in Array(settling.values) { await task.value }
     }
-    func beginShutdown() { shuttingDown = true; files.close(); broker.closeAdmission(); service.setAutoRecord(false,microphone:true); stopAll() }
+    func beginShutdown() { shuttingDown = true; files.close(); broker.closeAdmission(); service.setAutoRecord(false,microphone:true); stopAll(reason:.appQuit) }
     func shutdown() async {
-        beginShutdown(); await stopAndWait()
-        let finalized = await broker.finishAll()
+        beginShutdown(); await stopAndWait(reason:.appQuit)
+        let finalized = await broker.finishAll(reason:.appQuit)
         for snapshot in finalized { settle(snapshot) }
         settleSaved()
         for task in Array(settling.values) { await task.value }
@@ -253,7 +260,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 guard let self, let value = self.captures[id] else { return }
                 self.captures[id]?.sourceProblem = true
                 if value.input.failedSides.contains(.others) { try? await value.owner.systemUnavailable(atMs:Double(value.elapsedMs)) }
-                if !value.snapshot.browserAlive && !value.input.hasRunningInputs { self.stop(id,userInitiated:false) }
+                if !value.snapshot.browserAlive && !value.input.hasRunningInputs { self.stop(id,reason:.error) }
             }
         })
         captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:key(for:info.captureID))
@@ -395,7 +402,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
                 if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
-                    lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id,userInitiated:false) }
+                    lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id,reason:peer != nil && count == 0 ? .callEnded : .pageGone) }
             }
         }
     }
@@ -403,7 +410,7 @@ private final class CaptureFiles: @unchecked Sendable {
     private func applyDiskBudget(_ ids: [UUID], _ budget: DiskBudget) {
         for id in ids where captures[id] != nil {
             captures[id]?.diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
-            if budget.shouldStop { diskStopped = true; stop(id,userInitiated:false) }
+            if budget.shouldStop { diskStopped = true; stop(id,reason:.disk) }
         }
         let line = diskStopped ? UXText.text("errors.diskStopped.line") : captures.values.compactMap(\.diskMinutes).min().map { UXText.text("errors.diskLow.line",["n":String($0)]) }
         RecordingDiskWatch.updateWarning(line)

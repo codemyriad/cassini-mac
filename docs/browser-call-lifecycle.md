@@ -32,3 +32,29 @@ Required hosted integration checks include same-folder restoration, The others
 off, two independent captures, native staging failures, deadline-boundary return,
 closed tabs without computer-sound fallback and durable terminal-event timing.
 The standalone policy/vector check is preparation, not product completion.
+
+## First app integration milestone
+
+The owner claims its end trigger before asynchronous native/browser drains,
+using a lock that never waits for file I/O. A later generic browser Stop, Quit or
+second caller cannot change it; real I/O failure can still produce the required
+error end before publication. Broker finalization remains shared, and accepted
+PCM tail boundaries extend the earlier trigger time. Owners not yet published to
+the UI retain the original monotonic clock. User Stop, disk reserve, input error
+and app Quit are now threaded from the app; page-derived reasons are supported
+on capable Stop commands. Existing span drains can use the reserved event slot
+without admitting a new source or selection at999 events.
+
+pageState parsing is scoped to page-state-v1. Missing remains unknown; legacy
+peers ignore this optional metadata. Closed evidence and its original local
+observation time survive stale present snapshots. Deferred Stops retain their
+first reason. The writer and readers validate restored against selected
+system/missing or system/lost history, plus a new active browser span on write.
+
+Still unfinished: using the observed page state in LiveCapture's two-second and
+120-second timers, transactional system fallback and same-transport restoration,
+The others-off restoration gating, and hosted product integration/failure tests.
+keepOnNavigation is deliberately not sent yet; a regression test enforces that
+until those paths are integrated. This is a draft, not a completed D33 rollout.
+The bundled snapshot remains0.2.2, so equal-version installation/release sequencing
+still belongs to the coordinator before distribution. No store package/upload.

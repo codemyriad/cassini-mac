@@ -82,14 +82,17 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         catch {
             lock.lock(); if reservations[identity] == peer { reservations.removeValue(forKey:identity) }; lock.unlock(); throw error
         }
+        capture.setTimelineOrigin(ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000-Double(info.timelineOriginMs))/1000)
         lock.lock(); captures[capture.snapshot.manifest.id] = capture; identities[capture.snapshot.manifest.id] = identity; lock.unlock()
         DispatchQueue.global().async { [created] in if capture.snapshot.phase == .recording { created(capture,info) } }
         return capture
     }
-    public func finish(_ capture: OwnedBrowserCapture, problem: String? = nil) async throws {
-        try await finalization.run(capture) { try await self.finishOnce(capture,problem:problem) }
+    public func finish(_ capture: OwnedBrowserCapture, problem: String? = nil, reason: CaptureEndReason? = nil, atMs: Double? = nil) async throws {
+        if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
+        if let reason { capture.requestEnd(reason,atMs:atMs) }
+        try await finalization.run(capture) { try await self.finishOnce(capture,problem:problem,reason:reason,atMs:atMs) }
     }
-    private func finishOnce(_ capture: OwnedBrowserCapture, problem: String?) async throws {
+    private func finishOnce(_ capture: OwnedBrowserCapture, problem: String?, reason: CaptureEndReason?, atMs: Double?) async throws {
         guard lock.withLock({ captures[capture.snapshot.manifest.id] === capture }) else { return }
         let nativeProblem = await withCheckedContinuation { continuation in
             let barrier = StopReply { continuation.resume(returning:$0) }
@@ -103,15 +106,15 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
                 if let identity = identities.removeValue(forKey:id) { reservations.removeValue(forKey:identity) }
             }
         }
-        try await capture.finish(problem:problem ?? nativeProblem)
+        try await capture.finish(problem:problem ?? nativeProblem,reason:reason,atMs:atMs)
     }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
-    @discardableResult public func finishAll(problem: String? = nil) async -> [OwnedCaptureSnapshot] {
+    @discardableResult public func finishAll(problem: String? = nil, reason: CaptureEndReason? = nil) async -> [OwnedCaptureSnapshot] {
         await withCheckedContinuation { continuation in creating.notify(queue:.global()) { continuation.resume() } }
         let values = activeCaptures
         await withTaskGroup(of:Void.self) { group in
-            for capture in values { group.addTask { try? await self.finish(capture,problem:problem) } }
+            for capture in values { group.addTask { try? await self.finish(capture,problem:problem,reason:reason) } }
         }
         return values.map(\.snapshot)
     }
@@ -194,11 +197,15 @@ private final class AudioPeer: @unchecked Sendable {
                 case "stop":
                     let reason = try string(json,"failureReason",optional:true), problem = try string(json,"problem",optional:true)
                     guard reason == nil || reason == "lost" else { throw BrowserProtocolError("source","Invalid failure reason.") }
+                    let terminal = try string(json,"reason",optional:true)
+                    guard terminal == nil || terminal.flatMap(CaptureEndReason.init(rawValue:)) != nil else { throw BrowserProtocolError("source","Invalid recording end reason.") }
                     if reason == "lost" { try owner.browserLost(atMs:lossTime) }
                     else if let broker {
+                        let stopAt = lossTime, endReason = terminal.flatMap(CaptureEndReason.init(rawValue:)) ?? .user
+                        owner.requestEnd(endReason,atMs:stopAt)
                         let done = DispatchSemaphore(value:0), outcome = FinishResult()
                         Task {
-                            do { try await broker.finish(owner,problem:problem); outcome.store(.success(())) }
+                            do { try await broker.finish(owner,problem:problem,reason:endReason,atMs:stopAt); outcome.store(.success(())) }
                             catch { outcome.store(.failure(error)) }
                             done.signal()
                         }

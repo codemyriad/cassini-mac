@@ -25,6 +25,7 @@ import CassiniKit
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let session = try RecordingSession(parent:root,title:"Generated",source:"chromium")
+        try session.addTrack(id:"existing",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
         try session.transition(events:(0..<999).map { .init(atMs:Double($0),type:"selection",reason:"user",me:true,others:true) })
         let file = session.directory.appendingPathComponent("session.json"), bytes = try Data(contentsOf:file)
         let entries = try FileManager.default.contentsOfDirectory(atPath:session.directory.path)
@@ -36,6 +37,10 @@ import CassiniKit
         #expect(try FileManager.default.contentsOfDirectory(atPath:session.directory.path) == entries)
         #expect(throws:(any Error).self) { try session.addTrack(id:"late",label:"Late",kind:"remote",sampleRate:8000,channels:1) }
         #expect(try FileManager.default.contentsOfDirectory(atPath:session.directory.path) == entries)
+        // Native drains must still close an existing span at the event limit;
+        // doing so does not consume the terminal event's reserved slot.
+        try session.transition(ending:["existing"])
+        #expect(session.manifest.events?.count == 999 && session.manifest.tracks.first?.ended == true)
         try session.finish(problem:nil,kind:nil,reason:.user,atMs:999)
         #expect(session.manifest.events?.count == 1000 && session.manifest.events?.last?.type == "end")
     }
@@ -63,4 +68,20 @@ import CassiniKit
         #expect(session.manifest.problemKind == "gap")
         #expect(session.manifest.events?.last == .init(atMs:750,type:"end",reason:"user"))
     }
+    @Test func restoredRequiresSelectedFallbackAndANewActiveBrowserSpan() throws {
+        for variant in 0..<6 {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let session = try RecordingSession(parent:root,title:"Generated",source:"chromium")
+            try session.transition(events:[.init(atMs:0,type:"selection",reason:"start",me:true,others:variant != 1)])
+            let source = variant == 2 ? "none" : "system", reason = variant == 3 ? "user" : "lost"
+            let fallback: [RecordingSource] = source == "system" ? [.init(id:"system",label:"Computer",kind:"system",sampleRate:8000,channels:1,labelSource:"device")] : []
+            try session.transition(starting:fallback,events:[.init(atMs:1,type:"othersSource",source:source,reason:reason)])
+            let before = try Data(contentsOf:session.directory.appendingPathComponent("session.json"))
+            let restore = { try session.transition(starting:[.init(id:"returned",label:"Remote",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"opaque",endsImmediately:variant == 4)],ending:source == "system" && variant != 5 ? ["system"] : [],events:[.init(atMs:2,type:"othersSource",source:"browser",reason:"restored")]) }
+            if variant == 0 { try restore(); #expect(session.manifest.events?.last?.reason == "restored") }
+            else { #expect(throws:(any Error).self) { try restore() }; #expect(try Data(contentsOf:session.directory.appendingPathComponent("session.json")) == before) }
+        }
+    }
+
 }

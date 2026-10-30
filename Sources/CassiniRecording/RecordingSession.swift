@@ -122,18 +122,23 @@ public final class RecordingSession {
     public func transition(starting sources: [RecordingSource] = [], ending ids: [String] = [], events: [CaptureEvent] = []) throws {
         if sources.isEmpty && ids.isEmpty && events.isEmpty { return }
         guard !finished, manifest.tracks.count + sources.count <= 64,
-              (manifest.events?.count ?? 0) < 999,
+              ((manifest.events?.count ?? 0) < 999 || (sources.isEmpty && events.isEmpty)),
               Set(sources.map(\.id)).count == sources.count, Set(ids).count == ids.count,
               ids.allSatisfy({ writers[$0] != nil }),
               (manifest.events?.count ?? 0) + events.count <= 999 else { throw RecordingError.invalid("Invalid source transition or event limit.") }
         var previous = manifest.events?.last?.atMs ?? 0
+        var history = manifest.events ?? []
         for event in events {
             guard event.isKnownValid, event.type != "end", let time = event.atMs, time >= previous else { throw RecordingError.invalid("Invalid or out-of-order capture event.") }
             if event.type == "othersSource", event.reason == "restored" {
-                guard sources.contains(where:{ ["remote","media","tab"].contains($0.kind) && $0.sourceTrackId != nil }) else {
-                    throw RecordingError.invalid("Browser restoration requires its new source span.")
+                let state = CaptureSourceState(events:history,atMs:time)
+                guard state.others == true, state.source == "system", ["missing","lost"].contains(state.reason ?? ""),
+                      manifest.tracks.filter({ $0.kind == "system" && $0.ended != true }).allSatisfy({ ids.contains($0.id) }),
+                      sources.contains(where:{ ["remote","media","tab"].contains($0.kind) && $0.sourceTrackId != nil && !$0.endsImmediately }) else {
+                    throw RecordingError.invalid("Browser restoration requires an active fallback and its new source span.")
                 }
             }
+            history.append(event)
             previous = time
         }
         for source in sources {

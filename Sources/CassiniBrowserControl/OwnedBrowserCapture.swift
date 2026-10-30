@@ -39,6 +39,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private let queue: DispatchQueue
     private let key = DispatchSpecificKey<UInt8>()
     private let snapshotLock = NSLock()
+    private let endLock = NSLock()
+    private var endIntent: (CaptureEndReason,Double)?
+    private var timelineOrigin = ProcessInfo.processInfo.systemUptime
     private var cached: OwnedCaptureSnapshot
     private let recording: RecordingSession
     private var browserSources: [Data:BrowserSource] = [:]
@@ -263,14 +266,31 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             publish()
         }
     }
-    public func finish(problem: String? = nil) async throws {
+    /// Claim the trigger before asynchronous native/browser drains. This lock
+    /// never waits for disk I/O, so a UI Stop cannot lose its reason to a later
+    /// generic native Stop. A second trigger cannot rewrite the first one.
+    func setTimelineOrigin(_ uptime: TimeInterval) {
+        guard uptime.isFinite else { return }
+        endLock.withLock { if endIntent == nil { timelineOrigin = uptime } }
+    }
+    @discardableResult public func requestEnd(_ reason: CaptureEndReason, atMs: Double? = nil) -> Bool {
+        if let atMs { guard atMs.isFinite, atMs >= 0 else { return false } }
+        return endLock.withLock {
+            guard endIntent == nil else { return false }
+            endIntent = (reason,atMs ?? max(0,ProcessInfo.processInfo.systemUptime-timelineOrigin)*1000); return true
+        }
+    }
+    public func finish(problem: String? = nil, reason: CaptureEndReason? = nil, atMs: Double? = nil) async throws {
+        if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
+        if let reason { requestEnd(reason,atMs:atMs) }
         try await operation {
             guard self.phase != .saved else { return }
             self.phase = .saving; self.publish()
             // The broker can echo the input drain's already recorded diagnostic.
             // Preserve its classification; a different external failure is capture.
             let kind = self.nativeProblemKind == "io" || problem == nil || problem == self.nativeProblem ? self.nativeProblemKind : nil
-            do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:kind) }
+            let intent = self.endLock.withLock { self.endIntent }
+            do { try self.recording.finish(problem:problem ?? self.nativeProblem,kind:kind,reason:intent?.0 ?? reason,atMs:intent?.1 ?? atMs) }
             catch { self.phase = .saved; self.publish(); throw error }
             self.phase = .saved; self.publish()
         }

@@ -56,6 +56,10 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
             guard let time = value["atMs"]?.double, let type = value["type"]?.string else { continue }
             let event = CaptureEvent(atMs:time,type:type,source:value["source"]?.string,reason:value["reason"]?.string ?? "",me:value["me"]?.bool,others:value["others"]?.bool)
             guard event.isKnownValid, time >= previous else { continue }
+            if event.type == "othersSource", event.reason == "restored" {
+                let state = CaptureSourceState(events:result,atMs:time)
+                guard state.others == true, state.source == "system", ["missing","lost"].contains(state.reason ?? "") else { continue }
+            }
             result.append(event); previous = time
             if event.type == "end" { break }
         }
@@ -77,7 +81,10 @@ public struct CaptureSourceState: Sendable, Equatable {
             if event.type == "end" { break }
             guard time <= atMs else { continue }
             if event.type == "selection" { me = event.me; others = event.others }
-            else if event.type == "othersSource" { source = event.source; reason = event.reason; sinceMs = time }
+            else if event.type == "othersSource" {
+                if event.reason == "restored", others != true || source != "system" || !["missing","lost"].contains(reason ?? "") { continue }
+                source = event.source; reason = event.reason; sinceMs = time
+            }
         }
     }
 }

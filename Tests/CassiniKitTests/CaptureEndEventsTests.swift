@@ -37,4 +37,11 @@ import Testing
         #expect(events.last?.type == "end" && events.last?.atMs == 5000 && events.last?.reason == "callEnded")
         #expect(CaptureSourceState(events:events,atMs:5000).source == "browser")
     }
+    @Test func aStandaloneRestoredEventCannotInventAFallbackHistory() throws {
+        let event = CaptureEvent(atMs:1,type:"othersSource",source:"browser",reason:"restored")
+        let raw = try JSONParser.parse(JSONEncoder().encode([event]))
+        #expect(CaptureEvent.read(raw).isEmpty)
+        #expect(CaptureSourceState(events:[event],atMs:2).source == nil)
+    }
+
 }

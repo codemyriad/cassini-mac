@@ -245,7 +245,8 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
         XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.kind),["system"])
         XCTAssertEqual(owner.snapshot.manifest.tracks[0].frames,800)
-        XCTAssertEqual(owner.snapshot.manifest.events?.last?.source,"system")
+        XCTAssertEqual(owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source,"system")
+        XCTAssertEqual(owner.snapshot.manifest.events?.last?.type,"end")
     }
     @MainActor func testMeOffOnDrainsAndCreatesAFreshMicSpanWithoutStoppingBrowser() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
