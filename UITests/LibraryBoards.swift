@@ -661,7 +661,8 @@ final class LibraryBoards: XCTestCase {
             app.launchArguments += ["-CassiniDiskFree",String(20 << 30),"-CassiniDiskTotal",String(100 << 30)]
         }
         app.launch()
-        if extra.contains("--fixture-library-recording"), !app.windows.firstMatch.waitForExistence(timeout: 2) {
+        if extra.contains("--fixture-library-recording") || extra.contains("--fixture-library-rename"),
+           !app.windows.firstMatch.waitForExistence(timeout: 2) {
             app.menuBars.menuBarItems["Window"].click()
             app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
         }
