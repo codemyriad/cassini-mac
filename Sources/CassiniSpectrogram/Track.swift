@@ -63,7 +63,7 @@ public final class SpectrogramTrack {
             guard positionFrames == nextEnd else { continue }
             nextEnd += Int64(parameters.hop)
             guard analyze, valid == parameters.size else { continue }
-            let powers = transform.powers(frame:history,startingAt:write)
+            let powers = transform.powers(normalizedHistory:history,startingAt:write)
             analyzedFrames += 1
             emit(.init(sampleEnd:positionFrames,
                 centreMs:startOffsetMs + Double(positionFrames-Int64(parameters.size/2))/Double(parameters.rate)*1000,

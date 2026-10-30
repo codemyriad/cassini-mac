@@ -74,6 +74,23 @@ public final class SpectrogramTransform {
             let value = frame[(first+index) & (frame.count-1)]
             real[index] = value.isFinite ? max(-1,min(1,value)) : 0
         }
+        return transformWorkspace()
+    }
+
+    // Track history is already finite and clipped. Copy its two contiguous
+    // sections in C instead of sanitizing the same samples again at every hop.
+    func powers(normalizedHistory frame: [Float], startingAt first: Int) -> [Double] {
+        precondition(frame.count == parameters.size && frame.indices.contains(first))
+        frame.withUnsafeBufferPointer { source in
+            real.withUnsafeMutableBufferPointer { destination in
+                let tail = frame.count-first
+                destination.baseAddress!.update(from:source.baseAddress!+first,count:tail)
+                if first > 0 { destination.baseAddress!.advanced(by:tail).update(from:source.baseAddress!,count:first) }
+            }
+        }
+        return transformWorkspace()
+    }
+    private func transformWorkspace() -> [Double] {
         var mean: Float = 0
         let count = vDSP_Length(parameters.size)
         vDSP_meanv(real,1,&mean,count); mean = -mean
