@@ -51,3 +51,58 @@ struct LibraryMenuAnchor: NSViewRepresentable {
         if LibraryKeyboardMenu.anchor === view { LibraryKeyboardMenu.anchor = nil }
     }
 }
+
+/// Observe only Cassini's own second mouse-down inside the visible row. This
+/// leaves List selection and its independently working context menus intact.
+struct LibraryRowOpenAnchor: NSViewRepresentable {
+    let debugIdentifier: String?
+    let open: () -> Void
+    final class View: NSView {
+        private final class Monitor: @unchecked Sendable {
+            let value: Any
+            init(_ value: Any) { self.value = value }
+        }
+        var open: (() -> Void)?
+        var debugIdentifier: String?
+        private var monitor: Monitor?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); stopMonitoring()
+            guard window != nil else { return }
+            monitor = Monitor(NSEvent.addLocalMonitorForEvents(matching:.leftMouseDown) { [weak self] event in
+                MainActor.assumeIsolated {
+                    guard let self, event.clickCount == 2, event.window === self.window,
+                          self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return event }
+                    let point = self.convert(event.locationInWindow,from:nil)
+                    let inside = self.visibleRect.contains(point)
+                    if let name = self.debugIdentifier {
+                        NSLog("Hosted row double click %@: bounds=%@ visible=%@ point=%@ inside=%d",name,NSStringFromRect(self.bounds),NSStringFromRect(self.visibleRect),NSStringFromPoint(point),inside)
+                    }
+                    guard inside else { return event }
+                    // Default mode runs after native mouse tracking returns.
+                    RunLoop.main.perform(inModes:[.default]) { [weak self] in
+                        MainActor.assumeIsolated {
+                            guard let self, self.window?.isVisible == true else { return }
+                            self.open?()
+                        }
+                    }
+                    return event
+                }
+            }!)
+        }
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor.value) }; monitor = nil
+        }
+        deinit {
+            if let monitor { DispatchQueue.main.async { NSEvent.removeMonitor(monitor.value) } }
+        }
+    }
+    func makeNSView(context: Context) -> View { View() }
+    func updateNSView(_ view: View, context: Context) {
+        view.open = open; view.debugIdentifier = debugIdentifier
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: View, context: Context) -> CGSize? {
+        CGSize(width:proposal.width ?? 0,height:proposal.height ?? 0)
+    }
+    static func dismantleNSView(_ view: View, coordinator: ()) { view.stopMonitoring(); view.open = nil }
+}

@@ -240,8 +240,22 @@ struct LibraryView: View {
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
-                                .background { if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() } }
+                                .background {
+                                    LibraryRowOpenAnchor(debugIdentifier:rowActivationDebugID(meeting)) {
+                                        guard !LibraryMoveCoordinator.shared.busy else { return }
+                                        readTranscript(meeting)
+                                    }.accessibilityHidden(true)
+                                    if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+                                }
                                 .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
+                                .contextMenu {
+                                    Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
+                                        .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
+                                    Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
+                                        .disabled(!MeetingExportCoordinator.canExport(meeting))
+                                        .onAppear { store.selectedKey = meeting.libraryKey }
+                                    if trash.canTrash(meeting) { Divider(); trashButton(meeting) }
+                                }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)
                                     .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
@@ -259,19 +273,6 @@ struct LibraryView: View {
                 }
             }
             .listStyle(.sidebar)
-            .contextMenu(forSelectionType:String.self) { keys in
-                if let key = keys.first, let meeting = store.meetings.first(where:{ $0.libraryKey == key }) {
-                    Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = key; rename.show(meeting) }
-                        .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
-                    Button(UXText.text("common.exportEllipsis")) { store.selectedKey = key; exporter.show(meeting) }
-                        .disabled(!MeetingExportCoordinator.canExport(meeting))
-                        .onAppear { store.selectedKey = key }
-                    if trash.canTrash(meeting) { Divider(); trashButton(meeting) }
-                }
-            } primaryAction: { keys in
-                if !LibraryMoveCoordinator.shared.busy, let key = keys.first,
-                   let meeting = store.meetings.first(where:{ $0.libraryKey == key }) { readTranscript(meeting) }
-            }
             .onKeyPress(.return) {
                 guard let selected = store.selected, !LibraryMoveCoordinator.shared.busy else { return .ignored }
                 readTranscript(selected); return .handled
@@ -284,6 +285,12 @@ struct LibraryView: View {
             if let meeting = store.selected { preview(meeting) }
             else { Color(nsColor: .textBackgroundColor) }
         }
+    }
+    private func rowActivationDebugID(_ meeting: LibraryMeeting) -> String? {
+        #if DEBUG
+        if MeetingRenameFixture.enabled { return meeting.libraryKey }
+        #endif
+        return nil
     }
     private var toolbarControl: some View {
         Group {
