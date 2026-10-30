@@ -289,6 +289,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         catch let error as RecordingTransitionCommittedError {
             nativeProblem = nativeProblem ?? error.localizedDescription; nativeProblemKind = "io"
         }
+        for id in ending { pcmObservers.sourceEnded(id:id) }
     }
     private func eventTime(_ requested: Double) -> Double {
         // A device's frame count is not the control clock. Its drift must not

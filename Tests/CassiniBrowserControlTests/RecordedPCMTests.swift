@@ -8,6 +8,9 @@ private final class AdmittedPCMProbe: RecordedPCMObserver, @unchecked Sendable {
     struct Sample { let source: RecordedPCMSource, pcm: Data, offset: Double }
     private let lock = NSLock()
     private var samples: [Sample] = []
+    private var ended: [String] = []
+    func sourceEnded(id: String) { lock.withLock { ended.append(id) } }
+    var endedIDs: [String] { lock.withLock { ended } }
     func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) { lock.withLock { samples.append(.init(source:source,pcm:pcm,offset:offsetMs)) } }
     var snapshot: [Sample] { lock.withLock { samples } }
 }
@@ -51,6 +54,7 @@ private final class AdmittedPCMProbe: RecordedPCMObserver, @unchecked Sendable {
         try capture.browserAudio(id:"voice",sequence:0,offsetMs:0,pcm:bytes)
         let first = try #require(probe.snapshot.first)
         try await capture.select(me:true,others:false,atMs:100)
+        #expect(probe.endedIDs == [first.source.id])
         try capture.browserAudio(id:"voice",sequence:1,offsetMs:100,pcm:bytes)
         #expect(probe.snapshot.count == 1,"Excluded packets must not become picture data")
         try await capture.select(me:true,others:true,atMs:250)

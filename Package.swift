@@ -34,7 +34,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "CassiniKit"),
-        .target(name:"CassiniSpectrogram"),
+        .target(name:"CassiniSpectrogram",dependencies:["CassiniRecording"]),
         .testTarget(name:"CassiniSpectrogramTests",dependencies:["CassiniSpectrogram"],resources:[.copy("Fixtures")]),
         .target(name:"CassiniBrowserSetup"),
         .testTarget(name:"CassiniBrowserSetupTests",dependencies:["CassiniBrowserSetup"]),

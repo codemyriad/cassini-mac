@@ -15,7 +15,9 @@ public struct RecordedPCMSource: Sendable, Equatable {
 /// only offer to bounded memory and return; never perform analysis or file I/O.
 public protocol RecordedPCMObserver: AnyObject, Sendable {
     func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double)
+    func sourceEnded(id: String)
 }
+public extension RecordedPCMObserver { func sourceEnded(id: String) {} }
 /// Shared by one session's span writers. UI disappearance clears/subscribes the
 /// observer independently of slow writes, without retaining its view hierarchy.
 public final class RecordedPCMObservers: @unchecked Sendable {
@@ -26,6 +28,7 @@ public final class RecordedPCMObservers: @unchecked Sendable {
     public func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
         current?.offer(source:source,pcm:pcm,offsetMs:offsetMs)
     }
+    public func sourceEnded(id: String) { current?.sourceEnded(id:id) }
     fileprivate var current: (any RecordedPCMObserver)? { lock.withLock { observer } }
 }
 /// Only this small metadata lock crosses the callback boundary. It is never

@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
+import Accelerate
+import os
+import CassiniRecording
+
+/// A session-local bounded consumer. Input callbacks only retain immutable S16
+/// bytes and reserve a one-second budget; conversion/FFT run on utility work.
+/// The display coordinator asks for one batch per frame and fans it out to the
+/// pill/rows. There are no per-column main-thread notifications or timers.
+public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable {
+    private struct Admission {
+        var visible = false, accepting = true
+        var generation: UInt64 = 0, dropped: UInt64 = 0
+        var bytes: [String:Int] = [:]
+    }
+    private final class Source {
+        let descriptor: RecordedPCMSource, index: Int, lane: SpectrogramLane, track: SpectrogramTrack
+        var active = true
+        var arrival: Double
+        init(_ descriptor: RecordedPCMSource, index: Int, transform: SpectrogramTransform, arrival: Double) {
+            self.descriptor = descriptor; self.index = index; self.arrival = arrival
+            lane = descriptor.kind == "microphone" ? .me : .others
+            track = .init(parameters:transform.parameters,startOffsetMs:descriptor.startOffsetMs,transform:transform)
+        }
+    }
+    private let state = OSAllocatedUnfairLock(initialState:Admission())
+    private let queue = DispatchQueue(label:"io.codemyriad.cassini.spectro",qos:.utility)
+    private let clock: @Sendable () -> Double
+    private let mailbox = SpectrogramMailbox()
+    // Everything below belongs only to queue.
+    private var generation: UInt64 = .max
+    private var sources: [String:Source] = [:]
+    private var endedIDs: Set<String> = []
+    private var transforms: [Int:SpectrogramTransform] = [:]
+    private var me = SpectrogramLaneAccumulator(), others = SpectrogramLaneAccumulator()
+    private var meSelection = SpectrogramSelection(), othersSelection = SpectrogramSelection()
+    private var displayClock = SpectrogramDisplayClock()
+    private var mono: [Float] = [], right: [Float] = []
+    private var alignedPCM: [Int16] = []
+    private var stoppedAt: Double?
+
+    public init(originUptime: TimeInterval) {
+        precondition(originUptime.isFinite)
+        clock = { max(0,(ProcessInfo.processInfo.systemUptime-originUptime)*1000) }
+    }
+    public init(clock: @escaping @Sendable () -> Double) { self.clock = clock }
+    /// Called by the session's view coordinator only when its aggregate visible
+    /// subscriber count crosses zero. The old generation cannot repopulate it.
+    public func setVisible(_ value: Bool) {
+        let change = state.withLock { valueState -> UInt64? in
+            guard valueState.visible != value else { return nil }
+            valueState.visible = value; valueState.generation &+= 1; valueState.bytes = [:]; valueState.dropped = 0
+            return valueState.generation
+        }
+        guard let change else { return }
+        queue.async { [self] in
+            guard state.withLock({ $0.generation == change }) else { return }
+            ensureGeneration(change)
+        }
+    }
+    public func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
+        guard offsetMs.isFinite, offsetMs >= 0, !pcm.isEmpty, pcm.count <= 262144, pcm.count%(source.channels*2) == 0 else { return }
+        let admitted = state.withLock { value -> UInt64? in
+            guard value.visible, value.accepting else { return nil }
+            let pending = value.bytes[source.id,default:0]
+            guard value.bytes.count < 64 || pending > 0,
+                  pending+pcm.count <= source.sampleRate*source.channels*2 else { value.dropped &+= 1; return nil }
+            value.bytes[source.id] = pending+pcm.count
+            return value.generation
+        }
+        guard let admitted else { return }
+        queue.async { [self,pcm] in
+            defer {
+                state.withLock { value in
+                    guard value.generation == admitted else { return }
+                    let remaining = value.bytes[source.id,default:0]-pcm.count
+                    if remaining > 0 { value.bytes[source.id] = remaining } else { value.bytes.removeValue(forKey:source.id) }
+                }
+            }
+            guard state.withLock({ $0.visible && $0.generation == admitted }) else { return }
+            ensureGeneration(admitted)
+            consume(source,pcm:pcm,offsetMs:offsetMs)
+        }
+    }
+    public func sourceEnded(id: String) {
+        queue.async { [self] in
+            if endedIDs.count < 64 { endedIDs.insert(id) }
+            guard let source = sources[id] else { return }
+            source.active = false
+            if source.lane == .me { meSelection.reset() } else { othersSelection.reset() }
+        }
+    }
+    public struct Frame: Sendable {
+        public let me: [SpectrogramColumn], others: [SpectrogramColumn]
+        public let displayMs: Double, delayMs: Double
+        public let analyzedFrames: UInt64, lateColumns: UInt64, droppedBuffers: UInt64, droppedColumns: UInt64
+        public let retainedTracks: Int
+    }
+    /// Completion is on the utility queue. Callers must reject an obsolete view
+    /// generation before dispatching CALayer changes back to the main actor.
+    public func requestFrame(nowMs: Double, completion: @escaping @Sendable (Frame) -> Void) {
+        queue.async { [self] in
+            let status = state.withLock { ($0.visible,$0.generation,$0.dropped) }
+            ensureGeneration(status.1)
+            let now = nowMs.isFinite ? max(0,min(nowMs,stoppedAt ?? nowMs)) : 0
+            let display = displayClock.advance(nowMs:now)
+            if status.0 {
+                let slot = Int64(floor(display/20))
+                me.release(through:slot) { mailbox.append($0,lane:.me) }
+                others.release(through:slot) { mailbox.append($0,lane:.others) }
+            }
+            let batch = mailbox.drain()
+            completion(.init(me:batch.me,others:batch.others,displayMs:display,delayMs:displayClock.delayMs,
+                analyzedFrames:sources.values.reduce(0) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
+                droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count))
+        }
+    }
+    public func stop(atMs: Double) {
+        guard atMs.isFinite, atMs >= 0 else { return }
+        state.withLock { $0.accepting = false }
+        queue.async { [self] in stoppedAt = atMs }
+    }
+    private func ensureGeneration(_ value: UInt64) {
+        guard generation != value else { return }
+        generation = value; sources = [:]; transforms = [:]; mono = []; right = []; alignedPCM = []
+        me.reset(); others.reset(); meSelection.reset(); othersSelection.reset(); displayClock.reset(); mailbox.reset()
+    }
+    private func consume(_ descriptor: RecordedPCMSource, pcm: Data, offsetMs: Double) {
+        guard !endedIDs.contains(descriptor.id) else { return }
+        let arrival = clock()
+        guard arrival.isFinite, arrival >= 0 else { return }
+        if sources[descriptor.id] == nil {
+            guard sources.count < 64, let parameters = try? SpectrogramParameters(rate:descriptor.sampleRate) else { return }
+            let transform = transforms[descriptor.sampleRate] ?? SpectrogramTransform(parameters:parameters)
+            transforms[descriptor.sampleRate] = transform
+            sources[descriptor.id] = Source(descriptor,index:sources.count,transform:transform,arrival:arrival)
+        }
+        guard let source = sources[descriptor.id], source.active, source.descriptor == descriptor else { return }
+        source.arrival = arrival
+        let active = sources.values.filter { $0.active && arrival-$0.arrival <= 1000 }
+        let chosenMe = meSelection.choose(levels:Dictionary(uniqueKeysWithValues:active.filter{$0.lane == .me}.map{($0.index,$0.track.latestLevel)}),nowMs:arrival)
+        let chosenOthers = othersSelection.choose(levels:Dictionary(uniqueKeysWithValues:active.filter{$0.lane == .others}.map{($0.index,$0.track.latestLevel)}),nowMs:arrival)
+        let total = pcm.count/(descriptor.channels*2)
+        let start = ((offsetMs-descriptor.startOffsetMs)*Double(descriptor.sampleRate)/1000).rounded()
+        guard start >= Double(Int64.min/2), start < Double(Int64.max/2) else { return }
+        let original = Int64(start), trim = Int(min(Int64(total),max(0,-original)))
+        guard trim < total else { return }
+        let count = total-trim
+        if mono.count < count { mono = [Float](repeating:0,count:count); right = mono }
+        pcm.withUnsafeBytes { bytes in
+            let first = bytes.baseAddress!+trim*descriptor.channels*2
+            if UInt(bitPattern:first)%UInt(MemoryLayout<Int16>.alignment) == 0 {
+                convert(first.assumingMemoryBound(to:Int16.self),frames:count,channels:descriptor.channels)
+            } else {
+                // Data slices need not be aligned. Only that unusual case pays
+                // for an aligned copy, on this utility queue rather than IO.
+                let samples = count*descriptor.channels
+                if alignedPCM.count < samples { alignedPCM = [Int16](repeating:0,count:samples) }
+                alignedPCM.withUnsafeMutableBytes { $0.baseAddress!.copyMemory(from:first,byteCount:samples*2) }
+                alignedPCM.withUnsafeBufferPointer { convert($0.baseAddress!,frames:count,channels:descriptor.channels) }
+            }
+        }
+        mono.withUnsafeBufferPointer { samples in
+            source.track.append(.init(start:samples.baseAddress,count:count),atFrame:max(0,original),
+                analyze:(source.lane == .me ? chosenMe : chosenOthers).contains(source.index)) { frame in
+                displayClock.observe(centreMs:frame.centreMs,arrivalMs:arrival)
+                (source.lane == .me ? me : others).append(slot:frame.slot,trackIndex:source.index,powers:frame.powers)
+            }
+        }
+    }
+    private func convert(_ input: UnsafePointer<Int16>, frames count: Int, channels: Int) {
+        vDSP_vflt16(input,vDSP_Stride(channels),&mono,1,vDSP_Length(count))
+        var scale: Float = 1/32768
+        if channels == 2 {
+            vDSP_vflt16(input+1,2,&right,1,vDSP_Length(count))
+            vDSP_vadd(mono,1,right,1,&mono,1,vDSP_Length(count)); scale /= 2
+        }
+        vDSP_vsmul(mono,1,&scale,&mono,1,vDSP_Length(count))
+    }
+
+}

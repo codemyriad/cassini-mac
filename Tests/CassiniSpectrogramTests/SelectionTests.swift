@@ -18,4 +18,14 @@ import Testing
         #expect(second.choose(levels:[4:0.8,5:0.5],nowMs:0) == [4,5])
         #expect(first.tracks == [0,1])
     }
+    @Test func newTracksCanFillVacantAnalysisSlotsWithoutReplacingTheCurrentChoice() {
+        var selection = SpectrogramSelection()
+        #expect(selection.choose(levels:[:],nowMs:0).isEmpty)
+        #expect(selection.choose(levels:[0:0.1],nowMs:20) == [0])
+        #expect(selection.choose(levels:[0:0.1,1:0.2],nowMs:40) == [0,1])
+        #expect(selection.choose(levels:[0:0.1,1:0.2,2:0.3,3:0.4],nowMs:60) == [0,1,3])
+        #expect(selection.choose(levels:[0:0.1,1:0.2,2:0.9,3:0.4],nowMs:80) == [0,1,3])
+        #expect(selection.choose(levels:[0:0.1,1:0.2,2:0.9,3:0.4],nowMs:1020) == [1,2,3])
+    }
+
 }
