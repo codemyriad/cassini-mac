@@ -22,6 +22,8 @@ def main():
     source = args.app.resolve()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    keys = output.parent/'local-companion-keys'
+    subprocess.run(['clang',ROOT/'Spikes/BrowserGuide/keys.c','-framework','ApplicationServices','-o',keys],check=True)
     home = Path.home()
     profile = home/'Library/Application Support/Google/Chrome for Testing'
     companion = home/'Library/Application Support/Cassini/BrowserCompanion'
@@ -55,7 +57,8 @@ def main():
         config = base/'config.json'
         config.write_text(json.dumps(dict(app=str(app), nextApp=str(next_app), browser=str(browser), profile=str(profile),
             installed=str(companion/'extension'), newVersion=newer, output=str(output/'report.json'))))
-        env = dict(os.environ, TEST_RUNNER_CASSINI_LOCAL_GUIDE_GATE='1', TEST_RUNNER_CASSINI_LOCAL_GUIDE_CONFIG=str(config))
+        env = dict(os.environ, TEST_RUNNER_CASSINI_LOCAL_GUIDE_GATE='1', TEST_RUNNER_CASSINI_LOCAL_GUIDE_CONFIG=str(config),
+            TEST_RUNNER_CASSINI_LOCAL_GUIDE_KEYS=str(keys))
         test_run = next((ROOT/'build/Build/Products').glob('*.xctestrun'))
         try:
             with (output/'xctest.log').open('wb') as log:

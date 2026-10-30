@@ -46,7 +46,10 @@ final class LocalCompanionInstall: XCTestCase {
         attach(app,name:"companion-local-guide")
         guide.buttons["companion-copy-address"].click()
         XCTAssertEqual(NSPasteboard.general.string(forType:.string),"chrome://extensions/")
-        XCTAssertTrue(chrome.wait(for:.runningForeground,timeout:10),"Copy Address and Open activates the chosen browser")
+        print("Browser focus: XCTest=\(chrome.state.rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"), postAccess=\(CGPreflightPostEventAccess())")
+        wait("Copy Address and Open activates the chosen browser",timeout:10) {
+            NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.google.chrome.for.testing"
+        }
         key(0x25,flags:.maskCommand) // L
         key(0x09,flags:.maskCommand) // V
         let address = chrome.textFields["Address and search bar"]
@@ -132,9 +135,10 @@ final class LocalCompanionInstall: XCTestCase {
     @MainActor private func key(_ code: CGKeyCode, flags: CGEventFlags = []) {
         // XCTest's app-directed typeKey stalls without delivering keys to this
         // pinned Chromium. Send test-person HID events on the hosted desktop.
-        for down in [true,false] {
-            let event = CGEvent(keyboardEventSource:nil,virtualKey:code,keyDown:down)!
-            event.flags = flags; event.post(tap:.cghidEventTap)
-        }
+        guard let path = ProcessInfo.processInfo.environment["CASSINI_LOCAL_GUIDE_KEYS"] else { XCTFail("Missing hosted keyboard helper"); return }
+        let process = Process(); process.executableURL = URL(fileURLWithPath:"/usr/bin/sudo")
+        process.arguments = [path,String(code),String(flags.rawValue)]
+        do { try process.run(); process.waitUntilExit(); XCTAssertEqual(process.terminationStatus,0) }
+        catch { XCTFail("Hosted keyboard failed: \(error)") }
     }
 }
