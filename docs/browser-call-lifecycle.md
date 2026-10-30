@@ -75,10 +75,29 @@ control client). The83 Stop-memory fixes are adopted from main44e16c3. Automatic
 reasons do not learn user Stops; explicit Record/Stop and the earlier reconnect
 regressions remain covered by the combined native suite. No self-merge.
 
-Known remaining product work before this draft is ready: revalidate/cancel
-pending source changes when page state changes during authorization or drain.
-In particular, a returned browser must not wait indefinitely behind an unresolved
-system-permission request, and a newly navigating/closed page must invalidate a
-staged restoration before source commitment. Add those interleavings to the
-product proof, then run the dedicated real Chromium reload path. These are
-tracked implementation requirements, not a claim that the rollout is complete.
+## Source changes during authorization and drains
+
+Each meeting owns a source revision. A changed page observation (including new
+navigation, closure, absence or return) invalidates the pending revision before
+the next policy action, even while another source change is waiting. Explicit
+selection and Stop also cancel it. System-permission continuations are released
+without waiting for the OS reply; one outstanding OS request per native side is
+shared with a later current waiter. A late grant cannot start a cancelled driver
+or mark a cancelled operation as a failed input. Microphone permission is scoped
+separately.
+
+Candidates are checked again after preparation and on the owner's I/O queue
+before admitting their formats/samples. Managed captures only start fallback
+through the lifecycle policy or an explicit user selection/retry; generic update
+notifications cannot restart a cancelled candidate. Restorations revalidate after
+system drain and again before the atomic owner checkpoint. Rejected changes
+resume the existing system writer and clock; the microphone stays running.
+
+The hosted real Chromium proof uses the unmodified pinned extension and actual
+bundled native hosts with the signed app. A generated WebRTC call is recorded;
+its HTTP navigation is held until actual system PCM is written, then a new page
+returns remote PCM on the original transport into a fresh span in the same
+folder. Closing the real tab must persist tabClosed. Native inputs are RAM
+fixtures; neither proof opens host devices. This draft remains unready until the
+new hosted app and real-browser gates pass. No local app/browser execution or
+self-merge.

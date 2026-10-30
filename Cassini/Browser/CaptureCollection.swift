@@ -7,6 +7,12 @@ import CassiniRecording
 import CassiniBrowserControl
 import CassiniKit
 
+private struct BrowserSourceObservation: Equatable {
+    let page: BrowserCallLifecycle.Page?
+    let observedAt: TimeInterval?
+    let active: Bool
+}
+
 struct LiveCapture {
     let owner: OwnedBrowserCapture
     let input: CaptureInputLifecycle
@@ -24,6 +30,7 @@ struct LiveCapture {
     var callLifecycle = BrowserCallLifecycle()
     var modernLifecycle: Bool?
     var changingSource = false
+    fileprivate var sourceObservation: BrowserSourceObservation?
     var lastNavigationAt: TimeInterval?
     var savingSinceMs: Int64?
     @MainActor var microphoneSilent: Bool {
@@ -186,6 +193,7 @@ private final class CaptureFiles: @unchecked Sendable {
         guard let value = captures[id] else { return }
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         value.owner.requestEnd(reason,atMs:Double(value.elapsedMs))
+        value.input.cancelSourceChange()
         // A user's Stop still matters when an automatic Stop is already draining
         // or the control peer has gone away. Preserve the original capture URL.
         if userInitiated { service.rememberUserStop(captureID:value.captureID,key:value.key) }
@@ -299,7 +307,7 @@ private final class CaptureFiles: @unchecked Sendable {
             let phase: CaptureActivity = snapshot.phase == .saving || captures[id]?.savingSinceMs != nil ? .saving : .recording
             if activity[id] != phase { activity[id] = phase; CaptureActivityStore.shared.set(id,phase) }
         }
-        if snapshot.needsSystem, captures[id]?.savingSinceMs == nil, !captures[id]!.input.failedSides.contains(.others) {
+        if !snapshot.managedBrowser, snapshot.needsSystem, captures[id]?.savingSinceMs == nil, !captures[id]!.input.failedSides.contains(.others) {
             let input = captures[id]!.input
             Task { [weak self] in do { try await input.update() } catch { self?.captures[id]?.sourceProblem = true } }
         }
@@ -363,6 +371,7 @@ private final class CaptureFiles: @unchecked Sendable {
             }
         }
         announce()
+        poll() // Invalidate pending source work immediately on control updates.
     }
     private func key(for captureID: String) -> BrowserMeetingKey? {
         peers.flatMap { $0.captures + $0.interrupted }.first { $0.captureID.map { Data($0.utf8) == Data(captureID.utf8) } == true }?.key
@@ -434,6 +443,11 @@ private final class CaptureFiles: @unchecked Sendable {
                 // explicit navigating/closed report or a dead audio transport.
                 let fresh = source.browserAlive && source.transportAlive && now-source.levelTimestamp <= 1
                 let observedPage = page?.0 ?? (fresh ? .present : nil)
+                let observation = BrowserSourceObservation(page:observedPage,observedAt:page?.1,active:(count ?? (fresh ? 1 : 0)) > 0)
+                if observation != value.sourceObservation {
+                    value.input.cancelSourceChange()
+                    captures[id]?.sourceObservation = observation
+                }
                 let returnFloor = page?.1.map { max(0,$0-value.originUptime)*1000 }
                 let ready = source.restoreReady && source.browserReturnPCMAt.map { $0 >= (returnFloor ?? 0) } == true
                 let action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
@@ -452,16 +466,18 @@ private final class CaptureFiles: @unchecked Sendable {
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
                 let atMs = max(0,now-value.originUptime)*1000
-                let owner = value.owner
+                let revision = value.input.sourceRevision
                 Task { [weak self] in
                     do {
                         if lost {
                             let lossAt = max(0,(page?.1 ?? now)-value.originUptime)*1000
-                            try await Task.detached { try owner.browserLost(atMs:lossAt,transportAlive:source.transportAlive) }.value
+                            try await value.input.observeBrowserLoss(atMs:lossAt,transportAlive:source.transportAlive,revision:revision)
                         }
-                        if fallback { try await value.input.fallback() }
-                        if returned { try await value.input.restoreBrowser(atMs:atMs,notBeforeMs:returnFloor) }
+                        if fallback { try await value.input.fallback(revision:revision) }
+                        if returned { try await value.input.restoreBrowser(atMs:atMs,notBeforeMs:returnFloor,revision:revision) }
                         if returned { self?.captures[id]?.sourceProblem = false }
+                    } catch is CancellationError {
+                        // A newer page observation owns the next source decision.
                     } catch {
                         if self?.captures[id]?.savingSinceMs == nil { self?.captures[id]?.sourceProblem = true }
                     }

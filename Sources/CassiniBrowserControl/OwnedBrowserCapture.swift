@@ -217,9 +217,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             self.publish()
         }
     }
-    public func browserLost(atMs: Double, transportAlive: Bool = false) throws {
+    public func browserLost(atMs: Double, transportAlive: Bool = false, allowed: @Sendable () -> Bool = { true }) throws {
         let lost = ProcessInfo.processInfo.systemUptime
         try sync {
+            guard allowed() else { throw CancellationError() }
             guard phase == .recording else { return }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid loss time.") }
             let transportDied = self.transportAlive && !transportAlive
@@ -249,18 +250,30 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     /// A prepared, authorized system driver may now be attached. Source metadata
     /// is still unchanged until the staged writer admits its first actual PCM.
-    public func requestSystemFallback() async throws {
+    public func requestSystemFallback(allowed: @escaping @Sendable () -> Bool = { true }) async throws {
         try await operation {
+            guard allowed() else { throw CancellationError() }
             guard self.phase == .recording, self.others, !self.browserAlive else { throw BrowserIPCError.closed }
             guard self.recording.manifest.tracks.count + self.pendingNative < 64 else { throw RecordingError.limit("Too many recording tracks.") }
             self.fallbackRequested = true; self.publish()
         }
     }
+    /// Admit the prepared formats and PCM on the same queue as page/source
+    /// transitions. Cancellation is checked here before any candidate file or
+    /// source event can be created, including after a delayed queue admission.
+    func activateNative(_ stage: StagedNativeWriter, side: CaptureSide, allowed: @escaping @Sendable () -> Bool) async throws {
+        try await operation {
+            guard allowed() else { throw CancellationError() }
+            guard self.phase == .recording, side == .others, self.others, !self.browserAlive else { throw BrowserIPCError.closed }
+            try stage.activate(self.nativeWriter(side:side))
+        }
+    }
     /// Called only after the system sink pauses and drains. One checkpoint ends
     /// its spans, starts fresh browser spans and publishes restored together.
-    public func restoreBrowser(atMs: Double, notBeforeMs: Double? = nil) async throws {
+    public func restoreBrowser(atMs: Double, notBeforeMs: Double? = nil, allowed: @escaping @Sendable () -> Bool = { true }) async throws {
         if let notBeforeMs { guard notBeforeMs.isFinite, notBeforeMs >= 0 else { throw RecordingError.invalid("Invalid browser return time.") } }
         try await operation {
+            guard allowed() else { throw CancellationError() }
             guard atMs.isFinite, atMs >= 0, self.phase == .recording,
                   self.others, !self.browserAlive, self.readyForBrowser,
                   self.freshestReturn.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }

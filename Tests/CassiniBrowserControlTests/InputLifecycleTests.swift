@@ -15,6 +15,7 @@ import CassiniKit
     var failure: (@Sendable (String) -> Void)?
     var failingStart = false, failingAfterSamples = false
     var onStop: (() -> Void)?
+    var onStart: (() -> Void)?
     var firstAt: Double = 0
     let origin: UInt64
     init(_ kind: String, origin: UInt64) { self.kind = kind; self.origin = origin }
@@ -25,7 +26,7 @@ import CassiniKit
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if failingStart { throw CocoaError(.fileReadNoPermission) }
-        self.sink = sink; self.failure = failure; starts += 1; emit(at:firstAt)
+        self.sink = sink; self.failure = failure; starts += 1; emit(at:firstAt); onStart?()
         if failingAfterSamples { throw CocoaError(.fileReadNoPermission) }
     }
     func emit(at seconds: Double) {
@@ -55,6 +56,166 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try owner.browserTrack(id:id,label:"Returned",kind:"remote",sampleRate:8000,channels:1)
         try owner.browserAudio(id:id,sequence:0,offsetMs:atMs,pcm:Data(repeating:2,count:1600))
     }
+    @MainActor private func waitUntil(_ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(2)
+        while !condition(), Date() < deadline { try await Task.sleep(for:.milliseconds(5)) }
+        guard condition() else { throw BrowserIPCError.timeout }
+    }
+    @MainActor func testBrowserReturnCancelsPendingFallbackWithoutAnOSReplyOrALateSystemStart() async throws {
+        let (root,owner,mic,system,inputs) = try await returnFixture()
+        defer { system.permission?.resume(); system.permission = nil; try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true)
+        system.holdPermission = true
+        var fallbackDone = false
+        let pending = Task { () -> Bool in
+            defer { fallbackDone = true }
+            do { try await inputs.fallback(); return false } catch { return error is CancellationError }
+        }
+        try await waitUntil { system.permission != nil }
+        inputs.cancelSourceChange()
+        try offerReturn(owner,id:"returned-during-permission")
+        var restored = false
+        let returning = Task { try await inputs.restoreBrowser(atMs:3000); restored = true }
+        // Keep the permission unanswered throughout the actual restoration.
+        try await waitUntil { restored && fallbackDone }
+        XCTAssertTrue(owner.snapshot.browserAlive); XCTAssertEqual(system.starts,0)
+        XCTAssertEqual(mic.stops,0); XCTAssertTrue(inputs.failedSides.isEmpty)
+        let cancelled = await pending.value
+        XCTAssertTrue(cancelled)
+        try await returning.value
+        system.permission?.resume(); system.permission = nil
+        await Task.yield()
+        try await inputs.update()
+        XCTAssertEqual(system.starts,0,"A late grant belongs to the cancelled request")
+        XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.kind == "system" })
+        try await inputs.stop(); try await owner.finish()
+    }
+    @MainActor func testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest() async throws {
+        let (root,owner,mic,system,inputs) = try await returnFixture()
+        defer { system.permission?.resume(); system.permission = nil; try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true)
+        system.holdPermission = true
+        for _ in 0..<4 {
+            var done = false
+            let pending = Task { () -> Bool in
+                defer { done = true }
+                do { try await inputs.fallback(); return false } catch { return error is CancellationError }
+            }
+            try await waitUntil { system.permission != nil }
+            // Let the new waiter enter the shared outstanding authorization.
+            for _ in 0..<10 { await Task.yield() }
+            inputs.cancelSourceChange()
+            try await waitUntil { done }
+            let cancelled = await pending.value
+            XCTAssertTrue(cancelled)
+            XCTAssertEqual(system.authorized,1)
+        }
+        system.permission?.resume(); system.permission = nil
+        await Task.yield()
+        try await inputs.update()
+        XCTAssertEqual(system.starts,0); XCTAssertEqual(mic.stops,0)
+        XCTAssertFalse(owner.snapshot.fallbackRequested)
+        XCTAssertTrue(inputs.failedSides.isEmpty)
+        try await inputs.stop(); try await owner.finish()
+    }
+    @MainActor func testCurrentFallbackCanUseTheGrantFromAnEarlierCancelledWaiter() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Shared authorization",microphone:false,managedBrowser:true)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), oldSystem = GeneratedInput("system",origin:origin)
+        defer { oldSystem.permission?.resume(); oldSystem.permission = nil; try? FileManager.default.removeItem(at:root) }
+        // Only the first candidate's OS request stays alive; its late reply
+        // must start the currently selected candidate, never the cancelled one.
+        let newSystem = GeneratedInput("system",origin:origin); newSystem.firstAt = 2.1
+        var candidates = [oldSystem,newSystem]
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ candidates.removeFirst() },failure:{ _ in })
+        oldSystem.holdPermission = true
+        try owner.browserLost(atMs:1000,transportAlive:true)
+        var cancelled = false
+        let first = Task { do { try await inputs.fallback() } catch { cancelled = error is CancellationError } }
+        try await waitUntil { oldSystem.permission != nil }
+        inputs.cancelSourceChange()
+        try await waitUntil { cancelled }
+        await first.value
+        var ready = false
+        let second = Task { try await inputs.fallback(); ready = true }
+        try await waitUntil { candidates.isEmpty }
+        XCTAssertEqual(newSystem.authorized,0)
+        oldSystem.permission?.resume(); oldSystem.permission = nil
+        try await waitUntil { ready }
+        try await second.value
+        XCTAssertEqual(oldSystem.starts,0); XCTAssertEqual(newSystem.starts,1)
+        XCTAssertTrue(owner.snapshot.usingSystem); XCTAssertTrue(inputs.failedSides.isEmpty)
+        try await inputs.stop(); try await owner.finish()
+    }
+
+    @MainActor func testNavigationDuringSystemDrainRejectsRestorationAndResumesTheSameWriter() async throws {
+        let (root,owner,mic,system,inputs) = try await returnFixture()
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        try offerReturn(owner)
+        let oldSystem = try XCTUnwrap(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.id)
+        system.firstAt = 2.1
+        system.onStop = { inputs.cancelSourceChange() }
+        do { try await inputs.restoreBrowser(atMs:3000); XCTFail("Navigation must invalidate the pending return") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        system.onStop = nil
+        XCTAssertTrue(owner.snapshot.usingSystem); XCTAssertFalse(owner.snapshot.browserAlive)
+        XCTAssertEqual(mic.stops,0); XCTAssertEqual(system.starts,2)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.filter { $0.kind == "system" }.map(\.id),[oldSystem])
+        XCTAssertFalse(owner.snapshot.manifest.events?.contains { $0.reason == "restored" } ?? true)
+        try await inputs.restoreBrowser(atMs:3200)
+        XCTAssertTrue(owner.snapshot.browserAlive)
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.id == oldSystem }?.frames,1600)
+    }
+    @MainActor func testPageClosesDuringPreparedSystemStartDiscardsEveryBufferedSample() async throws {
+        let (root,owner,mic,system,inputs) = try await returnFixture()
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true)
+        system.onStart = { inputs.cancelSourceChange() }
+        do { try await inputs.fallback(); XCTFail("Closed page must reject the candidate") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        system.onStart = nil
+        XCTAssertEqual(system.starts,1); XCTAssertEqual(system.stops,1); XCTAssertEqual(mic.stops,0)
+        XCTAssertTrue(inputs.failedSides.isEmpty); XCTAssertFalse(owner.snapshot.fallbackRequested)
+        XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.kind == "system" })
+        XCTAssertFalse(owner.snapshot.manifest.events?.contains { $0.source == "system" } ?? true)
+        try await inputs.update()
+        XCTAssertEqual(system.starts,1,"Managed update must not restart a cancelled source")
+        try await inputs.stop(); try await owner.finish()
+    }
+
+    @MainActor func testChangedObservationRejectsQueuedLossAndFallbackBeforeAnyDeviceWork() async throws {
+        let (root,owner,mic,system,inputs) = try await returnFixture()
+        defer { try? FileManager.default.removeItem(at:root) }
+        let revision = inputs.sourceRevision
+        inputs.cancelSourceChange()
+        do { try await inputs.observeBrowserLoss(atMs:1000,transportAlive:true,revision:revision); XCTFail("Stale loss") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        do { try await inputs.fallback(revision:revision); XCTFail("Stale fallback") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertTrue(owner.snapshot.browserAlive); XCTAssertEqual(system.authorized,0); XCTAssertEqual(mic.stops,0)
+        // Revalidation also happens on the owner's I/O queue, not just before enqueue.
+        XCTAssertThrowsError(try owner.browserLost(atMs:1000,transportAlive:true,allowed:{ false }))
+        try owner.browserLost(atMs:1000,transportAlive:true)
+        try offerReturn(owner)
+        do { try await owner.restoreBrowser(atMs:3000,allowed:{ false }); XCTFail("Stale I/O transaction") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        do { try await owner.requestSystemFallback(allowed:{ false }); XCTFail("Stale fallback publication") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let stage = StagedNativeWriter()
+        try stage.addTrack(id:"discarded",label:"Stale candidate",kind:"system",sampleRate:8000,channels:1)
+        try stage.appendNative(id:"discarded",pcm:Data(repeating:1,count:1600),offsetMs:2000)
+        do { try await owner.activateNative(stage,side:.others,allowed:{ false }); XCTFail("Stale PCM admission") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        stage.discard()
+        XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.kind == "system" })
+        XCTAssertFalse(owner.snapshot.browserAlive); XCTAssertFalse(owner.snapshot.fallbackRequested)
+        XCTAssertFalse(owner.snapshot.manifest.events?.contains { $0.reason == "restored" } ?? true)
+        try await inputs.stop(); try await owner.finish()
+    }
+
     @MainActor func testManagedFallbackAndReturnKeepTheFolderClockMicAndActualSourceSpans() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
         defer { try? FileManager.default.removeItem(at:root) }

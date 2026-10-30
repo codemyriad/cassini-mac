@@ -27,6 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if CommandLine.arguments.contains("--browser-return-self-test") {
+            guard CaptureFixture.enabled else { exit(77) }
+            LibraryStore.shared.start()
+            Task { @MainActor in
+                try? await CaptureCollection.shared.setAutoRecord(false)
+                await CaptureCollection.shared.start(root:BrowserBackgroundSelfTest.controlRoot)
+                CompanionSetup.shared.start()
+                await BrowserReturnSelfTest.run()
+            }; return
+        }
         if CommandLine.arguments.contains("--browser-background-self-test") {
             startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
             Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return
