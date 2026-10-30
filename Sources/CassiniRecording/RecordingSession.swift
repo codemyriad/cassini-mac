@@ -122,12 +122,18 @@ public final class RecordingSession {
     public func transition(starting sources: [RecordingSource] = [], ending ids: [String] = [], events: [CaptureEvent] = []) throws {
         if sources.isEmpty && ids.isEmpty && events.isEmpty { return }
         guard !finished, manifest.tracks.count + sources.count <= 64,
+              (manifest.events?.count ?? 0) < 999,
               Set(sources.map(\.id)).count == sources.count, Set(ids).count == ids.count,
               ids.allSatisfy({ writers[$0] != nil }),
-              (manifest.events?.count ?? 0) + events.count <= 1000 else { throw RecordingError.invalid("Invalid source transition or event limit.") }
+              (manifest.events?.count ?? 0) + events.count <= 999 else { throw RecordingError.invalid("Invalid source transition or event limit.") }
         var previous = manifest.events?.last?.atMs ?? 0
         for event in events {
-            guard event.isKnownValid, let time = event.atMs, time >= previous else { throw RecordingError.invalid("Invalid or out-of-order capture event.") }
+            guard event.isKnownValid, event.type != "end", let time = event.atMs, time >= previous else { throw RecordingError.invalid("Invalid or out-of-order capture event.") }
+            if event.type == "othersSource", event.reason == "restored" {
+                guard sources.contains(where:{ ["remote","media","tab"].contains($0.kind) && $0.sourceTrackId != nil }) else {
+                    throw RecordingError.invalid("Browser restoration requires its new source span.")
+                }
+            }
             previous = time
         }
         for source in sources {
@@ -226,8 +232,10 @@ public final class RecordingSession {
         manifest.tracks[index].gapFrames = gapFrames > 0 ? gapFrames : nil
     }
     public func finish(problem: String? = nil) throws { try finish(problem:problem,kind:nil) }
-    public func finish(problem: String?, kind: String?) throws {
+    public func finish(problem: String?, kind: String?) throws { try finish(problem:problem,kind:kind,reason:nil) }
+    public func finish(problem: String?, kind: String?, reason: CaptureEndReason?, atMs: Double? = nil) throws {
         guard !finished else { return }
+        if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
         finished = true
         var failure: Error?
         for writer in writers.values {
@@ -243,7 +251,22 @@ public final class RecordingSession {
         }
         manifest.problemKind = failure != nil ? "io" : kind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
         manifest.state = manifest.problem == nil ? "completed" : "interrupted"
-        try checkpoint()
+        let boundary = max(atMs ?? 0,manifest.events?.last?.atMs ?? 0,manifest.tracks.compactMap(\.endOffsetMs).max() ?? 0)
+        let stopReason: CaptureEndReason = failure != nil || kind == "io" ? .error : reason ?? (problem?.isEmpty == false && kind != "gap" ? .error : .user)
+        manifest.events = (manifest.events ?? []) + [.init(atMs:boundary,type:"end",reason:stopReason.rawValue)]
+        let revision = metadataRevision
+        do { try checkpoint() }
+        catch {
+            // If no final metadata was published, try one durable error
+            // checkpoint. A published end is immutable even if directory sync
+            // subsequently fails. Neither a retry nor close adds another end.
+            if metadataRevision == revision {
+                manifest.problem = error.localizedDescription; manifest.problemKind = "io"; manifest.state = "interrupted"
+                manifest.events![manifest.events!.count-1] = .init(atMs:boundary,type:"end",reason:"error")
+                try? checkpoint()
+            }
+            throw error
+        }
         if let failure { throw failure }
     }
 
