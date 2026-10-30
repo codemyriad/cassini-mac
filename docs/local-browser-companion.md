@@ -28,6 +28,13 @@ and policies are never edited. A public-store build retains this as a secondary
 link.
 
 SDK tests use temporary files only. Sandbox, clipboard, browser and native UI
-checks run on disposable GitHub-hosted Macs, never a user's desktop. The fresh
-profile installation gate must follow the guide without extension-loading flags
-or profile injection; a loaded-extension test alone does not prove that flow.
+checks run on disposable GitHub-hosted Macs, never a user's desktop.
+`test-local-companion.py` restores the existing app/UI-test products, launches a
+fresh Chromium with external DNS disabled, and uses XCTest to follow the guide
+without extension-loading flags or profile injection. It checks the clipboard,
+native folder chooser, loaded ID and real handshake, then launches a private
+N+1 app copy to check stable-folder replacement and equal-version no-rewrite.
+Only the private copy's manifest/build versions change; the shared artifact's
+signature is checked before and after. Screenshots, AX trees, the xcresult and
+the result JSON stay in the browser-setup artifact, including on failures.
+A loaded-extension test alone does not prove this flow.

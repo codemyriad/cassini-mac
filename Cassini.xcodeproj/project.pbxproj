@@ -91,6 +91,7 @@
 		9ADB134940081C297FC5223C /* LibraryMoveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EC26D268607793ED6FB7DD /* LibraryMoveCoordinator.swift */; };
 		9DA6B8CE06B604EA48E553F3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884DDBCFE2CA6B77E53BCC76 /* main.swift */; };
 		9E41F9238C947BD499DCA591 /* CassiniPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = E0ABF1926525946F2D0642F1 /* CassiniPlayback */; };
+		9F63B1003386EC1B5E39B9E7 /* LocalCompanionInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */; };
 		A87658B886B3833CC84E648E /* BrowserConnectionStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D666ED6908642C435C16A217 /* BrowserConnectionStateView.swift */; };
 		AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128F0DA36A8F1649E4BFACB /* PlayerController.swift */; };
 		AAF4AC43DEC388D60EF5F6FF /* SearchSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E1FB2AB082E4582CBD8EB9 /* SearchSelfTest.swift */; };
@@ -275,6 +276,7 @@
 		8C306DD8AAAA314655363059 /* SpeechModelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechModelController.swift; sourceTree = "<group>"; };
 		94C9C1C73010D4F2A7AEF6D4 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportCoordinator.swift; sourceTree = "<group>"; };
+		9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCompanionInstall.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
@@ -653,6 +655,7 @@
 			children = (
 				F7FE2A1C7242DF314538998C /* Fixtures */,
 				C66314F1ADDF8D8554337717 /* LibraryBoards.swift */,
+				9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */,
 				F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */,
 			);
 			path = UITests;
@@ -1237,6 +1240,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D80BC25A6FB4F926F37BBD9 /* LibraryBoards.swift in Sources */,
+				9F63B1003386EC1B5E39B9E7 /* LocalCompanionInstall.swift in Sources */,
 				6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
