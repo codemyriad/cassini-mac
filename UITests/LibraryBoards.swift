@@ -146,9 +146,11 @@ final class LibraryBoards: XCTestCase {
         window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout:10))
         XCTAssertTrue(text("Allowed",in:window.sheets.firstMatch))
+        XCTAssertTrue(text("macOS asks you to allow this.",in:window.sheets.firstMatch))
         XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["first-run-record"].exists)
+        XCTAssertFalse(app.buttons["recording-stop"].exists,"Reading consent captions must never start a capture")
         if app.menuBars.menuBarItems["Help"].exists {
             app.menuBars.menuBarItems["Help"].click()
             XCTAssertFalse(app.menuItems["Cassini Help"].exists)
