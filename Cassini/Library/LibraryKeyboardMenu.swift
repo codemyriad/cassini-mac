@@ -55,7 +55,6 @@ struct LibraryMenuAnchor: NSViewRepresentable {
 /// Observe only Cassini's own second mouse-down inside the visible row. This
 /// leaves List selection and its independently working context menus intact.
 struct LibraryRowOpenAnchor: NSViewRepresentable {
-    let debugIdentifier: String?
     let open: () -> Void
     final class View: NSView {
         private final class Monitor: @unchecked Sendable {
@@ -63,7 +62,6 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
             init(_ value: Any) { self.value = value }
         }
         var open: (() -> Void)?
-        var debugIdentifier: String?
         private var monitor: Monitor?
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
@@ -75,9 +73,6 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
                           self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return event }
                     let point = self.convert(event.locationInWindow,from:nil)
                     let inside = self.visibleRect.contains(point)
-                    if let name = self.debugIdentifier {
-                        NSLog("Hosted row double click %@: bounds=%@ visible=%@ point=%@ inside=%d",name,NSStringFromRect(self.bounds),NSStringFromRect(self.visibleRect),NSStringFromPoint(point),inside)
-                    }
                     guard inside else { return event }
                     // Default mode runs after native mouse tracking returns.
                     RunLoop.main.perform(inModes:[.default]) { [weak self] in
@@ -99,7 +94,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
     }
     func makeNSView(context: Context) -> View { View() }
     func updateNSView(_ view: View, context: Context) {
-        view.open = open; view.debugIdentifier = debugIdentifier
+        view.open = open
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: View, context: Context) -> CGSize? {
         CGSize(width:proposal.width ?? 0,height:proposal.height ?? 0)

@@ -241,7 +241,7 @@ struct LibraryView: View {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
                                 .background {
-                                    LibraryRowOpenAnchor(debugIdentifier:rowActivationDebugID(meeting)) {
+                                    LibraryRowOpenAnchor {
                                         guard !LibraryMoveCoordinator.shared.busy else { return }
                                         readTranscript(meeting)
                                     }.accessibilityHidden(true)
@@ -285,12 +285,6 @@ struct LibraryView: View {
             if let meeting = store.selected { preview(meeting) }
             else { Color(nsColor: .textBackgroundColor) }
         }
-    }
-    private func rowActivationDebugID(_ meeting: LibraryMeeting) -> String? {
-        #if DEBUG
-        if MeetingRenameFixture.enabled { return meeting.libraryKey }
-        #endif
-        return nil
     }
     private var toolbarControl: some View {
         Group {

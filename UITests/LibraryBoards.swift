@@ -222,10 +222,13 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:sought,object:nil)],timeout:5),.completed,"Seeking still updates playback and its accessible time")
     }
     @MainActor func testOpeningMeetingWithoutWords() throws {
-        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString]); defer { app.terminate() }
+        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","--fixture-library-no-words","-CassiniRenameID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         let weekly = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000008").firstMatch
-        XCTAssertTrue(weekly.waitForExistence(timeout:20)); weekly.doubleClick()
+        XCTAssertTrue(weekly.waitForExistence(timeout:20)); weekly.click()
+        XCTAssertTrue(window.buttons["preview-write-down"].waitForExistence(timeout:5),"This private copy must have no transcript before testing opening")
+        XCTAssertFalse(window.buttons["preview-read-transcript"].isEnabled)
+        weekly.doubleClick()
         XCTAssertTrue(window.buttons["meeting-write-down"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
         XCTAssertTrue(window.buttons["meeting-export"].isEnabled)

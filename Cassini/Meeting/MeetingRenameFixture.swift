@@ -28,6 +28,18 @@ enum MeetingRenameFixture {
         do {
             try FileManager.default.createDirectory(at:parent,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
             if !FileManager.default.fileExists(atPath:root.path) { try FileManager.default.copyItem(at:source,to:root) }
+            if CommandLine.arguments.contains("--fixture-library-no-words") {
+                // This meeting in the sealed main vector is complete. Only this
+                // private writable copy becomes an untranscribed recording.
+                let meeting = root.appendingPathComponent("Recording-a0000000-0000-4000-8000-000000000008")
+                let metadata = meeting.appendingPathComponent("meeting.json")
+                guard var value = try JSONSerialization.jsonObject(with:Data(contentsOf:metadata)) as? [String:Any] else { return nil }
+                value["transcript"] = ["status":"none"]
+                value["etaMinutes"] = NSNull(); value["error"] = NSNull()
+                try JSONSerialization.data(withJSONObject:value,options:[.sortedKeys]).write(to:metadata,options:.atomic)
+                let sidecar = meeting.appendingPathComponent("transcript.json")
+                if FileManager.default.fileExists(atPath:sidecar.path) { try FileManager.default.removeItem(at:sidecar) }
+            }
             return root
         } catch { return nil }
     }()
