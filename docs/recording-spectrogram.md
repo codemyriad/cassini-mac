@@ -15,14 +15,14 @@ same admitted slice and actual span clock as `OwnedBrowserCapture`.
 source, per-rate vDSP transform workspace and independent lane selection. Tracks
 keep history when not selected for FFT. The lane sums linear power before the
 shared logarithm, release and quantisation. Visibility generations discard stale
-queued work; the two-lane mailbox is bounded to64 columns per lane.
+queued work; the two-lane mailbox is bounded to 64 columns per lane.
 
 One `RecordingSpectrogram` serves a capture's pill and both page rows. Native
-views share52×32 and202×64 IOSurface banks. New columns and two guard columns are
+views share 52×32 and 202×64 IOSurface banks. New columns and two guard columns are
 written under one surface lock. Core Animation scrolls two cropped texture layers
 per lane. A public CALayerDelegate display callback invalidates contents; the
 spec's illustrative `setContentsChanged()` is not a public macOS API. Display links
-follow window visibility and use30Hz for the pill alone; reduced motion uses a
+follow window visibility and use 30 Hz for the pill alone; reduced motion uses a
 column-rate sweep timer. Stop disconnects both clocks and freezes/fades the image.
 The existing AC level remains the source of silence warnings and accessibility.
 
@@ -30,14 +30,18 @@ The existing AC level remains the source of silence warnings and accessibility.
 
 The Swift Testing suites exercise real vDSP against both unchanged shared
 vectors, including the DC-offset JFK input, and route S16 through the actual
-session at4096 and8192-frame chunks. Other tests cover power sums, frame grid,
+session at 4096 and 8192-frame chunks. Other tests cover power sums, frame grid,
 gaps, overlap, bounded queues, top-three selection, hide/reopen, palette, wrap,
 reduced-motion packing and actual native/browser committed-span bridges.
 Surface packing unit tests use ordinary RAM, without creating a window/surface.
 
-`scripts/test-spectrogram-app.py` runs only on disposable GitHub-hosted Macs.
+`scripts/build-spectrogram-probe.py` links an optimised standalone harness from
+same-build Release SDK objects and the production native renderer source; it
+never rebuilds the app or SDK and is never bundled with Cassini. Debug-only app
+fixtures are excluded from that tool. `scripts/test-spectrogram-app.py` executes
+it only on disposable GitHub-hosted Macs.
 It feeds generated PCM through the production sink/file owner and exercises the
-production native renderer for60 seconds per A–E case. Outputs include per-stage
+production native renderer for 60 seconds per A–E case. Outputs include per-stage
 thread CPU, process CPU/delta fromE, frame intervals, late/drop counters, actual
 surface allocation, bounded payload bytes, top logs and a Time Profiler trace.
 CPU/pacing/late/drop budgets are asserted, not relaxed for the fixture. The CI

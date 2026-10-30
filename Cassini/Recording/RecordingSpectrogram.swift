@@ -137,7 +137,10 @@ import Darwin
         if let current = clockView, visible.contains(where:{ $0 === current }), !page || current.style == .row { primary = current }
         else { primary = visible.first(where:{ $0.style == .row }) ?? visible.first }
         if stopped {
-            guard Self.enabled, !visible.isEmpty else { return }
+            guard Self.enabled, !visible.isEmpty else {
+                if !preview { resetPicture() }
+                return
+            }
             ensureBanks(visible)
             paint(me:[],others:[],displayMs:lastDisplayMs)
             if !preview { visible.forEach { $0.freeze() } }
@@ -147,11 +150,7 @@ import Darwin
             if running {
                 generation += 1; running = false; inFlight = false; engine.setVisible(false); observers?.set(nil)
                 link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; pageRate = nil
-                pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
-                mePage = .init(style:.row,dark:dark); othersPage = .init(style:.row,dark:dark)
-                mePill = .init(style:.pill,dark:dark); othersPill = .init(style:.pill,dark:dark)
-                pageNeedsBake = true; pillNeedsBake = true
-                for view in views.values.compactMap(\.value) { view.suspend() }
+                resetPicture()
             }
             return
         }
@@ -179,6 +178,13 @@ import Darwin
             }
         }
         ensureBanks(visible)
+    }
+    private func resetPicture() {
+        pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
+        mePage = .init(style:.row,dark:dark); othersPage = .init(style:.row,dark:dark)
+        mePill = .init(style:.pill,dark:dark); othersPill = .init(style:.pill,dark:dark)
+        pageNeedsBake = true; pillNeedsBake = true
+        for view in views.values.compactMap(\.value) { view.suspend() }
     }
     private func ensureBanks(_ visible: [RecordingSpectrogramView]) {
         if visible.contains(where:{ $0.style == .row }), pageBank == nil { pageBank = try? .init(style:.row); pageNeedsBake = true }
@@ -293,7 +299,7 @@ import Darwin
         }
         CATransaction.commit()
     }
-    #if DEBUG
+    #if DEBUG && !SPECTROGRAM_PROBE
     private static var cachedPreview: (Int64,RecordingSpectrogram)?
     /// Only a hosted, sealed screenshot fixture can create this frozen image.
     /// It performs file/FFT work on a utility task, never opens an audio device.

@@ -16,7 +16,7 @@ def run(app: Path, output: Path):
     problems = []
     for case in 'ABCDE':
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
-        command = [str(app.resolve()/'Contents/MacOS/Cassini'), '--spectrogram-self-test',
+        command = [str(app.resolve()), '--spectrogram-self-test',
                    '-SpectrogramCase', case, '-ApplePersistenceIgnoreState', 'YES']
         trace = None
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
@@ -54,8 +54,10 @@ def run(app: Path, output: Path):
         for name, passed in report['gates'].items():
             if not passed:
                 problems.append(f'{case}: {name} budget failed')
-        if report['audioDevicesOpened'] is not False or not report['stopDisconnectsAndFreezes']:
+        if report['audioDevicesOpened'] is not False or not report['stopDisconnectsAndFreezes'] or not report['detachReleasesSurfaces']:
             problems.append(f'{case}: fixture isolation/Stop failed')
+        if case == 'B' and not report['hideShowReleasesAndRestarts']:
+            problems.append('B: hide/show lifecycle failed')
         print(f"{case}: CPU {report['cpuCorePercent']:.4f}%, analysis {report['analysisCorePercent']:.4f}%, "
               f"draw {report['drawingCorePercent']:.4f}%, p95/max {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
     baseline = next((r['cpuCorePercent'] for r in reports if r['case'] == 'E'), None)

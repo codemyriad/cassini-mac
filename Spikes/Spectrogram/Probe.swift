@@ -17,7 +17,7 @@ import Darwin
     static func run() async {
         let e = ProcessInfo.processInfo.environment
         guard e["GITHUB_ACTIONS"] == "true", e["RUNNER_ENVIRONMENT"] == "github-hosted",
-              let mode = LibraryLaunchContext.argument("-SpectrogramCase"), ["A","B","C","D","E"].contains(mode) else { exit(78) }
+              let mode = argument("-SpectrogramCase"), ["A","B","C","D","E"].contains(mode) else { exit(78) }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSpectrogram-"+UUID().uuidString)
         var driver: SpectrogramProbeInputs?
         do {
@@ -73,6 +73,20 @@ import Darwin
                 "pacing":mode == "A" || hidden || (controller.frameP95Ms <= 17.5 && controller.maxFrameIntervalMs <= 33),
                 "late":controller.lateColumns == initialLate,"drops":controller.droppedColumns == initialDropped,
                 "logicalViewPayload":controller.payloadBytes <= 128*1024]
+            if mode == "B" {
+                // Exercise subscription transitions separately from the60-second
+                // measurement. Hidden views must stop, then restart on return.
+                strips.forEach { $0.isHidden = true }; controller.reconcile()
+                try await Task.sleep(for:.milliseconds(250))
+                let hiddenCallbacks = controller.frameCallbacks
+                try require(controller.surfaceBytes == 0,"hiding the last view frees native surfaces")
+                try await Task.sleep(for:.milliseconds(250))
+                try require(controller.frameCallbacks == hiddenCallbacks,"hidden views disconnect their display link")
+                strips.forEach { $0.isHidden = false }; controller.reconcile()
+                try await Task.sleep(for:.milliseconds(500))
+                try require(controller.frameCallbacks > hiddenCallbacks && controller.surfaceBytes > 0,"visible views restart from fresh history")
+                report["hideShowReleasesAndRestarts"] = true
+            }
             // Freeze is exercised after measurement; layout/theme changes may
             // not clear its last image or restart its display clock.
             controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
@@ -83,6 +97,8 @@ import Darwin
             if !hidden { try require(controller.surfaceRevision >= stoppedRevision && strips.allSatisfy { $0.layer?.opacity == 0.45 },"Stop freezes and fades visible strips") }
             report["stopDisconnectsAndFreezes"] = true
             strips.forEach { $0.detach() }; window.orderOut(nil)
+            try require(controller.surfaceBytes == 0,"detaching the last stopped view releases its frozen native surfaces")
+            report["detachReleasesSurfaces"] = true
             try await input.finish()
             try? FileManager.default.removeItem(at:root)
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
@@ -92,6 +108,11 @@ import Darwin
             try? FileManager.default.removeItem(at:root)
             FileHandle.standardError.write(Data("Spectrogram probe failed: \(error)\n".utf8)); exit(1)
         }
+    }
+    private static func argument(_ name: String) -> String? {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of:name), index+1 < args.count else { return nil }
+        return args[index+1]
     }
     private static func processCPU() -> Double {
         var usage = rusage(); getrusage(RUSAGE_SELF,&usage)

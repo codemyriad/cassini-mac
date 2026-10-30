@@ -33,7 +33,9 @@
     "scripts/test-settings-app.py",
     "scripts/test-recording-saving.py",
     "scripts/test-trash-app.py",
-    "scripts/test-spectrogram-app.py"
+    "scripts/test-spectrogram-app.py",
+    "scripts/build-spectrogram-probe.py",
+    "Spikes/Spectrogram/**"
   ],
   "exports": [
     "Sources/**",

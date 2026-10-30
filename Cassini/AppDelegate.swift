@@ -27,9 +27,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
-        if CommandLine.arguments.contains("--spectrogram-self-test") {
-            Task { @MainActor in await SpectrogramSelfTest.run() }; return
-        }
         if CommandLine.arguments.contains("--browser-background-self-test") {
             startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
             Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return

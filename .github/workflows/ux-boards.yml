@@ -19,6 +19,7 @@ jobs:
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
+        release: 'true'
     - run: test "$RUNNER_ENVIRONMENT" = github-hosted
     - run: brew install displayplacer
     - uses: actions/setup-python@v5
@@ -51,7 +52,9 @@ jobs:
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
     - name: Production spectrogram A–E, native views and Time Profiler without devices
       if: always()
-      run: python3 scripts/test-spectrogram-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/spectrogram
+      run: |
+        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe --output build/ux-boards/spectrogram
     - name: Private stopped recording clock without devices or windows
       run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/saving-clock.json
     - name: Private import and queue lifecycle without devices
