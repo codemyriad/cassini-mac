@@ -28,6 +28,7 @@ import Testing
         let transform = SpectrogramTransform(parameters:parameters)
         let track = SpectrogramTrack(parameters:parameters,startOffsetMs:0,transform:transform)
         var release = SpectrogramRelease(), deltas: [Int] = []
+        let lane = SpectrogramLaneAccumulator()
         #expect(golden.spec == "cassini-spectro-v1")
         #expect(golden.rate == parameters.rate && golden.n == parameters.size && golden.hop == parameters.hop && golden.bands == 32)
         #expect(parameters.firstFrame == golden.firstFrame)
@@ -40,6 +41,10 @@ import Testing
                 let shown = release.column(slot:frame.slot,powers:frame.powers)
                 deltas += zip(raw,golden.raw[count]).map { abs(Int($0)-$1) }
                 deltas += zip(shown,golden.display[count]).map { abs(Int($0)-$1) }
+                lane.append(slot:frame.slot,trackIndex:0,powers:frame.powers)
+                lane.release(through:frame.slot) { column in
+                    deltas += zip(column.bands,golden.display[count]).map { abs(Int($0)-$1) }
+                }
                 if name == "spectro-v1", frame.sampleEnd <= 48000 || frame.sampleEnd-Int64(parameters.size) >= 4*48000 && frame.sampleEnd <= 5*48000 {
                     #expect(raw.allSatisfy { $0 == 0 },"DC and whole silent frames are exactly empty")
                 }
