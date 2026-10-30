@@ -28,6 +28,7 @@ final class LocalCompanionInstall: XCTestCase {
         }
         addUIInterruptionMonitor(withDescription:"Hosted setup interruption diagnostics") { alert in
             print("Hosted interruption: " + alert.debugDescription)
+            for text in alert.staticTexts.allElementsBoundByIndex { print("Hosted interruption text: \(text.value ?? text.label)") }
             return false // Preserve XCTest's normal handling; grant nothing here.
         }
         chrome.launch()
@@ -51,7 +52,8 @@ final class LocalCompanionInstall: XCTestCase {
         guide.buttons["companion-copy-address"].click()
         XCTAssertEqual(NSPasteboard.general.string(forType:.string),"chrome://extensions/")
         print("Browser focus: XCTest=\(chrome.state.rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"), postAccess=\(CGPreflightPostEventAccess())")
-        chrome.activate()
+        wait("The actual Copy Address action opens the browser",timeout:10) { chrome.state == .runningForeground }
+        XCTAssertFalse(guide.buttons["Try again"].exists,"The guide must open its selected browser successfully")
         // The test person selects the browser's title bar before pasting.
         // Its native address-field value below proves the actual paste target.
         chrome.windows.firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.01)).click()
