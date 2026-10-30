@@ -87,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LibraryMoveCoordinator.shared.start()
         CaptureNotifications.shared.configure()
         startBrowserConnection()
+        ApplicationUpdates.shared.start()
     }
 
     @MainActor private func startBrowserConnection(root: URL? = nil) {

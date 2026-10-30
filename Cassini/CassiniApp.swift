@@ -17,7 +17,7 @@ struct CassiniApp: App {
         #else
         let suppressWindow = false
         #endif
-        Window(UXText.text("library.title"), id: "library") { LibraryView() }
+        Window(UXText.text("app.name"), id: "library") { LibraryView() }
             .defaultLaunchBehavior(suppressWindow ? .suppressed : .presented)
             .defaultSize(width: 1120, height: 720)
             .windowToolbarStyle(.unified)
@@ -29,7 +29,7 @@ struct CassiniApp: App {
         MenuBarExtra(isInserted:.constant(captureActive)) { RecordingStatusMenu() } label: { RecordingStatusLabel() }
             .menuBarExtraStyle(.window)
 
-        WindowGroup(UXText.text("library.title"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
+        WindowGroup(UXText.text("app.name"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
             if let route { LegacyDocumentView(url: route.url) }
         }.defaultSize(width: 1280, height: 780)
 

@@ -63,7 +63,7 @@ jobs:
       - name: Release notes
         run: |
           cat > notes.md <<'EOF'
-          **Cassini for Mac** opens a Cassini portable meeting `.opus` file, plays it, and shows its
+          **Cassini talk for Mac** opens a Cassini portable meeting `.opus` file, plays it, and shows its
           transcript with word-by-word highlighting, click-to-seek and follow-along scrolling.
 
           Requires macOS 15 or later. The app is universal (Intel and Apple Silicon).
@@ -116,6 +116,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "Cassini for Mac ${{ steps.version.outputs.version }}" \
+            --title "Cassini talk for Mac ${{ steps.version.outputs.version }}" \
             --notes-file notes.md --generate-notes \
             "${{ steps.package.outputs.zip }}" "${{ steps.package.outputs.sum }}"

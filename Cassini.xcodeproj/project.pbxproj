@@ -17,21 +17,22 @@
 		164C9949FF793B6793EF5BC9 /* CassiniQuickLook.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		16E8B13A764F3F04D0F27EE1 /* CaptureDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */; };
 		184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */; };
-		1D01F0FC29FED44F688C1508 /* CassiniTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = 2DBCBD7E1D6BFC34FE3E6FFA /* CassiniTranscription */; };
+		1D01F0FC29FED44F688C1508 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 6DC84AF01711048FD74E3E5D /* CassiniWhistle */; };
 		1EEAD6E0D3422512F62D7200 /* TrashSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18471E0D1FE5E9C8D968ECB5 /* TrashSelfTest.swift */; };
 		1EF5EE8DD217C7B2C937D7A2 /* DocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E7443641B578BD53031A57 /* DocumentView.swift */; };
 		2021B3CC935BCBD8E60B1F06 /* SpeechModelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C306DD8AAAA314655363059 /* SpeechModelController.swift */; };
 		22DEC1862FD86191258EB31B /* SettingsSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */; };
 		22F5143C34BEF708A88983FA /* CassiniModelDownloads.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = D9F22F540895E669D17F8ED7 /* CassiniModelDownloads.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		238E15DAFC4D4A48D9E9A8DB /* MeetingExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D10107C4468265FDC81753 /* MeetingExportCoordinator.swift */; };
-		262D1D2D45BFD802117208E6 /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 55A344505230DCDE22F61882 /* CassiniBrowserSetup */; };
+		259BCE13C81CCC60F2EF4FF1 /* CassiniSearch in Frameworks */ = {isa = PBXBuildFile; productRef = 8BD08799CC3FBB7E2F4951ED /* CassiniSearch */; };
+		262D1D2D45BFD802117208E6 /* CassiniBrowserControl in Frameworks */ = {isa = PBXBuildFile; productRef = 15BEED4B6B9896781C2C0BDA /* CassiniBrowserControl */; };
 		273268D9968D6B4962355E33 /* CassiniTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = D2F761FDCABCC9F844AB3AFF /* CassiniTranscription */; };
 		299168E71A07944506989ECF /* MeetingRenameFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34778E4E58B9D407C49813FD /* MeetingRenameFixture.swift */; };
 		29F5BCCF6F54A4CEF61E131E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4A2328A25C9E4B5E0E8EDF6B /* Assets.xcassets */; };
 		2A8000A33AF6F42AB1C84630 /* RecordingHotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B20A9D6688D36A9354AA691 /* RecordingHotKey.swift */; };
 		2B2BF2CC6853F826BEB95524 /* CassiniBrowserControl in Frameworks */ = {isa = PBXBuildFile; productRef = 50EE5E4677EE1B9C8344F820 /* CassiniBrowserControl */; };
 		2D48038E00B4A0F182C4D8FE /* RecordingComfortSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDFBB9B092BB7A03771AF92E /* RecordingComfortSelfTest.swift */; };
-		2E10429165E3007976185FB1 /* CassiniRecording in Frameworks */ = {isa = PBXBuildFile; productRef = E6FC20266D6A5D5475AFA517 /* CassiniRecording */; };
+		2E10429165E3007976185FB1 /* CassiniTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = 2DBCBD7E1D6BFC34FE3E6FFA /* CassiniTranscription */; };
 		305A1C99522B22795540C210 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 64B46FF60172AA9811C4742A /* CassiniWhistle */; };
 		31F6B817B291D9F91D266F74 /* MeetingExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD45243E1E649B1F22103E4 /* MeetingExportSheet.swift */; };
 		335E85C4B4CE9D0332A91D88 /* LegacyOpening.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD057B32C9901BC49239FFBC /* LegacyOpening.swift */; };
@@ -40,7 +41,7 @@
 		398E0A13017E0EA1FECDF436 /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8FED7CB606A482972996CDB5 /* CassiniKit */; };
 		39E0B15ED7A1BC02093C216F /* RecordingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858A17B830285C2819946691 /* RecordingSelfTest.swift */; };
 		3A376D5042C616DB3FDC923F /* ScreenshotFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888C6DFF47B6CE64EA6EED03 /* ScreenshotFixture.swift */; };
-		3B6D0A18A1DAF82517C54273 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 6DC84AF01711048FD74E3E5D /* CassiniWhistle */; };
+		3B6D0A18A1DAF82517C54273 /* CassiniPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = E0ABF1926525946F2D0642F1 /* CassiniPlayback */; };
 		3E24FB942DE21DD890F33692 /* CassiniBrowserControl in Frameworks */ = {isa = PBXBuildFile; productRef = 16B255D1F3EA6CCDF64D889F /* CassiniBrowserControl */; };
 		3FCC47A9A4E865651687EAA6 /* MeetingRenameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F83DA445E2AA9E87FC5658 /* MeetingRenameView.swift */; };
 		40C516E74B343AD6588FB12A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C9C1C73010D4F2A7AEF6D4 /* main.swift */; };
@@ -56,10 +57,10 @@
 		5B22C485F9011F2995FB4C70 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09080E2F396E98099308B88B /* InspectorView.swift */; };
 		5B47447A5DB5A5E03A6D33DC /* MeetingTrashCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65BF49C592097C68C439F4F6 /* MeetingTrashCoordinator.swift */; };
 		5C9F95FD374B615DF23666C1 /* MeetingRenameCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A85AD4C9B8EEFC8765DCF5B /* MeetingRenameCoordinator.swift */; };
-		5E1841D1613AAED7F30A1514 /* CassiniParakeet in Frameworks */ = {isa = PBXBuildFile; productRef = FDCA3FCC9866CF0D091AB44B /* CassiniParakeet */; };
+		5E1841D1613AAED7F30A1514 /* CassiniModels in Frameworks */ = {isa = PBXBuildFile; productRef = C80379698D37573301F269A0 /* CassiniModels */; };
 		632D3A78813971C44A184A9C /* PlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */; };
 		639A8A35443010C4D3776217 /* AudioProcessTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = D295CC7B2C3B5C3830DE45C0 /* AudioProcessTap.swift */; };
-		63B8705E0C2C6C01FF0B331D /* CassiniLibraryWatchers in Frameworks */ = {isa = PBXBuildFile; productRef = 5ABA35F9DA9389B4A5887020 /* CassiniLibraryWatchers */; };
+		63B8705E0C2C6C01FF0B331D /* CassiniLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = B52B47E53FE17F1664D4546F /* CassiniLibrary */; };
 		66D88998A0953337261A8C61 /* UX in Resources */ = {isa = PBXBuildFile; fileRef = FFDAA113CF52CBA710233AC3 /* UX */; };
 		68278762F3B55EA7F2FB4B42 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC01E1B7B594D265434100B /* SidebarView.swift */; };
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
@@ -91,16 +92,17 @@
 		9919156A4B5CE6BC09BF9949 /* BrowserSetupClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E8630330DB380A4E701A12 /* BrowserSetupClient.swift */; };
 		9ADB134940081C297FC5223C /* LibraryMoveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EC26D268607793ED6FB7DD /* LibraryMoveCoordinator.swift */; };
 		9DA6B8CE06B604EA48E553F3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884DDBCFE2CA6B77E53BCC76 /* main.swift */; };
-		9E41F9238C947BD499DCA591 /* CassiniPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = E0ABF1926525946F2D0642F1 /* CassiniPlayback */; };
+		9E41F9238C947BD499DCA591 /* CassiniLibraryWatchers in Frameworks */ = {isa = PBXBuildFile; productRef = 5ABA35F9DA9389B4A5887020 /* CassiniLibraryWatchers */; };
 		9F63B1003386EC1B5E39B9E7 /* LocalCompanionInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */; };
 		A87658B886B3833CC84E648E /* BrowserConnectionStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D666ED6908642C435C16A217 /* BrowserConnectionStateView.swift */; };
 		AAA1D65641FCA1EFECFB7E70 /* PlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128F0DA36A8F1649E4BFACB /* PlayerController.swift */; };
 		AAF4AC43DEC388D60EF5F6FF /* SearchSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E1FB2AB082E4582CBD8EB9 /* SearchSelfTest.swift */; };
-		AE76EA44AAC9E6380B6D493D /* CassiniBrowserControl in Frameworks */ = {isa = PBXBuildFile; productRef = 15BEED4B6B9896781C2C0BDA /* CassiniBrowserControl */; };
+		AC44705EDD769A45EF41F310 /* ApplicationUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */; };
+		AE76EA44AAC9E6380B6D493D /* CassiniRecording in Frameworks */ = {isa = PBXBuildFile; productRef = E6FC20266D6A5D5475AFA517 /* CassiniRecording */; };
 		AF7A513A354BA6AD1AD8521E /* RecordingPageModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C4A85BA1F7C8A0364F585D /* RecordingPageModel.swift */; };
 		AFCADCBFBD90CED0B128DF06 /* RecordingPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21929C6877BBEF114C88FE47 /* RecordingPageView.swift */; };
 		B1140D30A9C8ACB1BD9CFAE0 /* CassiniTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = 4B29F141E80EE557BC812017 /* CassiniTranscription */; };
-		B5FCE1CA68FEAD624AB367CC /* CassiniSearch in Frameworks */ = {isa = PBXBuildFile; productRef = 8BD08799CC3FBB7E2F4951ED /* CassiniSearch */; };
+		B5FCE1CA68FEAD624AB367CC /* CassiniParakeet in Frameworks */ = {isa = PBXBuildFile; productRef = FDCA3FCC9866CF0D091AB44B /* CassiniParakeet */; };
 		B600CAE3C546AA4815EA7F2D /* CaptureCollection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56BFD91EE1AA0C18EDF77D85 /* CaptureCollection.swift */; };
 		B6C47B7A570CE6F8A61B56DD /* ModelNetworkSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C126544A829D6E9C14235B /* ModelNetworkSelfTest.swift */; };
 		BBA405927990B28446051D29 /* RecordingInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */; };
@@ -114,17 +116,17 @@
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
 		D452A448B93E2DBB03D96E4A /* LibraryImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */; };
 		D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */; };
-		DAC9053F510941A335654DF9 /* CassiniModels in Frameworks */ = {isa = PBXBuildFile; productRef = C80379698D37573301F269A0 /* CassiniModels */; };
-		E0A49316E91E04F56C05A113 /* CassiniLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = B52B47E53FE17F1664D4546F /* CassiniLibrary */; };
+		DAC9053F510941A335654DF9 /* CassiniExport in Frameworks */ = {isa = PBXBuildFile; productRef = E2F0EABE703FEB5B21F3AA3E /* CassiniExport */; };
+		E0A49316E91E04F56C05A113 /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6A70F100BBB78693556A7214 /* CassiniKit */; };
 		E46E58DE325E1AA975257BC2 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */; };
-		E494989AFB7C975E633A394B /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6A70F100BBB78693556A7214 /* CassiniKit */; };
+		E494989AFB7C975E633A394B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5B93DF2C6D4523431D910123 /* Sparkle */; };
 		E85E5AC9314DC09B92742E98 /* CassiniBrowserSetup.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 7C5B7D75EB99ED4AC8A540EF /* CassiniBrowserSetup.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E99BF457F63EA5D99EC25ACC /* CaptureSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 502CF30C95EA3E2D8D9C4281 /* CaptureSelfTest.swift */; };
 		E9BFA89A95D97AC2F6E86F90 /* CompanionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B05A2E901F296D79F6E22F /* CompanionSetupView.swift */; };
 		EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C12D84FB78BFC6CC8C985F /* UXText.swift */; };
 		ECF1884477A253784A867E2C /* MeetingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5113D3C4C431936150BE52 /* MeetingView.swift */; };
 		ED4C813AEF17E27AD01C0D57 /* Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1306467A5EEEC9D698F5B4E9 /* Service.swift */; };
-		F07B5EDE369FCD6AD1FC318F /* CassiniExport in Frameworks */ = {isa = PBXBuildFile; productRef = E2F0EABE703FEB5B21F3AA3E /* CassiniExport */; };
+		F07B5EDE369FCD6AD1FC318F /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 55A344505230DCDE22F61882 /* CassiniBrowserSetup */; };
 		F1C535ADDEC2069F9E186664 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3149977C4C1C582F5CEF23B /* main.swift */; };
 		FA8DB59547EC83DF9D117F9B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */; };
 		FC03DD79491FF3EFD61CE9D7 /* MeetingNativeInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34A161ECA8F0B18EA992202A /* MeetingNativeInputs.swift */; };
@@ -215,6 +217,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationUpdates.swift; sourceTree = "<group>"; };
 		0128F0DA36A8F1649E4BFACB /* PlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerController.swift; sourceTree = "<group>"; };
 		0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerBar.swift; sourceTree = "<group>"; };
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
@@ -234,7 +237,6 @@
 		202F303D76A9CA142F725248 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		21929C6877BBEF114C88FE47 /* RecordingPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPageView.swift; sourceTree = "<group>"; };
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
-		25D32E0C67AECDB710AEBDD6 /* cassini-mac-local-companion */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-local-companion"; path = .; sourceTree = SOURCE_ROOT; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
 		34535028E93902028522FD50 /* LibraryLocationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryLocationModel.swift; sourceTree = "<group>"; };
 		34778E4E58B9D407C49813FD /* MeetingRenameFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRenameFixture.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 		76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDiskWatch.swift; sourceTree = "<group>"; };
 		7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNavigation.swift; sourceTree = "<group>"; };
 		7C5B7D75EB99ED4AC8A540EF /* CassiniBrowserSetup.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = CassiniBrowserSetup.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		7ECF271B45220A62A4428F71 /* cassini-mac-release */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-release"; path = .; sourceTree = SOURCE_ROOT; };
 		84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionQueue.swift; sourceTree = "<group>"; };
 		858A17B830285C2819946691 /* RecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSelfTest.swift; sourceTree = "<group>"; };
 		85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingConfirmation.swift; sourceTree = "<group>"; };
@@ -370,19 +373,20 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E494989AFB7C975E633A394B /* CassiniKit in Frameworks */,
-				E0A49316E91E04F56C05A113 /* CassiniLibrary in Frameworks */,
-				63B8705E0C2C6C01FF0B331D /* CassiniLibraryWatchers in Frameworks */,
-				9E41F9238C947BD499DCA591 /* CassiniPlayback in Frameworks */,
-				3B6D0A18A1DAF82517C54273 /* CassiniWhistle in Frameworks */,
-				1D01F0FC29FED44F688C1508 /* CassiniTranscription in Frameworks */,
-				2E10429165E3007976185FB1 /* CassiniRecording in Frameworks */,
-				AE76EA44AAC9E6380B6D493D /* CassiniBrowserControl in Frameworks */,
-				262D1D2D45BFD802117208E6 /* CassiniBrowserSetup in Frameworks */,
-				F07B5EDE369FCD6AD1FC318F /* CassiniExport in Frameworks */,
-				DAC9053F510941A335654DF9 /* CassiniModels in Frameworks */,
-				5E1841D1613AAED7F30A1514 /* CassiniParakeet in Frameworks */,
-				B5FCE1CA68FEAD624AB367CC /* CassiniSearch in Frameworks */,
+				E494989AFB7C975E633A394B /* Sparkle in Frameworks */,
+				E0A49316E91E04F56C05A113 /* CassiniKit in Frameworks */,
+				63B8705E0C2C6C01FF0B331D /* CassiniLibrary in Frameworks */,
+				9E41F9238C947BD499DCA591 /* CassiniLibraryWatchers in Frameworks */,
+				3B6D0A18A1DAF82517C54273 /* CassiniPlayback in Frameworks */,
+				1D01F0FC29FED44F688C1508 /* CassiniWhistle in Frameworks */,
+				2E10429165E3007976185FB1 /* CassiniTranscription in Frameworks */,
+				AE76EA44AAC9E6380B6D493D /* CassiniRecording in Frameworks */,
+				262D1D2D45BFD802117208E6 /* CassiniBrowserControl in Frameworks */,
+				F07B5EDE369FCD6AD1FC318F /* CassiniBrowserSetup in Frameworks */,
+				DAC9053F510941A335654DF9 /* CassiniExport in Frameworks */,
+				5E1841D1613AAED7F30A1514 /* CassiniModels in Frameworks */,
+				B5FCE1CA68FEAD624AB367CC /* CassiniParakeet in Frameworks */,
+				259BCE13C81CCC60F2EF4FF1 /* CassiniSearch in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -606,6 +610,7 @@
 		90F1B4677963923A7D5A066E /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */,
 				34535028E93902028522FD50 /* LibraryLocationModel.swift */,
 				F1EC26D268607793ED6FB7DD /* LibraryMoveCoordinator.swift */,
 				D5DA66A372B10969E76428C3 /* ModelDownloadClient.swift */,
@@ -702,7 +707,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				25D32E0C67AECDB710AEBDD6 /* cassini-mac-local-companion */,
+				7ECF271B45220A62A4428F71 /* cassini-mac-release */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -783,6 +788,7 @@
 				9C428EA4197ADEEDAC5EAE08 /* Bundle native messaging host */,
 				DEE247171CA78941CC0C3C16 /* Bundle pinned Whistle worker and engine */,
 				7C3547D8657842CC3B35CB1A /* Bundle pinned Parakeet runtime and worker */,
+				E2F8287E7166009436638562 /* Sign Sparkle nested helpers */,
 			);
 			buildRules = (
 			);
@@ -797,6 +803,7 @@
 			);
 			name = Cassini;
 			packageProductDependencies = (
+				5B93DF2C6D4523431D910123 /* Sparkle */,
 				6A70F100BBB78693556A7214 /* CassiniKit */,
 				B52B47E53FE17F1664D4546F /* CassiniLibrary */,
 				5ABA35F9DA9389B4A5887020 /* CassiniLibraryWatchers */,
@@ -970,6 +977,7 @@
 			mainGroup = A21407D313CA8AD78A33135C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				0C6D86CF9AE62DBA3498C2F1 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				FA765852457975946F2DB68B /* XCLocalSwiftPackageReference "." */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -1105,6 +1113,25 @@
 			shellPath = /bin/sh;
 			shellScript = "bash \"$SRCROOT/scripts/bundle-whistle.sh\"";
 		};
+		E2F8287E7166009436638562 /* Sign Sparkle nested helpers */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sign Sparkle nested helpers";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash \"$SRCROOT/scripts/sign-sparkle.sh\"";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -1154,6 +1181,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */,
+				AC44705EDD769A45EF41F310 /* ApplicationUpdates.swift in Sources */,
 				639A8A35443010C4D3776217 /* AudioProcessTap.swift in Sources */,
 				C74C72D9CE3B8283151F5D44 /* BrowserBackgroundSelfTest.swift in Sources */,
 				A87658B886B3833CC84E648E /* BrowserConnectionStateView.swift in Sources */,
@@ -1400,6 +1428,8 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CASSINI_APP_HARDENED_RUNTIME = YES;
 				CASSINI_STORE_LISTING_PUBLIC = NO;
+				CASSINI_UPDATES_ENABLED = NO;
+				CASSINI_UPDATE_FEED = "https://cassini.talk/download/mac/appcast.xml";
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -1654,6 +1684,8 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CASSINI_APP_HARDENED_RUNTIME = YES;
 				CASSINI_STORE_LISTING_PUBLIC = NO;
+				CASSINI_UPDATES_ENABLED = NO;
+				CASSINI_UPDATE_FEED = "https://cassini.talk/download/mac/appcast.xml";
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -1869,6 +1901,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		0C6D86CF9AE62DBA3498C2F1 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		15BEED4B6B9896781C2C0BDA /* CassiniBrowserControl */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -1909,6 +1952,11 @@
 		5ABA35F9DA9389B4A5887020 /* CassiniLibraryWatchers */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CassiniLibraryWatchers;
+		};
+		5B93DF2C6D4523431D910123 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0C6D86CF9AE62DBA3498C2F1 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 		64B46FF60172AA9811C4742A /* CassiniWhistle */ = {
 			isa = XCSwiftPackageProductDependency;

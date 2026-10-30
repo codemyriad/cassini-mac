@@ -17,9 +17,14 @@ settings:
     OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
     CASSINI_APP_HARDENED_RUNTIME: YES
+    CASSINI_UPDATE_FEED: https://cassini.talk/download/mac/appcast.xml
+    CASSINI_UPDATES_ENABLED: NO
     SWIFT_STRICT_CONCURRENCY: targeted
     CASSINI_STORE_LISTING_PUBLIC: NO
 packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
   CassiniKit:
     path: .
 targets:
@@ -46,6 +51,8 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
+      - package: Sparkle
+        product: Sparkle
       - package: CassiniKit
         product: CassiniKit
       - package: CassiniKit
@@ -114,11 +121,23 @@ targets:
       - name: Bundle pinned Parakeet runtime and worker
         script: bash "$SRCROOT/scripts/bundle-parakeet.sh"
         basedOnDependencyAnalysis: false
+      - name: Sign Sparkle nested helpers
+        script: bash "$SRCROOT/scripts/sign-sparkle.sh"
+        basedOnDependencyAnalysis: false
     info:
       path: Cassini/Info.plist
       properties:
-        CFBundleName: Cassini
-        CFBundleDisplayName: Cassini
+        SUFeedURL: "$(CASSINI_UPDATE_FEED)"
+        CassiniUpdatesEnabled: "$(CASSINI_UPDATES_ENABLED)"
+        SUPublicEDKey: C/yBLLXnCHyydg2/EBmbuSC8ijeLtnga8VX/lCSUEiY=
+        SUEnableInstallerLauncherService: true
+        SUEnableDownloaderService: true
+        SUVerifyUpdateBeforeExtraction: true
+        SURequireSignedFeed: true
+        SUShowReleaseNotes: false
+        SUEnableSystemProfiling: false
+        CFBundleName: Cassini talk
+        CFBundleDisplayName: Cassini talk
         CassiniStoreListingPublic: "$(CASSINI_STORE_LISTING_PUBLIC)"
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
@@ -153,6 +172,9 @@ targets:
     entitlements:
       path: Cassini/Cassini.entitlements
       properties:
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - io.codemyriad.cassini-spks
+          - io.codemyriad.cassini-spki
         com.apple.security.app-sandbox: true
         com.apple.security.files.bookmarks.app-scope: true
         com.apple.security.files.user-selected.read-write: true
