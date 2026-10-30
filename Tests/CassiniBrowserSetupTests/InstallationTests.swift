@@ -4,6 +4,8 @@ import Foundation
 import Darwin
 @_spi(Testing) import CassiniBrowserSetup
 
+private func setupRunsOffMainThread() -> Bool { !Thread.isMainThread }
+
 final class InstallationTests: XCTestCase {
     private var root: URL!, contents: URL!, home: URL!
     override func setUpWithError() throws {
@@ -94,6 +96,70 @@ final class InstallationTests: XCTestCase {
                 XCTAssertEqual((try FileManager.default.attributesOfItem(atPath:file.path)[.posixPermissions] as? NSNumber)?.intValue,0o600)
             }
             XCTAssertEqual((try FileManager.default.attributesOfItem(atPath:leaf(browser).path)[.posixPermissions] as? NSNumber)?.intValue,0o700)
+        }
+    }
+    @MainActor func testLaunchTriggerInstallsMissingManifestsWithoutConnectAction() async throws {
+        try prepare(["Google/Chrome"])
+        let home = try XCTUnwrap(self.home), contents = try XCTUnwrap(self.contents)
+        let setup = BackgroundBrowserSetup {
+            guard setupRunsOffMainThread() else { throw BrowserSetupError.unavailable }
+            _ = try BrowserSetupInstallation(home:home,contents:contents).install()
+        }
+        defer { setup.stop() }
+        setup.trigger()
+        let deadline = ContinuousClock.now.advanced(by:.seconds(5))
+        while setup.state == .settingUp && ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertEqual(setup.state,.waiting)
+        for name in ["io.codemyriad.cassini","io.codemyriad.cassini.control"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath:leaf("Google/Chrome").appendingPathComponent(name + ".json").path))
+        }
+    }
+    func testIdenticalManifestsKeepMtimeAndInodeEvenWithDifferentJSONFormatting() throws {
+        try prepare(["Google/Chrome"]); XCTAssertEqual(try installation.install(),2)
+        let files = ["io.codemyriad.cassini", "io.codemyriad.cassini.control"].map { leaf("Google/Chrome").appendingPathComponent($0 + ".json") }
+        var before: [(Date,UInt64)] = []
+        for file in files {
+            let object = try JSONSerialization.jsonObject(with:Data(contentsOf:file))
+            try JSONSerialization.data(withJSONObject:object,options:[.prettyPrinted]).write(to:file)
+            try FileManager.default.setAttributes([.modificationDate:Date(timeIntervalSince1970:123456)],ofItemAtPath:file.path)
+            let info = try FileManager.default.attributesOfItem(atPath:file.path)
+            before.append((try XCTUnwrap(info[.modificationDate] as? Date),try XCTUnwrap(info[.systemFileNumber] as? UInt64)))
+        }
+        XCTAssertEqual(try installation.install { _ in XCTFail("An identical manifest must never be published") },2)
+        for (index,file) in files.enumerated() {
+            let info = try FileManager.default.attributesOfItem(atPath:file.path)
+            XCTAssertEqual(info[.modificationDate] as? Date,before[index].0)
+            XCTAssertEqual(info[.systemFileNumber] as? UInt64,before[index].1)
+        }
+    }
+    func testUnwritableConfigIsPermanentWithoutPublishingAnyManifest() throws {
+        try prepare(["Google/Chrome"])
+        let directory = leaf("Google/Chrome")
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:false,attributes:[.posixPermissions:0o500])
+        defer { try? FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:directory.path) }
+        XCTAssertThrowsError(try installation.install()) { error in
+            XCTAssertEqual(BrowserSetupFailure(error),.unwritable)
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:directory.path),[])
+    }
+    func testMoveRewritesBothPathsAndWrongOriginIsRepaired() throws {
+        try prepare(["Google/Chrome"]); _ = try installation.install()
+        let moved = root.appendingPathComponent("Moved Cassini.app/Contents")
+        try FileManager.default.createDirectory(at:moved.deletingLastPathComponent(),withIntermediateDirectories:true)
+        try FileManager.default.moveItem(at:contents,to:moved)
+        XCTAssertEqual(try BrowserSetupInstallation(home:home,contents:moved).install(),2)
+        for name in ["io.codemyriad.cassini", "io.codemyriad.cassini.control"] {
+            let file = leaf("Google/Chrome").appendingPathComponent(name + ".json")
+            var object = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
+            XCTAssertTrue(try XCTUnwrap(object["path"] as? String).hasPrefix(moved.path + "/"))
+            object["allowed_origins"] = ["chrome-extension://wrong/"]
+            try JSONSerialization.data(withJSONObject:object).write(to:file)
+        }
+        XCTAssertEqual(try BrowserSetupInstallation(home:home,contents:moved).install(),2)
+        for name in ["io.codemyriad.cassini", "io.codemyriad.cassini.control"] {
+            let file = leaf("Google/Chrome").appendingPathComponent(name + ".json")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
+            XCTAssertEqual(object["allowed_origins"] as? [String],[BrowserSetupInstallation.origin])
         }
     }
     func testRepeatConnectRepairsAStalePathAndSkipsBrowsersThatNeverRan() throws {

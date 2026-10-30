@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if CommandLine.arguments.contains("--browser-background-self-test") {
+            startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
+            Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--browser-capture-self-test") {
             Task { @MainActor in await CaptureSelfTest.run() }; return
         }
@@ -71,7 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LibraryStore.shared.reloadLocation()
         LibraryMoveCoordinator.shared.start()
         CaptureNotifications.shared.configure()
-        Task { await CaptureCollection.shared.start() }
+        startBrowserConnection()
+    }
+
+    @MainActor private func startBrowserConnection(root: URL? = nil) {
+        Task { await CaptureCollection.shared.start(root:root) }
+        CompanionSetup.shared.start()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -138,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated {
+            CompanionSetup.shared.stop()
             RecordingRuntime.shared.stop(); LibraryStore.shared.stop()
             TranscriptionQueue.shared.beginShutdown()
             LibraryImportCoordinator.shared.beginShutdown()
@@ -149,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     func applicationDidBecomeActive(_ notification: Notification) {
-        MainActor.assumeIsolated { CaptureCollection.shared.retryFromSettings() }
+        MainActor.assumeIsolated { CaptureCollection.shared.retryFromSettings(); CompanionSetup.shared.trigger() }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

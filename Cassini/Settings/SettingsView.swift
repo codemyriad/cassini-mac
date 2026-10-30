@@ -120,37 +120,16 @@ private struct SettingsLibraryView: View {
     }
 }
 private struct SettingsBrowserView: View {
-    @State private var companion = BrowserCompanionSnapshot()
-    @State private var companionSetup = CompanionSetup.shared
-    private var status: String {
-        guard companion.connected || CaptureCollection.shared.connected else { return UXText.text("settings.browser.status.notSetUp") }
-        if CaptureCollection.shared.connected {
-            let names = Set(CaptureCollection.shared.peers.filter(\.reconciled).compactMap(\.browser))
-            return names.count == 1 ? UXText.text("settings.browser.status.connected",["browser":names.first!]) : UXText.text("settings.browser.status.connectedGeneric")
-        }
-        return companion.browser.map { UXText.text("settings.browser.status.connected",["browser":$0]) } ?? UXText.text("settings.browser.status.connectedGeneric")
-    }
     var body: some View {
         SettingsPage {
             VStack(alignment:.leading,spacing:16) {
                 Text(UXText.text("settings.browser.description")).foregroundStyle(LibraryTheme.dim).lineSpacing(4)
-                HStack {
-                    Text(status).accessibilityIdentifier("settings-browser-status")
-                    Spacer()
-                    Button(UXText.text("meeting.companionCard.setUp")) {
-                        CompanionSetup.shared.presenter = .settings
-                    }
-                }
+                BrowserConnectionStateView(identifier:"settings-browser-status")
             }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
-        }.task {
-            while !Task.isCancelled {
-                let directory = LibraryLaunchContext.locationFile.deletingLastPathComponent().appendingPathComponent(".cassini-browser-connections")
-                companion = await Task.detached(priority:.utility) { BrowserCompanionConnection.snapshot(directory:directory) }.value
-                do { try await Task.sleep(for:.seconds(2)) } catch { return }
-            }
-        }.sheet(isPresented:Binding(get:{ companionSetup.presenter == .settings },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
+        }
     }
 }
+
 private struct SettingsTranscriptionView: View {
     @State private var models = SpeechModelController.shared
     private var weightSize: String {
