@@ -23,6 +23,9 @@ public final class RecordedPCMObservers: @unchecked Sendable {
     private weak var observer: (any RecordedPCMObserver)?
     public init() {}
     public func set(_ value: (any RecordedPCMObserver)?) { lock.withLock { observer = value } }
+    public func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
+        current?.offer(source:source,pcm:pcm,offsetMs:offsetMs)
+    }
     fileprivate var current: (any RecordedPCMObserver)? { lock.withLock { observer } }
 }
 /// Only this small metadata lock crosses the callback boundary. It is never
