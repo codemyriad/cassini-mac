@@ -18,6 +18,7 @@ let package = Package(
         .library(name: "CassiniModels", targets: ["CassiniModels"]),
         .library(name: "CassiniBrowserControl", targets: ["CassiniBrowserControl"]),
         .library(name: "CassiniBrowserSetup", targets: ["CassiniBrowserSetup"]),
+        .library(name: "CassiniSpectrogram", targets: ["CassiniSpectrogram"]),
         .executable(name: "cassini-control-host", targets: ["cassini-control-host"]),
         .executable(name: "cassini-parakeet-worker", targets: ["cassini-parakeet-worker"]),
         .executable(name: "cassini-model-fetch", targets: ["cassini-model-fetch"]),
@@ -33,6 +34,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "CassiniKit"),
+        .target(name:"CassiniSpectrogram"),
+        .testTarget(name:"CassiniSpectrogramTests",dependencies:["CassiniSpectrogram"],resources:[.copy("Fixtures")]),
         .target(name:"CassiniBrowserSetup"),
         .testTarget(name:"CassiniBrowserSetupTests",dependencies:["CassiniBrowserSetup"]),
         .executableTarget(name:"cassini-browser-setup-service",dependencies:["CassiniBrowserSetup"],path:"BrowserSetup",exclude:["Info.plist","BrowserSetup.entitlements","NativeHost.entitlements"]),
