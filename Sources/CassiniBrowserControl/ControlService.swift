@@ -62,9 +62,19 @@ public final class BrowserControlService: @unchecked Sendable {
             catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
-    public func stopMeeting(_ meeting: BrowserMeetingKey) {
+    public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
+        queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
+    }
+    public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) {
         queue.async { [self] in
-            if let request = try? registry.stop(meeting) { send([request]) }
+            // UI publication may lag the new status by one actor hop. Route a
+            // fresh Stop by its exact owned capture, without re-keying requests
+            // which were already issued on the old connection.
+            let current = captureID.flatMap { id in
+                registry.snapshots.flatMap { $0.captures + $0.interrupted }
+                    .first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.key
+            } ?? meeting
+            if let request = try? registry.stop(current,captureID:captureID,userInitiated:userInitiated) { send([request]) }
             publish()
         }
     }
@@ -130,6 +140,7 @@ public final class BrowserControlService: @unchecked Sendable {
         publish()
     }
     private func expire() {
+        registry.expireRememberedStops()
         let now = DispatchTime.now().uptimeNanoseconds
         let peers = Set(deadlines.values.filter { $0.1 <= now }.map { $0.0.key.peer })
         // An unacknowledged Start may already be recording. Reconnect reconciles

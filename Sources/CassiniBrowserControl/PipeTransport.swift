@@ -10,8 +10,10 @@ public struct BrowserPeer: Codable, Sendable {
     public let id: UUID
     public let role: BrowserPeerRole
     public let browser: String?
-    init(id: UUID, role: BrowserPeerRole, browser: String?) {
+    public let browserInstance: BrowserInstance?
+    init(id: UUID, role: BrowserPeerRole, browser: String?, browserInstance: BrowserInstance? = nil) {
         version = 1; self.id = id; self.role = role
+        self.browserInstance = browserInstance
         self.browser = browser.flatMap { ["Chrome","Chromium","Microsoft Edge","Brave"].contains($0) ? $0 : nil }
     }
 }
@@ -249,14 +251,14 @@ final class PipeEndpoint: ControlEndpoint, @unchecked Sendable {
     private let cancellation = Cancellation()
     private let folder: URL
     private let writeSeconds: UInt64
-    init(root: URL, role: BrowserPeerRole, browser: String?) throws {
+    init(root: URL, role: BrowserPeerRole, browser: String?, browserInstance: BrowserInstance? = nil) throws {
         try PipeFiles.directory(root)
         let clients = root.appendingPathComponent("clients",isDirectory:true); try PipeFiles.directory(clients)
         let server = try PipeFiles.openFile(root.appendingPathComponent("server.lease"),flags:O_RDWR)
         guard PipeFiles.held(server) else { Darwin.close(server); throw BrowserIPCError.unavailable }
         var descriptors = [server], adopted = false
         defer { if !adopted { for descriptor in descriptors { Darwin.close(descriptor) } } }
-        let peer = BrowserPeer(id:UUID(),role:role,browser:browser)
+        let peer = BrowserPeer(id:UUID(),role:role,browser:browser,browserInstance:browserInstance)
         let pending = clients.appendingPathComponent(".pending-" + peer.id.uuidString.lowercased(),isDirectory:true)
         let published = clients.appendingPathComponent(peer.id.uuidString.lowercased(),isDirectory:true)
         try PipeFiles.directory(pending,create:true)
