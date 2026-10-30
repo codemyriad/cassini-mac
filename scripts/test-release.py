@@ -32,6 +32,7 @@ class ReleaseTests(unittest.TestCase):
 
     def testApprovedLayoutAndConfigurableBase(self):
         self.assertEqual(release.PRODUCT_NAME, 'Cassini talk')
+        self.assertIn('<title>'+release.PRODUCT_NAME+'</title>', (ROOT/'Cassini/Resources/Cassini.html').read_text())
         info = plistlib.loads((ROOT/'Cassini/Info.plist').read_bytes())
         for key in ['CFBundleName', 'CFBundleDisplayName']:
             self.assertEqual(info[key], release.PRODUCT_NAME)
