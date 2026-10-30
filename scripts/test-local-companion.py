@@ -67,7 +67,8 @@ def main():
                     '-resultBundlePath', output/'Install.xcresult'], env=env, stdout=log, stderr=subprocess.STDOUT, timeout=360)
             if result.returncode:
                 lines = (output/'xctest.log').read_text(errors='replace').splitlines()
-                print('\n'.join(line for line in lines if 'error:' in line or 'Failed to' in line), flush=True)
+                print('\n'.join(line for line in lines if any(marker in line for marker in
+                    ['error:','Failed to','Browser focus:','Hosted keyboard post access:'])), flush=True)
                 raise AssertionError('Real guide failed; inspect xctest.log and Install.xcresult')
             report = json.loads((output/'report.json').read_text())
             assert report['loadedID'] == 'pcafdaahfhjiolfpfnlhmljfgoabbaij' and report['realNativeHandshake']

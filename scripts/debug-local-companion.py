@@ -35,7 +35,13 @@ name = plistlib.loads((bundle/'Contents/Info.plist').read_bytes())['CFBundleExec
 developer = Path(subprocess.check_output(['xcode-select','-p'],text=True).strip())
 platform = developer/'Platforms/MacOSX.platform/Developer'
 entitlements = ROOT/'build/guide-runner-entitlements.plist'
-entitlements.write_bytes(subprocess.run(['codesign','-d','--entitlements',':-',runner],check=True,capture_output=True).stdout)
+profile = plistlib.loads(subprocess.run(['codesign','-d','--entitlements',':-',runner],check=True,capture_output=True).stdout)
+print('Original UI-driver sandbox:',profile.get('com.apple.security.app-sandbox'),flush=True)
+# The cross-application test person is separate from the tested app. Global
+# project settings sandboxed this driver and prevented its keyboard subprocess.
+# Only this private driver copy changes; both app signatures remain sealed.
+profile['com.apple.security.app-sandbox'] = False
+entitlements.write_bytes(plistlib.dumps(profile))
 subprocess.run(['xcrun','swiftc','-emit-library','-module-name','CassiniWindowScreenshots','-swift-version','5',
     '-target','arm64-apple-macos15.0','-I',platform/'usr/lib','-L',platform/'usr/lib','-F',platform/'Library/Frameworks',
     '-Xlinker','-rpath','-Xlinker',platform/'usr/lib',
