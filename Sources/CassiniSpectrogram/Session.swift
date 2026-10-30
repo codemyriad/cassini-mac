@@ -188,7 +188,9 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         mono.withUnsafeBufferPointer { samples in
             source.track.appendNormalized(.init(start:samples.baseAddress,count:count),atFrame:max(0,original),
                 analyze:analyze) { frame in
-                displayClock.observe(centreMs:frame.centreMs,arrivalMs:arrival)
+                // Release is keyed by the containing20ms slot, not the later
+                // FFT centre within it. Measure readiness on that same clock.
+                displayClock.observe(columnMs:Double(frame.slot)*20,arrivalMs:arrival)
                 (source.lane == .me ? me : others).append(slot:frame.slot,trackIndex:source.index,powers:frame.powers)
             }
         }

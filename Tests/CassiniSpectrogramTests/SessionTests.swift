@@ -36,6 +36,28 @@ private final class RetainedPCM: @unchecked Sendable {
         for index in 0..<frames { for channel in 0..<channels { values[index*channels+channel] = Int16(1000*sin(2*Double.pi*1000*Double(index)/48000)).littleEndian } }
         return values.withUnsafeBytes { Data($0) }
     }
+    @Test(arguments:[4096,8192]) func continuousDisplayDoesNotReleaseChunkColumnsBeforeTheirSlotsArrive(_ chunk: Int) async {
+        let time = SpectrumTestClock(); time.set(0)
+        let session = SpectrogramSession(clock:{ time.read() }); session.setVisible(true)
+        let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
+        let pcm = Data(repeating:0,count:chunk*2)
+        var packet = 0, steadyLate: UInt64 = 0, last: SpectrogramSession.Frame?
+        for tick in 0...1800 {
+            let now = Double(tick)*1000/60
+            while 120+Double(packet*chunk)/48 <= now {
+                time.set(120+Double(packet*chunk)/48)
+                session.offer(source:source,pcm:pcm,offsetMs:Double(packet*chunk)/48)
+                _ = await frame(session,at:now)
+                packet += 1
+            }
+            time.set(now)
+            let picture = await frame(session,at:now)
+            if tick == 300 { steadyLate = picture.lateColumns }
+            last = picture
+        }
+        #expect(last?.lateColumns == steadyLate,"A continuous60Hz display must not discard steady4096/8192-frame packets")
+        #expect(last?.droppedBuffers == 0 && last?.droppedColumns == 0)
+    }
     @Test func hiddenSessionsDoNoAnalysisAndReopeningCannotReuseOldHistory() async throws {
         let time = SpectrumTestClock(), session = SpectrogramSession(clock:{ time.read() })
         let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)

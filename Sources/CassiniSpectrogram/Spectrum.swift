@@ -33,7 +33,8 @@ public struct SpectrogramParameters: Sendable {
 
 /// Confined to the session's serial utility queue. FFT/window/weight workspaces
 /// are reused; the input is the normalized mono PCM actually admitted to files.
-/// A complex FFT avoids the factor-two scaling of vDSP's packed real transform.
+/// A packed real FFT computes only the unique bins. Its factor-two output is
+/// explicitly removed before the shared energy normalization.
 public final class SpectrogramTransform {
     public let parameters: SpectrogramParameters
     private let setup: FFTSetup
@@ -41,7 +42,7 @@ public final class SpectrogramTransform {
     private let scale: Double
     private let window: [Float]
     private let weights: [[(Int,Double)]]
-    private var real: [Float], imaginary: [Float], outputReal: [Float], outputImaginary: [Float], squared: [Float]
+    private var real: [Float], outputReal: [Float], outputImaginary: [Float], squared: [Float]
 
     public init(parameters: SpectrogramParameters) {
         self.parameters = parameters
@@ -62,8 +63,9 @@ public final class SpectrogramTransform {
                 return weight > 1e-9 ? (bin,weight) : nil
             }
         }
-        real = [Float](repeating:0,count:size); imaginary = real
-        outputReal = real; outputImaginary = real; squared = real
+        real = [Float](repeating:0,count:size)
+        outputReal = [Float](repeating:0,count:size/2); outputImaginary = outputReal
+        squared = [Float](repeating:0,count:size/2+1)
     }
     deinit { vDSP_destroy_fftsetup(setup) }
 
@@ -95,15 +97,21 @@ public final class SpectrogramTransform {
         vDSP_meanv(real,1,&mean,count); mean = -mean
         vDSP_vsadd(real,1,&mean,&real,1,count)
         vDSP_vmul(real,1,window,1,&real,1,count)
-        real.withUnsafeMutableBufferPointer { inputReal in
-            imaginary.withUnsafeMutableBufferPointer { inputImaginary in
-                outputReal.withUnsafeMutableBufferPointer { resultReal in
-                    outputImaginary.withUnsafeMutableBufferPointer { resultImaginary in
-                        var input = DSPSplitComplex(realp:inputReal.baseAddress!,imagp:inputImaginary.baseAddress!)
-                        var output = DSPSplitComplex(realp:resultReal.baseAddress!,imagp:resultImaginary.baseAddress!)
-                        vDSP_fft_zop(setup,&input,1,&output,1,logSize,FFTDirection(FFT_FORWARD))
-                        vDSP_zvmags(&output,1,&squared,1,count)
+        let half = vDSP_Length(parameters.size/2)
+        real.withUnsafeBufferPointer { input in
+            outputReal.withUnsafeMutableBufferPointer { resultReal in
+                outputImaginary.withUnsafeMutableBufferPointer { resultImaginary in
+                    var output = DSPSplitComplex(realp:resultReal.baseAddress!,imagp:resultImaginary.baseAddress!)
+                    input.baseAddress!.withMemoryRebound(to:DSPComplex.self,capacity:parameters.size/2) {
+                        vDSP_ctoz($0,2,&output,1,half)
                     }
+                    vDSP_fft_zrip(setup,&output,1,logSize,FFTDirection(FFT_FORWARD))
+                    let dc = resultReal[0], nyquist = resultImaginary[0]
+                    vDSP_zvmags(&output,1,&squared,1,half)
+                    var quarter: Float = 0.25
+                    vDSP_vsmul(squared,1,&quarter,&squared,1,half)
+                    squared[0] = dc*dc*quarter
+                    squared[parameters.size/2] = nyquist*nyquist*quarter
                 }
             }
         }

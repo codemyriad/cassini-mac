@@ -160,6 +160,10 @@ import ScreenCaptureKit
         // Settings' notification. Deliver that documented notification through
         // the production observer; the getter must still read the real setting.
         for _ in 0..<100 {
+            // Refresh this process's CFPreferences cache after the separate
+            // defaults process writes the real hosted preference domain.
+            CFPreferencesAppSynchronize("com.apple.universalaccess" as CFString)
+            NSWorkspace.shared.notificationCenter.post(name:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil)
             if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value {
                 NSWorkspace.shared.notificationCenter.post(name:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil)
                 try await Task.sleep(for:.milliseconds(25))

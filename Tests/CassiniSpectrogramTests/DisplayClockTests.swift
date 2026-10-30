@@ -7,12 +7,12 @@ import Testing
         var clock = SpectrogramDisplayClock()
         _ = clock.advance(nowMs:0)
         for now in stride(from:20.0,through:1000,by:20) {
-            clock.observe(centreMs:now-230,arrivalMs:now)
+            clock.observe(columnMs:now-230,arrivalMs:now)
             _ = clock.advance(nowMs:now)
         }
         #expect(clock.delayMs == 250)
         for now in stride(from:1020.0,through:5000,by:20) {
-            clock.observe(centreMs:now-40,arrivalMs:now)
+            clock.observe(columnMs:now-40,arrivalMs:now)
             let previous = clock.delayMs
             _ = clock.advance(nowMs:now)
             #expect(previous-clock.delayMs <= 0.400000001)
@@ -21,7 +21,7 @@ import Testing
     }
     @Test func outliersExpireAndDelayRemainsBounded() {
         var clock = SpectrogramDisplayClock(); _ = clock.advance(nowMs:0)
-        clock.observe(centreMs:0,arrivalMs:5000)
+        clock.observe(columnMs:0,arrivalMs:5000)
         #expect(clock.advance(nowMs:5000) == 3000)
         #expect(clock.delayMs == 2000)
         // No future timestamp or backwards tick can accelerate presentation.
@@ -34,8 +34,8 @@ import Testing
     }
     @Test func percentileRejectsRareArrivalOutliers() {
         var clock = SpectrogramDisplayClock(); _ = clock.advance(nowMs:0)
-        for n in 1...100 { clock.observe(centreMs:Double(n)*10-100,arrivalMs:Double(n)*10) }
-        clock.observe(centreMs:0,arrivalMs:1001)
+        for n in 1...100 { clock.observe(columnMs:Double(n)*10-100,arrivalMs:Double(n)*10) }
+        clock.observe(columnMs:0,arrivalMs:1001)
         _ = clock.advance(nowMs:1001)
         #expect(clock.delayMs == 120)
     }

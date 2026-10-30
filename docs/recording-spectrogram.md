@@ -71,3 +71,14 @@ owned audio is stopped. CaptureCollection retains that Stop intent, ends native
 input immediately and sends the targeted browser command once the capture's exact
 control identity arrives. The normal browser flush deadline still applies while
 that identity is pending; another meeting is never used as a fallback target.
+
+The display delay observes the actual20ms column slot, rather than the FFT
+centre later within that slot, and display-link requests use the current frame
+timestamp. A deterministic continuous60Hz/4096-and8192-packet test retains its
+original failing evidence and checks no steady-state early releases. AC history
+is copied in bounded contiguous runs with Double reductions; the real FFT removes
+vDSP's factor-two amplitude explicitly and passes both unchanged goldens.
+Visibility membership is updated by view/window notifications, with one per-tick
+clock-view check. One parent layer scrolls each lane's two fixed wrap textures.
+These changes need a fresh hosted measurement; local analysis-only savings do
+not establish the native rendering budget.

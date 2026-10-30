@@ -38,6 +38,7 @@ import Darwin
         let notifications: [Notice]
     }
     private var views: [UUID:WeakView] = [:]
+    private var visibleViews: [WeakView] = []
     private var selections: [Selection]
     private var eventCount = -1
     private let target = LinkTarget()
@@ -139,6 +140,7 @@ import Darwin
         if views.values.contains(where:{ $0.value == nil }) { views = views.filter { $0.value.value != nil } }
         let mapped = views.values.compactMap(\.value)
         let visible = mapped.filter(\.visibleForSpectrogram)
+        visibleViews = visible.map { .init(value:$0) }
         for view in mapped where !view.visibleForSpectrogram { view.suspend() }
         let page = visible.contains { $0.style == .row }
         let primary: RecordingSpectrogramView?
@@ -212,15 +214,19 @@ import Darwin
         guard value === link, running, !stopped else { return }
         let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
         defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
-        reconcile(); guard running, !reduced else { return }
+        // Window/view notifications maintain membership. A single cheap
+        // visibility check catches occlusion before its queued notification;
+        // rebuilding/filtering every strip each display tick wastes CPU.
+        guard clockView?.visibleForSpectrogram == true else { reconcile(); return }
+        guard running, !reduced else { return }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram display link",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram display link",signpostID:interval) }
-        frameCallbacks += 1; requestFrame(timestamp:value.targetTimestamp)
+        frameCallbacks += 1; requestFrame(timestamp:value.timestamp)
     }
     private func reducedTick() {
         guard running, !stopped, reduced else { return }
-        reconcile(); guard running, reduced else { return }
+        guard visibleViews.contains(where:{ $0.value?.visibleForSpectrogram == true }) else { reconcile(); return }
         requestFrame(timestamp:CACurrentMediaTime())
     }
     private func requestFrame(timestamp: Double) {
@@ -306,7 +312,8 @@ import Darwin
             lastPill = pillEnd
         }
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        for view in views.values.compactMap(\.value) where view.visibleForSpectrogram {
+        for item in visibleViews {
+            guard let view = item.value else { continue }
             let bank = view.style == .pill ? pillBank : pageBank
             if let bank { view.present(bank:bank,revision:view.style == .pill ? pillRevision : pageRevision,
                 displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced) }
@@ -382,17 +389,18 @@ import Darwin
     private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-    private struct LaneLayers { let clip = CALayer(), first = CALayer(), second = CALayer(), fade = CAGradientLayer() }
+    private struct LaneLayers { let clip = CALayer(), scrolling = CALayer(), first = CALayer(), second = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
         wantsLayer = true; setAccessibilityElement(false)
         for _ in 0..<(style == .pill ? 2 : 1) {
             let item = LaneLayers(); item.clip.masksToBounds = true; item.clip.cornerRadius = 2
+            item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
             for image in [item.first,item.second] {
                 image.anchorPoint = .zero; image.contentsGravity = .resize
                 image.minificationFilter = .linear; image.magnificationFilter = .linear
-                item.clip.addSublayer(image)
+                item.scrolling.addSublayer(image)
             }
             item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
             item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
@@ -450,16 +458,23 @@ import Darwin
             lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
             lane.fade.frame = lane.clip.bounds
             }
-            if bankChanged || modeChanged { lane.clip.mask = reduced ? nil : lane.fade }
+            if bankChanged || modeChanged {
+                lane.clip.mask = reduced ? nil : lane.fade
+                lane.second.isHidden = reduced
+            }
             for image in [lane.first,lane.second] {
                 if bankChanged {
                     image.bounds = .init(x:0,y:0,width:capacity,height:height)
                     image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
+                    image.delegate = source
                 }
-                if changed { image.delegate = source; image.setNeedsDisplay() }
+                if changed { image.setNeedsDisplay() }
             }
-            lane.first.position = .init(x:reduced ? 0 : origin,y:0)
-            lane.second.position = .init(x:origin-capacity,y:0); lane.second.isHidden = reduced
+            if bankChanged {
+                lane.first.position = .zero
+                lane.second.position = .init(x:-capacity,y:0)
+            }
+            lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
         }
     }
 }

@@ -14,12 +14,12 @@ public struct SpectrogramDisplayClock {
     private var target: Double = 40
     public init() {}
     public mutating func reset() { self = .init() }
-    public mutating func observe(centreMs: Double, arrivalMs: Double) {
-        guard centreMs.isFinite, arrivalMs.isFinite, arrivalMs >= 0, arrivalMs >= lastArrival else { return }
+    public mutating func observe(columnMs: Double, arrivalMs: Double) {
+        guard columnMs.isFinite, arrivalMs.isFinite, arrivalMs >= 0, arrivalMs >= lastArrival else { return }
         lastArrival = arrivalMs
         evict(before:arrivalMs-3000)
         if count == arrivals.count { arrivals[first] = nil; first = (first+1)%arrivals.count; count -= 1 }
-        arrivals[(first+count)%arrivals.count] = .init(at:arrivalMs,lateness:max(0,arrivalMs-centreMs)); count += 1
+        arrivals[(first+count)%arrivals.count] = .init(at:arrivalMs,lateness:max(0,arrivalMs-columnMs)); count += 1
     }
     /// Returns the page's audio time. A pill uses this minus 60 ms so its four
     /// 20 ms columns are complete before their 80 ms column appears.
