@@ -10,9 +10,11 @@ public protocol RecordingSinkWriter: AnyObject {
     func finish(problem: String?, kind: String?) throws
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64)
     var recordingProblem: String? { get }
+    var recordedPCM: RecordedPCMPolicy? { get }
 }
 
 extension RecordingSinkWriter {
+    public var recordedPCM: RecordedPCMPolicy? { nil }
     public func finish(problem: String?, kind: String?) throws { try finish(problem: problem) }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {}
 }
@@ -101,6 +103,7 @@ public final class RecordingSink: @unchecked Sendable {
     private var sources: [String: Source] = [:]
     private var warnings: Set<String> = []
     private let writer: any RecordingSinkWriter
+    private let pcmPolicy: RecordedPCMPolicy?
     private let origin: UInt64
     private let capacitySeconds: Double
     private let onFailure: @Sendable (String) -> Void
@@ -108,7 +111,7 @@ public final class RecordingSink: @unchecked Sendable {
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
                 onFailure: @escaping @Sendable (String) -> Void) {
-        writer = session
+        writer = session; pcmPolicy = session.recordedPCM
         origin = originHostTime
         self.capacitySeconds = max(0.01, min(60, capacitySeconds))
         self.onFailure = onFailure
@@ -196,6 +199,10 @@ public final class RecordingSink: @unchecked Sendable {
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()
+        // Immutable admitted bytes are shared, not copied or analyzed here.
+        // The policy has only independent short metadata locks, never the
+        // writer's lock. Missing readiness/source metadata means no picture.
+        pcmPolicy?.offer(inputID:id,pcm:pcm,offsetMs:offset)
     }
 
     // Drain before activating a prepared input; never called from the audio callback.
