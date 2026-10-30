@@ -73,11 +73,18 @@ public struct BrowserControlRegistry: Sendable {
         var connectedAt: TimeInterval = 0
         var connectionOrder: UInt64 = 0
         var superseded = false
+        var absentSince: [Int:TimeInterval] = [:]
     }
     private struct CallContext: Sendable { let call: BrowserCallIdentity; var touched: TimeInterval }
     private var stoppedCalls = UserStoppedCalls()
     private var knownCalls: [BrowserMeetingKey:CallContext] = [:]
     private var captureCalls: [Data:CallContext] = [:]
+    private var unretiredCaptures: [Data:TimeInterval] = [:]
+    private var captureAuthority: [Data:UInt64] = [:]
+    private struct CaptureStop: Sendable { var touched: TimeInterval }
+    private var captureStops: [Data:CaptureStop] = [:]
+    private struct IssuedCall: Sendable { let key: BrowserMeetingKey; let context: CallContext }
+    private var unboundStarts: [String:IssuedCall] = [:]
     private let clock: @Sendable () -> TimeInterval
     private let instanceAlive: @Sendable (BrowserInstance) -> Bool?
     private var connectionOrder: UInt64 = 0
@@ -100,6 +107,13 @@ public struct BrowserControlRegistry: Sendable {
                 other.meetings.contains(where:{ $0.key.tabID == tab })
         }
     }
+    private func mayRemoveStops(_ peer: PeerState) -> Bool {
+        guard !peer.superseded, let instance = peer.peer.browserInstance else { return !peer.superseded }
+        // Profiles can share a browser process. An empty newer inventory does
+        // not identify its profile yet, so older links may refresh exact Stops
+        // but may not erase them on an ambiguous navigation report.
+        return !peers.values.contains { $0.peer.browserInstance == instance && $0.connectionOrder > peer.connectionOrder && $0.reconciled }
+    }
     /// Runs before replacing inventories, including the first inventory after
     /// reconnect. Only the old live inventory can protect an otherwise old Stop.
     public mutating func expireRememberedStops() {
@@ -108,6 +122,10 @@ public struct BrowserControlRegistry: Sendable {
         stoppedCalls.expire(now:now,priorLive:live,alive:instanceAlive)
         knownCalls = knownCalls.filter { now-$0.value.touched < UserStoppedCalls.retention || live.contains($0.value.call) }
         captureCalls = captureCalls.filter { retainedCaptureIDs.contains($0.key) || now-$0.value.touched < UserStoppedCalls.retention }
+        unretiredCaptures = unretiredCaptures.filter { retainedCaptureIDs.contains($0.key) || now-$0.value < UserStoppedCalls.retention }
+        captureAuthority = captureAuthority.filter { captureCalls[$0.key] != nil || unretiredCaptures[$0.key] != nil }
+        captureStops = captureStops.filter { retainedCaptureIDs.contains($0.key) || now-$0.value.touched < UserStoppedCalls.retention }
+        unboundStarts = unboundStarts.filter { now-$0.value.context.touched < UserStoppedCalls.retention && instanceAlive($0.value.context.call.instance) != false }
         for id in retainedCaptureIDs {
             if var context = captureCalls[id] { context.touched = now; captureCalls[id] = context }
         }
@@ -121,17 +139,37 @@ public struct BrowserControlRegistry: Sendable {
     private mutating func bindCaptures(_ peer: PeerState) {
         for capture in peer.captures + peer.interrupted {
             guard let id = capture.captureID.map({ Data($0.utf8) }) else { continue }
+            if capture.recording || capture.stopping || unretiredCaptures[id] != nil || retainedCaptureIDs.contains(id) {
+                unretiredCaptures[id] = clock()
+            }
+            if unretiredCaptures.count > UserStoppedCalls.limit, let oldest = unretiredCaptures.min(by:{ $0.value < $1.value })?.key { unretiredCaptures.removeValue(forKey:oldest) }
+            captureAuthority[id] = max(captureAuthority[id] ?? 0,peer.connectionOrder)
             if var original = captureCalls[id] { original.touched = clock(); captureCalls[id] = original; continue }
-            let requestedURL = peer.pending.values.first { $0.request.action == .start && $0.request.key == capture.key }?.url
+            let candidates = unboundStarts.filter { $0.value.context.call.instance == peer.peer.browserInstance && $0.value.key.tabID == capture.key.tabID }
+            let pending = peer.pending.values.first { $0.request.action == .start && $0.request.key == capture.key }
+            let reportedURL = peer.meetings.first(where:{ $0.key == capture.key })?.url
+            // A disconnected, unbound Start is not proof that a newly reported
+            // capture belongs to it after navigation. Keep the ID unresolved
+            // rather than borrowing either address across that ambiguity.
+            if pending == nil, !candidates.isEmpty,
+               !candidates.values.contains(where:{ start in reportedURL.map { Data($0.utf8) == Data(start.context.call.url.utf8) } == true }) { continue }
+            let matching = candidates.filter { start in reportedURL.map { Data($0.utf8) == Data(start.value.context.call.url.utf8) } == true }
+            let original = matching.count == 1 ? matching.first : nil
+            let requestedURL = pending?.url ?? reportedURL
             if let instance = peer.peer.browserInstance,
                let url = requestedURL ?? peer.meetings.first(where:{ $0.key == capture.key })?.url {
                 bind(id,to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
             } else if let context = knownCalls[capture.key] { bind(id,to:context) }
+            if captureCalls[id] != nil {
+                if let pending { unboundStarts.removeValue(forKey:pending.request.id) }
+                else if let original { unboundStarts.removeValue(forKey:original.key) }
+            }
         }
     }
     private mutating func bind(_ id: Data, to context: CallContext) {
         guard captureCalls[id] == nil else { return }
         captureCalls[id] = context
+        if captureStops[id] != nil { stoppedCalls.remember(context.call,now:clock()) }
         if captureCalls.count > UserStoppedCalls.limit {
             let candidates = captureCalls.filter { !retainedCaptureIDs.contains($0.key) }
             if let oldest = (candidates.isEmpty ? captureCalls : candidates).min(by:{ $0.value.touched < $1.value.touched })?.key {
@@ -144,9 +182,25 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func rememberUserStop(key: BrowserMeetingKey? = nil, captureID: String? = nil) {
         expireRememberedStops()
         let context: CallContext?
-        if let captureID { context = captureCalls[Data(captureID.utf8)] }
+        if let captureID {
+            let id = Data(captureID.utf8)
+            captureStops[id] = .init(touched:clock())
+            if captureStops.count > UserStoppedCalls.limit, let oldest = captureStops.min(by:{ $0.value.touched < $1.value.touched })?.key { captureStops.removeValue(forKey:oldest) }
+            context = captureCalls[id]
+            if context == nil, let key {
+                // An issued Start has an immutable URL even if discovery
+                // navigated or its control peer disconnected meanwhile.
+                for start in unboundStarts.values where start.key == key { stoppedCalls.remember(start.context.call,now:clock()) }
+            }
+        }
         else { context = key.flatMap { knownCalls[$0] } }
         if let context { stoppedCalls.remember(context.call,now:clock()) }
+    }
+    private mutating func retireMissing(_ previous: [BrowserCaptureStatus], current: [BrowserCaptureStatus], peer: PeerState) {
+        let active = Set(current.compactMap { $0.captureID.map { Data($0.utf8) } })
+        for id in previous.compactMap({ $0.captureID.map { Data($0.utf8) } }) where !active.contains(id) {
+            if peer.connectionOrder >= (captureAuthority[id] ?? 0) { unretiredCaptures.removeValue(forKey:id) }
+        }
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.filter { !$0.superseded }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
@@ -209,6 +263,13 @@ public struct BrowserControlRegistry: Sendable {
                 return .init(key:.init(peer:id,tabID:tab),title:title,url:url,sourceCount:try Self.integer(value["sourceCount"],maximum:4096),heard:heard)
             }
             let previous = Dictionary(uniqueKeysWithValues:peer.meetings.map { ($0.key.tabID,$0.url) })
+            let incomingTabs = Set(meetings.map { $0.key.tabID })
+            for tab in previous.keys where !incomingTabs.contains(tab) { peer.absentSince[tab] = clock() }
+            peer.absentSince = peer.absentSince.filter { clock()-$0.value < UserStoppedCalls.retention }
+            if peer.absentSince.count > UserStoppedCalls.limit {
+                let keep = peer.absentSince.sorted { $0.value > $1.value }.prefix(UserStoppedCalls.limit)
+                peer.absentSince = Dictionary(uniqueKeysWithValues:keep.map { ($0.key,$0.value) })
+            }
             if let instance = peer.peer.browserInstance {
                 let tabs = Set(meetings.map { $0.key.tabID })
                 for otherID in Array(peers.keys) {
@@ -228,11 +289,12 @@ public struct BrowserControlRegistry: Sendable {
                 }
                 if let identity = call(meeting,peer:peer) {
                     if newestOwner(peer,tab:meeting.key.tabID) {
-                        stoppedCalls.update(identity,previouslyPresent:previous[meeting.key.tabID] != nil,connectedAt:peer.connectedAt,now:clock())
+                        stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock())
                     }
                     rememberContext(.init(call:identity,touched:clock()),key:meeting.key)
                 }
             }
+            for tab in incomingTabs { peer.absentSince.removeValue(forKey:tab) }
             peer.meetings = meetings
             peer.autoAttempted.formIntersection(Set(meetings.filter { $0.sourceCount > 0 }.map { $0.key.tabID }))
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
@@ -241,8 +303,9 @@ public struct BrowserControlRegistry: Sendable {
             peer.autoAttempted.formUnion(peer.requestedStops)
         case "status":
             guard peer.hello else { throw BrowserControlStateError.malformed }
-            peer.captures = try Self.captures(json,peer:id)
-            peer.interrupted = try Self.interrupted(json,peer:id)
+            let captures = try Self.captures(json,peer:id), interrupted = try Self.interrupted(json,peer:id)
+            retireMissing(peer.captures+peer.interrupted,current:captures+interrupted,peer:peer)
+            peer.captures = captures; peer.interrupted = interrupted
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
             peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
             peer.statusRevision &+= 1
@@ -253,12 +316,14 @@ public struct BrowserControlRegistry: Sendable {
             guard let requestID = json["requestId"]?.string, !requestID.isEmpty, requestID.unicodeScalars.count <= 128 else { throw BrowserControlStateError.malformed }
             guard let pending = peer.pending[requestID] else { return } // Old/unknown results cannot mutate current state.
             let error = try Self.optionalString(json["error"],maximum:2000)
+            if !ok, pending.request.action == .start { unboundStarts.removeValue(forKey:requestID) }
             if let status = json["status"], !status.isNull {
                 let captures = try Self.captures(status,peer:id)
                 let interrupted = try Self.interrupted(status,peer:id)
                 if pending.request.action == .start, ok, let instance = peer.peer.browserInstance,
                    let url = pending.url, let capture = captures.first(where:{ $0.key == pending.request.key }), let identity = capture.captureID {
                     bind(Data(identity.utf8),to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
+                    unboundStarts.removeValue(forKey:requestID)
                 }
                 if pending.request.action == .start, ok,
                    let identity = captures.first(where:{ $0.key == pending.request.key })?.captureID {
@@ -278,6 +343,7 @@ public struct BrowserControlRegistry: Sendable {
                 // the same full-status baseline. Accept newer results in either
                 // arrival order; an older one cannot replace the newer snapshot.
                 if peer.statusRevision == pending.statusRevision && pending.order >= peer.lastResultOrder {
+                    retireMissing(peer.captures+peer.interrupted,current:captures+interrupted,peer:peer)
                     peer.captures = captures; peer.interrupted = interrupted
                     peer.lastResultOrder = pending.order
                     peer.autoAttempted.formUnion(captures.map { $0.key.tabID })
@@ -300,6 +366,10 @@ public struct BrowserControlRegistry: Sendable {
                 // a replacement capture which now occupies the same tab.
                 if let stopped = pending.stopCaptureID {
                     let identity = Data(stopped.utf8)
+                    if peer.connectionOrder >= (captureAuthority[identity] ?? 0) {
+                        unretiredCaptures.removeValue(forKey:identity)
+                        if captureCalls[identity] != nil { captureStops.removeValue(forKey:identity) }
+                    }
                     let before = peer.captures.count + peer.interrupted.count
                     peer.captures.removeAll { $0.key == pending.request.key && $0.captureID.map { Data($0.utf8) } == identity }
                     peer.interrupted.removeAll { $0.key == pending.request.key && $0.captureID.map { Data($0.utf8) } == identity }
@@ -312,20 +382,25 @@ public struct BrowserControlRegistry: Sendable {
         peers[id] = peer
         bindCaptures(peer)
     }
-    public mutating func start(_ key: BrowserMeetingKey, microphone: Bool) throws -> BrowserControlRequest {
+    public mutating func start(_ key: BrowserMeetingKey, microphone: Bool, automatic: Bool = false) throws -> BrowserControlRequest {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
         guard !peer.superseded else { throw BrowserControlStateError.unavailable }
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         guard peer.independent else { throw BrowserControlStateError.incompatible }
         guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
-        guard peer.meetings.contains(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
+        guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
+        if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
         peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url)
         peer.autoAttempted.insert(key.tabID)
-        if let context = knownCalls[key] { stoppedCalls.forget(context.call) } // Explicit Record can override Stop.
+        if let identity = call(meeting,peer:peer) {
+            if !automatic { stoppedCalls.forget(identity) } // Only explicit Record can override Stop.
+            unboundStarts[request.id] = .init(key:key,context:.init(call:identity,touched:clock()))
+            if unboundStarts.count > UserStoppedCalls.limit, let oldest = unboundStarts.min(by:{ $0.value.context.touched < $1.value.context.touched })?.key { unboundStarts.removeValue(forKey:oldest) }
+        }
         peers[key.peer] = peer
         return request
     }
@@ -333,10 +408,13 @@ public struct BrowserControlRegistry: Sendable {
     /// ended. It may cancel a pending Start; it never targets another profile.
     /// nil means already pending or deferred until drainStops() frees capacity.
     public mutating func stop(_ key: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) throws -> BrowserControlRequest? {
-        if userInitiated { rememberUserStop(key:key,captureID:captureID) }
+        let currentCapture = peers[key.peer].flatMap { ($0.captures+$0.interrupted).first { $0.key == key } }?.captureID
+        let originalCapture = captureID ?? currentCapture
+        if userInitiated { rememberUserStop(key:key,captureID:originalCapture) }
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
         guard !peer.superseded else { throw BrowserControlStateError.unavailable }
-        if let captureID, let original = captureCalls[Data(captureID.utf8)],
+        if let captureID, let currentCapture, Data(captureID.utf8) != Data(currentCapture.utf8) { return nil }
+        if let captureID, currentCapture == nil, let original = captureCalls[Data(captureID.utf8)],
            knownCalls[key]?.call != original.call { return nil } // An old capture cannot stop the tab's new call.
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         peer.autoAttempted.insert(key.tabID)
@@ -345,8 +423,11 @@ public struct BrowserControlRegistry: Sendable {
         let request = try Self.command(key,action:.stop,independent:peer.independent,microphone:false)
         guard peer.pending.count < 128 else { peers[key.peer] = peer; return nil }
         peer.commandOrder &+= 1
-        let target = (peer.captures + peer.interrupted).first { $0.key == key }?.captureID
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:target,url:peer.meetings.first(where:{ $0.key == key })?.url)
+        let target = currentCapture
+        let originalURL = target.flatMap { captureCalls[Data($0.utf8)]?.call.url }
+            ?? peer.pending.values.first(where:{ $0.request.key == key && $0.request.action == .start })?.url
+            ?? peer.meetings.first(where:{ $0.key == key })?.url
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:target,url:originalURL)
         peers[key.peer] = peer
         return request
     }
@@ -363,7 +444,7 @@ public struct BrowserControlRegistry: Sendable {
             }
         }
         keys.sort(by:Self.ordered)
-        return keys.compactMap { try? start($0,microphone:microphone) }
+        return keys.compactMap { try? start($0,microphone:microphone,automatic:true) }
     }
     /// Explicit Record takes all active meetings, independently of the auto switch.
     public mutating func startAll(microphone: Bool, choices: [BrowserMeetingKey:Bool] = [:]) -> [BrowserControlRequest] {
@@ -372,7 +453,14 @@ public struct BrowserControlRegistry: Sendable {
     }
     public mutating func stopAll(userInitiated: Bool = true) -> [BrowserControlRequest] {
         if userInitiated {
-            for id in retainedCaptureIDs { rememberUserStop(captureID:String(data:id,encoding:.utf8)) }
+            for id in Set(unretiredCaptures.keys).union(retainedCaptureIDs) { rememberUserStop(captureID:String(data:id,encoding:.utf8)) }
+            for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }
+            for peer in peers.values {
+                guard let instance = peer.peer.browserInstance else { continue }
+                for pending in peer.pending.values {
+                    if let url = pending.url { stoppedCalls.remember(.init(instance:instance,tabID:pending.request.key.tabID,url:url),now:clock()) }
+                }
+            }
         }
         var keys = Set<BrowserMeetingKey>()
         for peer in peers.values where !peer.superseded {
@@ -387,7 +475,18 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func drainStops() -> [BrowserControlRequest] {
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where !peer.superseded { keys += peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) } }
-        return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:false) }
+        var requests = keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:false) }
+        // A Stop can precede ID binding or control reconciliation. When that
+        // same capture returns, send its queued Stop without targeting a
+        // replacement capture or treating a missing URL as a wildcard.
+        let returning = snapshots.flatMap { $0.captures + $0.interrupted }
+        for capture in returning {
+            guard capture.recording || capture.stopping,
+                  let id = capture.captureID, captureStops[Data(id.utf8)] != nil,
+                  let request = try? stop(capture.key,captureID:id,userInitiated:false) else { continue }
+            requests.append(request)
+        }
+        return requests
     }
     private static func ordered(_ a: BrowserMeetingKey, _ b: BrowserMeetingKey) -> Bool {
         a.peer == b.peer ? a.tabID < b.tabID : a.peer.uuidString < b.peer.uuidString
@@ -396,6 +495,7 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func failed(_ request: BrowserControlRequest) {
         guard var peer = peers[request.key.peer], peer.pending.removeValue(forKey:request.id) != nil else { return }
         peers[request.key.peer] = peer
+        if request.action == .start { unboundStarts.removeValue(forKey:request.id) }
         appendOutcome(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil))
     }
     private mutating func appendOutcome(_ outcome: BrowserControlOutcome) {

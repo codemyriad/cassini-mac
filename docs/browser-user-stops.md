@@ -13,9 +13,10 @@ automatic stops stay per connection. Explicit Record overrides its call's Stop.
 Stop memory is bounded to256 entries. Ten minutes of absence expires an entry;
 the prior live inventory protects a still-present long call. Expiry runs before
 an incoming inventory is applied. Every inventory compares URLs, including SPA
-changes without an empty intermediate inventory. A returning tab is reconciled
-within10 seconds of either the connection or the most recent Stop/report, so a
-fresh Stop on an old connection is not discarded as late. Known-dead browser
+changes without an empty intermediate inventory. Initial discovery may take
+longer than10 seconds without deleting an unexpired exact Stop. Only a tab that
+was previously present and then absent gets a10-second disappearance window;
+a fresh Stop still wins over an older absence marker. Known-dead browser
 instances are removed; denied process inspection is treated as unknown.
 
 Capture IDs bind to the original meeting address on the first status, before
@@ -37,3 +38,15 @@ same two regression assertions against an origin/main snapshot: both fail on
 main and pass with this change. Hosted background registration additionally
 requires PID/start metadata from the real Chromium native host and validates
 the PID against the running Chrome for Testing process. No recording is needed.
+
+Review fixes retain unretired capture identities across disconnect, even before
+an audio registration reaches the app. Stop All records their original call
+identities and outstanding Start contexts, including superseded peers, while
+wire commands still target usable connections only. Unknown capture-ID Stops
+stay unresolved until a matching ID obtains a trustworthy call association;
+they never borrow the tab's current URL as a wildcard. All pending-intent caches
+are bounded to256 entries and expire after10 minutes when no longer retained.
+Authoritative Stop results/status retire capture presence, so a later Stop All
+does not learn historical completed captures. Older peers cannot erase Stops
+once a newer peer of the same browser instance has reconciled. Only explicit
+Record, never an automatic start, can override its call's Stop.

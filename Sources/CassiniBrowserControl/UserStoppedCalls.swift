@@ -48,12 +48,12 @@ struct UserStoppedCalls: Sendable {
     func contains(_ call: BrowserCallIdentity) -> Bool {
         entries[call] != nil
     }
-    mutating func update(_ call: BrowserCallIdentity, previouslyPresent: Bool, connectedAt: TimeInterval, now: TimeInterval) {
-        entries = entries.filter { key,_ in key.instance != call.instance || key.tabID != call.tabID || key == call }
+    mutating func update(_ call: BrowserCallIdentity, absentSince: TimeInterval?, mayRemove: Bool, now: TimeInterval) {
+        if mayRemove { entries = entries.filter { key,_ in key.instance != call.instance || key.tabID != call.tabID || key == call } }
         guard var entry = entries[call] else { return }
-        // Compare on EVERY inventory, including direct SPA address changes.
-        guard entry.call == call,
-              previouslyPresent || min(now-connectedAt,now-entry.touched) < Self.reportWindow else {
+        // Initial discovery can be arbitrarily slow. Only an inventory that
+        // previously established presence and then absence starts this clock.
+        if mayRemove, let absentSince, min(now-absentSince,now-entry.touched) >= Self.reportWindow {
             entries.removeValue(forKey:call); return
         }
         entry.touched = now; entries[call] = entry

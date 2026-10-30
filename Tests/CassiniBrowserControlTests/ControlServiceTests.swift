@@ -70,6 +70,35 @@ final class ControlServiceTests: XCTestCase {
         try send(["type":"meetings","meetings":[["tabId":2,"title":"New call","url":"https://meet.example/new","sourceCount":2]]],second)
         XCTAssertEqual(try receive(second)["action"]?.string,"start")
     }
+    func testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let closing = Admission(), gone = expectation(description:"Control really disconnected")
+        gone.assertForOverFulfill = false
+        let broker = BrowserAudioBroker(make:{ title,mic in
+            try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic)
+        },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
+        let service = BrowserControlService(changed:{ peers in
+            if closing.read(), peers.isEmpty { gone.fulfill() }
+        },completed:{ _,_ in },audio:broker)
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        var control: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(try XCTUnwrap(control)); try send(status(false),try XCTUnwrap(control))
+        XCTAssertEqual(try receive(try XCTUnwrap(control))["action"]?.string,"start")
+        let audio = try PipeEndpoint(root:root,role:.audio,browser:"Chrome",browserInstance:instance)
+        try send(["type":"start","version":1,"independent":true,"captureId":"capture-2",
+                  "timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":false,"title":"Call"],audio)
+        XCTAssertEqual(try receive(audio)["type"]?.string,"started")
+        XCTAssertEqual(broker.retainedCaptureIDs,["capture-2"])
+        closing.set(true); control = nil; wait(for:[gone],timeout:3)
+        service.stopRecordings()
+        let next = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(next); try send(status(false),next)
+        XCTAssertThrowsError(try receive(next,seconds:0.3))
+        // This test opens only private files/FIFOs; no PCM or device is used.
+        try send(["type":"stop"],audio); XCTAssertEqual(try receive(audio)["type"]?.string,"stopped")
+    }
     func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let admission = Admission()
