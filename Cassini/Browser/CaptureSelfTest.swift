@@ -444,6 +444,38 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(modernEnded.tracks.filter { $0.kind == "system" }.count == systemTracks,"Closed tab must not start a new computer-sound fallback")
             report["d33ClosedTabStopsWithoutSystemFallback"] = true
             try await modern.meetings(false)
+            stage = "D33 return while system permission remains unanswered"
+            let waiting = try CaptureProbeProfile(root:pipe,title:"D33 pending system permission")
+            waiting.modern = true; profiles.append(waiting); try await waiting.ready()
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await waiting.performNext()
+            try await wait {
+                collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true &&
+                collection.captures.values.first?.owner.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } == true
+            }
+            let permissionCapture = try collection.captures.values.first.unwrap()
+            let previousSystemStarts = CaptureFixture.systemStarts
+            let previousMicStarts = CaptureFixture.microphoneStarts
+            CaptureFixture.holdSystemPermission = true
+            try await waiting.page("navigating",active:false)
+            try await wait { !permissionCapture.owner.snapshot.browserAlive }
+            let pendingLoss = try permissionCapture.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:pendingLoss+2.01)
+            try await wait { CaptureFixture.systemPermission != nil }
+            try await waiting.returnedSource(atMs:Int((pendingLoss+2.2-permissionCapture.originUptime)*1000))
+            try await waiting.page("present",active:true)
+            try await wait { permissionCapture.owner.snapshot.browserAlive }
+            try require(CaptureFixture.systemPermission != nil,"Return cannot require a reply to the OS prompt")
+            try require(CaptureFixture.systemStarts == previousSystemStarts,"Cancelled permission cannot start system input")
+            try require(CaptureFixture.microphoneStarts == previousMicStarts,"Return leaves the original microphone running")
+            CaptureFixture.holdSystemPermission = false
+            CaptureFixture.systemPermission?.resume(); CaptureFixture.systemPermission = nil
+            try await Task.sleep(for:.milliseconds(100))
+            try require(CaptureFixture.systemStarts == previousSystemStarts && !permissionCapture.owner.snapshot.usingSystem,"Late permission does not revive cancelled fallback")
+            report["d33ReturnCancelsPendingSystemPermission"] = true
+            collection.stop(permissionCapture.snapshot.manifest.id); _ = try await waiting.performNext()
+            try await wait { collection.captures.isEmpty }
+            try await waiting.meetings(false)
             stage = "D33 dead transport respects 120 seconds"
             let absent = try CaptureProbeProfile(root:pipe,title:"D33 absent")
             absent.modern = true; profiles.append(absent); try await absent.ready()

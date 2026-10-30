@@ -58,6 +58,7 @@ for name in [
     'hangupStopsOnlyEndedMeeting',
     'unobservedFallbackExpires',
     'd33OriginalTransportRestoresSameFolder',
+    'd33ReturnCancelsPendingSystemPermission',
     'd33OthersOffStaysOff',
     'd33ClosedTabStopsWithoutSystemFallback',
     'd33ProducerDeadlineAndEndAreDurable',
