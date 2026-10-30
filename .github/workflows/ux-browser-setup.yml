@@ -88,7 +88,8 @@ jobs:
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - uses: actions/checkout@v5
         with:
-          ref: 13ec9ec8951c62f20be319870aaa886d41b95320
+          ref: refs/pull/82/merge
+          fetch-depth: 0
           path: producer
       - uses: actions/download-artifact@v5
         with:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Hosted diagnostic: recompile only the UI harness over verified private products."""
 import os
+import json
 from pathlib import Path
 import plistlib
 import subprocess
@@ -11,11 +12,15 @@ ROOT = Path(__file__).resolve().parent.parent
 PRODUCER = ROOT/'producer'
 SOURCE_SHA = '13ec9ec8951c62f20be319870aaa886d41b95320'
 assert os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
-assert subprocess.check_output(['git','-C',PRODUCER,'rev-parse','HEAD'],text=True).strip() == SOURCE_SHA
+metadata = json.loads((ROOT/'build/producer-artifacts/debug.json').read_text())
+producer_sha = subprocess.check_output(['git','-C',PRODUCER,'rev-parse','HEAD'],text=True).strip()
+assert producer_sha == metadata['commit'], 'Producer checkout must match the actual PR merge product'
 # Test edits may differ; every product source and pin must still match.
-subprocess.run(['git','diff','--exit-code',SOURCE_SHA,'HEAD','--','Cassini','BrowserSetup','Sources','QuickLook',
+product_paths = ['Cassini','BrowserSetup','Sources','QuickLook',
     'Whistle','Opus','Parakeet','ModelDownloads','BrowserExtension','browser-protocol','Package.swift','Package.resolved',
-    'project.yml','Cassini.xcodeproj'],cwd=ROOT,check=True)
+    'project.yml','Cassini.xcodeproj']
+for checkout in [ROOT,PRODUCER]:
+    subprocess.run(['git','diff','--exit-code',SOURCE_SHA,'HEAD','--',*product_paths],cwd=checkout,check=True)
 subprocess.run([sys.executable,PRODUCER/'scripts/ci-products.py','unpack','debug',ROOT/'build/producer-artifacts'],check=True)
 products = ROOT/'build/Build/Products'
 assert not products.exists(), 'Never overwrite producer products'
