@@ -73,15 +73,18 @@ struct LibraryView: View {
                 }
             } else if let detail = navigation.detail {
                 ToolbarItem(placement:.navigation) {
-                    Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
-                        .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("meeting-back")
+                    LibraryToolbarAction(title:"",label:UXText.text("common.backToLibrary"),identifier:"meeting-back",style:.back) { navigation.back() }
                 }
                 ToolbarItem(placement:.navigation) {
                     if RecordingOverview.active {
-                        Button(UXText.text("common.stop")) { RecordingOverview.stop() }.accessibilityLabel(UXText.text("common.stop"))
-                    } else { recordButton(big:false) }
+                        LibraryToolbarAction(title:UXText.text("common.stop"),label:UXText.text("common.stop"),identifier:"meeting-stop",style:.stop) { RecordingOverview.stop() }
+                    } else {
+                        LibraryToolbarAction(title:UXText.text("common.record"),label:UXText.text("common.record"),identifier:"toolbar-record",style:.record,enabled:RecordingOverview.canStart) {
+                            sessionPlayback.stop(); RecordCoordinator.shared.request(parent:store.context.root)
+                        }
+                    }
                 }
-                ToolbarItem(placement:.principal) {
+                ToolbarItem(placement:.navigation) {
                     VStack(alignment:.leading,spacing:1) {
                         Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold))
                             .lineLimit(1).accessibilityIdentifier("meeting-title")
@@ -93,24 +96,25 @@ struct LibraryView: View {
                             Text(store.format.previewSubtitle(start,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
                                 .font(.system(size:11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
                         }
-                    }.frame(width:max(200,toolbarWidth - 450),alignment:.leading).accessibilityElement(children:.contain)
+                    }.padding(.leading,44)
+                        .frame(width:max(200,toolbarWidth - (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450)),alignment:.leading)
+                        .accessibilityElement(children:.contain)
                 }
                 if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
                     ToolbarItem(placement:.primaryAction) {
-                        Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
-                            .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down").accessibilityLabel(UXText.text("common.writeDown"))
+                        LibraryToolbarAction(title:UXText.text("common.writeDown"),label:UXText.text("common.writeDown"),identifier:"meeting-write-down",style:.bordered,enabled:!LibraryMoveCoordinator.shared.busy) { TranscriptionQueue.shared.writeDown(detail) }
                     }
                 }
                 ToolbarItem(placement:.primaryAction) {
-                    Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
-                        .padding(.horizontal,14).frame(height:34).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:6))
-                        .disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export").accessibilityLabel(UXText.text("common.exportEllipsis"))
+                    LibraryToolbarAction(title:UXText.text("common.exportEllipsis"),label:UXText.text("common.exportEllipsis"),identifier:"meeting-export",style:.capsule,enabled:MeetingExportCoordinator.canExport(detail.meeting)) { exporter.show(detail.meeting) }
                 }
                 ToolbarItem(placement:.primaryAction) {
-                    Menu {
-                        if trash.canTrash(detail.meeting) { Section { trashButton(detail.meeting) } }
-                    } label: { Image(systemName:"ellipsis").frame(width:28,height:30) }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions")).accessibilityIdentifier("meeting-more-actions")
+                    LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,enabled:trash.canTrash(detail.meeting),menu:{
+                        LibraryToolbarAction.singleMenu(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash") {
+                            store.selectedKey = detail.meeting.libraryKey
+                            trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
+                        }
+                    }) { }
                 }
             } else {
             ToolbarItem(placement: .navigation) {
@@ -468,5 +472,82 @@ struct LibraryView: View {
     }
     private func readTranscript(_ meeting: LibraryMeeting) {
         sessionPlayback.stop(); navigation.open(meeting)
+    }
+}
+
+/// Native groups expose one action each, avoiding SwiftUI toolbar wrappers that
+/// duplicate their child button's role and identifier in the accessibility tree.
+private struct LibraryToolbarAction: NSViewRepresentable {
+    enum Style: Equatable { case back, record, stop, capsule, bordered, more }
+    let title: String, label: String, identifier: String
+    let style: Style
+    var enabled = true
+    var menu: (() -> NSMenu)? = nil
+    let action: () -> Void
+    func makeNSView(context: Context) -> LibraryToolbarActionView { LibraryToolbarActionView() }
+    func updateNSView(_ view: LibraryToolbarActionView, context: Context) { view.update(self) }
+    static func singleMenu(title: String, identifier: String, action: @escaping () -> Void) -> NSMenu {
+        let menu = NSMenu(); menu.autoenablesItems = false
+        let item = ActionItem(title:title,handler:action)
+        item.setAccessibilityIdentifier(identifier); menu.addItem(item); return menu
+    }
+    private final class ActionItem: NSMenuItem {
+        private let handler: () -> Void
+        init(title: String, handler: @escaping () -> Void) {
+            self.handler = handler; super.init(title:title,action:nil,keyEquivalent:"")
+            target = self; action = #selector(invoke(_:))
+        }
+        required init(coder: NSCoder) { fatalError("Programmatic menu item") }
+        @objc private func invoke(_ sender: Any?) { DispatchQueue.main.async { [handler] in handler() } }
+    }
+}
+private final class LibraryToolbarActionView: NSView {
+    private final class ActionButton: NSButton {
+        var spokenLabel = ""
+        override func accessibilityLabel() -> String? { spokenLabel }
+    }
+    private let button = ActionButton()
+    private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
+    private var size = NSSize(width:28,height:34)
+    override init(frame: NSRect) {
+        super.init(frame:frame)
+        setAccessibilityElement(true); setAccessibilityRole(.group)
+        button.target = self; button.action = #selector(invoke(_:))
+        button.setButtonType(.momentaryPushIn); button.wantsLayer = true; button.layer?.cornerRadius = 6
+        addSubview(button); setAccessibilityChildren([button])
+    }
+    required init?(coder: NSCoder) { nil }
+    override var intrinsicContentSize: NSSize { size }
+    override func layout() { super.layout(); button.frame = bounds }
+    func update(_ value: LibraryToolbarAction) {
+        action = value.action; makeMenu = value.menu
+        button.spokenLabel = value.label; button.setAccessibilityIdentifier(value.identifier)
+        button.toolTip = value.label; button.isEnabled = value.enabled
+        let font = NSFont.systemFont(ofSize:13,weight:.semibold), red = NSColor(LibraryTheme.red)
+        button.font = font; button.image = nil
+        button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
+        button.imagePosition = .imageLeft
+        let tint: NSColor = value.style == .stop ? .white : .labelColor
+        button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
+        button.layer?.backgroundColor = value.style == .stop ? red.cgColor : [.record,.capsule].contains(value.style) ? NSColor(LibraryTheme.chip).cgColor : NSColor.clear.cgColor
+        let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
+        size = NSSize(width:text + 28,height:34)
+        switch value.style {
+        case .back, .more:
+            button.image = NSImage(systemSymbolName:value.style == .back ? "chevron.left" : "ellipsis",accessibilityDescription:nil)
+            button.imagePosition = .imageOnly; button.contentTintColor = .labelColor
+            size.width = 28
+        case .record:
+            button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
+                red.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
+            }
+            button.imageHugsTitle = true; size.width += 18
+        default: break
+        }
+        needsLayout = true; invalidateIntrinsicContentSize()
+    }
+    @objc private func invoke(_ sender: Any?) {
+        if let makeMenu { makeMenu().popUp(positioning:nil,at:NSPoint(x:0,y:0),in:self) }
+        else { action?() }
     }
 }
