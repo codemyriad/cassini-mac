@@ -29,7 +29,12 @@ use their original URL. An unavailable original URL is never a wildcard.
 An overlapping newer connection supersedes a draining old connection of the
 same browser/profile. Late old inventories cannot erase a newer Stop, and an
 old connection cannot regain auto-start authority if its replacement disconnects.
-No pending command keys are renamed or replayed. The original audit's stable
+Lineage follows observed tab overlap, including a bounded history of256 tabs
+per live connection. It survives empty inventories and late discovery. A newer
+connection which has not reported any tabs remains ambiguous and prevents old
+links from erasing Stops. Once its disjoint profile is identified, it cannot
+veto another profile's verified absence or navigation, even if it later reports
+an empty inventory. No pending command keys are renamed or replayed. The original audit's stable
 meeting-key aliases and lost-Start failure grace remain separate follow-ups;
 this PR implements the coordinator's user-stop-only direction.
 
@@ -48,5 +53,12 @@ they never borrow the tab's current URL as a wildcard. All pending-intent caches
 are bounded to256 entries and expire after10 minutes when no longer retained.
 Authoritative Stop results/status retire capture presence, so a later Stop All
 does not learn historical completed captures. Older peers cannot erase Stops
-once a newer peer of the same browser instance has reconciled. Only explicit
+once their own replacement has reconciled (or while a newer empty connection
+is still ambiguous), rather than whenever an independent profile connects. Only explicit
 Record, never an automatic start, can override its call's Stop.
+
+The follow-up profile regressions stop and acknowledge a call in profile A,
+connect independent profile B in the same process, then verify both an11-second
+absence and navigation away/back let A record again. They also cover B returning
+to an empty inventory and replacement ownership through earlier observed tabs.
+The requested two-profile cases fail onf0627e9 and pass with the lineage fix.

@@ -125,6 +125,43 @@ final class StopReviewRegressionTests: XCTestCase {
         XCTAssertEqual(state.automaticStarts(microphone:false).count,1)
     }
 
+    func testTwoProfilesVerifiedAbsenceStillRetiresOldStopAfterItsWindow() throws {
+        for otherEmpty in [false,true] {
+            let clock = ReviewClock(); var state = state(clock)
+            let first = try ready(&state)
+            let stopped = try XCTUnwrap(state.stop(.init(peer:first,tabID:2)))
+            try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,first)
+            let other = try ready(&state,[8])
+            if otherEmpty { try meetings(&state,other,[]) }
+            try meetings(&state,first,[]); clock.advance(11)
+            try meetings(&state,first)
+            XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key == .init(peer:first,tabID:2) },
+                          "An independent profile must not preserve an expired Stop, even when its own inventory is now empty")
+        }
+    }
+    func testTwoProfilesNavigateAwayAndBackDoesNotPreserveOldStop() throws {
+        var state = state(); let first = try ready(&state)
+        let stopped = try XCTUnwrap(state.stop(.init(peer:first,tabID:2)))
+        try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,first)
+        _ = try ready(&state,[8])
+        try meetings(&state,first,url:"different")
+        XCTAssertEqual(state.rememberedStopCount,0,"The owner can retire its own Stop on navigation")
+        try meetings(&state,first)
+        XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key == .init(peer:first,tabID:2) })
+    }
+    func testReplacementIdentifiedByEarlierTabsStillProtectsAgainstOldNavigation() throws {
+        var state = state(); let old = try ready(&state)
+        let stopped = try XCTUnwrap(state.stop(.init(peer:old,tabID:2)))
+        try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,old)
+        try meetings(&state,old,[])
+        let replacement = try ready(&state)
+        try meetings(&state,replacement,[])
+        try meetings(&state,old,url:"late-navigation")
+        try meetings(&state,replacement)
+        XCTAssertFalse(state.automaticStarts(microphone:false).contains { $0.key.tabID == 2 },
+                       "The old lineage cannot erase Stop while the replacement temporarily reports no meetings")
+    }
+
     func testHistoricalInterruptedStatusWithoutAnOwnedCaptureIsNotAnActiveStopTarget() throws {
         var state = state(); let peer = try ready(&state)
         var interrupted = status()

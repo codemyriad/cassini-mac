@@ -73,6 +73,11 @@ public struct BrowserControlRegistry: Sendable {
         var connectedAt: TimeInterval = 0
         var connectionOrder: UInt64 = 0
         var superseded = false
+        // Native hello identifies the browser process, not its profile. Tab
+        // overlap identifies connection lineage; keep bounded history through
+        // empty inventories so an established profile never becomes ambiguous.
+        var lineage: UUID?
+        var observedTabs: [Int:TimeInterval] = [:]
         var absentSince: [Int:TimeInterval] = [:]
     }
     private struct CallContext: Sendable { let call: BrowserCallIdentity; var touched: TimeInterval }
@@ -109,10 +114,43 @@ public struct BrowserControlRegistry: Sendable {
     }
     private func mayRemoveStops(_ peer: PeerState) -> Bool {
         guard !peer.superseded, let instance = peer.peer.browserInstance else { return !peer.superseded }
-        // Profiles can share a browser process. An empty newer inventory does
-        // not identify its profile yet, so older links may refresh exact Stops
-        // but may not erase them on an ambiguous navigation report.
-        return !peers.values.contains { $0.peer.browserInstance == instance && $0.connectionOrder > peer.connectionOrder && $0.reconciled }
+        // A newer identified, disjoint profile has no authority over this
+        // owner's Stops. A still-unidentified connection could be its empty
+        // replacement: preserve the conservative veto until discovery resolves
+        // that ambiguity. Established lineage survives later empty inventories.
+        return !peers.values.contains {
+            $0.peer.browserInstance == instance && $0.connectionOrder > peer.connectionOrder && $0.reconciled &&
+                ($0.lineage == nil || $0.lineage == peer.lineage)
+        }
+    }
+    private mutating func identifyLineage(_ peer: inout PeerState, tabs: Set<Int>) {
+        guard let instance = peer.peer.browserInstance, !tabs.isEmpty else { return }
+        let related = peers.values.filter {
+            $0.peer.browserInstance == instance &&
+                $0.observedTabs.keys.contains(where:{ tabs.contains($0) })
+        }
+        // A partial inventory can reveal the link only later. Merge its earlier
+        // provisional lineage with the observed owner rather than losing that
+        // connection's history when the overlapping tab finally arrives.
+        var lineages = Set(related.compactMap(\.lineage))
+        if let lineage = peer.lineage { lineages.insert(lineage) }
+        let lineage = related.min(by:{ $0.connectionOrder < $1.connectionOrder })?.lineage ?? peer.lineage ?? peer.peer.id
+        peer.lineage = lineage
+        for id in Array(peers.keys) where id != peer.peer.id {
+            guard var other = peers[id], other.peer.browserInstance == instance,
+                  let original = other.lineage, lineages.contains(original) else { continue }
+            other.lineage = lineage
+            if other.connectionOrder < peer.connectionOrder { other.superseded = true }
+            else if other.connectionOrder > peer.connectionOrder { peer.superseded = true }
+            peers[id] = other
+        }
+        for tab in tabs { peer.observedTabs[tab] = clock() }
+        // At most100 incoming tabs and256 historical tabs per live connection;
+        // preserve the current inventory when fake/real clock values tie.
+        while peer.observedTabs.count > UserStoppedCalls.limit {
+            guard let oldest = peer.observedTabs.filter({ !tabs.contains($0.key) }).min(by:{ $0.value < $1.value })?.key else { break }
+            peer.observedTabs.removeValue(forKey:oldest)
+        }
     }
     /// Runs before replacing inventories, including the first inventory after
     /// reconnect. Only the old live inventory can protect an otherwise old Stop.
@@ -270,18 +308,7 @@ public struct BrowserControlRegistry: Sendable {
                 let keep = peer.absentSince.sorted { $0.value > $1.value }.prefix(UserStoppedCalls.limit)
                 peer.absentSince = Dictionary(uniqueKeysWithValues:keep.map { ($0.key,$0.value) })
             }
-            if let instance = peer.peer.browserInstance {
-                let tabs = Set(meetings.map { $0.key.tabID })
-                for otherID in Array(peers.keys) {
-                    guard var other = peers[otherID], other.peer.browserInstance == instance,
-                          other.connectionOrder < peer.connectionOrder,
-                          other.meetings.contains(where:{ tabs.contains($0.key.tabID) }) else { continue }
-                    // Two profiles have disjoint tabs. An overlapping newer
-                    // connection supersedes this profile's draining old link;
-                    // that link must not regain authority on another reconnect.
-                    other.superseded = true; peers[otherID] = other
-                }
-            }
+            identifyLineage(&peer, tabs:incomingTabs)
             for meeting in meetings {
                 if let old = previous[meeting.key.tabID], Data(old.utf8) != Data(meeting.url.utf8) {
                     peer.autoAttempted.remove(meeting.key.tabID)
