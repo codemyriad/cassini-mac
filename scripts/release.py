@@ -67,13 +67,21 @@ def notary_credentials(path):
     return ['--key', str(key), '--key-id', config['keyId'], '--issuer', config['issuer']]
 
 
-def notarize(path, credentials, report):
-    output = run(['xcrun', 'notarytool', 'submit', path, *credentials, '--wait', '--timeout', '45m', '--output-format', 'json'], timeout=2800)
-    result = json.loads(output)
-    # Persist only safe submission metadata, never command arguments/credentials.
+def submit_and_wait(path, credentials, report):
+    # Persist the submission ID before waiting: a timeout must not orphan a
+    # still-running Apple submission or require another upload to discover it.
+    result = json.loads(run(['xcrun', 'notarytool', 'submit', path, *credentials, '--output-format', 'json'], timeout=600))
+    submission_id = result['id']
+    report.write_text(json.dumps({k: result.get(k) for k in ['id', 'status', 'message']}, indent=2)+'\n')
+    result = json.loads(run(['xcrun', 'notarytool', 'wait', submission_id, *credentials,
+        '--timeout', '45m', '--output-format', 'json'], timeout=2800))
     report.write_text(json.dumps({k: result.get(k) for k in ['id', 'status', 'message']}, indent=2)+'\n')
     if result.get('status') != 'Accepted':
-        raise ValueError('Notarization was not accepted; inspect the submission with notarytool')
+        raise ValueError('Notarization was not accepted; inspect the retained submission ID with notarytool')
+
+
+def notarize(path, credentials, report):
+    submit_and_wait(path, credentials, report)
     run(['xcrun', 'stapler', 'staple', path], timeout=180)
     run(['xcrun', 'stapler', 'validate', path], timeout=180)
 
@@ -140,10 +148,7 @@ def release(args):
     submission = output/'Cassini-notary.zip'
     run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', app, submission])
     # ZIPs cannot be stapled. Submit the zip, then staple its original app.
-    response = json.loads(run(['xcrun', 'notarytool', 'submit', submission, *credentials, '--wait', '--timeout', '45m', '--output-format', 'json'], timeout=2800))
-    (output/'app-notary.json').write_text(json.dumps({k:response.get(k) for k in ['id','status','message']},indent=2)+'\n')
-    if response.get('status') != 'Accepted':
-        raise ValueError('App notarization was not accepted')
+    submit_and_wait(submission, credentials, output/'app-notary.json')
     run(['xcrun', 'stapler', 'staple', app], timeout=180)
     run(['xcrun', 'stapler', 'validate', app], timeout=180)
     with tempfile.TemporaryDirectory(prefix='cassini-dmg-') as temporary:
@@ -155,6 +160,7 @@ def release(args):
         run(['hdiutil', 'create', '-volname', 'Cassini', '-srcfolder', stage, '-fs', 'APFS', '-format', 'ULFO', dmg], timeout=600)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)
     notarize(dmg, credentials, output/'dmg-notary.json')
+    run(['codesign', '--verify', '--strict', dmg])
     signature = run([tools/'sign_update', '--ed-key-file', key, '-p', dmg], timeout=180).decode().strip()
     run([tools/'sign_update', '--verify', '--ed-key-file', key, dmg, signature], timeout=180)
     (output/'appcast.xml').write_bytes(appcast(dmg, signature, args.version, args.build, args.download_url))
@@ -179,6 +185,6 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=Path, required=True)
     try:
         release(parser.parse_args())
-    except (ValueError, RuntimeError, OSError, KeyError, subprocess.TimeoutExpired):
+    except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
         # Do not interpolate tool exceptions: argv may contain a keychain password.
         parser.exit(1, 'Release failed. Check private credentials, signing identity and retained build/submission reports.\n')

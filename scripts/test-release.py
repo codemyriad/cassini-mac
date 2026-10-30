@@ -19,6 +19,17 @@ class ReleaseTests(unittest.TestCase):
                     'https://example.org/PLACEHOLDER/x','https://updates.invalid/x','file:///tmp/x']:
             with self.assertRaises(ValueError):release.https_url(url)
         self.assertEqual(release.https_url('https://example.org/cassini/appcast.xml'),'https://example.org/cassini/appcast.xml')
+    def testNotaryTimeoutRetainsSubmissionIdWithoutReupload(self):
+        import subprocess, json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            report=Path(temporary)/'notary.json'
+            with patch.object(release,'run',side_effect=[b'{"id":"known-submission","status":"In Progress"}',subprocess.TimeoutExpired('notarytool',2800)]) as tool:
+                with self.assertRaises(subprocess.TimeoutExpired):release.submit_and_wait(Path('app.zip'),[],report)
+            self.assertEqual(json.loads(report.read_text())['id'],'known-submission')
+            self.assertEqual(tool.call_args_list[0].args[0][2],'submit')
+            self.assertEqual(tool.call_args_list[1].args[0][2:4],['wait','known-submission'])
+
     def testAppcastUsesActualFileSizeEscapesAndBindsBuild(self):
         with tempfile.TemporaryDirectory() as temporary:
             archive=Path(temporary)/'Cassini.dmg';archive.write_bytes(b'12345')
