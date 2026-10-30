@@ -435,7 +435,7 @@ public struct BrowserControlRegistry: Sendable {
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
         if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
-        let request = try Self.command(key,action:.start,independent:true,microphone:microphone)
+        let request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
         peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url)
@@ -546,12 +546,13 @@ public struct BrowserControlRegistry: Sendable {
     private mutating func appendOutcome(_ outcome: BrowserControlOutcome) {
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }
     }
-    private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil) throws -> BrowserControlRequest {
+    private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false) throws -> BrowserControlRequest {
         guard (0...9007199254740991).contains(key.tabID) else { throw BrowserControlStateError.malformed }
         let id = UUID().uuidString.lowercased()
         var fields: [(String,JSON)] = [("type",.string("command")),("requestId",.string(id)),("action",.string(action.rawValue)),("tabId",.number(String(key.tabID)))]
         if independent { fields.append(("independent",.bool(true))) }
         if action == .stop, let reason { fields.append(("reason",.string(reason.rawValue))) }
+        if action == .start, keepOnNavigation { fields.append(("keepOnNavigation",.bool(true))) }
         if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(false)),("microphone",.bool(microphone))] }
         return .init(id:id,key:key,action:action,data:try JSON.object(fields).encoded(maximumBytes:FrameIO.maximum))
     }

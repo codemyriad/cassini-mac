@@ -53,7 +53,7 @@ import CassiniRecording
             var paused: Set<CaptureSide> = []
             let previousFailures = self.failedSides
             do {
-                if others && !before.browserAlive && (self.inputs[.others] == nil || self.failedSides.contains(.others)) {
+                if others && !before.browserAlive && !before.restoreReady && (self.inputs[.others] == nil || self.failedSides.contains(.others)) {
                     prepared[.others] = try await self.prepare(.others,driver:self.system())
                 }
                 if me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
@@ -100,6 +100,59 @@ import CassiniRecording
                 do { try await Task.detached { try stage.activate(writer) }.value }
                 catch { self.report(side,generation:value.generation,stage:stage)(error.localizedDescription) }
             }
+        }
+    }
+    /// Stage computer sound without disturbing the microphone. Failed device
+    /// authorization/start cannot publish a system source or its samples.
+    public func fallback() async throws { try await enqueue { try await self.startFallback() } }
+    private func startFallback() async throws {
+        guard !self.closed, self.capture.snapshot.phase == .recording,
+              self.capture.snapshot.others, !self.capture.snapshot.browserAlive,
+              self.inputs[.others] == nil else { return }
+        let candidate: Input
+        do { candidate = try await self.prepare(.others,driver:self.system()) }
+        catch { if !self.closed { self.failedSides.insert(.others) }; throw error }
+        do {
+            guard !self.closed, candidate.stage?.recordingProblem == nil else { throw BrowserIPCError.closed }
+            try await self.capture.requestSystemFallback()
+        } catch { await self.discard(candidate); if !self.closed { self.failedSides.insert(.others) }; throw error }
+        self.inputs[.others] = candidate; self.failedSides.remove(.others)
+        guard let stage = candidate.stage else { return }
+        let writer = self.capture.nativeWriter(side:.others)
+        do { try await Task.detached { try stage.activate(writer) }.value }
+        catch { self.report(.others,generation:candidate.generation,stage:stage)(error.localizedDescription); throw error }
+    }
+    /// The original browser transport must have a returned source. Pause only
+    /// this meeting's computer sound; a rejected checkpoint resumes its exact
+    /// existing writer/clock, without stopping or replacing the microphone.
+    public func restoreBrowser(atMs: Double, notBeforeMs: Double? = nil) async throws {
+        guard atMs.isFinite, atMs >= 0, notBeforeMs.map({ $0.isFinite && $0 >= 0 }) ?? true else { throw RecordingError.invalid("Invalid restoration time.") }
+        let requested = ProcessInfo.processInfo.systemUptime
+        try await enqueue {
+            guard !self.closed, self.capture.snapshot.phase == .recording,
+                  self.capture.snapshot.others, self.capture.snapshot.restoreReady,
+                  self.capture.snapshot.browserReturnPCMAt.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
+            let input = self.inputs[.others]
+            do {
+                if let input {
+                    self.inputs[.others]?.paused = true; input.driver.stop()
+                    let sink = input.sink
+                    try await Task.detached { try sink.pause() }.value
+                }
+                guard !self.closed else { throw BrowserIPCError.closed }
+                let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime-requested)*1000
+                try await self.capture.restoreBrowser(atMs:appliedAt,notBeforeMs:notBeforeMs)
+            } catch {
+                if !self.closed, let input {
+                    do {
+                        try input.sink.resume()
+                        try input.driver.start(sink:input.sink,failure:self.report(.others,generation:input.generation,stage:input.stage))
+                        self.inputs[.others]?.paused = false
+                    } catch { self.failedSides.insert(.others); self.failure(error.localizedDescription) }
+                }
+                throw error
+            }
+            try await self.end(.others)
         }
     }
     private func prepare(_ side: CaptureSide, driver: any CaptureInput) async throws -> Input {
@@ -165,7 +218,9 @@ import CassiniRecording
             guard !self.closed, self.capture.snapshot.phase == .recording,
                   side == .me ? self.capture.snapshot.me : self.capture.snapshot.others else { return }
             try await self.end(side)
-            try await self.reconcile()
+            if side == .others, self.capture.snapshot.managedBrowser, !self.capture.snapshot.browserAlive {
+                try await self.startFallback()
+            } else { try await self.reconcile() }
         }
     }
     public typealias Status = (levels: [String:Float],frames: [String:UInt64],droppedMs: Double,gapMs: Double,warnings: [String])

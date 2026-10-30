@@ -55,13 +55,13 @@ final class PageStateTests: XCTestCase {
             XCTAssertNil(state.snapshots.first?.captures.first?.pageState)
         }
     }
-    func testTerminalReasonIsForwardedOnlyToCapablePeersAndStartDoesNotYetOptIn() throws {
+    func testTerminalReasonAndNavigationOptInAreScopedToCapablePeers() throws {
         for enabled in [false,true] {
             var state = BrowserControlRegistry(); let peer = try ready(&state,enabled:enabled)
             try send(meetings("present"),&state,peer)
             try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[]],&state,peer)
             let start = try state.start(.init(peer:peer,tabID:2),microphone:false)
-            XCTAssertNil(try JSONParser.parse(start.data)["keepOnNavigation"],"Keep opt-in off until transactional restoration is integrated")
+            XCTAssertEqual(try JSONParser.parse(start.data)["keepOnNavigation"]?.bool,enabled ? true : nil)
             let stop = try XCTUnwrap(state.stop(start.key,reason:.disk))
             XCTAssertEqual(try JSONParser.parse(stop.data)["reason"]?.string,enabled ? "disk" : nil)
             XCTAssertNil(try state.stop(start.key,reason:.user),"The first in-flight Stop keeps its trigger")

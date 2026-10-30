@@ -31,6 +31,30 @@ final class SharedCallLifecycleTests: XCTestCase {
             }
         }
     }
+    func testDelayedObserverUsesProducerDeadlinesBeforeReturnOrFallback() {
+        var closed = BrowserCallLifecycle()
+        XCTAssertEqual(closed.step(now:105,page:.closed,sourceCount:1,usingSystem:false,others:true,pageObservedAt:100),.stop(.tabClosed))
+        var navigation = BrowserCallLifecycle()
+        XCTAssertEqual(navigation.step(now:225,page:.navigating,sourceCount:0,usingSystem:false,others:true,pageObservedAt:100),.stop(.pageGone))
+        var returned = BrowserCallLifecycle()
+        XCTAssertEqual(returned.step(now:220,page:.present,sourceCount:1,usingSystem:true,others:true,lostAt:100),.stop(.pageGone))
+        var fallback = BrowserCallLifecycle()
+        XCTAssertEqual(fallback.step(now:102,page:.navigating,sourceCount:0,usingSystem:false,others:true,pageObservedAt:100),.fallback)
+    }
+    func testAcknowledgedProducerLossDoesNotRestartGraceAfterAReturnOrFailedRestore() {
+        var policy = BrowserCallLifecycle()
+        XCTAssertEqual(policy.step(now:105,page:.present,sourceCount:1,usingSystem:true,others:true,lostAt:100),.restore)
+        XCTAssertEqual(policy.step(now:230,page:.present,sourceCount:1,usingSystem:true,others:true,lostAt:100),.restore)
+        XCTAssertNil(policy.step(now:231,page:.present,sourceCount:0,usingSystem:true,others:true,lostAt:100))
+        XCTAssertEqual(policy.step(now:233,page:.present,sourceCount:0,usingSystem:true,others:true,lostAt:100),.stop(.callEnded))
+    }
+    func testANewNavigationAfterAnAcknowledgedLossUsesItsOwnObservedTime() {
+        var policy = BrowserCallLifecycle()
+        XCTAssertEqual(policy.step(now:105,page:.present,sourceCount:1,usingSystem:true,others:true,lostAt:100),.restore)
+        XCTAssertNil(policy.step(now:200,page:.navigating,sourceCount:0,usingSystem:true,others:true,pageObservedAt:199,lostAt:100))
+        XCTAssertNil(policy.step(now:318,page:.navigating,sourceCount:0,usingSystem:true,others:true,pageObservedAt:199,lostAt:100))
+        XCTAssertEqual(policy.step(now:319,page:.present,sourceCount:1,usingSystem:true,others:true,lostAt:100),.stop(.pageGone))
+    }
     func testSourceChangesStayUncommittedUntilTheDeviceOwnerSucceeds() {
         var policy = BrowserCallLifecycle()
         XCTAssertNil(policy.step(now:0,page:.navigating,sourceCount:0,usingSystem:false,others:true))

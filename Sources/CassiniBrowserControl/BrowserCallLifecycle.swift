@@ -13,21 +13,35 @@ public struct BrowserCallLifecycle: Sendable {
     private var emptySince: TimeInterval?
     private var closedSince: TimeInterval?
     private var previous: TimeInterval?
+    private var observedLoss: TimeInterval?
     private var stopped = false
     public init() {}
 
     public mutating func step(now: TimeInterval, page: Page?, sourceCount: Int,
                               sameTab: Bool = true, transportAlive: Bool = true,
-                              usingSystem: Bool, others: Bool, restoreReady: Bool = true) -> Action? {
+                              usingSystem: Bool, others: Bool, restoreReady: Bool = true,
+                              pageObservedAt: TimeInterval? = nil, lostAt: TimeInterval? = nil) -> Action? {
         guard !stopped, now.isFinite, now >= 0, previous.map({ now >= $0 }) ?? true else { return nil }
         previous = now
         let page = sameTab ? page : nil
         let count = sameTab ? sourceCount : 0
-        if page == .closed, closedSince == nil { closedSince = now }
+        func stamp(_ value: TimeInterval?) -> TimeInterval? {
+            guard let value, value.isFinite, value >= 0, value <= now else { return nil }; return value
+        }
+        if page == .closed, closedSince == nil { closedSince = stamp(pageObservedAt) ?? now }
         // Browser-confirmed closure is sticky even if an obsolete page later
         // reports audio. It never starts a new fallback source.
         if let closedSince {
             return now - closedSince >= Self.callEndGrace ? stop(.tabClosed) : nil
+        }
+        // A delayed first observation must still enforce the producer's loss
+        // deadline. A returned page acknowledges each loss only once, even if
+        // restoring the selected input fails and the owner retains its stamp.
+        if let loss = stamp(lostAt), loss != observedLoss {
+            observedLoss = loss; missingSince = min(missingSince ?? loss,loss)
+        }
+        if missingSince == nil, page != .present || !transportAlive {
+            missingSince = page != .present ? stamp(pageObservedAt) ?? now : now
         }
         // This check precedes positive-source recovery, including a return
         // arriving after the deadline before the next timer callback.

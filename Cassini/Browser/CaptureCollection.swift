@@ -21,6 +21,10 @@ struct LiveCapture {
     var diskMinutes: Int?
     var fallbackAnnounced = false
     var lifetime = BrowserCallLifetime()
+    var callLifecycle = BrowserCallLifecycle()
+    var modernLifecycle: Bool?
+    var changingSource = false
+    var lastNavigationAt: TimeInterval?
     var savingSinceMs: Int64?
     @MainActor var microphoneSilent: Bool {
         snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
@@ -49,7 +53,7 @@ private final class CaptureFiles: @unchecked Sendable {
             let id = UUID()
             CaptureActivityStore.shared.set(id,.preparing)
             do {
-                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,changed:{ [access] snapshot in
+                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,managedBrowser:browser,changed:{ [access] snapshot in
                     withExtendedLifetime(access) { changed(snapshot) }
                 })
                 do { try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded() }
@@ -197,7 +201,7 @@ private final class CaptureFiles: @unchecked Sendable {
             try? await value.input.stop()
             // The browser Stop flushes its pending PCM and normally finalizes
             // this owner itself. Keep admission open until that tail arrives.
-            let deadline = ProcessInfo.processInfo.systemUptime + (value.snapshot.browserAlive && value.key != nil ? 12 : 0)
+            let deadline = ProcessInfo.processInfo.systemUptime + (value.owner.snapshot.transportAlive && value.key != nil ? 12 : 0)
             while value.owner.snapshot.phase == .recording && ProcessInfo.processInfo.systemUptime < deadline {
                 do { try await Task.sleep(for:.milliseconds(50)) } catch { break }
             }
@@ -260,10 +264,14 @@ private final class CaptureFiles: @unchecked Sendable {
                 guard let self, let value = self.captures[id] else { return }
                 self.captures[id]?.sourceProblem = true
                 if value.input.failedSides.contains(.others) { try? await value.owner.systemUnavailable(atMs:Double(value.elapsedMs)) }
-                if !value.snapshot.browserAlive && !value.input.hasRunningInputs { self.stop(id,reason:.error) }
+                let source = value.owner.snapshot
+                if !source.browserAlive && !value.input.hasRunningInputs && !(source.managedBrowser && source.others) { self.stop(id,reason:.error) }
             }
         })
-        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:key(for:info.captureID))
+        let meetingKey = key(for:info.captureID)
+        let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
+        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
+        if let modern { try? await owner.manageBrowserLifecycle(modern) }
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
         CaptureActivityStore.shared.set(id,activity[id])
         diskWatch.start(folders:{ [weak self] in
@@ -348,6 +356,10 @@ private final class CaptureFiles: @unchecked Sendable {
             if let value = captures[id] {
                 let key = key(for:value.captureID) ?? value.key; captures[id]?.key = key
                 if let key { microphones[key] = value.owner.snapshot.me }
+                if value.modernLifecycle == nil, let peer = peers.first(where:{ $0.id == key?.peer }) {
+                    captures[id]?.modernLifecycle = peer.supportsPageState
+                    Task { try? await value.owner.manageBrowserLifecycle(peer.supportsPageState); try? await value.input.update() }
+                }
             }
         }
         announce()
@@ -401,8 +413,60 @@ private final class CaptureFiles: @unchecked Sendable {
             if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
-                if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
-                    lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id,reason:peer != nil && count == 0 ? .callEnded : .pageGone) }
+                if value.modernLifecycle == false {
+                    if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
+                        lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true {
+                        stop(id,reason:peer != nil && count == 0 ? .callEnded : .pageGone)
+                    }
+                    continue
+                }
+                let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
+                let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
+                let meeting = peer?.meetings.first { $0.key == value.key }
+                let pages: [(BrowserCallLifecycle.Page,TimeInterval?)] = [
+                    status?.pageState.map { ($0,status?.pageStateAt) },
+                    meeting?.pageState.map { ($0,meeting?.pageStateAt) }
+                ].compactMap { $0 }
+                let page = pages.first { $0.0 == .closed } ?? pages.max { ($0.1 ?? 0) < ($1.1 ?? 0) }
+                let source = value.owner.snapshot
+                // Fresh PCM on the original owned transport is stronger than
+                // a brief gap in management discovery. It never overrides an
+                // explicit navigating/closed report or a dead audio transport.
+                let fresh = source.browserAlive && source.transportAlive && now-source.levelTimestamp <= 1
+                let observedPage = page?.0 ?? (fresh ? .present : nil)
+                let returnFloor = page?.1.map { max(0,$0-value.originUptime)*1000 }
+                let ready = source.restoreReady && source.browserReturnPCMAt.map { $0 >= (returnFloor ?? 0) } == true
+                let action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
+                    transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
+                    restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                if case .stop(let reason) = action, let end = CaptureEndReason(rawValue:reason.rawValue) {
+                    value.owner.requestEnd(end,atMs:max(0,now-value.originUptime)*1000)
+                    stop(id,reason:end); continue
+                }
+                guard !value.changingSource else { continue }
+                let navigation = observedPage == .navigating && page?.1 != value.lastNavigationAt
+                let lost = source.browserAlive && observedPage != .present || navigation
+                if navigation { captures[id]?.lastNavigationAt = page?.1 }
+                let fallback = action == .fallback && !value.input.failedSides.contains(.others)
+                let returned = observedPage == .present && (count ?? 0) > 0 && ready && source.others
+                guard lost || fallback || returned else { continue }
+                captures[id]?.changingSource = true
+                let atMs = max(0,now-value.originUptime)*1000
+                let owner = value.owner
+                Task { [weak self] in
+                    do {
+                        if lost {
+                            let lossAt = max(0,(page?.1 ?? now)-value.originUptime)*1000
+                            try await Task.detached { try owner.browserLost(atMs:lossAt,transportAlive:source.transportAlive) }.value
+                        }
+                        if fallback { try await value.input.fallback() }
+                        if returned { try await value.input.restoreBrowser(atMs:atMs,notBeforeMs:returnFloor) }
+                        if returned { self?.captures[id]?.sourceProblem = false }
+                    } catch {
+                        if self?.captures[id]?.savingSinceMs == nil { self?.captures[id]?.sourceProblem = true }
+                    }
+                    self?.captures[id]?.changingSource = false
+                }
             }
         }
     }

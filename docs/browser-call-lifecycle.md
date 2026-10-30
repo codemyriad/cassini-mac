@@ -1,60 +1,83 @@
 # D33 call lifecycle adoption
 
-Shared input: protocol merge
-`bb13da92fa8c3192bb6d9b8444acd3197c772d62`, unchanged extension 0.2.2.
-The reviewed snapshot is vendored verbatim. No shared extension patch or store
-package belongs in this app change.
+Shared input is protocol merge
+`bb13da92fa8c3192bb6d9b8444acd3197c772d62`, vendored verbatim with extension0.2.2.
+There is no extension patch, store package or upload in this app change.
 
-The per-session `BrowserCallLifecycle` uses the shared 2-second call-end grace
-and 120-second browser-return grace. Closed-tab evidence is sticky. The return
-deadline is checked before accepting renewed audio; another tab and an absent
-PCM transport cannot restore a source. The device owner supplies the actual
-source, so failed fallback or restoration staging cannot silently change it.
-The production value type passes all 15 unchanged shared vectors (55 steps).
+Capable independent Starts opt into keepOnNavigation. Each recording retains
+its own folder, original PCM transport, origin and microphone choice. Legacy
+peers keep their existing behavior, including the30-second return grace. A
+management reconnect alone does not create a new audio owner or recover a dead
+native transport. Release/version sequencing for equal-version0.2.2 companion
+snapshots remains coordinator-owned before distribution.
 
-The reader accepts browser restoration and known terminal reasons without
-overwriting the last selected source; later events after end are ignored. The
-writer reserves the last of 1000 event slots for Stop, finalizes accepted PCM,
-then checkpoints one end at or after every known track/prior-event boundary.
-Repeated Stop preserves the reason and bytes. An unpublished I/O failure gets
-one bounded attempt to persist an error end; a published end stays immutable.
-Counted gaps keep their classification and do not turn user Stop into error.
+The per-session BrowserCallLifecycle uses the shared2-second call-end grace
+and120-second return grace. Browser-confirmed closure is sticky and stops after
+2 seconds without opening computer sound. Navigating/absent pages can request
+computer sound after2 seconds. A present page with zero sources ends the call
+after2 seconds outside pending navigation. A positive same-tab return acknowledges
+that navigation even if restoring its selected source fails. A later hang-up
+therefore follows the normal call-end rule rather than the return grace.
 
-This adoption is in progress. Before enabling `keepOnNavigation`, the app must
-parse capability-scoped `pageState`, preserve legacy peer behavior, integrate
-fallback/restoration with real track transactions and producer loss timestamps,
-and thread terminal reasons and the stop timeline through Stop, disk failure and
-Quit. File-only CLI checks cover the actual reader/writer and new tests typecheck;
-the complete app/SDK suite and real native/browser stop paths still need hosted
-proof. The standalone policy alone does not prove those paths.
+Timers use the producer's loss/page observation stamps. A delayed first observer
+checks the120-second deadline before accepting a returned page. Each loss stamp
+is acknowledged once; keeping a working fallback after a failed restoration
+cannot restart an old deadline. Fresh PCM on the original owned browser path
+can bridge a brief missing management inventory; it never overrides explicit
+navigation/closure or a dead audio transport.
 
-Required hosted integration checks include same-folder restoration, The others
-off, two independent captures, native staging failures, deadline-boundary return,
-closed tabs without computer-sound fallback and durable terminal-event timing.
-The standalone policy/vector check is preparation, not product completion.
+## Input transactions
 
-## First app integration milestone
+Managed loss defers system-input admission to the policy. The existing bounded
+StagedNativeWriter prepares an authorized computer-sound driver and its actual
+buffers before its writer becomes active. A failed candidate cannot publish a
+system event or stop the working microphone. Retry remains scoped to that side.
+An actual system event is published only when its first PCM is admitted.
 
-The owner claims its end trigger before asynchronous native/browser drains,
-using a lock that never waits for file I/O. A later generic browser Stop, Quit or
-second caller cannot change it; real I/O failure can still produce the required
-error end before publication. Broker finalization remains shared, and accepted
-PCM tail boundaries extend the earlier trigger time. Owners not yet published to
-the UI retain the original monotonic clock. User Stop, disk reserve, input error
-and app Quit are now threaded from the app; page-derived reasons are supported
-on capable Stop commands. Existing span drains can use the reserved event slot
-without admitting a new source or selection at999 events.
+Restoration requires fresh PCM on the original transport. Format announcements
+alone are insufficient. PCM preceding the observed return cannot justify switching off a working
+fallback. Later speakers get their own spans even if their first PCM follows
+the initial restoration. A network recovery can reuse its source identity with
+a fresh span. The working system sink pauses and drains without ending its file.
+One metadata checkpoint ends all system spans, starts fresh active browser spans
+and publishes browser/restored together. The cutover includes time spent waiting
+for the drain; earlier buffered browser packets remain excluded. The microphone
+continues on its original writer and clock throughout.
 
-pageState parsing is scoped to page-state-v1. Missing remains unknown; legacy
-peers ignore this optional metadata. Closed evidence and its original local
-observation time survive stale present snapshots. Deferred Stops retain their
-first reason. The writer and readers validate restored against selected
-system/missing or system/lost history, plus a new active browser span on write.
+A rejected restoration resumes the exact previous system writer/timeline.
+Track-limit and real private-directory write failures exercise this path. A
+post-checkpoint sync failure follows the already-published source and retains
+its I/O diagnostic. The others off stays off; explicitly turning it back on
+uses a ready browser source without unnecessarily restarting computer sound.
+A return before any system PCM resumes the browser without inventing a restored
+from-system event. Concurrent meetings have independent policy/input owners.
 
-Still unfinished: using the observed page state in LiveCapture's two-second and
-120-second timers, transactional system fallback and same-transport restoration,
-The others-off restoration gating, and hosted product integration/failure tests.
-keepOnNavigation is deliberately not sent yet; a regression test enforces that
-until those paths are integrated. This is a draft, not a completed D33 rollout.
-The bundled snapshot remains0.2.2, so equal-version installation/release sequencing
-still belongs to the coordinator before distribution. No store package/upload.
+## Terminal events and validation
+
+The owner claims an end trigger/time before asynchronous native/browser drains.
+A later generic browser Stop, Quit or second caller cannot rewrite it. Accepted
+PCM tails and prior events extend the final boundary. The writer reserves the
+last of1000 event slots for end; existing spans can drain at999. Repeated Stop
+preserves bytes/reason, and readers ignore later events after end. Actual I/O
+failure gets the bounded unpublished-error behavior; counted gaps retain their
+classification. Shared reader/writer restoration constraints remain enforced.
+
+Local validation uses source, file/FIFO and generated-buffer checks only. The
+literal15 shared policy cases pass unchanged, together with producer-delay,
+rollback, WAV-tail, selection, dead-transport and concurrent-owner tests.
+The hosted app proof now requires original-transport restoration, The others-off,
+closed-tab/no-new-system and durable120-second-end reports from the actual app
+and bundled native messaging executables. It uses generated native inputs.
+
+This PR stays draft pending the full hosted gate and a dedicated real Chromium
+navigation/reload test against this app (not only the standalone policy or fake
+control client). The earlier83 Stop-memory fixes must be adopted when they land;
+its automatic/user Stop distinction must survive the rebase. No self-merge.
+
+Known remaining product work before this draft is ready: revalidate/cancel
+pending source changes when page state changes during authorization or drain.
+In particular, a returned browser must not wait indefinitely behind an unresolved
+system-permission request, and a newly navigating/closed page must invalidate a
+staged restoration before source commitment. Add those interleavings to the
+product proof, then run the dedicated real Chromium reload path. These are
+tracked implementation requirements, not a claim that the rollout is complete.

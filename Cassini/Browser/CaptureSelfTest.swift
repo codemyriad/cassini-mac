@@ -81,22 +81,27 @@ final class CaptureProbeProcess: @unchecked Sendable {
     var audio: CaptureProbeProcess?
     var captureID: String?, path: String?
     var sequence = 0
+    var modern = false, pageState = "present", sourceID = "remote"
+    var offsetBaseMs = 0
     var nextStartFails = false
     init(root: URL, title: String) throws {
         self.root = root; self.title = title
         control = try CaptureProbeProcess("cassini-control-host",root:root)
     }
     func ready(active: Bool = true, interrupted: Bool = false) async throws {
-        try await control.send(["type":"hello","version":1,"capabilities":["independent-sessions-v1"]])
+        try await control.send(["type":"hello","version":1,"capabilities":["independent-sessions-v1"] + (modern ? ["page-state-v1"] : [])])
         try await control.send(status(interrupted:interrupted))
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        try await control.send(["type":"meetings","meetings":active || audio != nil ? [["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":active ? 1 : 0]] : []])
+        var entry: [String:Any] = ["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":active ? 1 : 0]
+        if modern { entry["pageState"] = pageState }
+        try await control.send(["type":"meetings","meetings":active || audio != nil ? [entry] : []])
     }
     func status(interrupted: Bool = false) -> [String:Any] {
         var packet: [String:Any] = ["type":"status","recording":audio != nil,"tabId":audio == nil ? NSNull() : 2,"path":path as Any? ?? NSNull(),"message":"Fixture status"]
-        let entry: [String:Any] = ["recording":audio != nil,"tabId":2,"path":path as Any? ?? NSNull(),"captureId":captureID as Any? ?? NSNull(),"message":"Fixture status","tracks":1,"stopping":false]
+        var entry: [String:Any] = ["recording":audio != nil,"tabId":2,"path":path as Any? ?? NSNull(),"captureId":captureID as Any? ?? NSNull(),"message":"Fixture status","tracks":1,"stopping":false]
+        if modern { entry["pageState"] = pageState }
         packet["sessions"] = audio == nil ? [] : [entry]
         if interrupted { packet["interrupted"] = [entry] }
         return packet
@@ -113,14 +118,19 @@ final class CaptureProbeProcess: @unchecked Sendable {
         }
         if action == "start" {
             let token = UUID().uuidString.lowercased(), audio = try CaptureProbeProcess("cassini-browser-host",root:root)
-            self.audio = audio; captureID = token; sequence = 0
+            self.audio = audio; captureID = token; sequence = 0; sourceID = "remote"; offsetBaseMs = 0
+            if modern { try CaptureSelfTest.require(command["keepOnNavigation"]?.bool == true,"Modern Start must retain the original audio transport") }
             let started = try await audio.request(["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title])
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
             path = started["path"]?.string
             _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
             try await emit()
         } else {
-            if let audio { _ = try await audio.request(["type":"stop"]); await audio.end(); self.audio = nil }
+            if let audio {
+                var stop: [String:Any] = ["type":"stop"]
+                if let reason = command["reason"]?.string { stop["reason"] = reason }
+                _ = try await audio.request(stop); await audio.end(); self.audio = nil
+            }
         }
         let snapshot = status()
         try await control.send(["type":"result","requestId":request,"ok":true,"status":snapshot])
@@ -129,9 +139,19 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     func emit() async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
-        let answer = try await audio.request(["type":"audio","id":"remote","sequence":sequence,"offsetMs":sequence*100,"pcm":Data(repeating:0x12,count:1600).base64EncodedString()])
+        let answer = try await audio.request(["type":"audio","id":sourceID,"sequence":sequence,"offsetMs":offsetBaseMs+sequence*100,"pcm":Data(repeating:0x12,count:1600).base64EncodedString()])
         guard answer["type"]?.string == "ack" else { throw CocoaError(.fileWriteUnknown) }
         sequence += 1
+    }
+    func page(_ state: String, active: Bool) async throws {
+        pageState = state; try await control.send(status()); try await meetings(active)
+    }
+    func returnedSource(atMs: Int) async throws {
+        guard let audio else { throw CocoaError(.fileReadUnknown) }
+        sourceID = UUID().uuidString.lowercased(); sequence = 0; offsetBaseMs = atMs
+        let reply = try await audio.request(["type":"track","id":sourceID,"label":"Returned remote","kind":"remote","sampleRate":8000,"channels":1])
+        try CaptureSelfTest.require(reply["type"]?.string == "ack","The original audio transport accepts the returning frame")
+        try await emit()
     }
     func loseBrowser() async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
@@ -380,6 +400,69 @@ final class CaptureProbeProcess: @unchecked Sendable {
             collection.pollLifetimeForTesting(at:lostAt + 30.01)
             try await wait { collection.captures.isEmpty }
             report["unobservedFallbackExpires"] = true
+            stage = "D33 original-transport return and closed tab"
+            try await collection.setAutoRecord(false)
+            let modern = try CaptureProbeProfile(root:pipe,title:"Modern D33")
+            modern.modern = true; profiles.append(modern); try await modern.ready()
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await modern.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true }
+            let returning = try collection.captures.values.first.unwrap(), returningID = returning.snapshot.manifest.id
+            try await modern.page("navigating",active:false)
+            try await wait { !returning.owner.snapshot.browserAlive }
+            let loss = try returning.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:loss+2.01)
+            try await wait { returning.owner.snapshot.usingSystem }
+            try await modern.returnedSource(atMs:Int((loss+2.2-returning.originUptime)*1000))
+            try await modern.page("present",active:true)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }
+            collection.pollLifetimeForTesting(at:loss+2.1)
+            try await wait { returning.owner.snapshot.browserAlive }
+            try await modern.emit()
+            try require(returning.owner.snapshot.directory == returning.snapshot.directory,"Return keeps the same folder")
+            try require(returning.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.reason == "restored","Return publishes the atomic restored event")
+            report["d33OriginalTransportRestoresSameFolder"] = true
+            try await collection.select(returningID,me:true,others:false)
+            try await modern.page("navigating",active:false)
+            try await wait { !returning.owner.snapshot.browserAlive }
+            try await modern.returnedSource(atMs:Int((loss+4.2-returning.originUptime)*1000))
+            try await modern.page("present",active:true)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }
+            collection.pollLifetimeForTesting(at:loss+4.1)
+            try require(!returning.owner.snapshot.others && !returning.owner.snapshot.usingSystem,"The others stays off after return")
+            report["d33OthersOffStaysOff"] = true
+            try await collection.select(returningID,me:true,others:true)
+            let systemTracks = returning.owner.snapshot.manifest.tracks.filter { $0.kind == "system" }.count
+            try await modern.page("closed",active:false)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.captures.first?.pageState == .closed }
+            collection.pollLifetimeForTesting(at:loss+6.2)
+            let closed = try await modern.performNext()
+            try require(closed["reason"]?.string == "tabClosed","Closed tab sends its real terminal reason")
+            try await wait { collection.captures.isEmpty }
+            let modernEnded = try RecordingLoader.load(directory:returning.owner.snapshot.directory)
+            try require(modernEnded.events?.last?.reason == "tabClosed","Closed tab persists its end reason")
+            try require(modernEnded.tracks.filter { $0.kind == "system" }.count == systemTracks,"Closed tab must not start a new computer-sound fallback")
+            report["d33ClosedTabStopsWithoutSystemFallback"] = true
+            try await modern.meetings(false)
+            stage = "D33 dead transport respects 120 seconds"
+            let absent = try CaptureProbeProfile(root:pipe,title:"D33 absent")
+            absent.modern = true; profiles.append(absent); try await absent.ready()
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await absent.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
+            let missing = try collection.captures.values.first.unwrap()
+            try await absent.loseBrowser()
+            try await wait { missing.owner.snapshot.browserLostUptime != nil }
+            let disappeared = try missing.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:disappeared+119.99)
+            try require(collection.captures.count == 1,"The120-second grace cannot expire early")
+            collection.pollLifetimeForTesting(at:disappeared+120.01)
+            _ = try await absent.performNext()
+            try await wait { collection.captures.isEmpty }
+            let missingManifest = try RecordingLoader.load(directory:missing.owner.snapshot.directory)
+            try require(missingManifest.events?.last?.reason == "pageGone","Lost original transport ends with pageGone")
+            report["d33ProducerDeadlineAndEndAreDurable"] = true
+            try await absent.meetings(false)
             stage = "first browser packet with denied microphone"
             CaptureFixture.microphoneAllowed = false
             try await two.meetings(true)
