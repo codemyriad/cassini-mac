@@ -88,7 +88,8 @@ def main():
         # TCC attributes synthetic events to the responsible test driver, not
         # its keyboard child. Authorize only this private hosted test person.
         driver_id = plistlib.loads((base/'GuideDriver.app/Contents/Info.plist').read_bytes())['CFBundleIdentifier']
-        assert driver_id.endswith('-Runner') and driver_id != 'io.codemyriad.cassini'
+        assert driver_id in {'io.codemyriad.cassini.screenshots.xctrunner', 'io.codemyriad.cassini.screenshots-Runner'}, driver_id
+        print('Hosted guide-driver authorization:', driver_id, flush=True)
         client = driver_id.replace("'","''")
         for service in ['kTCCServicePostEvent','kTCCServiceAccessibility']:
             sql = ("INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,"
