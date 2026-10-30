@@ -124,7 +124,7 @@ def release(args):
     derived = ROOT/'.build/developer-id'
     command = ['xcodebuild', 'build', '-project', 'Cassini.xcodeproj', '-scheme', 'Cassini', '-configuration', 'Release',
         '-derivedDataPath', derived, '-jobs', '2', 'ARCHS=arm64 x86_64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGNING_ALLOWED=YES',
-        'CODE_SIGN_IDENTITY='+identity, 'DEVELOPMENT_TEAM='+TEAM,
+        'CODE_SIGN_IDENTITY='+identity, 'CODE_SIGN_STYLE=Manual', 'DEVELOPMENT_TEAM='+TEAM,
         'CASSINI_APP_HARDENED_RUNTIME=YES', 'MARKETING_VERSION='+args.version, 'CURRENT_PROJECT_VERSION='+str(args.build),
         'CASSINI_UPDATE_FEED='+args.feed_url, 'CASSINI_UPDATES_ENABLED=YES']
     # Build logs contain no password/ASC metadata; retain diagnostics for review.

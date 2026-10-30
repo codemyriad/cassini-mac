@@ -49,7 +49,6 @@
 		41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = F7FE2A1C7242DF314538998C /* Fixtures */; };
 		44CFFFC71378B43F6E26F87D /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE4F0FC3ED652A457981BA2 /* SessionModel.swift */; };
 		4894B39EC42F7D4E8AE78059 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 3C45C68D469B5B6F4F552DD8 /* CassiniWhistle */; };
-		48ABBF1A0793EE79112AB57F /* Sparkle in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 5B93DF2C6D4523431D910123 /* Sparkle */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4A444EA6F34B850173529772 /* CassiniModels in Frameworks */ = {isa = PBXBuildFile; productRef = 4BFD420B8922F647B49598D0 /* CassiniModels */; };
 		4B13F891F062EF653D0D14A2 /* MeetingNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */; };
 		53B81ABFE589A48A808D5BE7 /* RecordingRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */; };
@@ -193,17 +192,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		2BDFE36E12331C98EF883607 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				48ABBF1A0793EE79112AB57F /* Sparkle in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		2D274D122F504037F2C02487 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -795,7 +783,6 @@
 				59AB919EBDADC73FC1F7EB43 /* CopyFiles */,
 				B5AB5C6CC848958B5C12107C /* Frameworks */,
 				2D274D122F504037F2C02487 /* Embed Foundation Extensions */,
-				2BDFE36E12331C98EF883607 /* Embed Frameworks */,
 				4E5336EE9AC66FB8CAA80456 /* Bundle reviewed browser companion */,
 				3F9F988F2C15EA3EC59A74AB /* Bundle pinned Opus encoder */,
 				9C428EA4197ADEEDAC5EAE08 /* Bundle native messaging host */,

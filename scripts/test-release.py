@@ -70,6 +70,13 @@ class ReleaseTests(unittest.TestCase):
             signed=subprocess.run([str(tools),'--ed-key-file',str(seed),'-p',str(data)],check=True,capture_output=True,text=True).stdout.strip()
             command=[str(tools),'--verify','--ed-key-file',str(seed),str(data),signed]
             self.assertEqual(subprocess.run(command,capture_output=True).returncode,0)
+            feed=folder/'appcast.xml'
+            feed.write_bytes(release.appcast(data,signed,'1.0',2,'https://example.org/Cassini.dmg'))
+            subprocess.run([str(tools),'--ed-key-file',str(seed),str(feed)],check=True,capture_output=True)
+            verify_feed=[str(tools),'--verify','--ed-key-file',str(seed),str(feed)]
+            self.assertEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
+            feed.write_bytes(feed.read_bytes().replace(b'Cassini for Mac',b'Tampered title'))
+            self.assertNotEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
             data.write_bytes(b'tampered bytes');self.assertNotEqual(subprocess.run(command,capture_output=True).returncode,0)
 
 if __name__ == '__main__':unittest.main()
