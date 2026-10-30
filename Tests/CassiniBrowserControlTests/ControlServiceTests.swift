@@ -53,7 +53,7 @@ final class ControlServiceTests: XCTestCase {
         bound.assertForOverFulfill = false; gone.assertForOverFulfill = false
         let service = BrowserControlService(changed:{ peers in
             if peers.contains(where:{ $0.captures.first?.captureID == "capture" }) { bound.fulfill() }
-            if peers.isEmpty { gone.fulfill() }
+            if !peers.contains(where:{ $0.reconciled }) { gone.fulfill() }
         },completed:{ _,_ in })
         try service.start(root:root); defer { service.stop() }
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
@@ -69,6 +69,34 @@ final class ControlServiceTests: XCTestCase {
         XCTAssertThrowsError(try receive(second,seconds:0.3))
         try send(["type":"meetings","meetings":[["tabId":2,"title":"New call","url":"https://meet.example/new","sourceCount":2]]],second)
         XCTAssertEqual(try receive(second)["action"]?.string,"start")
+    }
+    func testLostAutomaticStartReconcilesAcrossRealPipesWithoutReplayOrFalseFailure() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let disconnected = expectation(description:"Released link"), succeeded = expectation(description:"Recovered automatic Start")
+        disconnected.assertForOverFulfill = false; succeeded.assertForOverFulfill = false
+        let closing = Admission(), count = NotificationCount()
+        let service = BrowserControlService(changed:{ peers in
+            if closing.read(), !peers.contains(where:{ $0.reconciled }) { disconnected.fulfill() }
+        },completed:{ outcome,automatic in
+            count.increment(); XCTAssertTrue(outcome.ok); XCTAssertTrue(automatic); succeeded.fulfill()
+        })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(try XCTUnwrap(first)); try send(status(false),try XCTUnwrap(first))
+        let start = try receive(try XCTUnwrap(first)); XCTAssertEqual(start["action"]?.string,"start")
+        closing.set(true); first = nil; wait(for:[disconnected],timeout:3)
+        XCTAssertEqual(count.value,0)
+        let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(second); try send(status(false),second)
+        XCTAssertThrowsError(try receive(second,seconds:0.2),"An uncertain Start must not be sent twice")
+        XCTAssertEqual(count.value,0)
+        try send(status(true),second)
+        wait(for:[succeeded],timeout:3)
+        try send(status(true),second)
+        XCTAssertThrowsError(try receive(second,seconds:0.2))
+        XCTAssertEqual(count.value,1)
     }
     func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
