@@ -22,6 +22,7 @@ public struct BrowserSetupInstallation {
     public static let supportedBrowsers: [Browser] = [
         .init(bundleID:"com.google.Chrome",name:"Chrome",profile:"Google/Chrome"),
         .init(bundleID:"org.chromium.Chromium",name:"Chromium",profile:"Chromium"),
+        .init(bundleID:"com.google.chrome.for.testing",name:"Chrome for Testing",profile:"Google/Chrome for Testing"),
         .init(bundleID:"com.microsoft.edgemac",name:"Microsoft Edge",profile:"Microsoft Edge"),
         .init(bundleID:"com.brave.Browser",name:"Brave",profile:"BraveSoftware/Brave-Browser")
     ]

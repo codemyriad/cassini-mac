@@ -68,7 +68,7 @@ struct MeetingView: View {
                                 .accessibilityElement(children:.ignore)
                                 .accessibilityLabel([meeting.speakers.first(where:{ $0.id == turn.speaker })?.displayName ?? "",LibraryFormat.position(turn.startMs),turn.items.map(\.text).joined(separator:" ")].joined(separator:", "))
                                 .accessibilityIdentifier("meeting-turn-" + String(turn.id))
-                                .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.seek(Int(turn.startMs)) }
+                                .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
                         }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")

@@ -13,8 +13,8 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-BROWSERS = ['Google/Chrome', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser']
-ANCESTORS = ['Google', 'Google/Chrome', 'Chromium', 'Microsoft Edge', 'BraveSoftware', 'BraveSoftware/Brave-Browser']
+BROWSERS = ['Google/Chrome', 'Chromium', 'Google/Chrome for Testing', 'Microsoft Edge', 'BraveSoftware/Brave-Browser']
+ANCESTORS = ['Google', 'Google/Chrome', 'Chromium', 'Google/Chrome for Testing', 'Microsoft Edge', 'BraveSoftware', 'BraveSoftware/Brave-Browser']
 HOSTS = {'io.codemyriad.cassini': 'cassini-browser-host', 'io.codemyriad.cassini.control': 'cassini-control-host'}
 ORIGIN = 'chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/'
 p = argparse.ArgumentParser(description=__doc__)
@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
         a.output.with_suffix('.stderr.txt').write_text(result.stderr)
         assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
         report = json.loads(result.stdout)
-        assert report == dict(manifestsWritten=8, parentWriteDenied=True, wrongHostBookmarkRejected=True), report
+        assert report == dict(manifestsWritten=len(BROWSERS)*2, parentWriteDenied=True, wrongHostBookmarkRejected=True), report
         for browser in BROWSERS:
             directory = home/'Library/Application Support'/browser/'NativeMessagingHosts'
             for host, executable in HOSTS.items():
@@ -137,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     (home/'Library/Application Support').mkdir(parents=True, mode=0o700)
     fresh = subprocess.run([str(binary), str(home)], capture_output=True, text=True, timeout=30)
     assert fresh.returncode == 0, (fresh.stdout, fresh.stderr)
-    assert json.loads(fresh.stdout) == dict(manifestsWritten=8, parentWriteDenied=True, wrongHostBookmarkRejected=True)
+    assert json.loads(fresh.stdout) == dict(manifestsWritten=len(BROWSERS)*2, parentWriteDenied=True, wrongHostBookmarkRejected=True)
     for browser in BROWSERS:
         browser_path = home/'Library/Application Support'/browser
         assert sorted(p.name for p in browser_path.iterdir()) == ['NativeMessagingHosts']
@@ -156,7 +156,7 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     report.update(neverOpenedBrowsersRegistered=True,noProfilesOrPreferencesCreated=True,profileSiblingWriteDenied=True)
     report.update(fixtureOnly=True, actualBundledService=bool(a.app), twoIdempotentConnects=True,
         identicalMtimesPreserved=True, browserProfilesTouched=False, audioDevicesOpened=False, appWindowsOpened=False,
-        exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=4, helperNetworkEntitlements=False,
+        exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=len(BROWSERS), helperNetworkEntitlements=False,
         nativeArchitecture=os.uname().machine)
     a.output.write_text(json.dumps(report, indent=2)+'\n')
-    print('PASS fixed-path production Connect RPC: eight manifests, repeat setup, parent denied, wrong host rejected')
+    print('PASS fixed-path production Connect RPC: all browser manifests, repeat setup, parent denied, wrong host rejected')

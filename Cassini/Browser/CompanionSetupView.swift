@@ -86,7 +86,7 @@ import CassiniBrowserSetup
     func add() {
         guard !LibraryLaunchContext.current.screenshot, Self.fixtureKind == nil, canAdd else { return }
         let url = URL(string:"https://chromewebstore.google.com/detail/pcafdaahfhjiolfpfnlhmljfgoabbaij")!
-        let identifiers = ["com.google.Chrome","org.chromium.Chromium","com.microsoft.edgemac","com.brave.Browser"]
+        let identifiers = BrowserSetupInstallation.supportedBrowsers.map(\.bundleID)
         let preferred = NSWorkspace.shared.urlForApplication(toOpen:url)
         let apps = identifiers.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier:$0) }
         if let app = preferred.flatMap({ apps.contains($0) ? $0 : nil }) ?? apps.first {

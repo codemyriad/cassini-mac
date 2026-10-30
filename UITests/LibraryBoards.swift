@@ -175,7 +175,11 @@ final class LibraryBoards: XCTestCase {
                 XCTAssertTrue(text("Browser meetings need Chrome, Edge, Brave or Chromium.",in:settings))
                 XCTAssertFalse(settings.buttons["browser-try-again"].exists)
                 app.typeKey("w",modifierFlags:.command)
+                let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+                budget.click()
+                XCTAssertTrue(window.buttons["preview-read-transcript"].isEnabled)
                 window.buttons["preview-read-transcript"].click()
+                XCTAssertTrue(window.buttons["Set up"].waitForExistence(timeout:15),app.debugDescription)
                 window.buttons["Set up"].click()
                 XCTAssertTrue(window.sheets.buttons["companion-add"].waitForExistence(timeout:10),app.debugDescription)
                 XCTAssertFalse(window.sheets.buttons["companion-add"].isEnabled)

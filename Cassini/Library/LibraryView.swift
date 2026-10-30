@@ -72,44 +72,45 @@ struct LibraryView: View {
                         .accessibilityIdentifier("recording-header-title")
                 }
             } else if let detail = navigation.detail {
-                ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 0) {
-                        HStack(spacing: 12) {
-                            Button { navigation.back() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 30) }
-                                .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
-                                .accessibilityIdentifier("meeting-back")
-                            Spacer(minLength: 0)
-                            if RecordingOverview.active { Button(UXText.text("common.stop")) { RecordingOverview.stop() }.accessibilityLabel(UXText.text("common.stop")) }
-                            else { recordButton(big: false) }
-                        }.frame(width: 169)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .bold))
-                                .lineLimit(1).accessibilityIdentifier("meeting-title")
-                                .onTapGesture { rename.show(detail.meeting,presentation:.title) }
-                                .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
-                                .help(UXText.text("meeting.renameEllipsis"))
-                                .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-                            if let start = detail.meeting.start {
-                                Text(store.format.previewSubtitle(start, durationMs: detail.meeting.durationMs, received: detail.meeting.state.origin == .received))
-                                    .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
-                            }
-                        }.padding(.leading, 16).frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityElement(children: .contain)
-                        HStack(spacing: 14) {
-                            if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
-                                Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
-                                    .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down").accessibilityLabel(UXText.text("common.writeDown"))
-                            }
-                            Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
-                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export").accessibilityLabel(UXText.text("common.exportEllipsis"))
-                            Menu {
-                                if trash.canTrash(detail.meeting) {
-                                    Section { trashButton(detail.meeting) }
-                                }
-                            } label: { Image(systemName:"ellipsis").frame(width:28,height:30) }
-                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions")).accessibilityIdentifier("meeting-more-actions")
+                ToolbarItem(placement:.navigation) {
+                    Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
+                        .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("meeting-back")
+                }
+                ToolbarItem(placement:.navigation) {
+                    if RecordingOverview.active {
+                        Button(UXText.text("common.stop")) { RecordingOverview.stop() }.accessibilityLabel(UXText.text("common.stop"))
+                    } else { recordButton(big:false) }
+                }
+                ToolbarItem(placement:.principal) {
+                    VStack(alignment:.leading,spacing:1) {
+                        Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold))
+                            .lineLimit(1).accessibilityIdentifier("meeting-title")
+                            .onTapGesture { rename.show(detail.meeting,presentation:.title) }
+                            .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
+                            .help(UXText.text("meeting.renameEllipsis"))
+                            .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
+                        if let start = detail.meeting.start {
+                            Text(store.format.previewSubtitle(start,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
+                                .font(.system(size:11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
                         }
-                    }.frame(width: max(480, toolbarWidth - 110))
+                    }.frame(width:max(200,toolbarWidth - 450),alignment:.leading).accessibilityElement(children:.contain)
+                }
+                if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
+                    ToolbarItem(placement:.primaryAction) {
+                        Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
+                            .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down").accessibilityLabel(UXText.text("common.writeDown"))
+                    }
+                }
+                ToolbarItem(placement:.primaryAction) {
+                    Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
+                        .padding(.horizontal,14).frame(height:34).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:6))
+                        .disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export").accessibilityLabel(UXText.text("common.exportEllipsis"))
+                }
+                ToolbarItem(placement:.primaryAction) {
+                    Menu {
+                        if trash.canTrash(detail.meeting) { Section { trashButton(detail.meeting) } }
+                    } label: { Image(systemName:"ellipsis").frame(width:28,height:30) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(UXText.text("meeting.moreActions")).accessibilityIdentifier("meeting-more-actions")
                 }
             } else {
             ToolbarItem(placement: .navigation) {
