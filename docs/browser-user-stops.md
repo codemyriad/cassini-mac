@@ -28,9 +28,9 @@ use their original URL. An unavailable original URL is never a wildcard.
 An overlapping newer connection supersedes a draining old connection of the
 same browser/profile. Late old inventories cannot erase a newer Stop, and an
 old connection cannot regain auto-start authority if its replacement disconnects.
-No pending command keys are renamed or replayed. The original audit's stable
-meeting-key aliases and lost-Start failure grace remain separate follow-ups;
-this PR implements the coordinator's user-stop-only direction.
+No issued command is moved to another FIFO or replayed. The subsequent
+[meeting-key follow-up](browser-meeting-keys.md) separates UI keys from physical
+connections and adds a bounded lost-Start reconciliation window.
 
 Local verification uses actual source with focused file/IPC tests, plus the
 same two regression assertions against an origin/main snapshot: both fail on

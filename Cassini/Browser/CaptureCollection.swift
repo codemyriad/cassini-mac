@@ -392,7 +392,8 @@ private final class CaptureFiles: @unchecked Sendable {
             }
             if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
             if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
-                let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
+                let peer = peers.first { $0.reconciled && ($0.meetings.contains(where:{ $0.key == value.key }) ||
+                    ($0.captures + $0.interrupted).contains(where:{ $0.key == value.key })) }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
                 if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
                     lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id,userInitiated:false) }
