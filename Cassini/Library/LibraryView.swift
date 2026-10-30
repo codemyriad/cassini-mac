@@ -273,10 +273,6 @@ struct LibraryView: View {
                 }
             }
             .listStyle(.sidebar)
-            .onKeyPress(.return) {
-                guard let selected = store.selected, !LibraryMoveCoordinator.shared.busy else { return .ignored }
-                readTranscript(selected); return .handled
-            }
             .scrollContentBackground(.hidden)
             .background(LibraryTheme.sidebar)
             .frame(minWidth: 400, maxWidth: 400)

@@ -128,7 +128,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed)
         row.click(); app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
         XCTAssertTrue(app.menuItems["library-keyboard-rename"].waitForExistence(timeout:5),app.debugDescription)
-        app.menuItems["library-keyboard-rename"].click()
+        app.menuItems["library-keyboard-rename"].hover(); app.typeKey(.return,modifierFlags:[])
         XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
         XCTAssertEqual(field.value as? String,original,"Cancel must not save when the field loses focus")
         field.typeText("Imported lesson"); app.typeKey(.return,modifierFlags:[])

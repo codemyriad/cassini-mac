@@ -7,10 +7,21 @@ import AppKit
 /// focus, and otherwise acts on the key window's session, so the menu never sees those keys.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
+    private var menuTrackingObservers: [NSObjectProtocol] = []
+    @MainActor private static var trackingMenus: Set<ObjectIdentifier> = []
     private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ModelNotices.configureMenu()
+        menuTrackingObservers = [NSMenu.didBeginTrackingNotification, NSMenu.didEndTrackingNotification].map { name in
+            NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { notification in
+                MainActor.assumeIsolated {
+                    guard let menu = notification.object as? NSMenu else { return }
+                    if notification.name == NSMenu.didBeginTrackingNotification { Self.trackingMenus.insert(ObjectIdentifier(menu)) }
+                    else { Self.trackingMenus.remove(ObjectIdentifier(menu)) }
+                }
+            }
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             MainActor.assumeIsolated { AppDelegate.handle(event) }
         }
@@ -153,7 +164,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        menuTrackingObservers.forEach { NotificationCenter.default.removeObserver($0) }; menuTrackingObservers = []
         MainActor.assumeIsolated {
+            Self.trackingMenus.removeAll()
             CompanionSetup.shared.stop()
             RecordingRuntime.shared.stop(); LibraryStore.shared.stop()
             TranscriptionQueue.shared.beginShutdown()
@@ -178,6 +191,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
+        // AppKit's outline consumes Return before SwiftUI onKeyPress. Treat it
+        // as the Library selection's primary action, like the native row's
+        // double-click; menus and editors keep their own Return behavior.
+        if [36,76].contains(event.keyCode),
+           event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty,
+           trackingMenus.isEmpty,
+           let window = event.window ?? NSApp.keyWindow,
+           window.accessibilityIdentifier() == "cassini-library-window",
+           window.attachedSheet == nil, NSApp.modalWindow == nil,
+           !(window.firstResponder is NSText), MeetingNavigation.shared.detail == nil,
+           !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
+           !LibraryMoveCoordinator.shared.busy, let meeting = LibraryStore.shared.selected {
+            SessionPlaybackController.stopAll(); MeetingNavigation.shared.open(meeting)
+            return nil
+        }
         if let window = event.window ?? NSApp.keyWindow,
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
