@@ -18,6 +18,7 @@ enum SettingsTab: String, CaseIterable { case recording, transcription, library,
 }
 struct CassiniSettingsView: View {
     @State private var navigation = SettingsNavigation.shared
+    @State private var companion = CompanionSetup.shared
     var body: some View {
         TabView(selection:$navigation.tab) {
             SettingsRecordingView().tabItem { Label(SettingsTab.recording.title,systemImage:SettingsTab.recording.icon) }.tag(SettingsTab.recording)
@@ -34,6 +35,9 @@ struct CassiniSettingsView: View {
                 SettingsFixture.prepare(window)
                 #endif
             })
+            .sheet(isPresented:Binding(get:{ companion.presenter == .settings },set:{ if !$0 { companion.close() } })) {
+                CompanionSetupView()
+            }
     }
 }
 private struct SettingsRecordingView: View {

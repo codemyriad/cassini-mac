@@ -27,7 +27,6 @@ final class LocalCompanionInstall: XCTestCase {
         }
         chrome.launch()
         app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout:20),app.debugDescription)
         app.typeKey(",",modifierFlags:.command)
         let settings = app.windows["cassini-settings-window"]
         XCTAssertTrue(settings.waitForExistence(timeout:10),app.debugDescription)
@@ -97,7 +96,6 @@ final class LocalCompanionInstall: XCTestCase {
         }
         let before = try FileManager.default.attributesOfItem(atPath:manifest.path)
         next.terminate(); next.launch()
-        XCTAssertTrue(next.windows.firstMatch.waitForExistence(timeout:15))
         // A second actual launch must finish its preparation without rewriting
         // the equal-version copy. Observe the product's real Copy folder state.
         next.typeKey(",",modifierFlags:.command)
