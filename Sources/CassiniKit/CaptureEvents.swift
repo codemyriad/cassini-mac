@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
+public enum CaptureEndReason: String, Codable, CaseIterable, Sendable {
+    case user, callEnded, tabClosed, pageGone, disk, error, appQuit
+}
+
 /// Optional session v1 provenance. Unknown or malformed events do not invalidate
 /// playable audio; readers ignore them and never infer an event from a gap.
 public struct CaptureEvent: Codable, Sendable, Equatable {
@@ -16,8 +20,11 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
     public var isKnownValid: Bool {
         guard let atMs, atMs.isFinite, atMs >= 0 else { return false }
         switch type {
-        case "othersSource": return ["browser","system","none"].contains(source ?? "") && ["start","missing","lost","user"].contains(reason ?? "")
+        case "othersSource":
+            if reason == "restored" { return source == "browser" }
+            return ["browser","system","none"].contains(source ?? "") && ["start","missing","lost","user"].contains(reason ?? "")
         case "selection": return me != nil && others != nil && (me == true || others == true) && ["start","user"].contains(reason ?? "")
+        case "end": return reason.flatMap(CaptureEndReason.init(rawValue:)) != nil
         default: return false
         }
     }
@@ -38,7 +45,7 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
         var c = encoder.container(keyedBy:CodingKeys.self)
         try c.encode(atMs,forKey:.atMs); try c.encode(type,forKey:.type); try c.encode(reason,forKey:.reason)
         if type == "othersSource" { try c.encode(source,forKey:.source) }
-        else { try c.encode(me,forKey:.me); try c.encode(others,forKey:.others) }
+        else if type == "selection" { try c.encode(me,forKey:.me); try c.encode(others,forKey:.others) }
     }
     /// Preserve valid ordered provenance only. A bad entry never rewinds a later
     /// event or manufactures a fallback. Unknown fields are intentionally unused.
@@ -50,6 +57,7 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
             let event = CaptureEvent(atMs:time,type:type,source:value["source"]?.string,reason:value["reason"]?.string ?? "",me:value["me"]?.bool,others:value["others"]?.bool)
             guard event.isKnownValid, time >= previous else { continue }
             result.append(event); previous = time
+            if event.type == "end" { break }
         }
         return result
     }
@@ -66,9 +74,10 @@ public struct CaptureSourceState: Sendable, Equatable {
         for event in events {
             guard event.isKnownValid, let time = event.atMs, time >= previous else { continue }
             previous = time
+            if event.type == "end" { break }
             guard time <= atMs else { continue }
             if event.type == "selection" { me = event.me; others = event.others }
-            else { source = event.source; reason = event.reason; sinceMs = time }
+            else if event.type == "othersSource" { source = event.source; reason = event.reason; sinceMs = time }
         }
     }
 }
