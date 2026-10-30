@@ -43,6 +43,7 @@ struct LibraryLaunchContext {
         #endif
         #if DEBUG
         if let root = RecordingFixture.root { context.root = root; context.screenshot = false; context.now = nil }
+        if let root = MeetingRenameFixture.root { context.root = root; context.screenshot = false; context.now = nil; context.activity = [:] }
         #endif
         if context.scansLibrary {
             do {
@@ -55,7 +56,7 @@ struct LibraryLaunchContext {
     static var locationFile: URL {
         #if DEBUG
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" {
-            let id = SettingsFixture.id?.uuidString ?? argument("-CassiniCaptureID").flatMap { UUID(uuidString:$0)?.uuidString } ?? String(ProcessInfo.processInfo.processIdentifier)
+            let id = MeetingRenameFixture.id?.uuidString ?? SettingsFixture.id?.uuidString ?? argument("-CassiniCaptureID").flatMap { UUID(uuidString:$0)?.uuidString } ?? String(ProcessInfo.processInfo.processIdentifier)
             return FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsFixture-" + id + "/library-location.json")
         }
         #endif
@@ -172,7 +173,7 @@ final class LibraryStore {
                 } else if let key = selectionWhenAvailable, result.meetings.contains(where:{ $0.libraryKey == key }) {
                     selectedKey = key; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
                 }
-                TranscriptionQueue.shared.consider(result.meetings,automatic:!context.screenshot && (!RecordingFixture.enabled || RecordingFixture.transcribes))
+                TranscriptionQueue.shared.consider(result.meetings,automatic:!context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
                 LegacyOpening.refreshTranscripts(result.meetings)
                 if selectedKey == nil || !meetings.contains(where:{ $0.libraryKey == selectedKey }) {
                     selectedKey = context.screenshot ? meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey : meetings.first?.libraryKey

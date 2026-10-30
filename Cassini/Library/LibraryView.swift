@@ -25,6 +25,7 @@ struct LibraryView: View {
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
+    @State private var rename = MeetingRenameCoordinator.shared
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -84,6 +85,10 @@ struct LibraryView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .bold))
                                 .lineLimit(1).accessibilityIdentifier("meeting-title")
+                                .onTapGesture { rename.show(detail.meeting,presentation:.title) }
+                                .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
+                                .help(UXText.text("meeting.renameEllipsis"))
+                                .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
                             if let start = detail.meeting.start {
                                 Text(store.format.previewSubtitle(start, durationMs: detail.meeting.durationMs, received: detail.meeting.state.origin == .received))
                                     .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
@@ -135,6 +140,7 @@ struct LibraryView: View {
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
+        .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
@@ -224,6 +230,8 @@ struct LibraryView: View {
                                 .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
                                 .onTapGesture(count:2) { if meeting.state.lifecycle != .saved { navigation.open(meeting) } }
                                 .contextMenu {
+                                    Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
+                                        .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
                                     Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
                                         .disabled(!MeetingExportCoordinator.canExport(meeting))
                                         .onAppear { store.selectedKey = meeting.libraryKey }

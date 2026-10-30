@@ -75,6 +75,59 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["Done"].click()
         XCTAssertTrue(window.buttons["recording-change-sources"].exists)
     }
+    @MainActor func testRenameFromFileAndWindowTitle() throws {
+        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
+        app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click()
+        let field = app.textFields["rename-name"]
+        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertEqual(field.value as? String,"Budget review")
+        XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
+        field.typeText("Project review") // Initial contents must be selected.
+        XCTAssertEqual(field.value as? String,"Project review")
+        capture(window,name:"rename")
+        app.typeKey(.return,modifierFlags:[])
+        let updated = NSPredicate { _,_ in !field.exists && window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Project review","Project review")).count >= 2 }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:nil)],timeout:10),.completed,app.debugDescription)
+        window.buttons["preview-read-transcript"].click()
+        let title = window.staticTexts["meeting-title"]
+        XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
+        title.click()
+        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        field.typeText("  Board notes  "); app.typeKey(.return,modifierFlags:[])
+        let renamed = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Board notes" && !field.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:10),.completed,app.debugDescription)
+        title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))
+        field.typeText(" "); app.typeKey(.return,modifierFlags:[])
+        let blank = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Untitled meeting" && !field.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:blank,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertTrue(window.staticTexts["meeting-subtitle"].exists,"Untitled meetings retain their date/duration subtitle")
+        title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))
+        XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
+        field.typeText("Cancelled name"); app.typeKey(.escape,modifierFlags:[])
+        let cancelled = NSPredicate { _,_ in !field.exists && (title.value as? String ?? title.label) == "Untitled meeting" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed)
+    }
+    @MainActor func testRenameReceivedFromRowMenus() throws {
+        let app = try launch("received",fixture:"received-only",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let row = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-Received-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout:20),app.debugDescription)
+        row.rightClick(); XCTAssertTrue(app.menuItems["Rename…"].isEnabled); app.typeKey(.escape,modifierFlags:[])
+        row.click(); app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
+        XCTAssertTrue(app.menuItems["library-keyboard-rename"].waitForExistence(timeout:5),app.debugDescription)
+        app.menuItems["library-keyboard-rename"].click()
+        let field = app.textFields["rename-name"]
+        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        field.typeText("Imported lesson"); app.typeKey(.return,modifierFlags:[])
+        let updated = NSPredicate { _,_ in !field.exists && window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Imported lesson","Imported lesson")).count >= 2 }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertTrue(window.buttons["preview-play"].isEnabled)
+    }
     override func setUpWithError() throws {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
@@ -262,6 +315,16 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["record-first-start"].click()
         let title = window.textFields["recording-title"]
         XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertFalse(app.menuItems["Rename…"].isEnabled,"Use the Recording page field while live")
+        app.typeKey(.escape,modifierFlags:[])
+        for key in ["w","q"] {
+            app.typeKey(key,modifierFlags:.command)
+            XCTAssertTrue(window.sheets.staticTexts["A recording is running"].waitForExistence(timeout:10),app.debugDescription)
+            app.typeKey(.escape,modifierFlags:[])
+            let stayed = NSPredicate { _,_ in window.exists && !window.sheets.firstMatch.exists && window.buttons["recording-page-stop"].exists }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stayed,object:nil)],timeout:5),.completed,app.debugDescription)
+        }
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()

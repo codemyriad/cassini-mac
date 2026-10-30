@@ -14,9 +14,13 @@ import CassiniLibrary
     }
     static func show(_ meeting: LibraryMeeting, trash: MeetingTrashCoordinator, undo: UndoManager?) -> Bool {
         guard let view = anchor, view.window === NSApp.keyWindow else { return false }
+        let rename = Action { MeetingRenameCoordinator.shared.show(meeting) }
         let export = Action { MeetingExportCoordinator.shared.show(meeting) }
         let remove = Action { trash.move(meeting,undoManager:undo) }
         let menu = NSMenu(); menu.autoenablesItems = false
+        let renameItem = NSMenuItem(title:UXText.text("meeting.renameEllipsis"),action:#selector(Action.perform(_:)),keyEquivalent:"")
+        renameItem.target = rename; renameItem.isEnabled = MeetingRenameCoordinator.shared.canRename(meeting)
+        renameItem.setAccessibilityIdentifier("library-keyboard-rename"); menu.addItem(renameItem)
         let exportItem = NSMenuItem(title:UXText.text("common.exportEllipsis"),action:#selector(Action.perform(_:)),keyEquivalent:"")
         exportItem.target = export; exportItem.isEnabled = MeetingExportCoordinator.canExport(meeting); menu.addItem(exportItem)
         if trash.canTrash(meeting) {
@@ -27,7 +31,7 @@ import CassiniLibrary
             removeItem.target = remove; menu.addItem(removeItem)
         }
         let rect = view.bounds
-        withExtendedLifetime((export,remove)) {
+        withExtendedLifetime((rename,export,remove)) {
             menu.popUp(positioning:nil,at:NSPoint(x:rect.minX + 16,y:rect.maxY),in:view)
         }
         return true

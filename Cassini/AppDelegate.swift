@@ -90,9 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let imports = LibraryImportCoordinator.shared
             let exports = MeetingExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
+            let wait = MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
+            MeetingRenameCoordinator.shared.beginShutdown()
             exports.beginShutdown()
             moves.beginShutdown()
             MeetingTrashCoordinator.shared.beginShutdown()
@@ -106,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await CaptureCollection.shared.shutdown()
                     await queue.waitForShutdown()
                     await imports.waitForShutdown()
+                    await MeetingRenameCoordinator.shared.waitForShutdown()
                     await exports.waitForShutdown()
                     await moves.waitForShutdown()
                     await MeetingTrashCoordinator.shared.waitForShutdown()
@@ -117,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         confirmingQuit = true
         DispatchQueue.main.async { [weak self] in
           Task { @MainActor in
+            await MeetingRenameCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
             RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
@@ -125,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
                         MeetingTrashCoordinator.shared.beginShutdown()
+                        MeetingRenameCoordinator.shared.beginShutdown()
                         MeetingExportCoordinator.shared.beginShutdown()
                         LibraryImportCoordinator.shared.beginShutdown()
                         TranscriptionQueue.shared.beginShutdown()
@@ -132,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         await CaptureCollection.shared.shutdown()
                         await TranscriptionQueue.shared.waitForShutdown()
                         await LibraryImportCoordinator.shared.waitForShutdown()
+                        await MeetingRenameCoordinator.shared.waitForShutdown()
                         await MeetingExportCoordinator.shared.waitForShutdown()
                         await LibraryMoveCoordinator.shared.waitForShutdown()
                         await MeetingTrashCoordinator.shared.waitForShutdown()
@@ -151,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             RecordingRuntime.shared.stop(); LibraryStore.shared.stop()
             TranscriptionQueue.shared.beginShutdown()
             LibraryImportCoordinator.shared.beginShutdown()
+            MeetingRenameCoordinator.shared.beginShutdown()
             MeetingExportCoordinator.shared.beginShutdown()
             LibraryMoveCoordinator.shared.beginShutdown()
             MeetingTrashCoordinator.shared.beginShutdown()
