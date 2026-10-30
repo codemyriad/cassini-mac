@@ -17,7 +17,7 @@ def run(app: Path, output: Path):
     for case in 'ABCDE':
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
         command = [str(app.resolve()), '--spectrogram-self-test',
-                   '-SpectrogramCase', case, '-ApplePersistenceIgnoreState', 'YES']
+                   '-SpectrogramCase', case, '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
         trace = None
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
             process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
@@ -56,7 +56,7 @@ def run(app: Path, output: Path):
                 problems.append(f'{case}: {name} budget failed')
         if report['audioDevicesOpened'] is not False or not report['stopDisconnectsAndFreezes'] or not report['detachReleasesSurfaces']:
             problems.append(f'{case}: fixture isolation/Stop failed')
-        if case == 'B' and not report['hideShowReleasesAndRestarts']:
+        if case == 'B' and (not report['hideShowReleasesAndRestarts'] or report['liveCompositedInkPixels']['sound'] < 100 or report['liveCompositedInkPixels']['silence'] > 4):
             problems.append('B: hide/show lifecycle failed')
         print(f"{case}: CPU {report['cpuCorePercent']:.4f}%, analysis {report['analysisCorePercent']:.4f}%, "
               f"draw {report['drawingCorePercent']:.4f}%, p95/max {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)

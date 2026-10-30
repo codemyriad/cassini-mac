@@ -44,7 +44,11 @@ It feeds generated PCM through the production sink/file owner and exercises the
 production native renderer for 60 seconds per A–E case. Outputs include per-stage
 thread CPU, process CPU/delta fromE, frame intervals, late/drop counters, actual
 surface allocation, bounded payload bytes, top logs and a Time Profiler trace.
-CPU/pacing/late/drop budgets are asserted, not relaxed for the fixture. The CI
+CPU/pacing/late/drop budgets are asserted, not relaxed for the fixture. After
+measurement, current-process-only ScreenCaptureKit screenshots assert that visible
+ink disappears after sound becomes digital silence for a whole history window.
+This tests repeated GPU-visible updates of the same surface, not just ring counters;
+no other app/display, audio input or TCC consent is involved. The CI
 Library job retains its existing tests and adds this probe. No device opens.
 
 The payload counter includes native surface allocation and bounded raw image
