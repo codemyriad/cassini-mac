@@ -34,6 +34,8 @@ targets:
           - "Resources"
       - path: Cassini/Assets.xcassets
         buildPhase: resources
+      - path: Cassini/Resources/Cassini.html
+        buildPhase: resources
       - path: Cassini/Resources/Licenses
         type: folder
         buildPhase: resources

@@ -113,6 +113,7 @@ def main():
                 raise AssertionError('Real guide failed; inspect xctest.log and Install.xcresult')
             report = json.loads((output/'report.json').read_text())
             assert report['loadedID'] == 'pcafdaahfhjiolfpfnlhmljfgoabbaij' and report['realNativeHandshake']
+            assert report['openedBrowserFromGuide'] and report['openedBundledBlankPage']
             assert report['newerAppFolderReplaced'] and report['repeatLaunchDidNotRewrite']
             subprocess.run(['codesign', '--verify', '--deep', '--strict', source], check=True)
             print('PASS actual copy-address/Developer mode/Load unpacked/native handshake and newer-app folder update')

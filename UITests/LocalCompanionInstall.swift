@@ -54,12 +54,11 @@ final class LocalCompanionInstall: XCTestCase {
         print("Browser focus: XCTest=\(chrome.state.rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"), postAccess=\(CGPreflightPostEventAccess())")
         wait("The actual Copy Address action opens the browser",timeout:10) { chrome.state == .runningForeground }
         XCTAssertFalse(guide.buttons["Try again"].exists,"The guide must open its selected browser successfully")
-        // The test person selects the browser's title bar before pasting.
-        // Its native address-field value below proves the actual paste target.
-        chrome.windows.firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.01)).click()
+        let address = chrome.textFields["Address and search bar"]
+        wait("The guide opens its bundled empty page") { (address.value as? String)?.hasSuffix("/Cassini.html") == true }
+        // Its native address-field value proves the actual page and paste target.
         key(0x25,flags:.maskCommand) // L
         key(0x09,flags:.maskCommand) // V
-        let address = chrome.textFields["Address and search bar"]
         wait("Chromium receives the copied Extensions address") { (address.value as? String)?.hasPrefix("chrome://extensions") == true }
         key(0x24) // Return
         // Chromium has exposed cr-toggle as checkbox, switch and pressed button
@@ -122,7 +121,8 @@ final class LocalCompanionInstall: XCTestCase {
         let after = try FileManager.default.attributesOfItem(atPath:manifest.path)
         XCTAssertEqual(before[.systemFileNumber] as? NSNumber,after[.systemFileNumber] as? NSNumber)
         XCTAssertEqual(before[.modificationDate] as? Date,after[.modificationDate] as? Date)
-        let report: [String:Any] = ["freshProfile":true,"copyAddressFlow":true,"extensionLoadFlags":false,
+        let report: [String:Any] = ["freshProfile":true,"copyAddressFlow":true,"openedBrowserFromGuide":true,
+            "openedBundledBlankPage":true,"extensionLoadFlags":false,
             "profileInjection":false,"storeDNSDisabled":true,"loadedID":extensionID,"realNativeHandshake":true,
             "newerAppFolderReplaced":true,"repeatLaunchDidNotRewrite":true,"newVersion":expectedVersion,"audioCaptured":false]
         try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys,.prettyPrinted]).write(to:output)

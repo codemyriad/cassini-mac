@@ -137,10 +137,14 @@ import CassiniBrowserSetup
         let pasteboard = NSPasteboard.general; pasteboard.clearContents()
         guard pasteboard.setString(address,forType:.string) else { return }
         copiedNotice = UXText.text("companion.local.extensionsCopied"); copyRevision = UUID(); launchFailed = false
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier:browser.bundleID) else { launchFailed = true; return }
-        // Chromium rejects internal pages on the command line. Only open a new
-        // blank tab; the person explicitly pastes the copied address (D39.1).
-        NSWorkspace.shared.open([URL(string:"about:blank")!],withApplicationAt:app,configuration:NSWorkspace.OpenConfiguration()) { running,error in
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier:browser.bundleID),
+              let blank = Bundle.main.url(forResource:"Cassini",withExtension:"html") else { launchFailed = true; return }
+        // Sandboxed callers cannot send the undeclared "about" scheme to Chrome
+        // (kLSAppDoesNotClaimTypeErr). A bundled empty HTML document opens a new
+        // tab without a network request. The person pastes the address (D39.1).
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.promptsUserIfNeeded = false // Approved inline failure, no second OS alert.
+        NSWorkspace.shared.open([blank],withApplicationAt:app,configuration:configuration) { running,error in
             let failed = running == nil || error != nil
             Task { @MainActor in self.launchFailed = failed }
         }

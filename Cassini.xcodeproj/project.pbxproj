@@ -65,6 +65,7 @@
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
 		6D2A5DC34D78E97BC4DC039C /* CaptureActivityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */; };
 		6D57DA2EFFCE7EDA4F10CB65 /* LocalCompanionGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B03C13929645F7CB3E9829 /* LocalCompanionGuide.swift */; };
+		6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */ = {isa = PBXBuildFile; fileRef = A409C2558FBB9AF298689911 /* Cassini.html */; };
 		73356EFFDF01D974F26825A6 /* RecordFirstView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EE191DCB541B08F4D08855 /* RecordFirstView.swift */; };
 		73430AD2E1F30C774BD10517 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC82AC94B942EF58DB6679 /* Commands.swift */; };
 		7415B9957147C67914ABA6A7 /* RecordingStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2479FBA25ED20072E91C08C /* RecordingStatusMenu.swift */; };
@@ -278,6 +279,7 @@
 		95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportCoordinator.swift; sourceTree = "<group>"; };
 		9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCompanionInstall.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
+		A409C2558FBB9AF298689911 /* Cassini.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Cassini.html; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -680,6 +682,7 @@
 		ED21289CD25E4D8251164DC1 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				A409C2558FBB9AF298689911 /* Cassini.html */,
 				CD9CA177C260FB3ED32BE1F0 /* Licenses */,
 				FFDAA113CF52CBA710233AC3 /* UX */,
 			);
@@ -993,6 +996,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				29F5BCCF6F54A4CEF61E131E /* Assets.xcassets in Resources */,
+				6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */,
 				41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */,
 				8EDE5F3489BA8DA0718C8B33 /* Licenses in Resources */,
 				66D88998A0953337261A8C61 /* UX in Resources */,
