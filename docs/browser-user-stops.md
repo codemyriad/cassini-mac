@@ -62,3 +62,12 @@ connect independent profile B in the same process, then verify both an11-second
 absence and navigation away/back let A record again. They also cover B returning
 to an empty inventory and replacement ownership through earlier observed tabs.
 The requested two-profile cases fail onf0627e9 and pass with the lineage fix.
+
+Retirements caused by discovery keep a tombstone tagged with the removing
+connection and its inferred lineage. If delayed tab overlap proves that link
+was superseded, its unexpired retirements roll back before the replacement's
+inventory is applied. Provisional lineage merges retag tombstones too. This
+handles a replacement initially reporting only another tab while the old link
+reports stale navigation or absence. Active Stops and tombstones share the256
+entry budget and the original expiry clock. Explicit Record removes both;
+rollback never reverses it or revives an expired Stop.

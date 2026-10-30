@@ -162,6 +162,35 @@ final class StopReviewRegressionTests: XCTestCase {
                        "The old lineage cannot erase Stop while the replacement temporarily reports no meetings")
     }
 
+    func testLateOverlapRestoresStopRetiredByTheOldConnectionsStaleInventory() throws {
+        for absence in [false,true] {
+            let clock = ReviewClock(); var state = state(clock)
+            let old = try ready(&state)
+            let stopped = try XCTUnwrap(state.stop(.init(peer:old,tabID:2)))
+            try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,old)
+            let replacement = try ready(&state,[3])
+            if absence {
+                try meetings(&state,old,[]); clock.advance(11)
+                try meetings(&state,old)
+            } else { try meetings(&state,old,url:"stale-navigation") }
+            try meetings(&state,replacement,[2,3])
+            let starts = state.automaticStarts(microphone:false)
+            XCTAssertFalse(starts.contains { $0.key.tabID == 2 },"Late overlap must undo retirement by the superseded connection")
+            XCTAssertTrue(starts.contains { $0.key.tabID == 3 },"The unrelated unstopped call remains recordable")
+        }
+    }
+    func testLateOverlapNeverRestoresAnExpiredRetirement() throws {
+        let clock = ReviewClock(); var state = state(clock)
+        let old = try ready(&state)
+        let stopped = try XCTUnwrap(state.stop(.init(peer:old,tabID:2)))
+        try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,old)
+        let replacement = try ready(&state,[3])
+        try meetings(&state,old,url:"stale-navigation")
+        clock.advance(UserStoppedCalls.retention+1)
+        try meetings(&state,replacement,[2,3])
+        XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key.tabID == 2 })
+    }
+
     func testHistoricalInterruptedStatusWithoutAnOwnedCaptureIsNotAnActiveStopTarget() throws {
         var state = state(); let peer = try ready(&state)
         var interrupted = status()

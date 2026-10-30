@@ -142,8 +142,10 @@ public struct BrowserControlRegistry: Sendable {
             other.lineage = lineage
             if other.connectionOrder < peer.connectionOrder { other.superseded = true }
             else if other.connectionOrder > peer.connectionOrder { peer.superseded = true }
+            stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:other.superseded,now:clock())
             peers[id] = other
         }
+        stoppedCalls.resolveLineage(.init(connection:peer.peer.id,lineage:lineage),superseded:peer.superseded,now:clock())
         for tab in tabs { peer.observedTabs[tab] = clock() }
         // At most100 incoming tabs and256 historical tabs per live connection;
         // preserve the current inventory when fake/real clock values tie.
@@ -316,7 +318,7 @@ public struct BrowserControlRegistry: Sendable {
                 }
                 if let identity = call(meeting,peer:peer) {
                     if newestOwner(peer,tab:meeting.key.tabID) {
-                        stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock())
+                        stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock(),retiredBy:.init(connection:peer.peer.id,lineage:peer.lineage ?? peer.peer.id))
                     }
                     rememberContext(.init(call:identity,touched:clock()),key:meeting.key)
                 }

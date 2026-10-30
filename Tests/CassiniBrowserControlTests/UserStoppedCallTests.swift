@@ -182,6 +182,32 @@ final class UserStoppedCallTests: XCTestCase {
         _ = try state.start(key,microphone:false)
         XCTAssertEqual(state.rememberedStopCount,0)
     }
+    func testRetirementRollbackCannotUndoExplicitRecordAndSharesTheStopBudget() {
+        var memory = UserStoppedCalls()
+        let owner = UserStoppedCalls.RetirementOwner(connection:UUID(),lineage:UUID())
+        let call = BrowserCallIdentity(instance:instance,tabID:2,url:"https://meet.example/old")
+        let navigated = BrowserCallIdentity(instance:instance,tabID:2,url:"https://meet.example/new")
+        memory.remember(call,now:0)
+        memory.update(navigated,absentSince:nil,mayRemove:true,now:1,retiredBy:owner)
+        XCTAssertFalse(memory.contains(call)); XCTAssertEqual(memory.retainedCount,1)
+        memory.forget(call)
+        memory.resolveLineage(owner,superseded:true,now:2)
+        XCTAssertFalse(memory.contains(call)); XCTAssertEqual(memory.retainedCount,0)
+        for tab in 0..<300 {
+            let original = BrowserCallIdentity(instance:instance,tabID:tab,url:"https://meet.example/old")
+            memory.remember(original,now:Double(tab))
+            if tab.isMultiple(of:2) {
+                memory.update(.init(instance:instance,tabID:tab,url:"https://meet.example/new"),
+                              absentSince:nil,mayRemove:true,now:Double(tab),retiredBy:owner)
+            }
+            XCTAssertLessThanOrEqual(memory.retainedCount,UserStoppedCalls.limit)
+        }
+        memory.resolveLineage(owner,superseded:true,now:301)
+        XCTAssertEqual(memory.count,256); XCTAssertEqual(memory.retainedCount,256)
+        memory.expire(now:1000,priorLive:[],alive:{ _ in true })
+        XCTAssertEqual(memory.retainedCount,0)
+    }
+
     func testKernelIdentityAndMetadataValidation() throws {
         let current = try XCTUnwrap(BrowserInstance.process(getpid()))
         XCTAssertEqual(current.isAlive,true)
