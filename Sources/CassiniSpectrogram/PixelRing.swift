@@ -78,6 +78,15 @@ public struct SpectrogramPixelRing {
         store(slot:slot,bands:bands,state:recorded ? (bands == nil ? .hole : .recorded) : .notRecorded,paint:paint)
         latestSlot = slot; clearAhead(paint)
     }
+    public mutating func remember(slot: Int64, bands: [UInt8]?, recorded: Bool) {
+        append(slot:slot,bands:bands,recorded:recorded) { _,_ in }
+    }
+    public func bandValues(at slot: Int64) -> [UInt8]? {
+        guard slot >= 0 else { return nil }
+        let index = Int(slot%Int64(capacity))
+        guard slots[index] == slot, states[index] == State.recorded.rawValue else { return nil }
+        return Array(values[index*style.rows..<(index+1)*style.rows])
+    }
     private func pixelIndex(_ slot: Int64) -> Int { Int(slot%Int64(reducedMotion ? style.columns : capacity)) }
     private mutating func store(slot: Int64, bands: [UInt8]?, state: State, paint: (Int,[UInt32]) -> Void) {
         let index = Int(slot%Int64(capacity)); slots[index] = slot; states[index] = state.rawValue

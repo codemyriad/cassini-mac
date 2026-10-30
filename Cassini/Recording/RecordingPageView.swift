@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import CassiniSpectrogram
 import CassiniLibrary
 
 struct RecordingPageView: View {
@@ -112,9 +113,12 @@ struct RecordingPageView: View {
                     }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
                 }
             }.frame(maxWidth:.infinity,alignment:.leading)
-            RecordingLevelMeter(level:microphone ? model.microphone : model.output, silent:silent,
-                label:UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers"))
-                .frame(width:96,height:6).accessibilityIdentifier(microphone ? "recording-microphone-meter" : "recording-others-meter")
+            RecordingSpectrogramStrip(controller:model.spectrogram,lane:microphone ? .me : .others,silent:model.microphoneSilent)
+                .frame(width:200,height:32)
+                .accessibilityRepresentation {
+                    ProgressView(value:Double(max(0,min(1,microphone ? model.microphone : model.output))))
+                        .accessibilityLabel(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers"))
+                }.accessibilityIdentifier(microphone ? "recording-microphone-meter" : "recording-others-meter")
             if silent {
                 Button(UXText.text("errors.micSilentRow.action")) {
                     if !model.frozen { NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!) }

@@ -58,6 +58,8 @@ targets:
       - package: CassiniKit
         product: CassiniRecording
       - package: CassiniKit
+        product: CassiniSpectrogram
+      - package: CassiniKit
         product: CassiniBrowserControl
       - package: CassiniKit
         product: CassiniBrowserSetup

@@ -29,6 +29,8 @@ import Testing
             ring.append(slot:Int64(slot),bands:[UInt8](repeating:UInt8(slot),count:16),recorded:true) { image[$0] = $1 }
         }
         #expect(image.count == 52 && ring.storageBytes < 4096)
+        #expect(ring.bandValues(at:199) == [UInt8](repeating:199,count:16))
+        #expect(ring.bandValues(at:0) == nil,"Wrapped slots cannot masquerade as old history")
         let palette = SpectrogramPalette(style:.pill,dark:false,silent:false)
         for slot in 150..<200 { #expect(image[slot%52]?.allSatisfy{$0 == palette.pixel(UInt8(slot))} == true) }
         ring.configure(dark:false,silent:false,reducedMotion:true) { image[$0] = $1 }

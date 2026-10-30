@@ -146,6 +146,7 @@ struct LiveRecordingPill: View {
         RecordingPillControls(time:LibraryFormat.liveBadge(displayedMs),
             label:UXText.text("recording.pill.open.a11y",["time":LibraryFormat.liveBig(displayedMs)]),
             microphone:microphone,output:output,silent:frozenMs != nil || RecordingOverview.microphoneSilent,
+            controller:frozenMs == nil ? RecordingOverview.spectrogram : nil,
             noSleep:RecordingRuntime.shared.power.held,dark:colorScheme == .dark,
             open:{ if frozenMs == nil { RecordCoordinator.shared.openCurrent() } },
             stop:{ if frozenMs == nil { RecordingOverview.stop() } })
@@ -165,7 +166,9 @@ struct LiveRecordingPill: View {
 private struct RecordingPillControls: NSViewRepresentable {
     let time: String, label: String
     let microphone: Float, output: Float
-    let silent: Bool, noSleep: Bool, dark: Bool
+    let silent: Bool
+    let controller: RecordingSpectrogram?
+    let noSleep: Bool, dark: Bool
     let open: () -> Void, stop: () -> Void
     func makeNSView(context: Context) -> RecordingPillControlView { RecordingPillControlView() }
     func updateNSView(_ view: RecordingPillControlView, context: Context) {
@@ -175,6 +178,7 @@ private struct RecordingPillControls: NSViewRepresentable {
 private final class RecordingPillControlView: NSView {
     private let openButton = RecordingPillAction(), stopButton = RecordingPillAction()
     private let me = RecordingPillMeter(), others = RecordingPillMeter()
+    private let spectrogram = RecordingSpectrogramView(style:.pill)
     private var openWidth: NSLayoutConstraint!, stopWidth: NSLayoutConstraint!
     private var onOpen: (() -> Void)?, onStop: (() -> Void)?
     override init(frame: NSRect) {
@@ -193,11 +197,12 @@ private final class RecordingPillControlView: NSView {
         openWidth = openButton.widthAnchor.constraint(equalToConstant:84); openWidth.isActive = true
         stopWidth = stopButton.widthAnchor.constraint(equalToConstant:44); stopWidth.isActive = true
         stopButton.wantsLayer = true; stopButton.layer?.cornerRadius = 5
-        let meters = NSStackView(views:[me,others]); meters.orientation = .vertical; meters.spacing = 4
-        for meter in [me,others] {
-            meter.widthAnchor.constraint(equalToConstant:30).isActive = true
-            meter.heightAnchor.constraint(equalToConstant:4).isActive = true
-        }
+        let meters = NSView()
+        meters.widthAnchor.constraint(equalToConstant:50).isActive = true
+        meters.heightAnchor.constraint(equalToConstant:20).isActive = true
+        spectrogram.frame = .init(x:0,y:0,width:50,height:20); meters.addSubview(spectrogram)
+        me.frame = .init(x:0,y:11,width:50,height:9); others.frame = .init(x:0,y:0,width:50,height:9)
+        for meter in [me,others] { meters.addSubview(meter) }
         me.setAccessibilityLabel(UXText.text("common.yourMicrophone"))
         others.setAccessibilityLabel(UXText.text("common.theOthers"))
         let row = NSStackView(views:[openButton,meters,stopButton]); row.spacing = 8; row.alignment = .centerY
@@ -206,10 +211,10 @@ private final class RecordingPillControlView: NSView {
         setAccessibilityChildren([openButton,me,others,stopButton])
     }
     required init?(coder: NSCoder) { nil }
-    override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 30 + 16 + 20,height:34) }
+    override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 16 + 20,height:34) }
     func update(_ value: RecordingPillControls) {
         onOpen = value.open; onStop = value.stop
-        let red: NSColor = value.dark ? .systemRed : NSColor(red:215/255,green:0,blue:21/255,alpha:1)
+        let red: NSColor = value.dark ? NSColor(red:1,green:105/255,blue:97/255,alpha:1) : NSColor(red:215/255,green:0,blue:21/255,alpha:1)
         let font = NSFont.monospacedDigitSystemFont(ofSize:13,weight:.semibold)
         openButton.attributedTitle = NSAttributedString(string:value.time,attributes:[.font:font,.foregroundColor:red])
         openButton.image = NSImage(size:NSSize(width:17,height:10),flipped:false) { _ in
@@ -225,6 +230,7 @@ private final class RecordingPillControlView: NSView {
         openWidth.constant = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + 21
         stopWidth.constant = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + 20
         toolTip = value.noSleep ? UXText.text("recording.pill.noSleep") : nil
+        spectrogram.configure(value.controller,dark:value.dark,silent:value.silent)
         me.update(value.microphone,color:red,silent:value.silent)
         others.update(value.output,color:red,silent:false)
         invalidateIntrinsicContentSize()
@@ -247,8 +253,8 @@ private final class RecordingPillMeter: NSView {
     private var value: CGFloat = 0
     func update(_ level: Float, color: NSColor, silent: Bool) {
         value = CGFloat(max(0,min(1,level)))
-        layer?.backgroundColor = (silent ? NSColor.systemOrange.withAlphaComponent(0.2) : color.withAlphaComponent(0.15)).cgColor
-        fill.backgroundColor = color.withAlphaComponent(0.7).cgColor
+        layer?.backgroundColor = NSColor.clear.cgColor
+        fill.isHidden = true
         setAccessibilityValue(NSNumber(value:Double(value)))
         needsLayout = true
     }

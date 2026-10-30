@@ -12,6 +12,7 @@ struct LiveCapture {
     let input: CaptureInputLifecycle
     let captureID: String
     let originUptime: TimeInterval
+    let spectrogram: RecordingSpectrogram?
     var snapshot: OwnedCaptureSnapshot
     var key: BrowserMeetingKey?
     var levels: [CaptureSide:Float] = [:]
@@ -180,6 +181,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func stop(_ id: UUID) {
         guard let value = captures[id], stopping[id] == nil else { return }
+        value.spectrogram?.stop(atMs:Double(value.elapsedMs))
         MeetingNavigation.shared.captureBeganSaving(at:value.snapshot.directory)
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
@@ -252,7 +254,9 @@ private final class CaptureFiles: @unchecked Sendable {
                 if !value.snapshot.browserAlive && !value.input.hasRunningInputs { self.stop(id) }
             }
         })
-        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:key(for:info.captureID))
+        let spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:owner.pcmObservers,me:snapshot.me,others:snapshot.others) : nil
+        spectrogram?.update(events:snapshot.manifest.events ?? [])
+        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,spectrogram:spectrogram,snapshot:snapshot,key:key(for:info.captureID))
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
         CaptureActivityStore.shared.set(id,activity[id])
         diskWatch.start(folders:{ [weak self] in
@@ -270,6 +274,8 @@ private final class CaptureFiles: @unchecked Sendable {
         let id = snapshot.manifest.id
         guard captures[id] != nil else { if snapshot.phase == .saved { settle(snapshot) }; return }
         captures[id]?.snapshot = snapshot
+        captures[id]?.spectrogram?.update(events:snapshot.manifest.events ?? [])
+        if snapshot.phase != .recording, let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
         if snapshot.phase == .saving { MeetingNavigation.shared.captureBeganSaving(at:snapshot.directory) }
         if snapshot.phase == .saved {
             settle(snapshot)
@@ -307,6 +313,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
             let id = snapshot.manifest.id
+            if let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
             captures.removeValue(forKey:id); announced.remove(id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)
