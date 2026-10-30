@@ -67,9 +67,13 @@ public final class SpectrogramTransform {
     }
     deinit { vDSP_destroy_fftsetup(setup) }
 
-    public func powers(frame: [Float]) -> [Double] {
+    public func powers(frame: [Float], startingAt first: Int = 0) -> [Double] {
         precondition(frame.count == parameters.size)
-        for index in frame.indices { real[index] = frame[index].isFinite ? max(-1,min(1,frame[index])) : 0 }
+        precondition(frame.indices.contains(first))
+        for index in frame.indices {
+            let value = frame[(first+index) & (frame.count-1)]
+            real[index] = value.isFinite ? max(-1,min(1,value)) : 0
+        }
         var mean: Float = 0
         let count = vDSP_Length(parameters.size)
         vDSP_meanv(real,1,&mean,count); mean = -mean

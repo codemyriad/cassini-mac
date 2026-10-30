@@ -19,28 +19,32 @@ import Testing
             #expect(actual == expected,"Pinned fixture \(name)")
         }
     }
-    @Test(arguments:["spectro-v1","dc-quiet-jfk-v1"])
-    func nativeFFTMatchesTheUnchangedReference(_ name: String) throws {
+    @Test(arguments:["spectro-v1","dc-quiet-jfk-v1"],[4096,8192])
+    func nativeFFTMatchesTheUnchangedReference(_ name: String, chunkSize: Int) throws {
         let root = Bundle.module.resourceURL!.appendingPathComponent("Fixtures")
         let samples = try wave(root.appendingPathComponent(name+".wav"))
         let golden = try JSONDecoder().decode(Golden.self,from:Data(contentsOf:root.appendingPathComponent(name+".golden.json")))
         let parameters = try SpectrogramParameters()
         let transform = SpectrogramTransform(parameters:parameters)
+        let track = SpectrogramTrack(parameters:parameters,startOffsetMs:0,transform:transform)
         var release = SpectrogramRelease(), deltas: [Int] = []
         #expect(golden.spec == "cassini-spectro-v1")
         #expect(golden.rate == parameters.rate && golden.n == parameters.size && golden.hop == parameters.hop && golden.bands == 32)
         #expect(parameters.firstFrame == golden.firstFrame)
         var count = 0
-        for end in stride(from:(parameters.firstFrame+1)*parameters.hop,through:samples.count,by:parameters.hop) {
-            let powers = transform.powers(frame:Array(samples[end-parameters.size..<end]))
-            let raw = SpectrogramRelease.raw(powers:powers)
-            let shown = release.column(slot:parameters.slot(frameEnd:Int64(end),startOffsetMs:0),powers:powers)
-            deltas += zip(raw,golden.raw[count]).map { abs(Int($0)-$1) }
-            deltas += zip(shown,golden.display[count]).map { abs(Int($0)-$1) }
-            if name == "spectro-v1", end <= 48000 || end-parameters.size >= 4*48000 && end <= 5*48000 {
-                #expect(raw.allSatisfy { $0 == 0 },"DC and whole silent frames are exactly empty")
+        for offset in stride(from:0,to:samples.count,by:chunkSize) {
+            let end = min(samples.count,offset+chunkSize)
+            track.append(Array(samples[offset..<end]),atFrame:Int64(offset)) { frame in
+                guard count < golden.raw.count else { Issue.record("Unexpected extra frame"); return }
+                let raw = SpectrogramRelease.raw(powers:frame.powers)
+                let shown = release.column(slot:frame.slot,powers:frame.powers)
+                deltas += zip(raw,golden.raw[count]).map { abs(Int($0)-$1) }
+                deltas += zip(shown,golden.display[count]).map { abs(Int($0)-$1) }
+                if name == "spectro-v1", frame.sampleEnd <= 48000 || frame.sampleEnd-Int64(parameters.size) >= 4*48000 && frame.sampleEnd <= 5*48000 {
+                    #expect(raw.allSatisfy { $0 == 0 },"DC and whole silent frames are exactly empty")
+                }
+                count += 1
             }
-            count += 1
         }
         #expect(count == golden.raw.count && count == golden.display.count)
         #expect(deltas.max()! <= 3)
