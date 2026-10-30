@@ -43,6 +43,7 @@ public final class SpectrogramTransform {
     private let window: [Float]
     private let weights: [[(Int,Double)]]
     private var real: [Float], outputReal: [Float], outputImaginary: [Float], squared: [Float]
+    private var levelScratch: [Double]
 
     public init(parameters: SpectrogramParameters) {
         self.parameters = parameters
@@ -66,8 +67,22 @@ public final class SpectrogramTransform {
         real = [Float](repeating:0,count:size)
         outputReal = [Float](repeating:0,count:size/2); outputImaginary = outputReal
         squared = [Float](repeating:0,count:size/2+1)
+        levelScratch = [Double](repeating:0,count:max(1,parameters.rate/10))
     }
     deinit { vDSP_destroy_fftsetup(setup) }
+
+    // Shared per-rate workspace on the same serial queue. AC100ms windows
+    // are independent of FFT/history boundaries: no repeated tiny reductions.
+    func levelStatistics(_ input: UnsafePointer<Float>, count: Int) -> (sum:Double,low:Float,high:Float) {
+        precondition(count > 0 && count <= levelScratch.count)
+        var sum = 0.0, low: Float = 0, high: Float = 0
+        levelScratch.withUnsafeMutableBufferPointer { scratch in
+            let n = vDSP_Length(count)
+            vDSP_vspdp(input,1,scratch.baseAddress!,1,n); vDSP_sveD(scratch.baseAddress!,1,&sum,n)
+            vDSP_minv(input,1,&low,n); vDSP_maxv(input,1,&high,n)
+        }
+        return (sum,low,high)
+    }
 
     public func powers(frame: [Float], startingAt first: Int = 0) -> [Double] {
         precondition(frame.count == parameters.size)
