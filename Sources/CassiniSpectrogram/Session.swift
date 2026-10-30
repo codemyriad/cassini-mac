@@ -10,10 +10,11 @@ import CassiniRecording
 /// The display coordinator asks for one batch per frame and fans it out to the
 /// pill/rows. There are no per-column main-thread notifications or timers.
 public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable {
+    private struct Pending { var bytes = 0, packets = 0 }
     private struct Admission {
         var visible = false, accepting = true
         var generation: UInt64 = 0, dropped: UInt64 = 0
-        var bytes: [String:Int] = [:]
+        var pending: [String:Pending] = [:]
     }
     private final class Source {
         let descriptor: RecordedPCMSource, index: Int, lane: SpectrogramLane, track: SpectrogramTrack
@@ -56,7 +57,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     public func setVisible(_ value: Bool) {
         let change = state.withLock { valueState -> UInt64? in
             guard valueState.visible != value else { return nil }
-            valueState.visible = value; valueState.generation &+= 1; valueState.bytes = [:]; valueState.dropped = 0
+            valueState.visible = value; valueState.generation &+= 1; valueState.dropped = 0
             return valueState.generation
         }
         guard let change else { return }
@@ -69,19 +70,24 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         guard offsetMs.isFinite, offsetMs >= 0, !pcm.isEmpty, pcm.count <= 262144, pcm.count%(source.channels*2) == 0 else { return }
         let admitted = state.withLock { value -> UInt64? in
             guard value.visible, value.accepting else { return nil }
-            let pending = value.bytes[source.id,default:0]
-            guard value.bytes.count < 64 || pending > 0,
-                  pending+pcm.count <= source.sampleRate*source.channels*2 else { value.dropped &+= 1; return nil }
-            value.bytes[source.id] = pending+pcm.count
+            var pending = value.pending[source.id,default:.init()]
+            guard value.pending.count < 64 || pending.bytes > 0,
+                  pending.packets < 64,
+                  pending.bytes+pcm.count <= source.sampleRate*source.channels*2 else { value.dropped &+= 1; return nil }
+            pending.bytes += pcm.count; pending.packets += 1
+            value.pending[source.id] = pending
             return value.generation
         }
         guard let admitted else { return }
         queue.async { [self,pcm] in
             defer {
                 state.withLock { value in
-                    guard value.generation == admitted else { return }
-                    let remaining = value.bytes[source.id,default:0]-pcm.count
-                    if remaining > 0 { value.bytes[source.id] = remaining } else { value.bytes.removeValue(forKey:source.id) }
+                    // Reservations belong to retained dispatch closures, not
+                    // the view generation. Hiding cannot release their Data.
+                    var remaining = value.pending[source.id,default:.init()]
+                    remaining.bytes -= pcm.count; remaining.packets -= 1
+                    if remaining.packets > 0 { value.pending[source.id] = remaining }
+                    else { value.pending.removeValue(forKey:source.id) }
                 }
             }
             guard state.withLock({ $0.visible && $0.generation == admitted }) else { return }
@@ -141,7 +147,8 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval) }
         let arrival = clock()
-        guard arrival.isFinite, arrival >= 0 else { return }
+        guard arrival.isFinite, arrival >= 0,
+              state.withLock({ $0.visible && $0.generation == generation }) else { return }
         let inserted = sources[descriptor.id] == nil
         if inserted {
             guard sources.count < 64, let parameters = try? SpectrogramParameters(rate:descriptor.sampleRate) else { return }

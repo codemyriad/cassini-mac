@@ -10,6 +10,23 @@ private final class SpectrumTestClock: @unchecked Sendable {
     func set(_ value: Double) { lock.withLock { self.value = value } }
     func read() -> Double { lock.withLock { value } }
 }
+private final class RetainedPCM: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes = 0, calls = 0, first = true
+    var count: Int { lock.withLock { bytes } }
+    var clockCalls: Int { lock.withLock { calls } }
+    func takeFirst() -> Bool { lock.withLock { calls += 1; let result = first; first = false; return result } }
+    func packet() -> Data {
+        let size = 96000
+        let base = UnsafeMutableRawPointer.allocate(byteCount:size,alignment:2)
+        base.initializeMemory(as:UInt8.self,repeating:0,count:size)
+        lock.withLock { bytes += size }
+        return Data(bytesNoCopy:base,count:size,deallocator:.custom { [self] pointer,count in
+            pointer.deallocate(); lock.withLock { bytes -= count }
+        })
+    }
+}
+
 @Suite struct SessionTests {
     private func frame(_ session: SpectrogramSession, at ms: Double) async -> SpectrogramSession.Frame {
         await withCheckedContinuation { continuation in session.requestFrame(nowMs:ms) { continuation.resume(returning:$0) } }
@@ -46,6 +63,54 @@ private final class SpectrumTestClock: @unchecked Sendable {
         let result = await frame(session,at:200)
         #expect(!result.me.isEmpty && !result.others.isEmpty)
         #expect(result.me.map(\.bands) == result.others.map(\.bands),"Stereo averages channels before the same transform")
+    }
+    @Test func tinyPacketsCannotAccumulateUnboundedDispatchWork() async throws {
+        let memory = RetainedPCM(), entered = DispatchSemaphore(value:0), proceed = DispatchSemaphore(value:0)
+        let session = SpectrogramSession(clock:{
+            if memory.takeFirst() { entered.signal(); proceed.wait() }
+            return 2000
+        })
+        session.setVisible(true)
+        let held = RecordedPCMSource(id:"held",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
+        session.offer(source:held,pcm:memory.packet(),offsetMs:0)
+        defer { proceed.signal() }
+        let blocked = await withCheckedContinuation { c in
+            DispatchQueue.global().async { c.resume(returning:entered.wait(timeout:.now()+2)) }
+        }
+        try #require(blocked == .success)
+        let tiny = RecordedPCMSource(id:"tiny",kind:"remote",sampleRate:48000,channels:1,startOffsetMs:0)
+        for n in 0..<96 { session.offer(source:tiny,pcm:Data([0,0]),offsetMs:Double(n)/48) }
+        proceed.signal()
+        let result = await frame(session,at:2000)
+        #expect(memory.clockCalls == 65,"At most64 pending packets per source, plus the independent held source")
+        #expect(result.droppedBuffers == 32)
+    }
+    @Test func repeatedHideShowCannotResetTheBudgetOfStillRetainedPackets() async throws {
+        let memory = RetainedPCM(), entered = DispatchSemaphore(value:0), proceed = DispatchSemaphore(value:0)
+        let session = SpectrogramSession(clock:{
+            if memory.takeFirst() { entered.signal(); proceed.wait() }
+            return 20000
+        })
+        session.setVisible(true)
+        let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
+        session.offer(source:source,pcm:memory.packet(),offsetMs:0)
+        defer { proceed.signal() }
+        let blocked = await withCheckedContinuation { c in
+            DispatchQueue.global().async { c.resume(returning:entered.wait(timeout:.now()+2)) }
+        }
+        try #require(blocked == .success)
+        #expect(memory.count == 96000)
+        for n in 1...8 {
+            session.setVisible(false); session.setVisible(true)
+            session.offer(source:source,pcm:memory.packet(),offsetMs:Double(n)*1000)
+        }
+        // Observe actual Data ownership, not the admission counter: clearing a
+        // counter cannot release old dispatch closures that retain their PCM.
+        #expect(memory.count <= 96000,"All view generations share the same bounded input budget")
+        proceed.signal()
+        let result = await frame(session,at:20000)
+        #expect(result.retainedTracks == 0 && result.analyzedFrames == 0,"Obsolete in-flight work cannot repopulate the reopened view")
+        #expect(result.droppedBuffers == 1,"The latest view counts its rejected packet until the old reservation drains")
     }
     @Test func inputBudgetDropsPictureDataWithoutBlockingOrChangingTheSourceClock() async {
         let entered = DispatchSemaphore(value:0), proceed = DispatchSemaphore(value:0)

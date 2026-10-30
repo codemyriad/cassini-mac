@@ -11,11 +11,11 @@ input cannot deliver readiness samples before selection commits. Closing the las
 view immediately clears these private bootstrap buffers. Browser PCM uses the
 same admitted slice and actual span clock as `OwnedBrowserCapture`.
 
-`SpectrogramSession` owns a serial utility queue, a one-second input budget per
+`SpectrogramSession` owns a serial utility queue, a one-second/64-packet input budget per
 source, per-rate vDSP transform workspace and independent lane selection. Tracks
 keep history when not selected for FFT. The lane sums linear power before the
 shared logarithm, release and quantisation. Visibility generations discard stale
-queued work; the two-lane mailbox is bounded to 64 columns per lane.
+queued work while retaining its reservations until the queued PCM is freed; the two-lane mailbox is bounded to 64 columns per lane.
 
 One `RecordingSpectrogram` serves a capture's pill and both page rows. Native
 views share 52×32 and 202×64 IOSurface banks. New columns and two guard columns are

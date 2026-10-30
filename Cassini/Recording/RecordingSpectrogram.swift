@@ -50,10 +50,16 @@ import Darwin
     private var generation = 0, inFlight = false, running = false, stopped = false
     private var pageBank: SpectrogramSurface?, pillBank: SpectrogramSurface?
     private var pageRevision = 0, pillRevision = 0
-    private var mePage = SpectrogramPixelRing(style:.row,dark:false)
-    private var othersPage = SpectrogramPixelRing(style:.row,dark:false)
-    private var mePill = SpectrogramPixelRing(style:.pill,dark:false)
-    private var othersPill = SpectrogramPixelRing(style:.pill,dark:false)
+    private final class Pixels {
+        var mePage: SpectrogramPixelRing, othersPage: SpectrogramPixelRing
+        var mePill: SpectrogramPixelRing, othersPill: SpectrogramPixelRing
+        init(dark: Bool) {
+            mePage = .init(style:.row,dark:dark); othersPage = .init(style:.row,dark:dark)
+            mePill = .init(style:.pill,dark:dark); othersPill = .init(style:.pill,dark:dark)
+        }
+        var bytes: Int { mePage.storageBytes+othersPage.storageBytes+mePill.storageBytes+othersPill.storageBytes }
+    }
+    private var pixels: Pixels?
     private var lastPage: Int64 = -1, lastPill: Int64 = -1
     private var dark = false, silent = false, reduced = false
     private var appliedDark = false, appliedSilent = false, appliedReduced = false
@@ -131,7 +137,9 @@ import Darwin
     }
     func reconcile() {
         if views.values.contains(where:{ $0.value == nil }) { views = views.filter { $0.value.value != nil } }
-        let visible = views.values.compactMap(\.value).filter(\.visibleForSpectrogram)
+        let mapped = views.values.compactMap(\.value)
+        let visible = mapped.filter(\.visibleForSpectrogram)
+        for view in mapped where !view.visibleForSpectrogram { view.suspend() }
         let page = visible.contains { $0.style == .row }
         let primary: RecordingSpectrogramView?
         if let current = clockView, visible.contains(where:{ $0 === current }), !page || current.style == .row { primary = current }
@@ -181,14 +189,17 @@ import Darwin
     }
     private func resetPicture() {
         pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
-        mePage = .init(style:.row,dark:dark); othersPage = .init(style:.row,dark:dark)
-        mePill = .init(style:.pill,dark:dark); othersPill = .init(style:.pill,dark:dark)
+        pixels = nil
         pageNeedsBake = true; pillNeedsBake = true
         for view in views.values.compactMap(\.value) { view.suspend() }
     }
     private func ensureBanks(_ visible: [RecordingSpectrogramView]) {
-        if visible.contains(where:{ $0.style == .row }), pageBank == nil { pageBank = try? .init(style:.row); pageNeedsBake = true }
-        if visible.contains(where:{ $0.style == .pill }), pillBank == nil { pillBank = try? .init(style:.pill); pillNeedsBake = true }
+        if visible.contains(where:{ $0.style == .row }) {
+            if pageBank == nil { pageBank = try? .init(style:.row); pageNeedsBake = true }
+        } else { pageBank = nil; pageNeedsBake = true }
+        if visible.contains(where:{ $0.style == .pill }) {
+            if pillBank == nil { pillBank = try? .init(style:.pill); pillNeedsBake = true }
+        } else { pillBank = nil; pillNeedsBake = true }
     }
     private func selected(_ lane: SpectrogramLane, slot: Int64) -> Bool {
         let time = Double(slot)*20
@@ -237,12 +248,15 @@ import Darwin
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram draw",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram draw",signpostID:interval) }
+        let pixels: Pixels
+        if let existing = self.pixels { pixels = existing }
+        else { pixels = Pixels(dark:dark); self.pixels = pixels }
         lastDisplayMs = displayMs
         let pageEnd = Int64(floor(displayMs/20)), pillEnd = Int64(floor((displayMs-60)/80))
         if pageNeedsBake, let bank = pageBank {
             try? bank.withWritableColumns { writer in
-                mePage.configure(dark:dark,silent:silent,reducedMotion:reduced) { writer.column(lane:.me,index:$0,pixels:$1) }
-                othersPage.configure(dark:dark,silent:false,reducedMotion:reduced) { writer.column(lane:.others,index:$0,pixels:$1) }
+                pixels.mePage.configure(dark:dark,silent:silent,reducedMotion:reduced) { writer.column(lane:.me,index:$0,pixels:$1) }
+                pixels.othersPage.configure(dark:dark,silent:false,reducedMotion:reduced) { writer.column(lane:.others,index:$0,pixels:$1) }
             }; pageRevision += 1; pageNeedsBake = false
         }
         if pageEnd > lastPage {
@@ -255,11 +269,11 @@ import Darwin
                     let a = m < me.count && me[m].slot == slot ? me[m].bands : nil
                     let b = o < others.count && others[o].slot == slot ? others[o].bands : nil
                     if let writer {
-                        mePage.append(slot:slot,bands:a,recorded:selected(.me,slot:slot)) { writer.column(lane:.me,index:$0,pixels:$1) }
-                        othersPage.append(slot:slot,bands:b,recorded:selected(.others,slot:slot)) { writer.column(lane:.others,index:$0,pixels:$1) }
+                        pixels.mePage.append(slot:slot,bands:a,recorded:selected(.me,slot:slot)) { writer.column(lane:.me,index:$0,pixels:$1) }
+                        pixels.othersPage.append(slot:slot,bands:b,recorded:selected(.others,slot:slot)) { writer.column(lane:.others,index:$0,pixels:$1) }
                     } else {
-                        mePage.remember(slot:slot,bands:a,recorded:selected(.me,slot:slot))
-                        othersPage.remember(slot:slot,bands:b,recorded:selected(.others,slot:slot))
+                        pixels.mePage.remember(slot:slot,bands:a,recorded:selected(.me,slot:slot))
+                        pixels.othersPage.remember(slot:slot,bands:b,recorded:selected(.others,slot:slot))
                     }
                 } }
             }
@@ -269,8 +283,8 @@ import Darwin
         }
         if pillNeedsBake, let bank = pillBank {
             try? bank.withWritableColumns { writer in
-                mePill.configure(dark:dark,silent:silent,reducedMotion:reduced) { writer.column(lane:.me,index:$0,pixels:$1) }
-                othersPill.configure(dark:dark,silent:false,reducedMotion:reduced) { writer.column(lane:.others,index:$0,pixels:$1) }
+                pixels.mePill.configure(dark:dark,silent:silent,reducedMotion:reduced) { writer.column(lane:.me,index:$0,pixels:$1) }
+                pixels.othersPill.configure(dark:dark,silent:false,reducedMotion:reduced) { writer.column(lane:.others,index:$0,pixels:$1) }
             }; pillRevision += 1; pillNeedsBake = false
         }
         if pillEnd > lastPill {
@@ -278,13 +292,13 @@ import Darwin
             func remember(_ writer: SpectrogramSurface.Writer?) {
                 if first <= pillEnd { for slot in first...pillEnd {
                     let times = (0..<4).map { slot*4+Int64($0) }
-                    let a = SpectrogramPillPooling.bands(times.map { mePage.bandValues(at:$0) })
-                    let b = SpectrogramPillPooling.bands(times.map { othersPage.bandValues(at:$0) })
+                    let a = SpectrogramPillPooling.bands(times.map { pixels.mePage.bandValues(at:$0) })
+                    let b = SpectrogramPillPooling.bands(times.map { pixels.othersPage.bandValues(at:$0) })
                     let m = times.contains { selected(.me,slot:$0) }, o = times.contains { selected(.others,slot:$0) }
                     if let writer {
-                        mePill.append(slot:slot,bands:a,recorded:m) { writer.column(lane:.me,index:$0,pixels:$1) }
-                        othersPill.append(slot:slot,bands:b,recorded:o) { writer.column(lane:.others,index:$0,pixels:$1) }
-                    } else { mePill.remember(slot:slot,bands:a,recorded:m); othersPill.remember(slot:slot,bands:b,recorded:o) }
+                        pixels.mePill.append(slot:slot,bands:a,recorded:m) { writer.column(lane:.me,index:$0,pixels:$1) }
+                        pixels.othersPill.append(slot:slot,bands:b,recorded:o) { writer.column(lane:.others,index:$0,pixels:$1) }
+                    } else { pixels.mePill.remember(slot:slot,bands:a,recorded:m); pixels.othersPill.remember(slot:slot,bands:b,recorded:o) }
                 } }
             }
             if let bank = pillBank { try? bank.withWritableColumns { remember($0) }; pillRevision += 1 }
@@ -349,12 +363,12 @@ import Darwin
         for (index,count) in intervals.enumerated() { sum += UInt64(count); if sum >= target { return Double(index)/10 } }
         return 51.1
     }
+    var rawHistoryBytes: Int { pixels?.bytes ?? 0 }
     var surfaceRevision: Int { pageRevision+pillRevision }
     var surfaceBytes: Int { (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0) }
     #endif
     var payloadBytes: Int {
-        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+mePage.storageBytes+othersPage.storageBytes +
-            mePill.storageBytes+othersPill.storageBytes+intervals.count*4+selections.count*MemoryLayout<Selection>.stride+64*37*2
+        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+intervals.count*4+selections.count*MemoryLayout<Selection>.stride+64*37*2
     }
 }
 
@@ -405,6 +419,7 @@ import Darwin
     override func layout() { super.layout(); controller?.reconcile() }
     func detach() { controller?.remove(registrationID); controller = nil; suspend() }
     func suspend() {
+        guard source != nil || bank != nil else { return }
         for lane in lanes {
             lane.first.contents = nil; lane.second.contents = nil
             lane.first.delegate = nil; lane.second.delegate = nil

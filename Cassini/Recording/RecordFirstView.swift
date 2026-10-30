@@ -213,11 +213,11 @@ private final class RecordingPillControlView: NSView {
         others.setAccessibilityLabel(UXText.text("common.theOthers"))
         let row = NSStackView(views:[openButton,meters,stopButton]); row.spacing = 8; row.alignment = .centerY
         row.translatesAutoresizingMaskIntoConstraints = false; addSubview(row)
-        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo:leadingAnchor,constant:10),row.trailingAnchor.constraint(equalTo:trailingAnchor,constant:-10),row.centerYAnchor.constraint(equalTo:centerYAnchor)])
+        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo:leadingAnchor,constant:10),row.trailingAnchor.constraint(equalTo:trailingAnchor,constant:-4),row.centerYAnchor.constraint(equalTo:centerYAnchor)])
         setAccessibilityChildren([openButton,me,others,stopButton])
     }
     required init?(coder: NSCoder) { nil }
-    override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 16 + 20,height:34) }
+    override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 16 + 14,height:34) }
     func update(_ value: RecordingPillControls) {
         onOpen = value.open; onStop = value.stop
         let red: NSColor = value.dark ? NSColor(red:1,green:105/255,blue:97/255,alpha:1) : NSColor(red:215/255,green:0,blue:21/255,alpha:1)

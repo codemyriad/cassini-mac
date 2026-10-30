@@ -92,12 +92,16 @@ import ScreenCaptureKit
                 report["liveCompositedInkPixels"] = ["sound":sounding,"silence":silent,"microphoneAfterMicSilence":meSilent,"othersAfterMicSilence":othersSounding]
             }
             if mode == "B" {
+                let bothStyles = controller.surfaceBytes
+                strips[1].isHidden = true; strips[2].isHidden = true; controller.reconcile()
+                try require(controller.surfaceBytes > 0 && controller.surfaceBytes < bothStyles,"hidden page releases its surface while the pill keeps running")
+                strips[1].isHidden = false; strips[2].isHidden = false; controller.reconcile()
                 // Exercise subscription transitions separately from the60-second
                 // measurement. Hidden views must stop, then restart on return.
                 strips.forEach { $0.isHidden = true }; controller.reconcile()
                 try await Task.sleep(for:.milliseconds(250))
                 let hiddenCallbacks = controller.frameCallbacks
-                try require(controller.surfaceBytes == 0,"hiding the last view frees native surfaces")
+                try require(controller.surfaceBytes == 0 && controller.rawHistoryBytes == 0,"hiding the last view frees native surfaces and raw history")
                 try await Task.sleep(for:.milliseconds(250))
                 try require(controller.frameCallbacks == hiddenCallbacks,"hidden views disconnect their display link")
                 strips.forEach { $0.isHidden = false }; controller.reconcile()
@@ -115,7 +119,7 @@ import ScreenCaptureKit
             if !hidden { try require(controller.surfaceRevision >= stoppedRevision && strips.allSatisfy { $0.layer?.opacity == 0.45 },"Stop freezes and fades visible strips") }
             report["stopDisconnectsAndFreezes"] = true
             strips.forEach { $0.detach() }; window.orderOut(nil)
-            try require(controller.surfaceBytes == 0,"detaching the last stopped view releases its frozen native surfaces")
+            try require(controller.surfaceBytes == 0 && controller.rawHistoryBytes == 0,"detaching the last stopped view releases its frozen native surfaces and raw history")
             report["detachReleasesSurfaces"] = true
             try await input.finish()
             try? FileManager.default.removeItem(at:root)
@@ -152,10 +156,10 @@ import ScreenCaptureKit
         var rgba = [UInt8](repeating:0,count:200*32*4)
         return try rgba.withUnsafeMutableBytes { bytes in
             guard let context = CGContext(data:bytes.baseAddress,width:200,height:32,bitsPerComponent:8,bytesPerRow:800,
-                space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.check("own strip pixel conversion") }
+                space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.check("own strip pixel conversion") }
             context.draw(strip,in:CGRect(x:0,y:0,width:200,height:32))
             return stride(from:0,to:bytes.count,by:4).reduce(0) { count,index in
-                count + (bytes[index] < 150 && bytes[index+1] < 150 && bytes[index+2] < 150 ? 1 : 0)
+                count + (bytes[index] < 200 && bytes[index+1] < 200 && bytes[index+2] < 200 ? 1 : 0)
             }
         }
     }
