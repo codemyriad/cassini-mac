@@ -49,15 +49,6 @@ def main():
     keys = output.parent/'local-companion-keys'
     subprocess.run(['clang',ROOT/'Spikes/BrowserGuide/keys.c','-framework','ApplicationServices','-o',keys],check=True)
     subprocess.run(['codesign','--force','--sign','-','--identifier','io.codemyriad.cassini.tests.keyboard',keys],check=True)
-    # Authorize only this disposable test-person executable to post keyboard
-    # events. No Cassini, browser, microphone or capture permission is changed.
-    client = str(keys).replace("'","''")
-    for service in ['kTCCServicePostEvent','kTCCServiceAccessibility']:
-        sql = ("INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,"
-            "indirect_object_identifier_type,indirect_object_identifier,flags) VALUES "
-            f"('{service}','{client}',1,2,4,1,0,'UNUSED',0);")
-        subprocess.run(['sudo','-n','sqlite3','/Library/Application Support/com.apple.TCC/TCC.db',sql],check=True)
-    subprocess.run(['sudo','-n','killall','tccd'],check=False)
     home = Path.home()
     profile = home/'Library/Application Support/Google/Chrome for Testing'
     companion = home/'Library/Application Support/Cassini/BrowserCompanion'
@@ -94,6 +85,17 @@ def main():
         env = dict(os.environ, TEST_RUNNER_CASSINI_LOCAL_GUIDE_GATE='1', TEST_RUNNER_CASSINI_LOCAL_GUIDE_CONFIG=str(config),
             TEST_RUNNER_CASSINI_LOCAL_GUIDE_KEYS=str(keys))
         test_run = private_driver(next((ROOT/'build/Build/Products').glob('*.xctestrun')),base)
+        # TCC attributes synthetic events to the responsible test driver, not
+        # its keyboard child. Authorize only this private hosted test person.
+        driver_id = plistlib.loads((base/'GuideDriver.app/Contents/Info.plist').read_bytes())['CFBundleIdentifier']
+        assert driver_id.endswith('-Runner') and driver_id != 'io.codemyriad.cassini'
+        client = driver_id.replace("'","''")
+        for service in ['kTCCServicePostEvent','kTCCServiceAccessibility']:
+            sql = ("INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,"
+                "indirect_object_identifier_type,indirect_object_identifier,flags) VALUES "
+                f"('{service}','{client}',0,2,4,1,0,'UNUSED',0);")
+            subprocess.run(['sudo','-n','sqlite3','/Library/Application Support/com.apple.TCC/TCC.db',sql],check=True)
+        subprocess.run(['sudo','-n','killall','tccd'],check=False)
         try:
             with (output/'xctest.log').open('wb') as log:
                 result = subprocess.run(['xcodebuild', 'test-without-building', '-xctestrun', test_run, '-destination', 'platform=macOS',
