@@ -133,6 +133,15 @@ final class UserStoppedCallTests: XCTestCase {
         _ = try ready(&state,entries:[(2,"https://meet.example/new")])
         XCTAssertEqual(state.automaticStarts(microphone:false).count,1)
     }
+    func testFailedStartCannotClaimAnotherCallsCaptureForItsOldAddress() throws {
+        var state = state(); let peer = try ready(&state)
+        let start = try state.start(.init(peer:peer,tabID:2),microphone:false)
+        try meetings([(2,"https://meet.example/new")],&state,peer)
+        try send(["type":"result","requestId":start.id,"ok":false,"status":status("already-existing")],&state,peer)
+        state.disconnect(peer); state.rememberUserStop(captureID:"already-existing")
+        _ = try ready(&state,entries:[(2,"https://meet.example/old")])
+        XCTAssertEqual(state.automaticStarts(microphone:false).count,1)
+    }
     func testUserStopDuringAutomaticStopIsRememberedBeforeBusyCheck() throws {
         var state = state(); let peer = try ready(&state)
         try send(status("original"),&state,peer)

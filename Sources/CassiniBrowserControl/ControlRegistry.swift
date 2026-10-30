@@ -256,7 +256,7 @@ public struct BrowserControlRegistry: Sendable {
             if let status = json["status"], !status.isNull {
                 let captures = try Self.captures(status,peer:id)
                 let interrupted = try Self.interrupted(status,peer:id)
-                if pending.request.action == .start, let instance = peer.peer.browserInstance,
+                if pending.request.action == .start, ok, let instance = peer.peer.browserInstance,
                    let url = pending.url, let capture = captures.first(where:{ $0.key == pending.request.key }), let identity = capture.captureID {
                     bind(Data(identity.utf8),to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
                 }
