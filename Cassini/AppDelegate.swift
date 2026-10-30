@@ -122,8 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await MeetingRenameCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
-            RecordingConfirmation.ask(window: sender.keyWindow ?? sender.mainWindow) { stop in
+            RecordingConfirmation.askToQuit(window: sender.keyWindow ?? sender.mainWindow) { choice in
                 Task { @MainActor in
+                    let stop = choice == .stop
                     if stop {
                         CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
@@ -143,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     self?.confirmingQuit = false
                     sender.reply(toApplicationShouldTerminate: stop)
+                    if choice == .background { DispatchQueue.main.async { RecordingConfirmation.closeWindowsKeepingRecording() } }
                 }
             }
           }

@@ -2,6 +2,24 @@
 import SwiftUI
 import CassiniLibrary
 
+struct MeetingExportNotice: View {
+    @State private var coordinator = MeetingExportCoordinator.shared
+    var body: some View {
+        if let receipt = coordinator.receipt {
+            HStack(spacing:16) {
+                Text(UXText.text("meeting.exported",["title":receipt.title,"folder":receipt.url.deletingLastPathComponent().lastPathComponent]))
+                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("export-success")
+                Button(UXText.text("common.show")) { coordinator.revealReceipt() }.accessibilityIdentifier("export-show")
+            }.padding(14).background(.regularMaterial,in:RoundedRectangle(cornerRadius:8)).shadow(radius:6)
+                .padding(20).accessibilityElement(children:.contain)
+                .task(id:receipt.id) {
+                    do { try await Task.sleep(for:.seconds(10)) } catch { }
+                    coordinator.clearReceipt(receipt.id)
+                }
+        }
+    }
+}
+
 struct MeetingExportSheet: View {
     @State private var coordinator = MeetingExportCoordinator.shared
     let meeting: LibraryMeeting

@@ -117,7 +117,7 @@ struct RecordingPageView: View {
                 .frame(width:96,height:6).accessibilityIdentifier(microphone ? "recording-microphone-meter" : "recording-others-meter")
             if silent {
                 Button(UXText.text("errors.micSilentRow.action")) {
-                    if !model.frozen { NSWorkspace.shared.open(URL(fileURLWithPath:"/System/Library/PreferencePanes/Sound.prefPane")) }
+                    if !model.frozen { NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!) }
                 }.buttonStyle(.plain).font(.system(size:11.5,weight:.bold)).foregroundStyle(amber).frame(width:60,height:30)
                     .background(Color(nsColor:.controlBackgroundColor),in:RoundedRectangle(cornerRadius:6)).accessibilityIdentifier("recording-check-microphone")
                     .allowsHitTesting(!model.frozen)

@@ -136,6 +136,92 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertTrue(window.buttons["preview-play"].isEnabled)
     }
+    @MainActor func testConsentRecognisesAnAlreadyAllowedMicrophoneAndKeepsTheAppShortcut() throws {
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniConsentAllowed","YES"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
+        XCTAssertTrue(text("⌘R records from anywhere in Cassini",in:window))
+        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini",in:window))
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout:10))
+        XCTAssertTrue(text("Allowed",in:window.sheets.firstMatch))
+        XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.buttons["first-run-record"].exists)
+        if app.menuBars.menuBarItems["Help"].exists {
+            app.menuBars.menuBarItems["Help"].click()
+            XCTAssertFalse(app.menuItems["Cassini Help"].exists)
+            app.typeKey(.escape,modifierFlags:[])
+        }
+    }
+    @MainActor func testBrowserStatesBeforeFirstConnectionAndAfterFailure() throws {
+        for kind in ["absent","first","lost"] {
+            let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString,"-CassiniBrowserCase",kind])
+            let window = app.windows["cassini-library-window"]
+            XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:20),app.debugDescription)
+            XCTAssertFalse(window.descendants(matching:.any)["capture-failure-banner"].exists)
+            if kind == "lost" {
+                XCTAssertTrue(window.buttons["browser-try-again"].waitForExistence(timeout:10),app.debugDescription)
+                XCTAssertTrue(window.staticTexts["library-browser-status"].exists)
+            } else { XCTAssertFalse(window.staticTexts["library-browser-status"].exists) }
+            app.typeKey(",",modifierFlags:.command)
+            let settings = app.windows["cassini-settings-window"]
+            XCTAssertTrue(settings.waitForExistence(timeout:10))
+            settings.toolbars.buttons["Browser companion"].click()
+            if kind == "absent" {
+                let add = settings.buttons["browser-add"]
+                XCTAssertTrue(add.waitForExistence(timeout:10),app.debugDescription); XCTAssertFalse(add.isEnabled)
+                XCTAssertTrue(text("Browser meetings need Chrome, Edge, Brave or Chromium.",in:settings))
+                XCTAssertFalse(settings.buttons["browser-try-again"].exists)
+                app.typeKey("w",modifierFlags:.command)
+                window.buttons["preview-read-transcript"].click()
+                window.buttons["Set up"].click()
+                XCTAssertTrue(window.sheets.buttons["companion-add"].waitForExistence(timeout:10),app.debugDescription)
+                XCTAssertFalse(window.sheets.buttons["companion-add"].isEnabled)
+                XCTAssertFalse(window.sheets.buttons["companion-connect"].exists)
+                XCTAssertFalse(text("Couldn’t connect.",in:window.sheets.firstMatch))
+                window.sheets.buttons["Not now"].click()
+            } else if kind == "first" {
+                XCTAssertTrue(settings.buttons["browser-add"].waitForExistence(timeout:10)); XCTAssertTrue(settings.buttons["browser-add"].isEnabled)
+                XCTAssertFalse(settings.buttons["browser-try-again"].exists)
+            } else { XCTAssertTrue(settings.buttons["browser-try-again"].waitForExistence(timeout:10)) }
+            app.terminate()
+        }
+    }
+    @MainActor func testMeetingAccessibilityAndOpeningWithoutWords() throws {
+        var app = try launch("meeting",fixture:"main")
+        var window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertEqual(window.buttons["meeting-back"].label,"Back to Library")
+        XCTAssertEqual(window.buttons["toolbar-record"].label,"Record")
+        XCTAssertEqual(window.buttons["meeting-export"].label,"Export…")
+        XCTAssertEqual(window.descendants(matching:.any)["meeting-more-actions"].label,"More actions")
+        XCTAssertEqual(window.sliders["meeting-seek"].label,"Position")
+        XCTAssertEqual(window.sliders["meeting-seek"].value as? String,"00:03:12")
+        XCTAssertEqual(window.buttons["meeting-speed"].label,"Playback speed, 1×")
+        let turns = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-"))
+        XCTAssertGreaterThan(turns.count,0,app.debugDescription)
+        XCTAssertTrue(turns.firstMatch.label.contains("00:"))
+        XCTAssertEqual(window.links.count,0,"VoiceOver sees complete turns, while pointer word links stay visual")
+        XCTAssertFalse(window.descendants(matching:.any)["capture-failure-banner"].exists)
+        app.terminate()
+        app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
+        defer { app.terminate() }; window = app.windows["cassini-library-window"]
+        let weekly = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Weekly sync, product team","Weekly sync, product team")).firstMatch
+        XCTAssertTrue(weekly.waitForExistence(timeout:20)); weekly.doubleClick()
+        XCTAssertTrue(window.buttons["meeting-write-down"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+        XCTAssertTrue(window.buttons["meeting-export"].isEnabled)
+        app.menuBars.menuBarItems["File"].click(); XCTAssertTrue(app.menuItems["Rename…"].isEnabled); app.typeKey(.escape,modifierFlags:[])
+        window.buttons["meeting-back"].click()
+        let client = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Client call, Rossi & Partners","Client call, Rossi & Partners")).firstMatch
+        client.click(); XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5))
+        let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        budget.click(); app.typeKey(.return,modifierFlags:[])
+        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertEqual(window.staticTexts["meeting-title"].value as? String,"Budget review")
+    }
     override func setUpWithError() throws {
         continueAfterFailure = false
         try XCTSkipUnless(ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ProcessInfo.processInfo.environment["CASSINI_LIBRARY_BOARDS"] == "1", "Hosted-only Library boards")
@@ -274,7 +360,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(app.buttons["preview-play"].waitForExistence(timeout:20),app.debugDescription)
         app.typeKey("e",modifierFlags:[.command,.shift])
         XCTAssertTrue(app.buttons["export-confirm"].waitForExistence(timeout:10),app.debugDescription)
-        app.buttons["export-confirm"].click()
+        app.buttons["export-choose-folder"].click()
         XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)
         // The runner can create/inspect its own folder; Cassini receives a
         // file-only Powerbox grant, with no added entitlement or directory grant.
@@ -285,6 +371,9 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("g",modifierFlags:[.command,.shift])
         app.typeText(destination.path); app.typeKey(.return,modifierFlags:[])
         nativeSaveButton(in:app).click()
+        XCTAssertTrue(app.buttons["export-confirm"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertFalse(nativeSaveButton(in:app).exists,"Choose is the sole Save panel")
+        app.buttons["export-confirm"].click()
         let output = destination.appendingPathComponent("Onboarding walkthrough.opus")
         let saved = NSPredicate { _,_ in FileManager.default.fileExists(atPath:output.path) }
         let result = XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:20)
@@ -292,6 +381,10 @@ final class LibraryBoards: XCTestCase {
             let screenshot = XCTAttachment(screenshot:app.screenshot()); screenshot.name = "save-panel-failure"; screenshot.lifetime = .keepAlways; add(screenshot)
         }
         XCTAssertEqual(result,.completed,app.debugDescription + "\nDestination: " + String(describing:try? FileManager.default.contentsOfDirectory(atPath:destination.path)))
+        XCTAssertTrue(app.staticTexts["export-success"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(app.buttons["export-show"].exists)
+        XCTAssertFalse(nativeSaveButton(in:app).exists)
+        capture(app.windows["cassini-library-window"],name:"export-success")
         let bytes = try Data(contentsOf:output)
         XCTAssertEqual(bytes.prefix(4),Data("OggS".utf8))
         XCTAssertNotNil(bytes.range(of:Data("CASSINI_FORMAT=org.cassini.portable-meeting/1".utf8)))
@@ -326,6 +419,9 @@ final class LibraryBoards: XCTestCase {
         app.menuBars.menuBarItems["File"].click()
         XCTAssertFalse(app.menuItems["Rename…"].isEnabled,"Use the Recording page field while live")
         app.typeKey(.escape,modifierFlags:[])
+        let openLabel = window.buttons["recording-open-current"].label
+        XCTAssertTrue(openLabel.hasPrefix("Open recording, "))
+        XCTAssertEqual(window.buttons["recording-stop"].label,"Stop recording")
         for key in ["w","q"] {
             app.typeKey(key,modifierFlags:.command)
             XCTAssertTrue(window.sheets.staticTexts["A recording is running"].waitForExistence(timeout:10),app.debugDescription)
@@ -333,6 +429,7 @@ final class LibraryBoards: XCTestCase {
             let stayed = NSPredicate { _,_ in window.exists && !window.sheets.firstMatch.exists && window.buttons["recording-page-stop"].exists }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stayed,object:nil)],timeout:5),.completed,app.debugDescription)
         }
+        XCTAssertNotEqual(window.buttons["recording-open-current"].label,openLabel,"Elapsed accessible time advances while the recording runs")
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
@@ -340,7 +437,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout:10))
         XCTAssertEqual(title.value as? String,"Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
-        app.typeKey("h",modifierFlags:.command)
+        app.typeKey("q",modifierFlags:.command)
+        XCTAssertTrue(window.sheets.buttons["Keep recording"].waitForExistence(timeout:10),app.debugDescription)
+        window.sheets.buttons["Keep recording"].click()
+        let backgrounded = NSPredicate { _,_ in !window.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:backgrounded,object:nil)],timeout:10),.completed,app.debugDescription)
         let status = app.descendants(matching:.any)["recording-menu-bar"]
         XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription); status.click()
         let payload = app.staticTexts["recording-menu-fixture-payload"]
@@ -365,6 +466,11 @@ final class LibraryBoards: XCTestCase {
         let saved = NSPredicate { _,_ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:15),.completed,app.debugDescription)
         XCTAssertFalse(window.buttons["recording-stop"].exists)
+        let notified = NSPredicate { _,_ in
+            let value = window.staticTexts["recording-notification-fixture"]
+            return (value.value as? String ?? value.label).contains("Recording saved: Title from the live page")
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:notified,object:nil)],timeout:5),.completed,"The global shortcut posts feedback after the file is saved")
         // Start from another app too; persisted first-record consent is reused.
         app.typeKey("h",modifierFlags:.command); finder.activate()
         finder.typeKey("r",modifierFlags:[.option,.command]); app.activate()
@@ -375,11 +481,11 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testRecordFirstBoard() throws {
         let app = try launch("record-first", fixture: "first-record"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.sheets.staticTexts["Before your first recording"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(window.sheets.checkBoxes["Don’t show again"].exists)
         XCTAssertTrue(window.sheets.buttons["record-first-start"].exists)
-        XCTAssertTrue(text("macOS asks you to allow this next.", in: window.sheets.firstMatch))
-        XCTAssertTrue(text("macOS asks once more, for Screen & System Audio Recording.", in: window.sheets.firstMatch))
+        XCTAssertTrue(text("macOS asks you to allow this.", in: window.sheets.firstMatch))
+        XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
         let explanation = window.sheets.staticTexts["Cassini also records the sound of your meeting apps so the other participants are on the recording."]
         XCTAssertTrue(explanation.exists)
         XCTAssertGreaterThan(explanation.frame.height, 28, "The complete explanation must wrap, rather than truncate")

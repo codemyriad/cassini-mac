@@ -329,6 +329,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func replacePeers(_ peers: [BrowserControlPeerSnapshot]) {
         self.peers = peers
+        if peers.contains(where:{ $0.reconciled }) { CompanionSetup.shared.didConnect() }
         let meetings = Set(peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.map(\.key))
         failedMeetings = failedMeetings.filter { meetings.contains($0.key) }
         microphones = microphones.filter { meetings.contains($0.key) }

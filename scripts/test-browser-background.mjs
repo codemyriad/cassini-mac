@@ -31,6 +31,10 @@ try {
   execFileSync('ditto', [source, app]);
   execFileSync('codesign', ['--verify', '--deep', '--strict', app]);
   const env = { ...process.env, CASSINI_CONTROL_PIPE_ROOT: controlRoot, CASSINI_HOSTED_SCREENSHOTS: '1' };
+  // Treat the downloaded Chromium app as installed in Launch Services, while
+  // keeping its disposable profile and all interactions on this hosted runner.
+  const chromiumApp = chromium.executablePath().split('/Contents/')[0];
+  execFileSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', chromiumApp]);
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true, env,
     args: [`--disable-extensions-except=${root}/BrowserExtension`, `--load-extension=${root}/BrowserExtension`]

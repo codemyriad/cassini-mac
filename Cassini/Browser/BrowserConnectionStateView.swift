@@ -13,8 +13,9 @@ struct BrowserConnectionStateView: View {
             if !captures.connected {
                 if setup.failed {
                     Button(UXText.text("common.tryAgain")) { setup.trigger() }.accessibilityIdentifier("browser-try-again")
-                } else if !setup.working {
+                } else if !setup.working || setup.noBrowser {
                     Button(setup.addLabel) { setup.add() }.accessibilityIdentifier("browser-add")
+                        .disabled(!setup.canAdd)
                 }
             }
         }

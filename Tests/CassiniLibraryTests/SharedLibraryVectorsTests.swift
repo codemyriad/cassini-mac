@@ -22,7 +22,7 @@ import Testing
         let expectedFiles = try FileManager.default.contentsOfDirectory(atPath: source.appendingPathComponent("expected").path)
         try #require(Set(expectedFiles.filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }) == ids)
         let now = Date(timeIntervalSince1970: (manifest["nowMs"] as! NSNumber).doubleValue / 1000)
-        let format = LibraryFormat(timeZone: try #require(TimeZone(identifier: manifest["tz"] as! String)), now: now)
+        let format = LibraryFormat(timeZone: try #require(TimeZone(identifier: manifest["tz"] as! String)), now: now,locale:Locale(identifier:"en_GB"))
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("cassini-shared-library-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: output) }
         let process = Process()

@@ -65,6 +65,10 @@ struct MeetingView: View {
                                         return .discarded
                                     })
                             }.id(turn.id)
+                                .accessibilityElement(children:.ignore)
+                                .accessibilityLabel([meeting.speakers.first(where:{ $0.id == turn.speaker })?.displayName ?? "",LibraryFormat.position(turn.startMs),turn.items.map(\.text).joined(separator:" ")].joined(separator:", "))
+                                .accessibilityIdentifier("meeting-turn-" + String(turn.id))
+                                .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.seek(Int(turn.startMs)) }
                         }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")
@@ -118,7 +122,7 @@ struct MeetingView: View {
     }
     private var companionCard: some View {
         HStack(alignment: .top, spacing: 15) {
-            Image(systemName: "macwindow").foregroundStyle(Color.accentColor).font(.system(size: 18)).padding(.top, 3)
+            Image(systemName: "macwindow").foregroundStyle(Color.accentColor).font(.system(size: 18)).padding(.top, 3).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 Text(UXText.text("meeting.companionCard.title")).fontWeight(.semibold)
                 Text(UXText.text("meeting.companionCard.body")).lineSpacing(4)
@@ -145,10 +149,13 @@ struct MeetingView: View {
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
             Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
             Slider(value: Binding(get: { Double(model.positionMs) }, set: { model.seek(Int($0)) }), in: 0...Double(max(1, model.durationMs)))
-                .accessibilityIdentifier("meeting-seek")
+                .accessibilityIdentifier("meeting-seek").accessibilityLabel(UXText.text("player.position"))
+                .accessibilityValue(LibraryFormat.position(Int64(model.positionMs)))
             Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5))
             Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_GB")))])) { model.cycleRate() }
                 .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
+                .accessibilityIdentifier("meeting-speed")
+                .accessibilityLabel(UXText.text("player.speed.a11y",["rate":UXText.text("format.playbackRate",["rate":model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier:"en_GB")))])]))
         }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(Color(nsColor: .windowBackgroundColor))
             .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
     }

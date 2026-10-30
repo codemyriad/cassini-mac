@@ -28,7 +28,7 @@ struct ExportGoldenTests {
         for value in values.cases {
             let v = value.input
             let text = MeetingMarkdown.render(title:v.title,start:Date(timeIntervalSince1970:Double(v.startMs)/1000),durationMs:v.durationMs,
-                timeZone:try #require(TimeZone(identifier:v.tz)),names:Dictionary(uniqueKeysWithValues:v.speakers.map { ($0.id,$0.name) }),items:v.items,notes:v.notes)
+                timeZone:try #require(TimeZone(identifier:v.tz)),names:Dictionary(uniqueKeysWithValues:v.speakers.map { ($0.id,$0.name) }),items:v.items,notes:v.notes,locale:Locale(identifier:"en_GB"))
             #expect(Data(text.utf8) == Data(value.expected.utf8),"\(value.name)")
         }
     }

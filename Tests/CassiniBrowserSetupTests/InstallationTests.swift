@@ -8,6 +8,7 @@ private func setupRunsOffMainThread() -> Bool { !Thread.isMainThread }
 
 final class InstallationTests: XCTestCase {
     private var root: URL!, contents: URL!, home: URL!
+    private var installedFixtureBrowsers: [String] = []
     override func setUpWithError() throws {
         let temporary = try XCTUnwrap(realpath(NSTemporaryDirectory(),nil))
         defer { free(temporary) }
@@ -23,9 +24,32 @@ final class InstallationTests: XCTestCase {
     override func tearDownWithError() throws { try FileManager.default.removeItem(at:root) }
     private func leaf(_ browser: String) -> URL { home.appendingPathComponent("Library/Application Support/" + browser + "/NativeMessagingHosts") }
     private func prepare(_ browsers: [String] = BrowserSetupInstallation.browsers) throws {
+        installedFixtureBrowsers = browsers
         for browser in browsers { try FileManager.default.createDirectory(at:leaf(browser).deletingLastPathComponent(),withIntermediateDirectories:true) }
     }
-    private var installation: BrowserSetupInstallation { .init(home:home,contents:contents) }
+    private var installation: BrowserSetupInstallation { .init(home:home,contents:contents,browsers:installedFixtureBrowsers) }
+    func testInstalledButNeverOpenedBrowserGetsOnlyRegistrationDirectories() throws {
+        let installer = BrowserSetupInstallation(home:home,contents:contents,browsers:["Google/Chrome"])
+        XCTAssertEqual(try installer.install(),2)
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath:leaf("Google/Chrome").deletingLastPathComponent().path)),["NativeMessagingHosts"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath:leaf("Chromium").path))
+        XCTAssertEqual(try installer.install(),2)
+    }
+    func testDetectionUsesInstalledBundleIDsWithoutReadingAProfile() {
+        var requested: [String] = []
+        let found = BrowserSetupInstallation.installedBrowsers { id in
+            requested.append(id)
+            return id == "com.google.Chrome" ? URL(fileURLWithPath:"/Applications/Google Chrome.app") : nil
+        }
+        XCTAssertEqual(requested, BrowserSetupInstallation.supportedBrowsers.map(\.bundleID))
+        XCTAssertEqual(found.map(\.profile),["Google/Chrome"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath:home.path))
+    }
+    func testNoInstalledBrowserCreatesNothingAndCannotUseUnlistedDirectories() throws {
+        XCTAssertThrowsError(try BrowserSetupInstallation(home:home,contents:contents,browsers:[]).install())
+        XCTAssertThrowsError(try BrowserSetupInstallation(home:home,contents:contents,browsers:["../Elsewhere"]).install())
+        XCTAssertFalse(FileManager.default.fileExists(atPath:home.path))
+    }
     private func legacy(_ browser: String, name: String = "com.codemyriad.cassini", manifestName: String? = nil, executable: String = "cassini-browser-host") throws -> URL {
         let directory = leaf(browser)
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
@@ -103,7 +127,7 @@ final class InstallationTests: XCTestCase {
         let home = try XCTUnwrap(self.home), contents = try XCTUnwrap(self.contents)
         let setup = BackgroundBrowserSetup {
             guard setupRunsOffMainThread() else { throw BrowserSetupError.unavailable }
-            _ = try BrowserSetupInstallation(home:home,contents:contents).install()
+            _ = try BrowserSetupInstallation(home:home,contents:contents,browsers:["Google/Chrome"]).install()
         }
         defer { setup.stop() }
         setup.trigger()
@@ -147,7 +171,7 @@ final class InstallationTests: XCTestCase {
         let moved = root.appendingPathComponent("Moved Cassini.app/Contents")
         try FileManager.default.createDirectory(at:moved.deletingLastPathComponent(),withIntermediateDirectories:true)
         try FileManager.default.moveItem(at:contents,to:moved)
-        XCTAssertEqual(try BrowserSetupInstallation(home:home,contents:moved).install(),2)
+        XCTAssertEqual(try BrowserSetupInstallation(home:home,contents:moved,browsers:installedFixtureBrowsers).install(),2)
         for name in ["io.codemyriad.cassini", "io.codemyriad.cassini.control"] {
             let file = leaf("Google/Chrome").appendingPathComponent(name + ".json")
             var object = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
@@ -155,7 +179,7 @@ final class InstallationTests: XCTestCase {
             object["allowed_origins"] = ["chrome-extension://wrong/"]
             try JSONSerialization.data(withJSONObject:object).write(to:file)
         }
-        XCTAssertEqual(try BrowserSetupInstallation(home:home,contents:moved).install(),2)
+        XCTAssertEqual(try BrowserSetupInstallation(home:home,contents:moved,browsers:installedFixtureBrowsers).install(),2)
         for name in ["io.codemyriad.cassini", "io.codemyriad.cassini.control"] {
             let file = leaf("Google/Chrome").appendingPathComponent(name + ".json")
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
@@ -221,7 +245,7 @@ final class InstallationTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at:host,withDestinationURL:contents.appendingPathComponent("MacOS/cassini-browser-host"))
         XCTAssertThrowsError(try installation.install())
     }
-    func testNoBrowserProfileMeansNoRegistrationOrProfileCreation() throws {
+    func testNoInstalledBrowserMeansNoRegistrationOrProfileCreation() throws {
         XCTAssertThrowsError(try installation.install())
         XCTAssertFalse(FileManager.default.fileExists(atPath:home.path))
     }

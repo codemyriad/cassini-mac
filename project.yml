@@ -31,6 +31,8 @@ targets:
           - "Info.plist"
           - "Cassini.entitlements"
           - "Resources"
+      - path: Cassini/Assets.xcassets
+        buildPhase: resources
       - path: Cassini/Resources/Licenses
         type: folder
         buildPhase: resources
@@ -111,6 +113,7 @@ targets:
       properties:
         CFBundleName: Cassini
         CFBundleDisplayName: Cassini
+        CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
@@ -151,6 +154,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.codemyriad.cassini
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_NAME: Cassini
         ENABLE_HARDENED_RUNTIME: "$(CASSINI_APP_HARDENED_RUNTIME)"
         COMBINE_HIDPI_IMAGES: true

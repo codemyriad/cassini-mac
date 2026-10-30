@@ -32,7 +32,7 @@ private enum Golden {
 @Suite struct LibraryGoldenTests {
     @Test func searchOmitsUnknownDurationWithoutLosingTheHitPosition() {
         let date = Date(timeIntervalSince1970:0)
-        let format = LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,now:date)
+        let format = LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,now:date,locale:Locale(identifier:"en_GB"))
         #expect(format.searchContext(date,durationMs:nil,positionMs:300000) == "Today, 00:00 · at 00:05:00")
         #expect(format.searchContext(date,durationMs:0,positionMs:300000) == "Today, 00:00 · under 1 min · at 00:05:00")
     }
@@ -52,7 +52,7 @@ private enum Golden {
     @Test(arguments: Golden.formats) private func formatVector(vector: FormatCase) throws {
         let value = try JSONDecoder().decode(FormatInput.self, from: vector.data)
         let header = try JSONSerialization.jsonObject(with: Golden.data("format-vectors")) as! [String: Any]
-        let format = LibraryFormat(timeZone: try #require(TimeZone(identifier: header["tz"] as! String)), now: Date(timeIntervalSince1970: (header["nowMs"] as! NSNumber).doubleValue / 1000))
+        let format = LibraryFormat(timeZone: try #require(TimeZone(identifier: header["tz"] as! String)), now: Date(timeIntervalSince1970: (header["nowMs"] as! NSNumber).doubleValue / 1000),locale:Locale(identifier:"en_GB"))
         let at = Date(timeIntervalSince1970: Double(value.atMs ?? 0) / 1000)
         let actual: String
         switch vector.group {
@@ -85,7 +85,7 @@ private enum Golden {
         let zone = try #require(TimeZone(identifier: "America/New_York"))
         let now = try #require(ISO8601DateFormatter().date(from: "2026-11-02T05:30:00Z"))
         let before = try #require(ISO8601DateFormatter().date(from: "2026-11-01T04:30:00Z"))
-        let format = LibraryFormat(timeZone: zone, now: now)
+        let format = LibraryFormat(timeZone: zone, now: now,locale:Locale(identifier:"en_GB"))
         #expect(format.dayGroup(before) == "Yesterday")
         #expect(format.rowTime(before) == "00:30")
         #expect(LibraryFormat.position(Int64.max) == "2562047788015:12:55")

@@ -32,12 +32,30 @@ import CassiniLibrary
         else { showingFirst = true }
     }
     func requestFromAnywhere() {
-        let recorder = RecordingController.shared
-        if RecordingOverview.active || RecordingOverview.starting { RecordingOverview.stop(); return }
+        if RecordingOverview.active || RecordingOverview.starting { _ = stopFromShortcut(notify:!NSApp.isActive); return }
         guard RecordingOverview.canStart else { return }
         let introduction = !RecordingPreferences.skipFirst
         if introduction { MeetingNavigation.shared.openLibrary?(); NSApp.activate(ignoringOtherApps: true) }
         request(parent: LibraryLocationModel.shared.roots[0], showRecording: introduction)
+    }
+    @discardableResult func stopFromShortcut(notify: Bool) -> Task<Void,Never> {
+        let native = RecordingController.shared
+        let folder = native.isRecording ? native.directory : nil, title = native.title
+        let owned = Array(CaptureCollection.shared.captures.values)
+        RecordingOverview.stop()
+        return Task {
+            await RecordingPageModel.flushAll()
+            await RecordingOverview.stopAndWait()
+            guard notify else { return }
+            if let folder, native.lastCompletedDirectory == folder, native.problem == nil {
+                CaptureNotifications.shared.saved(folder:folder,title:title)
+            }
+            for value in owned where value.owner.snapshot.phase == .saved {
+                let snapshot = value.owner.snapshot
+                guard snapshot.manifest.state == "completed", snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }) else { continue }
+                CaptureNotifications.shared.saved(folder:snapshot.directory,title:value.displayTitle ?? snapshot.manifest.title)
+            }
+        }
     }
     func openCurrent() {
         guard let folder = RecordingOverview.directory else { return }
@@ -56,6 +74,7 @@ import CassiniLibrary
             #if DEBUG
             if RecordingFixture.enabled { await RecordingController.shared.start(parent:parent); return }
             #endif
+            await CaptureNotifications.shared.authorize()
             do { try await CaptureCollection.shared.record() } catch { /* Catalog failure banner owns presentation. */ }
         }
     }
@@ -63,6 +82,7 @@ import CassiniLibrary
 
 struct RecordFirstView: View {
     @AppStorage("CassiniSkipRecordFirst",store:RecordingPreferences.defaults) private var skip = false
+    @State private var microphoneAllowed = false
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
@@ -73,7 +93,7 @@ struct RecordFirstView: View {
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 16) {
                 Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(.secondary)
-                source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.description", caption: "recordFirst.mic.caption")
+                source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.description", caption: microphoneAllowed ? "recordFirst.allowed" : "recordFirst.mic.caption")
                 Divider()
                 if CaptureCollection.shared.hasCalls {
                     source(icon:"macwindow",title:"common.theOthers",description:"whatIsRecorded.othersHeard.browserMixed.description",caption:nil)
@@ -93,6 +113,14 @@ struct RecordFirstView: View {
             }.padding(.top, 8)
         }.font(.system(size: 13)).padding(28).frame(width: 520)
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("recordFirst.title"))
+            .onAppear(perform:refreshPermission)
+            .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in refreshPermission() }
+    }
+    private func refreshPermission() {
+        #if DEBUG
+        if RecordingFixture.enabled, LibraryLaunchContext.argument("-CassiniConsentAllowed") == "YES" { microphoneAllowed = true; return }
+        #endif
+        microphoneAllowed = CaptureSettings.microphoneAllowed
     }
     private func source(icon: String, title: String, description: String, caption: String?) -> some View {
         HStack(alignment: .top, spacing: 14) {
@@ -111,16 +139,18 @@ struct LiveRecordingPill: View {
     let microphone: Float
     let output: Float
     var frozenMs: Int64? = nil
+    @State private var elapsedMs: Int64 = 0
+    private var displayedMs: Int64 { frozenMs ?? elapsedMs }
     var body: some View {
-        TimelineView(.periodic(from: started, by: 1)) { timeline in
+        Group {
             HStack(spacing: 8) {
                 Button { if frozenMs == nil { RecordCoordinator.shared.openCurrent() } } label: {
                     HStack(spacing:8) {
                         Circle().fill(LibraryTheme.red).frame(width:9,height:9)
-                        Text(LibraryFormat.liveBadge(frozenMs ?? RecordingOverview.elapsedMs)).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
+                        Text(LibraryFormat.liveBadge(displayedMs)).fontWeight(.semibold).monospacedDigit().foregroundStyle(LibraryTheme.red)
                     }
                 }.buttonStyle(.plain).accessibilityIdentifier("recording-open-current")
-                    .accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(frozenMs ?? RecordingOverview.elapsedMs)]))
+                    .accessibilityLabel(UXText.text("recording.pill.open.a11y",["time":LibraryFormat.liveBig(displayedMs)]))
                     .accessibilityHint(UXText.text("hidden.openCassini"))
                 VStack(spacing:4) {
                     meter(microphone,label:"common.yourMicrophone",silent:frozenMs != nil || RecordingOverview.microphoneSilent)
@@ -128,9 +158,15 @@ struct LiveRecordingPill: View {
                 }.frame(width:30)
                 Button(UXText.text("common.stop")) { if frozenMs == nil { RecordingOverview.stop() } }
                     .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 10).frame(height: 26)
-                    .background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 5)).accessibilityIdentifier("recording-stop")
+                    .background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 5)).accessibilityIdentifier("recording-stop").accessibilityLabel(UXText.text("recording.pill.stop.a11y"))
             }.padding(.horizontal, 10).frame(height: 34).background(LibraryTheme.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
                 .help(RecordingRuntime.shared.power.held ? UXText.text("recording.pill.noSleep") : "")
+        }.task {
+            guard frozenMs == nil else { return }
+            while !Task.isCancelled {
+                elapsedMs = RecordingOverview.elapsedMs
+                do { try await Task.sleep(for:.seconds(1)) } catch { return }
+            }
         }
     }
     private func meter(_ level: Float, label: String, silent: Bool = false) -> some View {

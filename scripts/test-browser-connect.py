@@ -14,6 +14,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 BROWSERS = ['Google/Chrome', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser']
+ANCESTORS = ['Google', 'Google/Chrome', 'Chromium', 'Microsoft Edge', 'BraveSoftware', 'BraveSoftware/Brave-Browser']
 HOSTS = {'io.codemyriad.cassini': 'cassini-browser-host', 'io.codemyriad.cassini.control': 'cassini-control-host'}
 ORIGIN = 'chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/'
 p = argparse.ArgumentParser(description=__doc__)
@@ -41,8 +42,9 @@ def plist(file, data):
 parent_profile = plistlib.loads((ROOT/'Cassini/Cassini.entitlements').read_bytes())
 production_profile = plistlib.loads((ROOT/'BrowserSetup/BrowserSetup.entitlements').read_bytes())
 assert production_profile == {'com.apple.security.app-sandbox': True,
-    'com.apple.security.temporary-exception.files.home-relative-path.read-write': [
-        '/Library/Application Support/' + b + '/NativeMessagingHosts/' for b in BROWSERS]}
+    'com.apple.security.temporary-exception.files.home-relative-path.read-write':
+        ['/Library/Application Support/' + b for b in ANCESTORS] +
+        ['/Library/Application Support/' + b + '/NativeMessagingHosts/' for b in BROWSERS]}
 assert parent_profile['com.apple.security.app-sandbox'] and not parent_profile.get('com.apple.security.network.client')
 if a.app:
     assert profile(a.app) == parent_profile
@@ -78,8 +80,9 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
         source = a.app/'Contents/MacOS'/executable if a.app else ROOT/'.build/debug'/executable
         shutil.copy2(source, app/'Contents/MacOS'/executable)
     helper_profile = {'com.apple.security.app-sandbox': True,
-        'com.apple.security.temporary-exception.files.home-relative-path.read-write': [
-            '/' + (relative/'Library/Application Support'/b/'NativeMessagingHosts').as_posix() + '/' for b in BROWSERS]}
+        'com.apple.security.temporary-exception.files.home-relative-path.read-write':
+            ['/' + (relative/'Library/Application Support'/b).as_posix() for b in ANCESTORS] +
+            ['/' + (relative/'Library/Application Support'/b/'NativeMessagingHosts').as_posix() + '/' for b in BROWSERS]}
     parent_entitlements, helper_entitlements = base/'parent.plist', base/'helper.plist'
     plist(parent_entitlements, parent_profile); plist(helper_entitlements, helper_profile)
     for bundle, entitlements in [(service, helper_entitlements), (app, parent_entitlements)]:
@@ -128,6 +131,29 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
                 assert not (directory/(old+'.json')).exists()
             assert (directory/'unrelated.host.json').read_bytes() == unrelated[directory/'unrelated.host.json']
             assert not positive.exists()
+    # A stock account has Library/Application Support but no browser directory.
+    # Reuse the same signed helper; only our private fixture tree is reset.
+    shutil.rmtree(home/'Library/Application Support')
+    (home/'Library/Application Support').mkdir(parents=True, mode=0o700)
+    fresh = subprocess.run([str(binary), str(home)], capture_output=True, text=True, timeout=30)
+    assert fresh.returncode == 0, (fresh.stdout, fresh.stderr)
+    assert json.loads(fresh.stdout) == dict(manifestsWritten=8, parentWriteDenied=True, wrongHostBookmarkRejected=True)
+    for browser in BROWSERS:
+        browser_path = home/'Library/Application Support'/browser
+        assert sorted(p.name for p in browser_path.iterdir()) == ['NativeMessagingHosts']
+        assert stat.S_IMODE(browser_path.stat().st_mode) == 0o700
+    # Give a standalone copy exactly the helper's entitlements and verify that
+    # literal ancestor grants don't permit writing Chrome/Preferences.
+    scope = base/'Scope.app'
+    scope_binary = scope/'Contents/MacOS/Scope'
+    scope_binary.parent.mkdir(parents=True)
+    shutil.copy2(binary,scope_binary)
+    plist(scope/'Contents/Info.plist',dict(CFBundleIdentifier='io.codemyriad.cassini.scope-probe',CFBundleExecutable='Scope',CFBundlePackageType='APPL',CFBundleVersion='1',LSBackgroundOnly=True))
+    subprocess.run(['codesign','--force','--sign','-','--options','0','--timestamp=none','--entitlements',str(helper_entitlements),str(scope)],check=True)
+    scoped = subprocess.run([str(scope_binary),'--scope-check',str(home)],capture_output=True,text=True,timeout=20)
+    assert scoped.returncode == 0, (scoped.stdout,scoped.stderr)
+    assert json.loads(scoped.stdout) == dict(manifestLeafWritable=True,profileSiblingDenied=True)
+    report.update(neverOpenedBrowsersRegistered=True,noProfilesOrPreferencesCreated=True,profileSiblingWriteDenied=True)
     report.update(fixtureOnly=True, actualBundledService=bool(a.app), twoIdempotentConnects=True,
         identicalMtimesPreserved=True, browserProfilesTouched=False, audioDevicesOpened=False, appWindowsOpened=False,
         exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=4, helperNetworkEntitlements=False,

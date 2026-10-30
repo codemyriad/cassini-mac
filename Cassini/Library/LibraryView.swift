@@ -46,7 +46,7 @@ struct LibraryView: View {
         .font(.system(size: 13))
         .safeAreaInset(edge:.top,spacing:0) {
             CaptureFailureBanner(); trashFailure
-            if !store.context.screenshot && navigation.detail == nil && !search.visible {
+            if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status")
                     .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,18).padding(.vertical,8)
             }
@@ -79,7 +79,7 @@ struct LibraryView: View {
                                 .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary"))
                                 .accessibilityIdentifier("meeting-back")
                             Spacer(minLength: 0)
-                            if RecordingOverview.active { Button(UXText.text("common.stop")) { RecordingOverview.stop() } }
+                            if RecordingOverview.active { Button(UXText.text("common.stop")) { RecordingOverview.stop() }.accessibilityLabel(UXText.text("common.stop")) }
                             else { recordButton(big: false) }
                         }.frame(width: 169)
                         VStack(alignment: .leading, spacing: 1) {
@@ -98,10 +98,10 @@ struct LibraryView: View {
                         HStack(spacing: 14) {
                             if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
                                 Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.writeDown(detail) }
-                                    .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down")
+                                    .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("meeting-write-down").accessibilityLabel(UXText.text("common.writeDown"))
                             }
                             Button(UXText.text("common.exportEllipsis")) { exporter.show(detail.meeting) }.buttonStyle(.plain).fontWeight(.semibold)
-                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export")
+                                .padding(.horizontal, 14).frame(height: 34).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6)).disabled(!MeetingExportCoordinator.canExport(detail.meeting)).accessibilityIdentifier("meeting-export").accessibilityLabel(UXText.text("common.exportEllipsis"))
                             Menu {
                                 if trash.canTrash(detail.meeting) {
                                     Section { trashButton(detail.meeting) }
@@ -142,6 +142,15 @@ struct LibraryView: View {
         })
         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
+        .overlay(alignment:.bottom) { MeetingExportNotice() }
+        #if DEBUG
+        .overlay(alignment:.topLeading) {
+            if RecordingFixture.enabled {
+                Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))
+                    .frame(width:1,height:1).opacity(0.01).accessibilityIdentifier("recording-notification-fixture")
+            }
+        }
+        #endif
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
         .onAppear {
@@ -228,7 +237,7 @@ struct LibraryView: View {
                             row(meeting).tag(meeting.libraryKey)
                                 .background { if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() } }
                                 .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
-                                .onTapGesture(count:2) { if meeting.state.lifecycle != .saved { navigation.open(meeting) } }
+                                .onTapGesture(count:2) { readTranscript(meeting) }
                                 .contextMenu {
                                     Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
                                         .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
@@ -254,6 +263,10 @@ struct LibraryView: View {
                 }
             }
             .listStyle(.sidebar)
+            .onKeyPress(.return) {
+                guard let selected = store.selected, !LibraryMoveCoordinator.shared.busy else { return .ignored }
+                readTranscript(selected); return .handled
+            }
             .scrollContentBackground(.hidden)
             .background(LibraryTheme.sidebar)
             .frame(minWidth: 400, maxWidth: 400)
@@ -335,6 +348,12 @@ struct LibraryView: View {
                     if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(.orange) }
+                if meeting.state.transcript == .queued || meeting.state.transcript == .running {
+                    HStack(spacing:8) {
+                        ProgressView().controlSize(.small)
+                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(LibraryTheme.dim) }
+                    }.accessibilityIdentifier("preview-transcribing")
+                }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 if let folder = meeting.received?.originalFolderName {
@@ -418,7 +437,7 @@ struct LibraryView: View {
                 }
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(.orange) }
                 recordButton(big: true)
-                Text(UXText.text("firstRun.shortcutHint", ["shortcut": RecordingRuntime.shared.shortcut.choice.glyph])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("firstRun.shortcutHint", ["shortcut": UXText.text("common.shortcut.record")])).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim)
             }
             Spacer()
             HStack(spacing: 8) {
@@ -439,7 +458,7 @@ struct LibraryView: View {
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
                 .foregroundStyle(big ? .white : Color(nsColor: .labelColor))
                 .background(big ? LibraryTheme.red : LibraryTheme.chip, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
-        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(UXText.text("common.record")).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }

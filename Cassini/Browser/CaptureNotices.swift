@@ -24,7 +24,7 @@ struct CapturePermissionNotice: View {
             Button(UXText.text(side == .me ? (CaptureSettings.microphoneAllowed ? "errors.micSilentRow.action" : "errors.micPermission.action") : "errors.othersPermission.action")) {
                 if side == .me && CaptureSettings.microphoneAllowed {
                     CaptureCollection.shared.settingsWereOpened(.me)
-                    NSWorkspace.shared.open(URL(fileURLWithPath:"/System/Library/PreferencePanes/Sound.prefPane"))
+                    NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!)
                 } else { CaptureSettings.open(side) }
             }
         }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
@@ -34,7 +34,7 @@ struct CapturePermissionNotice: View {
 struct CaptureFailureBanner: View {
     @State private var captures = CaptureCollection.shared
     var body: some View {
-        VStack(spacing:0) {
+        if captures.diskStopped || captures.recordFailed || !captures.failedMeetings.isEmpty { VStack(spacing:0) {
             if captures.diskStopped {
                 Text(UXText.text("errors.diskStopped.line")).font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading).background(LibraryTheme.amberTint)
             }
@@ -45,7 +45,7 @@ struct CaptureFailureBanner: View {
                     line(UXText.text("errors.recordFailed.meeting",["title":captures.failedMeetings[key] ?? UXText.text("library.untitled")])) { captures.retry(key) }
                 }
             }
-        }.accessibilityIdentifier("capture-failure-banner")
+        }.accessibilityElement(children:.contain).accessibilityIdentifier("capture-failure-banner") }
     }
     private func line(_ message: String, retry: @escaping () -> Void) -> some View {
         HStack(spacing:12) {

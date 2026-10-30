@@ -53,6 +53,7 @@ for name in [
     'nativeStartDoesNotReportFallback',
     'activeMoveRejectsRecording',
     'recordingFollowsRelocatedBookmark',
+    'shortcutNotifiesAfterOwnedSave',
     'offlineLibraryIsNotRecreated',
     'hangupStopsOnlyEndedMeeting',
     'unobservedFallbackExpires',

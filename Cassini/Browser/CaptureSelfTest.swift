@@ -478,7 +478,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let renamedID = try (collection.first?.snapshot.manifest.id).unwrap()
             try await wait { LibraryStore.shared.meetings.contains { $0.id == renamedID && $0.state.lifecycle == .recording && $0.folder.deletingLastPathComponent().resolvingSymlinksInPath().path == renamed.resolvingSymlinksInPath().path } }
             try require(!FileManager.default.fileExists(atPath:destination.path),"Old published path is never recreated")
-            await collection.stopAndWait()
+            let notificationCount = CaptureNotifications.savedFixtureTitles.count
+            await RecordCoordinator.shared.stopFromShortcut(notify:true).value
+            try require(CaptureNotifications.savedFixtureTitles.count == notificationCount + 1,"Shortcut reports the saved owned meeting after finalization")
+            report["shortcutNotifiesAfterOwnedSave"] = true
             report["recordingFollowsRelocatedBookmark"] = true
             stage = "offline Library"
             try FileManager.default.removeItem(at:renamed)

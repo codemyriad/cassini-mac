@@ -65,6 +65,11 @@ for relative, suffix in bundles.items():
     bundle = app / relative
     info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
     assert info['CFBundleIdentifier'] == prefix + suffix, (bundle, info['CFBundleIdentifier'])
+    if relative == '.':
+        resources = bundle/'Contents/Resources'
+        assert info.get('CFBundleIconName') == 'AppIcon', 'AppIcon must be selected in the product Info.plist'
+        assert (resources/'Assets.car').stat().st_size > 0, 'Compiled asset catalog missing'
+        assert (resources/'AppIcon.icns').read_bytes()[:4] == b'icns', 'Finder/Dock icon missing'
     signature(bundle, prefix + suffix, args.require_hardened_runtime)
 for name, suffix in tools.items():
     signature(app / 'Contents/MacOS' / name, prefix + suffix, args.require_hardened_runtime)
