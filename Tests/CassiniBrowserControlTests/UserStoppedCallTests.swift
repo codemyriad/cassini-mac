@@ -124,6 +124,15 @@ final class UserStoppedCallTests: XCTestCase {
             XCTAssertEqual(state.automaticStarts(microphone:false).count,returningURL.hasSuffix("/old") ? 0 : 1)
         }
     }
+    func testNavigationBeforeStartResultStillBindsTheRequestedOriginalURL() throws {
+        var state = state(); let peer = try ready(&state)
+        let start = try state.start(.init(peer:peer,tabID:2),microphone:false)
+        try meetings([(2,"https://meet.example/new")],&state,peer)
+        try send(["type":"result","requestId":start.id,"ok":true,"status":status("original")],&state,peer)
+        state.disconnect(peer); state.rememberUserStop(captureID:"original")
+        _ = try ready(&state,entries:[(2,"https://meet.example/new")])
+        XCTAssertEqual(state.automaticStarts(microphone:false).count,1)
+    }
     func testUserStopDuringAutomaticStopIsRememberedBeforeBusyCheck() throws {
         var state = state(); let peer = try ready(&state)
         try send(status("original"),&state,peer)

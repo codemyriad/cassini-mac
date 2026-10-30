@@ -122,13 +122,20 @@ public struct BrowserControlRegistry: Sendable {
         for capture in peer.captures + peer.interrupted {
             guard let id = capture.captureID.map({ Data($0.utf8) }) else { continue }
             if var original = captureCalls[id] { original.touched = clock(); captureCalls[id] = original; continue }
-            guard let context = knownCalls[capture.key] else { continue }
-            captureCalls[id] = context
-            if captureCalls.count > UserStoppedCalls.limit {
-                let candidates = captureCalls.filter { !retainedCaptureIDs.contains($0.key) }
-                if let oldest = (candidates.isEmpty ? captureCalls : candidates).min(by:{ $0.value.touched < $1.value.touched })?.key {
-                    captureCalls.removeValue(forKey:oldest)
-                }
+            let requestedURL = peer.pending.values.first { $0.request.action == .start && $0.request.key == capture.key }?.url
+            if let instance = peer.peer.browserInstance,
+               let url = requestedURL ?? peer.meetings.first(where:{ $0.key == capture.key })?.url {
+                bind(id,to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
+            } else if let context = knownCalls[capture.key] { bind(id,to:context) }
+        }
+    }
+    private mutating func bind(_ id: Data, to context: CallContext) {
+        guard captureCalls[id] == nil else { return }
+        captureCalls[id] = context
+        if captureCalls.count > UserStoppedCalls.limit {
+            let candidates = captureCalls.filter { !retainedCaptureIDs.contains($0.key) }
+            if let oldest = (candidates.isEmpty ? captureCalls : candidates).min(by:{ $0.value.touched < $1.value.touched })?.key {
+                captureCalls.removeValue(forKey:oldest)
             }
         }
     }
@@ -249,6 +256,10 @@ public struct BrowserControlRegistry: Sendable {
             if let status = json["status"], !status.isNull {
                 let captures = try Self.captures(status,peer:id)
                 let interrupted = try Self.interrupted(status,peer:id)
+                if pending.request.action == .start, let instance = peer.peer.browserInstance,
+                   let url = pending.url, let capture = captures.first(where:{ $0.key == pending.request.key }), let identity = capture.captureID {
+                    bind(Data(identity.utf8),to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
+                }
                 if pending.request.action == .start, ok,
                    let identity = captures.first(where:{ $0.key == pending.request.key })?.captureID {
                     // Stop can be queued before Start has published its ID.
