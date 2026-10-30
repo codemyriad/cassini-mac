@@ -521,6 +521,9 @@ private final class LibraryToolbarActionView: NSView {
     override func layout() { super.layout(); button.frame = bounds }
     func update(_ value: LibraryToolbarAction) {
         action = value.action; makeMenu = value.menu
+        // SwiftUI otherwise borrows the only child's identifier/label for its
+        // representable proxy. Keep the container distinct from the action.
+        setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
         button.spokenLabel = value.label; button.setAccessibilityIdentifier(value.identifier)
         button.toolTip = value.label; button.isEnabled = value.enabled
         let font = NSFont.systemFont(ofSize:13,weight:.semibold), red = NSColor(LibraryTheme.red)

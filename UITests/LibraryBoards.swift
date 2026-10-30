@@ -193,14 +193,18 @@ final class LibraryBoards: XCTestCase {
             app.terminate()
         }
     }
-    @MainActor func testMeetingAccessibilityAndOpeningWithoutWords() throws {
-        var app = try launch("meeting",fixture:"main")
-        var window = app.windows["cassini-library-window"]
+    @MainActor func testMeetingAccessibility() throws {
+        let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout:20),app.debugDescription)
+        let tree = XCTAttachment(string:app.debugDescription)
+        tree.name = "meeting-accessibility-tree"; tree.lifetime = .keepAlways; add(tree)
         XCTAssertEqual(window.buttons["meeting-back"].label,"Back to Library")
         XCTAssertEqual(window.buttons["toolbar-record"].label,"Record")
         XCTAssertEqual(window.buttons["meeting-export"].label,"Export…")
-        XCTAssertEqual(window.descendants(matching:.any)["meeting-more-actions"].label,"More actions")
+        let more = window.buttons.matching(identifier:"meeting-more-actions")
+        XCTAssertEqual(more.count,1,"Exactly one actionable More control")
+        XCTAssertEqual(more.element.label,"More actions")
         XCTAssertEqual(window.sliders["meeting-seek"].label,"Position")
         XCTAssertEqual(window.sliders["meeting-seek"].value as? String,"00:03:12")
         XCTAssertEqual(window.buttons["meeting-speed"].label,"Playback speed, 1×")
@@ -209,9 +213,17 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(turns.firstMatch.label.contains("00:"))
         XCTAssertEqual(window.links.count,0,"VoiceOver sees complete turns, while pointer word links stay visual")
         XCTAssertFalse(window.descendants(matching:.any)["capture-failure-banner"].exists)
-        app.terminate()
-        app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
-        defer { app.terminate() }; window = app.windows["cassini-library-window"]
+        let slider = window.sliders["meeting-seek"]
+        slider.coordinate(withNormalizedOffset:CGVector(dx:0.6,dy:0.5)).click()
+        let sought = NSPredicate { _,_ in
+            guard let value = slider.value as? String, value != "00:03:12", value.split(separator:":").count == 3 else { return false }
+            return window.staticTexts["meeting-elapsed"].value as? String == value
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:sought,object:nil)],timeout:5),.completed,"Seeking still updates playback and its accessible time")
+    }
+    @MainActor func testOpeningMeetingWithoutWords() throws {
+        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString]); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
         let weekly = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Weekly sync, product team","Weekly sync, product team")).firstMatch
         XCTAssertTrue(weekly.waitForExistence(timeout:20)); weekly.doubleClick()
         XCTAssertTrue(window.buttons["meeting-write-down"].waitForExistence(timeout:10),app.debugDescription)
