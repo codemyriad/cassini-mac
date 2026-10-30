@@ -58,3 +58,16 @@ WindowServer work and visual review of light/dark, reduced-motion, dropout,
 source-switch and concurrent-session states require separate hosted/QA evidence.
 A passing analysis-only CPU benchmark does not establish the rendering budget.
 Do not run the view probe or screenshot/app/device tests on the user's desktop.
+
+Hosted images enable Reduce Motion by default. The probe temporarily changes the
+real hosted system preference for normal-motion pacing and restores its original
+value afterwards. B also exercises the real preference in both directions through
+the production NSWorkspace notification observer. No renderer mode override or
+local environment spoofing is used. Failed lifecycle checks preserve partial
+metrics for diagnosis.
+
+The browser ownership regression holds back the first control status until after
+owned audio is stopped. CaptureCollection retains that Stop intent, ends native
+input immediately and sends the targeted browser command once the capture's exact
+control identity arrives. The normal browser flush deadline still applies while
+that identity is pending; another meeting is never used as a fallback target.

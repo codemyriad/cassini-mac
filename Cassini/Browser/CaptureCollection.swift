@@ -76,6 +76,7 @@ private final class CaptureFiles: @unchecked Sendable {
     private(set) var diskStopped = false
     private(set) var failedMeetings: [BrowserMeetingKey:String] = [:]
     @ObservationIgnored private var manualIssued = false
+    @ObservationIgnored private var browserStopSent: [UUID:BrowserMeetingKey] = [:]
     @ObservationIgnored private var manualPending: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var manualCompleted: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var manualSucceeded: Set<BrowserMeetingKey> = []
@@ -186,14 +187,14 @@ private final class CaptureFiles: @unchecked Sendable {
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
-        if let key = value.key { service.stopMeeting(key) }
+        requestBrowserStop(id)
         let task = Task { [weak self] in
             // Native inputs stop at the user's request, independently of a
             // delayed page flush. Broker finalization reuses this same drain.
             try? await value.input.stop()
             // The browser Stop flushes its pending PCM and normally finalizes
             // this owner itself. Keep admission open until that tail arrives.
-            let deadline = ProcessInfo.processInfo.systemUptime + (value.snapshot.browserAlive && value.key != nil ? 12 : 0)
+            let deadline = ProcessInfo.processInfo.systemUptime + (value.snapshot.browserAlive ? 12 : 0)
             while value.owner.snapshot.phase == .recording && ProcessInfo.processInfo.systemUptime < deadline {
                 do { try await Task.sleep(for:.milliseconds(50)) } catch { break }
             }
@@ -203,6 +204,14 @@ private final class CaptureFiles: @unchecked Sendable {
             self?.stopping.removeValue(forKey:id)
         }
         stopping[id] = task
+    }
+    private func requestBrowserStop(_ id: UUID) {
+        guard let value = captures[id], value.snapshot.manifest.source == "chromium", value.savingSinceMs != nil,
+              let key = key(for:value.captureID),
+              peers.contains(where:{ $0.id == key.peer && $0.reconciled }),
+              browserStopSent[id] != key else { return }
+        browserStopSent[id] = key
+        service.stopMeeting(key)
     }
     func stopAll() { recordGeneration += 1; requestingRecord = false; service.stopRecordings(); for id in Array(captures.keys) { stop(id) } }
     func stopAndWait() async {
@@ -314,7 +323,7 @@ private final class CaptureFiles: @unchecked Sendable {
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
             let id = snapshot.manifest.id
             if let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
-            captures.removeValue(forKey:id); announced.remove(id)
+            captures.removeValue(forKey:id); announced.remove(id); browserStopSent.removeValue(forKey:id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)
             LibraryStore.shared.refresh(affected:snapshot.directory)
@@ -344,6 +353,10 @@ private final class CaptureFiles: @unchecked Sendable {
             if let value = captures[id] {
                 let key = key(for:value.captureID) ?? value.key; captures[id]?.key = key
                 if let key { microphones[key] = value.owner.snapshot.me }
+                // A user can stop owned audio before the browser's first status
+                // identifies its control peer/tab. Keep the intent, not a stale
+                // key, and deliver it when that exact capture appears.
+                requestBrowserStop(id)
             }
         }
         announce()

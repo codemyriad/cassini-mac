@@ -20,6 +20,7 @@ import ScreenCaptureKit
         guard e["GITHUB_ACTIONS"] == "true", e["RUNNER_ENVIRONMENT"] == "github-hosted",
               let mode = argument("-SpectrogramCase"), ["A","B","C","D","E"].contains(mode) else { exit(78) }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSpectrogram-"+UUID().uuidString)
+        var report: [String:Any] = [:]
         var driver: SpectrogramProbeInputs?
         do {
             let input = try await Task.detached { try SpectrogramProbeInputs(root:root,browser:mode == "D") }.value
@@ -54,7 +55,7 @@ import ScreenCaptureKit
             let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
             let drawing = Double(controller.drawingNanoseconds)/1e9/elapsed*100
             let hidden = mode == "C" || mode == "E"
-            var report: [String:Any] = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
+            report = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
                 "input":"production RecordingSink"+(mode == "D" ? " + OwnedBrowserCapture.browserAudio" : ""),
                 "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":cpu/elapsed*100,
                 "analysisCorePercent":analysis,"drawingCorePercent":drawing,"frameCallbacks":controller.frameCallbacks,
@@ -64,11 +65,12 @@ import ScreenCaptureKit
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "viewPayloadBytes":controller.payloadBytes,"surfaceAllocationBytes":controller.surfaceBytes,
                 "surfaceRevisions":controller.surfaceRevision,"minimized":window.isMiniaturized,
+                "reducedMotion":controller.usingReducedMotion,
                 "indicatorEnabled":RecordingSpectrogram.enabled]
             if hidden {
                 try require(controller.frameCallbacks == 0 && controller.analyzedFrames == initialFrames,"hidden/off does no analysis or display callbacks")
             } else {
-                try require(controller.frameCallbacks > (mode == "A" ? 1000 : 2500) && controller.analyzedFrames > initialFrames,"production display and FFT callbacks")
+                try require(controller.frameCallbacks > (mode == "A" ? 1000 : 2500) && controller.analyzedFrames > initialFrames,"production display and FFT callbacks (callbacks=\(controller.frameCallbacks), applied=\(controller.framesApplied), FFT=\(controller.analyzedFrames-initialFrames), reduced=\(controller.usingReducedMotion))")
                 try require(controller.surfaceRevision > 50 && controller.surfaceBytes > 0,"native surfaces updated")
             }
             report["gates"] = ["analysis":analysis <= 0.2,"drawing":drawing <= (mode == "A" ? 0.3 : 0.5),
@@ -109,6 +111,17 @@ import ScreenCaptureKit
                 try require(controller.frameCallbacks > hiddenCallbacks && controller.surfaceBytes > 0,"visible views restart from fresh history")
                 report["hideShowReleasesAndRestarts"] = true
             }
+            if mode == "B" {
+                try await motion(true,controller:controller)
+                let ticks = controller.frameCallbacks, images = controller.framesApplied
+                try await Task.sleep(for:.milliseconds(160))
+                try require(controller.usingReducedMotion && controller.frameCallbacks == ticks && controller.framesApplied > images,"real Reduced Motion uses the column timer without display-link callbacks")
+                try await motion(false,controller:controller)
+                let resumed = controller.frameCallbacks
+                try await Task.sleep(for:.milliseconds(160))
+                try require(!controller.usingReducedMotion && controller.frameCallbacks > resumed,"real normal-motion setting restores the display link")
+                report["realMotionTransition"] = true
+            }
             // Freeze is exercised after measurement; layout/theme changes may
             // not clear its last image or restart its display clock.
             controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
@@ -126,10 +139,35 @@ import ScreenCaptureKit
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
             exit(0)
         } catch {
+            report["failure"] = String(describing:error)
+            if let data = try? JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) {
+                FileHandle.standardOutput.write(data+Data([10]))
+            }
             if let driver { try? await driver.finish() }
             try? FileManager.default.removeItem(at:root)
             FileHandle.standardError.write(Data("Spectrogram probe failed: \(error)\n".utf8)); exit(1)
         }
+    }
+    private static func motion(_ value: Bool, controller: RecordingSpectrogram) async throws {
+        let status = try await Task.detached(priority:.utility) {
+            let command = Process(); command.executableURL = URL(fileURLWithPath:"/usr/bin/defaults")
+            command.arguments = ["write","com.apple.universalaccess","reduceMotion","-bool",value ? "true" : "false"]
+            command.standardOutput = FileHandle.nullDevice; command.standardError = FileHandle.nullDevice
+            try command.run(); command.waitUntilExit(); return command.terminationStatus
+        }.value
+        try require(status == 0,"hosted system Reduce Motion preference write")
+        // defaults writes the real preference but does not simulate System
+        // Settings' notification. Deliver that documented notification through
+        // the production observer; the getter must still read the real setting.
+        for _ in 0..<100 {
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value {
+                NSWorkspace.shared.notificationCenter.post(name:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil)
+                try await Task.sleep(for:.milliseconds(25))
+                if controller.usingReducedMotion == value { return }
+            }
+            try await Task.sleep(for:.milliseconds(20))
+        }
+        throw Failure.check("real system Reduce Motion setting did not reach the view")
     }
     private static func darkPixels(window: NSWindow, view: NSView, name: String) async throws -> Int {
         // This API only returns content already available to the current process

@@ -363,6 +363,7 @@ import Darwin
         for (index,count) in intervals.enumerated() { sum += UInt64(count); if sum >= target { return Double(index)/10 } }
         return 51.1
     }
+    var usingReducedMotion: Bool { reduced }
     var rawHistoryBytes: Int { pixels?.bytes ?? 0 }
     var surfaceRevision: Int { pageRevision+pillRevision }
     var surfaceBytes: Int { (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0) }

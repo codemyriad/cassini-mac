@@ -101,7 +101,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         if interrupted { packet["interrupted"] = [entry] }
         return packet
     }
-    func performNext() async throws -> JSON {
+    func performNext(completing: Bool = true) async throws -> JSON {
         let command = try await control.read()
         guard let request = command["requestId"]?.string, let action = command["action"]?.string else { throw CocoaError(.fileReadCorruptFile) }
         try? FileHandle.standardError.write(contentsOf:Data("Capture fixture command: \(title) \(action) \(request)\n".utf8))
@@ -122,10 +122,14 @@ final class CaptureProbeProcess: @unchecked Sendable {
         } else {
             if let audio { _ = try await audio.request(["type":"stop"]); await audio.end(); self.audio = nil }
         }
+        if completing { try await complete(command) }
+        return command
+    }
+    func complete(_ command: JSON) async throws {
+        guard let request = command["requestId"]?.string else { throw CocoaError(.fileReadCorruptFile) }
         let snapshot = status()
         try await control.send(["type":"result","requestId":request,"ok":true,"status":snapshot])
         try await control.send(snapshot)
-        return command
     }
     func emit() async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
@@ -366,6 +370,22 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["failedRetryDoesNotInheritStoppedSuccess"] = true
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            stage = "Stop before the first control status"
+            try await one.meetings(true)
+            try await wait { collection.hasCalls }
+            try await collection.record()
+            let pendingStart = try await one.performNext(completing:false)
+            try await wait { collection.captures.count == 1 }
+            let notYetLinked = try collection.captures.values.first.unwrap()
+            try require(notYetLinked.key == nil,"The private native audio owner precedes its first control status")
+            collection.stop(notYetLinked.snapshot.manifest.id)
+            try await one.complete(pendingStart)
+            let deferredStop = try await one.performNext()
+            try require(deferredStop["action"]?.string == "stop","Early Stop is routed after that capture's first status")
+            await collection.stopAndWait()
+            try await wait { collection.captures.isEmpty }
+            try await one.meetings(false); try await wait { !collection.hasCalls }
+            report["stopBeforeControlStatusTargetsTheSameMeeting"] = true
             stage = "expire fallback whose browser never returns"
             try await one.meetings(true)
             try await wait { collection.hasCalls }
