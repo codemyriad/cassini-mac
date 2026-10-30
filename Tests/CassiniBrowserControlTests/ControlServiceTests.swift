@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import XCTest
 import Foundation
+import Darwin
 import CassiniKit
 @testable import CassiniBrowserControl
 
@@ -17,6 +18,30 @@ private final class Admission: @unchecked Sendable {
     func read() -> Bool { lock.withLock { allowed } }
 }
 final class ControlServiceTests: XCTestCase {
+    func testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let bound = expectation(description:"First status binds before audio registration")
+        let gone = expectation(description:"Control connection gone")
+        bound.assertForOverFulfill = false; gone.assertForOverFulfill = false
+        let service = BrowserControlService(changed:{ peers in
+            if peers.contains(where:{ $0.captures.first?.captureID == "capture" }) { bound.fulfill() }
+            if peers.isEmpty { gone.fulfill() }
+        },completed:{ _,_ in })
+        try service.start(root:root); defer { service.stop() }
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(try XCTUnwrap(first)); try send(status(true),try XCTUnwrap(first))
+        wait(for:[bound],timeout:3)
+        first = nil
+        wait(for:[gone],timeout:3)
+        service.rememberUserStop(captureID:"capture",key:nil)
+        service.setAutoRecord(true,microphone:false)
+        let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(second); try send(status(false),second)
+        XCTAssertThrowsError(try receive(second,seconds:0.3))
+        try send(["type":"meetings","meetings":[["tabId":2,"title":"New call","url":"https://meet.example/new","sourceCount":2]]],second)
+        XCTAssertEqual(try receive(second)["action"]?.string,"start")
+    }
     func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let admission = Admission()

@@ -62,9 +62,12 @@ public final class BrowserControlService: @unchecked Sendable {
             catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
-    public func stopMeeting(_ meeting: BrowserMeetingKey) {
+    public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
+        queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
+    }
+    public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) {
         queue.async { [self] in
-            if let request = try? registry.stop(meeting) { send([request]) }
+            if let request = try? registry.stop(meeting,captureID:captureID,userInitiated:userInitiated) { send([request]) }
             publish()
         }
     }
@@ -130,6 +133,7 @@ public final class BrowserControlService: @unchecked Sendable {
         publish()
     }
     private func expire() {
+        registry.expireRememberedStops()
         let now = DispatchTime.now().uptimeNanoseconds
         let peers = Set(deadlines.values.filter { $0.1 <= now }.map { $0.0.key.peer })
         // An unacknowledged Start may already be recording. Reconnect reconciles

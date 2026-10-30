@@ -128,6 +128,7 @@
     "scripts/test-browser-setup-spike.py",
     "Cassini/Cassini.entitlements",
     "Package.swift",
-    ".github/workflows/ux-browser-setup.yml"
+    ".github/workflows/ux-browser-setup.yml",
+    "scripts/test-browser-background.mjs"
   ]
 }

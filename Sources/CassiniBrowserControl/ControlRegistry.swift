@@ -26,6 +26,7 @@ public struct BrowserCaptureStatus: Equatable, Sendable {
 public struct BrowserControlPeerSnapshot: Sendable {
     public let id: UUID
     public let browser: String?
+    public let browserInstance: BrowserInstance?
     public let reconciled: Bool
     public let independent: Bool
     public let meetings: [BrowserMeeting]
@@ -56,6 +57,7 @@ public struct BrowserControlRegistry: Sendable {
         let statusRevision: UInt64
         let order: UInt64
         let stopCaptureID: String?
+        let url: String?
     }
     private struct PeerState: Sendable {
         let peer: BrowserPeer
@@ -68,14 +70,80 @@ public struct BrowserControlRegistry: Sendable {
         var pending: [String:Pending] = [:]
         var autoAttempted: Set<Int> = []
         var requestedStops: Set<Int> = []
+        var connectedAt: TimeInterval = 0
+        var connectionOrder: UInt64 = 0
+        var superseded = false
     }
+    private struct CallContext: Sendable { let call: BrowserCallIdentity; var touched: TimeInterval }
+    private var stoppedCalls = UserStoppedCalls()
+    private var knownCalls: [BrowserMeetingKey:CallContext] = [:]
+    private var captureCalls: [Data:CallContext] = [:]
+    private let clock: @Sendable () -> TimeInterval
+    private let instanceAlive: @Sendable (BrowserInstance) -> Bool?
+    private var connectionOrder: UInt64 = 0
     private var peers: [UUID:PeerState] = [:]
     private var retainedCaptureIDs: Set<Data> = []
     public private(set) var outcomes: [BrowserControlOutcome] = []
-    public init() {}
+    public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                instanceAlive: @escaping @Sendable (BrowserInstance) -> Bool? = { $0.isAlive }) {
+        self.clock = clock; self.instanceAlive = instanceAlive
+    }
+    var rememberedStopCount: Int { stoppedCalls.count }
+    private func call(_ meeting: BrowserMeeting, peer: PeerState) -> BrowserCallIdentity? {
+        peer.peer.browserInstance.map { .init(instance:$0,tabID:meeting.key.tabID,url:meeting.url) }
+    }
+    private func newestOwner(_ peer: PeerState, tab: Int) -> Bool {
+        guard !peer.superseded else { return false }
+        guard let instance = peer.peer.browserInstance else { return true }
+        return !peers.values.contains { other in
+            other.peer.browserInstance == instance && other.connectionOrder > peer.connectionOrder &&
+                other.meetings.contains(where:{ $0.key.tabID == tab })
+        }
+    }
+    /// Runs before replacing inventories, including the first inventory after
+    /// reconnect. Only the old live inventory can protect an otherwise old Stop.
+    public mutating func expireRememberedStops() {
+        let now = clock()
+        let live = Set(peers.values.flatMap { peer in peer.meetings.filter { newestOwner(peer,tab:$0.key.tabID) }.compactMap { call($0,peer:peer) } })
+        stoppedCalls.expire(now:now,priorLive:live,alive:instanceAlive)
+        knownCalls = knownCalls.filter { now-$0.value.touched < UserStoppedCalls.retention || live.contains($0.value.call) }
+        captureCalls = captureCalls.filter { retainedCaptureIDs.contains($0.key) || now-$0.value.touched < UserStoppedCalls.retention }
+        for id in retainedCaptureIDs {
+            if var context = captureCalls[id] { context.touched = now; captureCalls[id] = context }
+        }
+    }
+    private mutating func rememberContext(_ context: CallContext, key: BrowserMeetingKey) {
+        knownCalls[key] = context
+        if knownCalls.count > UserStoppedCalls.limit, let oldest = knownCalls.min(by:{ $0.value.touched < $1.value.touched })?.key {
+            knownCalls.removeValue(forKey:oldest)
+        }
+    }
+    private mutating func bindCaptures(_ peer: PeerState) {
+        for capture in peer.captures + peer.interrupted {
+            guard let id = capture.captureID.map({ Data($0.utf8) }) else { continue }
+            if var original = captureCalls[id] { original.touched = clock(); captureCalls[id] = original; continue }
+            guard let context = knownCalls[capture.key] else { continue }
+            captureCalls[id] = context
+            if captureCalls.count > UserStoppedCalls.limit {
+                let candidates = captureCalls.filter { !retainedCaptureIDs.contains($0.key) }
+                if let oldest = (candidates.isEmpty ? captureCalls : candidates).min(by:{ $0.value.touched < $1.value.touched })?.key {
+                    captureCalls.removeValue(forKey:oldest)
+                }
+            }
+        }
+    }
+    /// Capture IDs bind to their original address as soon as status reports
+    /// them, even before the audio peer/owned folder has registered.
+    public mutating func rememberUserStop(key: BrowserMeetingKey? = nil, captureID: String? = nil) {
+        expireRememberedStops()
+        let context: CallContext?
+        if let captureID { context = captureCalls[Data(captureID.utf8)] }
+        else { context = key.flatMap { knownCalls[$0] } }
+        if let context { stoppedCalls.remember(context.call,now:clock()) }
+    }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted)
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted)
         }
     }
     public mutating func setRetainedCaptureIDs(_ ids: [String]) {
@@ -92,10 +160,13 @@ public struct BrowserControlRegistry: Sendable {
         capture.captureID.map { ids.contains(Data($0.utf8)) } ?? false
     }
     public mutating func connect(_ peer: BrowserPeer) throws {
+        expireRememberedStops()
         guard peer.role == .control, peers[peer.id] == nil, peers.count < 128 else { throw BrowserControlStateError.unavailable }
-        peers[peer.id] = PeerState(peer:peer)
+        connectionOrder &+= 1
+        peers[peer.id] = PeerState(peer:peer,connectedAt:clock(),connectionOrder:connectionOrder)
     }
     public mutating func disconnect(_ id: UUID) {
+        expireRememberedStops()
         guard let peer = peers.removeValue(forKey:id) else { return }
         for pending in peer.pending.values {
             appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil))
@@ -104,6 +175,7 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func receive(_ bytes: Data, from id: UUID) throws {
         let json = try JSONParser.parse(FrameIO.normalized(bytes))
         guard var peer = peers[id], let type = json["type"]?.string else { throw BrowserControlStateError.malformed }
+        expireRememberedStops()
         switch type {
         case "hello":
             guard !peer.hello, json["version"]?.int == 1 else { throw BrowserControlStateError.malformed }
@@ -128,6 +200,31 @@ public struct BrowserControlRegistry: Sendable {
                     heard = boolean
                 } else { heard = false }
                 return .init(key:.init(peer:id,tabID:tab),title:title,url:url,sourceCount:try Self.integer(value["sourceCount"],maximum:4096),heard:heard)
+            }
+            let previous = Dictionary(uniqueKeysWithValues:peer.meetings.map { ($0.key.tabID,$0.url) })
+            if let instance = peer.peer.browserInstance {
+                let tabs = Set(meetings.map { $0.key.tabID })
+                for otherID in Array(peers.keys) {
+                    guard var other = peers[otherID], other.peer.browserInstance == instance,
+                          other.connectionOrder < peer.connectionOrder,
+                          other.meetings.contains(where:{ tabs.contains($0.key.tabID) }) else { continue }
+                    // Two profiles have disjoint tabs. An overlapping newer
+                    // connection supersedes this profile's draining old link;
+                    // that link must not regain authority on another reconnect.
+                    other.superseded = true; peers[otherID] = other
+                }
+            }
+            for meeting in meetings {
+                if let old = previous[meeting.key.tabID], Data(old.utf8) != Data(meeting.url.utf8) {
+                    peer.autoAttempted.remove(meeting.key.tabID)
+                    peer.requestedStops.remove(meeting.key.tabID)
+                }
+                if let identity = call(meeting,peer:peer) {
+                    if newestOwner(peer,tab:meeting.key.tabID) {
+                        stoppedCalls.update(identity,previouslyPresent:previous[meeting.key.tabID] != nil,connectedAt:peer.connectedAt,now:clock())
+                    }
+                    rememberContext(.init(call:identity,touched:clock()),key:meeting.key)
+                }
             }
             peer.meetings = meetings
             peer.autoAttempted.formIntersection(Set(meetings.filter { $0.sourceCount > 0 }.map { $0.key.tabID }))
@@ -161,7 +258,7 @@ public struct BrowserControlRegistry: Sendable {
                         guard let stop = peer.pending[id],stop.request.action == .stop,
                               stop.request.key == pending.request.key,stop.order > pending.order,
                               stop.stopCaptureID == nil else { continue }
-                        peer.pending[id] = .init(request:stop.request,statusRevision:stop.statusRevision,order:stop.order,stopCaptureID:identity)
+                        peer.pending[id] = .init(request:stop.request,statusRevision:stop.statusRevision,order:stop.order,stopCaptureID:identity,url:stop.url)
                     }
                 }
                 // An asynchronous command result may carry an older replacement
@@ -177,6 +274,12 @@ public struct BrowserControlRegistry: Sendable {
                 }
             }
             peer.pending.removeValue(forKey:requestID)
+            if let original = pending.url, let current = peer.meetings.first(where:{ $0.key == pending.request.key })?.url,
+               Data(original.utf8) != Data(current.utf8) {
+                // An older command finishing after navigation must not keep
+                // its tab-level attempt bit on the new meeting address.
+                peer.autoAttempted.remove(pending.request.key.tabID)
+            }
             if pending.request.action == .stop && ok {
                 peer.requestedStops.remove(pending.request.key.tabID)
                 // A still-recording full status may have advanced the baseline
@@ -196,6 +299,7 @@ public struct BrowserControlRegistry: Sendable {
         default: return // Forward-compatible messages are not management actions.
         }
         peers[id] = peer
+        bindCaptures(peer)
     }
     public mutating func start(_ key: BrowserMeetingKey, microphone: Bool) throws -> BrowserControlRequest {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
@@ -207,16 +311,20 @@ public struct BrowserControlRegistry: Sendable {
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil)
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url)
         peer.autoAttempted.insert(key.tabID)
+        if let context = knownCalls[key] { stoppedCalls.forget(context.call) } // Explicit Record can override Stop.
         peers[key.peer] = peer
         return request
     }
     /// An explicit Stop suppresses auto-restart until discovery says this call
     /// ended. It may cancel a pending Start; it never targets another profile.
     /// nil means already pending or deferred until drainStops() frees capacity.
-    public mutating func stop(_ key: BrowserMeetingKey) throws -> BrowserControlRequest? {
+    public mutating func stop(_ key: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) throws -> BrowserControlRequest? {
+        if userInitiated { rememberUserStop(key:key,captureID:captureID) }
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
+        if let captureID, let original = captureCalls[Data(captureID.utf8)],
+           knownCalls[key]?.call != original.call { return nil } // An old capture cannot stop the tab's new call.
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         peer.autoAttempted.insert(key.tabID)
         peer.requestedStops.insert(key.tabID)
@@ -225,16 +333,19 @@ public struct BrowserControlRegistry: Sendable {
         guard peer.pending.count < 128 else { peers[key.peer] = peer; return nil }
         peer.commandOrder &+= 1
         let target = (peer.captures + peer.interrupted).first { $0.key == key }?.captureID
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:target)
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:target,url:peer.meetings.first(where:{ $0.key == key })?.url)
         peers[key.peer] = peer
         return request
     }
     /// Called after every replacement snapshot and when auto-record is enabled.
     /// Reconciliation and the per-call attempt set prevent reconnect/retry loops.
     public mutating func automaticStarts(microphone: Bool) -> [BrowserControlRequest] {
+        expireRememberedStops()
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where peer.reconciled && peer.independent {
             for meeting in peer.meetings where meeting.sourceCount > 0 && (!peer.callEvidence || meeting.heard) && !peer.autoAttempted.contains(meeting.key.tabID) && !peer.requestedStops.contains(meeting.key.tabID) {
+                guard newestOwner(peer,tab:meeting.key.tabID) else { continue }
+                if let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { continue }
                 keys.append(meeting.key)
             }
         }
@@ -246,21 +357,24 @@ public struct BrowserControlRegistry: Sendable {
         let keys = snapshots.filter { $0.reconciled && $0.independent }.flatMap { $0.meetings.filter { $0.sourceCount > 0 }.map(\.key) }
         return keys.compactMap { try? start($0,microphone:choices[$0] ?? microphone) }
     }
-    public mutating func stopAll() -> [BrowserControlRequest] {
+    public mutating func stopAll(userInitiated: Bool = true) -> [BrowserControlRequest] {
+        if userInitiated {
+            for id in retainedCaptureIDs { rememberUserStop(captureID:String(data:id,encoding:.utf8)) }
+        }
         var keys = Set<BrowserMeetingKey>()
         for peer in peers.values {
             keys.formUnion(peer.captures.map(\.key))
             keys.formUnion(peer.pending.values.map { $0.request.key })
             keys.formUnion(peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) })
         }
-        return keys.sorted(by:Self.ordered).compactMap { try? stop($0) }
+        return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:userInitiated) }
     }
     /// Drain after results/timeouts free space. Stop intent survives a full
     /// command window instead of being lost when many starts are pending.
     public mutating func drainStops() -> [BrowserControlRequest] {
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values { keys += peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) } }
-        return keys.sorted(by:Self.ordered).compactMap { try? stop($0) }
+        return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:false) }
     }
     private static func ordered(_ a: BrowserMeetingKey, _ b: BrowserMeetingKey) -> Bool {
         a.peer == b.peer ? a.tabID < b.tabID : a.peer.uuidString < b.peer.uuidString
