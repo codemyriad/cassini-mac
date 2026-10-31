@@ -143,6 +143,10 @@ public struct BrowserControlRegistry: Sendable {
                 ($0.lineage == nil || $0.lineage == peer.lineage)
         }
     }
+    private func replacementFence(_ peer: PeerState) -> UInt64? {
+        guard let instance = peer.peer.browserInstance else { return nil }
+        return peers.values.filter { $0.peer.browserInstance == instance && $0.connectionOrder > peer.connectionOrder }.map(\.connectionOrder).max()
+    }
     private mutating func identifyLineage(_ peer: inout PeerState, tabs: Set<Int>) {
         guard let instance = peer.peer.browserInstance, !tabs.isEmpty else { return }
         let related = peers.values.compactMap(LineageHistory.init).filter {
@@ -153,6 +157,8 @@ public struct BrowserControlRegistry: Sendable {
         // A partial inventory can reveal the link only later. Merge its earlier
         // provisional lineage with the observed owner rather than losing that
         // connection's history when the overlapping tab finally arrives.
+        let proofOrders = related.map(\.order) + [peer.connectionOrder]
+        func proof(after order: UInt64) -> UInt64? { proofOrders.filter { $0 > order }.min() }
         var lineages = Set(related.map(\.lineage))
         if let lineage = peer.lineage { lineages.insert(lineage) }
         let lineage = related.min(by:{ $0.order < $1.order })?.lineage ?? peer.lineage ?? peer.peer.id
@@ -163,7 +169,7 @@ public struct BrowserControlRegistry: Sendable {
             other.lineage = lineage
             if other.connectionOrder < peer.connectionOrder { other.superseded = true }
             else if other.connectionOrder > peer.connectionOrder { peer.superseded = true }
-            stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:other.superseded,now:clock())
+            stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:other.superseded && proof(after:other.connectionOrder) != nil,now:clock(),provingOrder:proof(after:other.connectionOrder) ?? 0)
             peers[id] = other
         }
         for id in Array(disconnectedLineages.keys) {
@@ -171,11 +177,11 @@ public struct BrowserControlRegistry: Sendable {
                   lineages.contains(other.lineage) else { continue }
             other.lineage = lineage
             if other.order > peer.connectionOrder { peer.superseded = true }
-            stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:other.order < peer.connectionOrder,now:clock())
+            stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:proof(after:other.order) != nil,now:clock(),provingOrder:proof(after:other.order) ?? 0)
             disconnectedLineages[id] = other
         }
         pruneDisconnectedLineages()
-        stoppedCalls.resolveLineage(.init(connection:peer.peer.id,lineage:lineage),superseded:peer.superseded,now:clock())
+        stoppedCalls.resolveLineage(.init(connection:peer.peer.id,lineage:lineage),superseded:peer.superseded && proof(after:peer.connectionOrder) != nil,now:clock(),provingOrder:proof(after:peer.connectionOrder) ?? 0)
         for tab in tabs { peer.observedTabs[tab] = clock() }
         // At most100 incoming tabs and256 historical tabs per live connection;
         // preserve the current inventory when fake/real clock values tie.
@@ -353,7 +359,8 @@ public struct BrowserControlRegistry: Sendable {
                 }
                 if let identity = call(meeting,peer:peer) {
                     if newestOwner(peer,tab:meeting.key.tabID) {
-                        stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock(),retiredBy:.init(connection:peer.peer.id,lineage:peer.lineage ?? peer.peer.id))
+                        let fence = replacementFence(peer)
+                        stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock(),retiredBy:fence.map { _ in .init(connection:peer.peer.id,lineage:peer.lineage ?? peer.peer.id) },maximumReplacementOrder:fence ?? 0)
                     }
                     rememberContext(.init(call:identity,touched:clock()),key:meeting.key)
                 }

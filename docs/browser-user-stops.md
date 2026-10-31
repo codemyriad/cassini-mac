@@ -80,3 +80,8 @@ never appear as live peers or discoveries. There are at most256 summaries with
 at most256 tab IDs each, inherited from the existing bounds. Resolving, expiring
 or explicitly overriding the tombstone releases its summary. The original
 10-minute expiry and shared256-entry Stop/tombstone budget still apply.
+
+Rollback also keeps the connection-order boundary from when the retirement
+was observed. Only a replacement already connected at that point can prove
+the old report stale. An ordinary later reconnect after an authoritative
+navigation must not resurrect the previous call's Stop.
