@@ -108,8 +108,12 @@ jobs:
       - name: Compile attribution probe with the exact production Release SDK
         run: |
           python3 candidate/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release candidate/probe
-      - name: Attribute main-thread drawing to texture publication and translation
-        run: python3 candidate/scripts/spectrogram-ablation.py candidate/probe experiment
+      - name: Attribute CPU counter and AppKit backing ownership costs
+        run: |
+          mkdir -p experiment
+          swiftc -O candidate/Spikes/Spectrogram/CPUClock.swift -o candidate/clock-probe
+          candidate/clock-probe > experiment/clock-cost.json
+          python3 candidate/scripts/spectrogram-ablation.py candidate/probe experiment
       - uses: actions/upload-artifact@v5
         if: always()
         with:

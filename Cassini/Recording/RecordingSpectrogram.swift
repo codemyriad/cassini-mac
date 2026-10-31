@@ -22,6 +22,11 @@ import Darwin
         return false
         #endif
     }()
+    #if SPECTROGRAM_PROBE
+    private static let cpuCounters = measuring && ProcessInfo.processInfo.environment["CASSINI_SPECTRO_COUNTERS"] != "0"
+    #else
+    private static let cpuCounters = measuring
+    #endif
     let engine: SpectrogramSession
     let originUptime: TimeInterval
     private let observers: RecordedPCMObservers?
@@ -98,7 +103,7 @@ import Darwin
 
     init(originUptime: TimeInterval, observers: RecordedPCMObservers? = nil, me: Bool = true, others: Bool = true) {
         self.observers = observers
-        self.originUptime = originUptime; engine = .init(originUptime:originUptime,measureCPU:Self.measuring)
+        self.originUptime = originUptime; engine = .init(originUptime:originUptime,measureCPU:Self.cpuCounters)
         selections = .init(me:me,others:others)
         #if DEBUG
         if Self.measuring { intervals = [UInt16](repeating:0,count:512) }
@@ -257,8 +262,8 @@ import Darwin
         requestFrame(timestamp:CACurrentMediaTime())
     }
     private func requestFrame(timestamp: Double) {
-        let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-        defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
+        let cpuStart = Self.cpuCounters ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
+        defer { if Self.cpuCounters { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
         // Read already-analyzed columns in the display-link callback. No
         // utility→main handoff or second run-loop wake is needed per frame.
         let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
@@ -443,10 +448,11 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     // These switches exist solely in this lab probe and never in app builds.
     #if SPECTROGRAM_PROBE
     private static let ablation = ProcessInfo.processInfo.environment["CASSINI_SPECTRO_ABLATION"] ?? "full"
+    private static let hostedLayer = ProcessInfo.processInfo.environment["CASSINI_SPECTRO_HOSTING"] == "1"
     private static var publishesContents: Bool { ablation != "no-contents" && ablation != "none" }
     private static var translates: Bool { ablation != "no-scroll" && ablation != "none" }
     #else
-    private static let publishesContents = true, translates = true
+    private static let publishesContents = true, translates = true, hostedLayer = false
     #endif
     let registrationID = UUID()
     let style: SpectrogramStripStyle
@@ -460,6 +466,9 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
+        // A hosted root omits AppKit's backing-store ownership. This remains a
+        // measured lab alternative; all texture, clock and frame work is equal.
+        if Self.hostedLayer { layer = CALayer() }
         wantsLayer = true; setAccessibilityElement(false)
         // Disable implicit actions only on our layers. Let AppKit coalesce the
         // implicit transaction at its normal frame boundary, instead of forcing
