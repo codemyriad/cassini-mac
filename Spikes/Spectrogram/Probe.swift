@@ -5,6 +5,7 @@ import AVFoundation
 import CassiniRecording
 import CassiniBrowserControl
 import CassiniSpectrogram
+import CassiniKit
 import Darwin
 import ScreenCaptureKit
 
@@ -135,13 +136,37 @@ import ScreenCaptureKit
                 report["hideShowReleasesAndRestarts"] = true
             }
             if mode == "B" {
+                // State pictures use the production selection timeline, PCM
+                // discontinuities, palette and freeze path after measurement.
+                controller.appearance(dark:false,silent:true)
+                _ = try await darkPixels(window:window,view:strips[1],name:"B-silent-warning")
+                let now = { (ProcessInfo.processInfo.systemUptime-input.origin)*1000 }
+                var events=[CaptureEvent(atMs:0,type:"selection",reason:"start",me:true,others:true),
+                    CaptureEvent(atMs:now(),type:"selection",reason:"user",me:true,others:false)]
+                controller.update(events:events)
+                try await Task.sleep(for:.milliseconds(4300)) // replace the4s history
+                let dots=try await darkPixels(window:window,view:strips[2],name:"B-others-not-recorded")
+                try require((60...130).contains(dots),"not-recorded Others is a dotted line (\(dots) pixels)")
+                events.append(.init(atMs:now(),type:"selection",reason:"user",me:true,others:true))
+                controller.update(events:events);controller.appearance(dark:false,silent:false)
+                input.resumeSound()
+                try await Task.sleep(for:.milliseconds(4300))
+                input.dropOthers(true)
+                try await Task.sleep(for:.seconds(2))
+                input.dropOthers(false)
+                try await Task.sleep(for:.milliseconds(500))
+                _ = try await darkPixels(window:window,view:strips[2],name:"B-dropout-and-return")
+                window.appearance=NSAppearance(named:.darkAqua);controller.appearance(dark:true,silent:false)
+                _ = try await darkPixels(window:window,view:strips[2],name:"B-recording-dark")
+                report["scriptedStates"] = ["silentWarning","othersNotRecorded","dropoutAndReturn","dark"]
                 try await motion(true,controller:controller)
                 let ticks = controller.frameCallbacks, images = controller.framesApplied
-                try await Task.sleep(for:.milliseconds(160))
+                try await wait("Reduced Motion column update") { controller.framesApplied > images }
                 try require(controller.usingReducedMotion && controller.frameCallbacks == ticks && controller.framesApplied > images,"real Reduced Motion uses the column timer without display-link callbacks")
+                _ = try await darkPixels(window:window,view:strips[2],name:"B-reduced-motion")
                 try await motion(false,controller:controller)
                 let resumed = controller.frameCallbacks
-                try await Task.sleep(for:.milliseconds(160))
+                try await wait("Normal-motion display link resumes") { controller.frameCallbacks > resumed }
                 try require(!controller.usingReducedMotion && controller.frameCallbacks > resumed,"real normal-motion setting restores the display link")
                 report["realMotionTransition"] = true
             }
@@ -154,6 +179,7 @@ import ScreenCaptureKit
             try require(controller.frameCallbacks == stoppedCallbacks,"Stop disconnects the frame clock")
             if !hidden { try require(controller.surfaceRevision >= stoppedRevision && strips.allSatisfy { $0.layer?.opacity == 0.45 },"Stop freezes and fades visible strips") }
             report["stopDisconnectsAndFreezes"] = true
+            if mode == "B" { _ = try await darkPixels(window:window,view:strips[2],name:"B-stopping") }
             strips.forEach { $0.detach() }; window.orderOut(nil)
             try require(controller.surfaceBytes == 0 && controller.rawHistoryBytes == 0,"detaching the last stopped view releases its frozen native surfaces and raw history")
             report["detachReleasesSurfaces"] = true
@@ -169,6 +195,13 @@ import ScreenCaptureKit
             if let driver { try? await driver.finish() }
             try? FileManager.default.removeItem(at:root)
             FileHandle.standardError.write(Data("Spectrogram probe failed: \(error)\n".utf8)); exit(1)
+        }
+    }
+    private static func wait(_ description:String,until condition:() -> Bool) async throws {
+        let deadline=ContinuousClock.now.advanced(by:.seconds(3))
+        while !condition() {
+            guard ContinuousClock.now < deadline else { throw Failure.check(description) }
+            try await Task.sleep(for:.milliseconds(20))
         }
     }
     private static func motion(_ value: Bool, controller: RecordingSpectrogram) async throws {
@@ -259,6 +292,7 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private var timer: DispatchSourceTimer?
     private var buffers: [AVAudioPCMBuffer] = [], pcm: [Data] = []
     private var frames = 0, sequence = 0
+    private var othersMissing = false
     private let chunk: Int
     init(root: URL, browser: Bool) throws {
         chunk = browser ? 8192 : 4096
@@ -290,7 +324,8 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private func emit() {
         let offset = Double(frames)/48, host = AVAudioTime.hostTime(forSeconds:origin+offset/1000)
         sink.receive(buffers[0],hostTime:host,id:"mic",label:"Mic",kind:"microphone")
-        if let owner {
+        if othersMissing { /* Advance the clock without PCM: a genuine source gap. */ }
+        else if let owner {
             do { for n in 0..<4 { try owner.browserAudio(id:"remote-\(n)",sequence:sequence,offsetMs:offset,pcm:pcm[n+1]) } }
             catch { errorLock.withLock { failure = String(describing:error) } }
         } else { sink.receive(buffers[1],hostTime:host,id:"system",label:"System",kind:"system") }
@@ -301,6 +336,15 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             for index in 0..<(microphoneOnly ? 1 : buffers.count) {
                 for n in 0..<chunk { buffers[index].floatChannelData![0][n] = 0 }
                 pcm[index] = Data(repeating:0,count:pcm[index].count)
+            }
+        }
+    }
+    func dropOthers(_ value:Bool) { queue.sync { othersMissing=value } }
+    func resumeSound() {
+        queue.sync {
+            for (track,buffer) in buffers.enumerated() {
+                for n in 0..<chunk { buffer.floatChannelData![0][n] = Float(0.05/Double(track+1)*sin(2*Double.pi*Double(400+track*300)*Double(n)/48000)) }
+                pcm[track]=(0..<chunk).map { Int16((buffer.floatChannelData![0][$0]*32767).rounded()).littleEndian }.withUnsafeBytes { Data($0) }
             }
         }
     }

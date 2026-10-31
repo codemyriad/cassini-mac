@@ -44,7 +44,9 @@ It feeds generated PCM through the production sink/file owner and exercises the
 production native renderer for 60 seconds per A–E case. Outputs include per-stage
 thread CPU, process CPU/delta fromE, frame intervals, late/drop counters, actual
 surface allocation, bounded payload bytes, top logs and a Time Profiler trace.
-CPU/pacing/late/drop budgets are asserted, not relaxed for the fixture. After
+CPU/pacing/late/drop budgets are asserted, not relaxed for the fixture. Drawing
+CPU includes the whole main thread, including implicit Core Animation commits;
+utility CPU includes delay, release and mailbox work as well as FFT/PCM. After
 measurement, current-process-only ScreenCaptureKit screenshots assert that visible
 ink disappears after sound becomes digital silence for a whole history window.
 This tests repeated GPU-visible updates of the same surface, not just ring counters;
@@ -61,10 +63,22 @@ Do not run the view probe or screenshot/app/device tests on the user's desktop.
 
 Hosted images enable Reduce Motion by default. The probe temporarily changes the
 real hosted system preference for normal-motion pacing and restores its original
-value afterwards. B also exercises the real preference in both directions through
-the production NSWorkspace notification observer. No renderer mode override or
-local environment spoofing is used. Failed lifecycle checks preserve partial
-metrics for diagnosis.
+value afterwards. B also exercises the real preference in both directions: a hosted XCTest driver
+changes the actual System Settings control and restores focus to the probe. The
+probe requires a real NSWorkspace notification, its real getter and a renderer
+clock transition. There is no synthetic notification or renderer-mode override.
+Failed lifecycle checks preserve partial metrics for diagnosis.
+
+After timing, B retains own-window images for the silent warning, dotted Others
+off, actual PCM dropout/return, dark appearance, Reduced Motion and stopping.
+The dropout advances the source clock while withholding callbacks, so the actual
+recorder and analysis history see the discontinuity.
+
+A separate invocation with MallocStackLogging captures live allocation sizes and
+backtraces before and after detaching views, using heap and malloc_history. It
+does not run during CPU measurement and saves no heap contents or raw memgraph.
+These records supplement the payload counter; they are not a payload-only
+claim that full view allocations meet128KB.
 
 The browser ownership regression holds back the first control status until after
 owned audio is stopped. CaptureCollection retains that Stop intent, ends native

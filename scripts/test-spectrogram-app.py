@@ -44,7 +44,7 @@ def measure(app: Path, output: Path):
                                               '--attach', str(process.pid), '--time-limit', '60s',
                                               '--output', str(output/'B-TimeProfiler.trace')],
                                              stdout=stderr, stderr=subprocess.STDOUT)
-                stdout, _ = process.communicate(timeout=170 if case == 'B' else 85)
+                stdout, _ = process.communicate(timeout=200 if case == 'B' else 85)
             finally:
                 if process.poll() is None:
                     process.kill()
