@@ -58,7 +58,7 @@ public enum MeetingFileExporter {
         }
         if shouldCancel() { throw CancellationError() }
         let complete = meeting.state.transcript == .done
-        let items = complete ? meeting.transcriptItems.filter { !$0.echo } : []
+        let items = complete ? meeting.transcriptItems : []
         let language = complete ? (meeting.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language ?? "auto") : "auto"
         struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]

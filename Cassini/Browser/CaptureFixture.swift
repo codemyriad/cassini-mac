@@ -9,6 +9,8 @@ import CassiniBrowserControl
     nonisolated static var enabled: Bool {
         RecordingFixture.enabled && RecordingFixture.root != nil && (CommandLine.arguments.contains("--browser-capture-self-test") || CommandLine.arguments.contains("--browser-return-self-test"))
     }
+    static var beforeBrowserLoss: (@MainActor () async -> Void)?
+    static var systemAuthorizationCompletions = 0
     static var microphoneAllowed = true
     static var microphoneStartsAllowed = true
     static var silentMicrophone = false
@@ -30,6 +32,7 @@ import CassiniBrowserControl
     private var frames: UInt64 = 0
     init(_ side: CaptureSide) { self.side = side }
     func authorize() async throws {
+        defer { if side == .others { CaptureFixture.systemAuthorizationCompletions += 1 } }
         if side == .me && !CaptureFixture.microphoneAllowed { throw CocoaError(.fileReadNoPermission) }
         if side == .others && CaptureFixture.holdSystemPermission {
             try await withCheckedThrowingContinuation { CaptureFixture.systemPermission = $0 }

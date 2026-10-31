@@ -151,7 +151,7 @@ public struct LibraryTranscriptTurn: Equatable, Sendable {
     public var text: String
     public static func coalescing(_ items: [LibraryTranscriptItem]) -> [Self] {
         var turns: [Self] = []
-        for item in items where !item.echo {
+        for item in items {
             let text = item.text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             guard !text.isEmpty else { continue }
             if turns.last?.speaker == item.speaker {

@@ -47,7 +47,6 @@ public struct Timeline: Sendable {
     let bySpeaker: [String: [Int]]
 
     public init(_ words: [Word]) {
-        let words = words.filter { !$0.echo }
         self.words = words
         let turns = Timeline.buildTurns(words)
         self.turns = turns
