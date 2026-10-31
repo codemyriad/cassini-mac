@@ -68,6 +68,7 @@
     "Sources/CassiniVAD/**",
     "Tests/CassiniTranscriptionTests/**",
     "scripts/fetch-vad.py",
+    "scripts/check-microphone-echo.py",
     "Sources/cassini-whistle-worker/**",
     "Tests/CassiniWhistleTests/**",
     "Cassini/WhistleSelfTest.swift",

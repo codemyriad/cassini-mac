@@ -67,7 +67,7 @@ public enum MeetingTranscriber {
             try setStatus(directory: directory, id: meeting.id, status: "running")
             let received = meeting.state.origin == .received
             struct Track {
-                let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
+                let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64; let kind: String
             }
             var tracks: [Track] = []
             let sources: [(URL, String, String, Double?, String?)]
@@ -84,7 +84,7 @@ public enum MeetingTranscriber {
             }
             for (url, id, kind, offset, sourceTrackID) in sources {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
-                tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
+                tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0)),kind:kind))
             }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
@@ -92,11 +92,33 @@ public enum MeetingTranscriber {
             let previous = resumes ? meeting.transcriptItems : []
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
+            let microphones = Set(tracks.indices.filter { tracks[$0].kind == "microphone" })
+            let otherTracks = Set(tracks.indices.filter { ["system","remote","media","tab"].contains(tracks[$0].kind) })
+            var echoWords: [MicrophoneEcho.Word] = [], windowLevels: [Int:Bool] = [:]
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
             let reference: [String:Any] = ["kind":"sidecar", "file":"transcript.json", "format":"cassini.words.v1"]
             func publish(status: String) throws {
-                let ordered = progress.published(items,complete:status == "done")
+                let flags = try MicrophoneEcho.flags(echoWords,microphones:microphones,others:otherTracks) { index in
+                    if let result = windowLevels[index] { return result }
+                    let word = echoWords[index]
+                    guard let level = word.rmsDbfs else { return false }
+                    let start = max(0,word.startMs-600)
+                    for other in otherTracks.sorted() {
+                        let track = tracks[other]
+                        if let otherLevel = try track.audio.rmsDbfs(from:start,to:word.endMs,offsetMs:track.offset), level <= otherLevel-6 {
+                            windowLevels[index] = true; return true
+                        }
+                    }
+                    windowLevels[index] = false; return false
+                }
+                let classified = items.enumerated().map { index,item in
+                    let word = item.word
+                    return TranscriptProgress.Item(word:.init(speaker:word.speaker,startMs:word.startMs,endMs:word.endMs,text:word.text,echo:flags[index]),track:item.track,ordinal:item.ordinal)
+                }
+                // Retained resume tails keep their saved flags until replaced;
+                // every newly recognized word is classified from physical PCM.
+                let ordered = progress.published(classified,complete:status == "done")
                 struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
                 let data = try JSONEncoder().encode(Body(language: language, items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
@@ -125,6 +147,8 @@ public enum MeetingTranscriber {
                         guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start, word.end <= Double(samples.count) / 16000 + 1 else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }
                         let a = start + Int64((word.start * 1000).rounded(.toNearestOrEven)), b = start + Int64((word.end * 1000).rounded(.toNearestOrEven))
                         items.append(.init(word: .init(speaker: track.speaker.id, startMs: a, endMs: b, text: word.word), track: index, ordinal: items.count))
+                        let level = try (microphones.isEmpty || otherTracks.isEmpty ? nil : track.audio.rmsDbfs(from:a,to:b,offsetMs:track.offset))
+                        echoWords.append(.init(track:index,startMs:a,endMs:b,text:word.word,rmsDbfs:level))
                     }
                     let speech = Double(samples.count) / 16000
                     processed += speech; remaining -= speech; elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
