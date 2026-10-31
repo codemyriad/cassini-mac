@@ -17293,6 +17293,164 @@
      "text": "O ficheiro Cassini desta reunião não foi encontrado."
     }
    }
+  },
+  {
+   "id": "format.searchCount.places",
+   "en": "{n} places",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "format",
+   "boards": [],
+   "milestone": "D50",
+   "placeholders": {
+    "n": "number of places"
+   },
+   "plural": {
+    "one": "{n} place",
+    "other": "{n} places"
+   },
+   "note": "Coordinator (D50, Mac request). Search summary count of places; pluralized on its own n. Combined by format.searchCount.join.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{n} risultati",
+     "plural": {
+      "one": "{n} risultato",
+      "many": "{n} risultati",
+      "other": "{n} risultati"
+     }
+    },
+    "fr": {
+     "text": "{n} occurrences",
+     "plural": {
+      "one": "{n} occurrence",
+      "many": "{n} occurrences",
+      "other": "{n} occurrences"
+     }
+    },
+    "es": {
+     "text": "{n} coincidencias",
+     "plural": {
+      "one": "{n} coincidencia",
+      "many": "{n} coincidencias",
+      "other": "{n} coincidencias"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} trechos",
+     "plural": {
+      "one": "{n} trecho",
+      "many": "{n} trechos",
+      "other": "{n} trechos"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} ocorrências",
+     "plural": {
+      "one": "{n} ocorrência",
+      "many": "{n} ocorrências",
+      "other": "{n} ocorrências"
+     }
+    }
+   }
+  },
+  {
+   "id": "format.searchCount.meetings",
+   "en": "{n} meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "format",
+   "boards": [],
+   "milestone": "D50",
+   "placeholders": {
+    "n": "number of meetings"
+   },
+   "plural": {
+    "one": "{n} meeting",
+    "other": "{n} meetings"
+   },
+   "note": "Coordinator (D50, Mac request). Search summary count of meetings; pluralized on its own n. Combined by format.searchCount.join.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{n} riunioni",
+     "plural": {
+      "one": "{n} riunione",
+      "many": "{n} riunioni",
+      "other": "{n} riunioni"
+     }
+    },
+    "fr": {
+     "text": "{n} réunions",
+     "plural": {
+      "one": "{n} réunion",
+      "many": "{n} réunions",
+      "other": "{n} réunions"
+     }
+    },
+    "es": {
+     "text": "{n} reuniones",
+     "plural": {
+      "one": "{n} reunión",
+      "many": "{n} reuniones",
+      "other": "{n} reuniones"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} reuniões",
+     "plural": {
+      "one": "{n} reunião",
+      "many": "{n} reuniões",
+      "other": "{n} reuniões"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} reuniões",
+     "plural": {
+      "one": "{n} reunião",
+      "many": "{n} reuniões",
+      "other": "{n} reuniões"
+     }
+    }
+   }
+  },
+  {
+   "id": "format.searchCount.join",
+   "en": "{places} in {meetings}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "format",
+   "boards": [],
+   "milestone": "D50",
+   "placeholders": {
+    "places": "format.searchCount.places result",
+    "meetings": "format.searchCount.meetings result"
+   },
+   "note": "Coordinator (D50, Mac request). Joins the two pluralized counts, e.g. '1 place in 2 meetings'. Replaces format.searchCount for apps that adopt it; the old entry stays until every app has switched.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{places} in {meetings}"
+    },
+    "fr": {
+     "text": "{places} dans {meetings}"
+    },
+    "es": {
+     "text": "{places} en {meetings}"
+    },
+    "pt-BR": {
+     "text": "{places} em {meetings}"
+    },
+    "pt-PT": {
+     "text": "{places} em {meetings}"
+    }
+   }
   }
  ]
 }

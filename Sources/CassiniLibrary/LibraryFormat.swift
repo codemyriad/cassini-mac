@@ -83,8 +83,10 @@ public struct LibraryFormat: Sendable {
     public static func eta(_ minutes:Int64,locale:Locale = .current)->String {
         minutes<=0 ? text("states.badge.transcribing.underMinute",locale:locale) : text("states.badge.transcribing",["n":String(minutes)],locale:locale)
     }
-    public static func searchCount(places:Int64,meetings:Int64)->String {
-        "\(places) \(places == 1 ? "place" : "places") in \(meetings) \(meetings == 1 ? "meeting" : "meetings")"
+    public static func searchCount(places:Int64,meetings:Int64,locale:Locale = .current)->String {
+        let placeCount=text("format.searchCount.places",["n":String(places)],locale:locale)
+        let meetingCount=text("format.searchCount.meetings",["n":String(meetings)],locale:locale)
+        return text("format.searchCount.join",["places":placeCount,"meetings":meetingCount],locale:locale)
     }
     public static func size(bytes:Int64,approximate:Bool=false,locale:Locale = .current)->String {
         let bytes=max(0,bytes),unit:Int64=1_048_576

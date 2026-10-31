@@ -69,7 +69,7 @@ private enum Golden {
         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"))
         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"))
-        case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings))
+        case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"))
         case "size": actual = LibraryFormat.size(bytes: try #require(value.bytes), approximate: value.approx ?? false,locale:Locale(identifier:"en_GB"))
         default: throw TestError.unknownGroup
         }

@@ -67,6 +67,21 @@ import Testing
         #expect(strings.text("savedVoices.row.meetingCount",["n":"0"],language:.ptBR) == "0 reunião")
         #expect(strings.text("savedVoices.row.meetingCount",["n":"0"],language:.ptPT) == "0 reuniões")
     }
+    @Test func searchPluralizesPlacesAndMeetingsIndependentlyInEveryLanguage() {
+        let examples:[(String,Int64,Int64,String)]=[
+            ("en_GB",1,2,"1 place in 2 meetings"),("en_GB",2,1,"2 places in 1 meeting"),
+            ("it_IT",1,2,"1 risultato in 2 riunioni"),("it_IT",2,1,"2 risultati in 1 riunione"),
+            ("fr_FR",1,2,"1 occurrence dans 2 réunions"),("fr_FR",2,1,"2 occurrences dans 1 réunion"),
+            ("es_ES",1,2,"1 coincidencia en 2 reuniones"),("es_ES",2,1,"2 coincidencias en 1 reunión"),
+            ("pt_BR",1,2,"1 trecho em 2 reuniões"),("pt_BR",2,1,"2 trechos em 1 reunião"),
+            ("pt_PT",1,2,"1 ocorrência em 2 reuniões"),("pt_PT",2,1,"2 ocorrências em 1 reunião"),
+            ("fr_FR",0,2,"0 occurrence dans 2 réunions"),("pt_BR",0,2,"0 trecho em 2 reuniões"),
+            ("pt_PT",0,2,"0 ocorrências em 2 reuniões")]
+        for (locale,places,meetings,expected) in examples {
+            #expect(LibraryFormat.searchCount(places:places,meetings:meetings,locale:Locale(identifier:locale))==expected)
+        }
+        #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:Locale(identifier:"fr_FR"))=="12\u{202f}345 occurrences dans 2 réunions")
+    }
     @Test func insertedTextIsNeverReinterpretedAsAnotherPlaceholder() throws {
         let data=Data(#"{"entries":[{"id":"test","en":"{title} in {folder}"}]}"#.utf8)
         let strings=try LibraryLocalization(data:data)
