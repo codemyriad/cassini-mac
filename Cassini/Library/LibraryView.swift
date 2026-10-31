@@ -316,7 +316,7 @@ struct LibraryView: View {
                 if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
                 if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(dim).lineLimit(1) }
             }.font(.system(size: 11.5))
-            if let line = rowSecondLine(meeting) { Text(line).font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
+            if let line = rowSecondLine(meeting) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
         }
         .foregroundStyle(selected ? .white : Color(nsColor: .labelColor))
         .padding(.vertical, 1).frame(minHeight: 50, alignment: .top)
@@ -329,12 +329,12 @@ struct LibraryView: View {
         default: return LibraryFormat.rowMeta(durationMs: meeting.durationMs, names: meeting.speakerNames)
         }
     }
-    private func rowSecondLine(_ meeting: LibraryMeeting) -> String? {
+    private func rowSecondLine(_ meeting: LibraryMeeting) -> Text? {
         switch meeting.state.badge?.kind {
-        case "recording": return meeting.isBrowserCapture ? UXText.text("library.row.recording.line") : nil
+        case "recording": return meeting.isBrowserCapture ? Text(UXText.text("library.row.recording.line")) : nil
         case "saving": return nil
-        case "transcribing": return meeting.durationMs.map { UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)]) }
-        default: return meeting.quote.map(MeetingPresentation.pullQuote)
+        case "transcribing": return meeting.durationMs.map { Text(UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)])) }
+        default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
         }
     }
     private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {

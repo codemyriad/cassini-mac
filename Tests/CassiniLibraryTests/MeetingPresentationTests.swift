@@ -81,7 +81,7 @@ struct MeetingPresentationTests {
 }
 
 struct TurnQuotePresentationTests {
-    @Test func libraryPullQuoteReusesOnlyPairedSourceBookends() throws {
+    @Test func libraryPullQuotePreservesStoredPunctuationVerbatim() throws {
         let f = try Fixture()
         try f.metadata {
             $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
@@ -92,15 +92,13 @@ struct TurnQuotePresentationTests {
         try body.write(to:file)
         let quote = try #require(LibraryScanner(root:f.root).scan().meetings.first?.quote)
         #expect(quote.text == text && quote.displayText == "“" + text + "”","R8 retains verbatim model output")
-        #expect(MeetingPresentation.pullQuote(quote) == "“Yes, I can have a draught. He said \"no\".”")
+        #expect(MeetingPresentation.pullQuote(quote) == text)
         #expect(try Data(contentsOf:file) == body)
-        let frozen = MeetingQuote(atMs:0,text:"He said \"no\". Long turn.")
-        #expect(MeetingPresentation.pullQuote(frozen) == frozen.displayText)
-        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"“Already paired”")) == "“Already paired”")
-        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"\"\"Repeated bookends\"\"")) == "“Repeated bookends”")
-        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"A 6\" screen")) == "“A 6\" screen”")
-        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"The size is 6\"")) == "“The size is 6\"”","An inch mark is not an enclosing quote pair")
-        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"\"Unpaired opening")) == "“\"Unpaired opening”")
+        for stored in ["He said \"no\". Long turn.","“Already paired”","\"\"Repeated bookends\"\"",
+                       "A 6\" screen","The size is 6\"","\"Unpaired opening","Unpaired closing”"] {
+            let shown = MeetingPresentation.pullQuote(.init(atMs:0,text:stored))
+            #expect(Array(shown.utf8) == Array(stored.utf8),"Display keeps every stored byte, including nested/unmatched quotes")
+        }
     }
     @Test func quotePartnersNeverCrossTurnsAndRawWordsStayIntact() {
         let items: [LibraryTranscriptItem] = [
