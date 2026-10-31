@@ -20,6 +20,20 @@ def measure(app: Path, output: Path):
         command = [str(app.resolve()), '--spectrogram-self-test',
                    '-SpectrogramCase', case, '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
         trace = None
+        motion_driver = None
+        motion_log = None
+        if case == 'B':
+            request = output.resolve()/'motion-request.json'
+            request.unlink(missing_ok=True)
+            spec, = Path('build/Build/Products').glob('*.xctestrun')
+            motion_env = dict(os.environ, TEST_RUNNER_CASSINI_SPECTRO_MOTION_GATE='1',
+                              TEST_RUNNER_CASSINI_SPECTRO_MOTION_REQUEST=str(request))
+            motion_log = (output/'motion-xctest.log').open('w')
+            motion_driver = subprocess.Popen(['xcodebuild', 'test-without-building', '-xctestrun', str(spec),
+                '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
+                '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
+                '-resultBundlePath', str(output/'Motion.xcresult')],
+                env=motion_env, stdout=motion_log, stderr=subprocess.STDOUT)
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
             process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
             top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
@@ -30,13 +44,22 @@ def measure(app: Path, output: Path):
                                               '--attach', str(process.pid), '--time-limit', '60s',
                                               '--output', str(output/'B-TimeProfiler.trace')],
                                              stdout=stderr, stderr=subprocess.STDOUT)
-                stdout, _ = process.communicate(timeout=85)
+                stdout, _ = process.communicate(timeout=170 if case == 'B' else 85)
             finally:
                 if process.poll() is None:
                     process.kill()
                     process.wait()
                 top.terminate()
                 top.wait(timeout=10)
+                if motion_driver:
+                    try:
+                        motion_driver.wait(timeout=20)
+                    except subprocess.TimeoutExpired:
+                        motion_driver.terminate()
+                        motion_driver.wait(timeout=10)
+                    motion_log.close()
+                    if motion_driver.returncode != 0:
+                        problems.append('B: actual System Settings motion transition failed; see motion-xctest.log')
             (output/f'{case}.stdout.txt').write_text(stdout)
             if trace:
                 try:

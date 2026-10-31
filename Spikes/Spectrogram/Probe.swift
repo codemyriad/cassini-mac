@@ -149,26 +149,18 @@ import ScreenCaptureKit
         }
     }
     private static func motion(_ value: Bool, controller: RecordingSpectrogram) async throws {
-        let status = try await Task.detached(priority:.utility) {
-            let command = Process(); command.executableURL = URL(fileURLWithPath:"/usr/bin/defaults")
-            command.arguments = ["write","com.apple.universalaccess","reduceMotion","-bool",value ? "true" : "false"]
-            command.standardOutput = FileHandle.nullDevice; command.standardError = FileHandle.nullDevice
-            try command.run(); command.waitUntilExit(); return command.terminationStatus
-        }.value
-        try require(status == 0,"hosted system Reduce Motion preference write")
-        // defaults writes the real preference but does not simulate System
-        // Settings' notification. Deliver that documented notification through
-        // the production observer; the getter must still read the real setting.
-        for _ in 0..<100 {
-            // Refresh this process's CFPreferences cache after the separate
-            // defaults process writes the real hosted preference domain.
-            CFPreferencesAppSynchronize("com.apple.universalaccess" as CFString)
-            NSWorkspace.shared.notificationCenter.post(name:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil)
-            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value {
-                NSWorkspace.shared.notificationCenter.post(name:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil)
-                try await Task.sleep(for:.milliseconds(25))
-                if controller.usingReducedMotion == value { return }
-            }
+        guard let directory=argument("-SpectrogramOutput") else { throw Failure.check("motion request directory") }
+        let observed=controller.displayOptionsChanges
+        let request=try JSONSerialization.data(withJSONObject:["reduceMotion":value,"pid":getpid()])
+        try request.write(to:URL(fileURLWithPath:directory).appendingPathComponent("motion-request.json"),options:.atomic)
+        // XCTest changes System Settings on this disposable Mac. Wait for the
+        // real NSWorkspace notification and getter, never post it ourselves.
+        let deadline=ContinuousClock.now.advanced(by:.seconds(40))
+        while ContinuousClock.now < deadline {
+            if controller.displayOptionsChanges > observed,
+               NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value,
+               controller.usingReducedMotion == value,
+               NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid() { return }
             try await Task.sleep(for:.milliseconds(20))
         }
         throw Failure.check("real system Reduce Motion setting did not reach the view")

@@ -121,6 +121,7 @@
 		E0A49316E91E04F56C05A113 /* CassiniLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = B52B47E53FE17F1664D4546F /* CassiniLibrary */; };
 		E46E58DE325E1AA975257BC2 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */; };
 		E494989AFB7C975E633A394B /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6A70F100BBB78693556A7214 /* CassiniKit */; };
+		E67667C2EC868952208B32A0 /* SpectrogramMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF5D549FD4380E26CB5FD852 /* SpectrogramMotion.swift */; };
 		E85E5AC9314DC09B92742E98 /* CassiniBrowserSetup.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 7C5B7D75EB99ED4AC8A540EF /* CassiniBrowserSetup.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E99BF457F63EA5D99EC25ACC /* CaptureSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 502CF30C95EA3E2D8D9C4281 /* CaptureSelfTest.swift */; };
 		E9BFA89A95D97AC2F6E86F90 /* CompanionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B05A2E901F296D79F6E22F /* CompanionSetupView.swift */; };
@@ -292,6 +293,7 @@
 		B3B03C13929645F7CB3E9829 /* LocalCompanionGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCompanionGuide.swift; sourceTree = "<group>"; };
 		B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptBuilder.swift; sourceTree = "<group>"; };
 		BF44CFE16B2926034520B457 /* WhistleSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhistleSelfTest.swift; sourceTree = "<group>"; };
+		BF5D549FD4380E26CB5FD852 /* SpectrogramMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrogramMotion.swift; sourceTree = "<group>"; };
 		C2AF16181F491E3932E02CCA /* CassiniWhistleWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniWhistleWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		C66314F1ADDF8D8554337717 /* LibraryBoards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryBoards.swift; sourceTree = "<group>"; };
 		C6F47C104E5AB6E114B1AB81 /* BrowserReturnSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserReturnSelfTest.swift; sourceTree = "<group>"; };
@@ -666,6 +668,7 @@
 				F7FE2A1C7242DF314538998C /* Fixtures */,
 				C66314F1ADDF8D8554337717 /* LibraryBoards.swift */,
 				9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */,
+				BF5D549FD4380E26CB5FD852 /* SpectrogramMotion.swift */,
 				F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */,
 			);
 			path = UITests;
@@ -1256,6 +1259,7 @@
 			files = (
 				8D80BC25A6FB4F926F37BBD9 /* LibraryBoards.swift in Sources */,
 				9F63B1003386EC1B5E39B9E7 /* LocalCompanionInstall.swift in Sources */,
+				E67667C2EC868952208B32A0 /* SpectrogramMotion.swift in Sources */,
 				6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

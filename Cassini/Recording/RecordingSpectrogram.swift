@@ -67,6 +67,9 @@ import Darwin
     private var pageNeedsBake = true, pillNeedsBake = true
     private(set) var frameCallbacks: UInt64 = 0, framesApplied: UInt64 = 0
     private(set) var skippedFrames: UInt64 = 0, maxFrameIntervalMs = 0.0
+    #if DEBUG
+    private(set) var displayOptionsChanges: UInt64 = 0
+    #endif
     private(set) var drawingNanoseconds: UInt64 = 0, analysisNanoseconds: UInt64 = 0
     private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0
     private var lastAppliedTime: Double?
@@ -98,6 +101,9 @@ import Darwin
         let token = center.addObserver(forName:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil,queue:.main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                #if DEBUG
+                self.displayOptionsChanges &+= 1
+                #endif
                 self.appearance(dark:self.dark,silent:self.silent); self.reconcile()
             }
         }
