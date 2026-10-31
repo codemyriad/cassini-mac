@@ -38,14 +38,14 @@ a.output.with_suffix('.stderr.txt').write_text(stderr)
 assert process.returncode == 0, (process.returncode,stdout,stderr)
 report = json.loads(stdout)
 for name in [
-    'firstRecordingDoesNotWaitForNotifications',
+    'autoRecordMicrophonePrecedesNotifications','browserMicrophonePrecedesNotifications','firstRecordingDoesNotWaitForNotifications',
     'twoProfilesSameTabIndependent',
     'realSelectionUsesOwnedInputLifecycle',
     'pageStopLeavesOtherMeetingRecording',
     'fallbackAndWorkerRecoveryKeepOneFolder',
     'newCallAutoStartAndNotificationStop',
     'deniedMicKeepsOthersRecording',
-    'nothingStartedLeavesNoLibraryEntry',
+    'failedNativeStartSkipsNotifications','nothingStartedLeavesNoLibraryEntry',
     'partialFailureRetriesOnlyThatMeeting',
     'diskReserveStopsAndKeeps',
     'nativeMessagingProcesses',

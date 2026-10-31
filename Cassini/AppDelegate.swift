@@ -97,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !confirmingQuit else { return .terminateLater }
+        ApplicationUpdates.shared.beginTermination()
         if !RecordingConfirmation.active {
             let queue = TranscriptionQueue.shared
             let imports = LibraryImportCoordinator.shared
@@ -156,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     self?.confirmingQuit = false
                     sender.reply(toApplicationShouldTerminate: stop)
+                    if !stop { ApplicationUpdates.shared.cancelTermination() }
                     if choice == .background { DispatchQueue.main.async { RecordingConfirmation.closeWindowsKeepingRecording() } }
                 }
             }
@@ -167,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         menuTrackingObservers.forEach { NotificationCenter.default.removeObserver($0) }; menuTrackingObservers = []
         MainActor.assumeIsolated {
+            ApplicationUpdates.shared.finishTermination()
             Self.trackingMenus.removeAll()
             CompanionSetup.shared.stop()
             RecordingRuntime.shared.stop(); LibraryStore.shared.stop()

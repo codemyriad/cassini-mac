@@ -185,6 +185,8 @@ import Sparkle
             // scheduler, presenting permission prompts or contacting a feed.
             let updaterController = SPUStandardUpdaterController(startingUpdater:false,updaterDelegate:nil,userDriverDelegate:nil)
             let updates = ApplicationUpdates.fixture(updaterController)
+            try check(updates.activity.contains(.recording) && updates.activity.contains(.transcription),"Real capture and queue activity protect updates")
+            try await UpdateDeferralSelfTest.run()
             let previousAutomaticChecks = updaterController.updater.automaticallyChecksForUpdates
             defer { updaterController.updater.automaticallyChecksForUpdates = previousAutomaticChecks }
             try check(updates.available && !updates.canCheckForUpdates,"Update settings bind without starting an update check")
@@ -214,7 +216,7 @@ import Sparkle
             queue.beginShutdown(); await queue.waitForShutdown(); await recorder.stopAndWait()
             let persisted = try LibraryLocation.read(file:config)
             try check(persisted.pendingMoves.count == 2 && !persisted.previousPaths.isEmpty,"pending move intent survives Quit")
-            let report: [String:Any] = ["conditionalDownloadedNotices":true,"aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
+            let report: [String:Any] = ["updateDefersRecordingSavingScanningTranscription":true,"updateDismissesInstallUIAndShowsFooter":true,"updateContinuationRunsOnce":true,"quitNeverRelaunchesPendingUpdate":true,"conditionalDownloadedNotices":true,"aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
                                       "closedMeetingMovedAtomically":true,"partialFailureRetainsOriginal":true,"liveFolderDeferred":true,"pendingMovesPersisted":true,
                                       "activeInferencePathPreserved":true,"queuedMetadataMovedAfterPreparation":true,"importIntentResumesAfterMove":true,"retainedSelectionUsesFolder":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
             output = try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])

@@ -20,7 +20,7 @@ r=subprocess.run(command,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),cap
 args.output.parent.mkdir(parents=True,exist_ok=True);args.output.with_suffix('.stderr.txt').write_text(r.stderr)
 assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
 report=json.loads(r.stdout)
-for name in ['conditionalDownloadedNotices','aboutNoticesReachable','firstCaptureCreatesLibrary','settingsPreferences','realShortcutReplacement','shortcutConflictRetainsOld','closedMeetingMovedAtomically',
+for name in ['updateDefersRecordingSavingScanningTranscription','updateDismissesInstallUIAndShowsFooter','updateContinuationRunsOnce','quitNeverRelaunchesPendingUpdate','conditionalDownloadedNotices','aboutNoticesReachable','firstCaptureCreatesLibrary','settingsPreferences','realShortcutReplacement','shortcutConflictRetainsOld','closedMeetingMovedAtomically',
              'partialFailureRetainsOriginal','liveFolderDeferred','pendingMovesPersisted','activeInferencePathPreserved','queuedMetadataMovedAfterPreparation','importIntentResumesAfterMove','retainedSelectionUsesFolder','searchReindexed','hostReadsLocation','producerBytesPreserved']:
     assert report[name] is True,(name,report)
 resume=[x for x in command]

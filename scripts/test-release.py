@@ -47,6 +47,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn("default-src 'none'", body)
             self.assertEqual(page.render('<p>{{app.name}}</p>', [{'id':'app.name','en':'<a>&"'}]), '<p>&lt;a&gt;&amp;&quot;</p>')
         info = plistlib.loads((ROOT/'Cassini/Info.plist').read_bytes())
+        self.assertIs(info.get('SUShowReleaseNotes', True), True)
         for key in ['CFBundleName', 'CFBundleDisplayName']:
             self.assertEqual(info[key], release.PRODUCT_NAME)
         self.assertEqual(release.release_urls(release.BASE_URL+'/', '0.1.2'), dict(
@@ -58,6 +59,21 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError): release.release_urls(base, '1.0')
         for version in ['../x', '1/2', '1', '1.0-beta', '١.٢']:
             with self.assertRaises(ValueError): release.release_urls(release.BASE_URL, version)
+
+    def testDeveloperIDVerifierRejectsHiddenNotesAndRawPage(self):
+        spec = importlib.util.spec_from_file_location('developer_id_check', ROOT/'scripts/check-developer-id.py')
+        checker = importlib.util.module_from_spec(spec); spec.loader.exec_module(checker)
+        with tempfile.TemporaryDirectory() as temporary:
+            app = Path(temporary)/'Cassini talk.app'
+            resources = app/'Contents/Resources'; resources.mkdir(parents=True)
+            info = app/'Contents/Info.plist'
+            info.write_bytes(plistlib.dumps({'SUShowReleaseNotes':False}))
+            with self.assertRaisesRegex(AssertionError, 'release notes'):
+                checker.inspect(app)
+            info.write_bytes(plistlib.dumps({'SUShowReleaseNotes':True}))
+            (resources/'Cassini.html').write_text('<title>{{app.name}}</title>')
+            with self.assertRaisesRegex(AssertionError, 'Unrendered companion'):
+                checker.inspect(app)
 
     def testPublicationOrderAndImmutableLocalCopies(self):
         with tempfile.TemporaryDirectory() as temporary:

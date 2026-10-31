@@ -79,7 +79,6 @@ import CassiniRecording
             // consent callback must never gate the user's recording request.
             do {
                 try await CaptureCollection.shared.record()
-                await CaptureNotifications.shared.authorize()
             } catch { /* Catalog failure banner owns presentation. */ }
         }
     }

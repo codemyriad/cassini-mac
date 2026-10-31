@@ -22,7 +22,20 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
         CaptureCollection.shared.onAutomaticStart = { id in Self.shared.started(id) }
         CaptureCollection.shared.onFallback = { id in Self.shared.fallback(id) }
     }
-    @MainActor func authorize() async {
+    @MainActor private var authorizationTask: Task<Void,Never>?
+    @MainActor private var authorizationRequested = false
+    @MainActor func authorizeAfterStart() {
+        guard !authorizationRequested else { return }
+        authorizationRequested = true
+        authorizationTask = Task { @MainActor in await self.authorize() }
+    }
+    #if DEBUG
+    @MainActor func resetAuthorizationForFixture() {
+        precondition(CaptureFixture.enabled)
+        authorizationRequested = false; authorizationTask = nil
+    }
+    #endif
+    @MainActor private func authorize() async {
         #if DEBUG
         if CaptureFixture.enabled, let authorization = Self.authorizationFixture { await authorization(); return }
         if CaptureFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot { return }
@@ -30,8 +43,15 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options:[.alert])
     }
     @MainActor func started(_ id: UUID) {
-        guard let value = CaptureCollection.shared.captures[id] else { return }
-        post(id,title:UXText.text("states.badge.recording",["liveBadge":LibraryFormat.liveBadge(value.elapsedMs)]),body:value.displayTitle ?? value.snapshot.manifest.title,kind:"start")
+        // Only the notification waits for consent. Recording has already
+        // admitted its inputs and keeps running if the banner is ignored.
+        let authorization = authorizationTask
+        Task { @MainActor in
+            await authorization?.value
+            guard let value = CaptureCollection.shared.captures[id], value.snapshot.phase == .recording,
+                  value.savingSinceMs == nil else { return }
+            post(id,title:UXText.text("states.badge.recording",["liveBadge":LibraryFormat.liveBadge(value.elapsedMs)]),body:value.displayTitle ?? value.snapshot.manifest.title,kind:"start")
+        }
     }
     @MainActor func fallback(_ id: UUID) {
         guard let value = CaptureCollection.shared.captures[id] else { return }

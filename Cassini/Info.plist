@@ -70,7 +70,7 @@
 	<key>SURequireSignedFeed</key>
 	<true/>
 	<key>SUShowReleaseNotes</key>
-	<false/>
+	<true/>
 	<key>SUVerifyUpdateBeforeExtraction</key>
 	<true/>
 	<key>UTImportedTypeDeclarations</key>

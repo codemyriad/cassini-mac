@@ -66,7 +66,6 @@
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
 		6D2A5DC34D78E97BC4DC039C /* CaptureActivityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */; };
 		6D57DA2EFFCE7EDA4F10CB65 /* LocalCompanionGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B03C13929645F7CB3E9829 /* LocalCompanionGuide.swift */; };
-		6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */ = {isa = PBXBuildFile; fileRef = A409C2558FBB9AF298689911 /* Cassini.html */; };
 		73356EFFDF01D974F26825A6 /* RecordFirstView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EE191DCB541B08F4D08855 /* RecordFirstView.swift */; };
 		73430AD2E1F30C774BD10517 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC82AC94B942EF58DB6679 /* Commands.swift */; };
 		7415B9957147C67914ABA6A7 /* RecordingStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2479FBA25ED20072E91C08C /* RecordingStatusMenu.swift */; };
@@ -109,6 +108,7 @@
 		BBA405927990B28446051D29 /* RecordingInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */; };
 		C455EC9E42F5F34E0DBA1FE6 /* RecordingDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */; };
 		C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */; };
+		C6EAB498475456889A827C9F /* UpdateDeferralSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */; };
 		C716177C37D0DAD16234555A /* SettingsFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D368DF652664BF931A5F050 /* SettingsFixture.swift */; };
 		C74C72D9CE3B8283151F5D44 /* BrowserBackgroundSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF3BCB920D3A33FC3C3A9DC /* BrowserBackgroundSelfTest.swift */; };
 		C920349A20ECCF6C7C8A690C /* ModelDownloadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5DA66A372B10969E76428C3 /* ModelDownloadClient.swift */; };
@@ -247,6 +247,7 @@
 		3603D8B702C22E7035B613CC /* RecordingOverview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverview.swift; sourceTree = "<group>"; };
 		394709470D1488C8C15792DC /* CassiniParakeetWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniParakeetWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
+		41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateDeferralSelfTest.swift; sourceTree = "<group>"; };
 		493B60B096D031A55BC54864 /* WhatIsRecordedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatIsRecordedView.swift; sourceTree = "<group>"; };
 		4A2328A25C9E4B5E0E8EDF6B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureActivityStore.swift; sourceTree = "<group>"; };
@@ -284,7 +285,6 @@
 		95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportCoordinator.swift; sourceTree = "<group>"; };
 		9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCompanionInstall.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
-		A409C2558FBB9AF298689911 /* Cassini.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Cassini.html; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -624,6 +624,7 @@
 				0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */,
 				642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */,
 				8C306DD8AAAA314655363059 /* SpeechModelController.swift */,
+				41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -690,7 +691,6 @@
 		ED21289CD25E4D8251164DC1 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				A409C2558FBB9AF298689911 /* Cassini.html */,
 				CD9CA177C260FB3ED32BE1F0 /* Licenses */,
 				FFDAA113CF52CBA710233AC3 /* UX */,
 			);
@@ -1009,7 +1009,6 @@
 			files = (
 				29F5BCCF6F54A4CEF61E131E /* Assets.xcassets in Resources */,
 				90072894377A325E3C29E094 /* COPYING in Resources */,
-				6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */,
 				41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */,
 				8EDE5F3489BA8DA0718C8B33 /* Licenses in Resources */,
 				66D88998A0953337261A8C61 /* UX in Resources */,
@@ -1059,18 +1058,21 @@
 		};
 		6F4C3518C3994A356EBC5EEE /* Render offline companion paste hint */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/Cassini/Resources/Cassini.html",
+				"$(SRCROOT)/Cassini/Resources/UX/strings.json",
+				"$(SRCROOT)/scripts/bundle-companion-page.py",
 			);
 			name = "Render offline companion paste hint";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1278,6 +1280,7 @@
 				40F5CCB4E0A6211762C66102 /* TranscriptionQueue.swift in Sources */,
 				1EEAD6E0D3422512F62D7200 /* TrashSelfTest.swift in Sources */,
 				EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */,
+				C6EAB498475456889A827C9F /* UpdateDeferralSelfTest.swift in Sources */,
 				0993FA2973125708E6E9727E /* WhatIsRecordedView.swift in Sources */,
 				8D98D370E8999895D3A2F2C0 /* WhistleSelfTest.swift in Sources */,
 			);

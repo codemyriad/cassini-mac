@@ -11,9 +11,16 @@ import Sparkle
     @ObservationIgnored private var waiting: Task<Void, Never>?
     @ObservationIgnored private var controller: SPUStandardUpdaterController?
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    @ObservationIgnored private var installation: (() -> Void)?
+    private var terminating = false
+    enum Activity: Hashable { case recording, starting, saving, transcription, importing, exporting, moving, renaming, trashing, editing, scanning }
+    #if DEBUG
+    @ObservationIgnored private var fixtureActivity: (() -> Set<Activity>)?
+    @ObservationIgnored private var pollInterval: Duration = .seconds(1)
+    #endif
     private(set) var available = false
     private var updaterCanCheck = false
-    var canCheckForUpdates: Bool { updaterCanCheck && !readyWhenIdle }
+    var canCheckForUpdates: Bool { updaterCanCheck && !readyWhenIdle && !terminating }
     private(set) var readyWhenIdle = false
     private var automaticCheckSnapshot = false
     var automaticChecks: Bool {
@@ -36,30 +43,60 @@ import Sparkle
         automaticCheckSnapshot = controller?.updater.automaticallyChecksForUpdates ?? false
     }
 
-    private var busy: Bool {
-        RecordingOverview.active || RecordingOverview.starting || RecordingOverview.saving || TranscriptionQueue.shared.isBusy ||
-        LibraryImportCoordinator.shared.isBusy || MeetingExportCoordinator.shared.isBusy ||
-        LibraryMoveCoordinator.shared.busy || MeetingRenameCoordinator.shared.working ||
-        MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits || LibraryStore.shared.isRefreshing
+    var activity: Set<Activity> {
+        #if DEBUG
+        if let fixtureActivity { return fixtureActivity() }
+        #endif
+        var result: Set<Activity> = []
+        if RecordingOverview.active { result.insert(.recording) }
+        if RecordingOverview.starting { result.insert(.starting) }
+        if RecordingOverview.saving { result.insert(.saving) }
+        if TranscriptionQueue.shared.isBusy { result.insert(.transcription) }
+        if LibraryImportCoordinator.shared.isBusy { result.insert(.importing) }
+        if MeetingExportCoordinator.shared.isBusy { result.insert(.exporting) }
+        if LibraryMoveCoordinator.shared.busy { result.insert(.moving) }
+        if MeetingRenameCoordinator.shared.working { result.insert(.renaming) }
+        if MeetingTrashCoordinator.shared.busy { result.insert(.trashing) }
+        if RecordingPageModel.hasPendingEdits { result.insert(.editing) }
+        if LibraryStore.shared.isRefreshing { result.insert(.scanning) }
+        return result
     }
 
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock handler: @escaping () -> Void) -> Bool {
-        guard busy else { return false }
-        // Sparkle's installer retains the continuation below. Its public user
-        // driver dismissal closes the now button-less status window without
-        // cancelling that pending installation or touching recording inputs.
+        guard terminating || !activity.isEmpty else { return false }
+        // Dismiss Sparkle's installation UI while retaining its continuation.
         controller?.userDriver.dismissUpdateInstallation()
+        installation = handler
         readyWhenIdle = true
-        waiting?.cancel()
-        waiting = Task { @MainActor [weak self] in
-            while let self, self.busy {
-                do { try await Task.sleep(for: .seconds(1)) } catch { return }
-            }
-            guard !Task.isCancelled, self != nil else { return }
-            self?.readyWhenIdle = false
-            handler()
-        }
+        waitForIdle()
         return true
+    }
+
+    private func waitForIdle() {
+        waiting?.cancel(); waiting = nil
+        guard !terminating, installation != nil else { return }
+        waiting = Task { @MainActor [weak self] in
+            while let self, !self.activity.isEmpty {
+                #if DEBUG
+                let interval = self.pollInterval
+                #else
+                let interval: Duration = .seconds(1)
+                #endif
+                do { try await Task.sleep(for:interval) } catch { return }
+            }
+            guard !Task.isCancelled, let self, !self.terminating else { return }
+            let handler = self.installation
+            self.installation = nil; self.waiting = nil; self.readyWhenIdle = false
+            handler?()
+        }
+    }
+
+    // Hold even while the Quit confirmation is open. Stop-and-keep can make
+    // every activity idle before AppKit finishes the termination handshake.
+    func beginTermination() { terminating = true; waiting?.cancel(); waiting = nil }
+    func cancelTermination() { terminating = false; waitForIdle() }
+    func finishTermination() {
+        beginTermination(); installation = nil; readyWhenIdle = false
     }
 
     func start() {
@@ -82,10 +119,12 @@ import Sparkle
     }
 
     #if DEBUG
-    static func fixture(_ controller: SPUStandardUpdaterController) -> ApplicationUpdates {
+    static func fixture(_ controller: SPUStandardUpdaterController, activity: (() -> Set<Activity>)? = nil, canCheck: Bool? = nil) -> ApplicationUpdates {
         precondition(SettingsFixture.id != nil)
         let updates = ApplicationUpdates()
+        updates.fixtureActivity = activity; updates.pollInterval = .milliseconds(10)
         updates.attach(controller)
+        if let canCheck { updates.updaterCanCheck = canCheck }
         return updates
     }
     #endif

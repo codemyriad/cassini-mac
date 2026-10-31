@@ -67,6 +67,7 @@ for relative, suffix in bundles.items():
     assert info['CFBundleIdentifier'] == prefix + suffix, (bundle, info['CFBundleIdentifier'])
     if relative == '.':
         resources = bundle/'Contents/Resources'
+        assert '{{' not in (resources/'Cassini.html').read_text(), 'Unrendered companion page'
         assert info.get('CFBundleIconName') == 'AppIcon', 'AppIcon must be selected in the product Info.plist'
         assert (resources/'Assets.car').stat().st_size > 0, 'Compiled asset catalog missing'
         assert (resources/'AppIcon.icns').read_bytes()[:4] == b'icns', 'Finder/Dock icon missing'

@@ -172,6 +172,23 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let pipe = root.appendingPathComponent(".control")
             await collection.start(root:pipe)
             try require(collection.available,"Protected service started")
+            var notificationReply: CheckedContinuation<Void,Never>?
+            CaptureNotifications.authorizationFixture = {
+                await withCheckedContinuation { notificationReply = $0 }
+            }
+            var microphoneReplies: [CheckedContinuation<Void,Never>] = []
+            CaptureFixture.microphoneAuthorizationFixture = {
+                await withCheckedContinuation { microphoneReplies.append($0) }
+            }
+            var autoEnabled = false
+            let enableAuto = Task { try await collection.setAutoRecord(true); autoEnabled = true }
+            try await wait { !microphoneReplies.isEmpty }
+            try require(notificationReply == nil && !autoEnabled,"Automatic recording asks for microphone before optional notifications")
+            microphoneReplies.removeFirst().resume()
+            try await enableAuto.value
+            try require(autoEnabled && notificationReply == nil,"Auto-record settings never wait for notification consent or ask before a capture starts")
+            try await collection.setAutoRecord(false)
+            report["autoRecordMicrophonePrecedesNotifications"] = true
             let one = try CaptureProbeProfile(root:pipe,title:"Generated profile one"), two = try CaptureProbeProfile(root:pipe,title:"Generated profile two")
             profiles = [one,two]
             try await one.ready(); try await two.ready()
@@ -179,18 +196,27 @@ final class CaptureProbeProcess: @unchecked Sendable {
             stage = "start two profiles"
             CaptureFixture.silentMicrophone = true
             CaptureFixture.microphoneDC = -2060.0/32768
-            var notificationReply: CheckedContinuation<Void,Never>?
-            CaptureNotifications.authorizationFixture = {
-                await withCheckedContinuation { notificationReply = $0 }
-            }
             // Use the real first-start confirmation path with notification
             // consent held indefinitely. Native inputs remain generated RAM.
             RecordCoordinator.shared.showingFirst = true
             RecordCoordinator.shared.confirm()
+            try await wait { collection.starting }
+            try await Task.sleep(for:.milliseconds(50))
+            try require(notificationReply == nil,"No notification prompt before the browser accepts the first Start")
             _ = try await one.performNext(); _ = try await two.performNext()
+            try await wait { microphoneReplies.count == 2 }
+            try require(notificationReply == nil,"Browser recording requests microphone before optional notification consent")
+            let admitted = microphoneReplies; microphoneReplies.removeAll()
+            CaptureFixture.microphoneAuthorizationFixture = nil
+            admitted.forEach { $0.resume() }
             try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
             try await wait { notificationReply != nil }
             try require(!RecordCoordinator.shared.showingFirst,"First confirmation dismissed while recording actually started")
+            let framesBeforeConsent = collection.captures.values.reduce(UInt64(0)) { $0 + $1.owner.snapshot.manifest.tracks.reduce(UInt64(0)) { $0 + $1.frames } }
+            try await one.emit(); try await two.emit()
+            try await wait { collection.captures.values.reduce(UInt64(0), { $0 + $1.owner.snapshot.manifest.tracks.reduce(UInt64(0), { $0 + $1.frames }) }) > framesBeforeConsent }
+            try require(notificationReply != nil,"Recording continues while the notification banner is unanswered")
+            report["browserMicrophonePrecedesNotifications"] = true
             notificationReply?.resume(); notificationReply = nil
             CaptureNotifications.authorizationFixture = nil
             report["firstRecordingDoesNotWaitForNotifications"] = true
@@ -443,16 +469,24 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures.isEmpty }
             let before = try folders(root)
             stage = "nothing started leaves no folder"
+            CaptureNotifications.shared.resetAuthorizationForFixture()
+            var failedStartNotificationRequests = 0
+            CaptureNotifications.authorizationFixture = { failedStartNotificationRequests += 1 }
             CaptureFixture.systemAllowed = false
             try await collection.record()
             try await wait { collection.recordFailed && collection.captures.isEmpty }
             let after = try folders(root)
             try require(after == before,"No samples means no new Library folder")
+            await Task.yield()
+            try require(failedStartNotificationRequests == 0,"Failed native inputs never request notification consent")
+            report["failedNativeStartSkipsNotifications"] = true
             report["nothingStartedLeavesNoLibraryEntry"] = true
             stage = "failed System input retains microphone and permission description"
             CaptureFixture.microphoneAllowed = true
             try await collection.record()
             try await wait { collection.first?.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } == true }
+            try await wait { failedStartNotificationRequests == 1 }
+            CaptureNotifications.authorizationFixture = nil
             let partial = try collection.captures.values.first.unwrap()
             let partialMeeting = try LibraryScanner(root:root).scan().meetings.first { $0.id == partial.snapshot.manifest.id }.unwrap()
             let partialEditor = RecordingPageModel.editor(for:partialMeeting)

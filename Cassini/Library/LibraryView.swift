@@ -46,11 +46,7 @@ struct LibraryView: View {
         }
         .font(.system(size: 13))
         .safeAreaInset(edge:.bottom,spacing:0) {
-            if updates.readyWhenIdle {
-                Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
-                    .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
-                    .accessibilityIdentifier("library-update-ready")
-            }
+            UpdateReadyFooter(updates:updates)
         }
         .safeAreaInset(edge:.top,spacing:0) {
             CaptureFailureBanner(); trashFailure
@@ -561,5 +557,16 @@ private final class LibraryToolbarActionView: NSView {
     @objc private func invoke(_ sender: Any?) {
         if let makeMenu { makeMenu().popUp(positioning:nil,at:NSPoint(x:0,y:0),in:self) }
         else { action?() }
+    }
+}
+
+struct UpdateReadyFooter: View {
+    let updates: ApplicationUpdates
+    var body: some View {
+        if updates.readyWhenIdle {
+            Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
+                .accessibilityIdentifier("library-update-ready")
+        }
     }
 }

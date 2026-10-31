@@ -10,6 +10,7 @@ import CassiniBrowserControl
         RecordingFixture.enabled && RecordingFixture.root != nil && CommandLine.arguments.contains("--browser-capture-self-test")
     }
     static var microphoneAllowed = true
+    static var microphoneAuthorizationFixture: (() async -> Void)?
     static var microphoneStartsAllowed = true
     static var silentMicrophone = false
     static var microphoneDC: Float = 0
@@ -28,6 +29,7 @@ import CassiniBrowserControl
     private var frames: UInt64 = 0
     init(_ side: CaptureSide) { self.side = side }
     func authorize() async throws {
+        if side == .me, let authorize = CaptureFixture.microphoneAuthorizationFixture { await authorize() }
         if side == .me && !CaptureFixture.microphoneAllowed { throw CocoaError(.fileReadNoPermission) }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
