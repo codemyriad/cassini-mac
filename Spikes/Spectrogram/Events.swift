@@ -2,6 +2,7 @@
 #if SPECTROGRAM_PROBE
 import AppKit
 import QuartzCore
+import Darwin
 
 /// A single bounded observation of real renderer/workspace events. The deadline
 /// only fails the observation; elapsed time can never make it pass (E1).
@@ -9,16 +10,25 @@ import QuartzCore
     private var continuation: CheckedContinuation<Void, Error>?
     private var deadline: DispatchWorkItem?
     private var activation: NSObjectProtocol?
+    private var fileEvents: DispatchSourceFileSystemObject?
     private weak var controller: RecordingSpectrogram?
     private var condition: (() -> Bool)?
     private enum Failure: Error { case timeout(String) }
 
     func wait(_ description: String, controller: RecordingSpectrogram, timeout: Double = 10,
-              until condition: @escaping () -> Bool) async throws {
+              directory: URL? = nil, until condition: @escaping () -> Bool) async throws {
         precondition(continuation == nil)
         if condition() { return }
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation; self.controller = controller; self.condition = condition
+            if let directory {
+                let fd = open(directory.path,O_EVTONLY)
+                guard fd >= 0 else { finish(.failure(Failure.timeout("File event observer: " + description))); return }
+                let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor:fd,eventMask:.write,queue:.main)
+                source.setEventHandler { [self] in check() }
+                source.setCancelHandler { close(fd) }
+                fileEvents = source; source.resume()
+            }
             controller.fixtureChanged = { [self] in check() }
             activation = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -33,7 +43,7 @@ import QuartzCore
     private func finish(_ result: Result<Void, Error>) {
         guard let continuation else { return }
         self.continuation = nil; condition = nil; controller?.fixtureChanged = nil; controller = nil
-        deadline?.cancel(); deadline = nil
+        deadline?.cancel(); deadline = nil; fileEvents?.cancel(); fileEvents = nil
         if let activation { NSWorkspace.shared.notificationCenter.removeObserver(activation) }
         activation = nil; continuation.resume(with: result)
     }

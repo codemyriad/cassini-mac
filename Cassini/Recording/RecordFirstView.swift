@@ -223,7 +223,7 @@ private final class RecordingPillControlView: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 16 + 14,height:34) }
     func update(_ value: RecordingPillControls) {
         onOpen = value.open; onStop = value.stop
-        let red: NSColor = value.dark ? NSColor(red:1,green:105/255,blue:97/255,alpha:1) : NSColor(red:215/255,green:0,blue:21/255,alpha:1)
+        let red: NSColor = value.dark ? NSColor(red:1,green:69/255,blue:58/255,alpha:1) : NSColor(red:215/255,green:0,blue:21/255,alpha:1)
         let font = NSFont.monospacedDigitSystemFont(ofSize:13,weight:.semibold)
         openButton.attributedTitle = NSAttributedString(string:value.time,attributes:[.font:font,.foregroundColor:red])
         openButton.image = NSImage(size:NSSize(width:17,height:10),flipped:false) { _ in
@@ -235,7 +235,9 @@ private final class RecordingPillControlView: NSView {
         stopButton.attributedTitle = NSAttributedString(string:stopTitle,attributes:[.font:stopFont,.foregroundColor:NSColor.white])
         stopButton.spokenLabel = UXText.text("recording.pill.stop.a11y")
         stopButton.layer?.backgroundColor = red.cgColor
-        layer?.backgroundColor = red.withAlphaComponent(0.10).cgColor
+        layer?.backgroundColor = (value.dark
+            ? NSColor(srgbRed:67/255,green:33/255,blue:31/255,alpha:1)
+            : NSColor(srgbRed:253/255,green:228/255,blue:230/255,alpha:1)).cgColor
         openWidth.constant = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + 21
         stopWidth.constant = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + 20
         toolTip = value.noSleep ? UXText.text("recording.pill.noSleep") : nil

@@ -71,7 +71,7 @@ import Darwin
     private(set) var displayDelayMs: Double = 0
     #endif
     private(set) var drawingNanoseconds: UInt64 = 0, analysisNanoseconds: UInt64 = 0
-    private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0
+    private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0, droppedBuffers: UInt64 = 0
     private var lastAppliedTime: Double?
     #if DEBUG
     // The hosted probe is bounded to 200 s at 60/120 Hz, well below a
@@ -267,7 +267,7 @@ import Darwin
                 #if DEBUG
                 self.displayDelayMs = frame.delayMs
                 #endif
-                self.lateColumns = frame.lateColumns; self.droppedColumns = frame.droppedColumns
+                self.lateColumns = frame.lateColumns; self.droppedColumns = frame.droppedColumns; self.droppedBuffers = frame.droppedBuffers
                 self.paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
                 if let previous = self.lastAppliedTime {
                     let ms = (timestamp-previous)*1000
@@ -459,7 +459,7 @@ import Darwin
         for _ in 0..<(style == .pill ? 2 : 1) {
             let item = LaneLayers()
             for owned in [item.clip,item.scrolling,item.first,item.fade] { owned.actions = actions }
-            item.clip.masksToBounds = true; item.clip.cornerRadius = 2
+            item.clip.masksToBounds = true; item.clip.cornerRadius = style == .pill ? 2 : 4
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
             item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
             item.first.minificationFilter = .linear; item.first.magnificationFilter = .linear
@@ -501,7 +501,9 @@ import Darwin
     }
     func freeze() {
         guard layer?.opacity != 0.45 else { return }
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { layer?.opacity = 0.45; return }
+        if source == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            layer?.opacity = 0.45; return
+        }
         let animation = CABasicAnimation(keyPath:"opacity"); animation.fromValue = layer?.presentation()?.opacity ?? 1
         animation.toValue = 0.45; animation.duration = 0.22
         layer?.opacity = 0.45; layer?.add(animation,forKey:"recording-stop")

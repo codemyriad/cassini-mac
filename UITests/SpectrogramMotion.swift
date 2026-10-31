@@ -51,7 +51,13 @@ final class SpectrogramMotion: XCTestCase {
             attachment.lifetime = .keepAlways;add(attachment)
             settings.terminate()
             let pid=try XCTUnwrap(body["pid"] as? Int32)
-            XCTAssertTrue(NSRunningApplication(processIdentifier:pid)?.activate(options:[.activateIgnoringOtherApps]) == true)
+            let probe = try XCTUnwrap(NSRunningApplication(processIdentifier:pid))
+            _ = probe.activate(options:[.activateIgnoringOtherApps])
+            let foreground = NSPredicate { _,_ in NSWorkspace.shared.frontmostApplication?.processIdentifier == pid }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:foreground,object:nil)],timeout:5),.completed,"Probe returns to the foreground")
+            let requestID = try XCTUnwrap(body["requestID"] as? String)
+            let response = try JSONSerialization.data(withJSONObject:["requestID":requestID])
+            try response.write(to:requestURL.deletingLastPathComponent().appendingPathComponent("motion-ack.json"),options:.atomic)
         }
     }
 }

@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 
@@ -41,7 +42,7 @@ def measure(app: Path, output: Path):
             try:
                 if case == 'B':
                     trace = subprocess.Popen(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler',
-                                              '--attach', str(process.pid), '--time-limit', '75s',
+                                              '--attach', str(process.pid),
                                               '--output', str(output/'B-TimeProfiler.trace')],
                                              stdout=stderr, stderr=subprocess.STDOUT)
                 stdout, _ = process.communicate(timeout=200 if case == 'B' else 85)
@@ -51,6 +52,19 @@ def measure(app: Path, output: Path):
                     process.wait()
                 top.terminate()
                 top.wait(timeout=10)
+                if trace:
+                    # Finalising Instruments can suspend its target. Keep that
+                    # outside both CPU measurement and the subsequent PCM/state
+                    # tests: stop the trace only after the target has exited.
+                    if trace.poll() is None:
+                        trace.send_signal(signal.SIGINT)
+                    try:
+                        trace.wait(timeout=20)
+                    except subprocess.TimeoutExpired:
+                        trace.kill()
+                        trace.wait()
+                    if trace.returncode != 0:
+                        problems.append('B: Time Profiler did not finish; see stderr')
                 if motion_driver:
                     try:
                         motion_driver.wait(timeout=20)
@@ -61,14 +75,6 @@ def measure(app: Path, output: Path):
                     if motion_driver.returncode != 0:
                         problems.append('B: actual System Settings motion transition failed; see motion-xctest.log')
             (output/f'{case}.stdout.txt').write_text(stdout)
-            if trace:
-                try:
-                    trace.wait(timeout=20)
-                except subprocess.TimeoutExpired:
-                    trace.kill()
-                    trace.wait()
-                if trace.returncode != 0:
-                    problems.append('B: Time Profiler did not finish; see stderr')
             if process.returncode != 0:
                 try:
                     partial = json.loads(stdout)

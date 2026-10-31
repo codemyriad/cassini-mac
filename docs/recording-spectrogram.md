@@ -118,3 +118,20 @@ including the full history and maximum display delay; original session events
 are untouched. A 100,000-transition test compares every visible raster decision.
 Frame timing histograms exist only during the bounded hosted probe, with the
 same 0.1 ms resolution and unchanged gates; ordinary app views allocate none.
+
+The native measurement reports and rejects picture input-buffer drops as well as
+late/mailbox columns. A bounded analyser must not appear to meet its CPU budget
+by silently discarding admitted inputs. Recording remains independent of either
+picture-drop counter.
+
+The approved prototype's surrounding geometry is retained too: 4 px page-strip
+corners, 62 px minimum source rows with 12 px vertical padding, 58 px Check and
+placeholder widths, and the explicit light/dark pill backgrounds and control red.
+The chart's dark ink remains its separately specified #ff6961.
+
+The real OS-motion driver acknowledges each unique request only after its UI
+assertions and focus restoration; the probe observes that file event before
+exiting. Trace finalisation happens after target exit, to avoid suspending its
+PCM source during state checks. The intentional dropout is counted in source
+frames: finish accepts only its exact persisted gap diagnostic with zero disk
+loss. Additional gaps and every other recording error remain failures.

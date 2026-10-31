@@ -74,6 +74,7 @@ import ScreenCaptureKit
             if mode != "C" { try require(window.occlusionState.contains(.visible),"visible test window") }
             let initialFrames = controller.analyzedFrames, initialAnalysis = controller.analysisNanoseconds
             let initialLate = controller.lateColumns, initialDropped = controller.droppedColumns
+            let initialBufferDrops = controller.droppedBuffers
             controller.resetFrameMeasurements()
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
             let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
@@ -98,6 +99,7 @@ import ScreenCaptureKit
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
                 "droppedColumns":controller.droppedColumns-initialDropped,
+                "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
                 "viewPayloadBytes":controller.payloadBytes,"surfaceAllocationBytes":controller.surfaceBytes,
                 "surfaceRevisions":controller.surfaceRevision,"minimized":window.isMiniaturized,
                 "reducedMotion":controller.usingReducedMotion,
@@ -112,6 +114,7 @@ import ScreenCaptureKit
             report["gates"] = ["analysis":analysis <= 0.2,"drawing":drawing <= (mode == "A" ? 0.3 : 0.5),
                 "pacing":mode == "A" || hidden || (controller.frameP95Ms <= 17.5 && controller.maxFrameIntervalMs <= 33),
                 "late":controller.lateColumns == initialLate,"drops":controller.droppedColumns == initialDropped,
+                "inputDrops":controller.droppedBuffers == initialBufferDrops,
                 "logicalViewPayload":controller.payloadBytes <= 128*1024]
             if mode == "B" {
                 // Verify pixels from this process's own window, after the CPU
@@ -204,6 +207,7 @@ import ScreenCaptureKit
                 controller.reconcile(); controller.appearance(dark:true,silent:true)
             }
             try require(controller.frameCallbacks == stoppedCallbacks,"Stop disconnects the frame clock")
+            if hidden { try require(strips.allSatisfy { $0.layer?.animation(forKey:"recording-stop") == nil },"Hidden/off Stop creates no fade animation") }
             if !hidden { try require(controller.surfaceRevision >= stoppedRevision && strips.allSatisfy { $0.layer?.opacity == 0.45 },"Stop freezes and fades visible strips") }
             report["stopDisconnectsAndFreezes"] = true
             if mode == "B" { _ = try await darkPixels(window:window,view:strips[2],name:"B-stopping") }
@@ -230,12 +234,18 @@ import ScreenCaptureKit
     private static func motion(_ value: Bool, controller: RecordingSpectrogram) async throws {
         guard let directory=argument("-SpectrogramOutput") else { throw Failure.check("motion request directory") }
         let observed=controller.displayOptionsChanges
-        let request=try JSONSerialization.data(withJSONObject:["reduceMotion":value,"pid":getpid()])
+        let requestID = UUID().uuidString
+        let folder = URL(fileURLWithPath:directory)
+        let ack = folder.appendingPathComponent("motion-ack.json")
+        let request=try JSONSerialization.data(withJSONObject:["reduceMotion":value,"pid":getpid(),"requestID":requestID])
         try request.write(to:URL(fileURLWithPath:directory).appendingPathComponent("motion-request.json"),options:.atomic)
         // XCTest changes System Settings on this disposable Mac. Both actual
         // display-options and application-activation notifications drive this.
-        try await SpectrogramProbeEvent().wait("real system Reduce Motion setting did not reach the view",controller:controller,timeout:40) {
-            controller.displayOptionsChanges > observed &&
+        try await SpectrogramProbeEvent().wait("real system Reduce Motion setting did not reach the view",controller:controller,timeout:40,directory:folder) {
+            guard let data=try? Data(contentsOf:ack),
+                  let response=try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+                  response["requestID"] as? String == requestID else { return false }
+            return controller.displayOptionsChanges > observed &&
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value &&
             controller.usingReducedMotion == value &&
             NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
@@ -313,6 +323,7 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private var buffers: [AVAudioPCMBuffer] = [], pcm: [Data] = []
     private var frames = 0, sequence = 0
     private var othersMissing = false
+    private var intentionalGapFrames: UInt64 = 0
     private let chunk: Int
     var chunkFrames: Int { chunk }
     var samplePositionMs: Double { queue.sync { Double(frames)/48 } }
@@ -387,7 +398,7 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private func emitPacket() {
         let offset = Double(frames)/48, host = AVAudioTime.hostTime(forSeconds:origin+offset/1000)
         sink.receive(buffers[0],hostTime:host,id:"mic",label:"Mic",kind:"microphone")
-        if othersMissing { /* Advance the clock without PCM: a genuine source gap. */ }
+        if othersMissing { intentionalGapFrames += UInt64(chunk) }
         else if let owner {
             do { for n in 0..<4 { try owner.browserAudio(id:"remote-\(n)",sequence:sequence,offsetMs:offset,pcm:pcm[n+1]) } }
             catch { errorLock.withLock { failure = String(describing:error) } }
@@ -423,7 +434,17 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             let waits = progressWaits; progressWaits.removeAll()
             for wait in waits.values { wait.deadline.cancel(); wait.continuation.resume(throwing:ProgressFailure.finished) }
         }
-        try await Task.detached { [self] in try sink.finish(problem:nil) }.value
+        let expected = queue.sync { intentionalGapFrames }
+        do { try await Task.detached { [self] in try sink.finish(problem:nil) }.value }
+        catch RecordingError.invalid(let message) {
+            let status = sink.status()
+            let gapMs = Double(expected)/48
+            let exactDiagnostic = "Recording saved with \(Int(gapMs.rounded())) ms of host-time gap; the timeline contains silence."
+            // Accept only the exact, counted fixture omission. Unexpected
+            // scheduling gaps, writer losses and all other failures still fail.
+            guard expected > 0, abs(status.gapMs-gapMs) < 1.0/48,
+                  status.droppedMs == 0, message == exactDiagnostic else { throw RecordingError.invalid(message) }
+        }
         if let owner { try await owner.finish() }
         if let failure = errorLock.withLock({ failure }) { throw RecordingError.invalid(failure) }
     }
