@@ -138,7 +138,9 @@ import ScreenCaptureKit
             if mode == "B" {
                 // State pictures use the production selection timeline, PCM
                 // discontinuities, palette and freeze path after measurement.
+                let warningRevision=controller.surfaceRevision
                 controller.appearance(dark:false,silent:true)
+                try await wait("Silent warning palette applied") { controller.surfaceRevision > warningRevision }
                 _ = try await darkPixels(window:window,view:strips[1],name:"B-silent-warning")
                 let now = { (ProcessInfo.processInfo.systemUptime-input.origin)*1000 }
                 var events=[CaptureEvent(atMs:0,type:"selection",reason:"start",me:true,others:true),
@@ -156,7 +158,9 @@ import ScreenCaptureKit
                 input.dropOthers(false)
                 try await Task.sleep(for:.milliseconds(500))
                 _ = try await darkPixels(window:window,view:strips[2],name:"B-dropout-and-return")
+                let darkRevision=controller.surfaceRevision
                 window.appearance=NSAppearance(named:.darkAqua);controller.appearance(dark:true,silent:false)
+                try await wait("Dark palette applied") { controller.surfaceRevision > darkRevision }
                 _ = try await darkPixels(window:window,view:strips[2],name:"B-recording-dark")
                 report["scriptedStates"] = ["silentWarning","othersNotRecorded","dropoutAndReturn","dark"]
                 try await motion(true,controller:controller)
