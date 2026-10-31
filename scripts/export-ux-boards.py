@@ -22,5 +22,5 @@ payloads = [a for test in manifest for a in test['attachments'] if a['suggestedH
 assert len(payloads) == 1, payloads
 payload = source/payloads[0]['exportedFileName']
 value = json.loads(payload.read_text())
-assert value['assertionHeld'] is True and [a['id'] for a in value['actions']] == ['stop','open']
+assert value['assertionHeld'] is True and [a['id'] for a in value['actions']] == ['stop','open','settings','quit']
 shutil.copyfile(payload,target/'recording-menu.json')
