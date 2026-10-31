@@ -7,6 +7,12 @@ import CassiniRecording
 import CassiniBrowserControl
 import CassiniKit
 
+private struct BrowserSourceObservation: Equatable {
+    let page: BrowserCallLifecycle.Page?
+    let observedAt: TimeInterval?
+    let active: Bool
+}
+
 struct LiveCapture {
     let owner: OwnedBrowserCapture
     let input: CaptureInputLifecycle
@@ -21,6 +27,11 @@ struct LiveCapture {
     var diskMinutes: Int?
     var fallbackAnnounced = false
     var lifetime = BrowserCallLifetime()
+    var callLifecycle = BrowserCallLifecycle()
+    var modernLifecycle: Bool?
+    var changingSource = false
+    fileprivate var sourceObservation: BrowserSourceObservation?
+    var lastNavigationAt: TimeInterval?
     var savingSinceMs: Int64?
     @MainActor var microphoneSilent: Bool {
         snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
@@ -49,7 +60,7 @@ private final class CaptureFiles: @unchecked Sendable {
             let id = UUID()
             CaptureActivityStore.shared.set(id,.preparing)
             do {
-                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,changed:{ [access] snapshot in
+                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,managedBrowser:browser,changed:{ [access] snapshot in
                     withExtendedLifetime(access) { changed(snapshot) }
                 })
                 do { try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded() }
@@ -178,8 +189,11 @@ private final class CaptureFiles: @unchecked Sendable {
         guard !shuttingDown, generation == autoGeneration else { return }
         if enabled { await authorizeMicrophone() }
     }
-    func stop(_ id: UUID, userInitiated: Bool = true) {
+    func stop(_ id: UUID, reason: CaptureEndReason = .user, userInitiated explicitIntent: Bool? = nil) {
         guard let value = captures[id] else { return }
+        let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
+        value.owner.requestEnd(reason,atMs:Double(value.elapsedMs))
+        value.input.cancelSourceChange()
         // A user's Stop still matters when an automatic Stop is already draining
         // or the control peer has gone away. Preserve the original capture URL.
         if userInitiated { service.rememberUserStop(captureID:value.captureID,key:value.key) }
@@ -188,14 +202,14 @@ private final class CaptureFiles: @unchecked Sendable {
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
-        if let key = value.key { service.stopMeeting(key,captureID:value.captureID,userInitiated:false) }
+        if let key = value.key { service.stopMeeting(key,captureID:value.captureID,userInitiated:false,reason:reason) }
         let task = Task { [weak self] in
             // Native inputs stop at the user's request, independently of a
             // delayed page flush. Broker finalization reuses this same drain.
             try? await value.input.stop()
             // The browser Stop flushes its pending PCM and normally finalizes
             // this owner itself. Keep admission open until that tail arrives.
-            let deadline = ProcessInfo.processInfo.systemUptime + (value.snapshot.browserAlive && value.key != nil ? 12 : 0)
+            let deadline = ProcessInfo.processInfo.systemUptime + (value.owner.snapshot.transportAlive && value.key != nil ? 12 : 0)
             while value.owner.snapshot.phase == .recording && ProcessInfo.processInfo.systemUptime < deadline {
                 do { try await Task.sleep(for:.milliseconds(50)) } catch { break }
             }
@@ -206,18 +220,23 @@ private final class CaptureFiles: @unchecked Sendable {
         }
         stopping[id] = task
     }
-    func stopAll() { recordGeneration += 1; requestingRecord = false; service.stopRecordings(); for id in Array(captures.keys) { stop(id) } }
-    func stopAndWait() async {
-        stopAll()
+    func stopAll(reason: CaptureEndReason = .user) {
+        recordGeneration += 1; requestingRecord = false
+        for value in captures.values { value.owner.requestEnd(reason,atMs:Double(value.elapsedMs)) }
+        service.stopRecordings(reason:reason)
+        for id in Array(captures.keys) { stop(id,reason:reason) }
+    }
+    func stopAndWait(reason: CaptureEndReason = .user) async {
+        stopAll(reason:reason)
         while !stopping.isEmpty { for task in Array(stopping.values) { await task.value } }
         while preparingFiles > 0 { try? await Task.sleep(for:.milliseconds(10)) }
         settleSaved()
         for task in Array(settling.values) { await task.value }
     }
-    func beginShutdown() { shuttingDown = true; files.close(); broker.closeAdmission(); service.setAutoRecord(false,microphone:true); stopAll() }
+    func beginShutdown() { shuttingDown = true; files.close(); broker.closeAdmission(); service.setAutoRecord(false,microphone:true); stopAll(reason:.appQuit) }
     func shutdown() async {
-        beginShutdown(); await stopAndWait()
-        let finalized = await broker.finishAll()
+        beginShutdown(); await stopAndWait(reason:.appQuit)
+        let finalized = await broker.finishAll(reason:.appQuit)
         for snapshot in finalized { settle(snapshot) }
         settleSaved()
         for task in Array(settling.values) { await task.value }
@@ -253,10 +272,14 @@ private final class CaptureFiles: @unchecked Sendable {
                 guard let self, let value = self.captures[id] else { return }
                 self.captures[id]?.sourceProblem = true
                 if value.input.failedSides.contains(.others) { try? await value.owner.systemUnavailable(atMs:Double(value.elapsedMs)) }
-                if !value.snapshot.browserAlive && !value.input.hasRunningInputs { self.stop(id,userInitiated:false) }
+                let source = value.owner.snapshot
+                if !source.browserAlive && !value.input.hasRunningInputs && !(source.managedBrowser && source.others) { self.stop(id,reason:.error) }
             }
         })
-        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:key(for:info.captureID))
+        let meetingKey = key(for:info.captureID)
+        let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
+        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
+        if let modern { try? await owner.manageBrowserLifecycle(modern) }
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
         CaptureActivityStore.shared.set(id,activity[id])
         diskWatch.start(folders:{ [weak self] in
@@ -284,12 +307,11 @@ private final class CaptureFiles: @unchecked Sendable {
             let phase: CaptureActivity = snapshot.phase == .saving || captures[id]?.savingSinceMs != nil ? .saving : .recording
             if activity[id] != phase { activity[id] = phase; CaptureActivityStore.shared.set(id,phase) }
         }
-        if snapshot.needsSystem, captures[id]?.savingSinceMs == nil, !captures[id]!.input.failedSides.contains(.others) {
+        if !snapshot.managedBrowser, snapshot.needsSystem, captures[id]?.savingSinceMs == nil, !captures[id]!.input.failedSides.contains(.others) {
             let input = captures[id]!.input
             Task { [weak self] in do { try await input.update() } catch { self?.captures[id]?.sourceProblem = true } }
         }
-        let source = CaptureSourceState(events:snapshot.manifest.events ?? [],atMs:Double(captures[id]?.elapsedMs ?? 0))
-        if source.source == "system", snapshot.fallbackReason != nil, captures[id]?.savingSinceMs == nil, captures[id]?.fallbackAnnounced == false {
+        if snapshot.isSystemFallback, captures[id]?.savingSinceMs == nil, captures[id]?.fallbackAnnounced == false {
             captures[id]?.fallbackAnnounced = true; onFallback?(id)
         }
     }
@@ -341,9 +363,14 @@ private final class CaptureFiles: @unchecked Sendable {
             if let value = captures[id] {
                 let key = key(for:value.captureID) ?? value.key; captures[id]?.key = key
                 if let key { microphones[key] = value.owner.snapshot.me }
+                if value.modernLifecycle == nil, let peer = peers.first(where:{ $0.id == key?.peer }) {
+                    captures[id]?.modernLifecycle = peer.supportsPageState
+                    Task { try? await value.owner.manageBrowserLifecycle(peer.supportsPageState); try? await value.input.update() }
+                }
             }
         }
         announce()
+        poll() // Invalidate pending source work immediately on control updates.
     }
     private func key(for captureID: String) -> BrowserMeetingKey? {
         peers.flatMap { $0.captures + $0.interrupted }.first { $0.captureID.map { Data($0.utf8) == Data(captureID.utf8) } == true }?.key
@@ -394,8 +421,74 @@ private final class CaptureFiles: @unchecked Sendable {
             if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
-                if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
-                    lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true { stop(id,userInitiated:false) }
+                // Native Start can precede the control status that binds this
+                // capture to its peer. Absence during that handshake is not loss.
+                let initial = value.owner.snapshot
+                if value.modernLifecycle == nil && initial.browserAlive && initial.transportAlive { continue }
+                if value.modernLifecycle == false {
+                    if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
+                        lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true {
+                        stop(id,reason:peer != nil && count == 0 ? .callEnded : .pageGone)
+                    }
+                    continue
+                }
+                let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
+                let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
+                let meeting = peer?.meetings.first { $0.key == value.key }
+                let pages: [(BrowserCallLifecycle.Page,TimeInterval?)] = [
+                    status?.pageState.map { ($0,status?.pageStateAt) },
+                    meeting?.pageState.map { ($0,meeting?.pageStateAt) }
+                ].compactMap { $0 }
+                let page = pages.first { $0.0 == .closed } ?? pages.max { ($0.1 ?? 0) < ($1.1 ?? 0) }
+                let source = value.owner.snapshot
+                // Fresh PCM on the original owned transport is stronger than
+                // a brief gap in management discovery. It never overrides an
+                // explicit navigating/closed report or a dead audio transport.
+                let fresh = source.browserAlive && source.transportAlive && now-source.levelTimestamp <= 1
+                let reportedPage = page?.0 ?? (fresh ? .present : nil)
+                // A reconnect's status can precede its first meeting inventory.
+                // Present alone does not confirm that the call has zero sources.
+                let observedPage = reportedPage == .present && count == nil && !fresh ? nil : reportedPage
+                let observation = BrowserSourceObservation(page:observedPage,observedAt:page?.1,active:(count ?? (fresh ? 1 : 0)) > 0)
+                if observation != value.sourceObservation {
+                    value.input.cancelSourceChange()
+                    captures[id]?.sourceObservation = observation
+                }
+                let returnFloor = page?.1.map { max(0,$0-value.originUptime)*1000 }
+                let ready = source.restoreReady && source.browserReturnPCMAt.map { $0 >= (returnFloor ?? 0) } == true
+                let action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
+                    transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
+                    restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                if case .stop(let reason) = action, let end = CaptureEndReason(rawValue:reason.rawValue) {
+                    value.owner.requestEnd(end,atMs:max(0,now-value.originUptime)*1000)
+                    stop(id,reason:end); continue
+                }
+                guard !value.changingSource else { continue }
+                let navigation = observedPage == .navigating && page?.1 != value.lastNavigationAt
+                let lost = source.browserAlive && observedPage != .present || navigation
+                if navigation { captures[id]?.lastNavigationAt = page?.1 }
+                let fallback = action == .fallback && !value.input.failedSides.contains(.others)
+                let returned = observedPage == .present && (count ?? 0) > 0 && ready && source.others
+                guard lost || fallback || returned else { continue }
+                captures[id]?.changingSource = true
+                let atMs = max(0,now-value.originUptime)*1000
+                let revision = value.input.sourceRevision
+                Task { [weak self] in
+                    do {
+                        if lost {
+                            let lossAt = max(0,(page?.1 ?? now)-value.originUptime)*1000
+                            try await value.input.observeBrowserLoss(atMs:lossAt,transportAlive:source.transportAlive,revision:revision)
+                        }
+                        if fallback { try await value.input.fallback(revision:revision) }
+                        if returned { try await value.input.restoreBrowser(atMs:atMs,notBeforeMs:returnFloor,revision:revision) }
+                        if returned { self?.captures[id]?.sourceProblem = false }
+                    } catch is CancellationError {
+                        // A newer page observation owns the next source decision.
+                    } catch {
+                        if self?.captures[id]?.savingSinceMs == nil { self?.captures[id]?.sourceProblem = true }
+                    }
+                    self?.captures[id]?.changingSource = false
+                }
             }
         }
     }
@@ -403,7 +496,7 @@ private final class CaptureFiles: @unchecked Sendable {
     private func applyDiskBudget(_ ids: [UUID], _ budget: DiskBudget) {
         for id in ids where captures[id] != nil {
             captures[id]?.diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
-            if budget.shouldStop { diskStopped = true; stop(id,userInitiated:false) }
+            if budget.shouldStop { diskStopped = true; stop(id,reason:.disk) }
         }
         let line = diskStopped ? UXText.text("errors.diskStopped.line") : captures.values.compactMap(\.diskMinutes).min().map { UXText.text("errors.diskLow.line",["n":String($0)]) }
         RecordingDiskWatch.updateWarning(line)

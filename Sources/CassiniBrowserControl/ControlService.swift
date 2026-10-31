@@ -65,7 +65,7 @@ public final class BrowserControlService: @unchecked Sendable {
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }
-    public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool = true) {
+    public func stopMeeting(_ meeting: BrowserMeetingKey, captureID: String? = nil, userInitiated: Bool? = nil, reason: CaptureEndReason = .user) {
         queue.async { [self] in
             // UI publication may lag the new status by one actor hop. Route a
             // fresh Stop by its exact owned capture, without re-keying requests
@@ -74,12 +74,12 @@ public final class BrowserControlService: @unchecked Sendable {
                 registry.snapshots.flatMap { $0.captures + $0.interrupted }
                     .first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.key
             } ?? meeting
-            if let request = try? registry.stop(current,captureID:captureID,userInitiated:userInitiated) { send([request]) }
+            if let request = try? registry.stop(current,captureID:captureID,userInitiated:userInitiated,reason:reason) { send([request]) }
             publish()
         }
     }
-    public func stopRecordings() {
-        queue.async { [self] in send(registry.stopAll()); publish() }
+    public func stopRecordings(reason: CaptureEndReason = .user) {
+        queue.async { [self] in send(registry.stopAll(userInitiated:reason == .user || reason == .appQuit,reason:reason)); publish() }
     }
     public func stop() {
         sync {

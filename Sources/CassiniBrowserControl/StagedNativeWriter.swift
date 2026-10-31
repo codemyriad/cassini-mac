@@ -34,6 +34,7 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
     func activate(_ writer: any RecordingSinkWriter) throws {
         try lock.withLock {
             guard !discarded, target == nil else { throw BrowserIPCError.closed }
+            guard recordingProblem == nil else { throw RecordingError.invalid("The prepared audio input stopped before activation.") }
             target = writer
             defer { formats = []; chunks = []; bytes = 0 }
             for value in formats { try writer.addTrack(id:value.id,label:value.label,kind:value.kind,sampleRate:value.rate,channels:value.channels) }

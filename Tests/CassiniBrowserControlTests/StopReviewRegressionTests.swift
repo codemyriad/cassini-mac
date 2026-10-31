@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import XCTest
 import Foundation
+import CassiniKit
 @testable import CassiniBrowserControl
 
 private final class ReviewClock: @unchecked Sendable {
@@ -266,6 +267,20 @@ final class StopReviewRegressionTests: XCTestCase {
         clock.advance(UserStoppedCalls.retention+1)
         try meetings(&state,replacement,[2,3])
         XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key.tabID == 2 })
+    }
+
+    func testAutomaticTerminalReasonsDoNotBecomeUserStopsAfterTheD33Rebase() throws {
+        for reason: CaptureEndReason in [.callEnded,.tabClosed,.pageGone,.disk,.error] {
+            for all in [false,true] {
+                var state = state(); let old = try ready(&state)
+                try send(status([2]),&state,old)
+                if all { _ = state.stopAll(reason:reason) }
+                else { _ = try state.stop(.init(peer:old,tabID:2),reason:reason) }
+                XCTAssertEqual(state.rememberedStopCount,0,"An automatic terminal reason must not remember a user Stop")
+                state.disconnect(old); _ = try ready(&state)
+                XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key.tabID == 2 })
+            }
+        }
     }
 
     func testHistoricalInterruptedStatusWithoutAnOwnedCaptureIsNotAnActiveStopTarget() throws {
