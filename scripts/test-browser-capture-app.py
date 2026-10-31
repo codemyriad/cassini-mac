@@ -58,6 +58,7 @@ for name in [
     'hangupStopsOnlyEndedMeeting',
     'unobservedFallbackExpires',
     'd33OriginalTransportRestoresSameFolder',
+    'rapidReloadInvalidatesCachedSources','rapidReloadKeepsCaptureIdentity','stopAfterReloadedURLRoutesWithoutForcedFinalization',
     'd33ReconnectHangupStopsNativeInputs',
     'd33ReturnCancelsPendingSystemPermission',
     'd33OthersOffStaysOff',

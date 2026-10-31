@@ -81,6 +81,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
     var audio: CaptureProbeProcess?
     var captureID: String?, path: String?
     var sequence = 0
+    var meetingURL = "https://meeting.example/2"
     var modern = false, pageState = "present", sourceID = "remote"
     var offsetBaseMs = 0
     var nextStartFails = false
@@ -94,7 +95,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        var entry: [String:Any] = ["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":active ? 1 : 0]
+        var entry: [String:Any] = ["tabId":2,"title":title,"url":meetingURL,"sourceCount":active ? 1 : 0]
         if modern { entry["pageState"] = pageState }
         try await control.send(["type":"meetings","meetings":active || audio != nil ? [entry] : []])
     }
@@ -408,11 +409,26 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.record(); _ = try await modern.performNext()
             try await wait { collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true }
             let returning = try collection.captures.values.first.unwrap(), returningID = returning.snapshot.manifest.id
-            try await modern.page("navigating",active:false)
+            // PR23's literal rapid-return wire order: no fresh inventory lies
+            // between the two statuses. The old document's positive count must
+            // not turn the following zero inventory into a two-second hangup.
+            let originalCaptureID = try modern.captureID.unwrap()
+            for page in ["navigating","present"] {
+                modern.pageState = page
+                var advisory = modern.status(); advisory.removeValue(forKey:"sessions"); advisory["pageState"] = page
+                try await modern.control.send(advisory)
+            }
+            modern.meetingURL = "https://meeting.example/reloaded-call"
+            try await modern.meetings(false)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.sourceCount == 0 && collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.url == modern.meetingURL }
+            try require(collection.peers.first { $0.id == returning.key?.peer }?.captures.first?.captureID == originalCaptureID,"ID-less lifecycle reports retain the original capture through a URL change")
+            report["rapidReloadKeepsCaptureIdentity"] = true
             try await wait { !returning.owner.snapshot.browserAlive }
             let loss = try returning.owner.snapshot.browserLostUptime.unwrap()
             collection.pollLifetimeForTesting(at:loss+2.01)
             try await wait { returning.owner.snapshot.usingSystem }
+            try require(returning.owner.snapshot.phase == .recording && collection.captures[returningID] != nil,"Rapid return retains the original recording and long grace")
+            report["rapidReloadInvalidatesCachedSources"] = true
             try await modern.returnedSource(atMs:Int((loss+2.2-returning.originUptime)*1000))
             try await modern.page("present",active:true)
             try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }
@@ -443,6 +459,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(modernEnded.events?.last?.reason == "tabClosed","Closed tab persists its end reason")
             try require(modernEnded.tracks.filter { $0.kind == "system" }.count == systemTracks,"Closed tab must not start a new computer-sound fallback")
             report["d33ClosedTabStopsWithoutSystemFallback"] = true
+            report["stopAfterReloadedURLRoutesWithoutForcedFinalization"] = true
             try await modern.meetings(false)
             stage = "D33 return while system permission remains unanswered"
             let waiting = try CaptureProbeProfile(root:pipe,title:"D33 pending system permission")

@@ -39,6 +39,7 @@ jobs:
       - name: Shared control-host vectors
         run: |
           python3 -m pip install -r browser-protocol/requirements-test.txt
+          python3 browser-protocol/conformance/check-call-lifecycle.py
           python3 browser-protocol/conformance/control/run.py .build/debug/cassini-control-host
       - name: Scoped XPC registration without touching browser profiles
         run: python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
