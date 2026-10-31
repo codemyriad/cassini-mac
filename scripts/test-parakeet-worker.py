@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
                   transcript=dict(status='queued',reference=None),etaMinutes=None,error=None,quoteOverride=None,
                   received=dict(originalName='original.opus',sha256=hashlib.sha256(audio).hexdigest(),importedAtMs=int(time.time()*1000)))
     (meeting/'meeting.json').write_text(json.dumps(document))
-    request=json.dumps(dict(id='parakeet-proof',meeting=str(meeting)))+'\n'
+    request=json.dumps(dict(id='parakeet-proof',meeting=str(meeting),uiLanguage='fr'))+'\n'
     result=subprocess.run(command,input=request.encode(),capture_output=True,env=SAFE,timeout=120)
     assert result.returncode==0,(result.returncode,result.stdout,result.stderr)
     response=json.loads(result.stdout);assert response['id']=='parakeet-proof' and 'error' not in response,response
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
     assert saved['transcript']['status']=='done' and saved['transcript']['model']=='parakeet-ultra-0.6b-int8@18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9',saved
     assert body['language']=='und' and len(body['items'])>10,body
     assert {x['speaker'] for x in body['items']}=={'track-original'}
-    assert saved['speakers']==[dict(id='track-original',name=None,provenance='unnamed',colourIndex=0)],saved
+    assert saved['speakers']==[dict(id='track-original',name=None,provenance='unnamed',colourIndex=0,label='Intervenant 1')],saved
     assert (meeting/'original.opus').read_bytes()==audio
     # Invalid installed data is a distinct startup result, before any meeting
     # can be changed. The app uses this code to fall back to Whistle.
@@ -80,6 +80,6 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
         if child:
             try:os.kill(child,signal.SIGKILL)
             except ProcessLookupError:pass
-report=dict(productionMeetingWorker=True,unverifiedConstructorRejected=True,privacyBeforeDlopen=True,sourceAudioUnchanged=True,language='und',speaker='track-original',ownerDeathStopsWorker=True,invalidModelHasDistinctCode=True,wordCount=len(body['items']),audioDevicesOpened=False)
+report=dict(productionMeetingWorker=True,unverifiedConstructorRejected=True,privacyBeforeDlopen=True,sourceAudioUnchanged=True,language='und',speaker='track-original',storedSpeakerLabel='Intervenant 1',ownerDeathStopsWorker=True,invalidModelHasDistinctCode=True,wordCount=len(body['items']),audioDevicesOpened=False)
 a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(report,indent=2)+'\n')
 print('PASS D16 real meeting worker, source trust/privacy, unchanged audio, unnamed received speaker and owner death')
