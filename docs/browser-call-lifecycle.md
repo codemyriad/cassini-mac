@@ -95,8 +95,8 @@ resume the existing system writer and clock; the microphone stays running.
 
 The hosted real Chromium proof uses the unmodified pinned extension and actual
 bundled native hosts with the signed app. A generated WebRTC call is recorded;
-its HTTP navigation is held until actual system PCM is written, then a new page
-returns remote PCM on the original transport into a fresh span in the same
+its tab commits an about:blank navigation until actual system PCM is written,
+then the same tab returns to an HTTP page with remote PCM on the original transport into a fresh span in the same
 folder. Closing the real tab must persist tabClosed. Native inputs are RAM
 fixtures; neither proof opens host devices. This draft remains unready until the
 new hosted app and real-browser gates pass. No local app/browser execution or

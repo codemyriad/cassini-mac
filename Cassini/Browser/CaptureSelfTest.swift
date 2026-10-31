@@ -479,7 +479,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             stage = "D33 dead transport respects 120 seconds"
             let absent = try CaptureProbeProfile(root:pipe,title:"D33 absent")
             absent.modern = true; profiles.append(absent); try await absent.ready()
-            try await wait { collection.hasCalls }
+            try await wait {
+                let active = collection.peers.filter(\.reconciled).flatMap(\.meetings).filter { $0.sourceCount > 0 }
+                return !active.isEmpty && active.allSatisfy { $0.title == absent.title }
+            }
             try await collection.record(); _ = try await absent.performNext()
             try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
             let missing = try collection.captures.values.first.unwrap()

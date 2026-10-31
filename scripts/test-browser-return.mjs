@@ -33,11 +33,8 @@ const pageBody = `<!doctype html><title>D33 real call</title><body>Generated Web
  window.generatedCall = {context,oscillator,output,sender,receiver};
 })().catch(error => { window.callError = String(error); });
 </script>`;
-let releaseNavigation, pendingResponse;
-const server = http.createServer((request,response) => {
- const send = () => { response.writeHead(200, {'Content-Type':'text/html'}); response.end(pageBody); };
- if (request.url === '/return') { pendingResponse = response; releaseNavigation = send; }
- else send();
+const server = http.createServer((_request,response) => {
+ response.writeHead(200, {'Content-Type':'text/html'}); response.end(pageBody);
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
 const url = `http://127.0.0.1:${server.address().port}`;
@@ -100,12 +97,11 @@ try {
  child.on('error',error => {stderr+=String(error); exited=true; exitCode=-1;});
  child.on('exit',code => {exited=true; exitCode=code;});
  await wait(() => phases.has('recording'),'No real app-owned browser recording');
- // Leave the real navigation pending until the app proves actual system PCM.
- const navigation = page.goto(url+'/return',{timeout:60000}).then(() => null,error => error);
- await wait(() => Boolean(releaseNavigation),'Navigation did not reach the server');
- await wait(() => phases.has('fallback'),'App did not start fallback during navigation');
- releaseNavigation(); releaseNavigation=null;
- assert.equal(await navigation,null);
+ // about:blank commits a real unload without injecting a new relay yet.
+ // A request stalled before response headers can leave the old document alive.
+ await page.goto('about:blank');
+ await wait(() => phases.has('fallback'),'App did not start fallback after the old document unloaded');
+ await page.goto(url+'/return');
  await connected(page);
  await wait(() => phases.has('restored'),'App did not restore real browser PCM');
  assert.equal(phases.get('recording').id,phases.get('fallback').id);
@@ -124,7 +120,6 @@ try {
  await mkdir(path.dirname(output),{recursive:true});
  await writeFile(output+'.stderr.txt',stderr); await writeFile(output+'.stdout.txt',stdout);
  if(child && !exited) {try {process.kill(-child.pid,'SIGKILL');} catch {}}
- pendingResponse?.destroy();
  await context?.close(); server.closeAllConnections(); server.close();
  if(ownsProfile) await rm(profile,{recursive:true,force:true});
  await rm(path.dirname(controlRoot),{recursive:true,force:true});

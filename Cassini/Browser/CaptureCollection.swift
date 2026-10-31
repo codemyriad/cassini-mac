@@ -421,6 +421,10 @@ private final class CaptureFiles: @unchecked Sendable {
             if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
+                // Native Start can precede the control status that binds this
+                // capture to its peer. Absence during that handshake is not loss.
+                let initial = value.owner.snapshot
+                if value.modernLifecycle == nil && initial.browserAlive && initial.transportAlive { continue }
                 if value.modernLifecycle == false {
                     if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
                         lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true {
