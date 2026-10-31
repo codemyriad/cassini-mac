@@ -31,21 +31,28 @@ def relay_motion_ack(line: str, request: Path) -> bool:
     return True
 
 
-def measure(app: Path, output: Path):
-    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
-        raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
-    output.mkdir(parents=True, exist_ok=True)
+def probe_command(app: Path, case: str, output: Path, allocations: bool = False):
     executable = app.resolve()
     if executable.suffix == '.app':
         info = plistlib.loads((executable/'Contents/Info.plist').read_bytes())
         executable = executable/'Contents/MacOS'/info['CFBundleExecutable']
+    command = [str(executable), '--spectrogram-self-test', '-SpectrogramCase', case,
+               '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
+    if allocations:
+        command += ['-SpectrogramAllocations', '1']
+    return command
+
+
+def measure(app: Path, output: Path):
+    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
+        raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
+    output.mkdir(parents=True, exist_ok=True)
     reports = []
     problems = []
     for case in 'ABCDE':
         subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
-        command = [str(executable), '--spectrogram-self-test',
-                   '-SpectrogramCase', case, '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
+        command = probe_command(app, case, output)
         trace = None
         motion_driver = None
         motion_log = None
@@ -139,9 +146,7 @@ def measure(app: Path, output: Path):
               f"draw {report['drawingCorePercent']:.4f}%, p95/max {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
     # Backtraces contain symbols and sizes only, never heap contents or a raw
     # memory graph (which could include inherited runner credentials).
-    allocation = subprocess.run([str(app.resolve()), '--spectrogram-self-test',
-        '-SpectrogramCase', 'B', '-SpectrogramAllocations', '1',
-        '-SpectrogramOutput', str(output.resolve())],
+    allocation = subprocess.run(probe_command(app, 'B', output, allocations=True),
         env=dict(os.environ, CASSINI_SPECTRO='1', MallocStackLogging='1'),
         capture_output=True, text=True, timeout=120)
     (output/'allocations.stderr.txt').write_text(allocation.stderr)

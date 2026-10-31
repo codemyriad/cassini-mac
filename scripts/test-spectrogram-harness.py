@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""File-only tests of the hosted motion driver's correlated completion relay."""
+"""Device-free tests of probe launching and the motion completion relay."""
 import importlib.util
 import json
+import plistlib
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -53,6 +56,27 @@ class MotionCompletion(unittest.TestCase):
         self.request.unlink()
         self.assertFalse(self.emit({'requestID':'first'}))
         self.assertFalse(self.ack.exists())
+
+
+class ProbeLaunch(unittest.TestCase):
+    def test_measurement_and_allocation_launch_the_bundle_executable(self):
+        # Exercise OS process creation with an inert executable, including an
+        # executable name different from the bundle. No AppKit or devices run.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root/'Private probe.app'
+            executable = app/'Contents/MacOS/actual-probe'
+            executable.parent.mkdir(parents=True)
+            (app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'actual-probe'}))
+            executable.write_text('#!'+sys.executable+'\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n')
+            executable.chmod(0o700)
+            for allocations in [False, True]:
+                result = subprocess.run(harness.probe_command(app, 'B', root/'output', allocations),
+                                        capture_output=True, text=True, check=True)
+                arguments = json.loads(result.stdout)
+                self.assertIn('--spectrogram-self-test', arguments)
+                self.assertEqual('-SpectrogramAllocations' in arguments, allocations)
+                self.assertEqual(arguments[arguments.index('-SpectrogramOutput')+1], str((root/'output').resolve()))
 
 if __name__ == '__main__':
     unittest.main()
