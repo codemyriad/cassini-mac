@@ -202,7 +202,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        guard !flag else { return true }
+        // MenuBarExtra owns visible status/popup windows too. Only ordinary
+        // content windows (or an active modal) count as a way back into the app.
+        let visibleContent = sender.windows.contains {
+            $0.isVisible && $0.level == .normal && $0.styleMask.contains(.titled)
+        }
+        guard !visibleContent, sender.modalWindow == nil else { return true }
         MainActor.assumeIsolated {
             LibrarySearchModel.shared.close()
             MeetingNavigation.shared.back()

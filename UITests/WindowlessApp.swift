@@ -29,6 +29,8 @@ extension LibraryBoards {
         XCTAssertTrue(library.waitForExistence(timeout:10),app.debugDescription)
         library.buttons["_XCUI:CloseWindow"].click()
         waitForWindowless { !library.exists }
+        idle.click()
+        XCTAssertTrue(app.buttons["idle-menu-open"].waitForExistence(timeout:5))
         // LaunchServices sends the same reopen event as clicking the Dock icon,
         // unlike XCUIApplication.activate(), which only activates the process.
         let bundle = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier:"io.codemyriad.cassini").first?.bundleURL)
