@@ -59,11 +59,8 @@ struct MeetingView: View {
                                     }.fixedSize()
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
                                 }.frame(width: 120, alignment: .leading)
-                                Text(transcript(turn.items)).textSelection(.enabled).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading)
-                                    .environment(\.openURL, OpenURLAction { url in
-                                        if url.scheme == "cassini-seek", let host = url.host, let ms = Int(host) { model.seek(ms); return .handled }
-                                        return .discarded
-                                    })
+                                MeetingTranscriptText(items:turn.items,positionMs:model.positionMs,seek:model.seek)
+                                    .frame(maxWidth:.infinity,alignment:.leading)
                             }.id(turn.id)
                                 .accessibilityElement(children:.ignore)
                                 .accessibilityLabel([meeting.speakers.first(where:{ $0.id == turn.speaker })?.displayName ?? "",LibraryFormat.position(turn.startMs),turn.items.map(\.text).joined(separator:" ")].joined(separator:", "))
@@ -87,19 +84,6 @@ struct MeetingView: View {
         .font(.system(size: 13))
         .background(Color(nsColor: .textBackgroundColor))
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
-    }
-    private func transcript(_ items: [LibraryTranscriptItem]) -> AttributedString {
-        var result = AttributedString()
-        for item in items {
-            if !result.characters.isEmpty { result.append(AttributedString(" ")) }
-            var text = AttributedString(item.text.trimmingCharacters(in: .whitespacesAndNewlines))
-            text.foregroundColor = item.startMs > model.positionMs ? Color.secondary : Color.primary
-            if item.startMs <= model.positionMs && model.positionMs < item.endMs { text.backgroundColor = Color(red: 253/255, green: 230/255, blue: 138/255) }
-            text.link = URL(string: "cassini-seek://\(item.startMs)")
-            text.underlineStyle = .none
-            result.append(text)
-        }
-        return result
     }
     private func caption(_ speaker: MeetingSpeaker) -> String? {
         switch speaker.provenance {

@@ -310,12 +310,14 @@ final class LibraryBoards: XCTestCase {
         let field = window.searchFields["library-search-field"]
         XCTAssertTrue(field.waitForExistence(timeout:20),app.debugDescription)
         field.click()
-        // Match QA's click, pause, then normal typing (not Cmd-F).
-        Thread.sleep(forTimeInterval:2)
+        // E1: the Search panel replaces the toolbar editor. Wait for its
+        // actual mounted UI, then type through the app (no implicit refocus).
+        let count = window.staticTexts["search-count"]
+        let mounted = NSPredicate { _,_ in count.exists && field.isHittable }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:mounted,object:nil)],timeout:5),.completed,"Search panel and replacement field must be mounted before typing")
         app.typeText("budget")
         let value = NSPredicate { _,_ in field.value as? String == "budget" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
-        let count = window.staticTexts["search-count"]
         XCTAssertTrue(count.waitForExistence(timeout:5))
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
