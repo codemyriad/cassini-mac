@@ -389,8 +389,9 @@ public struct BrowserControlRegistry: Sendable {
             let inventory = try Self.captures(json,peer:id,includeInactive:true,pageState:peer.supportsPageState)
             let captures = inventory.filter { $0.recording || $0.stopping }, interrupted = try Self.interrupted(json,peer:id,pageState:peer.supportsPageState)
             let reports = try Self.pageReports(json,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
-            retireMissing(peer.captures+peer.interrupted,current:captures+interrupted,peer:peer)
-            peer.captures = captures; peer.interrupted = interrupted
+            let current = Self.statusInventory(json,captures:captures,interrupted:interrupted,previous:peer,reports:reports)
+            retireMissing(peer.captures+peer.interrupted,current:current.captures+current.interrupted,peer:peer)
+            peer.captures = current.captures; peer.interrupted = current.interrupted
             stamp(&peer,reports:reports)
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
             peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
@@ -431,12 +432,13 @@ public struct BrowserControlRegistry: Sendable {
                 // the same full-status baseline. Accept newer results in either
                 // arrival order; an older one cannot replace the newer snapshot.
                 if peer.statusRevision == pending.statusRevision && pending.order >= peer.lastResultOrder {
-                    retireMissing(peer.captures+peer.interrupted,current:captures+interrupted,peer:peer)
-                    peer.captures = captures; peer.interrupted = interrupted
+                    let current = Self.statusInventory(status,captures:captures,interrupted:interrupted,previous:peer,reports:reports)
+                    retireMissing(peer.captures+peer.interrupted,current:current.captures+current.interrupted,peer:peer)
+                    peer.captures = current.captures; peer.interrupted = current.interrupted
                     stamp(&peer,reports:reports)
                     peer.lastResultOrder = pending.order
-                    peer.autoAttempted.formUnion(captures.map { $0.key.tabID })
-                    peer.autoAttempted.formUnion(interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
+                    peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
+                    peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
                 }
             }
             peer.pending.removeValue(forKey:requestID)
@@ -621,6 +623,28 @@ public struct BrowserControlRegistry: Sendable {
             peer.pages = peer.pages.filter { kept.contains($0.key) }
         }
         return peer.pages[tab]
+    }
+    private static func statusInventory(_ json: JSON, captures: [BrowserCaptureStatus], interrupted: [BrowserCaptureStatus],
+                                        previous: PeerState, reports: [(Int,BrowserCallLifecycle.Page)]) -> (captures: [BrowserCaptureStatus], interrupted: [BrowserCaptureStatus]) {
+        // A tab-level lifecycle report has no authority to replace an owned
+        // recording. Explicit session snapshots remain authoritative.
+        // Keep the legacy ID-less status behavior until an identity is known.
+        guard json["sessions"] == nil || json["sessions"]?.isNull == true,
+              json["captureId"] == nil || json["captureId"]?.isNull == true,
+              json["tabId"]?.int != nil,
+              (previous.captures+previous.interrupted).contains(where:{ $0.captureID != nil }) else { return (captures,interrupted) }
+        var current = previous.captures
+        var retained = json["interrupted"] == nil || json["interrupted"]?.isNull == true ? previous.interrupted : interrupted
+        // An ID-less report cannot establish a new owned capture either.
+        // Copy lifecycle evidence without borrowing the report's absent ID,
+        // null path, default track count or placeholder recording state.
+        for index in current.indices {
+            if let page = reports.last(where:{ $0.0 == current[index].key.tabID })?.1 { current[index].pageState = page }
+        }
+        for index in retained.indices {
+            if let page = reports.last(where:{ $0.0 == retained[index].key.tabID })?.1 { retained[index].pageState = page }
+        }
+        return (current,retained)
     }
     private static func pageReports(_ json: JSON, inventory: [BrowserCaptureStatus], interrupted: [BrowserCaptureStatus], enabled: Bool) throws -> [(Int,BrowserCallLifecycle.Page)] {
         guard enabled else { return [] }

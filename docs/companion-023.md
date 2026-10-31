@@ -13,6 +13,14 @@ evidence. This includes tab-scoped top-level status and inactive session entries
 Lifecycle timestamps use the existing injected monotonic registry clock. Command
 results still respect the newer-status/revision guard before changing the cache.
 
+Once a capture identity is established, an ID-less tab-level report updates only
+lifecycle evidence; it cannot replace that recording or another tab's binding.
+Explicit sessions snapshots still replace the entire inventory. This also holds
+for accepted command results, without changing the stale-result guard or legacy
+ID-less behavior before an identity is known. The wire tests retain the original
+capture binding across a URL change, route Stop with its original ID, and check
+that an explicit replacement remains protected from the old recording's Stop.
+
 The production registry and lifecycle policy run all four literal wire vectors,
 asserting cached evidence, timer origins and actions, alongside the existing
 15 normalized lifecycle cases. The hosted real app probe now sends navigating,
