@@ -5,6 +5,7 @@ import XCTest
 final class LibraryBoards: XCTestCase {
     @MainActor func testFrenchLibraryAndFirstRunFitAtBoardSize() throws {
         let app=try launch("library",fixture:"main",language:"fr",locale:"fr_FR")
+        defer {if app.state != .notRunning {app.terminate()}}
         let window=app.windows["cassini-library-window"]
         let read=window.buttons["preview-read-transcript"]
         XCTAssertTrue(read.waitForExistence(timeout:20),app.debugDescription)
