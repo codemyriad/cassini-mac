@@ -2,6 +2,7 @@
 import AppKit
 import QuartzCore
 import IOSurface
+import Metal
 import SwiftUI
 import CassiniRecording
 import CassiniKit
@@ -49,6 +50,7 @@ import Darwin
     private var notifications: [Notice] = []
     private var running = false, stopped = false
     private var pageBank: SpectrogramSurface?, pillBank: SpectrogramSurface?
+    private lazy var metal = SpectrogramMetalRenderer()
     private var pageRevision = 0, pillRevision = 0
     private final class Pixels {
         var mePage: SpectrogramPixelRing, othersPage: SpectrogramPixelRing
@@ -221,7 +223,7 @@ import Darwin
     }
     private func resetPicture() {
         pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
-        pixels = nil
+        pixels = nil; metal.releaseTextures()
         #if SPECTROGRAM_PROBE
         fixtureLatest = [-1,-1]; fixtureNonzero = [-1,-1]
         #endif
@@ -235,6 +237,7 @@ import Darwin
         if visible.contains(where:{ $0.style == .pill }) {
             if pillBank == nil { pillBank = try? .init(style:.pill); pillNeedsBake = true }
         } else { pillBank = nil; pillNeedsBake = true }
+        metal.discardUnusedTextures()
     }
     private func selected(_ lane: SpectrogramLane, slot: Int64) -> Bool {
         selections.selected(lane,slot:slot)
@@ -261,13 +264,14 @@ import Darwin
         defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
         // Read already-analyzed columns in the display-link callback. No
         // utility→main handoff or second run-loop wake is needed per frame.
+        guard let command = metal.beginFrame() else { skippedFrames += 1; return }
         let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
         analyzedFrames = frame.analyzedFrames; analysisNanoseconds = frame.analysisNanoseconds
         #if DEBUG
         displayDelayMs = frame.delayMs; lateTiming = frame.lateSamples
         #endif
         lateColumns = frame.lateColumns; droppedColumns = frame.droppedColumns; droppedBuffers = frame.droppedBuffers
-        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
+        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs,command:command)
         if let previous = lastAppliedTime {
             let ms = (timestamp-previous)*1000
             maxFrameIntervalMs = max(maxFrameIntervalMs,ms)
@@ -283,7 +287,11 @@ import Darwin
         fixtureChanged?()
         #endif
     }
-    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double) {
+    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double, command supplied: MTLCommandBuffer? = nil) {
+        // A buffer still being sampled by the GPU must not be overwritten.
+        // Never wait on the main thread; the next display callback retries.
+        guard let command = supplied ?? metal.beginFrame() else { skippedFrames += 1; return }
+        defer { metal.endFrame(command) }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram draw",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram draw",signpostID:interval) }
@@ -356,13 +364,11 @@ import Darwin
             else { remember(nil) }
             lastPill = pillEnd
         }
-        let pageDamage = pageBank?.takeDamage(), pillDamage = pillBank?.takeDamage()
         for item in visibleViews {
             guard let view = item.value else { continue }
             let bank = view.style == .pill ? pillBank : pageBank
             if let bank { view.present(bank:bank,revision:view.style == .pill ? pillRevision : pageRevision,
-                displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced,
-                damage:view.style == .pill ? pillDamage : pageDamage) }
+                displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced,renderer:metal,command:command) }
         }
     }
     #if DEBUG && !SPECTROGRAM_PROBE
@@ -428,8 +434,7 @@ import Darwin
         #endif
     }
     var payloadBytes: Int {
-        let backing = visibleViews.reduce(0) { $0+($1.value?.backingBytes ?? 0) }
-        return (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+backing+measurementStorageBytes+selections.storageBytes+64*37*2
+        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2+visibleViews.reduce(0) { total,item in total+(item.value.map { $0.style.columns*($0.style == .pill ? 20 : 32)*4*2 } ?? 0) }
     }
 }
 
@@ -447,11 +452,10 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     let rowLane: SpectrogramLane
     private weak var controller: RecordingSpectrogram?
     private weak var bank: SpectrogramSurface?
-    private var source: RecordingSurfaceContents?
+
     private var revision = -1
     private var reducedMode: Bool?
-    private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer() }
-    private var lanes: [LaneLayers] = []
+
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
         wantsLayer = true; setAccessibilityElement(false)
@@ -462,19 +466,13 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
             "contentsRect":NSNull(),"mask":NSNull(),"hidden":NSNull(),"opacity":NSNull(),
             "instanceCount":NSNull(),"instanceTransform":NSNull()]
         layer?.actions = actions
-        for _ in 0..<(style == .pill ? 2 : 1) {
-            let item = LaneLayers()
-            for owned in [item.clip,item.first,item.fade] { owned.actions = actions }
-            item.clip.masksToBounds = true; item.clip.cornerRadius = style == .pill ? 2 : 4
-            item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
-            item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
-            item.first.minificationFilter = .linear; item.first.magnificationFilter = .linear
-            item.scrolling.addSublayer(item.first)
-            item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
-            item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
-            layer?.addSublayer(item.clip); lanes.append(item)
-        }
+        guard let output = layer as? CAMetalLayer else { preconditionFailure("Metal backing layer") }
+        output.pixelFormat = .bgra8Unorm; output.framebufferOnly = true
+        output.isOpaque = false; output.maximumDrawableCount = 2
+        output.presentsWithTransaction = false; output.contentsScale = 1
+        output.drawableSize = .init(width:style.columns,height:style == .pill ? 20 : 32)
     }
+    override func makeBackingLayer() -> CALayer { CAMetalLayer() }
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
     // The picture is exclusively the owned sublayers. Avoid AppKit's draw(_:) /
@@ -500,110 +498,128 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     override func layout() { super.layout(); controller?.reconcile() }
     func detach() { controller?.remove(registrationID); controller = nil; suspend() }
     func suspend() {
-        guard source != nil || bank != nil else { return }
-        for lane in lanes {
-            lane.first.contents = nil;lane.first.delegate = nil
-        }; bank = nil; source = nil; revision = -1; reducedMode = nil
+        bank = nil; revision = -1; reducedMode = nil
+        (layer as? CAMetalLayer)?.device = nil
     }
     func freeze() {
         guard layer?.opacity != 0.45 else { return }
-        if source == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if bank == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             layer?.opacity = 0.45; return
         }
         let animation = CABasicAnimation(keyPath:"opacity"); animation.fromValue = layer?.presentation()?.opacity ?? 1
         animation.toValue = 0.45; animation.duration = 0.22
         layer?.opacity = 0.45; layer?.add(animation,forKey:"recording-stop")
     }
-    // Include the new logical backing images rather than silently excluding
-    // their memory from this experiment's existing128KB gate.
-    var backingBytes: Int { source == nil ? 0 : (style.columns+2)*(style == .pill ? 9*2 : 32)*4 }
-    func present(bank value: SpectrogramSurface, revision valueRevision: Int, displayMs: Double, reduced: Bool, damage: SpectrogramSurface.Damage?) {
-        let bankChanged = bank !== value
-        let changed = bankChanged || revision != valueRevision
-        if bankChanged { source = RecordingSurfaceContents(value.surface) }
-        bank = value; revision = valueRevision
-        let width = CGFloat(style.columns), height = style == .pill ? CGFloat(9) : CGFloat(32)
-        let capacity = CGFloat(style.columns+2), position = displayMs/style.slotMs
-        let base = floor(position/Double(style.columns+2))*Double(style.columns+2)
-        let origin = width-CGFloat(position-base)
-        let modeChanged = reducedMode != reduced
-        reducedMode = reduced
-        for index in lanes.indices {
-            let lane = lanes[index], selected = style == .pill ? index : rowLane.rawValue
-            if bankChanged {
-            lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
-            lane.fade.frame = lane.clip.bounds
-                lane.scrolling.bounds = .init(x:0,y:0,width:capacity,height:height)
-                // Two GPU instances share one texture leaf, halving contents
-                // invalidations/exports while retaining the same wrap geometry.
-                lane.scrolling.instanceTransform = CATransform3DMakeTranslation(-capacity,0,0)
-            }
-            if bankChanged || modeChanged {
-                lane.clip.mask = reduced ? nil : lane.fade
-                lane.scrolling.instanceCount = reduced ? 1 : 2
-            }
-            let image=lane.first
-                if bankChanged {
-                    image.bounds = .init(x:0,y:0,width:capacity,height:height)
-                    image.contentsRect = .init(x:0,y:0,width:1,height:1)
-                    image.contentsScale = 1
-                    image.drawsAsynchronously = false
-                    image.name = selected == 0 ? "spectrogram-me" : "spectrogram-others"
-                    image.delegate = source
-                }
-                if bankChanged {
-                    source?.mark(lane:selected,columns:0..<(style.columns+2))
-                    image.setNeedsDisplay()
-                }
-                else if changed, let columns = selected == 0 ? damage?.me : damage?.others {
-                    source?.mark(lane:selected,columns:columns)
-                    image.setNeedsDisplay(.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:height))
-                }
-            if bankChanged {
-                lane.first.position = .zero
-            }
-            lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
-        }
+    fileprivate func present(bank value: SpectrogramSurface, revision valueRevision: Int, displayMs: Double, reduced: Bool,
+                 renderer: SpectrogramMetalRenderer, command: MTLCommandBuffer) {
+        bank = value; revision = valueRevision; reducedMode = reduced
+        guard let output = layer as? CAMetalLayer else { return }
+        renderer.draw(output:output,bank:value,style:style,lane:rowLane,displayMs:displayMs,reduced:reduced,command:command)
     }
 }
 
-/// Experimental public backing-store drawing. Only the changed column region
-/// is rasterized; the IOSurface remains the source in this first prototype.
-private final class RecordingSurfaceContents: NSObject, CALayerDelegate {
-    private let surface: IOSurfaceRef
-    private let colorSpace = CGColorSpaceCreateDeviceRGB()
-    private var me: Range<Int>?, others: Range<Int>?
-    init(_ surface: IOSurfaceRef) { self.surface = surface }
-    func mark(lane: Int, columns: Range<Int>) {
-        let old = lane == 0 ? me : others
-        let merged = old.map { min($0.lowerBound,columns.lowerBound)..<max($0.upperBound,columns.upperBound) } ?? columns
-        if lane == 0 { me = merged } else { others = merged }
+/// Experiment only: one shared GPU submission samples the current immutable
+/// ring across all visible strips. Completion releases CPU write admission.
+@MainActor private final class SpectrogramMetalRenderer {
+    private final class Admission: @unchecked Sendable {
+        let lock = NSLock()
+        var busy = false
+        func acquire() -> Bool { lock.lock(); defer {lock.unlock()}; guard !busy else {return false};busy=true;return true }
+        func release() {lock.lock();busy=false;lock.unlock()}
     }
-    func draw(_ layer: CALayer, in context: CGContext) {
-        let rows = IOSurfaceGetHeight(surface)/2
-        let stride = IOSurfaceGetBytesPerRow(surface)
-        let lane = layer.name == "spectrogram-others" ? 1 : 0
-        guard let columns = lane == 0 ? me : others else { return }
-        if lane == 0 { me = nil } else { others = nil }
-        let base = IOSurfaceGetBaseAddress(surface)
-        let rowBytes = columns.count*4
-        var bytes = Data(count:rowBytes*rows)
-        bytes.withUnsafeMutableBytes { destination in
-            for row in 0..<rows {
-                destination.baseAddress!.advanced(by:row*rowBytes).copyMemory(
-                    from:base+(lane*rows+row)*stride+columns.lowerBound*4,byteCount:rowBytes)
-            }
+    private let admission = Admission()
+    private let device: MTLDevice
+    private let queue: MTLCommandQueue
+    private let pipeline: MTLRenderPipelineState
+    private struct Texture { weak var bank: SpectrogramSurface?; let value: MTLTexture }
+    private var textures: [Int:Texture] = [:]
+    init() {
+        device = MTLCreateSystemDefaultDevice()!
+        queue = device.makeCommandQueue()!
+        let library = try! device.makeLibrary(source:Self.shader,options:nil)
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = library.makeFunction(name:"spectroVertex")
+        descriptor.fragmentFunction = library.makeFunction(name:"spectroFragment")
+        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        pipeline = try! device.makeRenderPipelineState(descriptor:descriptor)
+    }
+    func releaseTextures() {textures.removeAll()}
+    func discardUnusedTextures() {textures = textures.filter { $0.value.bank != nil }}
+    func beginFrame() -> MTLCommandBuffer? {
+        guard admission.acquire() else {return nil}
+        guard let command = queue.makeCommandBuffer() else {admission.release();return nil}
+        return command
+    }
+    func endFrame(_ command: MTLCommandBuffer) {
+        let state = admission
+        command.addCompletedHandler { _ in state.release() }
+        command.commit()
+    }
+    func draw(output:CAMetalLayer,bank:SpectrogramSurface,style:SpectrogramStripStyle,lane:SpectrogramLane,
+              displayMs:Double,reduced:Bool,command:MTLCommandBuffer) {
+        let key=style == .pill ? 0 : 1
+        let texture:MTLTexture
+        if let existing=textures[key],existing.bank === bank {texture=existing.value}
+        else {
+            let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat:.bgra8Unorm,width:bank.width,height:bank.height,mipmapped:false)
+            descriptor.usage = .shaderRead; descriptor.storageMode = .shared
+            guard let value=device.makeTexture(descriptor:descriptor,iosurface:bank.surface,plane:0) else {return}
+            texture=value;textures[key] = .init(bank:bank,value:value)
         }
-        guard let provider = CGDataProvider(data:bytes as CFData) else { return }
-        let format = CGBitmapInfo.byteOrder32Little.union(.init(rawValue:CGImageAlphaInfo.premultipliedFirst.rawValue))
-        guard let image = CGImage(width:columns.count,height:rows,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:rowBytes,
-            space:colorSpace,bitmapInfo:format,provider:provider,decode:nil,shouldInterpolate:true,intent:.defaultIntent) else { return }
-        // Copy only changed columns into an immutable image. Neither lazy
-        // image caching nor rendering can retain or reread the mutable bank.
-        context.saveGState()
-        context.clip(to:.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:layer.bounds.height))
-        context.setBlendMode(.copy); context.interpolationQuality = .low
-        context.draw(image,in:.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:layer.bounds.height))
-        context.restoreGState()
+        if output.device == nil {output.device=device}
+        guard let drawable=output.nextDrawable() else {return}
+        let pass=MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture=drawable.texture
+        pass.colorAttachments[0].loadAction = .clear;pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
+        guard let encoder=command.makeRenderCommandEncoder(descriptor:pass) else {return}
+        let columns=Float(style.columns),capacity=columns+2
+        let position=Float(displayMs/style.slotMs)
+        var parameters=SIMD4<Float>(columns,columns-position.truncatingRemainder(dividingBy:capacity),
+                                    style == .pill ? -1 : Float(lane.rawValue),reduced ? 1 : 0)
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setFragmentTexture(texture,index:0)
+        encoder.setFragmentBytes(&parameters,length:MemoryLayout<SIMD4<Float>>.size,index:0)
+        encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:3)
+        encoder.endEncoding();command.present(drawable)
     }
+    private static let shader = """
+    #include <metal_stdlib>
+    using namespace metal;
+    vertex float4 spectroVertex(uint i [[vertex_id]]) {
+        const float2 vertices[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)};
+        return float4(vertices[i],0,1);
+    }
+    fragment float4 spectroFragment(float4 at [[position]],texture2d<float> image [[texture(0)]],constant float4& p [[buffer(0)]]) {
+        float width=p.x,capacity=width+2;
+        bool pill=p.z<0,reduced=p.w>0;
+        float height=pill ? 9 : 32;
+        float lane=pill ? (at.y<11 ? 0 : 1) : p.z;
+        float y=pill ? at.y-lane*11 : at.y;
+        if(y<0 || y>=height)return float4(0);
+        float sourceX=reduced ? at.x : fmod(at.x-p.y+capacity*2,capacity);
+        float2 uv=float2(sourceX/capacity,(lane+(y/height))/2);
+        constexpr sampler linearSampler(coord::normalized,address::repeat,filter::linear);
+        float4 colour=image.sample(linearSampler,uv);
+        float radius=pill ? 2 : 4;
+        float2 q=abs(float2(at.x,y)-float2(width,height)/2)-float2(width,height)/2+radius;
+        float distance=length(max(q,float2(0)))+min(max(q.x,q.y),0.0)-radius;
+        float edge=clamp(0.5-distance,0.0,1.0);
+        float fade=reduced ? 1 : clamp(at.x/(width*0.16),0.0,1.0);
+        return colour*(edge*fade);
+    }
+    """
+}
+
+struct RecordingSpectrogramStrip: NSViewRepresentable {
+    let controller: RecordingSpectrogram?
+    let lane: SpectrogramLane
+    let silent: Bool
+    @Environment(\.colorScheme) private var colourScheme
+    func makeNSView(context: Context) -> RecordingSpectrogramView { .init(style:.row,lane:lane) }
+    func updateNSView(_ view: RecordingSpectrogramView, context: Context) {
+        view.configure(controller,dark:colourScheme == .dark,silent:silent)
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingSpectrogramView, context: Context) -> CGSize? { .init(width:200,height:32) }
+    static func dismantleNSView(_ view: RecordingSpectrogramView, coordinator: ()) { view.detach() }
 }

@@ -2,20 +2,6 @@
 import Foundation
 import IOSurface
 
-fileprivate final class SurfaceDamage {
-    var meLow = Int.max, meHigh = -1, othersLow = Int.max, othersHigh = -1
-    func mark(_ lane: SpectrogramLane, _ column: Int) {
-        if lane == .me { meLow = min(meLow,column); meHigh = max(meHigh,column) }
-        else { othersLow = min(othersLow,column); othersHigh = max(othersHigh,column) }
-    }
-    func take() -> SpectrogramSurface.Damage {
-        let result = SpectrogramSurface.Damage(me:meHigh >= 0 ? meLow..<(meHigh+1) : nil,
-            others:othersHigh >= 0 ? othersLow..<(othersHigh+1) : nil)
-        meLow = Int.max; meHigh = -1; othersLow = Int.max; othersHigh = -1
-        return result
-    }
-}
-
 public enum SpectrogramSurfaceError: Error { case allocation, locking(Int32) }
 
 /// One surface bank for two lanes: 52x32 for the pill, 202x64 for page rows.
@@ -25,7 +11,6 @@ public enum SpectrogramSurfaceError: Error { case allocation, locking(Int32) }
     public let surface: IOSurfaceRef
     public let width: Int, height: Int, bytesPerRow: Int, allocatedBytes: Int
     private let rowsPerLane: Int
-    private let damage = SurfaceDamage()
     public init(style: SpectrogramStripStyle) throws {
         width = style.columns+2; rowsPerLane = style.rows; height = style.rows*2
         let stride = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow,width*4)
@@ -41,33 +26,22 @@ public enum SpectrogramSurfaceError: Error { case allocation, locking(Int32) }
         surface = value; bytesPerRow = IOSurfaceGetBytesPerRow(value); allocatedBytes = IOSurfaceGetAllocSize(value)
         try withWritableColumns { writer in writer.clear() }
     }
-    public struct Damage {
-        public let me: Range<Int>?, others: Range<Int>?
-    }
-    public func takeDamage() -> Damage { damage.take() }
     /// Writer is valid only for this synchronous closure, like withUnsafeBytes.
     public func withWritableColumns(_ body: (Writer) -> Void) throws {
         let result = IOSurfaceLock(surface,[],nil)
         guard result == 0 else { throw SpectrogramSurfaceError.locking(result) }
         defer { IOSurfaceUnlock(surface,[],nil) }
         body(.init(buffer:.init(start:IOSurfaceGetBaseAddress(surface),count:allocatedBytes),
-            width:width,bytesPerRow:bytesPerRow,rowsPerLane:rowsPerLane,damage:damage))
+            width:width,bytesPerRow:bytesPerRow,rowsPerLane:rowsPerLane))
     }
     public struct Writer {
         private let buffer: UnsafeMutableRawBufferPointer
-        private let damage: SurfaceDamage
         private let width: Int, bytesPerRow: Int, rowsPerLane: Int
-        fileprivate init(buffer: UnsafeMutableRawBufferPointer, width: Int, bytesPerRow: Int, rowsPerLane: Int, damage: SurfaceDamage) {
-            self.damage = damage
+        fileprivate init(buffer: UnsafeMutableRawBufferPointer, width: Int, bytesPerRow: Int, rowsPerLane: Int) {
             self.buffer = buffer; self.width = width; self.bytesPerRow = bytesPerRow; self.rowsPerLane = rowsPerLane
         }
-        public func clear() {
-            buffer.initializeMemory(as:UInt8.self,repeating:0)
-            damage.mark(.me,0); damage.mark(.me,width-1)
-            damage.mark(.others,0); damage.mark(.others,width-1)
-        }
+        public func clear() { buffer.initializeMemory(as:UInt8.self,repeating:0) }
         public func column(lane: SpectrogramLane, index: Int, pixels: [UInt32]) {
-            damage.mark(lane,index)
             SpectrogramSurface.writeColumn(buffer:buffer,width:width,bytesPerRow:bytesPerRow,
                 rowsPerLane:rowsPerLane,lane:lane,index:index,pixels:pixels)
         }
