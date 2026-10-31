@@ -71,3 +71,17 @@ handles a replacement initially reporting only another tab while the old link
 reports stale navigation or absence. Active Stops and tombstones share the256
 entry budget and the original expiry clock. Explicit Record removes both;
 rollback never reverses it or revives an expired Stop.
+
+D43.2 retains the disconnecting owner's lineage and observed-tab history while
+its retirement tombstones remain. A later overlapping inventory can therefore
+prove supersession and restore the Stop even after the old peer is gone.
+Summaries are scoped to the exact browser instance and connection order; they
+never appear as live peers or discoveries. There are at most256 summaries with
+at most256 tab IDs each, inherited from the existing bounds. Resolving, expiring
+or explicitly overriding the tombstone releases its summary. The original
+10-minute expiry and shared256-entry Stop/tombstone budget still apply.
+
+Rollback also keeps the connection-order boundary from when the retirement
+was observed. Only a replacement already connected at that point can prove
+the old report stale. An ordinary later reconnect after an authoritative
+navigation must not resurrect the previous call's Stop.
