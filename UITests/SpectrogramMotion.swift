@@ -5,6 +5,15 @@ import XCTest
 /// Changes the actual hosted OS setting. No renderer override or synthetic
 /// NSWorkspace notification can satisfy the probe's production observer check.
 final class SpectrogramMotion: XCTestCase {
+    @MainActor private func state(_ control:XCUIElement) -> Bool? {
+        if let value=control.value as? String {
+            if value == "1" { return true };if value == "0" { return false }
+        }
+        if let value=control.value as? NSNumber {
+            if value.intValue == 1 { return true };if value.intValue == 0 { return false }
+        }
+        return nil
+    }
     @MainActor func testRealSystemSettingsMotionTransitions() throws {
         let environment=ProcessInfo.processInfo.environment
         guard environment["CASSINI_SPECTRO_MOTION_GATE"] == "1",
@@ -31,8 +40,8 @@ final class SpectrogramMotion: XCTestCase {
             let exists=NSPredicate { _,_ in controls.contains { $0.exists } }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exists,object:nil)],timeout:20),.completed,settings.debugDescription)
             let control=try XCTUnwrap(controls.first { $0.exists },settings.debugDescription)
-            if control.value as? String != (expected ? "1":"0") { control.click() }
-            let changed=NSPredicate { _,_ in control.value as? String == (expected ? "1":"0") }
+            if try XCTUnwrap(state(control),"System setting exposes a binary value") != expected { control.click() }
+            let changed=NSPredicate { _,_ in self.state(control) == expected }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:10),.completed,settings.debugDescription)
             let attachment=XCTAttachment(screenshot:settings.screenshot())
             attachment.name=expected ? "system-reduce-motion-on":"system-reduce-motion-off"
