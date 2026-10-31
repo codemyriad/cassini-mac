@@ -179,6 +179,64 @@ final class StopReviewRegressionTests: XCTestCase {
             XCTAssertTrue(starts.contains { $0.key.tabID == 3 },"The unrelated unstopped call remains recordable")
         }
     }
+    func testDisconnectedOwnerHistoryStillRestoresStopOnLateOverlap() throws {
+        for absence in [false,true] {
+            let clock = ReviewClock(); var state = state(clock)
+            let old = try ready(&state)
+            let stopped = try XCTUnwrap(state.stop(.init(peer:old,tabID:2)))
+            try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,old)
+            let replacement = try ready(&state,[3])
+            if absence {
+                try meetings(&state,old,[]); clock.advance(11)
+                try meetings(&state,old)
+            } else { try meetings(&state,old,url:"stale-navigation") }
+            state.disconnect(old)
+            try meetings(&state,replacement,[2,3])
+            let starts = state.automaticStarts(microphone:false)
+            XCTAssertFalse(starts.contains { $0.key.tabID == 2 },"Disconnect cannot discard the proof needed to restore this Stop")
+            XCTAssertTrue(starts.contains { $0.key.tabID == 3 },"The independent unstopped tab remains recordable")
+        }
+    }
+
+    func testDisconnectedLineageHistoryExpiresAndCannotRestoreAnOldStop() throws {
+        let clock = ReviewClock(); var state = state(clock)
+        let old = try ready(&state)
+        let stopped = try XCTUnwrap(state.stop(.init(peer:old,tabID:2)))
+        try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,old)
+        let replacement = try ready(&state,[3])
+        try meetings(&state,old,url:"stale-navigation")
+        state.disconnect(old)
+        XCTAssertEqual(state.disconnectedLineageCount,1)
+        clock.advance(UserStoppedCalls.retention+1)
+        try meetings(&state,replacement,[2,3])
+        XCTAssertEqual(state.disconnectedLineageCount,0)
+        XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key.tabID == 2 })
+    }
+    func testDisconnectedHistoriesStayBoundedAndResolveOnlyOverlappingProfiles() throws {
+        let clock = ReviewClock(); var state = state(clock)
+        for index in 0..<(UserStoppedCalls.limit+1) {
+            clock.advance(1) // Keep unrelated known-call cache evictions deterministic.
+            let tab = 2+index*2, partial = tab+1
+            let old = try ready(&state,[tab])
+            let stopped = try XCTUnwrap(state.stop(.init(peer:old,tabID:tab)))
+            try send(["type":"result","requestId":stopped.id,"ok":true,"status":status()],&state,old)
+            let replacement = try ready(&state,[partial])
+            try meetings(&state,old,[tab],url:"stale-navigation")
+            state.disconnect(old); state.disconnect(replacement)
+            XCTAssertLessThanOrEqual(state.disconnectedLineageCount,UserStoppedCalls.limit)
+        }
+        XCTAssertEqual(state.disconnectedLineageCount,UserStoppedCalls.limit)
+        let independent = try ready(&state,[9000])
+        XCTAssertTrue(state.automaticStarts(microphone:false).contains { $0.key == .init(peer:independent,tabID:9000) })
+        XCTAssertEqual(state.disconnectedLineageCount,UserStoppedCalls.limit,"Disjoint tabs cannot resolve another profile's history")
+        let returning = try ready(&state,[2+UserStoppedCalls.limit*2])
+        XCTAssertFalse(state.automaticStarts(microphone:false).contains { $0.key.peer == returning })
+        XCTAssertEqual(state.disconnectedLineageCount,UserStoppedCalls.limit-1,"Resolved tombstone releases its history")
+        clock.advance(UserStoppedCalls.retention+1); state.disconnect(returning); state.disconnect(independent)
+        state.expireRememberedStops()
+        XCTAssertEqual(state.disconnectedLineageCount,0)
+    }
+
     func testLateOverlapNeverRestoresAnExpiredRetirement() throws {
         let clock = ReviewClock(); var state = state(clock)
         let old = try ready(&state)

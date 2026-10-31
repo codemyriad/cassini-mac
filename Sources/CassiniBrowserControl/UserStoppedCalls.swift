@@ -27,6 +27,7 @@ struct UserStoppedCalls: Sendable {
     private var order: UInt64 = 0
     var count: Int { entries.count }
     var retainedCount: Int { entries.count + retired.count }
+    var retirementConnections: Set<UUID> { Set(retired.values.map { $0.owner.connection }) }
     mutating func expire(now: TimeInterval, priorLive: Set<BrowserCallIdentity>, alive: (BrowserInstance) -> Bool?) {
         // Expire using the PRIOR inventory. Incoming discovery must never revive
         // a record which expired while its control link was absent.

@@ -80,6 +80,26 @@ public struct BrowserControlRegistry: Sendable {
         var observedTabs: [Int:TimeInterval] = [:]
         var absentSince: [Int:TimeInterval] = [:]
     }
+    /// Only tombstone owners survive disconnect. These summaries are not live
+    /// peers/inventories and never participate in discovery or auto-start.
+    private struct LineageHistory: Sendable {
+        let connection: UUID
+        let instance: BrowserInstance
+        let order: UInt64
+        var lineage: UUID
+        let tabs: Set<Int>
+        init?(_ peer: PeerState) {
+            guard let instance = peer.peer.browserInstance, let lineage = peer.lineage else { return nil }
+            connection = peer.peer.id; self.instance = instance; order = peer.connectionOrder
+            self.lineage = lineage; tabs = Set(peer.observedTabs.keys)
+        }
+    }
+    private var disconnectedLineages: [UUID:LineageHistory] = [:]
+    var disconnectedLineageCount: Int { disconnectedLineages.count }
+    private mutating func pruneDisconnectedLineages() {
+        let owners = stoppedCalls.retirementConnections
+        disconnectedLineages = disconnectedLineages.filter { owners.contains($0.key) }
+    }
     private struct CallContext: Sendable { let call: BrowserCallIdentity; var touched: TimeInterval }
     private var stoppedCalls = UserStoppedCalls()
     private var knownCalls: [BrowserMeetingKey:CallContext] = [:]
@@ -125,16 +145,17 @@ public struct BrowserControlRegistry: Sendable {
     }
     private mutating func identifyLineage(_ peer: inout PeerState, tabs: Set<Int>) {
         guard let instance = peer.peer.browserInstance, !tabs.isEmpty else { return }
-        let related = peers.values.filter {
-            $0.peer.browserInstance == instance &&
-                $0.observedTabs.keys.contains(where:{ tabs.contains($0) })
+        let related = peers.values.compactMap(LineageHistory.init).filter {
+            $0.instance == instance && !$0.tabs.isDisjoint(with:tabs)
+        } + disconnectedLineages.values.filter {
+            $0.instance == instance && !$0.tabs.isDisjoint(with:tabs)
         }
         // A partial inventory can reveal the link only later. Merge its earlier
         // provisional lineage with the observed owner rather than losing that
         // connection's history when the overlapping tab finally arrives.
-        var lineages = Set(related.compactMap(\.lineage))
+        var lineages = Set(related.map(\.lineage))
         if let lineage = peer.lineage { lineages.insert(lineage) }
-        let lineage = related.min(by:{ $0.connectionOrder < $1.connectionOrder })?.lineage ?? peer.lineage ?? peer.peer.id
+        let lineage = related.min(by:{ $0.order < $1.order })?.lineage ?? peer.lineage ?? peer.peer.id
         peer.lineage = lineage
         for id in Array(peers.keys) where id != peer.peer.id {
             guard var other = peers[id], other.peer.browserInstance == instance,
@@ -145,6 +166,15 @@ public struct BrowserControlRegistry: Sendable {
             stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:other.superseded,now:clock())
             peers[id] = other
         }
+        for id in Array(disconnectedLineages.keys) {
+            guard var other = disconnectedLineages[id], other.instance == instance,
+                  lineages.contains(other.lineage) else { continue }
+            other.lineage = lineage
+            if other.order > peer.connectionOrder { peer.superseded = true }
+            stoppedCalls.resolveLineage(.init(connection:id,lineage:lineage),superseded:other.order < peer.connectionOrder,now:clock())
+            disconnectedLineages[id] = other
+        }
+        pruneDisconnectedLineages()
         stoppedCalls.resolveLineage(.init(connection:peer.peer.id,lineage:lineage),superseded:peer.superseded,now:clock())
         for tab in tabs { peer.observedTabs[tab] = clock() }
         // At most100 incoming tabs and256 historical tabs per live connection;
@@ -160,6 +190,7 @@ public struct BrowserControlRegistry: Sendable {
         let now = clock()
         let live = Set(peers.values.flatMap { peer in peer.meetings.filter { newestOwner(peer,tab:$0.key.tabID) }.compactMap { call($0,peer:peer) } })
         stoppedCalls.expire(now:now,priorLive:live,alive:instanceAlive)
+        pruneDisconnectedLineages()
         knownCalls = knownCalls.filter { now-$0.value.touched < UserStoppedCalls.retention || live.contains($0.value.call) }
         captureCalls = captureCalls.filter { retainedCaptureIDs.contains($0.key) || now-$0.value.touched < UserStoppedCalls.retention }
         unretiredCaptures = unretiredCaptures.filter { retainedCaptureIDs.contains($0.key) || now-$0.value < UserStoppedCalls.retention }
@@ -269,6 +300,10 @@ public struct BrowserControlRegistry: Sendable {
     public mutating func disconnect(_ id: UUID) {
         expireRememberedStops()
         guard let peer = peers.removeValue(forKey:id) else { return }
+        if stoppedCalls.retirementConnections.contains(id), let history = LineageHistory(peer) {
+            disconnectedLineages[id] = history
+        }
+        pruneDisconnectedLineages()
         for pending in peer.pending.values {
             appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil))
         }
@@ -426,7 +461,10 @@ public struct BrowserControlRegistry: Sendable {
         peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url)
         peer.autoAttempted.insert(key.tabID)
         if let identity = call(meeting,peer:peer) {
-            if !automatic { stoppedCalls.forget(identity) } // Only explicit Record can override Stop.
+            if !automatic {
+                stoppedCalls.forget(identity) // Only explicit Record can override Stop.
+                pruneDisconnectedLineages()
+            }
             unboundStarts[request.id] = .init(key:key,context:.init(call:identity,touched:clock()))
             if unboundStarts.count > UserStoppedCalls.limit, let oldest = unboundStarts.min(by:{ $0.value.context.touched < $1.value.context.touched })?.key { unboundStarts.removeValue(forKey:oldest) }
         }
