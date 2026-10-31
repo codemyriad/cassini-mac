@@ -11,6 +11,10 @@ struct AppCommands: Commands {
     }
     private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button(UXText.text("app.checkForUpdates")) { ApplicationUpdates.shared.checkForUpdates() }
+                .disabled(!ApplicationUpdates.shared.canCheckForUpdates)
+        }
         CommandGroup(replacing:.help) { }
         CommandGroup(replacing: .newItem) {
             Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)

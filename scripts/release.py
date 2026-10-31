@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from urllib.parse import urlparse
 import urllib.request
@@ -211,11 +212,30 @@ def reject_generated_library(path):
         raise ValueError('Generated Library fixtures are present; use a clean release source/product')
 
 
+def dmg_tools():
+    requirements = ROOT/'Distribution/dmg-requirements.txt'
+    pin = hashlib.sha256(requirements.read_bytes()).hexdigest()[:16]
+    environment = ROOT/'.build'/('dmg-tools-'+pin+'-'+str(sys.version_info.major)+'.'+str(sys.version_info.minor))
+    python = environment/'bin/python3'
+    if not (environment/'installed').exists():
+        run([sys.executable, '-m', 'venv', environment], timeout=120)
+        run([python, '-m', 'pip', 'install', '--disable-pip-version-check', '--require-hashes', '--only-binary=:all:',
+             '-r', requirements], timeout=180)
+        (environment/'installed').write_text(pin+'\n')
+    return python
+
+
+def build_dmg(python, application, output):
+    run([python, '-m', 'dmgbuild', '-s', ROOT/'Distribution/dmg-settings.py',
+         '-D', 'app='+str(application), '-D', 'license='+str(ROOT/'COPYING'),
+         '-D', 'background_license='+str(ROOT/'Distribution/dmgbuild-LICENSE.txt'), PRODUCT_NAME, output], timeout=600)
+
+
 def release(args):
     urls = release_urls(args.base_url, args.version)
     if args.build < 1:
         raise ValueError('Expected a numeric version and positive increasing build number')
-    if args.release_notes and not args.release_notes.is_file():
+    if not args.release_notes or not args.release_notes.is_file():
         raise ValueError('Release notes must name an existing HTML file')
     # Refuse to overwrite or mix artifacts from earlier builds/submissions.
     output = args.output.resolve()
@@ -228,6 +248,7 @@ def release(args):
     keychain, identity = unlock_signing_keychain()
     output.mkdir(parents=True)
     tools = Path(run(['python3', ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
+    image_tools = dmg_tools()
     run(['xcodegen', 'generate'], cwd=ROOT, timeout=120)
     run(['python3', ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
     derived = ROOT/'.build/developer-id'
@@ -241,7 +262,11 @@ def release(args):
         result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
-    app = derived/'Build/Products/Release/Cassini.app'
+    # Xcode's internal product/executable paths stay stable for developer tools.
+    # The application submitted to Apple and delivered to people has its final
+    # Finder name before notarization, so Sparkle never renames an installation.
+    app = output/(PRODUCT_NAME+'.app')
+    run(['ditto', derived/'Build/Products/Release/Cassini.app', app])
     reject_generated_library(app/'Contents/Resources/Fixtures/Library')
     run(['python3', ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
     run(['python3', ROOT/'scripts/check-developer-id.py', app])
@@ -253,13 +278,8 @@ def release(args):
     submit_and_wait(submission, credentials, output/'app-notary.json')
     run(['xcrun', 'stapler', 'staple', app], timeout=180)
     run(['xcrun', 'stapler', 'validate', app], timeout=180)
-    with tempfile.TemporaryDirectory(prefix='cassini-dmg-') as temporary:
-        stage = Path(temporary)
-        run(['ditto', app, stage/'Cassini.app'])
-        (stage/'Applications').symlink_to('/Applications', target_is_directory=True)
-        shutil.copy2(ROOT/'COPYING', stage/'COPYING')
-        dmg = output/('Cassini-talk-'+args.version+'.dmg')
-        run(['hdiutil', 'create', '-volname', PRODUCT_NAME, '-srcfolder', stage, '-fs', 'APFS', '-format', 'ULFO', dmg], timeout=600)
+    dmg = output/('Cassini-talk-'+args.version+'.dmg')
+    build_dmg(image_tools, app, dmg)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)
     notarize(dmg, credentials, output/'dmg-notary.json')
     run(['codesign', '--verify', '--strict', dmg])
@@ -268,15 +288,14 @@ def release(args):
     verify_signature(dmg, signature)
     copy_new(dmg, output/'Cassini-talk.dmg')
     verify_signature(output/'Cassini-talk.dmg', signature)
-    if args.release_notes:
-        (output/'notes').mkdir()
-        copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
+    (output/'notes').mkdir()
+    copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
     (output/'appcast.xml').write_bytes(appcast(dmg, signature, args.version, args.build, urls['download'],
-        release_notes_url=urls['notes'] if args.release_notes else None))
+        release_notes_url=urls['notes']))
     # Feed signing protects metadata as well as the download. Re-sign after edits.
     run([tools/'sign_update', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
     run([tools/'sign_update', '--verify', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
-    checksum = publication_plan(output, urls, args.version, signature, notes=bool(args.release_notes))
+    checksum = publication_plan(output, urls, args.version, signature, notes=True)
     (output/'release.json').write_text(json.dumps(dict(commit=run(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip(),
         version=args.version, build=args.build, baseURL=urls['base'], bytes=dmg.stat().st_size,
         edSignature=signature, sha256=checksum, notarized=True, cleanVMChecked=False),indent=2)+'\n')
@@ -289,7 +308,7 @@ if __name__ == '__main__':
     parser.add_argument('--version', required=True)
     parser.add_argument('--build', type=int, required=True)
     parser.add_argument('--base-url', default=BASE_URL, help='HTTPS directory for downloads, feed and optional notes')
-    parser.add_argument('--release-notes', type=Path, help='Optional HTML file, copied into notes/<version>.html')
+    parser.add_argument('--release-notes', type=Path, required=True, help='HTML release notes, copied into notes/<version>.html')
     parser.add_argument('--notary-config', type=Path, default=SECRETS/'notary.json')
     parser.add_argument('--output', type=Path, required=True)
     try:

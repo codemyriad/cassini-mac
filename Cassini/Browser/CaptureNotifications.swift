@@ -11,6 +11,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
     @MainActor @Observable final class FixtureState { var titles: [String] = [] }
     @MainActor static let fixture = FixtureState()
     @MainActor static var savedFixtureTitles: [String] { fixture.titles }
+    @MainActor static var authorizationFixture: (() async -> Void)?
     #endif
     @MainActor func configure() {
         let center = UNUserNotificationCenter.current()
@@ -23,6 +24,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate, @u
     }
     @MainActor func authorize() async {
         #if DEBUG
+        if CaptureFixture.enabled, let authorization = Self.authorizationFixture { await authorization(); return }
         if CaptureFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot { return }
         #endif
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options:[.alert])

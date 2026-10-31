@@ -38,6 +38,7 @@ a.output.with_suffix('.stderr.txt').write_text(stderr)
 assert process.returncode == 0, (process.returncode,stdout,stderr)
 report = json.loads(stdout)
 for name in [
+    'firstRecordingDoesNotWaitForNotifications',
     'twoProfilesSameTabIndependent',
     'realSelectionUsesOwnedInputLifecycle',
     'pageStopLeavesOtherMeetingRecording',

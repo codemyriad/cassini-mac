@@ -133,7 +133,10 @@ private final class CaptureFiles: @unchecked Sendable {
     func record() async throws {
         guard !shuttingDown, !starting else { return }
         LibraryLocationModel.shared.reload()
-        guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else { throw BrowserIPCError.unavailable }
+        guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else {
+            recordFailed = true
+            throw BrowserIPCError.unavailable
+        }
         requestingRecord = true
         SessionPlaybackController.stopAll(); PlayerController.pauseActive()
         recordFailed = false

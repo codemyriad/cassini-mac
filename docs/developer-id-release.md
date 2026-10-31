@@ -31,6 +31,7 @@ For example (use approved version/build values):
 ```sh
 python3 scripts/release.py --version 0.1.0 --build 2 \
   --base-url https://cassini.talk/download/mac \
+  --release-notes path/to/notes.html \
   --output build/release-2
 ```
 
@@ -45,15 +46,17 @@ inside-out before the app, while engine/worker signatures are made before their
 signature is made after stapling the DMG. The appcast itself is also signed.
 
 The base URL is configurable; the script derives the feed, versioned DMG,
-latest copy and optional notes paths from it. Output includes the immutable
+latest copy and notes paths from it. Output includes the immutable
 `Cassini-talk-<version>.dmg`, a byte-identical `Cassini-talk.dmg` copy, `appcast.xml`,
 `SHA256SUMS`, `release.json`, and the ordered `publication.json` checklist.
-Both DMGs are checked against the public Ed25519 key. Optional
+Both DMGs are checked against the public Ed25519 key. Required
 `--release-notes path/to/notes.html` copies that HTML to
-`notes/<version>.html` and adds the appcast link; without it, no notes URL is
-advertised. No versioned artifact or existing staging directory is overwritten.
+`notes/<version>.html` and adds the appcast link. The staged application is named
+`Cassini talk.app` before notarization; developer build paths keep `Cassini.app`.
+No versioned artifact or existing staging directory is overwritten.
 
-**Nothing uploads.** Upload access and private `notary.json` are still pending.
+**Nothing uploads.** Upload access is still pending; private notarization metadata
+and the signing identity are available only on the authorized release Mac.
 Once notarization and clean-VM QA have passed and access is supplied, publish in
 this order:
 

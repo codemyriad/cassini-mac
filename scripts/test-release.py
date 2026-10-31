@@ -25,14 +25,27 @@ class ReleaseTests(unittest.TestCase):
             root = Path(temporary)
             args = SimpleNamespace(base_url=release.BASE_URL, version='1.0', build=2,
                 release_notes=root/'missing.html', output=root/'new-output')
-            with patch.object(release, 'notary_credentials') as credentials:
-                with self.assertRaises(ValueError): release.release(args)
-            credentials.assert_not_called()
+            for notes in [None, root/'missing.html']:
+                args.release_notes = notes
+                with patch.object(release, 'notary_credentials') as credentials:
+                    with self.assertRaises(ValueError): release.release(args)
+                credentials.assert_not_called()
             self.assertFalse(args.output.exists())
 
     def testApprovedLayoutAndConfigurableBase(self):
         self.assertEqual(release.PRODUCT_NAME, 'Cassini talk')
-        self.assertIn('<title>'+release.PRODUCT_NAME+'</title>', (ROOT/'Cassini/Resources/Cassini.html').read_text())
+        spec = importlib.util.spec_from_file_location('companion_page', ROOT/'scripts/bundle-companion-page.py')
+        page = importlib.util.module_from_spec(spec); spec.loader.exec_module(page)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)/'Cassini.html'; page.bundle(output)
+            body = output.read_text()
+            self.assertIn('<title>'+release.PRODUCT_NAME+'</title>', body)
+            entries = json.loads((ROOT/'Cassini/Resources/UX/strings.json').read_text())['entries']
+            hint = next(e['en'] for e in entries if e['id'] == 'companion.local.extensionsPasteHint')
+            self.assertIn('<p>'+hint+'</p>', body)
+            self.assertNotIn('{{', body)
+            self.assertIn("default-src 'none'", body)
+            self.assertEqual(page.render('<p>{{app.name}}</p>', [{'id':'app.name','en':'<a>&"'}]), '<p>&lt;a&gt;&amp;&quot;</p>')
         info = plistlib.loads((ROOT/'Cassini/Info.plist').read_bytes())
         for key in ['CFBundleName', 'CFBundleDisplayName']:
             self.assertEqual(info[key], release.PRODUCT_NAME)

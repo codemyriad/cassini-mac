@@ -88,6 +88,7 @@
 		8D98D370E8999895D3A2F2C0 /* WhistleSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF44CFE16B2926034520B457 /* WhistleSelfTest.swift */; };
 		8EDE5F3489BA8DA0718C8B33 /* Licenses in Resources */ = {isa = PBXBuildFile; fileRef = CD9CA177C260FB3ED32BE1F0 /* Licenses */; };
 		8F81CB90D10877C15C1C85E4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202F303D76A9CA142F725248 /* PreviewViewController.swift */; };
+		90072894377A325E3C29E094 /* COPYING in Resources */ = {isa = PBXBuildFile; fileRef = 04C66E21DEC62887CBA957E0 /* COPYING */; };
 		96BE55568AC429C3FA5694CB /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 27EA16EC6FE0C1604D96B82B /* CassiniBrowserSetup */; };
 		9919156A4B5CE6BC09BF9949 /* BrowserSetupClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E8630330DB380A4E701A12 /* BrowserSetupClient.swift */; };
 		9ADB134940081C297FC5223C /* LibraryMoveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EC26D268607793ED6FB7DD /* LibraryMoveCoordinator.swift */; };
@@ -219,6 +220,7 @@
 /* Begin PBXFileReference section */
 		010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationUpdates.swift; sourceTree = "<group>"; };
 		0128F0DA36A8F1649E4BFACB /* PlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerController.swift; sourceTree = "<group>"; };
+		04C66E21DEC62887CBA957E0 /* COPYING */ = {isa = PBXFileReference; path = COPYING; sourceTree = "<group>"; };
 		0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerBar.swift; sourceTree = "<group>"; };
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		0A2CF8935408378DD526CC43 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -645,6 +647,7 @@
 		A21407D313CA8AD78A33135C = {
 			isa = PBXGroup;
 			children = (
+				04C66E21DEC62887CBA957E0 /* COPYING */,
 				21FE0DE0B9C6833034BB53DF /* BrowserSetup */,
 				31AB581C9E11BF19B5E97181 /* Cassini */,
 				5E2706E284F6A1560BDA9158 /* ModelDownloads */,
@@ -783,6 +786,7 @@
 				59AB919EBDADC73FC1F7EB43 /* CopyFiles */,
 				B5AB5C6CC848958B5C12107C /* Frameworks */,
 				2D274D122F504037F2C02487 /* Embed Foundation Extensions */,
+				6F4C3518C3994A356EBC5EEE /* Render offline companion paste hint */,
 				4E5336EE9AC66FB8CAA80456 /* Bundle reviewed browser companion */,
 				3F9F988F2C15EA3EC59A74AB /* Bundle pinned Opus encoder */,
 				9C428EA4197ADEEDAC5EAE08 /* Bundle native messaging host */,
@@ -1004,6 +1008,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				29F5BCCF6F54A4CEF61E131E /* Assets.xcassets in Resources */,
+				90072894377A325E3C29E094 /* COPYING in Resources */,
 				6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */,
 				41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */,
 				8EDE5F3489BA8DA0718C8B33 /* Licenses in Resources */,
@@ -1051,6 +1056,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "python3 \"$SRCROOT/scripts/bundle-browser-companion.py\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion\"";
+		};
+		6F4C3518C3994A356EBC5EEE /* Render offline companion paste hint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Render offline companion paste hint";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "python3 \"$SRCROOT/scripts/bundle-companion-page.py\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cassini.html\"";
 		};
 		7C3547D8657842CC3B35CB1A /* Bundle pinned Parakeet runtime and worker */ = {
 			isa = PBXShellScriptBuildPhase;

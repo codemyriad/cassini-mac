@@ -810,6 +810,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(productMenu.exists, app.debugDescription)
         productMenu.click()
         XCTAssertTrue(app.menuItems["About Cassini talk"].exists, app.debugDescription)
+        XCTAssertTrue(app.menuItems["Check for Updates…"].exists, app.debugDescription)
         app.typeKey(.escape, modifierFlags: [])
         let expectedControl = name == "library" ? "preview-read-transcript" : "first-run-record"
         XCTAssertTrue(window.buttons[expectedControl].waitForExistence(timeout: 20), window.debugDescription)

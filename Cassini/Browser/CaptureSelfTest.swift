@@ -179,9 +179,21 @@ final class CaptureProbeProcess: @unchecked Sendable {
             stage = "start two profiles"
             CaptureFixture.silentMicrophone = true
             CaptureFixture.microphoneDC = -2060.0/32768
-            try await collection.record()
+            var notificationReply: CheckedContinuation<Void,Never>?
+            CaptureNotifications.authorizationFixture = {
+                await withCheckedContinuation { notificationReply = $0 }
+            }
+            // Use the real first-start confirmation path with notification
+            // consent held indefinitely. Native inputs remain generated RAM.
+            RecordCoordinator.shared.showingFirst = true
+            RecordCoordinator.shared.confirm()
             _ = try await one.performNext(); _ = try await two.performNext()
             try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
+            try await wait { notificationReply != nil }
+            try require(!RecordCoordinator.shared.showingFirst,"First confirmation dismissed while recording actually started")
+            notificationReply?.resume(); notificationReply = nil
+            CaptureNotifications.authorizationFixture = nil
+            report["firstRecordingDoesNotWaitForNotifications"] = true
             try await one.emit(); try await two.emit()
             try await wait { LibraryStore.shared.meetings.filter { $0.state.lifecycle == .recording }.count == 2 }
             let first = try collection.captures.values.first { $0.snapshot.manifest.title == one.title }.unwrap()
