@@ -8,7 +8,7 @@ import CassiniRecording
 @testable import CassiniExport
 
 struct MeetingExportTests {
-    @Test func flaggedEchoStaysInSidecarButIsAbsentFromBothExports() throws {
+    @Test func legacyEchoFieldsCannotDropWordsFromExports() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let original = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         let imported = try LibraryImport.copy(original,into:root.appendingPathComponent("Library"))
@@ -25,13 +25,14 @@ struct MeetingExportTests {
         let meeting = try #require(LibraryScanner(root:imported.folder.deletingLastPathComponent()).scan().meetings.first)
         #expect(meeting.transcriptItems.count == 2)
         let markdown = try MeetingFileExporter.markdown(meeting,timeZone:TimeZone(secondsFromGMT:0)!,temporaryRoot:root)
-        #expect(try !String(contentsOf:markdown.url,encoding:.utf8).contains("discard-echo"))
+        #expect(try String(contentsOf:markdown.url,encoding:.utf8).contains("discard-echo"))
         let artifact = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
         let reopened = try CassiniReader.read(contentsOf:artifact.url)
         #expect(reopened.state == .ok)
-        #expect(reopened.defaultTranscript?.load.transcript?.items.map(\.text) == ["Keep"])
+        #expect(reopened.defaultTranscript?.load.transcript?.items.map(\.text) == ["Keep","discard-echo"])
         #expect(try Data(contentsOf:sidecar) == body)
     }
+
     @Test(arguments:[8000,11025,16000,22050,24000,44100,48000,96000])
     func resamplerEOFProducesTheExactTimelineEvenForFractionalAndShortInputs(rate: Int) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }

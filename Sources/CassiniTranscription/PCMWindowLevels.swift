@@ -2,7 +2,7 @@
 import Foundation
 
 /// Bounded reads of an already-decoded, app-owned raw mono float scratch file.
-enum EchoAudioLevels {
+enum PCMWindowLevels {
     static func measure(stream: FileHandle, sampleCount: Int, from startMs: Int64,
                         to endMs: Int64, offsetMs: Int64) throws -> Double? {
         guard startMs < endMs, sampleCount > 0 else { return nil }
