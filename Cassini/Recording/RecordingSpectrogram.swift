@@ -87,7 +87,7 @@ import Darwin
             NSApplication.didHideNotification,NSApplication.didUnhideNotification]
         notifications = names.map { name in
             let token = NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { [weak self] _ in
-                DispatchQueue.main.async {
+                MainActor.assumeIsolated {
                     guard let self else { return }
                     self.appearance(dark:self.dark,silent:self.silent); self.reconcile()
                 }
@@ -96,7 +96,7 @@ import Darwin
         }
         let center = NSWorkspace.shared.notificationCenter
         let token = center.addObserver(forName:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil,queue:.main) { [weak self] _ in
-            DispatchQueue.main.async {
+            MainActor.assumeIsolated {
                 guard let self else { return }
                 self.appearance(dark:self.dark,silent:self.silent); self.reconcile()
             }
@@ -214,10 +214,9 @@ import Darwin
         guard value === link, running, !stopped else { return }
         let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
         defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
-        // Window/view notifications maintain membership. A single cheap
-        // visibility check catches occlusion before its queued notification;
-        // rebuilding/filtering every strip each display tick wastes CPU.
-        guard clockView?.visibleForSpectrogram == true else { reconcile(); return }
+        // Window/view notifications update membership synchronously. Re-querying
+        // AppKit occlusion/visibleRect here can make a WindowServer IPC every
+        // display frame; the display link already belongs to the visible set.
         guard running, !reduced else { return }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram display link",signpostID:interval)
@@ -311,14 +310,12 @@ import Darwin
             else { remember(nil) }
             lastPill = pillEnd
         }
-        CATransaction.begin(); CATransaction.setDisableActions(true)
         for item in visibleViews {
             guard let view = item.value else { continue }
             let bank = view.style == .pill ? pillBank : pageBank
             if let bank { view.present(bank:bank,revision:view.style == .pill ? pillRevision : pageRevision,
                 displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced) }
         }
-        CATransaction.commit()
     }
     #if DEBUG && !SPECTROGRAM_PROBE
     private static var cachedPreview: (Int64,RecordingSpectrogram)?
@@ -394,8 +391,16 @@ import Darwin
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
         wantsLayer = true; setAccessibilityElement(false)
+        // Disable implicit actions only on our layers. Let AppKit coalesce the
+        // implicit transaction at its normal frame boundary, instead of forcing
+        // an explicit CA/WindowServer commit from every paint callback.
+        let actions: [String:CAAction] = ["position":NSNull(),"bounds":NSNull(),"contents":NSNull(),
+            "contentsRect":NSNull(),"mask":NSNull(),"hidden":NSNull(),"opacity":NSNull()]
+        layer?.actions = actions
         for _ in 0..<(style == .pill ? 2 : 1) {
-            let item = LaneLayers(); item.clip.masksToBounds = true; item.clip.cornerRadius = 2
+            let item = LaneLayers()
+            for owned in [item.clip,item.scrolling,item.first,item.second,item.fade] { owned.actions = actions }
+            item.clip.masksToBounds = true; item.clip.cornerRadius = 2
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
             for image in [item.first,item.second] {
                 image.anchorPoint = .zero; image.contentsGravity = .resize

@@ -22,7 +22,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         var arrival: Double
         init(_ descriptor: RecordedPCMSource, index: Int, transform: SpectrogramTransform, arrival: Double) {
             self.descriptor = descriptor; self.index = index; self.arrival = arrival
-            lane = descriptor.kind == "microphone" ? .me : .others
+            lane = ["microphone","local"].contains(descriptor.kind) ? .me : .others
             track = .init(parameters:transform.parameters,startOffsetMs:descriptor.startOffsetMs,transform:transform)
         }
     }

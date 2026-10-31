@@ -76,6 +76,14 @@ private final class RetainedPCM: @unchecked Sendable {
         let reopened = await frame(session,at:500)
         #expect(!reopened.me.isEmpty && reopened.me.allSatisfy { $0.slot >= 9 },"Fresh history uses the original source clock and crosses no hidden interval")
     }
+    @Test(arguments:["microphone","local"]) func nativeAndBrowserMicrophonesRemainInTheMeLane(_ kind:String) async {
+        let session=SpectrogramSession(clock:{200});session.setVisible(true)
+        let source=RecordedPCMSource(id:"microphone-source",kind:kind,sampleRate:48000,channels:1,startOffsetMs:0)
+        session.offer(source:source,pcm:tone(),offsetMs:0)
+        let result=await frame(session,at:200)
+        #expect(result.me.contains { $0.bands.contains { $0>0 } })
+        #expect(result.others.isEmpty,"A browser local source must not be drawn as another speaker")
+    }
     @Test func bothLanesStartWithoutAnEmptyLaneConsumingItsSelectionPeriod() async {
         let session = SpectrogramSession(clock:{ 200 }); session.setVisible(true)
         let me = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
