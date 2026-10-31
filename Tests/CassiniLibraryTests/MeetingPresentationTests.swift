@@ -81,6 +81,27 @@ struct MeetingPresentationTests {
 }
 
 struct TurnQuotePresentationTests {
+    @Test func libraryPullQuoteReusesOnlyPairedSourceBookends() throws {
+        let f = try Fixture()
+        try f.metadata {
+            $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        let text = "\"Yes, I can have a draught. He said \"no\".\""
+        let body = try JSONSerialization.data(withJSONObject:["items":[["speaker":"me","startMs":0,"endMs":1000,"text":text]]])
+        let file = f.folder.appendingPathComponent("transcript.json")
+        try body.write(to:file)
+        let quote = try #require(LibraryScanner(root:f.root).scan().meetings.first?.quote)
+        #expect(quote.text == text && quote.displayText == "“" + text + "”","R8 retains verbatim model output")
+        #expect(MeetingPresentation.pullQuote(quote) == "“Yes, I can have a draught. He said \"no\".”")
+        #expect(try Data(contentsOf:file) == body)
+        let frozen = MeetingQuote(atMs:0,text:"He said \"no\". Long turn.")
+        #expect(MeetingPresentation.pullQuote(frozen) == frozen.displayText)
+        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"“Already paired”")) == "“Already paired”")
+        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"\"\"Repeated bookends\"\"")) == "“Repeated bookends”")
+        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"A 6\" screen")) == "“A 6\" screen”")
+        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"The size is 6\"")) == "“The size is 6\"”","An inch mark is not an enclosing quote pair")
+        #expect(MeetingPresentation.pullQuote(.init(atMs:0,text:"\"Unpaired opening")) == "“\"Unpaired opening”")
+    }
     @Test func quotePartnersNeverCrossTurnsAndRawWordsStayIntact() {
         let items: [LibraryTranscriptItem] = [
             .init(speaker:"a",startMs:0,endMs:10,text:"He said \"hello"),

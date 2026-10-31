@@ -334,7 +334,7 @@ struct LibraryView: View {
         case "recording": return meeting.isBrowserCapture ? UXText.text("library.row.recording.line") : nil
         case "saving": return nil
         case "transcribing": return meeting.durationMs.map { UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)]) }
-        default: return meeting.quote?.displayText
+        default: return meeting.quote.map(MeetingPresentation.pullQuote)
         }
     }
     private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {
