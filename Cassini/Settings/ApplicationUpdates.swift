@@ -40,7 +40,7 @@ import Sparkle
         RecordingOverview.active || RecordingOverview.starting || RecordingOverview.saving || TranscriptionQueue.shared.isBusy ||
         LibraryImportCoordinator.shared.isBusy || MeetingExportCoordinator.shared.isBusy ||
         LibraryMoveCoordinator.shared.busy || MeetingRenameCoordinator.shared.working ||
-        MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
+        MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits || LibraryStore.shared.isRefreshing
     }
 
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock handler: @escaping () -> Void) -> Bool {

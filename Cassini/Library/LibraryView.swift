@@ -26,6 +26,7 @@ struct LibraryView: View {
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
     @State private var rename = MeetingRenameCoordinator.shared
+    @State private var updates = ApplicationUpdates.shared
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -44,6 +45,13 @@ struct LibraryView: View {
                 .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
+        .safeAreaInset(edge:.bottom,spacing:0) {
+            if updates.readyWhenIdle {
+                Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                    .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
+                    .accessibilityIdentifier("library-update-ready")
+            }
+        }
         .safeAreaInset(edge:.top,spacing:0) {
             CaptureFailureBanner(); trashFailure
             if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {

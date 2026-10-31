@@ -98,6 +98,9 @@ final class LibraryStore {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var pending = Set<URL>()
     @ObservationIgnored private var scanning = false
+    // A completed capture is discovered and queued for transcription inside
+    // this scan. Keep update installation out of the saving-to-queue handoff.
+    var isRefreshing: Bool { scanning || !pending.isEmpty }
     @ObservationIgnored private var selectionWhenAvailable: String?
     @ObservationIgnored private var selectionFolderWhenAvailable: URL?
     var meetings: [LibraryMeeting] { snapshot?.meetings ?? [] }
