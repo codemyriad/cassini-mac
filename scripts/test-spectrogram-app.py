@@ -4,25 +4,52 @@
 import argparse
 import json
 import os
+import plistlib
+import threading
 import signal
 from pathlib import Path
 import subprocess
+
+
+def relay_motion_ack(line: str, request: Path) -> bool:
+    """Forward only the current real-driver completion, never stale log output."""
+    marker = 'CASSINI_SPECTRO_MOTION_ACK:'
+    if marker not in line:
+        return False
+    try:
+        response = json.loads(line.split(marker,1)[1])
+        expected = json.loads(request.read_text())
+        request_id = response['requestID']
+        if not isinstance(request_id,str) or not request_id or request_id != expected['requestID']:
+            return False
+    except (ValueError,KeyError,TypeError,FileNotFoundError):
+        return False
+    ack = request.with_name('motion-ack.json')
+    temporary = ack.with_name('.motion-ack.tmp')
+    temporary.write_text(json.dumps({'requestID':request_id}))
+    os.replace(temporary,ack)
+    return True
 
 
 def measure(app: Path, output: Path):
     if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
     output.mkdir(parents=True, exist_ok=True)
+    executable = app.resolve()
+    if executable.suffix == '.app':
+        info = plistlib.loads((executable/'Contents/Info.plist').read_bytes())
+        executable = executable/'Contents/MacOS'/info['CFBundleExecutable']
     reports = []
     problems = []
     for case in 'ABCDE':
         subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
-        command = [str(app.resolve()), '--spectrogram-self-test',
+        command = [str(executable), '--spectrogram-self-test',
                    '-SpectrogramCase', case, '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
         trace = None
         motion_driver = None
         motion_log = None
+        motion_relay = None
         if case == 'B':
             request = output.resolve()/'motion-request.json'
             request.unlink(missing_ok=True)
@@ -34,7 +61,16 @@ def measure(app: Path, output: Path):
                 '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
                 '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
                 '-resultBundlePath', str(output/'Motion.xcresult')],
-                env=motion_env, stdout=motion_log, stderr=subprocess.STDOUT)
+                env=motion_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            def relay_motion_events(driver=motion_driver,log=motion_log,current=request):
+                for line in driver.stdout:
+                    log.write(line);log.flush()
+                    try:
+                        relay_motion_ack(line,current)
+                    except OSError as error:
+                        problems.append('B: motion acknowledgement relay failed: '+str(error))
+            motion_relay = threading.Thread(target=relay_motion_events,daemon=True)
+            motion_relay.start()
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
             process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
             top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
@@ -71,7 +107,11 @@ def measure(app: Path, output: Path):
                     except subprocess.TimeoutExpired:
                         motion_driver.terminate()
                         motion_driver.wait(timeout=10)
-                    motion_log.close()
+                    motion_relay.join(timeout=5)
+                    if motion_relay.is_alive():
+                        problems.append('B: motion event stream did not close after its driver exited')
+                    else:
+                        motion_log.close()
                     if motion_driver.returncode != 0:
                         problems.append('B: actual System Settings motion transition failed; see motion-xctest.log')
             (output/f'{case}.stdout.txt').write_text(stdout)

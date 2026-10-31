@@ -14,7 +14,7 @@ final class SpectrogramMotion: XCTestCase {
         }
         return nil
     }
-    @MainActor func testRealSystemSettingsMotionTransitions() throws {
+    @MainActor func testRealSystemSettingsMotionTransitions() async throws {
         let environment=ProcessInfo.processInfo.environment
         guard environment["CASSINI_SPECTRO_MOTION_GATE"] == "1",
               let path=environment["CASSINI_SPECTRO_MOTION_REQUEST"] else {
@@ -52,12 +52,24 @@ final class SpectrogramMotion: XCTestCase {
             settings.terminate()
             let pid=try XCTUnwrap(body["pid"] as? Int32)
             let probe = try XCTUnwrap(NSRunningApplication(processIdentifier:pid))
-            _ = probe.activate(options:[.activateIgnoringOtherApps])
+            let bundle=try XCTUnwrap(probe.bundleURL)
+            XCTAssertEqual(bundle.pathExtension,"app","The hosted probe is a LaunchServices app")
+            let reopened:NSRunningApplication = try await withCheckedThrowingContinuation { reply in
+                NSWorkspace.shared.openApplication(at:bundle,configuration:NSWorkspace.OpenConfiguration()) { app,error in
+                    if let error { reply.resume(throwing:error) }
+                    else if let app { reply.resume(returning:app) }
+                    else { reply.resume(throwing:NSError(domain:"SpectrogramMotion",code:1)) }
+                }
+            }
+            XCTAssertEqual(reopened.processIdentifier,pid,"Reopen the measured instance")
             let foreground = NSPredicate { _,_ in NSWorkspace.shared.frontmostApplication?.processIdentifier == pid }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:foreground,object:nil)],timeout:5),.completed,"Probe returns to the foreground")
             let requestID = try XCTUnwrap(body["requestID"] as? String)
             let response = try JSONSerialization.data(withJSONObject:["requestID":requestID])
-            try response.write(to:requestURL.deletingLastPathComponent().appendingPathComponent("motion-ack.json"),options:.atomic)
+            // The UI runner may read project inputs without permission to
+            // atomically write beside them. Its trusted orchestrator relays
+            // this completion event into the probe's private handshake file.
+            FileHandle.standardOutput.write(Data("CASSINI_SPECTRO_MOTION_ACK:".utf8)+response+Data([10]))
         }
     }
 }

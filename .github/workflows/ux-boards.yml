@@ -53,8 +53,9 @@ jobs:
     - name: Production spectrogram A–E, native views and Time Profiler without devices
       if: always()
       run: |
-        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe
-        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe --output build/ux-boards/spectrogram
+        python3 scripts/test-spectrogram-harness.py
+        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --output build/ux-boards/spectrogram
     - name: Private stopped recording clock without devices or windows
       run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/saving-clock.json
     - name: Private import and queue lifecycle without devices
