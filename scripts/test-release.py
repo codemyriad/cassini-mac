@@ -43,7 +43,10 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn('<title>'+release.PRODUCT_NAME+'</title>', body)
             entries = json.loads((ROOT/'Cassini/Resources/UX/strings.json').read_text())['entries']
             hint = next(e['en'] for e in entries if e['id'] == 'companion.local.extensionsPasteHint')
+            subject = next(e['en'] for e in entries if e['id'] == 'companion.local.extensionsCopied')
+            self.assertIn('<p class="address"><strong>'+subject+'</strong></p>', body)
             self.assertIn('<p>'+hint+'</p>', body)
+            self.assertLess(body.index(subject), body.index(hint))
             self.assertNotIn('{{', body)
             self.assertIn("default-src 'none'", body)
             self.assertEqual(page.render('<p>{{app.name}}</p>', [{'id':'app.name','en':'<a>&"'}]), '<p>&lt;a&gt;&amp;&quot;</p>')
