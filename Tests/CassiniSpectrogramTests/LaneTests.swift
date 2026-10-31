@@ -4,6 +4,16 @@ import Foundation
 @testable import CassiniSpectrogram
 
 @Suite struct LaneTests {
+    @Test func replacementInTheSamePendingSlotKeepsBothPowers() {
+        let lane = SpectrogramLaneAccumulator()
+        let power = [Double](repeating:1e-4,count:32)
+        lane.append(slot:1,trackIndex:0,powers:power)
+        lane.retire(trackIndex:0)
+        lane.append(slot:1,trackIndex:0,powers:power)
+        var columns: [SpectrogramColumn] = []
+        lane.release(through:1) { columns.append($0) }
+        #expect(columns.map(\.bands) == [SpectrogramRelease.raw(powers:power.map { $0*2 })])
+    }
     @Test func independentTracksSumBeforeTheLogarithmAndDuplicatesDoNotDoubleCount() {
         let lane = SpectrogramLaneAccumulator(), power = [Double](repeating:1e-4,count:32)
         lane.append(slot:10,trackIndex:1,powers:power)

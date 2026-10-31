@@ -177,7 +177,28 @@ private final class RetainedPCM: @unchecked Sendable {
         session.sourceEnded(id:"already-ended")
         session.offer(source:.init(id:"already-ended",kind:"remote",sampleRate:48000,channels:1,startOffsetMs:400),pcm:data,offsetMs:400)
         let ended = await frame(session,at:500)
-        #expect(ended.analyzedFrames == 8 && ended.retainedTracks == 4)
+        #expect(ended.analyzedFrames == 8 && ended.retainedTracks == 3)
+    }
+    @Test func manyReplacementsReuseEndedSlotsWithoutLosingLiveAnalysis() async {
+        let time = SpectrumTestClock(), session = SpectrogramSession(clock:{ time.read() })
+        session.setVisible(true)
+        let data = tone()
+        for index in 0..<80 {
+            let start = Double(index)*200
+            time.set(start+120)
+            let source = RecordedPCMSource(id:"replacement-\(index)",kind:"remote",sampleRate:48000,channels:1,startOffsetMs:start)
+            session.offer(source:source,pcm:data,offsetMs:start)
+            let live = await frame(session,at:start+200)
+            #expect(live.retainedTracks == 1,"Ended source histories must not accumulate")
+            #expect(live.analyzedFrames == UInt64((index+1)*2),"The 65th and later source still produces real FFT frames")
+            #expect(!live.others.isEmpty)
+            session.sourceEnded(id:source.id)
+            let ended = await frame(session,at:start+201)
+            #expect(ended.retainedTracks == 0 && ended.analyzedFrames == live.analyzedFrames)
+        }
+        session.setVisible(false)
+        let hidden = await frame(session,at:16200)
+        #expect(hidden.analyzedFrames == 0 && hidden.retainedTracks == 0)
     }
     @Test func unalignedPCMIsSafeAndOppositeStereoChannelsCancelBeforeAnalysis() async {
         let data = tone(channels:2)

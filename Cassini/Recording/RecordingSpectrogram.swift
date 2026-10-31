@@ -25,7 +25,6 @@ import Darwin
     let engine: SpectrogramSession
     let originUptime: TimeInterval
     private let observers: RecordedPCMObservers?
-    private struct Selection { let at: Double, me: Bool, others: Bool }
     private struct WeakView { weak var value: RecordingSpectrogramView? }
     @MainActor private final class LinkTarget: NSObject {
         weak var owner: RecordingSpectrogram?
@@ -39,7 +38,7 @@ import Darwin
     }
     private var views: [UUID:WeakView] = [:]
     private var visibleViews: [WeakView] = []
-    private var selections: [Selection]
+    private var selections: SpectrogramCaptureSelection
     private var eventCount = -1
     private let target = LinkTarget()
     private var link: CADisplayLink?
@@ -74,8 +73,12 @@ import Darwin
     private(set) var drawingNanoseconds: UInt64 = 0, analysisNanoseconds: UInt64 = 0
     private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0
     private var lastAppliedTime: Double?
-    private var intervals = [UInt32](repeating:0,count:512)
+    #if DEBUG
+    // The hosted probe is bounded to 200 s at 60/120 Hz, well below a
+    // UInt16 bin's capacity. Ordinary app windows retain no test histogram.
+    private var intervals: [UInt16] = []
     private var intervalCount: UInt64 = 0
+    #endif
     private var lastDisplayMs = 0.0
     #if SPECTROGRAM_PROBE
     // Test observations only; no observer, scan or instrumentation in app builds.
@@ -95,7 +98,10 @@ import Darwin
     init(originUptime: TimeInterval, observers: RecordedPCMObservers? = nil, me: Bool = true, others: Bool = true) {
         self.observers = observers
         self.originUptime = originUptime; engine = .init(originUptime:originUptime,measureCPU:Self.measuring)
-        selections = [.init(at:0,me:me,others:others)]
+        selections = .init(me:me,others:others)
+        #if DEBUG
+        if Self.measuring { intervals = [UInt16](repeating:0,count:512) }
+        #endif
         super.init(); target.owner = self
         let names: [Notification.Name] = [NSWindow.didChangeOcclusionStateNotification,
             NSWindow.didMiniaturizeNotification,NSWindow.didDeminiaturizeNotification,NSWindow.willCloseNotification,
@@ -132,12 +138,13 @@ import Darwin
     }
     func update(events: [CaptureEvent]) {
         guard events.count != eventCount else { return }; eventCount = events.count
-        let values = events.compactMap { event -> Selection? in
+        let values = events.lazy.compactMap { event -> SpectrogramCaptureSelection.Transition? in
             guard event.type == "selection", let at = event.atMs, at.isFinite, at >= 0, let me = event.me, let others = event.others else { return nil }
-            return .init(at:at,me:me,others:others)
+            return .init(atMs:at,me:me,others:others)
         }
-        if !values.isEmpty { selections = values }
+        selections.update(values,nowMs:max(0,(ProcessInfo.processInfo.systemUptime-originUptime)*1000))
     }
+
     func add(_ view: RecordingSpectrogramView) { views[view.registrationID] = .init(value:view); reconcile() }
     func remove(_ id: UUID) { views.removeValue(forKey:id); reconcile() }
     func appearance(dark: Bool, silent: Bool) {
@@ -229,12 +236,9 @@ import Darwin
         } else { pillBank = nil; pillNeedsBake = true }
     }
     private func selected(_ lane: SpectrogramLane, slot: Int64) -> Bool {
-        let time = Double(slot)*20
-        var lo = 0, hi = selections.count
-        while lo < hi { let mid = (lo+hi)/2; if selections[mid].at <= time { lo = mid+1 } else { hi = mid } }
-        let value = selections[max(0,lo-1)]
-        return lane == .me ? value.me : value.others
+        selections.selected(lane,slot:slot)
     }
+
     private func tick(_ value: CADisplayLink) {
         guard value === link, running, !stopped else { return }
         let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
@@ -268,8 +272,12 @@ import Darwin
                 if let previous = self.lastAppliedTime {
                     let ms = (timestamp-previous)*1000
                     self.maxFrameIntervalMs = max(self.maxFrameIntervalMs,ms)
-                    let bin = min(511,max(0,Int(ceil(ms*10))))
-                    self.intervals[bin] &+= 1; self.intervalCount += 1
+                    #if DEBUG
+                    if Self.measuring {
+                        let bin = min(511,max(0,Int(ceil(ms*10))))
+                        self.intervals[bin] += 1; self.intervalCount += 1
+                    }
+                    #endif
                 }
                 self.lastAppliedTime = timestamp; self.framesApplied += 1
                 #if SPECTROGRAM_PROBE
@@ -401,7 +409,7 @@ import Darwin
     #if DEBUG
     func resetFrameMeasurements() {
         frameCallbacks = 0; framesApplied = 0; skippedFrames = 0; maxFrameIntervalMs = 0
-        intervals = [UInt32](repeating:0,count:512); intervalCount = 0; lastAppliedTime = nil
+        intervals = Self.measuring ? [UInt16](repeating:0,count:512) : []; intervalCount = 0; lastAppliedTime = nil
         drawingNanoseconds = 0
     }
     var frameP95Ms: Double {
@@ -415,8 +423,15 @@ import Darwin
     var surfaceRevision: Int { pageRevision+pillRevision }
     var surfaceBytes: Int { (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0) }
     #endif
+    private var measurementStorageBytes: Int {
+        #if DEBUG
+        return intervals.count*MemoryLayout<UInt16>.stride
+        #else
+        return 0
+        #endif
+    }
     var payloadBytes: Int {
-        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+intervals.count*4+selections.count*MemoryLayout<Selection>.stride+64*37*2
+        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2
     }
 }
 

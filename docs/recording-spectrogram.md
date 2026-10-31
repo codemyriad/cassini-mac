@@ -108,3 +108,13 @@ build and do not scan columns during CPU measurement. The sixty-second CPU run
 ends on a real producer progress event after the measured interval; this physical
 performance measurement cannot use a virtual clock. Every timeout only fails a
 missing event, with the transition's name, and cannot make an assertion pass.
+
+Ended source histories and their unused FFT workspaces are released, with a
+bounded retirement cache and reusable 64-slot source indices. Reusing an index
+preserves already-pending powers and cumulative analysis counters. An 80-source
+replacement regression and overlapping-slot power-sum test cover the lifecycle.
+The view's selection raster retains a baseline plus bounded 20 ms transitions,
+including the full history and maximum display delay; original session events
+are untouched. A 100,000-transition test compares every visible raster decision.
+Frame timing histograms exist only during the bounded hosted probe, with the
+same 0.1 ms resolution and unchanged gates; ordinary app views allocate none.

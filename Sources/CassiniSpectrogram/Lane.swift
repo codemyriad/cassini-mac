@@ -45,6 +45,13 @@ public final class SpectrogramLaneAccumulator {
         }
         pending[slot] = value
     }
+    /// Reuse a retired source's bounded index without discarding its pending
+    /// power or treating a replacement as the same source in overlapping slots.
+    func retire(trackIndex: Int) {
+        precondition((0..<64).contains(trackIndex))
+        let mask = ~(UInt64(1)<<trackIndex)
+        for slot in pending.keys { pending[slot]?.tracks &= mask }
+    }
     /// Missing slots produce no column: the renderer writes a transparent hole.
     /// SpectrogramRelease sees the discontinuity and cannot bridge it with ink.
     public func release(through slot: Int64, emit: (SpectrogramColumn) -> Void) {

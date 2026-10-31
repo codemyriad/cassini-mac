@@ -37,6 +37,9 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private var generation: UInt64 = .max
     private var sources: [String:Source] = [:]
     private var endedIDs: Set<String> = []
+    private var endedOrder: [String] = []
+    private var occupiedIndices: UInt64 = 0
+    private var retiredAnalyzedFrames: UInt64 = 0
     private var transforms: [Int:SpectrogramTransform] = [:]
     private var me = SpectrogramLaneAccumulator(), others = SpectrogramLaneAccumulator()
     private var meSelection = SpectrogramSelection(), othersSelection = SpectrogramSelection()
@@ -97,9 +100,20 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     }
     public func sourceEnded(id: String) {
         queue.async { [self] in
-            if endedIDs.count < 64 { endedIDs.insert(id) }
-            guard let source = sources[id] else { return }
-            source.active = false; nextChoiceAt = 0
+            if endedIDs.insert(id).inserted {
+                endedOrder.append(id)
+                if endedOrder.count > 64 { endedIDs.remove(endedOrder.removeFirst()) }
+            }
+            guard let source = sources.removeValue(forKey:id) else { return }
+            retiredAnalyzedFrames += source.track.analyzedFrames
+            if !sources.values.contains(where:{ $0.descriptor.sampleRate == source.descriptor.sampleRate }) {
+                transforms.removeValue(forKey:source.descriptor.sampleRate)
+            }
+            occupiedIndices &= ~(UInt64(1)<<source.index)
+            // Pending old powers remain visible. Only their duplicate guard is
+            // released so a replacement can share a slot without losing data.
+            (source.lane == .me ? me : others).retire(trackIndex:source.index)
+            nextChoiceAt = 0
             if source.lane == .me { meSelection.reset() } else { othersSelection.reset() }
         }
     }
@@ -129,7 +143,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             // are analysis work too, even though they run between PCM packets.
             if measureCPU { analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart }
             completion(.init(me:batch.me,others:batch.others,displayMs:display,delayMs:displayClock.delayMs,
-                analyzedFrames:sources.values.reduce(0) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
+                analyzedFrames:sources.values.reduce(retiredAnalyzedFrames) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
                 droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count,analysisNanoseconds:analysisNanoseconds))
         }
     }
@@ -141,6 +155,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private func ensureGeneration(_ value: UInt64) {
         guard generation != value else { return }
         generation = value; sources = [:]; transforms = [:]; mono = []; right = []; alignedPCM = []
+        occupiedIndices = 0; retiredAnalyzedFrames = 0
         me.reset(); others.reset(); meSelection.reset(); othersSelection.reset(); nextChoiceAt = 0; displayClock.reset(); mailbox.reset()
     }
     private func consume(_ descriptor: RecordedPCMSource, pcm: Data, offsetMs: Double) {
@@ -158,7 +173,9 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             guard sources.count < 64, let parameters = try? SpectrogramParameters(rate:descriptor.sampleRate) else { return }
             let transform = transforms[descriptor.sampleRate] ?? SpectrogramTransform(parameters:parameters)
             transforms[descriptor.sampleRate] = transform
-            sources[descriptor.id] = Source(descriptor,index:sources.count,transform:transform,arrival:arrival)
+            let index = (~occupiedIndices).trailingZeroBitCount
+            occupiedIndices |= UInt64(1)<<index
+            sources[descriptor.id] = Source(descriptor,index:index,transform:transform,arrival:arrival)
         }
         guard let source = sources[descriptor.id], source.active, source.descriptor == descriptor else { return }
         source.arrival = arrival
