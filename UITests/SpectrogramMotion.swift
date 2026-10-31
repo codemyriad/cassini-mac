@@ -36,7 +36,10 @@ final class SpectrogramMotion: XCTestCase {
             settings.launch()
             let pane=try XCTUnwrap(URL(string:"x-apple.systempreferences:com.apple.Accessibility-Settings.extension?Display"))
             XCTAssertTrue(NSWorkspace.shared.open(pane))
-            let controls=[settings.checkBoxes["Reduce motion"],settings.switches["Reduce motion"],settings.buttons["Reduce motion"]]
+            // macOS15 exposes the label as a separate static text, while its
+            // switch has this identifier and no label. Verified in the real
+            // hosted AX tree, rather than guessing from the visible caption.
+            let controls=[settings.switches["AX_REDUCE_MOTION"],settings.checkBoxes["Reduce motion"],settings.switches["Reduce motion"],settings.buttons["Reduce motion"]]
             let exists=NSPredicate { _,_ in controls.contains { $0.exists } }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exists,object:nil)],timeout:20),.completed,settings.debugDescription)
             let control=try XCTUnwrap(controls.first { $0.exists },settings.debugDescription)
