@@ -23,6 +23,7 @@ const pageBody = `<!doctype html><title>D33 real call</title><body>Generated Web
  oscillator.frequency.value = location.pathname === '/return' ? 660 : 880;
  const output = context.createMediaStreamDestination(); oscillator.connect(output); oscillator.start(); await context.resume();
  const sender = new RTCPeerConnection(), receiver = new RTCPeerConnection();
+ window.generatedCall = {context,oscillator,output,sender,receiver};
  sender.addTrack(output.stream.getAudioTracks()[0]);
  receiver.ontrack = async event => { const audio = document.createElement('audio'); audio.muted = true; audio.srcObject = new MediaStream([event.track]); document.body.append(audio); await audio.play(); };
  const gathered = async pc => { if (pc.iceGatheringState !== 'complete') await new Promise(resolve => pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); })); };
@@ -50,6 +51,23 @@ const wait = async (predicate, message, timeout=45000) => {
  }
  assert.ok(predicate(), `${message}\n${stderr}\n${stdout}`);
 };
+const connected = async page => {
+ try {
+  await page.waitForFunction(() => window.generatedCall?.receiver.connectionState === 'connected');
+ } catch(error) {
+  const diagnostic=await page.evaluate(() => ({error:window.callError,
+   context:window.generatedCall?.context.state,
+   peers:['sender','receiver'].map(key => {
+    const peer=window.generatedCall?.[key];
+    return {key,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,
+     localCandidates:(peer?.localDescription?.sdp.match(/^a=candidate:/gm)||[]).length,
+     remoteCandidates:(peer?.remoteDescription?.sdp.match(/^a=candidate:/gm)||[]).length};
+   })}))).catch(() => ({pageUnavailable:true}));
+  stderr+='Generated call diagnostics: '+JSON.stringify(diagnostic)+'\n';
+  console.error('Generated call diagnostics',JSON.stringify(diagnostic));
+  throw error;
+ }
+};
 try {
  await assert.rejects(stat(profile), {code:'ENOENT'}, 'Requires a fresh disposable profile');
  await mkdir(profile,{recursive:true}); ownsProfile=true;
@@ -62,13 +80,14 @@ try {
  execFileSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister',['-f',chromiumApp]);
  context = await chromium.launchPersistentContext(profile,{
   channel:'chromium',headless:true,env,
-  args:[`--disable-extensions-except=${root}/BrowserExtension`,`--load-extension=${root}/BrowserExtension`,'--autoplay-policy=no-user-gesture-required']
+  args:[`--disable-extensions-except=${root}/BrowserExtension`,`--load-extension=${root}/BrowserExtension`,'--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection','--disable-features=WebRtcHideLocalIpsWithMdns']
  });
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
  const page = await context.newPage();
+ page.on('pageerror',error => {stderr+='Page error: '+error.message+'\n';});
  await page.goto(url);
- await page.waitForFunction(() => window.generatedCall?.receiver.connectionState === 'connected');
+ await connected(page);
  child = spawn(path.join(app,'Contents/MacOS/Cassini'),['--browser-return-self-test','--fixture-library-recording',
   '-CassiniCaptureID',crypto.randomUUID(),'-CassiniDiskFree',String(20*2**30),'-CassiniDiskTotal',String(100*2**30),'-ApplePersistenceIgnoreState','YES'],{env,detached:true});
  child.stdout.on('data',data => {
@@ -87,7 +106,7 @@ try {
  await wait(() => phases.has('fallback'),'App did not start fallback during navigation');
  releaseNavigation(); releaseNavigation=null;
  assert.equal(await navigation,null);
- await page.waitForFunction(() => window.generatedCall?.receiver.connectionState === 'connected');
+ await connected(page);
  await wait(() => phases.has('restored'),'App did not restore real browser PCM');
  assert.equal(phases.get('recording').id,phases.get('fallback').id);
  assert.equal(phases.get('recording').id,phases.get('restored').id);
