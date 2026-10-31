@@ -114,6 +114,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     /// generation before dispatching CALayer changes back to the main actor.
     public func requestFrame(nowMs: Double, completion: @escaping @Sendable (Frame) -> Void) {
         queue.async { [self] in
+            let cpuStart = measureCPU ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
             let status = state.withLock { ($0.visible,$0.generation,$0.dropped) }
             ensureGeneration(status.1)
             let now = nowMs.isFinite ? max(0,min(nowMs,stoppedAt ?? nowMs)) : 0
@@ -124,6 +125,9 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
                 others.release(through:slot) { mailbox.append($0,lane:.others) }
             }
             let batch = mailbox.drain()
+            // Delay estimation, lane power sums/release and the bounded mailbox
+            // are analysis work too, even though they run between PCM packets.
+            if measureCPU { analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart }
             completion(.init(me:batch.me,others:batch.others,displayMs:display,delayMs:displayClock.delayMs,
                 analyzedFrames:sources.values.reduce(0) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
                 droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count,analysisNanoseconds:analysisNanoseconds))

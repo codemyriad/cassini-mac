@@ -50,15 +50,21 @@ import ScreenCaptureKit
             let initialLate = controller.lateColumns, initialDropped = controller.droppedColumns
             controller.resetFrameMeasurements()
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
+            let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
             try await Task.sleep(for:.seconds(60))
+            let mainCPU = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-mainCPUStart
             let elapsed = ProcessInfo.processInfo.systemUptime-began, cpu = processCPU()-cpuStart
             let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
-            let drawing = Double(controller.drawingNanoseconds)/1e9/elapsed*100
+            // Implicit CA transactions commit after the paint callback. Include
+            // all main-thread CPU, so batching cannot move work outside the gate.
+            let drawing = Double(mainCPU)/1e9/elapsed*100
+            let regions = Double(controller.drawingNanoseconds)/1e9/elapsed*100
             let hidden = mode == "C" || mode == "E"
             report = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
                 "input":"production RecordingSink"+(mode == "D" ? " + OwnedBrowserCapture.browserAudio" : ""),
                 "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":cpu/elapsed*100,
                 "analysisCorePercent":analysis,"drawingCorePercent":drawing,"frameCallbacks":controller.frameCallbacks,
+                "instrumentedDrawingCorePercent":regions,
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
