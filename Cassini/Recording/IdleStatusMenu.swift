@@ -38,7 +38,6 @@ struct IdleStatusLabel: View {
 struct IdleStatusMenu: View {
     @State private var hovered: String?
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
@@ -46,13 +45,13 @@ struct IdleStatusMenu: View {
             Divider()
             action("hidden.openCassini",id:"open") {
                 dismiss(); LibrarySearchModel.shared.close(); MeetingNavigation.shared.back()
-                openWindow(id:"library"); NSApp.activate(ignoringOtherApps:true)
+                ApplicationWindows.library(); NSApp.activate(ignoringOtherApps:true)
             }
             action("hidden.menu.settings",id:"settings") {
                 dismiss(); NSApp.activate(ignoringOtherApps:true); openSettings()
             }
             Divider()
-            action("hidden.menu.quit",id:"quit") { dismiss(); NSApp.terminate(nil) }
+            action("hidden.menu.quit",id:"quit") { dismiss(); NSApp.activate(ignoringOtherApps:true); NSApp.terminate(nil) }
         }.buttonStyle(.plain).font(.system(size:13)).padding(14)
             .frame(width:300)
             .accessibilityElement(children:.contain).accessibilityIdentifier("idle-menu-payload")

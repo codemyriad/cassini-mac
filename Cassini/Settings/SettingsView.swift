@@ -14,7 +14,7 @@ enum SettingsTab: String, CaseIterable { case recording, transcription, library,
     static let shared = SettingsNavigation()
     var tab = SettingsTab.recording
     var capturingShortcut = false
-    @ObservationIgnored var open: (() -> Void)?
+    @ObservationIgnored var open: (() -> Void)? = { ApplicationWindows.preferences(); NSApp.activate(ignoringOtherApps:true) }
 }
 struct CassiniSettingsView: View {
     @State private var navigation = SettingsNavigation.shared

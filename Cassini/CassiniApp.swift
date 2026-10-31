@@ -11,11 +11,12 @@ struct CassiniApp: App {
     @AppStorage("CassiniShowMenuBar",store:RecordingPreferences.defaults) private var showIdleMenuBar = true
 
     var body: some Scene {
-        let captureActive = RecordingOverview.active
+        let captureActive = recorder.isRecording || captures.isRecording
         #if DEBUG
         let suppressWindow = CommandLine.arguments.contains("--browser-return-self-test") || CommandLine.arguments.contains("--browser-background-self-test") || CommandLine.arguments.contains("--recording-saving-self-test") ||
             CommandLine.arguments.contains("--browser-capture-self-test") ||
-            CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test")
+            CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test") ||
+            (RecordingFixture.enabled && CommandLine.arguments.contains("--fixture-windowless-launch"))
         #else
         let suppressWindow = false
         #endif
@@ -29,11 +30,9 @@ struct CassiniApp: App {
             .windowResizability(.contentSize)
 
         MenuBarExtra(isInserted:.constant(captureActive || (captures.autoRecord && showIdleMenuBar))) {
-            if captureActive { RecordingStatusMenu() }
-            else { IdleStatusMenu() }
+            CassiniStatusContent()
         } label: {
-            if captureActive { RecordingStatusLabel() }
-            else { IdleStatusLabel() }
+            CassiniStatusLabel()
         }
             .menuBarExtraStyle(.window)
 
@@ -41,6 +40,24 @@ struct CassiniApp: App {
             if let route { LegacyDocumentView(url: route.url) }
         }.defaultSize(width: 1280, height: 780)
 
+    }
+}
+
+/// Observe capture state in the hosted views, independently of scene insertion.
+private struct CassiniStatusContent: View {
+    @State private var recorder=RecordingController.shared
+    @State private var captures=CaptureCollection.shared
+    var body: some View {
+        if recorder.isRecording || captures.isRecording { RecordingStatusMenu() }
+        else { IdleStatusMenu() }
+    }
+}
+private struct CassiniStatusLabel: View {
+    @State private var recorder=RecordingController.shared
+    @State private var captures=CaptureCollection.shared
+    var body: some View {
+        if recorder.isRecording || captures.isRecording { RecordingStatusLabel() }
+        else { IdleStatusLabel() }
     }
 }
 

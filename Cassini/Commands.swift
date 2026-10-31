@@ -4,6 +4,7 @@ import CassiniLibrary
 
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     private var exportMeeting: LibraryMeeting? {
         let search = LibrarySearchModel.shared
         if search.visible { return search.searching ? nil : search.selected.flatMap { search.meeting($0) } }
@@ -11,6 +12,7 @@ struct AppCommands: Commands {
     }
     private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
+        let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
         CommandGroup(replacing:.help) { }
         CommandGroup(replacing: .newItem) {
             Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)

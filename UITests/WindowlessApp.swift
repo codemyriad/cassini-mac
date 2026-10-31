@@ -51,13 +51,7 @@ extension LibraryBoards {
         waitForWindowless { !idle.exists }
         XCTAssertEqual(String(describing:try XCTUnwrap(auto.value)),"1","Hiding the idle item does not disable automatic recording")
         app.terminate(); app.launch()
-        // This fixture disables state restoration. Reopen the Library explicitly
-        // when SwiftUI restores no window, as the initial launch helper does.
-        // The LaunchServices/Dock reopen path is exercised above.
-        if !library.waitForExistence(timeout:2) {
-            app.menuBars.menuBarItems["Window"].click()
-            app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
-        }
+        // Normal launch must recover on its own, without Window > Library.
         XCTAssertTrue(library.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertFalse(idle.exists,"The hidden-idle preference persists")
         app.typeKey(",",modifierFlags:.command)
@@ -84,6 +78,16 @@ extension LibraryBoards {
         library.buttons["first-run-record"].click()
         XCTAssertTrue(app.buttons["record-first-start"].waitForExistence(timeout:10)); app.buttons["record-first-start"].click()
         XCTAssertTrue(library.buttons["recording-stop"].waitForExistence(timeout:10),app.debugDescription)
+        let finder=XCUIApplication(bundleIdentifier:"com.apple.finder")
+        let firstStatus=app.descendants(matching:.any)["recording-menu-bar"]
+        XCTAssertTrue(firstStatus.waitForExistence(timeout:10))
+        finder.activate();backgroundClick(firstStatus,through:finder)
+        XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5))
+        backgroundClick(app.buttons["recording-menu-quit"],through:finder)
+        XCTAssertTrue(library.sheets.buttons["Stop and keep it"].waitForExistence(timeout:10))
+        waitForWindowless { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "io.codemyriad.cassini" }
+        app.typeKey(.escape,modifierFlags:[])
+        waitForWindowless { !library.sheets.firstMatch.exists }
         app.typeKey("q",modifierFlags:.command)
         let background = library.sheets.firstMatch.buttons["Keep recording"]
         XCTAssertTrue(background.waitForExistence(timeout:10)); background.click()
@@ -99,11 +103,24 @@ extension LibraryBoards {
         app.buttons["recording-menu-settings"].click()
         XCTAssertTrue(show.waitForExistence(timeout:10)); XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"0")
         settings.buttons["_XCUI:CloseWindow"].click()
-        status.click(); XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5)); app.buttons["recording-menu-quit"].click()
+        // Target coordinates through Finder so XCTest cannot activate Cassini
+        // for us before the product's menu action does so.
+        finder.activate();backgroundClick(status,through:finder)
+        XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5))
+        backgroundClick(app.buttons["recording-menu-quit"],through:finder)
         let keep = app.dialogs.firstMatch.buttons["Stop and keep it"]
         XCTAssertTrue(keep.waitForExistence(timeout:10),app.debugDescription)
+        waitForWindowless { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "io.codemyriad.cassini" }
         XCTAssertFalse(library.exists,"Windowless Quit presents its own dialog, not a sheet on a disappearing menu")
-        keep.click()
+        app.typeKey(.escape,modifierFlags:[])
+        waitForWindowless { !keep.exists }
+        XCTAssertTrue(status.exists,"Escape cancels Quit and keeps recording")
+        finder.activate();backgroundClick(status,through:finder)
+        XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5))
+        backgroundClick(app.buttons["recording-menu-quit"],through:finder)
+        XCTAssertTrue(keep.waitForExistence(timeout:10))
+        waitForWindowless { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "io.codemyriad.cassini" }
+        app.typeKey(.return,modifierFlags:[])
         waitForWindowless { app.state == .notRunning }
         let saved = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("session.json"))) as? [String:Any])
         XCTAssertEqual(saved["state"] as? String,"completed")
@@ -114,6 +131,117 @@ extension LibraryBoards {
             let file = folder.appendingPathComponent(try XCTUnwrap(track["file"] as? String))
             XCTAssertGreaterThan(try Data(contentsOf:file).count,44)
         }
+    }
+
+    @MainActor func testColdWindowlessRelaunchOpensFromDockAndBothMenus() async throws {
+        let app=try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        defer { app.terminate() }
+        let library=app.windows["cassini-library-window"]
+        app.typeKey(",",modifierFlags:.command)
+        let settings=app.windows["cassini-settings-window"]
+        let auto=settings.descendants(matching:.any).matching(identifier:"settings-auto-record").matching(NSPredicate(format:"value != nil")).firstMatch
+        XCTAssertTrue(auto.waitForExistence(timeout:10));auto.click()
+        settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
+        let idle=app.descendants(matching:.any)["idle-menu-bar"]
+        XCTAssertTrue(idle.waitForExistence(timeout:10));idle.click()
+        app.buttons["idle-menu-quit"].click();waitForWindowless { app.state == .notRunning }
+        app.launchArguments.append("--fixture-windowless-launch")
+        // Suppress only the test's initial scene presentation. Each fresh
+        // process must route requests before any Library onAppear has run.
+        for route in ["dock","idle"] {
+            app.launch();XCTAssertTrue(idle.waitForExistence(timeout:10))
+            XCTAssertFalse(library.exists,"Cold launch has no mounted Library")
+            if route == "dock" { try await dockReopen(app) }
+            else { idle.click();app.buttons["idle-menu-open"].click() }
+            XCTAssertTrue(library.waitForExistence(timeout:15),app.debugDescription)
+            XCTAssertEqual(app.windows.matching(identifier:"cassini-library-window").count,1)
+            library.buttons["_XCUI:CloseWindow"].click()
+            waitForWindowless { !library.exists }
+            idle.click();app.buttons["idle-menu-quit"].click();waitForWindowless { app.state == .notRunning }
+        }
+        // No menu-bar host and no Library view: Dock routing still works.
+        app.launch();XCTAssertTrue(idle.waitForExistence(timeout:10))
+        idle.click();app.buttons["idle-menu-open"].click()
+        XCTAssertTrue(library.waitForExistence(timeout:15))
+        app.typeKey(",",modifierFlags:.command)
+        let show=settings.descendants(matching:.any).matching(identifier:"settings-show-menu-bar").matching(NSPredicate(format:"value != nil")).firstMatch
+        XCTAssertTrue(show.waitForExistence(timeout:10));show.click()
+        settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
+        app.typeKey("q",modifierFlags:.command);waitForWindowless { app.state == .notRunning }
+        app.launch();XCTAssertFalse(idle.waitForExistence(timeout:2));XCTAssertFalse(library.exists)
+        try await dockReopen(app)
+        XCTAssertTrue(library.waitForExistence(timeout:15),app.debugDescription)
+        app.typeKey(",",modifierFlags:.command);XCTAssertTrue(show.waitForExistence(timeout:10));show.click()
+        settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
+        idle.click();app.buttons["idle-menu-quit"].click();waitForWindowless { app.state == .notRunning }
+        app.launchArguments.append("--fixture-recording-on-launch")
+        app.launch()
+        let recording=app.descendants(matching:.any)["recording-menu-bar"]
+        XCTAssertTrue(recording.waitForExistence(timeout:15),app.debugDescription)
+        XCTAssertFalse(library.exists)
+        recording.click();XCTAssertTrue(app.buttons["recording-menu-open"].waitForExistence(timeout:5))
+        app.buttons["recording-menu-open"].click()
+        XCTAssertTrue(library.waitForExistence(timeout:15),app.debugDescription)
+        XCTAssertTrue(library.buttons["recording-stop"].waitForExistence(timeout:15),app.debugDescription)
+        library.buttons["recording-stop"].click()
+        XCTAssertTrue(library.buttons["preview-play"].waitForExistence(timeout:15))
+    }
+
+    @MainActor func testInsertedIdleMenuTracksRecordingStartAndStop() throws {
+        let app=try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        defer { app.terminate() }
+        let library=app.windows["cassini-library-window"]
+        app.typeKey(",",modifierFlags:.command)
+        let settings=app.windows["cassini-settings-window"]
+        let auto=settings.descendants(matching:.any).matching(identifier:"settings-auto-record").matching(NSPredicate(format:"value != nil")).firstMatch
+        XCTAssertTrue(auto.waitForExistence(timeout:10));auto.click()
+        settings.buttons["_XCUI:CloseWindow"].click()
+        let idle=app.descendants(matching:.any)["idle-menu-bar"]
+        XCTAssertTrue(idle.waitForExistence(timeout:10));idle.click()
+        XCTAssertTrue(app.buttons["idle-menu-open"].waitForExistence(timeout:5))
+        library.buttons["first-run-record"].click()
+        XCTAssertTrue(app.buttons["record-first-start"].waitForExistence(timeout:10));app.buttons["record-first-start"].click()
+        let recording=app.descendants(matching:.any)["recording-menu-bar"]
+        XCTAssertTrue(recording.waitForExistence(timeout:15));XCTAssertFalse(idle.exists)
+        recording.click();XCTAssertTrue(app.buttons["recording-menu-stop"].waitForExistence(timeout:5))
+        XCTAssertFalse(app.buttons["idle-menu-open"].exists)
+        app.buttons["recording-menu-stop"].click()
+        XCTAssertTrue(idle.waitForExistence(timeout:15));XCTAssertFalse(recording.exists)
+        idle.click();XCTAssertTrue(app.buttons["idle-menu-open"].waitForExistence(timeout:5))
+        XCTAssertFalse(app.buttons["recording-menu-stop"].exists)
+    }
+
+    @MainActor func testDockReopenKeepsMinimizedMeetingAndSearchState() async throws {
+        let app=try launch("meeting",fixture:"main");defer { app.terminate() }
+        let window=app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:15))
+        window.buttons["_XCUI:MinimizeWindow"].click()
+        try await dockReopen(app)
+        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:10),"Minimized meeting stays open")
+        waitForWindowless { window.buttons["meeting-back"].isHittable }
+        window.buttons["meeting-back"].click()
+        app.typeKey("f",modifierFlags:.command);app.typeText("budget")
+        let field=window.searchFields["library-search-field"]
+        XCTAssertEqual(field.value as? String,"budget")
+        window.buttons["_XCUI:MinimizeWindow"].click()
+        try await dockReopen(app)
+        XCTAssertTrue(field.waitForExistence(timeout:10));waitForWindowless { field.isHittable }
+        XCTAssertEqual(field.value as? String,"budget")
+    }
+
+    @MainActor private func dockReopen(_ app:XCUIApplication) async throws {
+        let bundle=try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier:"io.codemyriad.cassini").first?.bundleURL)
+        try await withCheckedThrowingContinuation { (reply:CheckedContinuation<Void,Error>) in
+            NSWorkspace.shared.openApplication(at:bundle,configuration:NSWorkspace.OpenConfiguration()) { _,error in
+                if let error {reply.resume(throwing:error)} else {reply.resume()}
+            }
+        }
+    }
+    @MainActor private func backgroundClick(_ target:XCUIElement,through foreground:XCUIApplication) {
+        let anchor=foreground.menuBars.firstMatch
+        XCTAssertTrue(anchor.exists,"Foreground app has a real menu-bar coordinate anchor")
+        let frame=target.frame,origin=anchor.frame.origin
+        anchor.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:frame.midX-origin.x,dy:frame.midY-origin.y)).click()
     }
 
     @MainActor private func waitForWindowless(file: StaticString = #filePath, line: UInt = #line, _ condition: @escaping () -> Bool) {

@@ -114,7 +114,7 @@ struct RecordingStatusMenu: View {
             switch item.id {
             case "stop": RecordingOverview.stop()
             case "settings": NSApp.activate(ignoringOtherApps:true); openSettings()
-            case "quit": NSApp.terminate(nil)
+            case "quit": NSApp.activate(ignoringOtherApps:true); NSApp.terminate(nil)
             default: RecordCoordinator.shared.openCurrent()
             }
         } label: {
