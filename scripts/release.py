@@ -266,9 +266,7 @@ def dmg_tools():
 
 
 def build_dmg(python, application, output):
-    run([python, '-m', 'dmgbuild', '-s', ROOT/'Distribution/dmg-settings.py',
-         '-D', 'app='+str(application), '-D', 'license='+str(ROOT/'COPYING'),
-         '-D', 'background_license='+str(ROOT/'Distribution/dmgbuild-LICENSE.txt'), PRODUCT_NAME, output], timeout=600)
+    run([python, ROOT/'scripts/build-dmg.py', application, output], timeout=600)
 
 
 def release(args):

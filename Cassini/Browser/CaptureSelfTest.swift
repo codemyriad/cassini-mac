@@ -101,10 +101,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
         if interrupted { packet["interrupted"] = [entry] }
         return packet
     }
-    func performNext() async throws -> JSON {
+    func readNextCommand() async throws -> JSON {
         let command = try await control.read()
         guard let request = command["requestId"]?.string, let action = command["action"]?.string else { throw CocoaError(.fileReadCorruptFile) }
         try? FileHandle.standardError.write(contentsOf:Data("Capture fixture command: \(title) \(action) \(request)\n".utf8))
+        return command
+    }
+    func performNext() async throws -> JSON { try await perform(readNextCommand()) }
+    func perform(_ command: JSON) async throws -> JSON {
+        guard let request = command["requestId"]?.string, let action = command["action"]?.string else { throw CocoaError(.fileReadCorruptFile) }
         if action == "start", nextStartFails {
             nextStartFails = false
             try await control.send(["type":"result","requestId":request,"ok":false,"error":"Generated start failure","status":status()])
@@ -200,10 +205,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             // consent held indefinitely. Native inputs remain generated RAM.
             RecordCoordinator.shared.showingFirst = true
             RecordCoordinator.shared.confirm()
-            try await wait { collection.starting }
-            try await Task.sleep(for:.milliseconds(50))
+            // Receiving the actual command is the delivery signal. Acceptance
+            // remains gated until perform() sends the browser's result below.
+            let firstStart = try await one.readNextCommand()
+            try require(firstStart["action"]?.string == "start" && one.audio == nil && collection.starting,"First browser Start delivered while acceptance is gated")
             try require(notificationReply == nil,"No notification prompt before the browser accepts the first Start")
-            _ = try await one.performNext(); _ = try await two.performNext()
+            report["firstStartDeliveredWhileAcceptanceGated"] = true
+            _ = try await one.perform(firstStart); _ = try await two.performNext()
             try await wait { microphoneReplies.count == 2 }
             try require(notificationReply == nil,"Browser recording requests microphone before optional notification consent")
             let admitted = microphoneReplies; microphoneReplies.removeAll()
