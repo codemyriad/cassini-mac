@@ -6,7 +6,7 @@ on:
       mode:
         description: 'Generated PCM sink only, or sink plus actual process-tap hardware'
         type: choice
-        options: [full, sink-only, spectrogram-lab, spectrogram-environment]
+        options: [full, sink-only, spectrogram-lab, spectrogram-environment, spectrogram-gap]
         default: full
   schedule:
     - cron: '23 2 * * *'
@@ -142,3 +142,62 @@ jobs:
         with:
           name: spectrogram-environment
           path: experiment
+
+  spectrogram-gap:
+    # Focused B diagnosis, original renderer, all B lifecycle/motion/finalization
+    # checks and exact omission accounting. Not a replacement for production CI.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/spectrogram-d36' && inputs.mode == 'spectrogram-gap'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          path: baseline
+          ref: ec79eca866fa0a6da62d0635e7f180b5ec902791
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-release
+          path: baseline/build/ci-release
+          run-id: 41226368770
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-debug
+          path: baseline/build/ci-debug
+          run-id: 41226368770
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact source, pins, toolchain and products
+        working-directory: baseline
+        run: |
+          python3 scripts/ci-products.py unpack release build/ci-release
+          python3 scripts/ci-products.py unpack debug build/ci-debug
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: brew install displayplacer
+      - run: python3 baseline/scripts/hosted-display.py
+      - name: Compile only the instrumented generated-input probe
+        run: |
+          cp candidate/Spikes/Spectrogram/Probe.swift baseline/Spikes/Spectrogram/Probe.swift
+          python3 baseline/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release baseline/probe.app
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          path=Path('baseline/scripts/test-spectrogram-app.py')
+          source=Path('candidate/scripts/test-spectrogram-app.py').read_text()
+          assert "for case in 'ABCDE':" in source
+          path.write_text(source.replace("for case in 'ABCDE':", "for case in 'B':"))
+          PYTHON
+      - name: Actual complete B proof with counted source gaps
+        working-directory: baseline
+        run: python3 scripts/test-spectrogram-app.py probe.app --output experiment
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: spectrogram-gap
+          path: baseline/experiment
