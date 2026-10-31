@@ -78,7 +78,9 @@ timestamp. A deterministic continuous60Hz/4096-and8192-packet test retains its
 original failing evidence and checks no steady-state early releases. AC history
 is copied in bounded contiguous runs with Double reductions; the real FFT removes
 vDSP's factor-two amplitude explicitly and passes both unchanged goldens.
-Visibility membership is updated by view/window notifications, with one per-tick
-clock-view check. One parent layer scrolls each lane's two fixed wrap textures.
+Visibility membership is updated synchronously by view/window notifications.
+Owned-layer actions are disabled while AppKit batches the implicit transaction at
+its normal frame boundary; the display callback does not query window occlusion
+or force an explicit transaction. One parent layer scrolls each lane's two fixed wrap textures.
 These changes need a fresh hosted measurement; local analysis-only savings do
 not establish the native rendering budget.
