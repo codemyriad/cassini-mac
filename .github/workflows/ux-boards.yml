@@ -50,6 +50,10 @@ jobs:
     - name: Real recording controls without devices
       if: always()
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
+    - name: Pure hosted budget policy boundaries (D36.2)
+      run: |
+        swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
+        "$RUNNER_TEMP/spectrogram-budget"
     - name: Production spectrogram A–E, native views and Time Profiler without devices
       if: always()
       run: |

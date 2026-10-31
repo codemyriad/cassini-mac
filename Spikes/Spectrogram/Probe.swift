@@ -114,6 +114,8 @@ import ScreenCaptureKit
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
+                "budgetPolicy":"D36.2","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
+                "lateColumnFraction":Double(controller.lateColumns-initialLate)/SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
                 "lateTiming":controller.lateTiming.filter { $0.ordinal > initialLate }.map {
@@ -131,11 +133,12 @@ import ScreenCaptureKit
                 try require(controller.frameCallbacks > (mode == "A" ? 1000 : 2500) && controller.analyzedFrames > initialFrames,"production display and FFT callbacks (callbacks=\(controller.frameCallbacks), applied=\(controller.framesApplied), FFT=\(controller.analyzedFrames-initialFrames), reduced=\(controller.usingReducedMotion))")
                 try require(controller.surfaceRevision > 50 && controller.surfaceBytes > 0,"native surfaces updated")
             }
-            report["gates"] = ["analysis":analysis <= 0.2,"drawing":drawing <= (mode == "A" ? 0.3 : 0.5),
-                "pacing":mode == "A" || hidden || (controller.frameP95Ms <= 17.5 && controller.maxFrameIntervalMs <= 33),
-                "late":controller.lateColumns == initialLate,"drops":controller.droppedColumns == initialDropped,
-                "inputDrops":controller.droppedBuffers == initialBufferDrops,
-                "logicalViewPayload":controller.payloadBytes <= 128*1024]
+            var gates=SpectrogramHostedBudget.evaluate(mode:mode,seconds:elapsed,analysis:analysis,drawing:drawing,
+                p95:controller.frameP95Ms,maximum:controller.maxFrameIntervalMs,
+                late:controller.lateColumns-initialLate,payload:controller.payloadBytes)
+            gates["drops"]=controller.droppedColumns == initialDropped
+            gates["inputDrops"]=controller.droppedBuffers == initialBufferDrops
+            report["gates"]=gates
             if mode == "B" {
                 // Verify pixels from this process's own window, after the CPU
                 // measurement. A ring/seed counter alone cannot prove that CA
