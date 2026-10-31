@@ -10,6 +10,15 @@ import CassiniRecording
     func stop()
 }
 
+/// Invalidated on the main actor, checked again on the owner's serial I/O queue.
+private final class SourceChangeToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var valid = true
+    var isValid: Bool { lock.withLock { valid } }
+    func invalidate() { lock.withLock { valid = false } }
+    func check() throws { if !isValid { throw CancellationError() } }
+}
+
 /// Owns native admission for one meeting, never a global device/session. Disk
 /// drains run outside the main actor and before a source's off transition.
 @MainActor public final class CaptureInputLifecycle {
@@ -29,7 +38,35 @@ import CassiniRecording
     private var tail: Task<Void,Never>?
     private var closed = false
     private var stopping: Task<Void,Error>?
-    private var authorizations: [UUID:CheckedContinuation<Void,Error>] = [:]
+    private struct Authorization {
+        let side: CaptureSide
+        let source: SourceChangeToken?
+        let continuation: CheckedContinuation<Void,Error>
+    }
+    private var authorizations: [UUID:Authorization] = [:]
+    private var permissionTasks: [CaptureSide:UUID] = [:]
+    private var sourceChange = SourceChangeToken()
+    public private(set) var sourceRevision: UInt64 = 0
+    /// Release only automatic source waiters. The OS request can finish later;
+    /// it is shared by any subsequent request for the same native side.
+    public func cancelSourceChange() {
+        sourceChange.invalidate(); sourceChange = SourceChangeToken(); sourceRevision &+= 1
+        let cancelled = authorizations.filter { $0.value.source != nil }
+        for (id,request) in cancelled {
+            authorizations.removeValue(forKey:id)
+            request.continuation.resume(throwing:CancellationError())
+        }
+    }
+    private func token(for revision: UInt64?) throws -> SourceChangeToken {
+        guard revision == nil || revision == sourceRevision else { throw CancellationError() }
+        return sourceChange
+    }
+    public func observeBrowserLoss(atMs: Double, transportAlive: Bool, revision: UInt64) async throws {
+        let token = try token(for:revision), capture = capture
+        try await Task.detached {
+            try capture.browserLost(atMs:atMs,transportAlive:transportAlive,allowed:{ token.isValid })
+        }.value
+    }
     public private(set) var failedSides: Set<CaptureSide> = []
     public var hasRunningInputs: Bool { inputs.keys.contains { !failedSides.contains($0) } }
     public init(capture: OwnedBrowserCapture, originHostTime: UInt64,
@@ -45,6 +82,8 @@ import CassiniRecording
     public func update() async throws { try await enqueue { try await self.reconcile() } }
     public func select(me: Bool, others: Bool, atMs: Double) async throws {
         guard atMs.isFinite, atMs >= 0, me || others else { throw RecordingError.invalid("Invalid recording selection.") }
+        cancelSourceChange()
+        let selectionToken = capture.snapshot.managedBrowser ? sourceChange : nil
         let requested = ProcessInfo.processInfo.systemUptime
         try await enqueue {
             guard !self.closed, self.capture.snapshot.phase == .recording else { throw BrowserIPCError.closed }
@@ -53,8 +92,8 @@ import CassiniRecording
             var paused: Set<CaptureSide> = []
             let previousFailures = self.failedSides
             do {
-                if others && !before.browserAlive && (self.inputs[.others] == nil || self.failedSides.contains(.others)) {
-                    prepared[.others] = try await self.prepare(.others,driver:self.system())
+                if others && !before.browserAlive && !before.restoreReady && (self.inputs[.others] == nil || self.failedSides.contains(.others)) {
+                    prepared[.others] = try await self.prepare(.others,driver:self.system(),source:selectionToken)
                 }
                 if me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
                     prepared[.me] = try await self.prepare(.me,driver:self.microphone())
@@ -72,6 +111,7 @@ import CassiniRecording
                 guard prepared.values.allSatisfy({ $0.stage?.recordingProblem == nil }) else {
                     throw RecordingError.invalid("The new audio input stopped before the selection could be applied.")
                 }
+                if prepared[.others] != nil { try selectionToken?.check() }
                 let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime-requested)*1000
                 try await self.capture.select(me:me,others:others,atMs:appliedAt,reservingNative:Set(prepared.keys))
             } catch {
@@ -102,8 +142,81 @@ import CassiniRecording
             }
         }
     }
-    private func prepare(_ side: CaptureSide, driver: any CaptureInput) async throws -> Input {
-        try await authorize(driver)
+    /// Stage computer sound without disturbing the microphone. Failed device
+    /// authorization/start cannot publish a system source or its samples.
+    public func fallback(revision: UInt64? = nil) async throws {
+        let token = try token(for:revision)
+        try await enqueue { try await self.startFallback(token:token) }
+    }
+    private func startFallback(token: SourceChangeToken) async throws {
+        try token.check()
+        guard !self.closed, self.capture.snapshot.phase == .recording,
+              self.capture.snapshot.others, !self.capture.snapshot.browserAlive,
+              self.inputs[.others] == nil else { return }
+        let candidate: Input
+        do { candidate = try await self.prepare(.others,driver:self.system(),source:token) }
+        catch { if !self.closed, !(error is CancellationError) { self.failedSides.insert(.others) }; throw error }
+        do {
+            try token.check()
+            guard !self.closed, candidate.stage?.recordingProblem == nil else { throw BrowserIPCError.closed }
+            try await self.capture.requestSystemFallback(allowed:{ token.isValid })
+            try token.check()
+            self.inputs[.others] = candidate; self.failedSides.remove(.others)
+            if let stage = candidate.stage {
+                try await self.capture.activateNative(stage,side:.others,allowed:{ token.isValid })
+            }
+        } catch {
+            if error is CancellationError {
+                self.inputs.removeValue(forKey:.others)
+                await self.discard(candidate)
+            } else if self.inputs[.others]?.generation == candidate.generation {
+                self.report(.others,generation:candidate.generation,stage:candidate.stage)(error.localizedDescription)
+            } else {
+                await self.discard(candidate)
+                if !self.closed { self.failedSides.insert(.others) }
+            }
+            throw error
+        }
+    }
+    /// The original browser transport must have a returned source. Pause only
+    /// this meeting's computer sound; a rejected checkpoint resumes its exact
+    /// existing writer/clock, without stopping or replacing the microphone.
+    public func restoreBrowser(atMs: Double, notBeforeMs: Double? = nil, revision: UInt64? = nil) async throws {
+        guard atMs.isFinite, atMs >= 0, notBeforeMs.map({ $0.isFinite && $0 >= 0 }) ?? true else { throw RecordingError.invalid("Invalid restoration time.") }
+        let token = try token(for:revision)
+        let requested = ProcessInfo.processInfo.systemUptime
+        try await enqueue {
+            try token.check()
+            guard !self.closed, self.capture.snapshot.phase == .recording,
+                  self.capture.snapshot.others, self.capture.snapshot.restoreReady,
+                  self.capture.snapshot.browserReturnPCMAt.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
+            let input = self.inputs[.others]
+            do {
+                if let input {
+                    self.inputs[.others]?.paused = true; input.driver.stop()
+                    let sink = input.sink
+                    try await Task.detached { try sink.pause() }.value
+                }
+                guard !self.closed else { throw BrowserIPCError.closed }
+                let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime-requested)*1000
+                try token.check()
+                try await self.capture.restoreBrowser(atMs:appliedAt,notBeforeMs:notBeforeMs,allowed:{ token.isValid })
+            } catch {
+                if !self.closed, let input {
+                    do {
+                        try input.sink.resume()
+                        try input.driver.start(sink:input.sink,failure:self.report(.others,generation:input.generation,stage:input.stage))
+                        self.inputs[.others]?.paused = false
+                    } catch { self.failedSides.insert(.others); self.failure(error.localizedDescription) }
+                }
+                throw error
+            }
+            try await self.end(.others)
+        }
+    }
+    private func prepare(_ side: CaptureSide, driver: any CaptureInput, source: SourceChangeToken? = nil) async throws -> Input {
+        try await authorize(driver,side:side,source:source)
+        try source?.check()
         guard !closed else { throw BrowserIPCError.closed }
         let generation = UUID(), stage = StagedNativeWriter(observers:capture.pcmObservers)
         let report = report(side,generation:generation,stage:stage)
@@ -112,6 +225,7 @@ import CassiniRecording
         do {
             try driver.start(sink:sink,failure:report)
             await Task.detached { sink.flush() }.value
+            try source?.check()
             guard !closed, stage.recordingProblem == nil else { throw RecordingError.invalid("The new audio input could not start.") }
             return value
         } catch { await discard(value); throw error }
@@ -129,8 +243,9 @@ import CassiniRecording
     }
     public func stop() async throws {
         closed = true
+        cancelSourceChange()
         let waiting = Array(authorizations.values); authorizations.removeAll()
-        for request in waiting { request.resume(throwing:BrowserIPCError.closed) }
+        for request in waiting { request.continuation.resume(throwing:BrowserIPCError.closed) }
         if let stopping { try await stopping.value; return }
         let task = Task { @MainActor in
             try await self.enqueue {
@@ -146,26 +261,44 @@ import CassiniRecording
     }
     /// The OS request can outlive Stop. Only this waiter is cancelled: a late
     /// reply cannot start a driver or prevent existing inputs from draining.
-    private func authorize(_ driver: any CaptureInput) async throws {
+    private func authorize(_ driver: any CaptureInput, side: CaptureSide, source: SourceChangeToken? = nil) async throws {
         guard !closed else { throw BrowserIPCError.closed }
+        try source?.check()
         let id = UUID()
         try await withCheckedThrowingContinuation { continuation in
-            authorizations[id] = continuation
+            authorizations[id] = .init(side:side,source:source,continuation:continuation)
+            guard permissionTasks[side] == nil else { return }
+            let taskID = UUID(); permissionTasks[side] = taskID
             Task { @MainActor [weak self] in
-                guard self?.authorizations[id] != nil else { return }
+                guard self?.permissionTasks[side] == taskID,
+                      self?.authorizations.values.contains(where:{ $0.side == side }) == true else {
+                    if self?.permissionTasks[side] == taskID { self?.permissionTasks.removeValue(forKey:side) }
+                    return
+                }
                 let result: Result<Void,Error>
                 do { try await driver.authorize(); result = .success(()) }
                 catch { result = .failure(error) }
-                self?.authorizations.removeValue(forKey:id)?.resume(with:result)
+                guard let self, self.permissionTasks[side] == taskID else { return }
+                self.permissionTasks.removeValue(forKey:side)
+                let waiting = self.authorizations.filter { $0.value.side == side }
+                for (id,request) in waiting {
+                    self.authorizations.removeValue(forKey:id)
+                    if request.source?.isValid == false { request.continuation.resume(throwing:CancellationError()) }
+                    else { request.continuation.resume(with:result) }
+                }
             }
         }
     }
     public func retry(_ side: CaptureSide) async throws {
+        let token = sourceChange
         try await enqueue {
             guard !self.closed, self.capture.snapshot.phase == .recording,
                   side == .me ? self.capture.snapshot.me : self.capture.snapshot.others else { return }
+            if side == .others { try token.check() }
             try await self.end(side)
-            try await self.reconcile()
+            if side == .others, self.capture.snapshot.managedBrowser, !self.capture.snapshot.browserAlive {
+                try await self.startFallback(token:token)
+            } else { try await self.reconcile() }
         }
     }
     public typealias Status = (levels: [String:Float],frames: [String:UInt64],droppedMs: Double,gapMs: Double,warnings: [String])
@@ -175,9 +308,9 @@ import CassiniRecording
     private func reconcile(preparedMicrophone: (any CaptureInput)? = nil) async throws {
         guard !closed, capture.snapshot.phase == .recording else { return }
         var first: Error?
-        if capture.snapshot.needsSystem && inputs[.others] == nil && !failedSides.contains(.others) {
+        if !capture.snapshot.managedBrowser && capture.snapshot.needsSystem && inputs[.others] == nil && !failedSides.contains(.others) {
           do {
-            let driver = system(); try await self.authorize(driver)
+            let driver = system(); try await self.authorize(driver,side:.others)
             guard !closed, capture.snapshot.needsSystem else { return }
             try begin(.others,driver:driver)
           } catch { if closed { return }; failedSides.insert(.others); first = first ?? error }
@@ -185,7 +318,7 @@ import CassiniRecording
         if capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
           do {
             let driver = preparedMicrophone ?? microphone()
-            if preparedMicrophone == nil { try await self.authorize(driver) }
+            if preparedMicrophone == nil { try await self.authorize(driver,side:.me) }
             guard !closed, capture.snapshot.phase == .recording else { return }
             try begin(.me,driver:driver)
           } catch { if closed { return }; failedSides.insert(.me); first = first ?? error }

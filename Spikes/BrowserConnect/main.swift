@@ -15,7 +15,15 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--scope-check"
         let other = open(forbidden.path,O_WRONLY | O_CREAT | O_NOFOLLOW,0o600)
         if other >= 0 { close(other); throw BrowserSetupError.unsafePath }
         guard [EACCES,EPERM].contains(errno) else { throw BrowserSetupError.unsafePath }
-        try FileHandle.standardOutput.write(contentsOf:Data("{\"manifestLeafWritable\":true,\"profileSiblingDenied\":true}\n".utf8))
+        let companion = URL(fileURLWithPath:CommandLine.arguments[2]).appendingPathComponent(LocalCompanionInstallation.relativePath)
+        let target = companion.appendingPathComponent("scope-check")
+        let writable = open(target.path,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,0o600)
+        guard writable >= 0 else { throw BrowserSetupError.unavailable }; close(writable); unlink(target.path)
+        let voices = companion.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Voices/scope-check")
+        let denied = open(voices.path,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,0o600)
+        if denied >= 0 { close(denied); throw BrowserSetupError.unsafePath }
+        guard [EACCES,EPERM].contains(errno) else { throw BrowserSetupError.unsafePath }
+        try FileHandle.standardOutput.write(contentsOf:Data("{\"manifestLeafWritable\":true,\"profileSiblingDenied\":true,\"companionLeafWritable\":true,\"voicesSiblingDenied\":true}\n".utf8))
         exit(0)
     } catch { try? FileHandle.standardError.write(contentsOf:Data("Scope verification failed: \(error)\n".utf8)); exit(78) }
 }
@@ -46,13 +54,21 @@ do {
     guard rejected.done.wait(timeout:.now() + 10) == .success, rejected.get()?.1 != nil else { throw BrowserSetupError.invalidHost }
     proxy.connect(audioHostBookmark:audio,controlHostBookmark:control) { reply.set($0,$1) }
     guard reply.done.wait(timeout:.now() + 20) == .success, let (count,error) = reply.get() else { throw BrowserSetupError.unavailable }
-    connection.invalidationHandler = nil; connection.invalidate()
     if let error { throw error }
+    let wrongCompanion = Reply()
+    proxy.prepareCompanion(bookmark:wrong) { wrongCompanion.set(0,$0) }
+    guard wrongCompanion.done.wait(timeout:.now()+10) == .success, wrongCompanion.get()?.1 != nil else { throw BrowserSetupError.invalidHost }
+    let companion = try contents.appendingPathComponent("Resources/BrowserCompanion").bookmarkData(options:[],includingResourceValuesForKeys:nil,relativeTo:nil)
+    let copied = Reply()
+    proxy.prepareCompanion(bookmark:companion) { copied.set(1,$0) }
+    guard copied.done.wait(timeout:.now()+20) == .success, let (_,copyError) = copied.get() else { throw BrowserSetupError.unavailable }
+    if let copyError { throw copyError }
+    connection.invalidationHandler = nil; connection.invalidate()
     // Check after registration so fresh-directory ENOENT cannot masquerade as
     // a sandbox rejection.
     let fd = open(file.path,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,0o600)
     let denied = fd < 0 && [EACCES,EPERM].contains(errno)
     if fd >= 0 { close(fd); unlink(file.path) }
-    let result: [String:Any] = ["manifestsWritten":count,"parentWriteDenied":denied,"wrongHostBookmarkRejected":true]
+    let result: [String:Any] = ["manifestsWritten":count,"parentWriteDenied":denied,"wrongHostBookmarkRejected":true,"localCompanionPrepared":true,"wrongCompanionBookmarkRejected":true]
     try FileHandle.standardOutput.write(contentsOf:JSONSerialization.data(withJSONObject:result,options:.sortedKeys) + Data([10]))
 } catch { try? FileHandle.standardError.write(contentsOf:Data((String(describing:error)+"\n").utf8)); exit(78) }

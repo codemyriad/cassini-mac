@@ -59,6 +59,14 @@ try {
   const report = JSON.parse(stdout);
   assert.equal(report.connectedWithoutClick, true); assert.equal(report.uiActions, 0);
   assert.equal(report.capturedAudio, false); assert.match(report.state, /^Connected/);
+  assert.equal(report.localCompanionPrepared, true);
+  assert.ok(Number.isSafeInteger(report.browserPid) && report.browserPid > 1);
+  assert.ok(Number.isSafeInteger(report.browserStartSeconds) && report.browserStartSeconds > 0);
+  assert.ok(Number.isSafeInteger(report.browserStartMicroseconds) && report.browserStartMicroseconds >= 0 && report.browserStartMicroseconds < 1000000);
+  // The real native host derives its identity from its parent, not a page field.
+  const browserProcess = execFileSync('ps', ['-ww', '-p', String(report.browserPid), '-o', 'comm='], { encoding: 'utf8' });
+  assert.match(browserProcess, /Google Chrome for Testing/);
+  report.browserProcessIdentityValidated = true;
   for (const [index, host] of hosts.entries()) {
     const manifest = JSON.parse(await readFile(path.join(manifests, host + '.json'), 'utf8'));
     assert.equal(manifest.name, host);

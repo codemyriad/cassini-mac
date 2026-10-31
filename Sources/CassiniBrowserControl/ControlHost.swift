@@ -118,7 +118,7 @@ private enum NativeHostBridge {
             if role == .control, let path = environment["CASSINI_CONTROL_SOCKET"], !path.isEmpty { endpoint = try TestSocketEndpoint(path:path) }
             else {
                 let root = environment["CASSINI_CONTROL_PIPE_ROOT"].map { URL(fileURLWithPath:$0,isDirectory:true) } ?? PipeFiles.standardRoot
-                endpoint = try PipeEndpoint(root:root,role:role,browser:BrowserCompanionConnection.parentBrowserName)
+                endpoint = try PipeEndpoint(root:root,role:role,browser:BrowserCompanionConnection.parentBrowserName,browserInstance:BrowserInstance.parentBrowser)
             }
             guard let connection = endpoint else { throw BrowserIPCError.unavailable }
             try FrameIO.prepare(STDIN_FILENO); try FrameIO.prepare(STDOUT_FILENO)

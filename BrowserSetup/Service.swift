@@ -4,6 +4,24 @@ import CassiniBrowserSetup
 
 final class BrowserSetupConnection: NSObject, CassiniBrowserSetupService, @unchecked Sendable {
     private static let queue = DispatchQueue(label:"io.codemyriad.cassini.browser-install",qos:.utility)
+    func prepareCompanion(bookmark: Data, reply: @escaping @Sendable (NSError?) -> Void) {
+        Self.queue.async {
+            do {
+                guard var home = BrowserSetupInstallation.accountHome else { throw BrowserSetupError.unavailable }
+                #if DEBUG
+                if let fixture = Bundle.main.object(forInfoDictionaryKey:"CassiniSetupFixtureHome") as? String {
+                    guard fixture.contains("/build/browser-connect-fixture-"), fixture.hasPrefix(home.path+"/") else { throw BrowserSetupError.unsafePath }
+                    home = URL(fileURLWithPath:fixture,isDirectory:true)
+                }
+                #endif
+                let contents = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+                let source = try HostAccess(bookmark,expected:contents.appendingPathComponent("Resources/BrowserCompanion"))
+                defer { withExtendedLifetime(source) {} }
+                _ = try LocalCompanionInstallation(home:home,source:source.url).install()
+                reply(nil)
+            } catch { reply(BrowserSetupFailure(error).nsError) }
+        }
+    }
     func connect(audioHostBookmark: Data, controlHostBookmark: Data, reply: @escaping @Sendable (Int,NSError?) -> Void) {
         Self.queue.async {
             do {

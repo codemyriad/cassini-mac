@@ -36,6 +36,7 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
     func activate(_ writer: any RecordingSinkWriter) throws {
         try lock.withLock {
             guard !discarded, target == nil else { throw BrowserIPCError.closed }
+            guard recordingProblem == nil else { throw RecordingError.invalid("The prepared audio input stopped before activation.") }
             target = writer
             recordedPCM?.forward(to:writer.recordedPCM)
             // Selection has committed. Forwarding transfers only privately held

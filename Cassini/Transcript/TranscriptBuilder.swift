@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import CassiniKit
 
@@ -98,25 +99,28 @@ enum TranscriptBuilder {
             // Body
             let chipsBefore = turn.interjections.filter { $0.anchor < 0 }
             for j in chipsBefore { appendChip(j, host: turn.id, to: out, &layout, timeline: timeline, label: label, style: body) }
+            let bodyText = TranscriptText.quotes(turn.words.map { timeline.words[$0].text })
             var bodyWords: [Int] = []
             for (k, wordIndex) in turn.words.enumerated() {
-                if k > 0 || !chipsBefore.isEmpty {
-                    out.append(NSAttributedString(string: " ", attributes: [.font: bodyFont, .paragraphStyle: body]))
+                if !bodyText[k].isEmpty {
+                    if !bodyWords.isEmpty || !chipsBefore.isEmpty {
+                        out.append(NSAttributedString(string: " ", attributes: [.font: bodyFont, .paragraphStyle: body]))
+                    }
+                    let w = timeline.words[wordIndex]
+                    let loc = out.length
+                    var attrs: [NSAttributedString.Key: Any] = [
+                        .font: bodyFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
+                        .kern: -0.075, .cassiniWord: wordIndex, .cursor: NSCursor.pointingHand,
+                    ]
+                    if w.lowConfidenceSpeaker {
+                        attrs[.underlineStyle] = NSUnderlineStyle.patternDot.rawValue | NSUnderlineStyle.single.rawValue
+                        attrs[.underlineColor] = NSColor.tertiaryLabelColor
+                    }
+                    out.append(NSAttributedString(string: bodyText[k], attributes: attrs))
+                    layout.wordRanges[wordIndex] = NSRange(location: loc, length: out.length - loc)
+                    layout.displayTurnOfWord[wordIndex] = turn.id
+                    bodyWords.append(wordIndex)
                 }
-                let w = timeline.words[wordIndex]
-                let loc = out.length
-                var attrs: [NSAttributedString.Key: Any] = [
-                    .font: bodyFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
-                    .kern: -0.075, .cassiniWord: wordIndex, .cursor: NSCursor.pointingHand,
-                ]
-                if w.lowConfidenceSpeaker {
-                    attrs[.underlineStyle] = NSUnderlineStyle.patternDot.rawValue | NSUnderlineStyle.single.rawValue
-                    attrs[.underlineColor] = NSColor.tertiaryLabelColor
-                }
-                out.append(NSAttributedString(string: w.text, attributes: attrs))
-                layout.wordRanges[wordIndex] = NSRange(location: loc, length: out.length - loc)
-                layout.displayTurnOfWord[wordIndex] = turn.id
-                bodyWords.append(wordIndex)
                 for j in turn.interjections where j.anchor == k {
                     appendChip(j, host: turn.id, to: out, &layout, timeline: timeline, label: label, style: body)
                 }
@@ -133,10 +137,11 @@ enum TranscriptBuilder {
     private static func appendChip(_ j: Interjection, host: Int, to out: NSMutableAttributedString, _ layout: inout TranscriptLayout,
                                    timeline: Timeline, label: (String) -> String, style: NSParagraphStyle) {
         guard !j.words.isEmpty else { return }
+        let words = TranscriptText.quotes(j.words.map { timeline.words[$0].text }).filter { !$0.isEmpty }.joined(separator: nbsp)
+        guard !words.isEmpty else { return }
         let chipIndex = layout.chips.count
         out.append(NSAttributedString(string: " ", attributes: [.font: bodyFont, .paragraphStyle: style]))
         let loc = out.length
-        let words = j.words.map { timeline.words[$0].text }.joined(separator: nbsp)
         out.append(NSAttributedString(string: thinNbsp + label(j.speaker).replacingOccurrences(of: " ", with: nbsp), attributes: [
             .font: chipNameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,

@@ -132,3 +132,32 @@ struct SearchTests {
         #expect(try Data(contentsOf:source) == Data("keep".utf8))
     }
 }
+
+extension SearchTests {
+    @Test func echoFlagsRemoveSearchHitsAndRebuildAnExistingCache() async throws {
+        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
+        meeting.transcriptItems = [
+            .init(speaker:"me",startMs:300,endMs:400,text:"microphone-repeat"),
+            .init(speaker:"others",startMs:500,endMs:600,text:"original words")]
+        let index = try SearchIndex(cache:fixture.cache); try await index.replace([meeting])
+        #expect(try await index.search("microphone-repeat").count == 1)
+        meeting.transcriptItems[0] = .init(speaker:"me",startMs:300,endMs:400,text:"microphone-repeat",echo:true)
+        try await index.replace([meeting])
+        #expect(try await index.search("microphone-repeat").isEmpty)
+        #expect(try await index.search("original words").first?.positionMs == 500)
+        #expect(meeting.transcriptItems.count == 2)
+    }
+    @Test func quoteCleanupKeepsSearchOffsetsAndPlaybackPositions() async throws {
+        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
+        meeting.transcriptItems = [
+            .init(speaker:"a",startMs:100,endMs:200,text:"\"👩🏽‍💻 Café"),
+            .init(speaker:"a",startMs:900,endMs:1000,text:"budget returns.")]
+        let index = try SearchIndex(cache:fixture.cache); try await index.replace([meeting])
+        let hits = try await index.search("budget")
+        #expect(hits.count == 1 && hits.first?.positionMs == 900)
+        let hit = try #require(hits.first), span = try #require(hit.spans.first)
+        #expect(hit.text == "👩🏽‍💻 Café budget returns.")
+        #expect((hit.text as NSString).substring(with:NSRange(location:span.start,length:span.length)) == "budget")
+        #expect(meeting.transcriptItems[0].text.hasPrefix("\""))
+    }
+}

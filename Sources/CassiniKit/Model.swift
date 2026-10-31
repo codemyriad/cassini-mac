@@ -120,6 +120,7 @@ public struct Word: Sendable, Equatable {
     public var text: String
     public var lowConfidenceSpeaker: Bool
     public var attributionGapDb: Double?
+    public var echo: Bool = false
 }
 
 public struct WordsTranscript: Sendable, Equatable {

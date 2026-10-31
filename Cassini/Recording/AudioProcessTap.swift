@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import CoreAudio
+import CassiniRecording
 
 struct AudioProcess: Identifiable, Hashable {
     let id: AudioObjectID
@@ -46,6 +47,8 @@ final class AudioProcessTap {
 
     func start(processes: [AudioObjectID]?, onFormatChange: @escaping () -> Void,
                receive: @escaping (AVAudioPCMBuffer, UInt64) -> Void) throws -> AVAudioFormat {
+        let knowledge = SystemAudioCaptureKnowledge.shared
+        let attempt = processes == nil ? knowledge.beginAttempt() : nil
         do {
             let description: CATapDescription
             if let processes {
@@ -101,16 +104,22 @@ final class AudioProcessTap {
                                                   kAudioSubTapDriftCompensationKey: true]]
             ]
             try audioCheck(AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &device), "Creating capture device")
+            var observedNonzero = false // accessed only by the serial tap callback
             try audioCheck(AudioDeviceCreateIOProcIDWithBlock(&callback, device, queue) { _, input, time, _, _ in
                 guard input.pointee.mNumberBuffers > 0, asbd.mBytesPerFrame > 0 else { return }
                 let frames = input.pointee.mBuffers.mDataByteSize / asbd.mBytesPerFrame
                 guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: input) else { return }
+                if !observedNonzero, let attempt { observedNonzero = knowledge.receive(buffer,attempt:attempt) }
                 let stamp = time.pointee
                 receive(buffer, stamp.mFlags.contains(.hostTimeValid) ? stamp.mHostTime : 0)
             }, "Installing audio callback")
             try audioCheck(AudioDeviceStart(device, callback), "Starting system audio")
             return format
-        } catch { stop(); throw error }
+        } catch {
+            stop()
+            if attempt != nil { knowledge.failedStart() }
+            throw error
+        }
     }
 
     func stop() {

@@ -8,6 +8,30 @@ import CassiniRecording
 @testable import CassiniExport
 
 struct MeetingExportTests {
+    @Test func flaggedEchoStaysInSidecarButIsAbsentFromBothExports() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let original = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let imported = try LibraryImport.copy(original,into:root.appendingPathComponent("Library"))
+        let words: [[String:Any]] = [
+            ["speaker":"one","startMs":0,"endMs":100,"text":"Keep"],
+            ["speaker":"one","startMs":100,"endMs":200,"text":"discard-echo","echo":true]
+        ]
+        let body = try JSONSerialization.data(withJSONObject:["language":"en","items":words])
+        let sidecar = imported.folder.appendingPathComponent("transcript.json")
+        try body.write(to:sidecar)
+        try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
+            $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        let meeting = try #require(LibraryScanner(root:imported.folder.deletingLastPathComponent()).scan().meetings.first)
+        #expect(meeting.transcriptItems.count == 2)
+        let markdown = try MeetingFileExporter.markdown(meeting,timeZone:TimeZone(secondsFromGMT:0)!,temporaryRoot:root)
+        #expect(try !String(contentsOf:markdown.url,encoding:.utf8).contains("discard-echo"))
+        let artifact = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+        let reopened = try CassiniReader.read(contentsOf:artifact.url)
+        #expect(reopened.state == .ok)
+        #expect(reopened.defaultTranscript?.load.transcript?.items.map(\.text) == ["Keep"])
+        #expect(try Data(contentsOf:sidecar) == body)
+    }
     @Test(arguments:[8000,11025,16000,22050,24000,44100,48000,96000])
     func resamplerEOFProducesTheExactTimelineEvenForFractionalAndShortInputs(rate: Int) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
@@ -159,7 +183,7 @@ struct MeetingExportTests {
         let expected = try JSONSerialization.data(withJSONObject:notes,options:.sortedKeys)
         try writer.transaction { $0["notes"] = notes }
         let beforeRename = try #require(LibraryScanner(root:first.folder.deletingLastPathComponent()).scan().meetings.first)
-        _ = try MeetingRename.apply("Edited title",to:beforeRename,untitled:"Untitled meeting")
+        try MeetingRename.apply("Edited title",to:beforeRename)
         try writer.transaction { $0["speakers"] = [["id":"track-original","name":"Ana","provenance":"user","colourIndex":0]] }
         let metadata = try JSONSerialization.jsonObject(with:Data(contentsOf:first.folder.appendingPathComponent("meeting.json"))) as! [String:Any]
         #expect(try JSONSerialization.data(withJSONObject:metadata["notes"]!,options:.sortedKeys) == expected)

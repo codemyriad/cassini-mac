@@ -79,3 +79,21 @@ struct MeetingPresentationTests {
         #expect(turns.count == 2 && turns[0].items == Array(items.prefix(2)) && turns[1].startMs == 4100)
     }
 }
+
+struct TurnQuotePresentationTests {
+    @Test func quotePartnersNeverCrossTurnsAndRawWordsStayIntact() {
+        let items: [LibraryTranscriptItem] = [
+            .init(speaker:"a",startMs:0,endMs:10,text:"He said \"hello"),
+            .init(speaker:"a",startMs:10,endMs:20,text:"world\"."),
+            .init(speaker:"b",startMs:20,endMs:30,text:"\"Unpaired"),
+            .init(speaker:"a",startMs:30,endMs:40,text:"Closing\"")]
+        let turns = MeetingPresentation.turns(items)
+        #expect(turns.map { $0.items.map(\.text).joined(separator:" ") } == ["He said “hello world”.","Unpaired","Closing"])
+        #expect(turns.flatMap(\.items).map(\.startMs) == items.map(\.startMs))
+        #expect(turns.flatMap(\.items).map(\.endMs) == items.map(\.endMs))
+        #expect(items[0].text == "He said \"hello")
+        #expect(LibraryTranscriptTurn.coalescing(items).map(\.text) == ["He said “hello world”.","Unpaired","Closing"])
+        let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:items,notes:[])
+        #expect(markdown.contains("He said “hello world”.") && !markdown.contains("\"Unpaired"))
+    }
+}

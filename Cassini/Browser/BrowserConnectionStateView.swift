@@ -4,6 +4,7 @@ import SwiftUI
 /// Shared, quiet connection state for Settings and the Library.
 struct BrowserConnectionStateView: View {
     let identifier: String
+    var presenter: CompanionSetup.Presenter = .settings
     @State private var setup = CompanionSetup.shared
     @State private var captures = CaptureCollection.shared
     var body: some View {
@@ -14,7 +15,7 @@ struct BrowserConnectionStateView: View {
                 if setup.failed {
                     Button(UXText.text("common.tryAgain")) { setup.trigger() }.accessibilityIdentifier("browser-try-again")
                 } else if !setup.working || setup.noBrowser {
-                    Button(setup.addLabel) { setup.add() }.accessibilityIdentifier("browser-add")
+                    Button(setup.addLabel) { setup.add(from:presenter) }.accessibilityIdentifier("browser-add")
                         .disabled(!setup.canAdd)
                 }
             }

@@ -76,7 +76,8 @@ public struct LibraryFormat: Sendable {
         let unit: Int64 = 1_048_576
         let mb = bytes / unit + (bytes % unit >= unit / 2 ? 1 : 0)
         let value: String
-        if bytes < unit { value = "\(bytes / 1024 + (bytes % 1024 >= 512 ? 1 : 0)) KB" }
+        let kb = bytes / 1024 + (bytes % 1024 >= 512 ? 1 : 0)
+        if bytes < unit && kb < 1000 { value = "\(bytes == 0 ? 0 : max(1,kb)) KB" }
         else if mb < 1000 { value = "\(mb) MB" }
         else {
             let gb: Int64 = 1_073_741_824

@@ -81,22 +81,28 @@ final class CaptureProbeProcess: @unchecked Sendable {
     var audio: CaptureProbeProcess?
     var captureID: String?, path: String?
     var sequence = 0
+    var meetingURL = "https://meeting.example/2"
+    var modern = false, pageState = "present", sourceID = "remote"
+    var offsetBaseMs = 0
     var nextStartFails = false
     init(root: URL, title: String) throws {
         self.root = root; self.title = title
         control = try CaptureProbeProcess("cassini-control-host",root:root)
     }
     func ready(active: Bool = true, interrupted: Bool = false) async throws {
-        try await control.send(["type":"hello","version":1,"capabilities":["independent-sessions-v1"]])
+        try await control.send(["type":"hello","version":1,"capabilities":["independent-sessions-v1"] + (modern ? ["page-state-v1"] : [])])
         try await control.send(status(interrupted:interrupted))
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        try await control.send(["type":"meetings","meetings":active || audio != nil ? [["tabId":2,"title":title,"url":"https://meeting.example/2","sourceCount":active ? 1 : 0]] : []])
+        var entry: [String:Any] = ["tabId":2,"title":title,"url":meetingURL,"sourceCount":active ? 1 : 0]
+        if modern { entry["pageState"] = pageState }
+        try await control.send(["type":"meetings","meetings":active || audio != nil ? [entry] : []])
     }
     func status(interrupted: Bool = false) -> [String:Any] {
         var packet: [String:Any] = ["type":"status","recording":audio != nil,"tabId":audio == nil ? NSNull() : 2,"path":path as Any? ?? NSNull(),"message":"Fixture status"]
-        let entry: [String:Any] = ["recording":audio != nil,"tabId":2,"path":path as Any? ?? NSNull(),"captureId":captureID as Any? ?? NSNull(),"message":"Fixture status","tracks":1,"stopping":false]
+        var entry: [String:Any] = ["recording":audio != nil,"tabId":2,"path":path as Any? ?? NSNull(),"captureId":captureID as Any? ?? NSNull(),"message":"Fixture status","tracks":1,"stopping":false]
+        if modern { entry["pageState"] = pageState }
         packet["sessions"] = audio == nil ? [] : [entry]
         if interrupted { packet["interrupted"] = [entry] }
         return packet
@@ -113,14 +119,19 @@ final class CaptureProbeProcess: @unchecked Sendable {
         }
         if action == "start" {
             let token = UUID().uuidString.lowercased(), audio = try CaptureProbeProcess("cassini-browser-host",root:root)
-            self.audio = audio; captureID = token; sequence = 0
+            self.audio = audio; captureID = token; sequence = 0; sourceID = "remote"; offsetBaseMs = 0
+            if modern { try CaptureSelfTest.require(command["keepOnNavigation"]?.bool == true,"Modern Start must retain the original audio transport") }
             let started = try await audio.request(["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title])
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
             path = started["path"]?.string
             _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
             try await emit()
         } else {
-            if let audio { _ = try await audio.request(["type":"stop"]); await audio.end(); self.audio = nil }
+            if let audio {
+                var stop: [String:Any] = ["type":"stop"]
+                if let reason = command["reason"]?.string { stop["reason"] = reason }
+                _ = try await audio.request(stop); await audio.end(); self.audio = nil
+            }
         }
         if completing { try await complete(command) }
         return command
@@ -133,9 +144,19 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     func emit() async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
-        let answer = try await audio.request(["type":"audio","id":"remote","sequence":sequence,"offsetMs":sequence*100,"pcm":Data(repeating:0x12,count:1600).base64EncodedString()])
+        let answer = try await audio.request(["type":"audio","id":sourceID,"sequence":sequence,"offsetMs":offsetBaseMs+sequence*100,"pcm":Data(repeating:0x12,count:1600).base64EncodedString()])
         guard answer["type"]?.string == "ack" else { throw CocoaError(.fileWriteUnknown) }
         sequence += 1
+    }
+    func page(_ state: String, active: Bool) async throws {
+        pageState = state; try await control.send(status()); try await meetings(active)
+    }
+    func returnedSource(atMs: Int) async throws {
+        guard let audio else { throw CocoaError(.fileReadUnknown) }
+        sourceID = UUID().uuidString.lowercased(); sequence = 0; offsetBaseMs = atMs
+        let reply = try await audio.request(["type":"track","id":sourceID,"label":"Returned remote","kind":"remote","sampleRate":8000,"channels":1])
+        try CaptureSelfTest.require(reply["type"]?.string == "ack","The original audio transport accepts the returning frame")
+        try await emit()
     }
     func loseBrowser() async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
@@ -298,7 +319,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             }
             try await Task.sleep(for:.milliseconds(200))
             try require(collection.captures.count == 1 && automatic.isEmpty,"Recovery does not auto-restore browser capture")
-            try require(fallbacks == [second.snapshot.manifest.id],"Actual system fallback is announced exactly once")
+            try require(fallbacks == [second.snapshot.manifest.id],"Actual system fallback is announced exactly once (got \(fallbacks.count))")
             report["fallbackAndWorkerRecoveryKeepOneFolder"] = true
             collection.stop(second.snapshot.manifest.id)
             _ = try await two.performNext()
@@ -400,6 +421,157 @@ final class CaptureProbeProcess: @unchecked Sendable {
             collection.pollLifetimeForTesting(at:lostAt + 30.01)
             try await wait { collection.captures.isEmpty }
             report["unobservedFallbackExpires"] = true
+            stage = "D33 original-transport return and closed tab"
+            try await collection.setAutoRecord(false)
+            let modern = try CaptureProbeProfile(root:pipe,title:"Modern D33")
+            modern.modern = true; profiles.append(modern); try await modern.ready()
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await modern.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true }
+            let returning = try collection.captures.values.first.unwrap(), returningID = returning.snapshot.manifest.id
+            // PR23's literal rapid-return wire order: no fresh inventory lies
+            // between the two statuses. The old document's positive count must
+            // not turn the following zero inventory into a two-second hangup.
+            let originalCaptureID = try modern.captureID.unwrap()
+            for page in ["navigating","present"] {
+                modern.pageState = page
+                var advisory = modern.status(); advisory.removeValue(forKey:"sessions"); advisory["pageState"] = page
+                try await modern.control.send(advisory)
+            }
+            modern.meetingURL = "https://meeting.example/reloaded-call"
+            try await modern.meetings(false)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.sourceCount == 0 && collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.url == modern.meetingURL }
+            try require(collection.peers.first { $0.id == returning.key?.peer }?.captures.first?.captureID == originalCaptureID,"ID-less lifecycle reports retain the original capture through a URL change")
+            report["rapidReloadKeepsCaptureIdentity"] = true
+            try await wait { !returning.owner.snapshot.browserAlive }
+            let loss = try returning.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:loss+2.01)
+            try await wait { returning.owner.snapshot.usingSystem }
+            try require(returning.owner.snapshot.phase == .recording && collection.captures[returningID] != nil,"Rapid return retains the original recording and long grace")
+            report["rapidReloadInvalidatesCachedSources"] = true
+            try await modern.returnedSource(atMs:Int((loss+2.2-returning.originUptime)*1000))
+            try await modern.page("present",active:true)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }
+            collection.pollLifetimeForTesting(at:loss+2.1)
+            try await wait { returning.owner.snapshot.browserAlive }
+            try await modern.emit()
+            try require(returning.owner.snapshot.directory == returning.snapshot.directory,"Return keeps the same folder")
+            try require(returning.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.reason == "restored","Return publishes the atomic restored event")
+            report["d33OriginalTransportRestoresSameFolder"] = true
+            try await collection.select(returningID,me:true,others:false)
+            try await modern.page("navigating",active:false)
+            try await wait { !returning.owner.snapshot.browserAlive }
+            try await modern.returnedSource(atMs:Int((loss+4.2-returning.originUptime)*1000))
+            try await modern.page("present",active:true)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }
+            collection.pollLifetimeForTesting(at:loss+4.1)
+            try require(!returning.owner.snapshot.others && !returning.owner.snapshot.usingSystem,"The others stays off after return")
+            report["d33OthersOffStaysOff"] = true
+            try await collection.select(returningID,me:true,others:true)
+            let systemTracks = returning.owner.snapshot.manifest.tracks.filter { $0.kind == "system" }.count
+            try await modern.page("closed",active:false)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.captures.first?.pageState == .closed }
+            collection.pollLifetimeForTesting(at:loss+6.2)
+            let closed = try await modern.performNext()
+            try require(closed["reason"]?.string == "tabClosed","Closed tab sends its real terminal reason")
+            try await wait { collection.captures.isEmpty }
+            let modernEnded = try RecordingLoader.load(directory:returning.owner.snapshot.directory)
+            try require(modernEnded.events?.last?.reason == "tabClosed","Closed tab persists its end reason")
+            try require(modernEnded.tracks.filter { $0.kind == "system" }.count == systemTracks,"Closed tab must not start a new computer-sound fallback")
+            report["d33ClosedTabStopsWithoutSystemFallback"] = true
+            report["stopAfterReloadedURLRoutesWithoutForcedFinalization"] = true
+            try await modern.meetings(false)
+            stage = "D33 return while system permission remains unanswered"
+            let waiting = try CaptureProbeProfile(root:pipe,title:"D33 pending system permission")
+            waiting.modern = true; profiles.append(waiting); try await waiting.ready()
+            try await wait { collection.hasCalls }
+            try await collection.record(); _ = try await waiting.performNext()
+            try await wait {
+                collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true &&
+                collection.captures.values.first?.owner.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } == true
+            }
+            let permissionCapture = try collection.captures.values.first.unwrap()
+            let previousSystemStarts = CaptureFixture.systemStarts
+            let previousMicStarts = CaptureFixture.microphoneStarts
+            CaptureFixture.holdSystemPermission = true
+            try await waiting.page("navigating",active:false)
+            try await wait { !permissionCapture.owner.snapshot.browserAlive }
+            let pendingLoss = try permissionCapture.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:pendingLoss+2.01)
+            try await wait { CaptureFixture.systemPermission != nil }
+            try await waiting.returnedSource(atMs:Int((pendingLoss+2.2-permissionCapture.originUptime)*1000))
+            try await waiting.page("present",active:true)
+            try await wait { permissionCapture.owner.snapshot.browserAlive }
+            try require(CaptureFixture.systemPermission != nil,"Return cannot require a reply to the OS prompt")
+            try require(CaptureFixture.systemStarts == previousSystemStarts,"Cancelled permission cannot start system input")
+            try require(CaptureFixture.microphoneStarts == previousMicStarts,"Return leaves the original microphone running")
+            CaptureFixture.holdSystemPermission = false
+            CaptureFixture.systemPermission?.resume(); CaptureFixture.systemPermission = nil
+            try await Task.sleep(for:.milliseconds(100))
+            try require(CaptureFixture.systemStarts == previousSystemStarts && !permissionCapture.owner.snapshot.usingSystem,"Late permission does not revive cancelled fallback")
+            report["d33ReturnCancelsPendingSystemPermission"] = true
+            collection.stop(permissionCapture.snapshot.manifest.id); _ = try await waiting.performNext()
+            try await wait { collection.captures.isEmpty }
+            try await waiting.meetings(false)
+            stage = "D33 dead transport respects 120 seconds"
+            let absent = try CaptureProbeProfile(root:pipe,title:"D33 absent")
+            absent.modern = true; profiles.append(absent); try await absent.ready()
+            try await wait {
+                let active = collection.peers.filter(\.reconciled).flatMap(\.meetings).filter { $0.sourceCount > 0 }
+                return !active.isEmpty && active.allSatisfy { $0.title == absent.title }
+            }
+            try await collection.record(); _ = try await absent.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
+            let missing = try collection.captures.values.first.unwrap()
+            try await absent.loseBrowser()
+            try await wait { missing.owner.snapshot.browserLostUptime != nil }
+            let disappeared = try missing.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:disappeared+2.01)
+            try await wait { missing.owner.snapshot.usingSystem }
+            try await wait { fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id,returningID,missing.snapshot.manifest.id] }
+            collection.pollLifetimeForTesting(at:disappeared+119.99)
+            try require(collection.captures.count == 1,"The120-second grace cannot expire early")
+            collection.pollLifetimeForTesting(at:disappeared+120.01)
+            _ = try await absent.performNext()
+            try await wait { collection.captures.isEmpty }
+            let missingManifest = try RecordingLoader.load(directory:missing.owner.snapshot.directory)
+            try require(missingManifest.events?.last?.reason == "pageGone","Lost original transport ends with pageGone")
+            report["d33ProducerDeadlineAndEndAreDurable"] = true
+            try await absent.meetings(false)
+            stage = "D33 hangup during control reconnect stops native inputs"
+            let reconnecting = try CaptureProbeProfile(root:pipe,title:"D33 control reconnect hangup")
+            reconnecting.modern = true; profiles.append(reconnecting); try await reconnecting.ready()
+            try await wait {
+                let active = collection.peers.filter(\.reconciled).flatMap(\.meetings).filter { $0.sourceCount > 0 }
+                return !active.isEmpty && active.allSatisfy { $0.title == reconnecting.title }
+            }
+            try await collection.record(); _ = try await reconnecting.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
+            let hungUp = try collection.captures.values.first.unwrap()
+            await reconnecting.control.end()
+            // No new browser packets: the call hangs up while only management
+            // is disconnected, without a page navigation or audio-host exit.
+            try await wait { hungUp.owner.snapshot.usingSystem }
+            reconnecting.control = try CaptureProbeProcess("cassini-control-host",root:pipe)
+            try await reconnecting.control.send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","page-state-v1"]])
+            try await reconnecting.control.send(reconnecting.status())
+            try await wait {
+                collection.peers.contains { peer in
+                    peer.reconciled && peer.meetings.isEmpty && peer.captures.contains { $0.captureID == reconnecting.captureID }
+                }
+            }
+            try await Task.sleep(for:.milliseconds(2250))
+            try require(collection.captures[hungUp.snapshot.manifest.id] != nil && hungUp.input.hasRunningInputs,"Present status without an inventory is not a confirmed hangup")
+            try await reconnecting.meetings(false)
+            let hangupStop = try await reconnecting.performNext()
+            try require(hangupStop["reason"]?.string == "callEnded","Reconnected present/zero call stops after the short grace")
+            try await wait { collection.captures.isEmpty }
+            try require(!hungUp.input.hasRunningInputs,"Hangup stops both native microphone and computer-sound inputs")
+            let hungUpManifest = try RecordingLoader.load(directory:hungUp.owner.snapshot.directory)
+            try require(hungUpManifest.events?.last?.reason == "callEnded","Reconnected hangup persists callEnded rather than pageGone")
+            try require(hungUpManifest.tracks.contains { $0.kind == "system" && $0.frames > 0 },"The regression exercised actual system fallback before reconnecting")
+            report["d33ReconnectHangupStopsNativeInputs"] = true
+            try await reconnecting.meetings(false)
             stage = "first browser packet with denied microphone"
             CaptureFixture.microphoneAllowed = false
             try await two.meetings(true)
@@ -428,7 +600,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
             try require(CaptureFixture.microphoneStarts == beforeMicStarts,"Denied microphone did not start a device driver")
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
-            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id],"Only the two browser losses announce fallback; a normal native start does not")
+            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id,returningID,missing.snapshot.manifest.id,hungUp.snapshot.manifest.id],"Only the five browser losses announce fallback; a normal native start does not")
             report["nativeStartDoesNotReportFallback"] = true
             let nativeMenu = RecordingMenuPayload(recorder:.shared,runtime:.shared)
             try require(nativeMenu.sourceLines?.contains(UXText.text("errors.othersFallback.line")) != true,"A normal native menu does not claim browser fallback")

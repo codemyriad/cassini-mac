@@ -6,7 +6,7 @@ import CassiniKit
 /// largest remainder, with first-speaking order breaking ties.
 public enum MeetingPresentation {
     public static func shares(_ meeting: LibraryMeeting) -> [String: Int] {
-        let durations = Dictionary(grouping: meeting.transcriptItems, by: \.speaker)
+        let durations = Dictionary(grouping: meeting.transcriptItems.filter { !$0.echo }, by: \.speaker)
             .mapValues { $0.reduce(0.0) { $0 + max(0, Double($1.endMs - $1.startMs)) } }
         let total = durations.values.reduce(0, +)
         guard total > 0 else { return Dictionary(uniqueKeysWithValues: meeting.speakers.map { ($0.id, 0) }) }
@@ -28,11 +28,19 @@ public enum MeetingPresentation {
     }
     public static func turns(_ items: [LibraryTranscriptItem]) -> [Turn] {
         var result: [Turn] = []
-        for item in items where !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        for item in items where !item.echo && !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if result.last?.speaker == item.speaker { result[result.count - 1].items.append(item) }
             else { result.append(.init(id: result.count, speaker: item.speaker, items: [item])) }
         }
-        return result
+        return result.compactMap { turn in
+            let pieces = TranscriptText.quotes(turn.items.map(\.text))
+            let items = zip(turn.items,pieces).compactMap { item,text -> LibraryTranscriptItem? in
+                let text = text.split(whereSeparator: \.isWhitespace).joined(separator:" ")
+                guard !text.isEmpty else { return nil }
+                return .init(speaker:item.speaker,startMs:item.startMs,endMs:item.endMs,text:text)
+            }
+            return items.isEmpty ? nil : Turn(id:turn.id,speaker:turn.speaker,items:items)
+        }
     }
     /// Meeting data for directly opened files, without an app-owned sidecar.
     public static func external(_ file: CassiniFile, url: URL) -> LibraryMeeting {
@@ -41,7 +49,7 @@ public enum MeetingPresentation {
         let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
         let body = trusted && !emptyTimed ? file.defaultTranscript?.load.transcript : nil
         let status: TranscriptStatus = emptyTimed || file.state == .plainAudio ? .none : (body != nil ? .done : .damaged)
-        let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
+        let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, echo: $0.echo) }
             .enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
         var ids: [String] = []
         for word in words where !ids.contains(word.speaker) { ids.append(word.speaker) }

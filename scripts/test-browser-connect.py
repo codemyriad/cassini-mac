@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise production fixed-path setup with two exact host grants in a signed fixture."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,7 +45,8 @@ production_profile = plistlib.loads((ROOT/'BrowserSetup/BrowserSetup.entitlement
 assert production_profile == {'com.apple.security.app-sandbox': True,
     'com.apple.security.temporary-exception.files.home-relative-path.read-write':
         ['/Library/Application Support/' + b for b in ANCESTORS] +
-        ['/Library/Application Support/' + b + '/NativeMessagingHosts/' for b in BROWSERS]}
+        ['/Library/Application Support/' + b + '/NativeMessagingHosts/' for b in BROWSERS] +
+        ['/Library/Application Support/Cassini', '/Library/Application Support/Cassini/BrowserCompanion/']}
 assert parent_profile['com.apple.security.app-sandbox'] and not parent_profile.get('com.apple.security.network.client')
 if a.app:
     assert profile(a.app) == parent_profile
@@ -73,6 +75,11 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
         shutil.copy2(ROOT/'.build/debug/cassini-browser-setup-service', service_binary)
         plist(service/'Contents/Info.plist', dict(CFBundleIdentifier='io.codemyriad.cassini.browser-setup',
             CFBundleExecutable='CassiniBrowserSetup', CFBundlePackageType='XPC!', CFBundleVersion='1', XPCService=dict(ServiceType='Application')))
+    companion = app/'Contents/Resources/BrowserCompanion'
+    if a.app:
+        shutil.copytree(a.app/'Contents/Resources/BrowserCompanion', companion)
+    else:
+        subprocess.run(['python3', str(ROOT/'scripts/bundle-browser-companion.py'), str(companion)], check=True)
     info = plistlib.loads((service/'Contents/Info.plist').read_bytes())
     info['CassiniSetupFixtureHome'] = str(home)
     plist(service/'Contents/Info.plist', info)
@@ -82,7 +89,8 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     helper_profile = {'com.apple.security.app-sandbox': True,
         'com.apple.security.temporary-exception.files.home-relative-path.read-write':
             ['/' + (relative/'Library/Application Support'/b).as_posix() for b in ANCESTORS] +
-            ['/' + (relative/'Library/Application Support'/b/'NativeMessagingHosts').as_posix() + '/' for b in BROWSERS]}
+            ['/' + (relative/'Library/Application Support'/b/'NativeMessagingHosts').as_posix() + '/' for b in BROWSERS] +
+            ['/' + (relative/'Library/Application Support/Cassini').as_posix(), '/' + (relative/'Library/Application Support/Cassini/BrowserCompanion').as_posix() + '/']}
     parent_entitlements, helper_entitlements = base/'parent.plist', base/'helper.plist'
     plist(parent_entitlements, parent_profile); plist(helper_entitlements, helper_profile)
     for bundle, entitlements in [(service, helper_entitlements), (app, parent_entitlements)]:
@@ -105,14 +113,25 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
         other = directory/'unrelated.host.json'
         other.write_text(json.dumps(dict(name='com.codemyriad.cassini',path='/elsewhere/other-host',allowed_origins=[ORIGIN])))
         unrelated[other] = other.read_bytes()
-    manifest_stats = {}
+    manifest_stats, companion_stats = {}, {}
+    (home/'Library/Application Support/Cassini/Voices').mkdir(parents=True, mode=0o700)
     for attempt in range(2):
         result = subprocess.run([str(binary), str(home)], capture_output=True, text=True, timeout=30)
         a.output.parent.mkdir(parents=True, exist_ok=True)
         a.output.with_suffix('.stderr.txt').write_text(result.stderr)
         assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
         report = json.loads(result.stdout)
-        assert report == dict(manifestsWritten=len(BROWSERS)*2, parentWriteDenied=True, wrongHostBookmarkRejected=True), report
+        assert report == dict(manifestsWritten=len(BROWSERS)*2, parentWriteDenied=True, wrongHostBookmarkRejected=True, localCompanionPrepared=True, wrongCompanionBookmarkRejected=True), report
+        installed = home/'Library/Application Support/Cassini/BrowserCompanion/extension'
+        source_files = {p.relative_to(companion) for p in companion.rglob('*') if p.is_file()}
+        assert {p.relative_to(installed) for p in installed.rglob('*') if p.is_file()} == source_files
+        for relative_file in source_files:
+            file = installed/relative_file
+            assert not file.is_symlink() and stat.S_IMODE(file.stat().st_mode) == 0o600
+            assert hashlib.sha256(file.read_bytes()).digest() == hashlib.sha256((companion/relative_file).read_bytes()).digest()
+            observed = (file.stat().st_mtime_ns, file.stat().st_ino)
+            if attempt: assert observed == companion_stats[relative_file], ('Unchanged companion was rewritten', relative_file)
+            else: companion_stats[relative_file] = observed
         for browser in BROWSERS:
             directory = home/'Library/Application Support'/browser/'NativeMessagingHosts'
             for host, executable in HOSTS.items():
@@ -137,11 +156,14 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     (home/'Library/Application Support').mkdir(parents=True, mode=0o700)
     fresh = subprocess.run([str(binary), str(home)], capture_output=True, text=True, timeout=30)
     assert fresh.returncode == 0, (fresh.stdout, fresh.stderr)
-    assert json.loads(fresh.stdout) == dict(manifestsWritten=len(BROWSERS)*2, parentWriteDenied=True, wrongHostBookmarkRejected=True)
+    assert json.loads(fresh.stdout) == dict(manifestsWritten=len(BROWSERS)*2, parentWriteDenied=True, wrongHostBookmarkRejected=True, localCompanionPrepared=True, wrongCompanionBookmarkRejected=True)
     for browser in BROWSERS:
         browser_path = home/'Library/Application Support'/browser
         assert sorted(p.name for p in browser_path.iterdir()) == ['NativeMessagingHosts']
         assert stat.S_IMODE(browser_path.stat().st_mode) == 0o700
+    # The sibling must exist and be owner-writable, so an ENOENT cannot masquerade
+    # as sandbox denial in the helper-profile probe below.
+    (home/'Library/Application Support/Cassini/Voices').mkdir(mode=0o700)
     # Give a standalone copy exactly the helper's entitlements and verify that
     # literal ancestor grants don't permit writing Chrome/Preferences.
     scope = base/'Scope.app'
@@ -152,11 +174,12 @@ with tempfile.TemporaryDirectory(prefix='browser-connect-fixture-', dir=ROOT/'bu
     subprocess.run(['codesign','--force','--sign','-','--options','0','--timestamp=none','--entitlements',str(helper_entitlements),str(scope)],check=True)
     scoped = subprocess.run([str(scope_binary),'--scope-check',str(home)],capture_output=True,text=True,timeout=20)
     assert scoped.returncode == 0, (scoped.stdout,scoped.stderr)
-    assert json.loads(scoped.stdout) == dict(manifestLeafWritable=True,profileSiblingDenied=True)
+    assert json.loads(scoped.stdout) == dict(manifestLeafWritable=True,profileSiblingDenied=True,companionLeafWritable=True,voicesSiblingDenied=True)
     report.update(neverOpenedBrowsersRegistered=True,noProfilesOrPreferencesCreated=True,profileSiblingWriteDenied=True)
     report.update(fixtureOnly=True, actualBundledService=bool(a.app), twoIdempotentConnects=True,
         identicalMtimesPreserved=True, browserProfilesTouched=False, audioDevicesOpened=False, appWindowsOpened=False,
-        exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=len(BROWSERS), helperNetworkEntitlements=False,
+        exactProductParentProfile=True, ownLegacyHostsRemoved=True, unrelatedHostPreserved=True, scopedDirectories=len(BROWSERS), helperNetworkEntitlements=False, localCompanionSourceIsBundled=True, voicesSiblingWriteDenied=True,
+        localCompanionBytesExact=True, localCompanionMtimesPreserved=True,
         nativeArchitecture=os.uname().machine)
     a.output.write_text(json.dumps(report, indent=2)+'\n')
     print('PASS fixed-path production Connect RPC: all browser manifests, repeat setup, parent denied, wrong host rejected')

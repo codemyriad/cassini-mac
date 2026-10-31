@@ -16,6 +16,26 @@ final class BrowserSetupClient: @unchecked Sendable {
                 try contents.appendingPathComponent("MacOS/" + $0).bookmarkData(options:[],includingResourceValuesForKeys:nil,relativeTo:nil)
             }
         }.value
+        try await perform { proxy in
+            proxy.connect(audioHostBookmark:bookmarks[0],controlHostBookmark:bookmarks[1]) { [weak self] count,error in
+                if let error { self?.finish(.failure(error)) }
+                else if count > 0 { self?.finish(.success(())) }
+                else { self?.finish(.failure(BrowserSetupError.unavailable)) }
+            }
+        }
+    }
+    func prepareCompanion() async throws {
+        let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/BrowserCompanion")
+        let bookmark = try await Task.detached(priority:.utility) {
+            try source.bookmarkData(options:[],includingResourceValuesForKeys:nil,relativeTo:nil)
+        }.value
+        try await perform { proxy in
+            proxy.prepareCompanion(bookmark:bookmark) { [weak self] error in
+                self?.finish(error.map { .failure($0) } ?? .success(()))
+            }
+        }
+    }
+    private func perform(_ invoke: (CassiniBrowserSetupService) -> Void) async throws {
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void,Error>) in
@@ -27,11 +47,7 @@ final class BrowserSetupClient: @unchecked Sendable {
                 connection.interruptionHandler = { [weak self] in self?.finish(.failure(BrowserSetupError.unavailable)) }
                 connection.resume()
                 guard let proxy = connection.remoteObjectProxyWithErrorHandler({ [weak self] error in self?.finish(.failure(error)) }) as? CassiniBrowserSetupService else { finish(.failure(BrowserSetupError.unavailable)); return }
-                proxy.connect(audioHostBookmark:bookmarks[0],controlHostBookmark:bookmarks[1]) { [weak self] count,error in
-                    if let error { self?.finish(.failure(error)) }
-                    else if count > 0 { self?.finish(.success(())) }
-                    else { self?.finish(.failure(BrowserSetupError.unavailable)) }
-                }
+                invoke(proxy)
                 DispatchQueue.global().asyncAfter(deadline:.now() + 30) { [weak self] in self?.finish(.failure(BrowserSetupError.unavailable)) }
             }
         } onCancel: { self.finish(.failure(CancellationError())) }

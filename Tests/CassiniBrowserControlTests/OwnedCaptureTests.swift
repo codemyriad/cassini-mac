@@ -7,6 +7,36 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testFirstFractionalSystemPacketIsLiveFallbackBeforeTheRoundedUIClockCatchesUp() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Fractional fallback",microphone:false,managedBrowser:true)
+        XCTAssertFalse(owner.snapshot.isSystemFallback)
+        try owner.browserTrack(id:"before",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        try owner.browserAudio(id:"before",sequence:0,offsetMs:0,pcm:Data(repeating:0x12,count:1600))
+        try owner.browserLost(atMs:1000.25,transportAlive:true)
+        let system = owner.nativeWriter(side:.others)
+        try system.addTrack(id:"output",label:"System",kind:"system",sampleRate:8000,channels:1)
+        XCTAssertFalse(owner.snapshot.isSystemFallback,"Permission/start without PCM is not a fallback")
+        try system.appendNative(id:"output",pcm:Data(repeating:0x12,count:1600),offsetMs:1000.75)
+        let snapshot = owner.snapshot
+        XCTAssertNotEqual(CaptureSourceState(events:snapshot.manifest.events ?? [],atMs:1000).source,"system")
+        XCTAssertTrue(snapshot.isSystemFallback,"Actual admitted PCM must not wait for a rounded UI clock or the next throttled notification")
+        try owner.browserTrack(id:"returned",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        try owner.browserAudio(id:"returned",sequence:0,offsetMs:1200,pcm:Data(repeating:0x12,count:1600))
+        try await owner.restoreBrowser(atMs:1500)
+        XCTAssertFalse(owner.snapshot.isSystemFallback)
+        try system.finish(problem:nil); try await owner.finish()
+        XCTAssertFalse(owner.snapshot.isSystemFallback)
+
+        let native = try OwnedBrowserCapture(parent:root,title:"Direct system",microphone:false,browser:false)
+        let direct = native.nativeWriter(side:.others)
+        try direct.addTrack(id:"output",label:"System",kind:"system",sampleRate:8000,channels:1)
+        try direct.appendNative(id:"output",pcm:Data(repeating:0x12,count:1600),offsetMs:0.75)
+        XCTAssertTrue(native.snapshot.usingSystem)
+        XCTAssertFalse(native.snapshot.isSystemFallback,"Native Record first is not a browser fallback")
+        try direct.finish(problem:nil); try await native.finish()
+    }
+
     func testLossStampIsOwnedByTheProducerAndDoesNotRestartOnRepeatedObservation() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Loss stamp",microphone:false)
@@ -74,8 +104,9 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         try retry.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
         try retry.appendNative(id:"output",pcm:Data(repeating:1,count:160),offsetMs:20)
         try retry.finish(problem:nil); try await capture.finish()
-        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"system")
-        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"user")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source,"system")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.reason,"user")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.type,"end")
     }
     func testNativeSourceAndUserResumePublishOnlyActualSystemBuffers() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -94,8 +125,9 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         try resumed.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
         try resumed.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:2000)
         try resumed.finish(problem:nil); try await capture.finish()
-        XCTAssertEqual(capture.snapshot.manifest.events?.last?.reason,"user")
-        XCTAssertEqual(capture.snapshot.manifest.events?.last?.source,"system")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.reason,"user")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source,"system")
+        XCTAssertEqual(capture.snapshot.manifest.events?.last?.type,"end")
         XCTAssertTrue(capture.snapshot.manifest.tracks.allSatisfy { $0.sourceTrackId == nil })
     }
     func testMicResumeTrimsBufferedSamplesFromTheOffInterval() async throws {
@@ -198,8 +230,10 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(manifest.tracks.first { $0.kind == "microphone" }?.frames,16000)
         let fallback = try XCTUnwrap(manifest.tracks.first { $0.kind == "system" })
         XCTAssertEqual(fallback.startOffsetMs,1000); XCTAssertNil(fallback.sourceTrackId)
-        XCTAssertEqual(manifest.events?.last?.source,"system"); XCTAssertEqual(manifest.events?.last?.reason,"lost")
-        XCTAssertEqual(manifest.events?.last?.atMs,fallback.startOffsetMs)
+        let source = manifest.events?.last(where:{ $0.type == "othersSource" })
+        XCTAssertEqual(source?.source,"system"); XCTAssertEqual(source?.reason,"lost")
+        XCTAssertEqual(source?.atMs,fallback.startOffsetMs)
+        XCTAssertEqual(manifest.events?.last?.type,"end")
     }
     func testMicrophoneFrameClockCannotShiftBrowserLossOrSystemStart() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -213,7 +247,8 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         try system.appendNative(id:"system",pcm:Data(repeating:0,count:16000),offsetMs:1000)
         try mic.finish(problem:nil); try system.finish(problem:nil); try await capture.finish()
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
-        XCTAssertEqual(manifest.events?.last?.atMs,1000)
+        XCTAssertEqual(manifest.events?.last(where:{ $0.type == "othersSource" })?.atMs,1000)
+        XCTAssertEqual(manifest.events?.last?.type,"end")
         XCTAssertEqual(manifest.tracks.first { $0.kind == "system" }?.startOffsetMs,1000)
         XCTAssertEqual(manifest.tracks.first { $0.kind == "system" }?.frames,8000)
     }
