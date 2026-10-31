@@ -436,6 +436,14 @@ import Darwin
     }
 }
 
+// The scrolling position changes at display cadence. Returning the null action
+// directly avoids Swift/NSDictionary key bridging on every implicit CA lookup.
+// Explicit animations (the root layer's Stop fade) are unaffected.
+private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
+    private static let noAction: CAAction = NSNull()
+    override func action(forKey event: String) -> CAAction? { Self.noAction }
+}
+
 @MainActor final class RecordingSpectrogramView: NSView {
     let registrationID = UUID()
     let style: SpectrogramStripStyle
@@ -445,7 +453,7 @@ import Darwin
     private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-    private struct LaneLayers { let clip = CALayer(), scrolling = CAReplicatorLayer(), first = CALayer(), fade = CAGradientLayer() }
+    private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
@@ -459,7 +467,7 @@ import Darwin
         layer?.actions = actions
         for _ in 0..<(style == .pill ? 2 : 1) {
             let item = LaneLayers()
-            for owned in [item.clip,item.scrolling,item.first,item.fade] { owned.actions = actions }
+            for owned in [item.clip,item.first,item.fade] { owned.actions = actions }
             item.clip.masksToBounds = true; item.clip.cornerRadius = style == .pill ? 2 : 4
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
             item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
