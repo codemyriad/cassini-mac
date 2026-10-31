@@ -15,10 +15,6 @@ public struct SpectrogramDisplayClock {
     private var lastArrival: Double = -.infinity
     private var nextTargetAt: Double = 0
     private var target: Double = 40
-    /// Instantaneous audio-time velocity after the last advance. The target
-    /// changes only at advance(), so a compositor can follow the same linear
-    /// segment without rewriting its position on every display callback.
-    public var presentationRate: Double { delayMs < target ? 0.5 : (delayMs > target ? 1.02 : 1) }
     public init() { lateness.reserveCapacity(1024) }
     public mutating func reset() { self = .init() }
     public mutating func observe(columnMs: Double, arrivalMs: Double) {

@@ -80,7 +80,7 @@ import Darwin
     private var intervals: [UInt16] = []
     private var intervalCount: UInt64 = 0
     #endif
-    private var lastDisplayMs = 0.0, scrollTimestamp = 0.0, scrollRate = 1.0
+    private var lastDisplayMs = 0.0
     #if SPECTROGRAM_PROBE
     // Test observations only; no observer, scan or instrumentation in app builds.
     var fixtureChanged: (() -> Void)?
@@ -267,7 +267,7 @@ import Darwin
         displayDelayMs = frame.delayMs; lateTiming = frame.lateSamples
         #endif
         lateColumns = frame.lateColumns; droppedColumns = frame.droppedColumns; droppedBuffers = frame.droppedBuffers
-        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs,timestamp:timestamp,rate:frame.presentationRate)
+        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
         if let previous = lastAppliedTime {
             let ms = (timestamp-previous)*1000
             maxFrameIntervalMs = max(maxFrameIntervalMs,ms)
@@ -283,9 +283,7 @@ import Darwin
         fixtureChanged?()
         #endif
     }
-    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double, timestamp: Double? = nil, rate: Double? = nil) {
-        if let timestamp { scrollTimestamp = timestamp }
-        if let rate { scrollRate = rate }
+    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double) {
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram draw",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram draw",signpostID:interval) }
@@ -358,12 +356,13 @@ import Darwin
             else { remember(nil) }
             lastPill = pillEnd
         }
+        let pageDamage = pageBank?.takeDamage(), pillDamage = pillBank?.takeDamage()
         for item in visibleViews {
             guard let view = item.value else { continue }
             let bank = view.style == .pill ? pillBank : pageBank
             if let bank { view.present(bank:bank,revision:view.style == .pill ? pillRevision : pageRevision,
                 displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced,
-                timestamp:scrollTimestamp,rate:scrollRate,animate:running && !stopped && !reduced) }
+                damage:view.style == .pill ? pillDamage : pageDamage) }
         }
     }
     #if DEBUG && !SPECTROGRAM_PROBE
@@ -429,7 +428,8 @@ import Darwin
         #endif
     }
     var payloadBytes: Int {
-        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2
+        let backing = visibleViews.reduce(0) { $0+($1.value?.backingBytes ?? 0) }
+        return (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+backing+measurementStorageBytes+selections.storageBytes+64*37*2
     }
 }
 
@@ -450,13 +450,7 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-    private struct ScrollSegment { let timestamp: Double, position: Double, rate: Double }
-    private final class LaneLayers {
-        let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer()
-        var segment: ScrollSegment?
-        var lastOrigin: CGFloat = 0
-    }
-    private static let scrollAnimation = "cassini-spectrogram-scroll"
+    private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
@@ -508,15 +502,10 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     func suspend() {
         guard source != nil || bank != nil else { return }
         for lane in lanes {
-            lane.scrolling.removeAnimation(forKey:Self.scrollAnimation); lane.segment = nil
             lane.first.contents = nil;lane.first.delegate = nil
         }; bank = nil; source = nil; revision = -1; reducedMode = nil
     }
     func freeze() {
-        for lane in lanes {
-            lane.scrolling.removeAnimation(forKey:Self.scrollAnimation); lane.segment = nil
-            lane.scrolling.position = .init(x:lane.lastOrigin,y:0)
-        }
         guard layer?.opacity != 0.45 else { return }
         if source == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             layer?.opacity = 0.45; return
@@ -525,7 +514,10 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
         animation.toValue = 0.45; animation.duration = 0.22
         layer?.opacity = 0.45; layer?.add(animation,forKey:"recording-stop")
     }
-    func present(bank value: SpectrogramSurface, revision valueRevision: Int, displayMs: Double, reduced: Bool, timestamp: Double, rate: Double, animate: Bool) {
+    // Include the new logical backing images rather than silently excluding
+    // their memory from this experiment's existing128KB gate.
+    var backingBytes: Int { source == nil ? 0 : (style.columns+2)*(style == .pill ? 9*2 : 32)*4 }
+    func present(bank value: SpectrogramSurface, revision valueRevision: Int, displayMs: Double, reduced: Bool, damage: SpectrogramSurface.Damage?) {
         let bankChanged = bank !== value
         let changed = bankChanged || revision != valueRevision
         if bankChanged { source = RecordingSurfaceContents(value.surface) }
@@ -553,59 +545,60 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
             let image=lane.first
                 if bankChanged {
                     image.bounds = .init(x:0,y:0,width:capacity,height:height)
-                    image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
+                    image.contentsRect = .init(x:0,y:0,width:1,height:1)
+                    image.contentsScale = 1
+                    image.drawsAsynchronously = false
+                    image.name = selected == 0 ? "spectrogram-me" : "spectrogram-others"
                     image.delegate = source
                 }
-                if changed { image.setNeedsDisplay() }
+                if bankChanged {
+                    source?.mark(lane:selected,columns:0..<(style.columns+2))
+                    image.setNeedsDisplay()
+                }
+                else if changed, let columns = selected == 0 ? damage?.me : damage?.others {
+                    source?.mark(lane:selected,columns:columns)
+                    image.setNeedsDisplay(.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:height))
+                }
             if bankChanged {
                 lane.first.position = .zero
             }
-            lane.lastOrigin = reduced ? 0 : origin
-            if !animate {
-                lane.scrolling.removeAnimation(forKey:Self.scrollAnimation); lane.segment = nil
-                lane.scrolling.position = .init(x:lane.lastOrigin,y:0)
-            } else {
-                let segment = lane.segment
-                let predicted = segment.map { $0.position+(timestamp-$0.timestamp)*1000*$0.rate/style.slotMs }
-                // Correct every clock-slope change at the current display
-                // timestamp. Unchanged linear segments run on the compositor;
-                // ring uploads and the production display clock still run at
-                // their original cadence.
-                if bankChanged || modeChanged || segment?.rate != rate ||
-                    predicted.map({ abs($0-position) > 0.000001 }) != false {
-                    let speed = 1000*rate/style.slotMs
-                    let animation = CABasicAnimation(keyPath:"position.x")
-                    animation.fromValue = width; animation.toValue = width-capacity
-                    animation.duration = Double(capacity)/speed
-                    animation.beginTime = lane.scrolling.convertTime(timestamp,from:nil)-(Double(width)-Double(origin))/speed
-                    animation.repeatCount = .infinity
-                    animation.timingFunction = CAMediaTimingFunction(name:.linear)
-                    lane.scrolling.position = .init(x:width,y:0)
-                    lane.scrolling.add(animation,forKey:Self.scrollAnimation)
-                    lane.segment = .init(timestamp:timestamp,position:position,rate:rate)
-                }
-            }
+            lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
         }
     }
 }
 
-/// Public CALayerDelegate display callbacks replace the nonexistent public
-/// setContentsChanged selector. No CG backing store or full-image copy is made.
+/// Experimental public backing-store drawing. Only the changed column region
+/// is rasterized; the IOSurface remains the source in this first prototype.
 private final class RecordingSurfaceContents: NSObject, CALayerDelegate {
     private let surface: IOSurfaceRef
+    private let colorSpace = CGColorSpaceCreateDeviceRGB()
+    private var me: Range<Int>?, others: Range<Int>?
     init(_ surface: IOSurfaceRef) { self.surface = surface }
-    func display(_ layer: CALayer) { layer.contents = surface }
-}
-
-struct RecordingSpectrogramStrip: NSViewRepresentable {
-    let controller: RecordingSpectrogram?
-    let lane: SpectrogramLane
-    let silent: Bool
-    @Environment(\.colorScheme) private var colourScheme
-    func makeNSView(context: Context) -> RecordingSpectrogramView { .init(style:.row,lane:lane) }
-    func updateNSView(_ view: RecordingSpectrogramView, context: Context) {
-        view.configure(controller,dark:colourScheme == .dark,silent:silent)
+    func mark(lane: Int, columns: Range<Int>) {
+        let old = lane == 0 ? me : others
+        let merged = old.map { min($0.lowerBound,columns.lowerBound)..<max($0.upperBound,columns.upperBound) } ?? columns
+        if lane == 0 { me = merged } else { others = merged }
     }
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingSpectrogramView, context: Context) -> CGSize? { .init(width:200,height:32) }
-    static func dismantleNSView(_ view: RecordingSpectrogramView, coordinator: ()) { view.detach() }
+    func draw(_ layer: CALayer, in context: CGContext) {
+        let width = IOSurfaceGetWidth(surface), rows = IOSurfaceGetHeight(surface)/2
+        let stride = IOSurfaceGetBytesPerRow(surface)
+        let lane = layer.name == "spectrogram-others" ? 1 : 0
+        guard let columns = lane == 0 ? me : others else { return }
+        if lane == 0 { me = nil } else { others = nil }
+        guard let base = IOSurfaceGetBaseAddress(surface) else { return }
+        let retained = Unmanaged.passRetained(self).toOpaque()
+        guard let provider = CGDataProvider(dataInfo:retained,data:base+lane*rows*stride,size:rows*stride,
+            releaseData:{ info,_,_ in if let info { Unmanaged<RecordingSurfaceContents>.fromOpaque(info).release() } }) else {
+            Unmanaged<RecordingSurfaceContents>.fromOpaque(retained).release(); return
+        }
+        let format = CGBitmapInfo.byteOrder32Little.union(.init(rawValue:CGImageAlphaInfo.premultipliedFirst.rawValue))
+        guard let image = CGImage(width:width,height:rows,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:stride,
+            space:colorSpace,bitmapInfo:format,provider:provider,decode:nil,shouldInterpolate:true,intent:.defaultIntent) else { return }
+        // Core Animation clips this context to the invalidated columns. A new
+        // wrapper avoids caching stale mutable pixels; there is no data copy.
+        context.saveGState()
+        context.clip(to:.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:layer.bounds.height))
+        context.setBlendMode(.copy); context.interpolationQuality = .low
+        context.draw(image,in:layer.bounds); context.restoreGState()
+    }
 }

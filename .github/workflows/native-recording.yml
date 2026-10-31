@@ -112,8 +112,6 @@ jobs:
           cp candidate/Spikes/Spectrogram/Probe.swift baseline/Spikes/Spectrogram/Probe.swift
           python3 baseline/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release baseline/probe
           python3 candidate/scripts/compile-spectrogram-lab-sdk.py baseline/build/Build/Products/Release
-          xcrun swiftc -O -parse-as-library candidate/Sources/CassiniSpectrogram/Spectrum.swift candidate/Sources/CassiniSpectrogram/DisplayClock.swift candidate/Spikes/Spectrogram/CheckScrollRate.swift -o candidate/build/check-scroll-rate
-          candidate/build/check-scroll-rate
           python3 candidate/scripts/build-spectrogram-probe.py candidate/build/lab-products candidate/probe
       - name: Compare A/D cost and real sound-to-silence pixels on one disposable hosted Mac
         run: python3 candidate/scripts/spectrogram-lab.py baseline/probe candidate/probe experiment
