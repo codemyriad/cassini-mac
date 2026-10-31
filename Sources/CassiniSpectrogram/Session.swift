@@ -276,13 +276,21 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         }
     }
     private func convert(_ input: UnsafePointer<Int16>, frames count: Int, channels: Int) {
-        vDSP_vflt16(input,vDSP_Stride(channels),&mono,1,vDSP_Length(count))
-        var scale: Float = 1/32768
-        if channels == 2 {
-            vDSP_vflt16(input+1,2,&right,1,vDSP_Length(count))
-            vDSP_vadd(mono,1,right,1,&mono,1,vDSP_Length(count)); scale /= 2
+        // Borrow each workspace once: passing mono both as an Array input and
+        // an inout output forces a copy before otherwise in-place vDSP calls.
+        mono.withUnsafeMutableBufferPointer { destination in
+            let output = destination.baseAddress!, length = vDSP_Length(count)
+            vDSP_vflt16(input,vDSP_Stride(channels),output,1,length)
+            var scale: Float = 1/32768
+            if channels == 2 {
+                right.withUnsafeMutableBufferPointer { second in
+                    vDSP_vflt16(input+1,2,second.baseAddress!,1,length)
+                    vDSP_vadd(output,1,second.baseAddress!,1,output,1,length)
+                }
+                scale /= 2
+            }
+            vDSP_vsmul(output,1,&scale,output,1,length)
         }
-        vDSP_vsmul(mono,1,&scale,&mono,1,vDSP_Length(count))
     }
 
 }
