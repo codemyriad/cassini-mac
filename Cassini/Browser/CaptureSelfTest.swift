@@ -334,7 +334,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.record()
             _ = try await one.performNext(); _ = try await two.performNext()
             stage = "partial failure: settle one failure and one owned recording"
-            try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting }
+            try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting && collection.captures.values.allSatisfy { $0.key != nil } }
             try require(!collection.recordFailed,"One failed meeting must not become an all-failed message")
             let successfulToken = two.captureID, retryKey = try collection.failedMeetings.keys.first.unwrap()
             collection.retry(retryKey)
@@ -342,7 +342,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             collection.retry(retryKey) // A second click cannot issue another command.
             _ = try await one.performNext()
             stage = "partial retry: settle two owned recordings"
-            try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty }
+            try await wait { collection.captures.count == 2 && collection.failedMeetings.isEmpty && collection.captures.values.allSatisfy { $0.key != nil } }
             try require(two.captureID == successfulToken,"Retry must not restart the successful meeting")
             stage = "hang up while the tab stays open"
             try await one.meetings(false)
@@ -364,7 +364,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await one.meetings(true); try await two.meetings(true)
             try await wait { collection.peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.count == 2 }
             try await collection.record(); _ = try await one.performNext(); _ = try await two.performNext()
-            try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting }
+            // Command completion precedes the next peer snapshot. This case
+            // stops an admitted recording, so await its browser association
+            // before demanding that the fixture receives a browser Stop.
+            try await wait { collection.failedMeetings.count == 1 && collection.captures.count == 1 && !collection.starting && collection.captures.values.allSatisfy { $0.key != nil } }
             let failedKey = try collection.failedMeetings.keys.first.unwrap()
             let successful = try collection.captures.keys.first.unwrap()
             collection.stop(successful); _ = try await two.performNext()
