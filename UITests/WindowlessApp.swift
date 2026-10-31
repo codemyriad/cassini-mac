@@ -51,6 +51,13 @@ extension LibraryBoards {
         waitForWindowless { !idle.exists }
         XCTAssertEqual(String(describing:try XCTUnwrap(auto.value)),"1","Hiding the idle item does not disable automatic recording")
         app.terminate(); app.launch()
+        // This fixture disables state restoration. Reopen the Library explicitly
+        // when SwiftUI restores no window, as the initial launch helper does.
+        // The LaunchServices/Dock reopen path is exercised above.
+        if !library.waitForExistence(timeout:2) {
+            app.menuBars.menuBarItems["Window"].click()
+            app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
+        }
         XCTAssertTrue(library.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertFalse(idle.exists,"The hidden-idle preference persists")
         app.typeKey(",",modifierFlags:.command)
