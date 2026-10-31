@@ -4,6 +4,32 @@ import XCTest
 @testable import CassiniBrowserControl
 
 final class SharedCallLifecycleTests: XCTestCase {
+    func testPresentEmptyAfterControlOnlyLossEndsCallWithEitherAudioTransportState() {
+        for transport in [false,true] {
+            var policy = BrowserCallLifecycle()
+            XCTAssertNil(policy.step(now:0,page:nil,sourceCount:0,transportAlive:transport,usingSystem:false,others:true,lostAt:0))
+            XCTAssertEqual(policy.step(now:2,page:nil,sourceCount:0,transportAlive:transport,usingSystem:false,others:true,lostAt:0),.fallback)
+            XCTAssertNil(policy.step(now:119,page:.present,sourceCount:0,transportAlive:transport,usingSystem:true,others:true,lostAt:0))
+            XCTAssertNil(policy.step(now:120.99,page:.present,sourceCount:0,transportAlive:transport,usingSystem:true,others:true,lostAt:0))
+            XCTAssertEqual(policy.step(now:121,page:.present,sourceCount:0,transportAlive:transport,usingSystem:true,others:true,lostAt:0),.stop(.callEnded))
+        }
+    }
+    func testConfirmedNavigationKeepsLongGraceUntilPositiveRecoveryAcknowledgesIt() {
+        var policy = BrowserCallLifecycle()
+        XCTAssertNil(policy.step(now:0,page:.navigating,sourceCount:0,usingSystem:false,others:true))
+        XCTAssertEqual(policy.step(now:2,page:.navigating,sourceCount:0,usingSystem:false,others:true),.fallback)
+        XCTAssertNil(policy.step(now:3,page:.present,sourceCount:0,usingSystem:true,others:true))
+        XCTAssertNil(policy.step(now:5,page:.present,sourceCount:0,usingSystem:true,others:true))
+        XCTAssertEqual(policy.step(now:6,page:.present,sourceCount:1,usingSystem:true,others:true),.restore)
+        XCTAssertNil(policy.step(now:7,page:nil,sourceCount:0,usingSystem:false,others:true))
+        XCTAssertEqual(policy.step(now:9,page:nil,sourceCount:0,usingSystem:false,others:true),.fallback)
+        XCTAssertNil(policy.step(now:10,page:.present,sourceCount:0,usingSystem:true,others:true))
+        XCTAssertEqual(policy.step(now:12,page:.present,sourceCount:0,usingSystem:true,others:true),.stop(.callEnded))
+        var expired = BrowserCallLifecycle()
+        XCTAssertNil(expired.step(now:0,page:.navigating,sourceCount:0,usingSystem:false,others:true))
+        XCTAssertNil(expired.step(now:119,page:.present,sourceCount:0,usingSystem:true,others:true))
+        XCTAssertEqual(expired.step(now:120,page:.present,sourceCount:0,usingSystem:true,others:true),.stop(.pageGone))
+    }
     func testEveryLiteralD33VectorAgainstTheProductionPolicy() throws {
         let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let file = root.appendingPathComponent("browser-protocol/conformance/control/call-lifecycle-vectors.json")

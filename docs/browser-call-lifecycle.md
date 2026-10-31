@@ -19,6 +19,13 @@ after2 seconds outside pending navigation. A positive same-tab return acknowledg
 that navigation even if restoring its selected source fails. A later hang-up
 therefore follows the normal call-end rule rather than the return grace.
 
+Control-only absence does not prove navigation. A returning present page with
+confirmed zero sources acknowledges that absence and starts the two-second
+call-end timer, even if its audio transport died. Only an explicit navigating
+report retains the long grace until positive recovery. A reconnect's present
+status before its first meeting inventory remains unknown; it must not invent
+a zero-source hangup while that inventory is still arriving.
+
 Timers use the producer's loss/page observation stamps. A delayed first observer
 checks the120-second deadline before accepting a returned page. Each loss stamp
 is acknowledged once; keeping a working fallback after a failed restoration
@@ -69,9 +76,9 @@ The hosted app proof now requires original-transport restoration, The others-off
 closed-tab/no-new-system and durable120-second-end reports from the actual app
 and bundled native messaging executables. It uses generated native inputs.
 
-This PR stays draft pending the full hosted gate and a dedicated real Chromium
-navigation/reload test against this app (not only the standalone policy or fake
-control client). The83 Stop-memory fixes are adopted from main44e16c3. Automatic terminal
+The full hosted gate requires the dedicated real Chromium navigation/reload
+test against this app, alongside the policy and native-process probes. The83
+Stop-memory fixes are adopted from main44e16c3. Automatic terminal
 reasons do not learn user Stops; explicit Record/Stop and the earlier reconnect
 regressions remain covered by the combined native suite. No self-merge.
 
@@ -98,6 +105,7 @@ bundled native hosts with the signed app. A generated WebRTC call is recorded;
 its tab commits an about:blank navigation until actual system PCM is written,
 then the same tab returns to an HTTP page with remote PCM on the original transport into a fresh span in the same
 folder. Closing the real tab must persist tabClosed. Native inputs are RAM
-fixtures; neither proof opens host devices. This draft remains unready until the
-new hosted app and real-browser gates pass. No local app/browser execution or
-self-merge.
+fixtures; neither proof opens host devices. The app probe also requires native
+microphone and system inputs to stop after a control-only loss, fallback and
+present/zero-source reconnection, with callEnded persisted. No local app/browser
+execution or self-merge.

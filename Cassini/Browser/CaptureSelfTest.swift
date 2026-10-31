@@ -501,6 +501,40 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(missingManifest.events?.last?.reason == "pageGone","Lost original transport ends with pageGone")
             report["d33ProducerDeadlineAndEndAreDurable"] = true
             try await absent.meetings(false)
+            stage = "D33 hangup during control reconnect stops native inputs"
+            let reconnecting = try CaptureProbeProfile(root:pipe,title:"D33 control reconnect hangup")
+            reconnecting.modern = true; profiles.append(reconnecting); try await reconnecting.ready()
+            try await wait {
+                let active = collection.peers.filter(\.reconciled).flatMap(\.meetings).filter { $0.sourceCount > 0 }
+                return !active.isEmpty && active.allSatisfy { $0.title == reconnecting.title }
+            }
+            try await collection.record(); _ = try await reconnecting.performNext()
+            try await wait { collection.captures.count == 1 && collection.captures.values.first?.key != nil }
+            let hungUp = try collection.captures.values.first.unwrap()
+            await reconnecting.control.end()
+            // No new browser packets: the call hangs up while only management
+            // is disconnected, without a page navigation or audio-host exit.
+            try await wait { hungUp.owner.snapshot.usingSystem }
+            reconnecting.control = try CaptureProbeProcess("cassini-control-host",root:pipe)
+            try await reconnecting.control.send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","page-state-v1"]])
+            try await reconnecting.control.send(reconnecting.status())
+            try await wait {
+                collection.peers.contains { peer in
+                    peer.reconciled && peer.meetings.isEmpty && peer.captures.contains { $0.captureID == reconnecting.captureID }
+                }
+            }
+            try await Task.sleep(for:.milliseconds(2250))
+            try require(collection.captures[hungUp.snapshot.manifest.id] != nil && hungUp.input.hasRunningInputs,"Present status without an inventory is not a confirmed hangup")
+            try await reconnecting.meetings(false)
+            let hangupStop = try await reconnecting.performNext()
+            try require(hangupStop["reason"]?.string == "callEnded","Reconnected present/zero call stops after the short grace")
+            try await wait { collection.captures.isEmpty }
+            try require(!hungUp.input.hasRunningInputs,"Hangup stops both native microphone and computer-sound inputs")
+            let hungUpManifest = try RecordingLoader.load(directory:hungUp.owner.snapshot.directory)
+            try require(hungUpManifest.events?.last?.reason == "callEnded","Reconnected hangup persists callEnded rather than pageGone")
+            try require(hungUpManifest.tracks.contains { $0.kind == "system" && $0.frames > 0 },"The regression exercised actual system fallback before reconnecting")
+            report["d33ReconnectHangupStopsNativeInputs"] = true
+            try await reconnecting.meetings(false)
             stage = "first browser packet with denied microphone"
             CaptureFixture.microphoneAllowed = false
             try await two.meetings(true)
@@ -529,7 +563,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
             try require(CaptureFixture.microphoneStarts == beforeMicStarts,"Denied microphone did not start a device driver")
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
-            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id,returningID,missing.snapshot.manifest.id],"Only the four browser losses announce fallback; a normal native start does not")
+            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id,returningID,missing.snapshot.manifest.id,hungUp.snapshot.manifest.id],"Only the five browser losses announce fallback; a normal native start does not")
             report["nativeStartDoesNotReportFallback"] = true
             let nativeMenu = RecordingMenuPayload(recorder:.shared,runtime:.shared)
             try require(nativeMenu.sourceLines?.contains(UXText.text("errors.othersFallback.line")) != true,"A normal native menu does not claim browser fallback")

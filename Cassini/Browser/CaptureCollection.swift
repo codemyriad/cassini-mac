@@ -445,7 +445,10 @@ private final class CaptureFiles: @unchecked Sendable {
                 // a brief gap in management discovery. It never overrides an
                 // explicit navigating/closed report or a dead audio transport.
                 let fresh = source.browserAlive && source.transportAlive && now-source.levelTimestamp <= 1
-                let observedPage = page?.0 ?? (fresh ? .present : nil)
+                let reportedPage = page?.0 ?? (fresh ? .present : nil)
+                // A reconnect's status can precede its first meeting inventory.
+                // Present alone does not confirm that the call has zero sources.
+                let observedPage = reportedPage == .present && count == nil && !fresh ? nil : reportedPage
                 let observation = BrowserSourceObservation(page:observedPage,observedAt:page?.1,active:(count ?? (fresh ? 1 : 0)) > 0)
                 if observation != value.sourceObservation {
                     value.input.cancelSourceChange()

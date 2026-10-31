@@ -14,6 +14,7 @@ public struct BrowserCallLifecycle: Sendable {
     private var closedSince: TimeInterval?
     private var previous: TimeInterval?
     private var observedLoss: TimeInterval?
+    private var navigationPending = false
     private var stopped = false
     public init() {}
 
@@ -25,6 +26,7 @@ public struct BrowserCallLifecycle: Sendable {
         previous = now
         let page = sameTab ? page : nil
         let count = sameTab ? sourceCount : 0
+        if page == .navigating { navigationPending = true }
         func stamp(_ value: TimeInterval?) -> TimeInterval? {
             guard let value, value.isFinite, value >= 0, value <= now else { return nil }; return value
         }
@@ -47,8 +49,16 @@ public struct BrowserCallLifecycle: Sendable {
         // arriving after the deadline before the next timer callback.
         if let missingSince, now - missingSince >= Self.browserReturnGrace { return stop(.pageGone) }
         if page == .present, count > 0, transportAlive {
-            missingSince = nil; emptySince = nil
+            missingSince = nil; emptySince = nil; navigationPending = false
             return usingSystem && others && restoreReady ? .restore : nil
+        }
+        // Returning control can confirm a hangup even if the audio transport
+        // is gone. Only a browser-confirmed navigation retains the long grace.
+        // Acknowledge this loss so its retained producer stamp cannot restart it.
+        if page == .present, count == 0, !navigationPending {
+            missingSince = nil
+            if emptySince == nil { emptySince = now }
+            return now - emptySince! >= Self.callEndGrace ? stop(.callEnded) : nil
         }
         if page != .present || !transportAlive || missingSince != nil {
             emptySince = nil
