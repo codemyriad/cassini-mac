@@ -6,7 +6,7 @@ on:
       mode:
         description: 'Generated PCM sink only, or sink plus actual process-tap hardware'
         type: choice
-        options: [full, sink-only, spectrogram-lab, spectrogram-environment, spectrogram-gap]
+        options: [full, sink-only, spectrogram-lab, spectrogram-environment, spectrogram-gap, spectrogram-phase]
         default: full
   schedule:
     - cron: '23 2 * * *'
@@ -15,7 +15,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: drmeyers-native-audio
+  group: ${{ inputs.mode == 'spectrogram-phase' && 'spectrogram-phase-lab' || 'drmeyers-native-audio' }}
   cancel-in-progress: false
 
 jobs:
@@ -77,7 +77,7 @@ jobs:
   spectrogram-lab:
     # Temporary experiment branch only. This never runs on DrMeyers and does
     # not replace/change any production PR/main/nightly/dispatch test matrix.
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/spectrogram-d36' && inputs.mode == 'spectrogram-lab'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/spectrogram-d36' && (inputs.mode == 'spectrogram-lab' || inputs.mode == 'spectrogram-phase')
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -114,7 +114,11 @@ jobs:
           python3 candidate/scripts/compile-spectrogram-lab-sdk.py baseline/build/Build/Products/Release
           python3 candidate/scripts/build-spectrogram-probe.py candidate/build/lab-products candidate/probe
       - name: Compare retained animation timing against manual positions
+        if: inputs.mode == 'spectrogram-lab'
         run: python3 candidate/scripts/spectrogram-lab.py baseline/probe candidate/probe experiment
+      - name: Verify actual scrolling phase without a duration benchmark
+        if: inputs.mode == 'spectrogram-phase'
+        run: python3 candidate/scripts/spectrogram-phase.py baseline/probe candidate/probe experiment
       - uses: actions/upload-artifact@v5
         if: always()
         with:

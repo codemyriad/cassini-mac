@@ -49,6 +49,14 @@ import ScreenCaptureKit
                     controller.fixtureHistoryStartMs >= 0 && controller.fixtureHasSound(0,since:0) && controller.fixtureHasSound(1,since:0)
                 }
             } else { try await input.waitForSamples(throughMs:4000) }
+            if argument("-SpectrogramPhaseOnly") == "1" {
+                report=try await positionProof(controller:controller,strips:strips)
+                report["fixtureInput"]=input.diagnostics
+                strips.forEach {$0.detach()};window.orderOut(nil)
+                try await input.finish();try? FileManager.default.removeItem(at:root)
+                FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
+                exit(0)
+            }
             if argument("-SpectrogramAllocations") == "1" {
                 // A separate process with MallocStackLogging enabled: never
                 // contaminate the uninstrumented CPU/pacing measurement.
@@ -242,6 +250,45 @@ import ScreenCaptureKit
             try? FileManager.default.removeItem(at:root)
             FileHandle.standardError.write(Data("Spectrogram probe failed: \(error)\n".utf8)); exit(1)
         }
+    }
+    /// Inspect actual CA presentation positions, after the CPU measurement.
+    /// Uniform tone pixels alone would not catch a static/misphased animation.
+    private static func positionProof(controller:RecordingSpectrogram,strips:[RecordingSpectrogramView]) async throws -> [String:Any] {
+        struct Position {let actual:Double,expected:Double,capacity:Double}
+        func snapshot() throws -> [Position] {
+            var result:[Position]=[]
+            for view in strips {
+                let clips=(view.layer?.sublayers ?? []).compactMap {$0.sublayers?.first as? CAReplicatorLayer}
+                try require(clips.count == (view.style == .pill ? 2 : 1),"native lane layer count")
+                let capacity=Double(view.style.columns+2)
+                let time=controller.fixtureHistoryStartMs+4000-(view.style == .pill ? 60 : 0)
+                let expected=(time/view.style.slotMs).truncatingRemainder(dividingBy:capacity)
+                for clip in clips {
+                    guard let presentation=clip.presentation() else {throw Failure.check("native presentation layer exists")}
+                    let actual=(Double(view.style.columns)-Double(presentation.position.x)).truncatingRemainder(dividingBy:capacity)
+                    result.append(.init(actual:actual,expected:expected,capacity:capacity))
+                }
+            }
+            return result
+        }
+        func distance(_ a:Double,_ b:Double,_ capacity:Double)->Double {
+            let d=abs(a-b).truncatingRemainder(dividingBy:capacity)
+            return min(d,capacity-d)
+        }
+        let first=try snapshot(),frames=controller.framesApplied
+        try await wait("fifteen actual display frames for position proof",controller:controller) {controller.framesApplied >= frames+15}
+        let second=try snapshot()
+        try require(first.count == second.count && !first.isEmpty,"position proof samples every native lane")
+        var maximumError=0.0,minimumAdvance=Double.infinity
+        for (a,b) in zip(first,second) {
+            maximumError=max(maximumError,distance(a.actual,a.expected,a.capacity),distance(b.actual,b.expected,b.capacity))
+            let moved=(b.actual-a.actual+a.capacity).truncatingRemainder(dividingBy:a.capacity)
+            let expected=(b.expected-a.expected+a.capacity).truncatingRemainder(dividingBy:a.capacity)
+            try require(expected > 1 && moved >= expected*0.5 && moved <= expected*1.5,"native lane translates with its audio clock")
+            minimumAdvance=min(minimumAdvance,moved)
+        }
+        try require(maximumError <= 2,"native presentation phase follows audio clock (error=\(maximumError) px)")
+        return ["positionsMatchDisplayClock":true,"maximumPositionErrorPixels":maximumError,"minimumPositionAdvancePixels":minimumAdvance]
     }
     private static func wait(_ description:String,controller:RecordingSpectrogram,until condition:@escaping () -> Bool) async throws {
         try await SpectrogramProbeEvent().wait(description,controller:controller,until:condition)

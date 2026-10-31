@@ -582,14 +582,14 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
                         let animation=CABasicAnimation(keyPath:"position.x")
                         animation.fromValue=width; animation.toValue=width-capacity
                         animation.duration=Double(capacity)*style.slotMs/1000
-                        animation.beginTime=0; animation.repeatCount = .infinity
+                        animation.beginTime=1; animation.repeatCount = .infinity
                         animation.timingFunction=CAMediaTimingFunction(name:.linear)
                         lane.scrolling.position = .init(x:width,y:0)
                         lane.scrolling.add(animation,forKey:Self.scrollAnimation)
                     }
                     let parentTime=lane.scrolling.superlayer?.convertTime(timestamp,from:nil) ?? timestamp
                     lane.scrolling.beginTime=parentTime
-                    lane.scrolling.timeOffset=displayMs/1000
+                    lane.scrolling.timeOffset=1+displayMs/1000
                     lane.scrolling.speed=Float(rate)
                     lane.segment = .init(timestamp:timestamp,position:position,rate:rate)
                 }
