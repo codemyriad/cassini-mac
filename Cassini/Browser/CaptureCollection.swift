@@ -465,7 +465,10 @@ private final class CaptureFiles: @unchecked Sendable {
                 }
                 guard !value.changingSource else { continue }
                 let navigation = observedPage == .navigating && page?.1 != value.lastNavigationAt
-                let lost = source.browserAlive && observedPage != .present || navigation
+                // A present/zero report can cancel the queued navigation-loss
+                // task before it reaches the owner. Commit the still-observed
+                // source loss before attempting fallback, even after present.
+                let lost = source.browserAlive && (observedPage != .present || count == 0) || navigation
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
                 let fallback = action == .fallback && !value.input.failedSides.contains(.others)
                 let returned = observedPage == .present && (count ?? 0) > 0 && ready && source.others
@@ -476,6 +479,9 @@ private final class CaptureFiles: @unchecked Sendable {
                 Task { [weak self] in
                     do {
                         if lost {
+                            #if DEBUG
+                            if CaptureFixture.enabled { await CaptureFixture.beforeBrowserLoss?() }
+                            #endif
                             let lossAt = max(0,(page?.1 ?? now)-value.originUptime)*1000
                             try await value.input.observeBrowserLoss(atMs:lossAt,transportAlive:source.transportAlive,revision:revision)
                         }
@@ -502,6 +508,10 @@ private final class CaptureFiles: @unchecked Sendable {
         RecordingDiskWatch.updateWarning(line)
     }
     #if DEBUG
+    func ageMicrophoneForTesting(_ id: UUID,seconds: TimeInterval) {
+        guard CaptureFixture.enabled else { return }
+        captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime-seconds
+    }
     func pollLifetimeForTesting(at now: TimeInterval) {
         guard CaptureFixture.enabled else { return }; poll(at:now)
     }
