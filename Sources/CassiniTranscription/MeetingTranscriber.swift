@@ -111,12 +111,14 @@ public enum MeetingTranscriber {
                     for track in tracks where !speakers.contains(where: { ($0["id"] as? String) == track.speaker.id }) {
                         speakers.append(["id":track.speaker.id, "name":track.speaker.name as Any? ?? NSNull(), "provenance":track.speaker.name == nil ? "unnamed" : "source", "colourIndex":speakers.count])
                     }
-                    // D47/D50: a produced label is stored in the writer's UI
-                    // language once; another app displays it verbatim.
+                    // D47/D50: producing words also writes their labels in the
+                    // writer's language. Recompute unnamed numbers as partials
+                    // gain earlier turns (including after resume); readers and
+                    // metadata-only edits never rewrite these stored labels.
                     var seen=Set<String>()
                     let spoken=ordered.compactMap {seen.insert($0.speaker).inserted ? $0.speaker : nil}
                     for (number,id) in spoken.enumerated() {
-                        guard let index=speakers.firstIndex(where:{$0["id"] as? String == id}),speakers[index]["label"] == nil else {continue}
+                        guard let index=speakers.firstIndex(where:{$0["id"] as? String == id}) else {continue}
                         speakers[index]["label"]=(speakers[index]["name"] as? String) ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(number+1)],language:uiLanguage)
                     }
                     metadata["speakers"] = speakers
