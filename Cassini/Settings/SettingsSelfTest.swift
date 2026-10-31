@@ -242,8 +242,11 @@ import Sparkle
             for name in names { try check(FileManager.default.fileExists(atPath:destination.appendingPathComponent(name + "/session.json").path),"idle folder moved after relaunch") }
             try check(LibraryLocationModel.shared.location.previousPaths.isEmpty,"old readers retired after all moves finish")
             LibraryMoveCoordinator.shared.beginShutdown(); LibraryStore.shared.stop()
-            for url in [original,destination,config.deletingLastPathComponent()] { try FileManager.default.removeItem(at:url) }
-            let report = ["liveFolderMovedAfterStop":true,"pendingMovesResumedAfterRelaunch":true,"audioDevicesOpened":false]
+            // A security-scoped directory grant permits its contents, not
+            // deleting the granted root through its parent. The outer fixture
+            // harness owns cleanup after this sandboxed process exits.
+            let report: [String:Any] = ["liveFolderMovedAfterStop":true,"pendingMovesResumedAfterRelaunch":true,"audioDevicesOpened":false,
+                "cleanupPaths":[original.deletingLastPathComponent().path,destination.path,config.deletingLastPathComponent().path]]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch { FileHandle.standardError.write(Data("Move resume proof failed: \(error)\n".utf8)); exit(1) }
     }
