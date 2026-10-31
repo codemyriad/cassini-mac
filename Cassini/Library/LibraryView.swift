@@ -159,12 +159,8 @@ struct LibraryView: View {
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
         .onAppear {
-            SettingsNavigation.shared.open = { openSettings(); NSApp.activate(ignoringOtherApps:true) }
             search.update(store.meetings)
             sessionPlayback.onFailure = { NSApp.presentError($0) }
-            let open = openWindow
-            LegacyOpening.handler = { url in open(id: "legacy-viewer", value: LegacyRoute(url: url)) }
-            navigation.openLibrary = { open(id: "library") }
             store.start()
         }
         .onDisappear { sessionPlayback.stop(); navigation.back(); search.close() }

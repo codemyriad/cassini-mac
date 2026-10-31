@@ -78,6 +78,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if ScreenshotFixture.launchIfRequested() {
             if RecordingFixture.enabled || RecordingPageFixture.enabled { RecordingRuntime.shared.start() }
+            if RecordingFixture.enabled, !CommandLine.arguments.contains("--fixture-windowless-launch") { presentLibraryOnLaunch() }
+            if RecordingFixture.enabled, CommandLine.arguments.contains("--fixture-windowless-launch"),
+               CommandLine.arguments.contains("--fixture-recording-on-launch"), let root=RecordingFixture.root {
+                // Hosted generated PCM models an unattended recording before
+                // any Library content view has ever mounted. No device opens.
+                Task { @MainActor in await RecordingController.shared.start(parent:root) }
+            }
             return
         }
         if CommandLine.arguments.contains("--export-self-test") {
@@ -97,6 +104,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LibraryMoveCoordinator.shared.start()
         CaptureNotifications.shared.configure()
         startBrowserConnection()
+        presentLibraryOnLaunch()
+    }
+
+    private func presentLibraryOnLaunch() {
+        DispatchQueue.main.async {
+            guard !NSApp.windows.contains(where:Self.isRestorableContentWindow) else { return }
+            ApplicationWindows.library()
+            NSApp.activate(ignoringOtherApps:true)
+        }
     }
 
     @MainActor private func startBrowserConnection(root: URL? = nil) {
@@ -143,7 +159,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await MeetingRenameCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
-            RecordingConfirmation.askToQuit(window: sender.keyWindow ?? sender.mainWindow) { choice in
+            // A menu-bar Quit may still have its transient popup as keyWindow.
+            // Never attach the save confirmation to a popup that is closing.
+            let parent = [sender.keyWindow,sender.mainWindow].compactMap { $0 }.first(where:Self.isContentWindow)
+                ?? sender.windows.first(where:Self.isContentWindow)
+            sender.activate(ignoringOtherApps:true)
+            parent?.makeKeyAndOrderFront(nil)
+            RecordingConfirmation.askToQuit(window: parent) { choice in
                 Task { @MainActor in
                     let stop = choice == .stop
                     if stop {
@@ -198,6 +220,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { !CommandLine.arguments.contains("--recording-self-test") && !CommandLine.arguments.contains("--recording-sink-self-test") }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    @MainActor private static func isContentWindow(_ window: NSWindow) -> Bool {
+        window.isVisible && window.level == .normal && window.styleMask.contains(.titled)
+    }
+    @MainActor private static func isRestorableContentWindow(_ window:NSWindow) -> Bool {
+        (window.isVisible || window.isMiniaturized) && window.level == .normal && window.styleMask.contains(.titled)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // MenuBarExtra owns visible status/popup windows too. Only ordinary
+        // content windows (or an active modal) count as a way back into the app.
+        let visibleContent = sender.windows.contains(where:Self.isRestorableContentWindow)
+        guard !visibleContent, sender.modalWindow == nil else { return true }
+        MainActor.assumeIsolated {
+            LibrarySearchModel.shared.close()
+            MeetingNavigation.shared.back()
+            MeetingNavigation.shared.openLibrary?()
+            sender.activate(ignoringOtherApps:true)
+        }
+        return false
+    }
 
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {

@@ -545,7 +545,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func authorizeMicrophone() async {
         #if DEBUG
-        if CaptureFixture.enabled { return }
+        if CaptureFixture.enabled || RecordingFixture.enabled { return }
         #endif
         try? await NativeRecordingInputs().authorize()
     }
