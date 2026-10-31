@@ -223,6 +223,7 @@ import ScreenCaptureKit
             if hidden { try require(strips.allSatisfy { $0.layer?.animation(forKey:"recording-stop") == nil },"Hidden/off Stop creates no fade animation") }
             if !hidden { try require(controller.surfaceRevision >= stoppedRevision && strips.allSatisfy { $0.layer?.opacity == 0.45 },"Stop freezes and fades visible strips") }
             report["stopDisconnectsAndFreezes"] = true
+            report["fixtureInput"] = input.diagnostics
             if mode == "B" { _ = try await darkPixels(window:window,view:strips[2],name:"B-stopping") }
             strips.forEach { $0.detach() }; window.orderOut(nil)
             try require(controller.surfaceBytes == 0 && controller.rawHistoryBytes == 0,"detaching the last stopped view releases its frozen native surfaces and raw history")
@@ -233,6 +234,7 @@ import ScreenCaptureKit
             exit(0)
         } catch {
             report["failure"] = String(describing:error)
+            if let driver { report["fixtureInput"] = driver.diagnostics }
             if let data = try? JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) {
                 FileHandle.standardOutput.write(data+Data([10]))
             }
@@ -346,6 +348,14 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
         let deadline: DispatchWorkItem
     }
     private var progressWaits: [UUID:ProgressWait] = [:]
+    private var skippedFixtureFrames: UInt64 = 0
+    var diagnostics: [String:Any] {
+        let fixture = queue.sync { (frames,intentionalGapFrames,skippedFixtureFrames) }
+        let actual = sink.status()
+        return ["producedThroughFrames":fixture.0,"intentionalGapFrames":fixture.1,
+                "skippedFixtureFrames":fixture.2,"actualGapMs":actual.gapMs,
+                "actualDroppedMs":actual.droppedMs,"warnings":actual.warnings]
+    }
     private enum ProgressFailure: Error { case timeout(String), finished }
     func waitForSamples(throughMs target:Double) async throws {
         try await waitForProgress("producer sample position \(target) ms",timeout:15) { frames,_ in Double(frames)/48 >= target }
@@ -403,7 +413,11 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
         // Dispatch timers can coalesce wakeups. Advance on the sample clock,
         // rather than permanently delaying the source after one missed wakeup.
         // Bound catch-up to ten chunks; a longer stall becomes a real gap.
-        if complete-frames/chunk > 10 { frames=(complete-10)*chunk }
+        if complete-frames/chunk > 10 {
+            let resumed = (complete-10)*chunk
+            skippedFixtureFrames += UInt64(resumed-frames)
+            frames = resumed
+        }
         while frames/chunk < complete { emitPacket() }
         if let timer {
             let remaining=clock.nextDelay(after:frames,elapsed:ProcessInfo.processInfo.systemUptime-origin)
