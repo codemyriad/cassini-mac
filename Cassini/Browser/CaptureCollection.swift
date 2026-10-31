@@ -311,8 +311,7 @@ private final class CaptureFiles: @unchecked Sendable {
             let input = captures[id]!.input
             Task { [weak self] in do { try await input.update() } catch { self?.captures[id]?.sourceProblem = true } }
         }
-        let source = CaptureSourceState(events:snapshot.manifest.events ?? [],atMs:Double(captures[id]?.elapsedMs ?? 0))
-        if source.source == "system", snapshot.fallbackReason != nil, captures[id]?.savingSinceMs == nil, captures[id]?.fallbackAnnounced == false {
+        if snapshot.isSystemFallback, captures[id]?.savingSinceMs == nil, captures[id]?.fallbackAnnounced == false {
             captures[id]?.fallbackAnnounced = true; onFallback?(id)
         }
     }

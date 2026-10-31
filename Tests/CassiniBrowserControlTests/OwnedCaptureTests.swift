@@ -7,6 +7,36 @@ import CassiniKit
 @testable import CassiniBrowserControl
 
 final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
+    func testFirstFractionalSystemPacketIsLiveFallbackBeforeTheRoundedUIClockCatchesUp() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Fractional fallback",microphone:false,managedBrowser:true)
+        XCTAssertFalse(owner.snapshot.isSystemFallback)
+        try owner.browserTrack(id:"before",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        try owner.browserAudio(id:"before",sequence:0,offsetMs:0,pcm:Data(repeating:0x12,count:1600))
+        try owner.browserLost(atMs:1000.25,transportAlive:true)
+        let system = owner.nativeWriter(side:.others)
+        try system.addTrack(id:"output",label:"System",kind:"system",sampleRate:8000,channels:1)
+        XCTAssertFalse(owner.snapshot.isSystemFallback,"Permission/start without PCM is not a fallback")
+        try system.appendNative(id:"output",pcm:Data(repeating:0x12,count:1600),offsetMs:1000.75)
+        let snapshot = owner.snapshot
+        XCTAssertNotEqual(CaptureSourceState(events:snapshot.manifest.events ?? [],atMs:1000).source,"system")
+        XCTAssertTrue(snapshot.isSystemFallback,"Actual admitted PCM must not wait for a rounded UI clock or the next throttled notification")
+        try owner.browserTrack(id:"returned",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        try owner.browserAudio(id:"returned",sequence:0,offsetMs:1200,pcm:Data(repeating:0x12,count:1600))
+        try await owner.restoreBrowser(atMs:1500)
+        XCTAssertFalse(owner.snapshot.isSystemFallback)
+        try system.finish(problem:nil); try await owner.finish()
+        XCTAssertFalse(owner.snapshot.isSystemFallback)
+
+        let native = try OwnedBrowserCapture(parent:root,title:"Direct system",microphone:false,browser:false)
+        let direct = native.nativeWriter(side:.others)
+        try direct.addTrack(id:"output",label:"System",kind:"system",sampleRate:8000,channels:1)
+        try direct.appendNative(id:"output",pcm:Data(repeating:0x12,count:1600),offsetMs:0.75)
+        XCTAssertTrue(native.snapshot.usingSystem)
+        XCTAssertFalse(native.snapshot.isSystemFallback,"Native Record first is not a browser fallback")
+        try direct.finish(problem:nil); try await native.finish()
+    }
+
     func testLossStampIsOwnedByTheProducerAndDoesNotRestartOnRepeatedObservation() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Loss stamp",microphone:false)

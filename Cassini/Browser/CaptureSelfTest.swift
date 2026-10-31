@@ -314,7 +314,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             }
             try await Task.sleep(for:.milliseconds(200))
             try require(collection.captures.count == 1 && automatic.isEmpty,"Recovery does not auto-restore browser capture")
-            try require(fallbacks == [second.snapshot.manifest.id],"Actual system fallback is announced exactly once")
+            try require(fallbacks == [second.snapshot.manifest.id],"Actual system fallback is announced exactly once (got \(fallbacks.count))")
             report["fallbackAndWorkerRecoveryKeepOneFolder"] = true
             collection.stop(second.snapshot.manifest.id)
             _ = try await two.performNext()

@@ -17,6 +17,9 @@ public struct OwnedCaptureSnapshot: Sendable {
     public let managedBrowser: Bool
     public let fallbackRequested: Bool
     public var usingSystem: Bool { manifest.tracks.contains { $0.kind == "system" && $0.ended != true && $0.frames > 0 } }
+    /// Live admission is authoritative here. A fractional first-buffer stamp
+    /// can lie ahead of a rounded UI elapsed time until the next notification.
+    public var isSystemFallback: Bool { phase == .recording && fallbackReason != nil && usingSystem }
     public let fallbackReason: String?
     public let browserLostUptime: TimeInterval?
     public let browserLevel: Float
