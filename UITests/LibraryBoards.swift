@@ -310,11 +310,10 @@ final class LibraryBoards: XCTestCase {
         let field = window.searchFields["library-search-field"]
         XCTAssertTrue(field.waitForExistence(timeout:20),app.debugDescription)
         field.click()
-        // E1: the Search panel replaces the toolbar editor. Wait for its
-        // actual mounted UI, then type through the app (no implicit refocus).
+        // XCTest completes the native click before typing. The Search panel
+        // appears on the first edit, so it cannot be a pre-typing readiness
+        // condition. Await the complete query below, never a settling pause.
         let count = window.staticTexts["search-count"]
-        let mounted = NSPredicate { _,_ in count.exists && field.isHittable }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:mounted,object:nil)],timeout:5),.completed,"Search panel and replacement field must be mounted before typing")
         app.typeText("budget")
         let value = NSPredicate { _,_ in field.value as? String == "budget" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
@@ -336,7 +335,10 @@ final class LibraryBoards: XCTestCase {
         // pointer, then use the real Edit actions through the responder chain.
         let start = turn.coordinate(withNormalizedOffset:CGVector(dx:0.35,dy:0.35))
         let end = turn.coordinate(withNormalizedOffset:CGVector(dx:0.80,dy:0.35))
+        let initialPosition = visibleText(window.staticTexts["meeting-elapsed"])
+        XCTAssertEqual(initialPosition,"00:03:12")
         start.press(forDuration:0.1,thenDragTo:end)
+        XCTAssertEqual(visibleText(window.staticTexts["meeting-elapsed"]),initialPosition,"Dragging selects without seeking")
         app.menuBars.menuBarItems["Edit"].click()
         XCTAssertTrue(app.menuItems["Copy"].isEnabled,app.debugDescription)
         XCTAssertTrue(app.menuItems["Select All"].isEnabled,app.debugDescription)
@@ -352,8 +354,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(text.contains("cassini-seek:"),"Copy carries readable words, not playback URLs")
         XCTAssertTrue(window.buttons["meeting-back"].exists,"Copy keeps the meeting open")
         start.click()
-        let sought = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-elapsed"]) == "00:00:04" }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:sought,object:nil)],timeout:5),.completed,"Selecting text must preserve click-to-seek")
+        // This exact sentence in the shared main fixture starts at161000 ms.
+        let sought = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-elapsed"]) == "00:02:41" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:sought,object:nil)],timeout:5),.completed,"Selecting text must preserve click-to-seek: " + app.debugDescription)
     }
     @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {
         let app = try launch("search",fixture:"main"); defer { app.terminate() }
