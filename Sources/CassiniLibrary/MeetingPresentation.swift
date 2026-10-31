@@ -5,6 +5,18 @@ import CassiniKit
 /// R12: sum real item durations; distribute remaining percentage points by
 /// largest remainder, with first-speaking order breaking ties.
 public enum MeetingPresentation {
+    /// A quoted Library row reuses an existing pair of source bookends instead
+    /// of drawing a second pair. Interior characters stay verbatim. The R8
+    /// model/serialized `MeetingQuote.displayText` remains unchanged.
+    public static func pullQuote(_ quote: MeetingQuote) -> String {
+        var body = quote.text[...]
+        while let first = body.first, let last = body.last,
+              body.startIndex < body.index(before:body.endIndex),
+              (first == "\"" && last == "\"") || (first == "“" && last == "”") {
+            body = body.dropFirst().dropLast()
+        }
+        return "“" + body + "”"
+    }
     public static func shares(_ meeting: LibraryMeeting) -> [String: Int] {
         let durations = Dictionary(grouping: meeting.transcriptItems.filter { !$0.echo }, by: \.speaker)
             .mapValues { $0.reduce(0.0) { $0 + max(0, Double($1.endMs - $1.startMs)) } }
