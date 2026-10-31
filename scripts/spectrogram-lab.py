@@ -10,9 +10,9 @@ reports=[]
 old=subprocess.run(['defaults','read','com.apple.universalaccess','reduceMotion'],capture_output=True,text=True)
 try:
  subprocess.run(['defaults','write','com.apple.universalaccess','reduceMotion','-bool','false'],check=True)
- for label,program in zip(['delegate','direct-contents'],sys.argv[1:3],strict=True):
-  source=Path(program).parent/'Cassini/Recording/RecordingSpectrogram.swift'
-  for mode in 'ADB':
+ for mode in 'ADB':
+  for label,program in zip(['replicator','two-leaves'],sys.argv[1:3],strict=True):
+   source=Path(program).parent/'Cassini/Recording/RecordingSpectrogram.swift'
    name=label+'-'+mode
    case_output=output/name;case_output.mkdir()
    command=[str(Path(program).resolve()),'--spectrogram-self-test','-SpectrogramCase',mode,'-SpectrogramOutput',str(case_output.resolve()),'-ApplePersistenceIgnoreState','YES']

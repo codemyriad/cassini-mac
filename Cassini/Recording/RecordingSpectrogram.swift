@@ -433,7 +433,7 @@ import Darwin
 // The scrolling position changes at display cadence. Returning the null action
 // directly avoids Swift/NSDictionary key bridging on every implicit CA lookup.
 // Explicit animations (the root layer's Stop fade) are unaffected.
-private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
+private final class RecordingSpectrogramScrollLayer: CALayer {
     private static let noAction: CAAction = NSNull()
     override func action(forKey event: String) -> CAAction? { Self.noAction }
 }
@@ -447,7 +447,7 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-    private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer() }
+    private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), second = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
@@ -461,12 +461,15 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
         layer?.actions = actions
         for _ in 0..<(style == .pill ? 2 : 1) {
             let item = LaneLayers()
-            for owned in [item.clip,item.first,item.fade] { owned.actions = actions }
+            for owned in [item.clip,item.first,item.second,item.fade] { owned.actions = actions }
             item.clip.masksToBounds = true; item.clip.cornerRadius = style == .pill ? 2 : 4
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
             item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
             item.first.minificationFilter = .linear; item.first.magnificationFilter = .linear
             item.scrolling.addSublayer(item.first)
+            item.second.anchorPoint = .zero; item.second.contentsGravity = .resize
+            item.second.minificationFilter = .linear; item.second.magnificationFilter = .linear
+            item.scrolling.addSublayer(item.second)
             item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
             item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
             layer?.addSublayer(item.clip); lanes.append(item)
@@ -500,6 +503,7 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
         guard source != nil || bank != nil else { return }
         for lane in lanes {
             lane.first.contents = nil;lane.first.delegate = nil
+            lane.second.contents = nil;lane.second.delegate = nil
         }; bank = nil; source = nil; revision = -1; reducedMode = nil
     }
     func freeze() {
@@ -528,21 +532,20 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
             lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
             lane.fade.frame = lane.clip.bounds
                 lane.scrolling.bounds = .init(x:0,y:0,width:capacity,height:height)
-                // Two GPU instances share one texture leaf, halving contents
-                // invalidations/exports while retaining the same wrap geometry.
-                lane.scrolling.instanceTransform = CATransform3DMakeTranslation(-capacity,0,0)
+                lane.second.position = .init(x:-capacity,y:0)
             }
             if bankChanged || modeChanged {
                 lane.clip.mask = reduced ? nil : lane.fade
-                lane.scrolling.instanceCount = reduced ? 1 : 2
+                lane.second.isHidden = reduced
             }
-            let image=lane.first
+            for image in [lane.first,lane.second] {
                 if bankChanged {
                     image.bounds = .init(x:0,y:0,width:capacity,height:height)
                     image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
-                    // The experimental setter supplies contents directly; no display delegate.
+                    image.delegate = source
                 }
-                if changed { image.contents = value.surface }
+                if changed { image.setNeedsDisplay() }
+            }
             if bankChanged {
                 lane.first.position = .zero
             }
