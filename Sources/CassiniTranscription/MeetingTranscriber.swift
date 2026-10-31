@@ -44,11 +44,11 @@ public enum MeetingTranscriber {
     }
     /// One worker owns a meeting lock through both segmentation and recognition.
     /// Capture-owned session/audio files are only opened for reading.
-    public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others") throws {
-        try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,recognize:engine.transcribe)
+    public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system) throws {
+        try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,uiLanguage:uiLanguage,recognize:engine.transcribe)
     }
     public static func run(directory inputDirectory: URL, detector: SpeechDetector, model: String,
-                           initialETA: Double, initialLanguage: String = "auto", me: String = "Me", others: String = "The others",
+                           initialETA: Double, initialLanguage: String = "auto", me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system,
                            recognize: ([Float]) throws -> WhistleTranscript) throws {
         var folderInfo = stat()
         guard lstat(inputDirectory.path, &folderInfo) == 0, folderInfo.st_mode & S_IFMT == S_IFDIR else { throw TranscriptionFailure.invalidMeeting }
@@ -110,6 +110,14 @@ public enum MeetingTranscriber {
                     var speakers = metadata["speakers"] as? [[String:Any]] ?? []
                     for track in tracks where !speakers.contains(where: { ($0["id"] as? String) == track.speaker.id }) {
                         speakers.append(["id":track.speaker.id, "name":track.speaker.name as Any? ?? NSNull(), "provenance":track.speaker.name == nil ? "unnamed" : "source", "colourIndex":speakers.count])
+                    }
+                    // D47/D50: a produced label is stored in the writer's UI
+                    // language once; another app displays it verbatim.
+                    var seen=Set<String>()
+                    let spoken=ordered.compactMap {seen.insert($0.speaker).inserted ? $0.speaker : nil}
+                    for (number,id) in spoken.enumerated() {
+                        guard let index=speakers.firstIndex(where:{$0["id"] as? String == id}),speakers[index]["label"] == nil else {continue}
+                        speakers[index]["label"]=(speakers[index]["name"] as? String) ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(number+1)],language:uiLanguage)
                     }
                     metadata["speakers"] = speakers
                 }

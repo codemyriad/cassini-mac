@@ -39,6 +39,8 @@ targets:
       - path: Cassini/Resources/Licenses
         type: folder
         buildPhase: resources
+      - path: Cassini/Resources/Localization
+        buildPhase: resources
       - path: Cassini/Resources/UX
         type: folder
         buildPhase: resources
@@ -121,6 +123,7 @@ targets:
         CFBundleDisplayName: Cassini
         CassiniStoreListingPublic: "$(CASSINI_STORE_LISTING_PUBLIC)"
         CFBundleIconName: AppIcon
+        CFBundleLocalizations: [en, it, fr, es, pt-BR, pt-PT]
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity

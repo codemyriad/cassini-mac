@@ -3,6 +3,39 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testFrenchLibraryAndFirstRunFitAtBoardSize() throws {
+        let app=try launch("library",fixture:"main",language:"fr",locale:"fr_FR")
+        let window=app.windows["cassini-library-window"]
+        let read=window.buttons["preview-read-transcript"]
+        XCTAssertTrue(read.waitForExistence(timeout:20),app.debugDescription)
+        let title=window.staticTexts["library-toolbar-title"]
+        let translated=NSPredicate {_,_ in title.exists && self.visibleText(title)=="Bibliothèque"}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:translated,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertEqual(read.label,"Lire la transcription")
+        for button in [read,window.buttons["preview-play"]] {
+            XCTAssertTrue(button.isHittable,app.debugDescription)
+            XCTAssertTrue(window.frame.contains(button.frame),"French action remains inside the window")
+            let width=(button.label as NSString).size(withAttributes:[.font:NSFont.systemFont(ofSize:13)]).width
+            XCTAssertGreaterThanOrEqual(button.frame.width+1,width,"French action text has room")
+        }
+        XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch.exists,"Stored meeting names remain verbatim")
+        capture(window,name:"library-fr");app.terminate()
+        let first=try launch("first-run",fixture:"empty",language:"fr",locale:"fr_FR")
+        defer {first.terminate()}
+        let empty=first.windows["cassini-library-window"],record=empty.buttons["first-run-record"]
+        XCTAssertTrue(record.waitForExistence(timeout:20),first.debugDescription)
+        XCTAssertEqual(record.label,"Enregistrer")
+        XCTAssertTrue(text("Vos réunions enregistrées apparaîtront ici.",in:empty),first.debugDescription)
+        capture(empty,name:"first-run-fr")
+        record.click()
+        let start=empty.sheets.buttons["record-first-start"]
+        XCTAssertTrue(start.waitForExistence(timeout:10),first.debugDescription)
+        XCTAssertEqual(start.label,"Commencer l’enregistrement")
+        XCTAssertTrue(empty.sheets.firstMatch.frame.contains(start.frame),"Long French primary action fits its sheet")
+        let intrinsic=(start.label as NSString).size(withAttributes:[.font:NSFont.systemFont(ofSize:13,weight:.semibold)]).width
+        XCTAssertGreaterThanOrEqual(start.frame.width,intrinsic)
+        capture(empty,name:"record-first-fr")
+    }
     @MainActor func testMoveToTrashMenusAndFirstRun() throws {
         let extra = ["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString]
         let app = try launch("first-run",fixture:"empty",extra:extra); defer { app.terminate() }
@@ -832,13 +865,13 @@ final class LibraryBoards: XCTestCase {
         configuration.activates = true
         _ = try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
     }
-    @MainActor func launch(_ name: String, fixture: String, extra: [String] = []) throws -> XCUIApplication {
+    @MainActor func launch(_ name: String, fixture: String, extra: [String] = [], language:String="en-GB",locale:String="en_GB") throws -> XCUIApplication {
         let app = XCUIApplication()
         let root = try fixtureDirectory().appendingPathComponent("Library/" + fixture)
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", root.path,
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
-                               "-AppleLanguages", "(en-GB)", "-AppleLocale", "en_GB", "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
+                               "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
         app.launchArguments += extra
         if extra.contains("--fixture-library-recording"), !extra.contains("-CassiniDiskFree") {
             app.launchArguments += ["-CassiniDiskFree",String(20 << 30),"-CassiniDiskTotal",String(100 << 30)]

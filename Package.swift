@@ -52,7 +52,7 @@ let package = Package(
         .target(name:"CassiniModels",dependencies:["CassiniKit","CassiniZstd"]),
         .executableTarget(name:"cassini-model-fetch",dependencies:["CassiniModels"]),
         .testTarget(name:"CassiniModelsTests",dependencies:["CassiniModels"],resources:[.copy("Fixtures")]),
-        .target(name: "CassiniLibrary", dependencies: ["CassiniKit"], resources: [.copy("Schema")]),
+        .target(name: "CassiniLibrary", dependencies: ["CassiniKit"], resources: [.copy("Schema"), .copy("Localization")]),
         .target(name: "CassiniLibraryWatchers", dependencies: ["CassiniLibrary"]),
         .target(name: "CassiniPlayback", dependencies: ["CassiniLibrary"]),
         .target(name: "CassiniWhistle"),

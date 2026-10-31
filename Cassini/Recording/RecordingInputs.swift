@@ -19,25 +19,25 @@ import CassiniRecording
         case .notDetermined: permitted = await AVCaptureDevice.requestAccess(for: .audio)
         default: permitted = false
         }
-        guard permitted else { throw RecordingError.invalid("Allow microphone access in System Settings → Privacy & Security → Microphone, then try again.") }
+        guard permitted else { throw RecordingError.invalid(UXText.mac("recording.micDenied")) }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         let tap = AudioProcessTap(); self.tap = tap
         let outputLabel = UXText.text("recordFirst.sound.title"), micLabel = UXText.text("common.yourMicrophone")
-        _ = try tap.start(processes: nil, onFormatChange: { failure("The output audio format changed. Start a new recording with the current device.") }) { buffer, host in
+        _ = try tap.start(processes: nil, onFormatChange: { failure(UXText.mac("recording.outputChanged")) }) { buffer, host in
             sink.receive(buffer, hostTime: host, id: "output", label: outputLabel, kind: "system")
         }
         let engine = AVAudioEngine(); self.engine = engine
         let input = engine.inputNode, format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, (1...64).contains(format.channelCount) else {
-            throw RecordingError.invalid("No supported microphone is available. Choose an input in Sound settings. Multichannel inputs record channels 1 and 2.")
+            throw RecordingError.invalid(UXText.mac("recording.micMissing"))
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, time in
             sink.receive(buffer, hostTime: time.isHostTimeValid ? time.hostTime : 0, id: "microphone", label: micLabel, kind: "microphone")
         }
         try engine.start()
         observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
-            failure("The microphone configuration changed. Start a new recording with the current input.")
+            failure(UXText.mac("recording.micChanged"))
         }
     }
     func stop() {

@@ -17,7 +17,7 @@ public enum MeetingMarkdown {
             date.calendar = Calendar(identifier:.gregorian); date.timeZone = timeZone
             date.dateFormat = "EEEE d MMMM yyyy"
             let time = LibraryFormat(timeZone:timeZone,locale:locale).rowTime(start)
-            blocks.append(date.string(from:start) + ", " + time + (durationMs.map { " · " + LibraryFormat.meetingDuration($0) } ?? ""))
+            blocks.append(date.string(from:start) + ", " + time + (durationMs.map { " · " + LibraryFormat.meetingDuration($0,locale:locale) } ?? ""))
         }
         let ordered = items.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs

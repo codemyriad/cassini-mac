@@ -89,11 +89,13 @@ final class TranscriptionMeetingTests: XCTestCase {
         let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
         // The recognizer is deterministic here: this test isolates source to
         // speaker routing; existing hosted goldens verify both real engines.
-        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,uiLanguage:.fr,recognize:{ _ in
             .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
         })
         let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
         XCTAssertEqual(meeting.speakers.map(\.id),["track-remote-wire-1"])
+        XCTAssertEqual(meeting.speakers.first?.displayName,"Intervenant 1")
+        XCTAssertEqual(meeting.speakers.first?.label,"Intervenant 1")
         XCTAssertTrue(meeting.transcriptItems.contains { $0.startMs < 30000 })
         XCTAssertTrue(meeting.transcriptItems.contains { $0.startMs >= 30000 })
         XCTAssertEqual(Set(meeting.transcriptItems.map(\.speaker)),["track-remote-wire-1"])

@@ -230,7 +230,7 @@ struct CompanionSetupView: View {
         if !added { return UXText.text("companion.addStep.notAdded") }
         if browsers.count == 1 { return UXText.text("companion.addStep.done",["browser":browsers[0]]) }
         if browsers.isEmpty { return UXText.text("settings.browser.status.connectedGeneric") }
-        let formatter = ListFormatter(); formatter.locale = Locale(identifier:"en_GB")
+        let formatter = ListFormatter(); formatter.locale = UXText.language == .en ? Locale(identifier:"en_GB") : UXText.locale
         return UXText.text("companion.addStep.doneSeveral",["browsers":formatter.string(from:browsers) ?? browsers.joined(separator:", ")])
     }
     private var connectCaption: String { added ? setup.stateLine : "" }

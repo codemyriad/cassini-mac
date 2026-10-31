@@ -5,7 +5,7 @@ import CassiniWhistle
 import CassiniTranscription
 import CassiniParakeet
 
-struct Request: Decodable { let id: String; let meeting: String; let me: String?; let others: String? }
+struct Request: Decodable { let id: String; let meeting: String; let me: String?; let others: String?; let uiLanguage: String? }
 struct Response: Encodable { let id: String?; let error: String?; let code: String? }
 func emit(_ response: Response) throws { try WhistleIO.write(JSONEncoder().encode(response) + Data([10]),to:STDOUT_FILENO) }
 var requestID: String?
@@ -39,7 +39,7 @@ do {
     guard let line = try WhistleLineReader(fd:STDIN_FILENO).next() else { exit(0) }
     let request = try JSONDecoder().decode(Request.self,from:line); requestID = request.id
     try MeetingTranscriber.run(directory:URL(fileURLWithPath:request.meeting),detector:detector,
-        model:ParakeetPin.transcriptModel,initialETA:0.3,initialLanguage:"und",me:request.me ?? "Me",others:request.others ?? "The others",recognize:engine.transcribe)
+        model:ParakeetPin.transcriptModel,initialETA:0.3,initialLanguage:"und",me:request.me ?? "Me",others:request.others ?? "The others",uiLanguage:request.uiLanguage.flatMap(CassiniLanguage.init(rawValue:)) ?? .system,recognize:engine.transcribe)
     try emit(Response(id:request.id,error:nil,code:nil))
     // One recognizer/job/process. Its model memory is released on exit.
 } catch {

@@ -155,7 +155,7 @@ public struct LibraryScanner: Sendable {
             }
         }
         meeting.state.audioAvailable = !meeting.audioFiles.isEmpty
-        meeting.title = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? "Untitled meeting"
+        meeting.title = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? LibraryLocalization.shared.text("library.untitled")
 
         var words: [LibraryTranscriptItem] = []
         var readable = false
@@ -213,8 +213,8 @@ public struct LibraryScanner: Sendable {
             let override = overrides[id]
             let label = embeddedNames[id]?.trimmingCharacters(in: .whitespacesAndNewlines)
             let embedded = label.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : $0 }
-            let name = override?.name ?? embedded
-            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index)
+            let name = override != nil ? override?.name : embedded
+            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label)
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(sorted)

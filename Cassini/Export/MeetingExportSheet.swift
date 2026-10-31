@@ -83,7 +83,7 @@ struct MeetingExportSheet: View {
         let names = meeting.speakers.filter { $0.provenance == .recognised }.map(\.displayName)
         if names.isEmpty { return Text(UXText.text("export.speakerNames.body.none")) }
         if names.count == 1 { return template("export.speakerNames.body",token:"name",value:Text(names[0]).fontWeight(.semibold)) }
-        let formatter = ListFormatter(); formatter.locale = Locale(identifier:"en_GB")
+        let formatter = ListFormatter(); formatter.locale = UXText.language == .en ? Locale(identifier:"en_GB") : UXText.locale
         let tokens = names.indices.map { "\u{F0000}\($0)\u{F0001}" }
         var remaining = formatter.string(from:tokens) ?? tokens.joined(separator:", "), result = Text("")
         for (index,token) in tokens.enumerated() {
