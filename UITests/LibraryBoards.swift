@@ -304,6 +304,60 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testSearchClickKeepsTheFirstTypedCharacter() throws {
+        let app = try launch("library",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let field = window.searchFields["library-search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout:20),app.debugDescription)
+        field.click()
+        // XCTest completes the native click before typing. The Search panel
+        // appears on the first edit, so it cannot be a pre-typing readiness
+        // condition. Await the complete query below, never a settling pause.
+        let count = window.staticTexts["search-count"]
+        app.typeText("budget")
+        let value = NSPredicate { _,_ in field.value as? String == "budget" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
+        XCTAssertTrue(count.waitForExistence(timeout:5))
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
+        field.click(); app.typeText("Daniel")
+        XCTAssertEqual(field.value as? String,"Daniel",app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        app.typeKey("f",modifierFlags:.command); app.typeText("budget")
+        XCTAssertEqual(field.value as? String,"budget","Cmd-F also retains the whole query")
+    }
+    @MainActor func testMeetingTranscriptSelectionAndCopy() throws {
+        let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let turn = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-")).firstMatch
+        XCTAssertTrue(turn.waitForExistence(timeout:20),app.debugDescription)
+        // The text is to the right of the speaker column. Select with the
+        // pointer, then use the real Edit actions through the responder chain.
+        let start = turn.coordinate(withNormalizedOffset:CGVector(dx:0.35,dy:0.35))
+        let end = turn.coordinate(withNormalizedOffset:CGVector(dx:0.80,dy:0.35))
+        let initialPosition = visibleText(window.staticTexts["meeting-elapsed"])
+        XCTAssertEqual(initialPosition,"00:03:12")
+        start.press(forDuration:0.1,thenDragTo:end)
+        XCTAssertEqual(visibleText(window.staticTexts["meeting-elapsed"]),initialPosition,"Dragging selects without seeking")
+        app.menuBars.menuBarItems["Edit"].click()
+        XCTAssertTrue(app.menuItems["Copy"].isEnabled,app.debugDescription)
+        XCTAssertTrue(app.menuItems["Select All"].isEnabled,app.debugDescription)
+        app.menuItems["Select All"].click()
+        NSPasteboard.general.clearContents()
+        app.typeKey("c",modifierFlags:.command)
+        let copied = NSPredicate { _,_ in !(NSPasteboard.general.string(forType:.string) ?? "").isEmpty }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:copied,object:nil)],timeout:5),.completed)
+        let text = NSPasteboard.general.string(forType:.string) ?? ""
+        // Native Select All selects the focused text view (this first turn),
+        // rather than unrelated turns elsewhere in the transcript.
+        XCTAssertEqual(text,"Thanks for making the time. We wanted to go through the delivery dates before the end of the month.")
+        XCTAssertFalse(text.contains("cassini-seek:"),"Copy carries readable words, not playback URLs")
+        XCTAssertTrue(window.buttons["meeting-back"].exists,"Copy keeps the meeting open")
+        start.click()
+        // This exact sentence in the shared main fixture starts at161000 ms.
+        let sought = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-elapsed"]) == "00:02:41" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:sought,object:nil)],timeout:5),.completed,"Selecting text must preserve click-to-seek: " + app.debugDescription)
+    }
     @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {
         let app = try launch("search",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"], count = window.staticTexts["search-count"]

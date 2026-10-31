@@ -5,6 +5,9 @@ import CassiniKit
 /// R12: sum real item durations; distribute remaining percentage points by
 /// largest remainder, with first-speaking order breaking ties.
 public enum MeetingPresentation {
+    /// D47: preserve the stored excerpt verbatim. The row owns its decorative
+    /// bookends; normalization belongs to transcript production/migration.
+    public static func pullQuote(_ quote: MeetingQuote) -> String { quote.text }
     public static func shares(_ meeting: LibraryMeeting) -> [String: Int] {
         let durations = Dictionary(grouping: meeting.transcriptItems, by: \.speaker)
             .mapValues { $0.reduce(0.0) { $0 + max(0, Double($1.endMs - $1.startMs)) } }

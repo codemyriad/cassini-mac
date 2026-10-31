@@ -81,6 +81,25 @@ struct MeetingPresentationTests {
 }
 
 struct TurnQuotePresentationTests {
+    @Test func libraryPullQuotePreservesStoredPunctuationVerbatim() throws {
+        let f = try Fixture()
+        try f.metadata {
+            $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        let text = "\"Yes, I can have a draught. He said \"no\".\""
+        let body = try JSONSerialization.data(withJSONObject:["items":[["speaker":"me","startMs":0,"endMs":1000,"text":text]]])
+        let file = f.folder.appendingPathComponent("transcript.json")
+        try body.write(to:file)
+        let quote = try #require(LibraryScanner(root:f.root).scan().meetings.first?.quote)
+        #expect(quote.text == text && quote.displayText == "“" + text + "”","R8 retains verbatim model output")
+        #expect(MeetingPresentation.pullQuote(quote) == text)
+        #expect(try Data(contentsOf:file) == body)
+        for stored in ["He said \"no\". Long turn.","“Already paired”","\"\"Repeated bookends\"\"",
+                       "A 6\" screen","The size is 6\"","\"Unpaired opening","Unpaired closing”"] {
+            let shown = MeetingPresentation.pullQuote(.init(atMs:0,text:stored))
+            #expect(Array(shown.utf8) == Array(stored.utf8),"Display keeps every stored byte, including nested/unmatched quotes")
+        }
+    }
     @Test func quotePartnersNeverCrossTurnsAndRawWordsStayIntact() {
         let items: [LibraryTranscriptItem] = [
             .init(speaker:"a",startMs:0,endMs:10,text:"He said \"hello"),
