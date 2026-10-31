@@ -258,14 +258,16 @@ import ScreenCaptureKit
         func snapshot() throws -> [Position] {
             var result:[Position]=[]
             for view in strips {
-                let clips=(view.layer?.sublayers ?? []).compactMap {$0.sublayers?.first as? CAReplicatorLayer}
-                try require(clips.count == (view.style == .pill ? 2 : 1),"native lane layer count")
+                let flattened=view.layer as? CAReplicatorLayer
+                let clips=flattened.map {[$0]} ?? (view.layer?.sublayers ?? []).compactMap {$0.sublayers?.first as? CAReplicatorLayer}
+                try require(clips.count == (flattened == nil && view.style == .pill ? 2 : 1),"native lane layer count")
                 let capacity=Double(view.style.columns+2)
                 let time=controller.fixtureHistoryStartMs+4000-(view.style == .pill ? 60 : 0)
                 let expected=(time/view.style.slotMs).truncatingRemainder(dividingBy:capacity)
                 for clip in clips {
                     guard let presentation=clip.presentation() else {throw Failure.check("native presentation layer exists")}
-                    let actual=(Double(view.style.columns)-Double(presentation.position.x)).truncatingRemainder(dividingBy:capacity)
+                    let origin=flattened == nil ? Double(presentation.position.x) : Double(presentation.sublayerTransform.m41)
+                    let actual=(Double(view.style.columns)-origin).truncatingRemainder(dividingBy:capacity)
                     result.append(.init(actual:actual,expected:expected,capacity:capacity))
                 }
             }

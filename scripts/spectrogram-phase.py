@@ -10,7 +10,7 @@ old=subprocess.run(['defaults','read','com.apple.universalaccess','reduceMotion'
 reports=[]
 try:
     subprocess.run(['defaults','write','com.apple.universalaccess','reduceMotion','-bool','false'],check=True)
-    for label,program in zip(['surface-contents','timed-layer'],sys.argv[1:3],strict=True):
+    for label,program in zip(['surface-contents','flat-layers'],sys.argv[1:3],strict=True):
         for mode in 'ADB':
             result=subprocess.run([str(Path(program).resolve()),'--spectrogram-self-test','-SpectrogramCase',mode,
                 '-SpectrogramPhaseOnly','1','-ApplePersistenceIgnoreState','YES'],capture_output=True,text=True,timeout=30)

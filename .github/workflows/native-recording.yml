@@ -113,7 +113,7 @@ jobs:
           python3 baseline/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release baseline/probe
           python3 candidate/scripts/compile-spectrogram-lab-sdk.py baseline/build/Build/Products/Release
           python3 candidate/scripts/build-spectrogram-probe.py candidate/build/lab-products candidate/probe
-      - name: Compare retained animation timing against manual positions
+      - name: Compare flattened owned layer graph against nested lanes
         if: inputs.mode == 'spectrogram-lab'
         run: python3 candidate/scripts/spectrogram-lab.py baseline/probe candidate/probe experiment
       - name: Verify actual scrolling phase without a duration benchmark
