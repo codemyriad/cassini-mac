@@ -41,7 +41,8 @@ public final class SpectrogramTransform {
     private let logSize: vDSP_Length
     private let scale: Double
     private let window: [Float]
-    private let weights: [[(Int,Double)]]
+    private struct Band { let first: Int; let weights: [Float] }
+    private let weights: [Band]
     private var real: [Float], outputReal: [Float], outputImaginary: [Float], squared: [Float]
     private var levelScratch: [Double]
 
@@ -58,11 +59,12 @@ public final class SpectrogramTransform {
             let low = SpectrogramParameters.edgesHz[band]*Double(size)/Double(parameters.rate)
             let high = SpectrogramParameters.edgesHz[band+1]*Double(size)/Double(parameters.rate)
             let first = Int(floor(low+0.5)), last = min(size/2,Int(ceil(high+0.5)))
-            guard first <= last else { return [] }
-            return (first...last).compactMap { bin in
+            guard first <= last else { return Band(first:0,weights:[]) }
+            let bins: [(Int,Double)] = (first...last).compactMap { bin in
                 let weight = min(Double(bin)+0.5,high)-max(Double(bin)-0.5,low)
                 return weight > 1e-9 ? (bin,weight) : nil
             }
+            return Band(first:bins.first?.0 ?? 0,weights:bins.map { Float($0.1) })
         }
         real = [Float](repeating:0,count:size)
         outputReal = [Float](repeating:0,count:size/2); outputImaginary = outputReal
@@ -130,7 +132,17 @@ public final class SpectrogramTransform {
                 }
             }
         }
-        return weights.map { band in scale * band.reduce(0) { $0 + $1.1*Double(squared[$1.0]) } }
+        return squared.withUnsafeBufferPointer { energy in
+            weights.map { band in
+                var power: Float = 0
+                band.weights.withUnsafeBufferPointer { factors in
+                    if let base=factors.baseAddress, !factors.isEmpty {
+                        vDSP_dotpr(energy.baseAddress!+band.first,1,base,1,&power,vDSP_Length(factors.count))
+                    }
+                }
+                return scale*Double(power)
+            }
+        }
     }
 }
 

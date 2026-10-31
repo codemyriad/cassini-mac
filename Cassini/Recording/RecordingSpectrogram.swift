@@ -396,7 +396,7 @@ import Darwin
     private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-    private struct LaneLayers { let clip = CALayer(), scrolling = CALayer(), first = CALayer(), second = CALayer(), fade = CAGradientLayer() }
+    private struct LaneLayers { let clip = CALayer(), scrolling = CAReplicatorLayer(), first = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
@@ -405,18 +405,17 @@ import Darwin
         // implicit transaction at its normal frame boundary, instead of forcing
         // an explicit CA/WindowServer commit from every paint callback.
         let actions: [String:CAAction] = ["position":NSNull(),"bounds":NSNull(),"contents":NSNull(),
-            "contentsRect":NSNull(),"mask":NSNull(),"hidden":NSNull(),"opacity":NSNull()]
+            "contentsRect":NSNull(),"mask":NSNull(),"hidden":NSNull(),"opacity":NSNull(),
+            "instanceCount":NSNull(),"instanceTransform":NSNull()]
         layer?.actions = actions
         for _ in 0..<(style == .pill ? 2 : 1) {
             let item = LaneLayers()
-            for owned in [item.clip,item.scrolling,item.first,item.second,item.fade] { owned.actions = actions }
+            for owned in [item.clip,item.scrolling,item.first,item.fade] { owned.actions = actions }
             item.clip.masksToBounds = true; item.clip.cornerRadius = 2
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
-            for image in [item.first,item.second] {
-                image.anchorPoint = .zero; image.contentsGravity = .resize
-                image.minificationFilter = .linear; image.magnificationFilter = .linear
-                item.scrolling.addSublayer(image)
-            }
+            item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
+            item.first.minificationFilter = .linear; item.first.magnificationFilter = .linear
+            item.scrolling.addSublayer(item.first)
             item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
             item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
             layer?.addSublayer(item.clip); lanes.append(item)
@@ -424,6 +423,10 @@ import Darwin
     }
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
+    // The picture is exclusively the owned sublayers. Avoid AppKit's draw(_:) /
+    // bitmap backing path; updates already arrive through the surface delegate.
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() { }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     var visibleForSpectrogram: Bool {
         guard let window else { return false }
@@ -445,8 +448,7 @@ import Darwin
     func suspend() {
         guard source != nil || bank != nil else { return }
         for lane in lanes {
-            lane.first.contents = nil; lane.second.contents = nil
-            lane.first.delegate = nil; lane.second.delegate = nil
+            lane.first.contents = nil;lane.first.delegate = nil
         }; bank = nil; source = nil; revision = -1; reducedMode = nil
     }
     func freeze() {
@@ -472,22 +474,24 @@ import Darwin
             if bankChanged {
             lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
             lane.fade.frame = lane.clip.bounds
+                lane.scrolling.bounds = .init(x:0,y:0,width:capacity,height:height)
+                // Two GPU instances share one texture leaf, halving contents
+                // invalidations/exports while retaining the same wrap geometry.
+                lane.scrolling.instanceTransform = CATransform3DMakeTranslation(-capacity,0,0)
             }
             if bankChanged || modeChanged {
                 lane.clip.mask = reduced ? nil : lane.fade
-                lane.second.isHidden = reduced
+                lane.scrolling.instanceCount = reduced ? 1 : 2
             }
-            for image in [lane.first,lane.second] {
+            let image=lane.first
                 if bankChanged {
                     image.bounds = .init(x:0,y:0,width:capacity,height:height)
                     image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
                     image.delegate = source
                 }
                 if changed { image.setNeedsDisplay() }
-            }
             if bankChanged {
                 lane.first.position = .zero
-                lane.second.position = .init(x:-capacity,y:0)
             }
             lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
         }
