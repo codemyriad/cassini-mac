@@ -77,6 +77,18 @@ import Darwin
     private var intervals = [UInt32](repeating:0,count:512)
     private var intervalCount: UInt64 = 0
     private var lastDisplayMs = 0.0
+    #if SPECTROGRAM_PROBE
+    // Test observations only; no observer, scan or instrumentation in app builds.
+    var fixtureChanged: (() -> Void)?
+    private var fixtureLatest = [Double](repeating:-1,count:2)
+    private var fixtureNonzero = [Double](repeating:-1,count:2)
+    var fixtureHistoryStartMs: Double { lastDisplayMs-4000 }
+    var fixtureSuspended: Bool { !running && link == nil && reducedTimer == nil && surfaceBytes == 0 && rawHistoryBytes == 0 }
+    func fixtureHasSound(_ lane: Int, since boundary: Double) -> Bool { fixtureNonzero[lane] >= boundary }
+    func fixtureIsSilent(_ lane: Int, since boundary: Double) -> Bool {
+        fixtureHistoryStartMs >= boundary && fixtureLatest[lane] >= boundary && fixtureNonzero[lane] < fixtureHistoryStartMs
+    }
+    #endif
     private var preview = false
     private static let signposts = OSLog(subsystem:"io.codemyriad.cassini",category:"Spectrogram display")
 
@@ -144,6 +156,9 @@ import Darwin
         for view in views.values.compactMap(\.value) { view.freeze() }
     }
     func reconcile() {
+        #if SPECTROGRAM_PROBE
+        defer { fixtureChanged?() }
+        #endif
         if views.values.contains(where:{ $0.value == nil }) { views = views.filter { $0.value.value != nil } }
         let mapped = views.values.compactMap(\.value)
         let visible = mapped.filter(\.visibleForSpectrogram)
@@ -199,6 +214,9 @@ import Darwin
     private func resetPicture() {
         pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
         pixels = nil
+        #if SPECTROGRAM_PROBE
+        fixtureLatest = [-1,-1]; fixtureNonzero = [-1,-1]
+        #endif
         pageNeedsBake = true; pillNeedsBake = true
         for view in views.values.compactMap(\.value) { view.suspend() }
     }
@@ -254,6 +272,9 @@ import Darwin
                     self.intervals[bin] &+= 1; self.intervalCount += 1
                 }
                 self.lastAppliedTime = timestamp; self.framesApplied += 1
+                #if SPECTROGRAM_PROBE
+                self.fixtureChanged?()
+                #endif
             }
         }
     }
@@ -266,6 +287,18 @@ import Darwin
         let pixels: Pixels
         if let existing = self.pixels { pixels = existing }
         else { pixels = Pixels(dark:dark); self.pixels = pixels }
+        #if SPECTROGRAM_PROBE
+        // Observation is idle throughout CPU measurement, so testing a future
+        // silence transition cannot charge instrumentation to the renderer.
+        if fixtureChanged != nil {
+            for (lane,columns) in [me,others].enumerated() {
+                for column in columns {
+                    fixtureLatest[lane] = max(fixtureLatest[lane],Double(column.slot)*20)
+                    if column.bands.contains(where: { $0 > 0 }) { fixtureNonzero[lane] = max(fixtureNonzero[lane],Double(column.slot)*20) }
+                }
+            }
+        }
+        #endif
         lastDisplayMs = displayMs
         let pageEnd = Int64(floor(displayMs/20)), pillEnd = Int64(floor((displayMs-60)/80))
         if pageNeedsBake, let bank = pageBank {

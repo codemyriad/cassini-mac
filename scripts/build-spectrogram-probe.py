@@ -24,7 +24,7 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 command = ['xcrun','swiftc','-O','-g','-parse-as-library','-swift-version','5','-D','DEBUG','-D','SPECTROGRAM_PROBE',
            '-target',platform.machine()+'-apple-macos15.0','-I',str(products),
            str(ROOT/'Cassini/Recording/RecordingSpectrogram.swift'),
-           str(ROOT/'Spikes/Spectrogram/Probe.swift'),str(ROOT/'Spikes/Spectrogram/main.swift'),
+           str(ROOT/'Spikes/Spectrogram/Events.swift'),str(ROOT/'Spikes/Spectrogram/Probe.swift'),str(ROOT/'Spikes/Spectrogram/main.swift'),
            *map(str,objects),'-o',str(args.output)]
 subprocess.run(command,check=True)
 subprocess.run(['codesign','--force','--sign','-','--timestamp=none',str(args.output)],check=True)

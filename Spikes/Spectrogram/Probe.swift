@@ -44,7 +44,11 @@ import ScreenCaptureKit
             }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true)
             input.start()
-            try await Task.sleep(for:.seconds(5))
+            if RecordingSpectrogram.enabled {
+                try await wait("visible four-second history",controller:controller) {
+                    controller.fixtureHistoryStartMs >= 0 && controller.fixtureHasSound(0,since:0) && controller.fixtureHasSound(1,since:0)
+                }
+            } else { try await input.waitForSamples(throughMs:4000) }
             if argument("-SpectrogramAllocations") == "1" {
                 // A separate process with MallocStackLogging enabled: never
                 // contaminate the uninstrumented CPU/pacing measurement.
@@ -62,14 +66,21 @@ import ScreenCaptureKit
                 FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:result,options:[.sortedKeys])+Data([10]))
                 exit(0)
             }
-            if mode == "C" { window.miniaturize(nil); try await Task.sleep(for:.seconds(1)) }
+            if mode == "C" {
+                window.miniaturize(nil)
+                try await wait("minimized renderer releases clocks and history",controller:controller) { window.isMiniaturized && controller.fixtureSuspended }
+                _ = await withCheckedContinuation { continuation in controller.engine.requestFrame(nowMs:0) { continuation.resume(returning:$0) } }
+            }
             if mode != "C" { try require(window.occlusionState.contains(.visible),"visible test window") }
             let initialFrames = controller.analyzedFrames, initialAnalysis = controller.analysisNanoseconds
             let initialLate = controller.lateColumns, initialDropped = controller.droppedColumns
             controller.resetFrameMeasurements()
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
             let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
-            try await Task.sleep(for:.seconds(60))
+            // CPU duration is the subject under measurement. Completion comes
+            // from a real producer callback after the sixty-second interval;
+            // a separate deadline can only fail, never complete, the run.
+            try await input.waitForProgress(afterUptime:began+60)
             let mainCPU = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-mainCPUStart
             let elapsed = ProcessInfo.processInfo.systemUptime-began, cpu = processCPU()-cpuStart
             let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
@@ -107,13 +118,13 @@ import ScreenCaptureKit
                 // measurement. A ring/seed counter alone cannot prove that CA
                 // sees repeated writes to the same IOSurface object.
                 let sounding = try await darkPixels(window:window,view:strips[2],name:"B-sound")
-                input.silence(microphoneOnly:true)
-                try await Task.sleep(for:.seconds(5))
+                let meBoundary = input.silence(microphoneOnly:true)
+                try await wait("Me silence replaces visible history",controller:controller) { controller.fixtureIsSilent(0,since:meBoundary) }
                 let meSilent = try await darkPixels(window:window,view:strips[1],name:"B-microphone-silent")
                 let othersSounding = try await darkPixels(window:window,view:strips[2],name:"B-others-still-sounding")
                 try require(meSilent <= 4 && othersSounding >= 100,"native lane crops keep silent Me separate from sounding Others (\(meSilent),\(othersSounding))")
-                input.silence()
-                try await Task.sleep(for:.seconds(5)) // replace the whole4s history, including release
+                let silenceBoundary = input.silence()
+                try await wait("Others silence replaces visible history",controller:controller) { controller.fixtureIsSilent(1,since:silenceBoundary) }
                 let silent = try await darkPixels(window:window,view:strips[2],name:"B-silence")
                 try require(sounding >= 100 && silent <= 4,"composited pixels follow live same-surface sound→silence (\(sounding)→\(silent))")
                 report["liveCompositedInkPixels"] = ["sound":sounding,"silence":silent,"microphoneAfterMicSilence":meSilent,"othersAfterMicSilence":othersSounding]
@@ -126,13 +137,16 @@ import ScreenCaptureKit
                 // Exercise subscription transitions separately from the60-second
                 // measurement. Hidden views must stop, then restart on return.
                 strips.forEach { $0.isHidden = true }; controller.reconcile()
-                try await Task.sleep(for:.milliseconds(250))
+                try await wait("last hidden view releases clocks and history",controller:controller) { controller.fixtureSuspended }
+                _ = await withCheckedContinuation { continuation in controller.engine.requestFrame(nowMs:0) { continuation.resume(returning:$0) } }
                 let hiddenCallbacks = controller.frameCallbacks
                 try require(controller.surfaceBytes == 0 && controller.rawHistoryBytes == 0,"hiding the last view frees native surfaces and raw history")
-                try await Task.sleep(for:.milliseconds(250))
+                // Prove source work continues while the renderer is suspended.
+                try await input.waitForSamples(throughMs:input.samplePositionMs+Double(input.chunkFrames)/48)
                 try require(controller.frameCallbacks == hiddenCallbacks,"hidden views disconnect their display link")
+                let hiddenImages = controller.framesApplied
                 strips.forEach { $0.isHidden = false }; controller.reconcile()
-                try await Task.sleep(for:.milliseconds(500))
+                try await wait("visible renderer applies fresh frame",controller:controller) { controller.framesApplied > hiddenImages && controller.frameCallbacks > hiddenCallbacks && controller.surfaceBytes > 0 }
                 try require(controller.frameCallbacks > hiddenCallbacks && controller.surfaceBytes > 0,"visible views restart from fresh history")
                 report["hideShowReleasesAndRestarts"] = true
             }
@@ -141,46 +155,54 @@ import ScreenCaptureKit
                 // discontinuities, palette and freeze path after measurement.
                 let warningRevision=controller.surfaceRevision
                 controller.appearance(dark:false,silent:true)
-                try await wait("Silent warning palette applied") { controller.surfaceRevision > warningRevision }
+                try await wait("Silent warning palette applied",controller:controller) { controller.surfaceRevision > warningRevision }
                 _ = try await darkPixels(window:window,view:strips[1],name:"B-silent-warning")
                 let now = { (ProcessInfo.processInfo.systemUptime-input.origin)*1000 }
                 var events=[CaptureEvent(atMs:0,type:"selection",reason:"start",me:true,others:true),
                     CaptureEvent(atMs:now(),type:"selection",reason:"user",me:true,others:false)]
                 controller.update(events:events)
-                try await Task.sleep(for:.milliseconds(4300)) // replace the4s history
+                let offBoundary = events.last!.atMs!
+                try await wait("not-recorded selection fills visible history",controller:controller) { controller.fixtureHistoryStartMs >= offBoundary }
                 let dots=try await darkPixels(window:window,view:strips[2],name:"B-others-not-recorded")
                 try require((60...130).contains(dots),"not-recorded Others is a dotted line (\(dots) pixels)")
                 events.append(.init(atMs:now(),type:"selection",reason:"user",me:true,others:true))
                 controller.update(events:events);controller.appearance(dark:false,silent:false)
-                input.resumeSound()
-                try await Task.sleep(for:.milliseconds(4300))
-                input.dropOthers(true)
-                try await Task.sleep(for:.seconds(2))
-                input.dropOthers(false)
-                try await Task.sleep(for:.milliseconds(500))
+                let soundBoundary = input.resumeSound()
+                try await wait("restored sound fills visible history",controller:controller) {
+                    controller.fixtureHistoryStartMs >= soundBoundary && controller.fixtureHasSound(1,since:soundBoundary)
+                }
+                let gapBoundary = input.dropOthers(true)
+                // Two seconds of missing source PCM is the fixture's data,
+                // measured in produced samples, rather than a settling sleep.
+                try await input.waitForSamples(throughMs:gapBoundary+2000)
+                let returnBoundary = input.dropOthers(false)
+                try await wait("Others column after genuine PCM gap",controller:controller) { controller.fixtureHasSound(1,since:returnBoundary) }
                 _ = try await darkPixels(window:window,view:strips[2],name:"B-dropout-and-return")
                 let darkRevision=controller.surfaceRevision
                 window.appearance=NSAppearance(named:.darkAqua);controller.appearance(dark:true,silent:false)
-                try await wait("Dark palette applied") { controller.surfaceRevision > darkRevision }
+                try await wait("Dark palette applied",controller:controller) { controller.surfaceRevision > darkRevision }
                 _ = try await darkPixels(window:window,view:strips[2],name:"B-recording-dark")
                 report["scriptedStates"] = ["silentWarning","othersNotRecorded","dropoutAndReturn","dark"]
                 try await motion(true,controller:controller)
                 let ticks = controller.frameCallbacks, images = controller.framesApplied
-                try await wait("Reduced Motion column update") { controller.framesApplied > images }
+                try await wait("Reduced Motion column update",controller:controller) { controller.framesApplied > images }
                 try require(controller.usingReducedMotion && controller.frameCallbacks == ticks && controller.framesApplied > images,"real Reduced Motion uses the column timer without display-link callbacks")
                 _ = try await darkPixels(window:window,view:strips[2],name:"B-reduced-motion")
                 try await motion(false,controller:controller)
                 let resumed = controller.frameCallbacks
-                try await wait("Normal-motion display link resumes") { controller.frameCallbacks > resumed }
+                try await wait("Normal-motion display link resumes",controller:controller) { controller.frameCallbacks > resumed }
                 try require(!controller.usingReducedMotion && controller.frameCallbacks > resumed,"real normal-motion setting restores the display link")
                 report["realMotionTransition"] = true
             }
             // Freeze is exercised after measurement; layout/theme changes may
             // not clear its last image or restart its display clock.
-            controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
-            let stoppedRevision = controller.surfaceRevision, stoppedCallbacks = controller.frameCallbacks
-            controller.reconcile(); controller.appearance(dark:true,silent:true)
-            try await Task.sleep(for:.milliseconds(250))
+            let stoppedCallbacks = controller.frameCallbacks
+            var stoppedRevision = controller.surfaceRevision
+            try await SpectrogramProbeEvent.transaction {
+                controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
+                stoppedRevision = controller.surfaceRevision
+                controller.reconcile(); controller.appearance(dark:true,silent:true)
+            }
             try require(controller.frameCallbacks == stoppedCallbacks,"Stop disconnects the frame clock")
             if !hidden { try require(controller.surfaceRevision >= stoppedRevision && strips.allSatisfy { $0.layer?.opacity == 0.45 },"Stop freezes and fades visible strips") }
             report["stopDisconnectsAndFreezes"] = true
@@ -202,29 +224,22 @@ import ScreenCaptureKit
             FileHandle.standardError.write(Data("Spectrogram probe failed: \(error)\n".utf8)); exit(1)
         }
     }
-    private static func wait(_ description:String,until condition:() -> Bool) async throws {
-        let deadline=ContinuousClock.now.advanced(by:.seconds(3))
-        while !condition() {
-            guard ContinuousClock.now < deadline else { throw Failure.check(description) }
-            try await Task.sleep(for:.milliseconds(20))
-        }
+    private static func wait(_ description:String,controller:RecordingSpectrogram,until condition:@escaping () -> Bool) async throws {
+        try await SpectrogramProbeEvent().wait(description,controller:controller,until:condition)
     }
     private static func motion(_ value: Bool, controller: RecordingSpectrogram) async throws {
         guard let directory=argument("-SpectrogramOutput") else { throw Failure.check("motion request directory") }
         let observed=controller.displayOptionsChanges
         let request=try JSONSerialization.data(withJSONObject:["reduceMotion":value,"pid":getpid()])
         try request.write(to:URL(fileURLWithPath:directory).appendingPathComponent("motion-request.json"),options:.atomic)
-        // XCTest changes System Settings on this disposable Mac. Wait for the
-        // real NSWorkspace notification and getter, never post it ourselves.
-        let deadline=ContinuousClock.now.advanced(by:.seconds(40))
-        while ContinuousClock.now < deadline {
-            if controller.displayOptionsChanges > observed,
-               NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value,
-               controller.usingReducedMotion == value,
-               NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid() { return }
-            try await Task.sleep(for:.milliseconds(20))
+        // XCTest changes System Settings on this disposable Mac. Both actual
+        // display-options and application-activation notifications drive this.
+        try await SpectrogramProbeEvent().wait("real system Reduce Motion setting did not reach the view",controller:controller,timeout:40) {
+            controller.displayOptionsChanges > observed &&
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == value &&
+            controller.usingReducedMotion == value &&
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
         }
-        throw Failure.check("real system Reduce Motion setting did not reach the view")
     }
     private static func allocationSnapshot(output:String,phase:String) async throws {
         let pid=getpid()
@@ -299,6 +314,35 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private var frames = 0, sequence = 0
     private var othersMissing = false
     private let chunk: Int
+    var chunkFrames: Int { chunk }
+    var samplePositionMs: Double { queue.sync { Double(frames)/48 } }
+    private struct ProgressWait {
+        let ready: (Int, Double) -> Bool
+        let continuation: CheckedContinuation<Void, Error>
+        let deadline: DispatchWorkItem
+    }
+    private var progressWaits: [UUID:ProgressWait] = [:]
+    private enum ProgressFailure: Error { case timeout(String), finished }
+    func waitForSamples(throughMs target:Double) async throws {
+        try await waitForProgress("producer sample position \(target) ms",timeout:15) { frames,_ in Double(frames)/48 >= target }
+    }
+    func waitForProgress(afterUptime target:Double) async throws {
+        try await waitForProgress("sixty-second source progress",timeout:90) { _,uptime in uptime >= target }
+    }
+    private func waitForProgress(_ description:String,timeout:Double,until ready:@escaping (Int,Double) -> Bool) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { [self] in
+                if ready(frames,ProcessInfo.processInfo.systemUptime) { continuation.resume(); return }
+                let id = UUID()
+                let deadline = DispatchWorkItem { [self] in
+                    guard let wait = progressWaits.removeValue(forKey:id) else { return }
+                    wait.continuation.resume(throwing:ProgressFailure.timeout(description))
+                }
+                progressWaits[id] = .init(ready:ready,continuation:continuation,deadline:deadline)
+                queue.asyncAfter(deadline:.now()+timeout,execute:deadline)
+            }
+        }
+    }
     init(root: URL, browser: Bool) throws {
         chunk = browser ? 8192 : 4096
         if browser {
@@ -349,26 +393,36 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             catch { errorLock.withLock { failure = String(describing:error) } }
         } else { sink.receive(buffers[1],hostTime:host,id:"system",label:"System",kind:"system") }
         frames += chunk; sequence += 1
+        let uptime = ProcessInfo.processInfo.systemUptime
+        for (id,wait) in progressWaits where wait.ready(frames,uptime) {
+            progressWaits.removeValue(forKey:id); wait.deadline.cancel(); wait.continuation.resume()
+        }
     }
-    func silence(microphoneOnly: Bool = false) {
+    func silence(microphoneOnly: Bool = false) -> Double {
         queue.sync {
             for index in 0..<(microphoneOnly ? 1 : buffers.count) {
                 for n in 0..<chunk { buffers[index].floatChannelData![0][n] = 0 }
                 pcm[index] = Data(repeating:0,count:pcm[index].count)
             }
+            return Double(frames)/48
         }
     }
-    func dropOthers(_ value:Bool) { queue.sync { othersMissing=value } }
-    func resumeSound() {
+    func dropOthers(_ value:Bool) -> Double { queue.sync { othersMissing=value; return Double(frames)/48 } }
+    func resumeSound() -> Double {
         queue.sync {
             for (track,buffer) in buffers.enumerated() {
                 for n in 0..<chunk { buffer.floatChannelData![0][n] = Float(0.05/Double(track+1)*sin(2*Double.pi*Double(400+track*300)*Double(n)/48000)) }
                 pcm[track]=(0..<chunk).map { Int16((buffer.floatChannelData![0][$0]*32767).rounded()).littleEndian }.withUnsafeBytes { Data($0) }
             }
+            return Double(frames)/48
         }
     }
     func finish() async throws {
-        queue.sync { timer?.cancel(); timer = nil }
+        queue.sync {
+            timer?.cancel(); timer = nil
+            let waits = progressWaits; progressWaits.removeAll()
+            for wait in waits.values { wait.deadline.cancel(); wait.continuation.resume(throwing:ProgressFailure.finished) }
+        }
         try await Task.detached { [self] in try sink.finish(problem:nil) }.value
         if let owner { try await owner.finish() }
         if let failure = errorLock.withLock({ failure }) { throw RecordingError.invalid(failure) }

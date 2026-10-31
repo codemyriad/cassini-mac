@@ -98,3 +98,13 @@ its normal frame boundary; the display callback does not query window occlusion
 or force an explicit transaction. One parent layer scrolls each lane's two fixed wrap textures.
 These changes need a fresh hosted measurement; local analysis-only savings do
 not establish the native rendering budget.
+
+E1: the native probe subscribes to rendered-column, visibility, real workspace
+and Core Animation completion events. Silence/off states wait until their actual
+sample/selection boundary replaces the visible four-second history; dropout
+length is defined by producer sample positions. No test sleeps or polling delays
+synchronize these transitions. Observer hooks exist only in the standalone probe
+build and do not scan columns during CPU measurement. The sixty-second CPU run
+ends on a real producer progress event after the measured interval; this physical
+performance measurement cannot use a virtual clock. Every timeout only fails a
+missing event, with the transition's name, and cannot make an assertion pass.
