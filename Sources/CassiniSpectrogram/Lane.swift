@@ -16,8 +16,10 @@ public struct SpectrogramColumn: Sendable, Equatable {
 /// delay makes a slot due, so independently arriving remote tracks add before
 /// the logarithm and release. Nothing here blocks a capture or writer queue.
 public final class SpectrogramLaneAccumulator {
-    private struct Pending { var tracks: UInt64 = 0; var powers = SIMD32<Float>.zero }
-    private var pending: [Int64:Pending] = [:]
+    private struct Pending { let slot: Int64; var tracks: UInt64 = 0; var powers = SIMD32<Float>.zero }
+    // Ordered on insertion, so every release drains a prefix. No per-frame
+    // dictionary scan, key array, sort or repeated hash lookup is necessary.
+    private var pending: [Pending] = []
     private var release = SpectrogramRelease()
     public private(set) var releasedThrough: Int64 = -1
     public private(set) var late: UInt64 = 0
@@ -29,13 +31,20 @@ public final class SpectrogramLaneAccumulator {
     public func append(slot: Int64, trackIndex: Int, powers: [Double]) {
         precondition(slot >= 0 && (0..<64).contains(trackIndex) && powers.count == 32)
         guard slot > releasedThrough else { late += 1; return }
-        if pending[slot] == nil, pending.count == Self.capacity {
-            let oldest = pending.keys.min()!
-            // Keep recent picture data; never grow or backpressure recording.
-            if slot < oldest { overflow += 1; return }
-            pending.removeValue(forKey:oldest); overflow += 1
+        var low = 0, high = pending.count
+        while low < high {
+            let middle = (low+high)/2
+            if pending[middle].slot < slot { low = middle+1 } else { high = middle }
         }
-        var value = pending[slot] ?? Pending()
+        var index = low
+        let existing = index < pending.count && pending[index].slot == slot
+        if !existing, pending.count == Self.capacity {
+            // Preserve the original overflow policy, including sparse slots
+            // and out-of-order input: retain the most recent 128 columns.
+            if index == 0 { overflow += 1; return }
+            pending.removeFirst(); index -= 1; overflow += 1
+        }
+        var value = existing ? pending[index] : Pending(slot:slot)
         let bit = UInt64(1)<<trackIndex
         guard value.tracks & bit == 0 else { return }
         value.tracks |= bit
@@ -43,16 +52,26 @@ public final class SpectrogramLaneAccumulator {
             let power = powers[band]
             value.powers[band] += power.isFinite ? Float(max(0,min(Double(Float.greatestFiniteMagnitude)/64,power))) : 0
         }
-        pending[slot] = value
+        if existing { pending[index] = value } else { pending.insert(value,at:index) }
+    }
+    /// Reuse a retired source's bounded index without discarding its pending
+    /// power or treating a replacement as the same source in overlapping slots.
+    func retire(trackIndex: Int) {
+        precondition((0..<64).contains(trackIndex))
+        let mask = ~(UInt64(1)<<trackIndex)
+        for index in pending.indices { pending[index].tracks &= mask }
     }
     /// Missing slots produce no column: the renderer writes a transparent hole.
     /// SpectrogramRelease sees the discontinuity and cannot bridge it with ink.
     public func release(through slot: Int64, emit: (SpectrogramColumn) -> Void) {
         guard slot > releasedThrough else { return }
-        for key in pending.keys.filter({ $0 <= slot }).sorted() {
-            let value = pending.removeValue(forKey:key)!
-            emit(.init(slot:key,bands:release.column(slot:key,powers:(0..<32).map { Double(value.powers[$0]) })))
+        var count = 0
+        while count < pending.count && pending[count].slot <= slot {
+            let value = pending[count]
+            emit(.init(slot:value.slot,bands:release.column(slot:value.slot,powers:value.powers)))
+            count += 1
         }
+        if count > 0 { pending.removeFirst(count) }
         releasedThrough = slot
     }
 }

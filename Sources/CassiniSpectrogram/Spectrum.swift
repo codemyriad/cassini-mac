@@ -41,8 +41,10 @@ public final class SpectrogramTransform {
     private let logSize: vDSP_Length
     private let scale: Double
     private let window: [Float]
-    private let weights: [[(Int,Double)]]
+    private struct Band { let first: Int; let weights: [Float] }
+    private let weights: [Band]
     private var real: [Float], outputReal: [Float], outputImaginary: [Float], squared: [Float]
+    private var levelScratch: [Double]
 
     public init(parameters: SpectrogramParameters) {
         self.parameters = parameters
@@ -57,17 +59,32 @@ public final class SpectrogramTransform {
             let low = SpectrogramParameters.edgesHz[band]*Double(size)/Double(parameters.rate)
             let high = SpectrogramParameters.edgesHz[band+1]*Double(size)/Double(parameters.rate)
             let first = Int(floor(low+0.5)), last = min(size/2,Int(ceil(high+0.5)))
-            guard first <= last else { return [] }
-            return (first...last).compactMap { bin in
+            guard first <= last else { return Band(first:0,weights:[]) }
+            let bins: [(Int,Double)] = (first...last).compactMap { bin in
                 let weight = min(Double(bin)+0.5,high)-max(Double(bin)-0.5,low)
                 return weight > 1e-9 ? (bin,weight) : nil
             }
+            return Band(first:bins.first?.0 ?? 0,weights:bins.map { Float($0.1) })
         }
         real = [Float](repeating:0,count:size)
         outputReal = [Float](repeating:0,count:size/2); outputImaginary = outputReal
         squared = [Float](repeating:0,count:size/2+1)
+        levelScratch = [Double](repeating:0,count:max(1,parameters.rate/10))
     }
     deinit { vDSP_destroy_fftsetup(setup) }
+
+    // Shared per-rate workspace on the same serial queue. AC100ms windows
+    // are independent of FFT/history boundaries: no repeated tiny reductions.
+    func levelStatistics(_ input: UnsafePointer<Float>, count: Int) -> (sum:Double,low:Float,high:Float) {
+        precondition(count > 0 && count <= levelScratch.count)
+        var sum = 0.0, low: Float = 0, high: Float = 0
+        levelScratch.withUnsafeMutableBufferPointer { scratch in
+            let n = vDSP_Length(count)
+            vDSP_vspdp(input,1,scratch.baseAddress!,1,n); vDSP_sveD(scratch.baseAddress!,1,&sum,n)
+            vDSP_minv(input,1,&low,n); vDSP_maxv(input,1,&high,n)
+        }
+        return (sum,low,high)
+    }
 
     public func powers(frame: [Float], startingAt first: Int = 0) -> [Double] {
         precondition(frame.count == parameters.size)
@@ -92,30 +109,48 @@ public final class SpectrogramTransform {
     }
 
     private func transformWorkspace() -> [Double] {
-        var mean: Float = 0
-        let count = vDSP_Length(parameters.size)
-        vDSP_meanv(real,1,&mean,count); mean = -mean
-        vDSP_vsadd(real,1,&mean,&real,1,count)
-        vDSP_vmul(real,1,window,1,&real,1,count)
-        let half = vDSP_Length(parameters.size/2)
-        real.withUnsafeBufferPointer { input in
+        let count = vDSP_Length(parameters.size), half = vDSP_Length(parameters.size/2)
+        // Keep in-place vDSP inputs/outputs on the same borrowed storage. Array
+        // arguments plus an inout alias otherwise force a fresh CoW buffer at
+        // every hop, even though each transform owns its serial workspace.
+        real.withUnsafeMutableBufferPointer { input in
+            let samples = input.baseAddress!
+            var mean: Float = 0
+            vDSP_meanv(samples,1,&mean,count); mean = -mean
+            vDSP_vsadd(samples,1,&mean,samples,1,count)
+            window.withUnsafeBufferPointer { weights in
+                vDSP_vmul(samples,1,weights.baseAddress!,1,samples,1,count)
+            }
             outputReal.withUnsafeMutableBufferPointer { resultReal in
                 outputImaginary.withUnsafeMutableBufferPointer { resultImaginary in
                     var output = DSPSplitComplex(realp:resultReal.baseAddress!,imagp:resultImaginary.baseAddress!)
-                    input.baseAddress!.withMemoryRebound(to:DSPComplex.self,capacity:parameters.size/2) {
+                    samples.withMemoryRebound(to:DSPComplex.self,capacity:parameters.size/2) {
                         vDSP_ctoz($0,2,&output,1,half)
                     }
                     vDSP_fft_zrip(setup,&output,1,logSize,FFTDirection(FFT_FORWARD))
                     let dc = resultReal[0], nyquist = resultImaginary[0]
-                    vDSP_zvmags(&output,1,&squared,1,half)
-                    var quarter: Float = 0.25
-                    vDSP_vsmul(squared,1,&quarter,&squared,1,half)
-                    squared[0] = dc*dc*quarter
-                    squared[parameters.size/2] = nyquist*nyquist*quarter
+                    squared.withUnsafeMutableBufferPointer { energy in
+                        let values = energy.baseAddress!
+                        vDSP_zvmags(&output,1,values,1,half)
+                        var quarter: Float = 0.25
+                        vDSP_vsmul(values,1,&quarter,values,1,half)
+                        values[0] = dc*dc*quarter
+                        values[parameters.size/2] = nyquist*nyquist*quarter
+                    }
                 }
             }
         }
-        return weights.map { band in scale * band.reduce(0) { $0 + $1.1*Double(squared[$1.0]) } }
+        return squared.withUnsafeBufferPointer { energy in
+            weights.map { band in
+                var power: Float = 0
+                band.weights.withUnsafeBufferPointer { factors in
+                    if let base=factors.baseAddress, !factors.isEmpty {
+                        vDSP_dotpr(energy.baseAddress!+band.first,1,base,1,&power,vDSP_Length(factors.count))
+                    }
+                }
+                return scale*Double(power)
+            }
+        }
     }
 }
 
@@ -123,17 +158,28 @@ public final class SpectrogramTransform {
 /// resets it so a previous syllable cannot bridge missing audio.
 public struct SpectrogramRelease: Sendable {
     private var previousSlot: Int64?
-    private var held: [Double] = []
+    private var held = SIMD32<Double>.zero
     public init() {}
-    public mutating func reset() { previousSlot = nil; held = [] }
+    public mutating func reset() { previousSlot = nil; held = .zero }
     public mutating func column(slot: Int64, powers: [Double]) -> [UInt8] {
         precondition(powers.count == SpectrogramParameters.bands)
-        let decibels = powers.map(Self.decibels)
-        if let previousSlot, slot == previousSlot + 1 {
-            held = zip(decibels,held).map { max($0,$1-3) }
-        } else { held = decibels }
+        return render(slot:slot) { powers[$0] }
+    }
+    // Lane sums are already Float. Widen one band at a time instead of
+    // allocating a Double array and two more release-stage arrays per column.
+    mutating func column(slot: Int64, powers: SIMD32<Float>) -> [UInt8] {
+        render(slot:slot) { Double(powers[$0]) }
+    }
+    private mutating func render(slot: Int64, power: (Int) -> Double) -> [UInt8] {
+        let contiguous = previousSlot.map { slot == $0+1 } ?? false
+        var result = [UInt8](repeating:0,count:SpectrogramParameters.bands)
+        for band in 0..<SpectrogramParameters.bands {
+            let db = Self.decibels(power(band))
+            held[band] = contiguous ? max(db,held[band]-3) : db
+            result[band] = Self.quantize(held[band])
+        }
         previousSlot = slot
-        return held.map(Self.quantize)
+        return result
     }
     public static func raw(powers: [Double]) -> [UInt8] { powers.map { quantize(decibels($0)) } }
     private static func decibels(_ power: Double) -> Double {

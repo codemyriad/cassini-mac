@@ -11,7 +11,7 @@ old=subprocess.run(['defaults','read','com.apple.universalaccess','reduceMotion'
 try:
  subprocess.run(['defaults','write','com.apple.universalaccess','reduceMotion','-bool','false'],check=True)
  for mode in 'ADB':
-  for label,program in zip(['replicator','two-leaves'],sys.argv[1:3],strict=True):
+  for label,program in zip(['per-frame-position','compositor-segments'],sys.argv[1:3],strict=True):
    source=Path(program).parent/'Cassini/Recording/RecordingSpectrogram.swift'
    name=label+'-'+mode
    case_output=output/name;case_output.mkdir()
