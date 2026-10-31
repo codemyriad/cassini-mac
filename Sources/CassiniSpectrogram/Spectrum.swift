@@ -109,26 +109,34 @@ public final class SpectrogramTransform {
     }
 
     private func transformWorkspace() -> [Double] {
-        var mean: Float = 0
-        let count = vDSP_Length(parameters.size)
-        vDSP_meanv(real,1,&mean,count); mean = -mean
-        vDSP_vsadd(real,1,&mean,&real,1,count)
-        vDSP_vmul(real,1,window,1,&real,1,count)
-        let half = vDSP_Length(parameters.size/2)
-        real.withUnsafeBufferPointer { input in
+        let count = vDSP_Length(parameters.size), half = vDSP_Length(parameters.size/2)
+        // Keep in-place vDSP inputs/outputs on the same borrowed storage. Array
+        // arguments plus an inout alias otherwise force a fresh CoW buffer at
+        // every hop, even though each transform owns its serial workspace.
+        real.withUnsafeMutableBufferPointer { input in
+            let samples = input.baseAddress!
+            var mean: Float = 0
+            vDSP_meanv(samples,1,&mean,count); mean = -mean
+            vDSP_vsadd(samples,1,&mean,samples,1,count)
+            window.withUnsafeBufferPointer { weights in
+                vDSP_vmul(samples,1,weights.baseAddress!,1,samples,1,count)
+            }
             outputReal.withUnsafeMutableBufferPointer { resultReal in
                 outputImaginary.withUnsafeMutableBufferPointer { resultImaginary in
                     var output = DSPSplitComplex(realp:resultReal.baseAddress!,imagp:resultImaginary.baseAddress!)
-                    input.baseAddress!.withMemoryRebound(to:DSPComplex.self,capacity:parameters.size/2) {
+                    samples.withMemoryRebound(to:DSPComplex.self,capacity:parameters.size/2) {
                         vDSP_ctoz($0,2,&output,1,half)
                     }
                     vDSP_fft_zrip(setup,&output,1,logSize,FFTDirection(FFT_FORWARD))
                     let dc = resultReal[0], nyquist = resultImaginary[0]
-                    vDSP_zvmags(&output,1,&squared,1,half)
-                    var quarter: Float = 0.25
-                    vDSP_vsmul(squared,1,&quarter,&squared,1,half)
-                    squared[0] = dc*dc*quarter
-                    squared[parameters.size/2] = nyquist*nyquist*quarter
+                    squared.withUnsafeMutableBufferPointer { energy in
+                        let values = energy.baseAddress!
+                        vDSP_zvmags(&output,1,values,1,half)
+                        var quarter: Float = 0.25
+                        vDSP_vsmul(values,1,&quarter,values,1,half)
+                        values[0] = dc*dc*quarter
+                        values[parameters.size/2] = nyquist*nyquist*quarter
+                    }
                 }
             }
         }
