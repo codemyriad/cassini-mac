@@ -57,6 +57,20 @@ import ScreenCaptureKit
                 FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
                 exit(0)
             }
+            if argument("-SpectrogramProfileOnly") == "1" {
+                // Instruments may suspend an attached process. This separate
+                // diagnostic keeps that effect outside every CPU/pacing gate.
+                let began=ProcessInfo.processInfo.systemUptime
+                try await input.waitForProgress(afterUptime:began+60)
+                report=["diagnosticProfileOnly":true,"audioDevicesOpened":false,
+                        "seconds":ProcessInfo.processInfo.systemUptime-began,
+                        "analyzedFrames":controller.analyzedFrames,"frameCallbacks":controller.frameCallbacks]
+                controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
+                strips.forEach {$0.detach()};window.orderOut(nil)
+                try await input.finish();try? FileManager.default.removeItem(at:root)
+                FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
+                exit(0)
+            }
             if argument("-SpectrogramAllocations") == "1" {
                 // A separate process with MallocStackLogging enabled: never
                 // contaminate the uninstrumented CPU/pacing measurement.
