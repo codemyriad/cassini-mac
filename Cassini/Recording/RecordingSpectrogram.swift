@@ -68,6 +68,7 @@ import Darwin
     private(set) var skippedFrames: UInt64 = 0, maxFrameIntervalMs = 0.0
     #if DEBUG
     private(set) var displayOptionsChanges: UInt64 = 0
+    private(set) var lateTiming: [SpectrogramSession.LateColumn] = []
     private(set) var displayDelayMs: Double = 0
     #endif
     private(set) var drawingNanoseconds: UInt64 = 0, analysisNanoseconds: UInt64 = 0
@@ -265,7 +266,7 @@ import Darwin
                 guard let self, self.generation == revision, self.running, !self.stopped else { return }
                 self.inFlight = false; self.analyzedFrames = frame.analyzedFrames; self.analysisNanoseconds = frame.analysisNanoseconds
                 #if DEBUG
-                self.displayDelayMs = frame.delayMs
+                self.displayDelayMs = frame.delayMs; self.lateTiming = frame.lateSamples
                 #endif
                 self.lateColumns = frame.lateColumns; self.droppedColumns = frame.droppedColumns; self.droppedBuffers = frame.droppedBuffers
                 self.paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)

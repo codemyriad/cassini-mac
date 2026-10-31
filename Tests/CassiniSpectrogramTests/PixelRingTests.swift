@@ -3,6 +3,25 @@ import Testing
 @testable import CassiniSpectrogram
 
 @Suite struct PixelRingTests {
+    @Test func historyWithoutASurfaceRebakesExactlyTheSamePixels() {
+        for style in [SpectrogramStripStyle.row,.pill] {
+            var painted = SpectrogramPixelRing(style:style,dark:false)
+            var history = SpectrogramPixelRing(style:style,dark:false)
+            for n in 0..<600 {
+                let slot = Int64(n+n/19)
+                let bands = n%11 == 0 ? nil : [UInt8](repeating:UInt8(n%256),count:style.rows)
+                painted.append(slot:slot,bands:bands,recorded:n%7 != 0) { _,_ in }
+                history.remember(slot:slot,bands:bands,recorded:n%7 != 0)
+                #expect(history.bandValues(at:slot) == painted.bandValues(at:slot))
+            }
+            for reduced in [false,true] {
+                var a: [Int:[UInt32]] = [:], b: [Int:[UInt32]] = [:]
+                painted.configure(dark:true,silent:true,reducedMotion:reduced) { a[$0] = $1 }
+                history.configure(dark:true,silent:true,reducedMotion:reduced) { b[$0] = $1 }
+                #expect(a == b)
+            }
+        }
+    }
     @Test func premultipliedPixelsFollowTheSharedLightAndAmberTokens() {
         let normal = SpectrogramPalette(style:.row,dark:false,silent:false)
         #expect(normal.pixel(0) == 0x0f020202)

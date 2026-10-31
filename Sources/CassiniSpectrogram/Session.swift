@@ -48,6 +48,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private var alignedPCM: [Int16] = []
     private var nextChoiceAt: Double = 0
     private var stoppedAt: Double?
+    private var lateSamples: [LateColumn] = []
 
     public init(originUptime: TimeInterval, measureCPU: Bool = false) {
         self.measureCPU = measureCPU
@@ -117,12 +118,20 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             if source.lane == .me { meSelection.reset() } else { othersSelection.reset() }
         }
     }
+    /// Bounded timing evidence for the isolated performance probe. Ordinary
+    /// sessions leave this empty and never collect source or window metadata.
+    public struct LateColumn: Sendable {
+        public let ordinal: UInt64
+        public let slot: Int64, releasedThrough: Int64
+        public let arrivalMs: Double, delayMs: Double
+    }
     public struct Frame: Sendable {
         public let me: [SpectrogramColumn], others: [SpectrogramColumn]
         public let displayMs: Double, delayMs: Double
         public let analyzedFrames: UInt64, lateColumns: UInt64, droppedBuffers: UInt64, droppedColumns: UInt64
         public let retainedTracks: Int
         public let analysisNanoseconds: UInt64
+        public let lateSamples: [LateColumn]
     }
     /// Completion is on the utility queue. Callers must reject an obsolete view
     /// generation before dispatching CALayer changes back to the main actor.
@@ -144,7 +153,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             if measureCPU { analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart }
             completion(.init(me:batch.me,others:batch.others,displayMs:display,delayMs:displayClock.delayMs,
                 analyzedFrames:sources.values.reduce(retiredAnalyzedFrames) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
-                droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count,analysisNanoseconds:analysisNanoseconds))
+                droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count,analysisNanoseconds:analysisNanoseconds,lateSamples:lateSamples))
         }
     }
     public func stop(atMs: Double) {
@@ -155,7 +164,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private func ensureGeneration(_ value: UInt64) {
         guard generation != value else { return }
         generation = value; sources = [:]; transforms = [:]; mono = []; right = []; alignedPCM = []
-        occupiedIndices = 0; retiredAnalyzedFrames = 0
+        occupiedIndices = 0; retiredAnalyzedFrames = 0; lateSamples.removeAll(keepingCapacity:true)
         me.reset(); others.reset(); meSelection.reset(); othersSelection.reset(); nextChoiceAt = 0; displayClock.reset(); mailbox.reset()
     }
     private func consume(_ descriptor: RecordedPCMSource, pcm: Data, offsetMs: Double) {
@@ -212,7 +221,13 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
                 // Release is keyed by the containing20ms slot, not the later
                 // FFT centre within it. Measure readiness on that same clock.
                 displayClock.observe(columnMs:Double(frame.slot)*20,arrivalMs:arrival)
-                (source.lane == .me ? me : others).append(slot:frame.slot,trackIndex:source.index,powers:frame.powers)
+                let lane = source.lane == .me ? me : others
+                if measureCPU, frame.slot <= lane.releasedThrough {
+                    if lateSamples.count == 16 { lateSamples.removeFirst() }
+                    lateSamples.append(.init(ordinal:me.late+others.late+1,slot:frame.slot,
+                        releasedThrough:lane.releasedThrough,arrivalMs:arrival,delayMs:displayClock.delayMs))
+                }
+                lane.append(slot:frame.slot,trackIndex:source.index,powers:frame.powers)
             }
         }
     }

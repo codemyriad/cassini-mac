@@ -79,7 +79,12 @@ public struct SpectrogramPixelRing {
         latestSlot = slot; clearAhead(paint)
     }
     public mutating func remember(slot: Int64, bands: [UInt8]?, recorded: Bool) {
-        append(slot:slot,bands:bands,recorded:recorded) { _,_ in }
+        precondition(slot >= 0 && (bands == nil || bands!.count == style.rows))
+        guard slot > latestSlot else { return }
+        let first = max(latestSlot+1,slot-Int64(capacity)+1)
+        if first < slot { for missing in first..<slot { record(slot:missing,bands:nil,state:.hole) } }
+        record(slot:slot,bands:bands,state:recorded ? (bands == nil ? .hole : .recorded) : .notRecorded)
+        latestSlot = slot
     }
     public func bandValues(at slot: Int64) -> [UInt8]? {
         guard slot >= 0 else { return nil }
@@ -89,9 +94,14 @@ public struct SpectrogramPixelRing {
     }
     private func pixelIndex(_ slot: Int64) -> Int { Int(slot%Int64(reducedMotion ? style.columns : capacity)) }
     private mutating func store(slot: Int64, bands: [UInt8]?, state: State, paint: (Int,[UInt32]) -> Void) {
+        record(slot:slot,bands:bands,state:state)
+        paint(pixelIndex(slot),pixels(index:Int(slot%Int64(capacity)),slot:slot))
+    }
+    // History is also needed to pool a visible pill when no page row exists.
+    // That path must not allocate or colourize discarded pixel columns.
+    private mutating func record(slot: Int64, bands: [UInt8]?, state: State) {
         let index = Int(slot%Int64(capacity)); slots[index] = slot; states[index] = state.rawValue
         if let bands { values.replaceSubrange(index*style.rows..<(index+1)*style.rows,with:bands) }
-        paint(pixelIndex(slot),pixels(index:index,slot:slot))
     }
     private func pixels(index: Int, slot: Int64) -> [UInt32] {
         switch State(rawValue:states[index])! {

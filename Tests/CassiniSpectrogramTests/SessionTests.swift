@@ -36,6 +36,23 @@ private final class RetainedPCM: @unchecked Sendable {
         for index in 0..<frames { for channel in 0..<channels { values[index*channels+channel] = Int16(1000*sin(2*Double.pi*1000*Double(index)/48000)).littleEndian } }
         return values.withUnsafeBytes { Data($0) }
     }
+    @Test(arguments:[false,true]) func lateTimingIsBoundedAndOnlyCollectedForMeasurement(_ measured: Bool) async {
+        let session = SpectrogramSession(clock:{ 10000 },measureCPU:measured)
+        session.setVisible(true)
+        _ = await frame(session,at:10000)
+        let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
+        let pcm = Data(repeating:0,count:4096*2)
+        for n in 0..<8 { session.offer(source:source,pcm:pcm,offsetMs:Double(n*4096)/48) }
+        let late = await frame(session,at:10000)
+        #expect(late.lateColumns > 16)
+        #expect(late.lateSamples.count == (measured ? 16 : 0))
+        if measured {
+            #expect(late.lateSamples.last?.ordinal == late.lateColumns)
+            #expect(late.lateSamples.allSatisfy { $0.slot <= $0.releasedThrough && $0.arrivalMs == 10000 })
+        }
+        session.setVisible(false);session.setVisible(true)
+        #expect(await frame(session,at:10000).lateSamples.isEmpty)
+    }
     @Test(arguments:[4096,8192]) func continuousDisplayDoesNotReleaseChunkColumnsBeforeTheirSlotsArrive(_ chunk: Int) async {
         let time = SpectrumTestClock(); time.set(0)
         let session = SpectrogramSession(clock:{ time.read() }); session.setVisible(true)

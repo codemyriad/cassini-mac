@@ -9,6 +9,26 @@ import Testing
         let spec: String, rate: Int, n: Int, hop: Int, bands: Int
         let raw: [[Int]], display: [[Int]], firstFrame: Int
     }
+    @Test func allocationReducedReleaseMatchesTheOriginalScalarOperationsExactly() {
+        var release = SpectrogramRelease(), previous: Int64?, held: [Double] = []
+        for n in 0..<512 {
+            let slot = Int64(n+n/17)
+            let powers = (0..<32).map { band -> Double in
+                if (n+band)%41 == 0 { return .infinity }
+                if (n+band)%43 == 0 { return .nan }
+                return pow(10,Double((n*7+band*13)%145-125)/10)
+            }
+            let db = powers.map { value -> Double in
+                if !value.isFinite { return value > 0 ? -20 : -120 }
+                return 10*log10(max(value,1e-12))
+            }
+            held = previous.map { slot == $0+1 } == true ? zip(db,held).map { max($0,$1-3) } : db
+            let expected = held.map { UInt8((255*min(1,max(0,($0+80)/60))).rounded(.toNearestOrEven)) }
+            #expect(release.column(slot:slot,powers:powers) == expected)
+            previous = slot
+            if n%113 == 0 { release.reset(); previous = nil; held = [] }
+        }
+    }
     @Test func fixtureBytesRemainBoundToTheReference() throws {
         let root = Bundle.module.resourceURL!.appendingPathComponent("Fixtures")
         let pin = try #require(JSONSerialization.jsonObject(with:Data(contentsOf:root.appendingPathComponent("UPSTREAM.json"))) as? [String:Any])

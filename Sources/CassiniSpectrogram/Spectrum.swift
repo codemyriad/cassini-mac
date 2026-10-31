@@ -150,17 +150,28 @@ public final class SpectrogramTransform {
 /// resets it so a previous syllable cannot bridge missing audio.
 public struct SpectrogramRelease: Sendable {
     private var previousSlot: Int64?
-    private var held: [Double] = []
+    private var held = SIMD32<Double>.zero
     public init() {}
-    public mutating func reset() { previousSlot = nil; held = [] }
+    public mutating func reset() { previousSlot = nil; held = .zero }
     public mutating func column(slot: Int64, powers: [Double]) -> [UInt8] {
         precondition(powers.count == SpectrogramParameters.bands)
-        let decibels = powers.map(Self.decibels)
-        if let previousSlot, slot == previousSlot + 1 {
-            held = zip(decibels,held).map { max($0,$1-3) }
-        } else { held = decibels }
+        return render(slot:slot) { powers[$0] }
+    }
+    // Lane sums are already Float. Widen one band at a time instead of
+    // allocating a Double array and two more release-stage arrays per column.
+    mutating func column(slot: Int64, powers: SIMD32<Float>) -> [UInt8] {
+        render(slot:slot) { Double(powers[$0]) }
+    }
+    private mutating func render(slot: Int64, power: (Int) -> Double) -> [UInt8] {
+        let contiguous = previousSlot.map { slot == $0+1 } ?? false
+        var result = [UInt8](repeating:0,count:SpectrogramParameters.bands)
+        for band in 0..<SpectrogramParameters.bands {
+            let db = Self.decibels(power(band))
+            held[band] = contiguous ? max(db,held[band]-3) : db
+            result[band] = Self.quantize(held[band])
+        }
         previousSlot = slot
-        return held.map(Self.quantize)
+        return result
     }
     public static func raw(powers: [Double]) -> [UInt8] { powers.map { quantize(decibels($0)) } }
     private static func decibels(_ power: Double) -> Double {

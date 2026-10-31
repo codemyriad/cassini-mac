@@ -100,6 +100,10 @@ import ScreenCaptureKit
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
+                "lateTiming":controller.lateTiming.filter { $0.ordinal > initialLate }.map {
+                    ["ordinal":Double($0.ordinal),"slot":Double($0.slot),"releasedThrough":Double($0.releasedThrough),
+                     "arrivalMs":$0.arrivalMs,"delayMs":$0.delayMs]
+                },
                 "viewPayloadBytes":controller.payloadBytes,"surfaceAllocationBytes":controller.surfaceBytes,
                 "surfaceRevisions":controller.surfaceRevision,"minimized":window.isMiniaturized,
                 "reducedMotion":controller.usingReducedMotion,
