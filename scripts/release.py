@@ -217,11 +217,15 @@ def dmg_tools():
     pin = hashlib.sha256(requirements.read_bytes()).hexdigest()[:16]
     environment = ROOT/'.build'/('dmg-tools-'+pin+'-'+str(sys.version_info.major)+'.'+str(sys.version_info.minor))
     python = environment/'bin/python3'
-    if not (environment/'installed').exists():
-        run([sys.executable, '-m', 'venv', environment], timeout=120)
+    marker = environment/'installed'
+    interpreter = pin+'\n'+sys.version+'\n'+str(Path(sys.executable).resolve())+'\n'
+    if not python.is_file() or not marker.is_file() or marker.read_text() != interpreter:
+        # A restored hosted cache may point at a different runner's Python.
+        # Rebuild the environment while keeping the verified download cache.
+        run([sys.executable, '-m', 'venv', '--clear', environment], timeout=120)
         run([python, '-m', 'pip', 'install', '--disable-pip-version-check', '--require-hashes', '--only-binary=:all:',
-             '-r', requirements], timeout=180)
-        (environment/'installed').write_text(pin+'\n')
+             '--cache-dir', ROOT/'.build/dmg-pip-cache', '-r', requirements], timeout=180)
+        marker.write_text(interpreter)
     return python
 
 

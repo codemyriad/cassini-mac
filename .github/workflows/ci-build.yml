@@ -48,7 +48,7 @@ jobs:
             build/opus-downloads
             build/parakeet-downloads
             .build/Sparkle
-            .build/dmg-tools-*
+            .build/dmg-pip-cache
             ~/Library/Caches/Homebrew
           key: pinned-fetches-xcode16.4-${{ hashFiles('Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'Distribution/dmg-requirements.txt', 'scripts/fetch-*.py', 'project.yml') }}
       - name: Install build tools
