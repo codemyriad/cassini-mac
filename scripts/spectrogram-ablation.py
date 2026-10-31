@@ -18,15 +18,14 @@ source=Path(__file__).resolve().parent.parent/'Cassini/Recording/RecordingSpectr
 try:
     subprocess.run(['defaults','write','com.apple.universalaccess','reduceMotion','-bool','false'],check=True)
     for case in 'ADB':
-        for variant in ['full','counters-off','hosting']:
-            if case == 'B' and variant != 'hosting': continue
+        for variant in ['cadisplaylink','cvdisplaylink']:
             name=case+'-'+variant
             folder=output/name;folder.mkdir()
             command=[str(program),'--spectrogram-self-test','-SpectrogramCase',case,
                      '-SpectrogramOutput',str(folder.resolve()),'-ApplePersistenceIgnoreState','YES']
             env=dict(os.environ,CASSINI_SPECTRO_ABLATION='full',CASSINI_SPECTRO='1',
-                     CASSINI_SPECTRO_COUNTERS='1' if variant=='full' else '0',
-                     CASSINI_SPECTRO_HOSTING='1' if variant=='hosting' else '0')
+                     CASSINI_SPECTRO_COUNTERS='1',CASSINI_SPECTRO_HOSTING='0',
+                     CASSINI_SPECTRO_CV='1' if variant=='cvdisplaylink' else '0')
             if case=='B':command+=['-SpectrogramPixelsOnly','1']
             with (output/(name+'.stderr')).open('w') as stderr:
                 completed=subprocess.run(command,env=env,stdout=subprocess.PIPE,stderr=stderr,text=True,timeout=100)
@@ -41,6 +40,6 @@ try:
 finally:
     command=['defaults','write','com.apple.universalaccess','reduceMotion','-bool','true' if original.stdout.strip()=='1' else 'false'] if original.returncode==0 else ['defaults','delete','com.apple.universalaccess','reduceMotion']
     subprocess.run(command,capture_output=True)
-    (output/'summary.json').write_text(json.dumps({'scope':'Attribution only: all variants fully render. counters-off and hosting omit per-callback CPU clock probes, so analysisCorePercent=0 is NOT analysis acceptance evidence. The outer once-per-run main-thread CPU measurement and frame pacing/late counters remain exact. hosting changes only AppKit root layer ownership. B checks actual sound/silence pixels. Original full-variant gates remain unchanged. Exact production Release SDK; no local native execution.', 'measurements':reports},indent=2)+'\n')
-if any(r['exitStatus'] for r in reports) or any(not all(r.get('gates',{}).values()) for r in reports if r['ablation']=='full'):
+    (output/'summary.json').write_text(json.dumps({'scope':'Clock experiment only. Both fully render with CPU/frame/late instrumentation enabled. Drawing includes both main-thread CPU and ALL dedicated CV-thread CPU between the same measurement boundaries. A changed backend thread fails its gate. One pending main frame bounds handoffs. B checks sound/silence pixels. Original limits remain unchanged. Exact production Release SDK; no local native execution.', 'measurements':reports},indent=2)+'\n')
+if any(r['exitStatus'] for r in reports) or any(not all(r.get('gates',{}).values()) for r in reports if r['ablation'] in ['cadisplaylink','cvdisplaylink']):
     raise SystemExit('Production full-variant gates still fail; see attribution reports')

@@ -99,6 +99,7 @@ import ScreenCaptureKit
             let initialBufferDrops = controller.droppedBuffers
             controller.resetFrameMeasurements()
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
+            let backendCPUStart=controller.backendCPUNanoseconds
             let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
             // CPU duration is the subject under measurement. Completion comes
             // from a real producer callback after the sixty-second interval;
@@ -109,7 +110,8 @@ import ScreenCaptureKit
             let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
             // Implicit CA transactions commit after the paint callback. Include
             // all main-thread CPU, so batching cannot move work outside the gate.
-            let drawing = Double(mainCPU)/1e9/elapsed*100
+            let backendCPU=controller.backendCPUNanoseconds-backendCPUStart
+            let drawing = Double(mainCPU+backendCPU)/1e9/elapsed*100
             let regions = Double(controller.drawingNanoseconds)/1e9/elapsed*100
             let hidden = mode == "C" || mode == "E"
             report = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
@@ -117,7 +119,7 @@ import ScreenCaptureKit
                 "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":cpu/elapsed*100,
                 "measurementStartMs":(began-input.origin)*1000,"measurementEndMs":(began+elapsed-input.origin)*1000,
                 "analysisCorePercent":analysis,"drawingCorePercent":drawing,"frameCallbacks":controller.frameCallbacks,
-                "instrumentedDrawingCorePercent":regions,
+                "instrumentedDrawingCorePercent":regions,"backendClockCPUNanoseconds":backendCPU,"backendClockThreadStable":controller.backendThreadStable,
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
@@ -142,7 +144,7 @@ import ScreenCaptureKit
                 "pacing":mode == "A" || hidden || (controller.frameP95Ms <= 17.5 && controller.maxFrameIntervalMs <= 33),
                 "late":controller.lateColumns == initialLate,"drops":controller.droppedColumns == initialDropped,
                 "inputDrops":controller.droppedBuffers == initialBufferDrops,
-                "logicalViewPayload":controller.payloadBytes <= 128*1024]
+                "logicalViewPayload":controller.payloadBytes <= 128*1024,"backendThreadStable":controller.backendThreadStable]
             if mode == "B" {
                 // Verify pixels from this process's own window, after the CPU
                 // measurement. A ring/seed counter alone cannot prove that CA
