@@ -139,6 +139,7 @@ struct LibrarySearchField: NSViewRepresentable {
     @Binding var text: String
     var large = false
     var focusRequest = 0
+    var onBegin: () -> Void = {}
     var onChange: () -> Void
     var onCancel: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -168,13 +169,23 @@ struct LibrarySearchField: NSViewRepresentable {
             guard needsFocus, window != nil else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.needsFocus, let window = self.window else { return }
-                if window.makeFirstResponder(self) { self.needsFocus = false }
+                if window.makeFirstResponder(self) {
+                    // The toolbar field is replaced after the first typed
+                    // character opens Search. AppKit selects the new field's
+                    // entire value by default; the next character would then
+                    // replace that first character. Continue at the caret.
+                    if let editor = self.currentEditor() {
+                        editor.selectedRange = NSRange(location:(self.stringValue as NSString).length,length:0)
+                    }
+                    self.needsFocus = false
+                }
             }
         }
     }
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var parent: LibrarySearchField; var focused = 0
         init(_ parent: LibrarySearchField) { self.parent = parent }
+        func controlTextDidBeginEditing(_ notification: Notification) { parent.onBegin() }
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSSearchField else { return }
             parent.text = field.stringValue; parent.onChange()

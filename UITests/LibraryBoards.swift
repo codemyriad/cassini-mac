@@ -304,6 +304,53 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testSearchClickKeepsTheFirstTypedCharacter() throws {
+        let app = try launch("library",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let field = window.searchFields["library-search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout:20),app.debugDescription)
+        field.click()
+        // Match QA's click, pause, then normal typing (not Cmd-F).
+        Thread.sleep(forTimeInterval:2)
+        app.typeText("budget")
+        let value = NSPredicate { _,_ in field.value as? String == "budget" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
+        let count = window.staticTexts["search-count"]
+        XCTAssertTrue(count.waitForExistence(timeout:5))
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
+        field.click(); app.typeText("Daniel")
+        XCTAssertEqual(field.value as? String,"Daniel",app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        app.typeKey("f",modifierFlags:.command); app.typeText("budget")
+        XCTAssertEqual(field.value as? String,"budget","Cmd-F also retains the whole query")
+    }
+    @MainActor func testMeetingTranscriptSelectionAndCopy() throws {
+        let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let turn = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-")).firstMatch
+        XCTAssertTrue(turn.waitForExistence(timeout:20),app.debugDescription)
+        // The text is to the right of the speaker column. Select with the
+        // pointer, then use the real Edit actions through the responder chain.
+        let start = turn.coordinate(withNormalizedOffset:CGVector(dx:0.35,dy:0.35))
+        let end = turn.coordinate(withNormalizedOffset:CGVector(dx:0.80,dy:0.35))
+        start.press(forDuration:0.1,thenDragTo:end)
+        app.menuBars.menuBarItems["Edit"].click()
+        XCTAssertTrue(app.menuItems["Copy"].isEnabled,app.debugDescription)
+        XCTAssertTrue(app.menuItems["Select All"].isEnabled,app.debugDescription)
+        app.menuItems["Select All"].click()
+        NSPasteboard.general.clearContents()
+        app.typeKey("c",modifierFlags:.command)
+        let copied = NSPredicate { _,_ in !(NSPasteboard.general.string(forType:.string) ?? "").isEmpty }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:copied,object:nil)],timeout:5),.completed)
+        let text = NSPasteboard.general.string(forType:.string) ?? ""
+        XCTAssertTrue(text.contains("budget"),text)
+        XCTAssertFalse(text.contains("cassini-seek:"),"Copy carries readable words, not playback URLs")
+        XCTAssertTrue(window.buttons["meeting-back"].exists,"Copy keeps the meeting open")
+        start.click()
+        let sought = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-elapsed"]) == "00:00:04" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:sought,object:nil)],timeout:5),.completed,"Selecting text must preserve click-to-seek")
+    }
     @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {
         let app = try launch("search",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"], count = window.staticTexts["search-count"]

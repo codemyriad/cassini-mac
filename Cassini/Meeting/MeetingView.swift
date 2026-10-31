@@ -59,7 +59,7 @@ struct MeetingView: View {
                                     }.fixedSize()
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
                                 }.frame(width: 120, alignment: .leading)
-                                Text(transcript(turn.items)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading)
+                                Text(transcript(turn.items)).textSelection(.enabled).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading)
                                     .environment(\.openURL, OpenURLAction { url in
                                         if url.scheme == "cassini-seek", let host = url.host, let ms = Int(host) { model.seek(ms); return .handled }
                                         return .discarded

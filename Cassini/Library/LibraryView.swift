@@ -131,7 +131,7 @@ struct LibraryView: View {
         .toolbar {
             if !search.visible && navigation.detail == nil && !store.meetings.isEmpty {
                 ToolbarItem(placement:.primaryAction) {
-                    LibrarySearchField(text:$search.query,onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
+                    LibrarySearchField(text:$search.query,onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
                 }
             }
         }
@@ -414,7 +414,7 @@ struct LibraryView: View {
                                     }
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit()
                                 }.frame(width: 110, alignment: .leading)
-                                Text(turn.text).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                                Text(turn.text).textSelection(.enabled).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                     }
