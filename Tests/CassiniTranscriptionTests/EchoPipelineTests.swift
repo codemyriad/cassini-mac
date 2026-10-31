@@ -7,6 +7,46 @@ import CassiniWhistle
 @testable import CassiniTranscription
 
 final class EchoPipelineTests: XCTestCase {
+    func testBrowserLocalAndRemoteSourcesClassifyMicrophoneEchoThroughPipeline() throws {
+        try assertSourceKindsClassifyEcho(microphone:"local",other:"remote",source:"chromium")
+    }
+    func testMicrophoneAndApplicationSourcesClassifyMicrophoneEchoThroughPipeline() throws {
+        try assertSourceKindsClassifyEcho(microphone:"microphone",other:"application",source:"macos")
+    }
+    private func assertSourceKindsClassifyEcho(microphone: String, other: String, source: String) throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniEchoSourceKinds-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let key = "Recording-b1eed000-0000-4000-8000-000000000002"
+        let fixture = URL(fileURLWithPath:#filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/Echo/Recordings/"+key)
+        let folder = root.appendingPathComponent(key)
+        try FileManager.default.copyItem(at:fixture,to:folder)
+        let manifestURL = folder.appendingPathComponent("session.json")
+        var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:manifestURL)) as? [String:Any])
+        var tracks = try XCTUnwrap(manifest["tracks"] as? [[String:Any]])
+        tracks[0]["kind"] = microphone; tracks[1]["kind"] = other
+        manifest["tracks"] = tracks; manifest["source"] = source
+        try JSONSerialization.data(withJSONObject:manifest).write(to:manifestURL)
+        let audio = try tracks.map { track -> (URL,Data) in
+            let url = folder.appendingPathComponent(try XCTUnwrap(track["file"] as? String))
+            return (url,try Data(contentsOf:url))
+        }
+        let engine = try WhistleEngine(assets:WhistleAssets.forWorker(arguments:["--assets",assets]))
+        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        // Use the actual scanner, source selection, VAD, recognizer and persisted
+        // transcript. Shared policy vectors alone cannot catch a missing kind.
+        try MeetingTranscriber.run(directory:folder,engine:engine,detector:detector)
+        let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(meeting.state.transcript,.done)
+        XCTAssertEqual(Set(meeting.audioTracks.compactMap(\.sourceKind)),Set([microphone,other]))
+        let mine = meeting.transcriptItems.filter { $0.speaker == "me" }
+        let theirs = meeting.transcriptItems.filter { $0.speaker != "me" }
+        XCTAssertTrue(mine.contains { $0.echo },"\(microphone)/\(other) must suppress repeated Me words")
+        XCTAssertTrue(mine.contains { !$0.echo },"Genuine microphone words remain")
+        XCTAssertFalse(theirs.isEmpty); XCTAssertTrue(theirs.allSatisfy { !$0.echo },"Comparison sources retain their words")
+        for (url,before) in audio { XCTAssertEqual(try Data(contentsOf:url),before) }
+    }
     func testThreeRealWhistleBleedMeetingsKeepRawWordsAndProduceFilteredTurns() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniEchoPipeline-"+UUID().uuidString)

@@ -92,8 +92,8 @@ public enum MeetingTranscriber {
             let previous = resumes ? meeting.transcriptItems : []
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
-            let microphones = Set(tracks.indices.filter { tracks[$0].kind == "microphone" })
-            let otherTracks = Set(tracks.indices.filter { ["system","remote","media","tab"].contains(tracks[$0].kind) })
+            let microphones = Set(tracks.indices.filter { ["microphone","local"].contains(tracks[$0].kind) })
+            let otherTracks = Set(tracks.indices.filter { ["system","application","remote","media","tab"].contains(tracks[$0].kind) })
             var echoWords: [MicrophoneEcho.Word] = [], windowLevels: [Int:Bool] = [:]
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }

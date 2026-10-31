@@ -6,6 +6,8 @@ saved transcript. Only `echo: true` is serialized; older v1 readers can ignore i
 Turns, quotes, speaking shares, search, Markdown and Cassini exports omit flagged
 words. There is no setting or change to capture or recognition input.
 
+Microphone sources include native `microphone` and browser `local` tracks.
+Comparison sources are `remote`, `media`, `tab`, `application` and `system`.
 The classifier retains physical source indices even when two tracks share a
 speaker. It compares NFKC/full-case-folded words with edge Unicode punctuation
 removed, an inclusive 0–600 ms lag, and a microphone level at least 6 dB quieter.
@@ -30,6 +32,8 @@ no separate microphone source and is unchanged.
 These are generated voices, with no captured meeting or personal recording.
 Tests check all vector flags, 422 frozen word/window RMS measurements, source
 boundaries, resume, raw JSON compatibility, search cache invalidation and exports.
+Real scanner/VAD/Whistle pipeline regressions additionally check `local`/`remote`
+and `microphone`/`application` recordings, with their audio unchanged.
 
 The hosted ARM and Intel Whistle jobs also run the real pipeline on all three
 recordings and upload raw transcripts, filtered transcripts and metrics under
