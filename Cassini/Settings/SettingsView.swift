@@ -4,11 +4,11 @@ import AppKit
 import Observation
 import CassiniLibrary
 
-enum SettingsTab: String, CaseIterable { case recording, transcription, library, browser
+enum SettingsTab: String, CaseIterable { case recording, updates, transcription, library, browser
     var title: String {
-        UXText.text(self == .recording ? "settings.tab.recording" : self == .transcription ? "settings.tab.transcription" : self == .library ? "settings.tab.library" : "settings.tab.browserCompanion")
+        UXText.text(self == .recording ? "settings.tab.recording" : self == .updates ? "settings.updates.title" : self == .transcription ? "settings.tab.transcription" : self == .library ? "settings.tab.library" : "settings.tab.browserCompanion")
     }
-    var icon: String { self == .recording ? "mic" : self == .transcription ? "text.alignleft" : self == .library ? "folder" : "macwindow" }
+    var icon: String { self == .recording ? "mic" : self == .updates ? "arrow.triangle.2.circlepath" : self == .transcription ? "text.alignleft" : self == .library ? "folder" : "macwindow" }
 }
 @MainActor @Observable final class SettingsNavigation {
     static let shared = SettingsNavigation()
@@ -22,6 +22,7 @@ struct CassiniSettingsView: View {
     var body: some View {
         TabView(selection:$navigation.tab) {
             SettingsRecordingView().tabItem { Label(SettingsTab.recording.title,systemImage:SettingsTab.recording.icon) }.tag(SettingsTab.recording)
+            SettingsUpdatesView().tabItem { Label(SettingsTab.updates.title,systemImage:SettingsTab.updates.icon) }.tag(SettingsTab.updates)
             SettingsTranscriptionView().tabItem { Label(SettingsTab.transcription.title,systemImage:SettingsTab.transcription.icon) }.tag(SettingsTab.transcription)
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
@@ -38,6 +39,22 @@ struct CassiniSettingsView: View {
             .sheet(isPresented:Binding(get:{ companion.presenter == .settings },set:{ if !$0 { companion.close() } })) {
                 CompanionSetupView()
             }
+    }
+}
+private struct SettingsUpdatesView: View {
+    @State private var updates = ApplicationUpdates.shared
+    var body: some View {
+        SettingsPage {
+            VStack(alignment:.leading,spacing:16) {
+                Text(UXText.text("settings.updates.title")).fontWeight(.bold)
+                Toggle(UXText.text("settings.updates.automatic"),isOn:$updates.automaticChecks)
+                    .toggleStyle(.switch).disabled(!updates.available)
+                    .accessibilityIdentifier("settings-automatic-updates")
+                Button(UXText.text("app.checkForUpdates")) { updates.checkForUpdates() }
+                    .disabled(!updates.canCheckForUpdates).accessibilityIdentifier("settings-check-updates")
+            }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
+                .background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
+        }
     }
 }
 private struct SettingsRecordingView: View {

@@ -66,7 +66,6 @@
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
 		6D2A5DC34D78E97BC4DC039C /* CaptureActivityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */; };
 		6D57DA2EFFCE7EDA4F10CB65 /* LocalCompanionGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B03C13929645F7CB3E9829 /* LocalCompanionGuide.swift */; };
-		6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */ = {isa = PBXBuildFile; fileRef = A409C2558FBB9AF298689911 /* Cassini.html */; };
 		73356EFFDF01D974F26825A6 /* RecordFirstView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EE191DCB541B08F4D08855 /* RecordFirstView.swift */; };
 		73430AD2E1F30C774BD10517 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC82AC94B942EF58DB6679 /* Commands.swift */; };
 		7415B9957147C67914ABA6A7 /* RecordingStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2479FBA25ED20072E91C08C /* RecordingStatusMenu.swift */; };
@@ -88,6 +87,7 @@
 		8D98D370E8999895D3A2F2C0 /* WhistleSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF44CFE16B2926034520B457 /* WhistleSelfTest.swift */; };
 		8EDE5F3489BA8DA0718C8B33 /* Licenses in Resources */ = {isa = PBXBuildFile; fileRef = CD9CA177C260FB3ED32BE1F0 /* Licenses */; };
 		8F81CB90D10877C15C1C85E4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202F303D76A9CA142F725248 /* PreviewViewController.swift */; };
+		90072894377A325E3C29E094 /* COPYING in Resources */ = {isa = PBXBuildFile; fileRef = 04C66E21DEC62887CBA957E0 /* COPYING */; };
 		96BE55568AC429C3FA5694CB /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 27EA16EC6FE0C1604D96B82B /* CassiniBrowserSetup */; };
 		9919156A4B5CE6BC09BF9949 /* BrowserSetupClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E8630330DB380A4E701A12 /* BrowserSetupClient.swift */; };
 		9ADB134940081C297FC5223C /* LibraryMoveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EC26D268607793ED6FB7DD /* LibraryMoveCoordinator.swift */; };
@@ -108,6 +108,7 @@
 		BBA405927990B28446051D29 /* RecordingInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */; };
 		C455EC9E42F5F34E0DBA1FE6 /* RecordingDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */; };
 		C4CD20B6F43C98C3D7CE9348 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */; };
+		C6EAB498475456889A827C9F /* UpdateDeferralSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */; };
 		C716177C37D0DAD16234555A /* SettingsFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D368DF652664BF931A5F050 /* SettingsFixture.swift */; };
 		C74C72D9CE3B8283151F5D44 /* BrowserBackgroundSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF3BCB920D3A33FC3C3A9DC /* BrowserBackgroundSelfTest.swift */; };
 		C920349A20ECCF6C7C8A690C /* ModelDownloadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5DA66A372B10969E76428C3 /* ModelDownloadClient.swift */; };
@@ -219,6 +220,7 @@
 /* Begin PBXFileReference section */
 		010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationUpdates.swift; sourceTree = "<group>"; };
 		0128F0DA36A8F1649E4BFACB /* PlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerController.swift; sourceTree = "<group>"; };
+		04C66E21DEC62887CBA957E0 /* COPYING */ = {isa = PBXFileReference; path = COPYING; sourceTree = "<group>"; };
 		0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerBar.swift; sourceTree = "<group>"; };
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		0A2CF8935408378DD526CC43 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -245,6 +247,7 @@
 		3603D8B702C22E7035B613CC /* RecordingOverview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverview.swift; sourceTree = "<group>"; };
 		394709470D1488C8C15792DC /* CassiniParakeetWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniParakeetWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
+		41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateDeferralSelfTest.swift; sourceTree = "<group>"; };
 		493B60B096D031A55BC54864 /* WhatIsRecordedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatIsRecordedView.swift; sourceTree = "<group>"; };
 		4A2328A25C9E4B5E0E8EDF6B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureActivityStore.swift; sourceTree = "<group>"; };
@@ -282,7 +285,6 @@
 		95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportCoordinator.swift; sourceTree = "<group>"; };
 		9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCompanionInstall.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
-		A409C2558FBB9AF298689911 /* Cassini.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Cassini.html; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -622,6 +624,7 @@
 				0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */,
 				642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */,
 				8C306DD8AAAA314655363059 /* SpeechModelController.swift */,
+				41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -645,6 +648,7 @@
 		A21407D313CA8AD78A33135C = {
 			isa = PBXGroup;
 			children = (
+				04C66E21DEC62887CBA957E0 /* COPYING */,
 				21FE0DE0B9C6833034BB53DF /* BrowserSetup */,
 				31AB581C9E11BF19B5E97181 /* Cassini */,
 				5E2706E284F6A1560BDA9158 /* ModelDownloads */,
@@ -687,7 +691,6 @@
 		ED21289CD25E4D8251164DC1 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				A409C2558FBB9AF298689911 /* Cassini.html */,
 				CD9CA177C260FB3ED32BE1F0 /* Licenses */,
 				FFDAA113CF52CBA710233AC3 /* UX */,
 			);
@@ -783,6 +786,7 @@
 				59AB919EBDADC73FC1F7EB43 /* CopyFiles */,
 				B5AB5C6CC848958B5C12107C /* Frameworks */,
 				2D274D122F504037F2C02487 /* Embed Foundation Extensions */,
+				6F4C3518C3994A356EBC5EEE /* Render offline companion paste hint */,
 				4E5336EE9AC66FB8CAA80456 /* Bundle reviewed browser companion */,
 				3F9F988F2C15EA3EC59A74AB /* Bundle pinned Opus encoder */,
 				9C428EA4197ADEEDAC5EAE08 /* Bundle native messaging host */,
@@ -1004,7 +1008,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				29F5BCCF6F54A4CEF61E131E /* Assets.xcassets in Resources */,
-				6F2BFAE3BAAFD006CF23F587 /* Cassini.html in Resources */,
+				90072894377A325E3C29E094 /* COPYING in Resources */,
 				41DE717D776BEF7E1CD6BF16 /* Fixtures in Resources */,
 				8EDE5F3489BA8DA0718C8B33 /* Licenses in Resources */,
 				66D88998A0953337261A8C61 /* UX in Resources */,
@@ -1051,6 +1055,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "python3 \"$SRCROOT/scripts/bundle-browser-companion.py\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion\"";
+		};
+		6F4C3518C3994A356EBC5EEE /* Render offline companion paste hint */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Cassini/Resources/Cassini.html",
+				"$(SRCROOT)/Cassini/Resources/UX/strings.json",
+				"$(SRCROOT)/scripts/bundle-companion-page.py",
+			);
+			name = "Render offline companion paste hint";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "python3 \"$SRCROOT/scripts/bundle-companion-page.py\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cassini.html\"";
 		};
 		7C3547D8657842CC3B35CB1A /* Bundle pinned Parakeet runtime and worker */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1254,6 +1280,7 @@
 				40F5CCB4E0A6211762C66102 /* TranscriptionQueue.swift in Sources */,
 				1EEAD6E0D3422512F62D7200 /* TrashSelfTest.swift in Sources */,
 				EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */,
+				C6EAB498475456889A827C9F /* UpdateDeferralSelfTest.swift in Sources */,
 				0993FA2973125708E6E9727E /* WhatIsRecordedView.swift in Sources */,
 				8D98D370E8999895D3A2F2C0 /* WhistleSelfTest.swift in Sources */,
 			);

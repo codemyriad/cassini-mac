@@ -12,6 +12,8 @@ MAGIC = {b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\x
 
 def inspect(app):
     info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
+    assert info.get('SUShowReleaseNotes', True) is True, 'Sparkle release notes must be visible'
+    assert '{{' not in (app/'Contents/Resources/Cassini.html').read_text(), 'Unrendered companion page'
     catalog = json.loads((app/'Contents/Resources/UX/strings.json').read_text())
     name = next(entry['en'] for entry in catalog['entries'] if entry['id'] == 'app.name')
     assert name == 'Cassini talk', 'Unexpected public product name'

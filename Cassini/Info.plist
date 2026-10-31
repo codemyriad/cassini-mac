@@ -48,7 +48,7 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Cassini records selected application or system audio locally when you start recording.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Code Myriad</string>
+	<string>© 2026 Codemyriad OÜ</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cassini records your microphone as a separate local meeting track.</string>
 	<key>NSPrincipalClass</key>
@@ -70,7 +70,7 @@
 	<key>SURequireSignedFeed</key>
 	<true/>
 	<key>SUShowReleaseNotes</key>
-	<false/>
+	<true/>
 	<key>SUVerifyUpdateBeforeExtraction</key>
 	<true/>
 	<key>UTImportedTypeDeclarations</key>

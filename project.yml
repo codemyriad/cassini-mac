@@ -39,7 +39,7 @@ targets:
           - "Resources"
       - path: Cassini/Assets.xcassets
         buildPhase: resources
-      - path: Cassini/Resources/Cassini.html
+      - path: COPYING
         buildPhase: resources
       - path: Cassini/Resources/Licenses
         type: folder
@@ -97,6 +97,14 @@ targets:
         link: false
         embed: false
     postBuildScripts:
+      - name: Render offline companion paste hint
+        inputFiles:
+          - $(SRCROOT)/Cassini/Resources/Cassini.html
+          - $(SRCROOT)/Cassini/Resources/UX/strings.json
+          - $(SRCROOT)/scripts/bundle-companion-page.py
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html
+        script: python3 "$SRCROOT/scripts/bundle-companion-page.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cassini.html"
       - name: Bundle reviewed browser companion
         basedOnDependencyAnalysis: false
         script: python3 "$SRCROOT/scripts/bundle-browser-companion.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion"
@@ -134,7 +142,7 @@ targets:
         SUEnableDownloaderService: true
         SUVerifyUpdateBeforeExtraction: true
         SURequireSignedFeed: true
-        SUShowReleaseNotes: false
+        SUShowReleaseNotes: true
         SUEnableSystemProfiling: false
         CFBundleName: Cassini talk
         CFBundleDisplayName: Cassini talk
@@ -144,7 +152,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "15.0"
-        NSHumanReadableCopyright: "© 2026 Code Myriad"
+        NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
         NSPrincipalClass: NSApplication
         NSMicrophoneUsageDescription: Cassini records your microphone as a separate local meeting track.
         NSAudioCaptureUsageDescription: Cassini records selected application or system audio locally when you start recording.
@@ -318,7 +326,7 @@ targets:
         CFBundleDisplayName: Cassini Transcript Preview
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSHumanReadableCopyright: "© 2026 Code Myriad"
+        NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.quicklook.preview
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController

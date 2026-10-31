@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from urllib.parse import urlparse
 import urllib.request
@@ -175,7 +176,8 @@ def notarize(path, credentials, report):
     run(['xcrun', 'stapler', 'validate', path], timeout=180)
 
 
-def appcast(archive, signature, version, build, download_url, now=None, release_notes_url=None):
+def appcast(archive, signature, version, build, download_url, now=None, release_notes_url=None,
+            release_notes_signature=None, release_notes_length=None):
     if not re.fullmatch(r'[A-Za-z0-9+/]{86}==', signature):
         raise ValueError('Invalid Ed25519 signature')
     root = ET.Element('rss', version='2.0')
@@ -188,10 +190,45 @@ def appcast(archive, signature, version, build, download_url, now=None, release_
     ET.SubElement(item, '{'+SPARKLE+'}minimumSystemVersion').text = '15.0'
     ET.SubElement(item, 'pubDate').text = format_datetime(now or datetime.now(timezone.utc))
     if release_notes_url:
-        ET.SubElement(item, '{'+SPARKLE+'}releaseNotesLink').text = https_url(release_notes_url)
+        if not isinstance(release_notes_signature, str) or not re.fullmatch(r'[A-Za-z0-9+/]{86}==', release_notes_signature):
+            raise ValueError('Linked release notes require an Ed25519 signature')
+        if type(release_notes_length) is not int or release_notes_length <= 0:
+            raise ValueError('Linked release notes require a positive byte length')
+        ET.SubElement(item, '{'+SPARKLE+'}releaseNotesLink', {
+            '{'+SPARKLE+'}edSignature': release_notes_signature,
+            '{'+SPARKLE+'}length': str(release_notes_length)}).text = https_url(release_notes_url)
+    elif release_notes_signature is not None or release_notes_length is not None:
+        raise ValueError('Release-notes authentication needs a linked document')
     ET.SubElement(item, 'enclosure', {'url': https_url(download_url), 'length': str(archive.stat().st_size),
         'type': 'application/octet-stream', '{'+SPARKLE+'}edSignature': signature})
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)+b'\n'
+
+
+def verify_release_notes(notes, signature, length, public_key=ROOT/'Distribution/sparkle-public-key.txt'):
+    if type(length) is not int or length <= 0 or Path(notes).stat().st_size != length:
+        raise ValueError('Release notes differ from their signed byte length')
+    verify_signature(notes, signature, public_key)
+
+
+def write_signed_appcast(output, archive, signature, version, build, urls, tools, key,
+                         public_key=ROOT/'Distribution/sparkle-public-key.txt'):
+    # SURequireSignedFeed authenticates linked HTML separately. Sign the final
+    # staged bytes, put both namespaced attributes into XML, then sign the feed.
+    notes = output/'notes'/(version+'.html')
+    if notes.stat().st_size <= 0:
+        raise ValueError('Release notes must not be empty')
+    # Preserve the final HTML; Sparkle otherwise inserts a signing-warning comment.
+    notes_signature = run([tools/'sign_update','--ed-key-file',key,'--disable-signing-warning','-p',notes],timeout=180).decode().strip()
+    length = notes.stat().st_size
+    run([tools/'sign_update','--verify','--ed-key-file',key,notes,notes_signature],timeout=180)
+    verify_release_notes(notes, notes_signature, length, public_key)
+    feed = output/'appcast.xml'
+    feed.write_bytes(appcast(archive, signature, version, build, urls['download'],release_notes_url=urls['notes'],
+        release_notes_signature=notes_signature,release_notes_length=length))
+    run([tools/'sign_update','--ed-key-file',key,feed],timeout=180)
+    run([tools/'sign_update','--verify','--ed-key-file',key,feed],timeout=180)
+    verify_release_notes(notes, notes_signature, length, public_key)
+    return dict(url=urls['notes'],bytes=length,edSignature=notes_signature,sha256=sha256_file(notes))
 
 
 def verify_update_key(key):
@@ -211,11 +248,34 @@ def reject_generated_library(path):
         raise ValueError('Generated Library fixtures are present; use a clean release source/product')
 
 
+def dmg_tools():
+    requirements = ROOT/'Distribution/dmg-requirements.txt'
+    pin = hashlib.sha256(requirements.read_bytes()).hexdigest()[:16]
+    environment = ROOT/'.build'/('dmg-tools-'+pin+'-'+str(sys.version_info.major)+'.'+str(sys.version_info.minor))
+    python = environment/'bin/python3'
+    marker = environment/'installed'
+    interpreter = pin+'\n'+sys.version+'\n'+str(Path(sys.executable).resolve())+'\n'
+    if not python.is_file() or not marker.is_file() or marker.read_text() != interpreter:
+        # A restored hosted cache may point at a different runner's Python.
+        # Rebuild the environment while keeping the verified download cache.
+        run([sys.executable, '-m', 'venv', '--clear', environment], timeout=120)
+        run([python, '-m', 'pip', 'install', '--disable-pip-version-check', '--require-hashes', '--only-binary=:all:',
+             '--cache-dir', ROOT/'.build/dmg-pip-cache', '-r', requirements], timeout=180)
+        marker.write_text(interpreter)
+    return python
+
+
+def build_dmg(python, application, output):
+    run([python, '-m', 'dmgbuild', '-s', ROOT/'Distribution/dmg-settings.py',
+         '-D', 'app='+str(application), '-D', 'license='+str(ROOT/'COPYING'),
+         '-D', 'background_license='+str(ROOT/'Distribution/dmgbuild-LICENSE.txt'), PRODUCT_NAME, output], timeout=600)
+
+
 def release(args):
     urls = release_urls(args.base_url, args.version)
     if args.build < 1:
         raise ValueError('Expected a numeric version and positive increasing build number')
-    if args.release_notes and not args.release_notes.is_file():
+    if not args.release_notes or not args.release_notes.is_file() or args.release_notes.stat().st_size == 0:
         raise ValueError('Release notes must name an existing HTML file')
     # Refuse to overwrite or mix artifacts from earlier builds/submissions.
     output = args.output.resolve()
@@ -228,6 +288,7 @@ def release(args):
     keychain, identity = unlock_signing_keychain()
     output.mkdir(parents=True)
     tools = Path(run(['python3', ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
+    image_tools = dmg_tools()
     run(['xcodegen', 'generate'], cwd=ROOT, timeout=120)
     run(['python3', ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
     derived = ROOT/'.build/developer-id'
@@ -241,7 +302,11 @@ def release(args):
         result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
-    app = derived/'Build/Products/Release/Cassini.app'
+    # Xcode's internal product/executable paths stay stable for developer tools.
+    # The application submitted to Apple and delivered to people has its final
+    # Finder name before notarization, so Sparkle never renames an installation.
+    app = output/(PRODUCT_NAME+'.app')
+    run(['ditto', derived/'Build/Products/Release/Cassini.app', app])
     reject_generated_library(app/'Contents/Resources/Fixtures/Library')
     run(['python3', ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
     run(['python3', ROOT/'scripts/check-developer-id.py', app])
@@ -253,13 +318,8 @@ def release(args):
     submit_and_wait(submission, credentials, output/'app-notary.json')
     run(['xcrun', 'stapler', 'staple', app], timeout=180)
     run(['xcrun', 'stapler', 'validate', app], timeout=180)
-    with tempfile.TemporaryDirectory(prefix='cassini-dmg-') as temporary:
-        stage = Path(temporary)
-        run(['ditto', app, stage/'Cassini.app'])
-        (stage/'Applications').symlink_to('/Applications', target_is_directory=True)
-        shutil.copy2(ROOT/'COPYING', stage/'COPYING')
-        dmg = output/('Cassini-talk-'+args.version+'.dmg')
-        run(['hdiutil', 'create', '-volname', PRODUCT_NAME, '-srcfolder', stage, '-fs', 'APFS', '-format', 'ULFO', dmg], timeout=600)
+    dmg = output/('Cassini-talk-'+args.version+'.dmg')
+    build_dmg(image_tools, app, dmg)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)
     notarize(dmg, credentials, output/'dmg-notary.json')
     run(['codesign', '--verify', '--strict', dmg])
@@ -268,18 +328,13 @@ def release(args):
     verify_signature(dmg, signature)
     copy_new(dmg, output/'Cassini-talk.dmg')
     verify_signature(output/'Cassini-talk.dmg', signature)
-    if args.release_notes:
-        (output/'notes').mkdir()
-        copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
-    (output/'appcast.xml').write_bytes(appcast(dmg, signature, args.version, args.build, urls['download'],
-        release_notes_url=urls['notes'] if args.release_notes else None))
-    # Feed signing protects metadata as well as the download. Re-sign after edits.
-    run([tools/'sign_update', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
-    run([tools/'sign_update', '--verify', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
-    checksum = publication_plan(output, urls, args.version, signature, notes=bool(args.release_notes))
+    (output/'notes').mkdir()
+    copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
+    notes_report = write_signed_appcast(output,dmg,signature,args.version,args.build,urls,tools,key)
+    checksum = publication_plan(output, urls, args.version, signature, notes=True)
     (output/'release.json').write_text(json.dumps(dict(commit=run(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip(),
         version=args.version, build=args.build, baseURL=urls['base'], bytes=dmg.stat().st_size,
-        edSignature=signature, sha256=checksum, notarized=True, cleanVMChecked=False),indent=2)+'\n')
+        edSignature=signature, sha256=checksum, releaseNotes=notes_report, notarized=True, cleanVMChecked=False),indent=2)+'\n')
     print('Notarized and stapled '+dmg.name+' and identical Cassini-talk.dmg; SHA256 '+checksum)
     print('Clean-VM install/browser/update checks and publication are still required.')
 
@@ -289,7 +344,7 @@ if __name__ == '__main__':
     parser.add_argument('--version', required=True)
     parser.add_argument('--build', type=int, required=True)
     parser.add_argument('--base-url', default=BASE_URL, help='HTTPS directory for downloads, feed and optional notes')
-    parser.add_argument('--release-notes', type=Path, help='Optional HTML file, copied into notes/<version>.html')
+    parser.add_argument('--release-notes', type=Path, required=True, help='HTML release notes, copied into notes/<version>.html')
     parser.add_argument('--notary-config', type=Path, default=SECRETS/'notary.json')
     parser.add_argument('--output', type=Path, required=True)
     try:

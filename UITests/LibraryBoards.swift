@@ -286,6 +286,10 @@ final class LibraryBoards: XCTestCase {
         let shortcutClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for:[shortcutClosed],timeout:5),.completed,app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
+        window.toolbars.buttons["Updates"].click()
+        let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
+        XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
+        XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)
         window.toolbars.buttons["Library"].click()
         XCTAssertTrue(window.buttons["settings-move-library"].waitForExistence(timeout:5))
         window.buttons["settings-move-library"].click()
@@ -810,6 +814,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(productMenu.exists, app.debugDescription)
         productMenu.click()
         XCTAssertTrue(app.menuItems["About Cassini talk"].exists, app.debugDescription)
+        XCTAssertTrue(app.menuItems["Check for Updates…"].exists, app.debugDescription)
         app.typeKey(.escape, modifierFlags: [])
         let expectedControl = name == "library" ? "preview-read-transcript" : "first-run-record"
         XCTAssertTrue(window.buttons[expectedControl].waitForExistence(timeout: 20), window.debugDescription)

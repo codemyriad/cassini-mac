@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise Settings and relocation through the real app with private RAM fixtures."""
-import argparse,json,os,plistlib,subprocess,uuid
+import argparse,json,os,plistlib,shutil,subprocess,uuid
 from pathlib import Path
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path);parser.add_argument('--output',type=Path,required=True)
@@ -20,7 +20,7 @@ r=subprocess.run(command,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),cap
 args.output.parent.mkdir(parents=True,exist_ok=True);args.output.with_suffix('.stderr.txt').write_text(r.stderr)
 assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
 report=json.loads(r.stdout)
-for name in ['conditionalDownloadedNotices','aboutNoticesReachable','firstCaptureCreatesLibrary','settingsPreferences','realShortcutReplacement','shortcutConflictRetainsOld','closedMeetingMovedAtomically',
+for name in ['updateDefersRecordingSavingScanningTranscription','updateDismissesInstallUIAndShowsFooter','updateContinuationRunsOnce','quitNeverRelaunchesPendingUpdate','conditionalDownloadedNotices','aboutNoticesReachable','firstCaptureCreatesLibrary','settingsPreferences','realShortcutReplacement','shortcutConflictRetainsOld','closedMeetingMovedAtomically',
              'partialFailureRetainsOriginal','liveFolderDeferred','pendingMovesPersisted','activeInferencePathPreserved','queuedMetadataMovedAfterPreparation','importIntentResumesAfterMove','retainedSelectionUsesFolder','searchReindexed','hostReadsLocation','producerBytesPreserved']:
     assert report[name] is True,(name,report)
 resume=[x for x in command]
@@ -31,6 +31,15 @@ args.output.with_suffix('.resume-stderr.txt').write_text(continued.stderr)
 assert continued.returncode==0,(continued.returncode,continued.stdout,continued.stderr)
 resumed=json.loads(continued.stdout)
 assert resumed['liveFolderMovedAfterStop'] is True and resumed['pendingMovesResumedAfterRelaunch'] is True and resumed['audioDevicesOpened'] is False
+cleanup = [Path(value) for value in resumed.pop('cleanupPaths')]
+expected_names = {'CassiniLibrary-'+key, 'CassiniSettingsDestination-'+str(uuid.UUID(key)).upper(), 'CassiniSettingsFixture-'+str(uuid.UUID(key)).upper()}
+assert len(cleanup) == 3 and {path.name for path in cleanup} == expected_names
+container_tmp = (Path.home()/'Library/Containers/io.codemyriad.cassini/Data/tmp').resolve()
+for path in cleanup:
+    assert path.is_absolute() and path.parent.resolve() == container_tmp and not path.is_symlink(), path
+    assert path.stat().st_uid == os.getuid(), path
+for path in cleanup:
+    shutil.rmtree(path)
 report.update(resumed)
 assert report['audioDevicesOpened'] is False
 args.output.write_text(json.dumps(report,indent=2)+'\n')

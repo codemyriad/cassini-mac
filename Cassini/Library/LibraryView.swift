@@ -26,6 +26,7 @@ struct LibraryView: View {
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
     @State private var rename = MeetingRenameCoordinator.shared
+    @State private var updates = ApplicationUpdates.shared
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -44,6 +45,9 @@ struct LibraryView: View {
                 .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
         .font(.system(size: 13))
+        .safeAreaInset(edge:.bottom,spacing:0) {
+            UpdateReadyFooter(updates:updates)
+        }
         .safeAreaInset(edge:.top,spacing:0) {
             CaptureFailureBanner(); trashFailure
             if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
@@ -553,5 +557,26 @@ private final class LibraryToolbarActionView: NSView {
     @objc private func invoke(_ sender: Any?) {
         if let makeMenu { makeMenu().popUp(positioning:nil,at:NSPoint(x:0,y:0),in:self) }
         else { action?() }
+    }
+}
+
+struct UpdateReadyFooter: View {
+    let updates: ApplicationUpdates
+    #if DEBUG
+    var fixtureVisibility: ((Bool) -> Void)? = nil
+    #endif
+    private var line: some View {
+        Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+            .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
+            .accessibilityIdentifier("library-update-ready")
+    }
+    var body: some View {
+        if updates.readyWhenIdle {
+            #if DEBUG
+            line.onAppear { fixtureVisibility?(true) }.onDisappear { fixtureVisibility?(false) }
+            #else
+            line
+            #endif
+        }
     }
 }

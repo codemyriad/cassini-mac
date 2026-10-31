@@ -22,6 +22,7 @@ struct LiveCapture {
     var fallbackAnnounced = false
     var lifetime = BrowserCallLifetime()
     var savingSinceMs: Int64?
+    var inputsAdmitted = false
     @MainActor var microphoneSilent: Bool {
         snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
     }
@@ -133,7 +134,10 @@ private final class CaptureFiles: @unchecked Sendable {
     func record() async throws {
         guard !shuttingDown, !starting else { return }
         LibraryLocationModel.shared.reload()
-        guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else { throw BrowserIPCError.unavailable }
+        guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else {
+            recordFailed = true
+            throw BrowserIPCError.unavailable
+        }
         requestingRecord = true
         SessionPlaybackController.stopAll(); PlayerController.pauseActive()
         recordFailed = false
@@ -173,10 +177,12 @@ private final class CaptureFiles: @unchecked Sendable {
         autoGeneration += 1
         let generation = autoGeneration
         autoRecord = enabled; RecordingPreferences.defaults.set(enabled,forKey:"CassiniAutoRecord")
-        service.setAutoRecord(enabled,microphone:true)
-        if enabled { await CaptureNotifications.shared.authorize() }
+        if !enabled { service.setAutoRecord(false,microphone:true); return }
+        // Microphone consent precedes automatic capture admission. Optional
+        // notification consent is requested only after working inputs start.
+        await authorizeMicrophone()
         guard !shuttingDown, generation == autoGeneration else { return }
-        if enabled { await authorizeMicrophone() }
+        service.setAutoRecord(true,microphone:true)
     }
     func stop(_ id: UUID) {
         guard let value = captures[id], stopping[id] == nil else { return }
@@ -261,10 +267,16 @@ private final class CaptureFiles: @unchecked Sendable {
             } ?? [:]
         },update:{ [weak self] ids,budget in self?.applyDiskBudget(ids,budget) })
         LibraryStore.shared.refresh(affected:snapshot.directory)
-        announce()
         do { try await input.start() }
         catch { captures[id]?.sourceProblem = true }
         if snapshot.manifest.source == "macos", !input.hasRunningInputs { try? await broker.finish(owner) }
+        let current = owner.snapshot
+        if current.phase == .recording, captures[id]?.savingSinceMs == nil,
+           input.hasRunningInputs || current.browserAlive {
+            captures[id]?.inputsAdmitted = true
+            CaptureNotifications.shared.authorizeAfterStart()
+            announce()
+        }
     }
     private func changed(_ snapshot: OwnedCaptureSnapshot) {
         let id = snapshot.manifest.id
@@ -373,7 +385,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func announce() {
         for (id,value) in captures {
-            if let key = value.key, pendingAuto.contains(key), !announced.contains(id) {
+            if value.inputsAdmitted, let key = value.key, pendingAuto.contains(key), !announced.contains(id) {
                 pendingAuto.remove(key); announced.insert(id); onAutomaticStart?(id)
             }
         }
@@ -429,7 +441,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func authorizeMicrophone() async {
         #if DEBUG
-        if CaptureFixture.enabled { return }
+        if CaptureFixture.enabled { try? await CaptureFixtureInput(.me).authorize(); return }
         #endif
         try? await NativeRecordingInputs().authorize()
     }
