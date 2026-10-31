@@ -580,25 +580,30 @@ private final class RecordingSurfaceContents: NSObject, CALayerDelegate {
         if lane == 0 { me = merged } else { others = merged }
     }
     func draw(_ layer: CALayer, in context: CGContext) {
-        let width = IOSurfaceGetWidth(surface), rows = IOSurfaceGetHeight(surface)/2
+        let rows = IOSurfaceGetHeight(surface)/2
         let stride = IOSurfaceGetBytesPerRow(surface)
         let lane = layer.name == "spectrogram-others" ? 1 : 0
         guard let columns = lane == 0 ? me : others else { return }
         if lane == 0 { me = nil } else { others = nil }
-        guard let base = IOSurfaceGetBaseAddress(surface) else { return }
-        let retained = Unmanaged.passRetained(self).toOpaque()
-        guard let provider = CGDataProvider(dataInfo:retained,data:base+lane*rows*stride,size:rows*stride,
-            releaseData:{ info,_,_ in if let info { Unmanaged<RecordingSurfaceContents>.fromOpaque(info).release() } }) else {
-            Unmanaged<RecordingSurfaceContents>.fromOpaque(retained).release(); return
+        let base = IOSurfaceGetBaseAddress(surface)
+        let rowBytes = columns.count*4
+        var bytes = Data(count:rowBytes*rows)
+        bytes.withUnsafeMutableBytes { destination in
+            for row in 0..<rows {
+                destination.baseAddress!.advanced(by:row*rowBytes).copyMemory(
+                    from:base+(lane*rows+row)*stride+columns.lowerBound*4,byteCount:rowBytes)
+            }
         }
+        guard let provider = CGDataProvider(data:bytes as CFData) else { return }
         let format = CGBitmapInfo.byteOrder32Little.union(.init(rawValue:CGImageAlphaInfo.premultipliedFirst.rawValue))
-        guard let image = CGImage(width:width,height:rows,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:stride,
+        guard let image = CGImage(width:columns.count,height:rows,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:rowBytes,
             space:colorSpace,bitmapInfo:format,provider:provider,decode:nil,shouldInterpolate:true,intent:.defaultIntent) else { return }
-        // Core Animation clips this context to the invalidated columns. A new
-        // wrapper avoids caching stale mutable pixels; there is no data copy.
+        // Copy only changed columns into an immutable image. Neither lazy
+        // image caching nor rendering can retain or reread the mutable bank.
         context.saveGState()
         context.clip(to:.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:layer.bounds.height))
         context.setBlendMode(.copy); context.interpolationQuality = .low
-        context.draw(image,in:layer.bounds); context.restoreGState()
+        context.draw(image,in:.init(x:CGFloat(columns.lowerBound),y:0,width:CGFloat(columns.count),height:layer.bounds.height))
+        context.restoreGState()
     }
 }

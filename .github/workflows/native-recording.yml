@@ -105,7 +105,7 @@ jobs:
           python-version: '3.12'
       - run: brew install displayplacer
       - run: python3 baseline/scripts/hosted-display.py
-      - name: Compile baseline and experimental renderer only, without app or SDK rebuild
+      - name: Compile probes and candidate spectrogram module, reusing other products
         run: |
           # Identical pixel-only early completion in both variants; production
           # baseline renderer/SDK remain source-verified and unchanged.
