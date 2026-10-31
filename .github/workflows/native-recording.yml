@@ -88,14 +88,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: baseline
-          ref: abb03cc7b1d702e74a0e0281144a1f629e5dba9b
+          ref: ec79eca866fa0a6da62d0635e7f180b5ec902791
           persist-credentials: false
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - uses: actions/download-artifact@v5
         with:
           name: ci-release
           path: baseline/build/ci-products
-          run-id: 41069782999
+          run-id: 41226368770
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify the exact previous build source, pins, toolchain and archive
         working-directory: baseline
@@ -107,9 +107,12 @@ jobs:
       - run: python3 baseline/scripts/hosted-display.py
       - name: Compile baseline and experimental renderer only, without app or SDK rebuild
         run: |
+          # Identical pixel-only early completion in both variants; production
+          # baseline renderer/SDK remain source-verified and unchanged.
+          cp candidate/Spikes/Spectrogram/Probe.swift baseline/Spikes/Spectrogram/Probe.swift
           python3 baseline/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release baseline/probe
           python3 candidate/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release candidate/probe
-      - name: Compare unchanged A and D measurements on one disposable hosted Mac
+      - name: Compare A/D cost and real sound-to-silence pixels on one disposable hosted Mac
         run: python3 candidate/scripts/spectrogram-lab.py baseline/probe candidate/probe experiment
       - uses: actions/upload-artifact@v5
         if: always()

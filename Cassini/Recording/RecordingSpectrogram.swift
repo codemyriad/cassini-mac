@@ -25,7 +25,6 @@ import Darwin
     let engine: SpectrogramSession
     let originUptime: TimeInterval
     private let observers: RecordedPCMObservers?
-    private struct Selection { let at: Double, me: Bool, others: Bool }
     private struct WeakView { weak var value: RecordingSpectrogramView? }
     @MainActor private final class LinkTarget: NSObject {
         weak var owner: RecordingSpectrogram?
@@ -39,7 +38,7 @@ import Darwin
     }
     private var views: [UUID:WeakView] = [:]
     private var visibleViews: [WeakView] = []
-    private var selections: [Selection]
+    private var selections: SpectrogramCaptureSelection
     private var eventCount = -1
     private let target = LinkTarget()
     private var link: CADisplayLink?
@@ -48,7 +47,7 @@ import Darwin
     private var pageRate: Bool?
     private weak var clockView: RecordingSpectrogramView?
     private var notifications: [Notice] = []
-    private var generation = 0, inFlight = false, running = false, stopped = false
+    private var running = false, stopped = false
     private var pageBank: SpectrogramSurface?, pillBank: SpectrogramSurface?
     private var pageRevision = 0, pillRevision = 0
     private final class Pixels {
@@ -67,19 +66,43 @@ import Darwin
     private var pageNeedsBake = true, pillNeedsBake = true
     private(set) var frameCallbacks: UInt64 = 0, framesApplied: UInt64 = 0
     private(set) var skippedFrames: UInt64 = 0, maxFrameIntervalMs = 0.0
+    #if DEBUG
+    private(set) var displayOptionsChanges: UInt64 = 0
+    private(set) var lateTiming: [SpectrogramSession.LateColumn] = []
+    private(set) var displayDelayMs: Double = 0
+    #endif
     private(set) var drawingNanoseconds: UInt64 = 0, analysisNanoseconds: UInt64 = 0
-    private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0
+    private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0, droppedBuffers: UInt64 = 0
     private var lastAppliedTime: Double?
-    private var intervals = [UInt32](repeating:0,count:512)
+    #if DEBUG
+    // The hosted probe is bounded to 200 s at 60/120 Hz, well below a
+    // UInt16 bin's capacity. Ordinary app windows retain no test histogram.
+    private var intervals: [UInt16] = []
     private var intervalCount: UInt64 = 0
+    #endif
     private var lastDisplayMs = 0.0
+    #if SPECTROGRAM_PROBE
+    // Test observations only; no observer, scan or instrumentation in app builds.
+    var fixtureChanged: (() -> Void)?
+    private var fixtureLatest = [Double](repeating:-1,count:2)
+    private var fixtureNonzero = [Double](repeating:-1,count:2)
+    var fixtureHistoryStartMs: Double { lastDisplayMs-4000 }
+    var fixtureSuspended: Bool { !running && link == nil && reducedTimer == nil && surfaceBytes == 0 && rawHistoryBytes == 0 }
+    func fixtureHasSound(_ lane: Int, since boundary: Double) -> Bool { fixtureNonzero[lane] >= boundary }
+    func fixtureIsSilent(_ lane: Int, since boundary: Double) -> Bool {
+        fixtureHistoryStartMs >= boundary && fixtureLatest[lane] >= boundary && fixtureNonzero[lane] < fixtureHistoryStartMs
+    }
+    #endif
     private var preview = false
     private static let signposts = OSLog(subsystem:"io.codemyriad.cassini",category:"Spectrogram display")
 
     init(originUptime: TimeInterval, observers: RecordedPCMObservers? = nil, me: Bool = true, others: Bool = true) {
         self.observers = observers
         self.originUptime = originUptime; engine = .init(originUptime:originUptime,measureCPU:Self.measuring)
-        selections = [.init(at:0,me:me,others:others)]
+        selections = .init(me:me,others:others)
+        #if DEBUG
+        if Self.measuring { intervals = [UInt16](repeating:0,count:512) }
+        #endif
         super.init(); target.owner = self
         let names: [Notification.Name] = [NSWindow.didChangeOcclusionStateNotification,
             NSWindow.didMiniaturizeNotification,NSWindow.didDeminiaturizeNotification,NSWindow.willCloseNotification,
@@ -87,7 +110,7 @@ import Darwin
             NSApplication.didHideNotification,NSApplication.didUnhideNotification]
         notifications = names.map { name in
             let token = NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { [weak self] _ in
-                DispatchQueue.main.async {
+                MainActor.assumeIsolated {
                     guard let self else { return }
                     self.appearance(dark:self.dark,silent:self.silent); self.reconcile()
                 }
@@ -96,8 +119,11 @@ import Darwin
         }
         let center = NSWorkspace.shared.notificationCenter
         let token = center.addObserver(forName:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil,queue:.main) { [weak self] _ in
-            DispatchQueue.main.async {
+            MainActor.assumeIsolated {
                 guard let self else { return }
+                #if DEBUG
+                self.displayOptionsChanges &+= 1
+                #endif
                 self.appearance(dark:self.dark,silent:self.silent); self.reconcile()
             }
         }
@@ -113,12 +139,13 @@ import Darwin
     }
     func update(events: [CaptureEvent]) {
         guard events.count != eventCount else { return }; eventCount = events.count
-        let values = events.compactMap { event -> Selection? in
+        let values = events.lazy.compactMap { event -> SpectrogramCaptureSelection.Transition? in
             guard event.type == "selection", let at = event.atMs, at.isFinite, at >= 0, let me = event.me, let others = event.others else { return nil }
-            return .init(at:at,me:me,others:others)
+            return .init(atMs:at,me:me,others:others)
         }
-        if !values.isEmpty { selections = values }
+        selections.update(values,nowMs:max(0,(ProcessInfo.processInfo.systemUptime-originUptime)*1000))
     }
+
     func add(_ view: RecordingSpectrogramView) { views[view.registrationID] = .init(value:view); reconcile() }
     func remove(_ id: UUID) { views.removeValue(forKey:id); reconcile() }
     func appearance(dark: Bool, silent: Bool) {
@@ -132,11 +159,14 @@ import Darwin
     }
     func stop(atMs: Double) {
         guard !stopped else { return }; stopped = true; running = false; engine.stop(atMs:atMs)
-        generation += 1; link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; inFlight = false
+        link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil
         engine.setVisible(false); observers?.set(nil)
         for view in views.values.compactMap(\.value) { view.freeze() }
     }
     func reconcile() {
+        #if SPECTROGRAM_PROBE
+        defer { fixtureChanged?() }
+        #endif
         if views.values.contains(where:{ $0.value == nil }) { views = views.filter { $0.value.value != nil } }
         let mapped = views.values.compactMap(\.value)
         let visible = mapped.filter(\.visibleForSpectrogram)
@@ -158,7 +188,7 @@ import Darwin
         }
         guard Self.enabled, let primary else {
             if running {
-                generation += 1; running = false; inFlight = false; engine.setVisible(false); observers?.set(nil)
+                running = false; engine.setVisible(false); observers?.set(nil)
                 link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; pageRate = nil
                 resetPicture()
             }
@@ -192,6 +222,9 @@ import Darwin
     private func resetPicture() {
         pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
         pixels = nil
+        #if SPECTROGRAM_PROBE
+        fixtureLatest = [-1,-1]; fixtureNonzero = [-1,-1]
+        #endif
         pageNeedsBake = true; pillNeedsBake = true
         for view in views.values.compactMap(\.value) { view.suspend() }
     }
@@ -204,21 +237,14 @@ import Darwin
         } else { pillBank = nil; pillNeedsBake = true }
     }
     private func selected(_ lane: SpectrogramLane, slot: Int64) -> Bool {
-        let time = Double(slot)*20
-        var lo = 0, hi = selections.count
-        while lo < hi { let mid = (lo+hi)/2; if selections[mid].at <= time { lo = mid+1 } else { hi = mid } }
-        let value = selections[max(0,lo-1)]
-        return lane == .me ? value.me : value.others
+        selections.selected(lane,slot:slot)
     }
+
     private func tick(_ value: CADisplayLink) {
         guard value === link, running, !stopped else { return }
-        let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-        defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
-        // Window/view notifications maintain membership. A single cheap
-        // visibility check catches occlusion before its queued notification;
-        // rebuilding/filtering every strip each display tick wastes CPU.
-        // Experimental notification-only visibility; no WindowServer query
-        // on every display callback. Production visibility hooks are retained.
+        // Window/view notifications update membership synchronously. Re-querying
+        // AppKit occlusion/visibleRect here can make a WindowServer IPC every
+        // display frame; the display link already belongs to the visible set.
         guard running, !reduced else { return }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram display link",signpostID:interval)
@@ -231,33 +257,51 @@ import Darwin
         requestFrame(timestamp:CACurrentMediaTime())
     }
     private func requestFrame(timestamp: Double) {
-        guard !inFlight else { skippedFrames += 1; return }; inFlight = true
-        let revision = generation
-        engine.requestFrame(nowMs:max(0,(timestamp-originUptime)*1000)) { [weak self] frame in
-            DispatchQueue.main.async {
-                guard let self, self.generation == revision, self.running, !self.stopped else { return }
-                self.inFlight = false; self.analyzedFrames = frame.analyzedFrames; self.analysisNanoseconds = frame.analysisNanoseconds
-                self.lateColumns = frame.lateColumns; self.droppedColumns = frame.droppedColumns
-                self.paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
-                if let previous = self.lastAppliedTime {
-                    let ms = (timestamp-previous)*1000
-                    self.maxFrameIntervalMs = max(self.maxFrameIntervalMs,ms)
-                    let bin = min(511,max(0,Int(ceil(ms*10))))
-                    self.intervals[bin] &+= 1; self.intervalCount += 1
-                }
-                self.lastAppliedTime = timestamp; self.framesApplied += 1
-            }
-        }
-    }
-    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double) {
         let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
         defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
+        // Read already-analyzed columns in the display-link callback. No
+        // utility→main handoff or second run-loop wake is needed per frame.
+        let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
+        analyzedFrames = frame.analyzedFrames; analysisNanoseconds = frame.analysisNanoseconds
+        #if DEBUG
+        displayDelayMs = frame.delayMs; lateTiming = frame.lateSamples
+        #endif
+        lateColumns = frame.lateColumns; droppedColumns = frame.droppedColumns; droppedBuffers = frame.droppedBuffers
+        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
+        if let previous = lastAppliedTime {
+            let ms = (timestamp-previous)*1000
+            maxFrameIntervalMs = max(maxFrameIntervalMs,ms)
+            #if DEBUG
+            if Self.measuring {
+                let bin = min(511,max(0,Int(ceil(ms*10))))
+                intervals[bin] += 1; intervalCount += 1
+            }
+            #endif
+        }
+        lastAppliedTime = timestamp; framesApplied += 1
+        #if SPECTROGRAM_PROBE
+        fixtureChanged?()
+        #endif
+    }
+    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double) {
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram draw",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram draw",signpostID:interval) }
         let pixels: Pixels
         if let existing = self.pixels { pixels = existing }
         else { pixels = Pixels(dark:dark); self.pixels = pixels }
+        #if SPECTROGRAM_PROBE
+        // Observation is idle throughout CPU measurement, so testing a future
+        // silence transition cannot charge instrumentation to the renderer.
+        if fixtureChanged != nil {
+            for (lane,columns) in [me,others].enumerated() {
+                for column in columns {
+                    fixtureLatest[lane] = max(fixtureLatest[lane],Double(column.slot)*20)
+                    if column.bands.contains(where: { $0 > 0 }) { fixtureNonzero[lane] = max(fixtureNonzero[lane],Double(column.slot)*20) }
+                }
+            }
+        }
+        #endif
         lastDisplayMs = displayMs
         let pageEnd = Int64(floor(displayMs/20)), pillEnd = Int64(floor((displayMs-60)/80))
         if pageNeedsBake, let bank = pageBank {
@@ -312,14 +356,12 @@ import Darwin
             else { remember(nil) }
             lastPill = pillEnd
         }
-        CATransaction.begin(); CATransaction.setDisableActions(true)
         for item in visibleViews {
             guard let view = item.value else { continue }
             let bank = view.style == .pill ? pillBank : pageBank
             if let bank { view.present(bank:bank,revision:view.style == .pill ? pillRevision : pageRevision,
                 displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced) }
         }
-        CATransaction.commit()
     }
     #if DEBUG && !SPECTROGRAM_PROBE
     private static var cachedPreview: (Int64,RecordingSpectrogram)?
@@ -362,7 +404,7 @@ import Darwin
     #if DEBUG
     func resetFrameMeasurements() {
         frameCallbacks = 0; framesApplied = 0; skippedFrames = 0; maxFrameIntervalMs = 0
-        intervals = [UInt32](repeating:0,count:512); intervalCount = 0; lastAppliedTime = nil
+        intervals = Self.measuring ? [UInt16](repeating:0,count:512) : []; intervalCount = 0; lastAppliedTime = nil
         drawingNanoseconds = 0
     }
     var frameP95Ms: Double {
@@ -376,9 +418,24 @@ import Darwin
     var surfaceRevision: Int { pageRevision+pillRevision }
     var surfaceBytes: Int { (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0) }
     #endif
-    var payloadBytes: Int {
-        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+intervals.count*4+selections.count*MemoryLayout<Selection>.stride+64*37*2
+    private var measurementStorageBytes: Int {
+        #if DEBUG
+        return intervals.count*MemoryLayout<UInt16>.stride
+        #else
+        return 0
+        #endif
     }
+    var payloadBytes: Int {
+        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2
+    }
+}
+
+// The scrolling position changes at display cadence. Returning the null action
+// directly avoids Swift/NSDictionary key bridging on every implicit CA lookup.
+// Explicit animations (the root layer's Stop fade) are unaffected.
+private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
+    private static let noAction: CAAction = NSNull()
+    override func action(forKey event: String) -> CAAction? { Self.noAction }
 }
 
 @MainActor final class RecordingSpectrogramView: NSView {
@@ -390,19 +447,26 @@ import Darwin
     private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-    private struct LaneLayers { let clip = CALayer(), scrolling = CALayer(), first = CALayer(), second = CALayer(), fade = CAGradientLayer() }
+    private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
-        layer = CALayer(); wantsLayer = true; setAccessibilityElement(false)
+        wantsLayer = true; setAccessibilityElement(false)
+        // Disable implicit actions only on our layers. Let AppKit coalesce the
+        // implicit transaction at its normal frame boundary, instead of forcing
+        // an explicit CA/WindowServer commit from every paint callback.
+        let actions: [String:CAAction] = ["position":NSNull(),"bounds":NSNull(),"contents":NSNull(),
+            "contentsRect":NSNull(),"mask":NSNull(),"hidden":NSNull(),"opacity":NSNull(),
+            "instanceCount":NSNull(),"instanceTransform":NSNull()]
+        layer?.actions = actions
         for _ in 0..<(style == .pill ? 2 : 1) {
-            let item = LaneLayers(); item.clip.masksToBounds = true; item.clip.cornerRadius = 2
+            let item = LaneLayers()
+            for owned in [item.clip,item.first,item.fade] { owned.actions = actions }
+            item.clip.masksToBounds = true; item.clip.cornerRadius = style == .pill ? 2 : 4
             item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
-            for image in [item.first,item.second] {
-                image.anchorPoint = .zero; image.contentsGravity = .resize
-                image.minificationFilter = .linear; image.magnificationFilter = .linear
-                item.scrolling.addSublayer(image)
-            }
+            item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
+            item.first.minificationFilter = .linear; item.first.magnificationFilter = .linear
+            item.scrolling.addSublayer(item.first)
             item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
             item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
             layer?.addSublayer(item.clip); lanes.append(item)
@@ -410,6 +474,10 @@ import Darwin
     }
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
+    // The picture is exclusively the owned sublayers. Avoid AppKit's draw(_:) /
+    // bitmap backing path; updates already arrive through the surface delegate.
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() { }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     var visibleForSpectrogram: Bool {
         guard let window else { return false }
@@ -431,13 +499,14 @@ import Darwin
     func suspend() {
         guard source != nil || bank != nil else { return }
         for lane in lanes {
-            lane.first.contents = nil; lane.second.contents = nil
-            lane.first.delegate = nil; lane.second.delegate = nil
+            lane.first.contents = nil;lane.first.delegate = nil
         }; bank = nil; source = nil; revision = -1; reducedMode = nil
     }
     func freeze() {
         guard layer?.opacity != 0.45 else { return }
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { layer?.opacity = 0.45; return }
+        if source == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            layer?.opacity = 0.45; return
+        }
         let animation = CABasicAnimation(keyPath:"opacity"); animation.fromValue = layer?.presentation()?.opacity ?? 1
         animation.toValue = 0.45; animation.duration = 0.22
         layer?.opacity = 0.45; layer?.add(animation,forKey:"recording-stop")
@@ -458,22 +527,24 @@ import Darwin
             if bankChanged {
             lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
             lane.fade.frame = lane.clip.bounds
+                lane.scrolling.bounds = .init(x:0,y:0,width:capacity,height:height)
+                // Two GPU instances share one texture leaf, halving contents
+                // invalidations/exports while retaining the same wrap geometry.
+                lane.scrolling.instanceTransform = CATransform3DMakeTranslation(-capacity,0,0)
             }
             if bankChanged || modeChanged {
                 lane.clip.mask = reduced ? nil : lane.fade
-                lane.second.isHidden = reduced
+                lane.scrolling.instanceCount = reduced ? 1 : 2
             }
-            for image in [lane.first,lane.second] {
+            let image=lane.first
                 if bankChanged {
                     image.bounds = .init(x:0,y:0,width:capacity,height:height)
                     image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
-                    image.delegate = source
+                    // The experimental setter supplies contents directly; no display delegate.
                 }
-                if changed { image.setNeedsDisplay() }
-            }
+                if changed { image.contents = value.surface }
             if bankChanged {
                 lane.first.position = .zero
-                lane.second.position = .init(x:-capacity,y:0)
             }
             lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
         }
