@@ -211,10 +211,11 @@ public struct LibraryScanner: Sendable {
         let overrides = Dictionary(uniqueKeysWithValues: (metadata?.speakers ?? []).map { ($0.id, $0) })
         meeting.speakers = ids.enumerated().map { index, id in
             let override = overrides[id]
-            let label = embeddedNames[id]?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let embedded = label.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : $0 }
+            let storedLabel = embeddedNames[id]
+            let classification = storedLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let embedded = classification.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : storedLabel }
             let name = override != nil ? override?.name : embedded
-            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label)
+            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override == nil ? storedLabel : override?.label)
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(sorted)

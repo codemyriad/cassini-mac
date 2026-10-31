@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CryptoKit
+import CassiniKit
 import Testing
 @testable import CassiniLibrary
 
@@ -95,6 +96,24 @@ import Testing
         #expect(result.speakers.first?.displayName=="Intervenant 1")
         #expect(result.speakers.first?.name==nil)
         #expect(result.transcriptItems.first?.text=="Original words")
+    }
+    @Test(arguments:["Speaker 7","Intervenant 4","  Ana  "]) func receivedLabelsAreDisplayedExactlyAsWritten(label:String) throws {
+        let fixture=try Fixture()
+        let base=try Data(contentsOf:fixture.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let parsed=try CassiniReader.read(base)
+        var manifest=try #require(parsed.manifest?.raw)
+        let original=try #require(manifest["speakers"]?.array?.first)
+        let speaker=try #require(original["id"]?.string)
+        manifest=try manifest.setting("speakers",to:.array([try original.setting("label",to:.string(label))]))
+        let body=try JSONSerialization.data(withJSONObject:["language":"en","items":[["speaker":speaker,"startMs":0,"endMs":100,"text":"Stored words"]]])
+        let source=fixture.root.appendingPathComponent("Received.opus")
+        _=try OpusStreamFile.rewrite(base,tags:PortableMeetingTags.make(manifest:manifest,transcript:body,wordCount:1),to:source)
+        let imported=try LibraryImport.copy(source,into:fixture.root.appendingPathComponent("Library"))
+        #expect(imported.speakerNames==[label])
+        #expect(imported.transcriptItems.map(\.text)==["Stored words"])
+        let writer=try MeetingMetadataWriter(directory:imported.folder,id:imported.id)
+        try writer.transaction {$0["title"]="Edited title"}
+        #expect(try LibraryScanner(root:fixture.root.appendingPathComponent("Library")).scan().meetings.first?.speakerNames==[label])
     }
     @Test func everyLanguageHasNativePermissionCopyAndDeclaredBundleSupport() throws {
         let root=URL(fileURLWithPath:#filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
