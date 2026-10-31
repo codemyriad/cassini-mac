@@ -17,6 +17,8 @@ import Sparkle
     #if DEBUG
     @ObservationIgnored private var fixtureActivity: (() -> Set<Activity>)?
     @ObservationIgnored private var pollInterval: Duration = .seconds(1)
+    @ObservationIgnored var fixtureBusyPoll: (() -> Void)?
+    var fixtureWaitingTask: Task<Void,Never>? { waiting }
     #endif
     private(set) var available = false
     private var updaterCanCheck = false
@@ -78,6 +80,7 @@ import Sparkle
         waiting = Task { @MainActor [weak self] in
             while let self, !self.activity.isEmpty {
                 #if DEBUG
+                self.fixtureBusyPoll?()
                 let interval = self.pollInterval
                 #else
                 let interval: Duration = .seconds(1)

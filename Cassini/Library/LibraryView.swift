@@ -562,11 +562,21 @@ private final class LibraryToolbarActionView: NSView {
 
 struct UpdateReadyFooter: View {
     let updates: ApplicationUpdates
+    #if DEBUG
+    var fixtureVisibility: ((Bool) -> Void)? = nil
+    #endif
+    private var line: some View {
+        Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+            .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
+            .accessibilityIdentifier("library-update-ready")
+    }
     var body: some View {
         if updates.readyWhenIdle {
-            Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
-                .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
-                .accessibilityIdentifier("library-update-ready")
+            #if DEBUG
+            line.onAppear { fixtureVisibility?(true) }.onDisappear { fixtureVisibility?(false) }
+            #else
+            line
+            #endif
         }
     }
 }
