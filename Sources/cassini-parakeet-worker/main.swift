@@ -3,6 +3,7 @@ import Foundation
 import Darwin
 import CassiniWhistle
 import CassiniTranscription
+import CassiniLibrary
 import CassiniParakeet
 
 struct Request: Decodable { let id: String; let meeting: String; let me: String?; let others: String?; let uiLanguage: String? }
