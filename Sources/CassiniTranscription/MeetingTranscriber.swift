@@ -92,8 +92,8 @@ public enum MeetingTranscriber {
             let previous = resumes ? meeting.transcriptItems : []
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
-            let microphones = Set(tracks.indices.filter { ["microphone","local"].contains(tracks[$0].kind) })
-            let otherTracks = Set(tracks.indices.filter { ["system","application","remote","media","tab"].contains(tracks[$0].kind) })
+            let microphones = Set(tracks.indices.filter { MicrophoneEcho.microphoneKinds.contains(tracks[$0].kind) })
+            let otherTracks = Set(tracks.indices.filter { MicrophoneEcho.comparisonKinds.contains(tracks[$0].kind) })
             var echoWords: [MicrophoneEcho.Word] = [], windowLevels: [Int:Bool] = [:]
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
@@ -159,6 +159,7 @@ public enum MeetingTranscriber {
                 try publish(status:"running")
             }
             try publish(status: "done")
+            try? ExistingTranscriptEcho.markCompleted(directory:directory)
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
     }
     private static func atomicTranscript(_ data: Data, directory: URL) throws {

@@ -54,7 +54,9 @@ jobs:
         ORT_DISABLE_TELEMETRY: '1'
       run: swift test --skip-build --filter 'PipelineTests|TranscriptionMeetingTests'
     - name: Microphone echo on clean, bleed and room meetings
-      run: python3 scripts/check-microphone-echo.py build/pipeline
+      run: |
+        python3 scripts/check-microphone-echo.py build/pipeline
+        python3 scripts/check-microphone-echo.py build/pipeline/migration
     - name: Constructor privacy guard and persistent worker JFK golden
       run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle
         --report build/whistle-${{ matrix.runner }}.json

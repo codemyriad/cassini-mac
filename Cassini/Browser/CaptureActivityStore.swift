@@ -11,4 +11,12 @@ final class CaptureActivityStore: CaptureActivityProviding, @unchecked Sendable 
     private var phases: [UUID:CaptureActivity] = [:]
     func set(_ id: UUID, _ phase: CaptureActivity?) { lock.withLock { phases[id] = phase } }
     func snapshot() -> [UUID:CaptureActivity] { lock.withLock { phases } }
+    /// The maintenance commit is only two renames plus durability. A factory
+    /// cannot announce preparation between the idle check and publication.
+    func commitWhileIdle(_ commit: () throws -> Void) throws {
+        try lock.withLock {
+            guard phases.isEmpty else { throw CancellationError() }
+            try commit()
+        }
+    }
 }

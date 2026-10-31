@@ -1,0 +1,9 @@
+{
+  "repository": "cassini-coordination",
+  "path": "ux-draft/bleed/results/mac-757abb6-*.transcript.json",
+  "sha256": {
+    "clean.json": "8fded9e2f287841b548237d3c0b084bf5f995d1c8c55b6e0c6b1363857503b1f",
+    "bleed.json": "286a6fd82442369c04f0415e10de5e066567eeb2cc71680f705f63f5bb77cf59",
+    "room.json": "bc2f662591f579af8deb7f2e54478ba374ce37b7a02a31373a67b575f98d035e"
+  }
+}

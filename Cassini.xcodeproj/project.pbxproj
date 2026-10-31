@@ -129,6 +129,7 @@
 		F1C535ADDEC2069F9E186664 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3149977C4C1C582F5CEF23B /* main.swift */; };
 		FA8DB59547EC83DF9D117F9B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */; };
 		FC03DD79491FF3EFD61CE9D7 /* MeetingNativeInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34A161ECA8F0B18EA992202A /* MeetingNativeInputs.swift */; };
+		FCD44BB4EF8A049604EADACE /* EchoMigrationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76E35170A03FDD30F0FBC7DB /* EchoMigrationSelfTest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -264,6 +265,7 @@
 		71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		7480882332EEE8C270AB671F /* TranscriptTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTextView.swift; sourceTree = "<group>"; };
 		76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDiskWatch.swift; sourceTree = "<group>"; };
+		76E35170A03FDD30F0FBC7DB /* EchoMigrationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoMigrationSelfTest.swift; sourceTree = "<group>"; };
 		7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNavigation.swift; sourceTree = "<group>"; };
 		7C5B7D75EB99ED4AC8A540EF /* CassiniBrowserSetup.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = CassiniBrowserSetup.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionQueue.swift; sourceTree = "<group>"; };
@@ -627,6 +629,7 @@
 		937002C1FBFE88E2BDF8A0AF /* Transcription */ = {
 			isa = PBXGroup;
 			children = (
+				76E35170A03FDD30F0FBC7DB /* EchoMigrationSelfTest.swift */,
 				84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */,
 			);
 			path = Transcription;
@@ -1173,6 +1176,7 @@
 				73430AD2E1F30C774BD10517 /* Commands.swift in Sources */,
 				E9BFA89A95D97AC2F6E86F90 /* CompanionSetupView.swift in Sources */,
 				1EF5EE8DD217C7B2C937D7A2 /* DocumentView.swift in Sources */,
+				FCD44BB4EF8A049604EADACE /* EchoMigrationSelfTest.swift in Sources */,
 				0D92ED1885E3C15E5482F790 /* ExportSelfTest.swift in Sources */,
 				5B22C485F9011F2995FB4C70 /* InspectorView.swift in Sources */,
 				D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */,

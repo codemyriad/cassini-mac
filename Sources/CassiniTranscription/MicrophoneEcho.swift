@@ -4,6 +4,8 @@ import Foundation
 /// Physical source indices are retained until after classification. A shared
 /// speaker name must never make two separate microphone spans one source.
 enum MicrophoneEcho {
+    static let microphoneKinds: Set<String> = ["microphone","local"]
+    static let comparisonKinds: Set<String> = ["system","application","remote","media","tab"]
     struct Word {
         let track: Int
         let startMs: Int64
@@ -27,14 +29,20 @@ enum MicrophoneEcho {
     /// It is needed only for unmatched words bracketed by direct echo anchors.
     static func flags(_ words: [Word], microphones: Set<Int>, others: Set<Int>,
                       windowIsLouder: (Int) throws -> Bool) rethrows -> [Bool] {
+        try flags(words,microphones:microphones,others:others,checkpoint:{},windowIsLouder:windowIsLouder)
+    }
+    static func flags(_ words: [Word], microphones: Set<Int>, others: Set<Int>, checkpoint: () throws -> Void,
+                      windowIsLouder: (Int) throws -> Bool) rethrows -> [Bool] {
         guard !microphones.isEmpty, !others.isEmpty else { return Array(repeating:false,count:words.count) }
         var grouped: [String:[(Int64,Double)]] = [:]
         for word in words where others.contains(word.track) {
+            try checkpoint()
             if let level = word.rmsDbfs, level.isFinite { grouped[word.normalizedText,default:[]].append((word.startMs,level)) }
         }
         let levels = grouped.mapValues(LevelIndex.init)
         var direct = Array(repeating:false,count:words.count)
         for (index,word) in words.enumerated() where microphones.contains(word.track) {
+            try checkpoint()
             guard let level = word.rmsDbfs, level.isFinite, let other = levels[word.normalizedText] else { continue }
             let (lower,overflow) = word.startMs.subtractingReportingOverflow(600)
             direct[index] = level <= other.maximum(from:overflow ? .min : lower,through:word.startMs)-6
@@ -51,6 +59,7 @@ enum MicrophoneEcho {
             }
             anchor = nil
             for (position,index) in ordered.enumerated() {
+                try checkpoint()
                 if direct[index] { anchor = index; continue }
                 guard let before = anchor, let after = next[position],
                       words[index].rmsDbfs?.isFinite == true else { continue }

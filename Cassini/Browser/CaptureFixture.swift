@@ -7,7 +7,7 @@ import CassiniBrowserControl
 
 @MainActor enum CaptureFixture {
     nonisolated static var enabled: Bool {
-        RecordingFixture.enabled && RecordingFixture.root != nil && (CommandLine.arguments.contains("--browser-capture-self-test") || CommandLine.arguments.contains("--browser-return-self-test"))
+        RecordingFixture.enabled && RecordingFixture.root != nil && (CommandLine.arguments.contains("--browser-capture-self-test") || CommandLine.arguments.contains("--browser-return-self-test") || CommandLine.arguments.contains("--existing-echo-self-test"))
     }
     static var microphoneAllowed = true
     static var microphoneStartsAllowed = true

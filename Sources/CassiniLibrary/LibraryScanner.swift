@@ -21,6 +21,18 @@ public struct LibraryScanner: Sendable {
                 activity: any CaptureActivityProviding = CaptureActivitySnapshot()) {
         self.root = URL(fileURLWithPath: root.standardizedFileURL.path, isDirectory: false); self.activity = activity
     }
+    /// Validate one known folder without repeatedly scanning the entire Library
+    /// during bounded background maintenance. Uses the same reader and rules.
+    public func meeting(at url: URL, now: Date = Date()) throws -> LibraryMeeting? {
+        snapshot.lock.lock(); defer { snapshot.lock.unlock() }
+        let resolved = try physicalURL(root)
+        guard try physicalURL(url.deletingLastPathComponent()).path == resolved.path,
+              let (id,received) = Self.identity(url.lastPathComponent) else { return nil }
+        let folder = URL(fileURLWithPath:resolved.path+"/"+url.lastPathComponent,isDirectory:false)
+        guard let info = try pathInfo(folder), info.st_mode & S_IFMT == S_IFDIR else { return nil }
+        var seen = Set<URL>()
+        return read(folder:folder,id:id,received:received,activity:activity.snapshot()[id],now:now,seen:&seen)
+    }
     public func scan(now: Date = Date()) throws -> LibraryScan { try scan(affected: nil, now: now) }
     public func scan(affected: URL?, now: Date = Date()) throws -> LibraryScan {
         snapshot.lock.lock(); defer { snapshot.lock.unlock() }

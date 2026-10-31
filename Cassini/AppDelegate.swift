@@ -41,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
             Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return
         }
+        if EchoMigrationSelfTest.enabled {
+            Task { @MainActor in await EchoMigrationSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--browser-capture-self-test") {
             Task { @MainActor in await CaptureSelfTest.run() }; return
         }

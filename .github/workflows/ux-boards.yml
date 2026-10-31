@@ -57,6 +57,9 @@ jobs:
     - name: Actual sandbox Trash, Undo and Finder Put Back without devices
       if: always()
       run: python3 scripts/test-trash-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/trash-app.json
+    - name: Existing transcripts classify once and yield to recording without models or devices
+      if: always()
+      run: python3 scripts/test-existing-echo-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/existing-echo-app.json
     - name: Private Settings and Library relocation without devices
       if: always()
       run: |

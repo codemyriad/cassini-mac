@@ -180,6 +180,11 @@ final class LibraryStore {
                     selectedKey = key; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
                 }
                 TranscriptionQueue.shared.consider(result.meetings,automatic:!context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
+                var classifyExisting = !context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes)
+                #if DEBUG
+                if EchoMigrationSelfTest.enabled { classifyExisting = true }
+                #endif
+                TranscriptionQueue.shared.considerExistingEcho(result.meetings,enabled:classifyExisting)
                 LegacyOpening.refreshTranscripts(result.meetings)
                 if selectedKey == nil || !meetings.contains(where:{ $0.libraryKey == selectedKey }) {
                     selectedKey = context.screenshot ? meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey : meetings.first?.libraryKey

@@ -153,6 +153,7 @@ private final class CaptureFiles: @unchecked Sendable {
         recordGeneration += 1
         let generation = recordGeneration
         do {
+            await TranscriptionQueue.shared.pauseEchoForRecording()
             guard !shuttingDown, generation == recordGeneration else { requestingRecord = false; return }
             if available && hasCalls {
                 service.recordAll(microphone:true,choices:microphones) { [weak self] requests in

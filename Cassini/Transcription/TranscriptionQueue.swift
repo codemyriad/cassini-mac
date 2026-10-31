@@ -17,6 +17,9 @@ import Darwin
     private(set) var active: URL?
     private(set) var activeModel: String?
     @ObservationIgnored private var pending: [LibraryMeeting] = []
+    @ObservationIgnored private var echoPending: [LibraryMeeting] = []
+    @ObservationIgnored private var echoKnown = Set<String>()
+    @ObservationIgnored private var echoActive = false
     @ObservationIgnored private var known = Set<String>()
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var preparation: Task<Void,Never>?
@@ -30,19 +33,21 @@ import Darwin
         let path = folder.path
         trashing.insert(path)
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        echoPending.removeAll { $0.folder.path == path }; echoKnown.remove(path)
         let child = active?.path == path ? task : nil
         child?.cancel()
         let metadata = preparing?.folder.path == path ? preparing?.work : nil
         _ = try? await metadata?.value
         await child?.value
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        echoPending.removeAll { $0.folder.path == path }; echoKnown.remove(path)
     }
     func releaseTrashed(_ folder: URL) {
-        trashing.remove(folder.path); known.remove(folder.path); schedulingFailures.remove(folder.path)
+        trashing.remove(folder.path); known.remove(folder.path); echoKnown.remove(folder.path); schedulingFailures.remove(folder.path)
     }
     var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
     func beginShutdown() {
-        guard !closing else { return }; closing = true
+        guard !closing else { return }; closing = true; echoPending.removeAll()
         task?.cancel(); preparePending()
     }
     func waitForShutdown() async {
@@ -52,22 +57,35 @@ import Darwin
     }
     #if DEBUG
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
+    var classifyingEchoFixture: Bool { RecordingFixture.enabled && echoActive }
+    @ObservationIgnored var echoCheckpointFixture: (@Sendable () throws -> Void)?
     @ObservationIgnored private var failedFixtureOnce = false
     #endif
     // Persist accepted queue intent before any inactive folder can move.
     // The active child's paths remain protected; queued folders are rediscovered.
     func pauseForMove() async {
-        paused = true
+        paused = true; echoPending.removeAll()
+        if echoActive { task?.cancel(); await task?.value }
         await preparation?.value
         pending.removeAll(); prepared.removeAll()
     }
-    func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
+    func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []); echoKnown.removeAll() }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic, !closing, !paused else { return }
         known.formIntersection(Set(meetings.map { $0.folder.path }).union(pending.map { $0.folder.path }).union(active.map { [$0.path] } ?? []))
         let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
         for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
+    }
+    func considerExistingEcho(_ meetings: [LibraryMeeting], enabled: Bool) {
+        guard enabled, !closing, !paused else { return }
+        let present = Set(meetings.map { $0.folder.path })
+        echoPending.removeAll { !present.contains($0.folder.path) }
+        echoKnown.formIntersection(present.union(active.map { [$0.path] } ?? []))
+        for meeting in meetings where ExistingTranscriptEcho.candidate(meeting) && !trashing.contains(meeting.folder.path) {
+            if echoKnown.insert(meeting.folder.path).inserted { echoPending.append(meeting) }
+        }
+        startNextEcho()
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {
         guard !closing, !paused, !trashing.contains(meeting.folder.path), !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
@@ -107,8 +125,48 @@ import Darwin
             }
         }
     }
+    func pauseEchoForRecording() async {
+        guard echoActive else { return }
+        task?.cancel(); await task?.value
+    }
+    private func startNextEcho() {
+        guard !closing, !paused, task == nil, preparation == nil, pending.isEmpty, !echoPending.isEmpty,
+              !RecordingOverview.active, !RecordingOverview.starting, !RecordingOverview.saving,
+              CaptureActivityStore.shared.snapshot().isEmpty else { return }
+        let meeting = echoPending.removeFirst()
+        guard !trashing.contains(meeting.folder.path) else { startNextEcho(); return }
+        active = meeting.folder; activeModel = nil; echoActive = true
+        task = Task {
+            var changed = false
+            do {
+                #if DEBUG
+                let fixture = RecordingFixture.enabled ? echoCheckpointFixture : nil
+                #endif
+                let work = Task.detached(priority:.background) {
+                    try ExistingTranscriptEcho.run(directory:meeting.folder,checkpoint:{
+                        #if DEBUG
+                        try fixture?()
+                        #endif
+                        try Task.checkCancellation()
+                        if !CaptureActivityStore.shared.snapshot().isEmpty { throw CancellationError() }
+                    },commit:CaptureActivityStore.shared.commitWhileIdle)
+                }
+                let result = try await withTaskCancellationHandler(operation:{ try await work.value },onCancel:{ work.cancel() })
+                switch result {
+                case .classified: changed = true
+                case .changed: echoKnown.remove(meeting.folder.path)
+                case .alreadyComplete, .ineligible: break
+                }
+            } catch is CancellationError { echoKnown.remove(meeting.folder.path) }
+            catch { /* Leave unsupported/missing/changed inputs untouched; retry on next launch. */ }
+            active = nil; echoActive = false; task = nil
+            if changed { LibraryStore.shared.refresh(affected:meeting.folder) }
+            startNext()
+        }
+    }
     private func startNext() {
-        guard !closing, !paused, task == nil, !pending.isEmpty else { return }
+        guard !closing, !paused, task == nil else { return }
+        guard !pending.isEmpty else { startNextEcho(); return }
         guard prepared.contains(pending[0].folder.path) else { return }
         let meeting = pending.removeFirst(); active = meeting.folder
         prepared.remove(meeting.folder.path)
