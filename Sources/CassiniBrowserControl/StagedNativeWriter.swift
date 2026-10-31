@@ -5,6 +5,8 @@ import CassiniRecording
 /// A running candidate has no file side effects until its selection commits.
 /// Preparation is bounded independently of RecordingSink's active write queue.
 final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
+    let recordedPCM: RecordedPCMPolicy?
+    init(observers: RecordedPCMObservers = .init()) { recordedPCM = RecordedPCMPolicy(observers:observers) }
     private struct Format { let id: String, label: String, kind: String; let rate: Int, channels: Int }
     private struct Chunk { let id: String; let pcm: Data; let offset: Double }
     private let lock = NSLock(), problemLock = NSLock()
@@ -36,18 +38,22 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
             guard !discarded, target == nil else { throw BrowserIPCError.closed }
             guard recordingProblem == nil else { throw RecordingError.invalid("The prepared audio input stopped before activation.") }
             target = writer
+            recordedPCM?.forward(to:writer.recordedPCM)
+            // Selection has committed. Forwarding transfers only privately held
+            // callback PCM; the actual span start trims its readiness prefix.
             defer { formats = []; chunks = []; bytes = 0 }
             for value in formats { try writer.addTrack(id:value.id,label:value.label,kind:value.kind,sampleRate:value.rate,channels:value.channels) }
             for value in chunks { try writer.appendNative(id:value.id,pcm:value.pcm,offsetMs:value.offset) }
         }
     }
-    func discard() { lock.withLock { discarded = true; formats = []; chunks = []; bytes = 0 } }
+    func discard() { lock.withLock { recordedPCM?.cancel(); discarded = true; formats = []; chunks = []; bytes = 0 } }
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
         lock.withLock { target?.reportLoss(id:id,droppedFrames:droppedFrames,gapFrames:gapFrames) }
     }
     func finish(problem: String?) throws { try finish(problem:problem,kind:nil) }
     func finish(problem: String?, kind: String?) throws {
         try lock.withLock {
+            recordedPCM?.cancel()
             if let target { try target.finish(problem:problem,kind:kind) }
             discarded = true; chunks = []; formats = []; bytes = 0
         }

@@ -218,7 +218,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         try await authorize(driver,side:side,source:source)
         try source?.check()
         guard !closed else { throw BrowserIPCError.closed }
-        let generation = UUID(), stage = StagedNativeWriter()
+        let generation = UUID(), stage = StagedNativeWriter(observers:capture.pcmObservers)
         let report = report(side,generation:generation,stage:stage)
         let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report)
         let value = Input(generation:generation,driver:driver,sink:sink,stage:stage)

@@ -35,6 +35,7 @@ import Observation
     private(set) var warnings: [String] = []
     private(set) var waitingForAudio = false
     private(set) var microphoneSilent = false
+    @ObservationIgnored private(set) var spectrogram: RecordingSpectrogram?
     @ObservationIgnored private var timelineStart: TimeInterval?
     @ObservationIgnored private var lastMicSound: TimeInterval = 0
     @ObservationIgnored private var completedElapsedMs: Int64 = 0
@@ -92,6 +93,7 @@ import Observation
             writer = session
             #endif
             let origin = ProcessInfo.processInfo.systemUptime
+            spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:session.pcmObservers) : nil
             timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
             let sink = RecordingSink(session: writer, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
                 Task { @MainActor in
@@ -135,6 +137,7 @@ import Observation
     #endif
     func stop(problem: String? = nil) {
         guard phase == .starting || phase == .recording else { return }
+        spectrogram?.stop(atMs:Double(elapsedMs))
         completedElapsedMs = elapsedMs
         generation += 1
         let attempt = generation
@@ -146,7 +149,7 @@ import Observation
         levels = [:]; waitingForAudio = false
         let sink = self.sink; self.sink = nil
         guard let sink, let directory else {
-            phase = .idle
+            phase = .idle; spectrogram = nil
             if let problem { present(problem) }
             return
         }
@@ -158,7 +161,7 @@ import Observation
             guard let self, self.generation == attempt else { return }
             self.problem = problem ?? failure
             self.lastCompletedDirectory = directory
-            self.phase = .idle; self.finishTask = nil
+            self.phase = .idle; self.finishTask = nil; self.spectrogram = nil
             self.onSaved?(directory)
             if let issue = self.problem { self.present(issue) }
         }
