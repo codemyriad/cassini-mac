@@ -41,7 +41,11 @@ extension LibraryBoards {
         }
         XCTAssertTrue(library.waitForExistence(timeout:10),app.debugDescription)
         XCTAssertEqual(app.windows.matching(identifier:"cassini-library-window").count,1)
-        idle.click(); app.buttons["idle-menu-settings"].click()
+        // Dock reopen may leave the already-expanded status popup in place.
+        // Clicking its label again would close it instead of opening Settings.
+        if !app.buttons["idle-menu-settings"].exists { idle.click() }
+        XCTAssertTrue(app.buttons["idle-menu-settings"].waitForExistence(timeout:5),app.debugDescription)
+        app.buttons["idle-menu-settings"].click()
         XCTAssertTrue(show.waitForExistence(timeout:10),app.debugDescription)
         show.click()
         waitForWindowless { !idle.exists }
@@ -74,7 +78,8 @@ extension LibraryBoards {
         XCTAssertTrue(app.buttons["record-first-start"].waitForExistence(timeout:10)); app.buttons["record-first-start"].click()
         XCTAssertTrue(library.buttons["recording-stop"].waitForExistence(timeout:10),app.debugDescription)
         app.typeKey("q",modifierFlags:.command)
-        XCTAssertTrue(app.buttons["Keep recording"].waitForExistence(timeout:10)); app.buttons["Keep recording"].click()
+        let background = library.sheets.firstMatch.buttons["Keep recording"]
+        XCTAssertTrue(background.waitForExistence(timeout:10)); background.click()
         waitForWindowless { !library.exists }
         let status = app.descendants(matching:.any)["recording-menu-bar"]
         XCTAssertTrue(status.waitForExistence(timeout:10),"The idle preference never hides a recording")
