@@ -37,7 +37,9 @@ import Sparkle
             // its public Objective-C selector so dismissal may discard the
             // no-op callback without leaking a Swift async continuation.
             typealias Reply = @convention(block) (Int) -> Void
-            typealias ShowReady = @convention(c) (AnyObject,Selector,Reply) -> Void
+            // Sparkle retains the reply until its ready window is dismissed.
+            // Mark it escaping at the C bridge too, not just at the callee.
+            typealias ShowReady = @convention(c) (AnyObject,Selector,@escaping Reply) -> Void
             let selector = NSSelectorFromString("showReadyToInstallAndRelaunch:")
             let show = unsafeBitCast(controller.userDriver.method(for:selector),to:ShowReady.self)
             show(controller.userDriver,selector,{ _ in })
