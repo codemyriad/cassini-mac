@@ -44,6 +44,23 @@ import ScreenCaptureKit
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true)
             input.start()
             try await Task.sleep(for:.seconds(5))
+            if argument("-SpectrogramAllocations") == "1" {
+                // A separate process with MallocStackLogging enabled: never
+                // contaminate the uninstrumented CPU/pacing measurement.
+                guard let output=argument("-SpectrogramOutput") else { throw Failure.check("allocation output") }
+                let bytes=controller.payloadBytes
+                try await allocationSnapshot(output:output,phase:"visible")
+                strips.forEach { $0.detach();$0.removeFromSuperview() };strips.removeAll()
+                _ = await withCheckedContinuation { continuation in controller.engine.requestFrame(nowMs:0) { continuation.resume(returning:$0) } }
+                try require(controller.surfaceBytes == 0 && controller.rawHistoryBytes == 0,"allocation test releases surfaces and picture history")
+                try await allocationSnapshot(output:output,phase:"detached")
+                window.orderOut(nil);try await input.finish()
+                try? FileManager.default.removeItem(at:root)
+                let result:[String:Any]=["audioDevicesOpened":false,"allocationStacksCollected":true,
+                    "viewPayloadBytes":bytes,"detachReleasesSurfaces":true]
+                FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:result,options:[.sortedKeys])+Data([10]))
+                exit(0)
+            }
             if mode == "C" { window.miniaturize(nil); try await Task.sleep(for:.seconds(1)) }
             if mode != "C" { try require(window.occlusionState.contains(.visible),"visible test window") }
             let initialFrames = controller.analyzedFrames, initialAnalysis = controller.analysisNanoseconds
@@ -170,6 +187,23 @@ import ScreenCaptureKit
             try await Task.sleep(for:.milliseconds(20))
         }
         throw Failure.check("real system Reduce Motion setting did not reach the view")
+    }
+    private static func allocationSnapshot(output:String,phase:String) async throws {
+        let pid=getpid()
+        try await Task.detached(priority:.utility) {
+            for (tool,arguments) in [("heap",["-noContent","-sumObjectFields",String(pid)]),
+                                     ("malloc_history",[String(pid),"-allBySize"])] {
+                let path=URL(fileURLWithPath:output).appendingPathComponent("allocations-\(phase)-\(tool).txt")
+                guard FileManager.default.createFile(atPath:path.path,contents:nil) else { throw Failure.check("allocation output file") }
+                let file=try FileHandle(forWritingTo:path);defer {try? file.close()}
+                let process=Process();process.executableURL=URL(fileURLWithPath:"/usr/bin/"+tool);process.arguments=arguments
+                var environment=ProcessInfo.processInfo.environment
+                environment.removeValue(forKey:"MallocStackLogging");process.environment=environment
+                process.standardOutput=file;process.standardError=file
+                try process.run();process.waitUntilExit()
+                guard process.terminationStatus == 0 else { throw Failure.check("\(tool) allocation snapshot failed") }
+            }
+        }.value
     }
     private static func darkPixels(window: NSWindow, view: NSView, name: String) async throws -> Int {
         // This API only returns content already available to the current process

@@ -91,6 +91,21 @@ def measure(app: Path, output: Path):
             problems.append('B: hide/show lifecycle failed')
         print(f"{case}: CPU {report['cpuCorePercent']:.4f}%, analysis {report['analysisCorePercent']:.4f}%, "
               f"draw {report['drawingCorePercent']:.4f}%, p95/max {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
+    # Backtraces contain symbols and sizes only, never heap contents or a raw
+    # memory graph (which could include inherited runner credentials).
+    allocation = subprocess.run([str(app.resolve()), '--spectrogram-self-test',
+        '-SpectrogramCase', 'B', '-SpectrogramAllocations', '1',
+        '-SpectrogramOutput', str(output.resolve())],
+        env=dict(os.environ, CASSINI_SPECTRO='1', MallocStackLogging='1'),
+        capture_output=True, text=True, timeout=120)
+    (output/'allocations.stderr.txt').write_text(allocation.stderr)
+    (output/'allocations.stdout.txt').write_text(allocation.stdout)
+    if allocation.returncode:
+        problems.append('Separate live-allocation proof failed; see allocations.stderr.txt')
+    else:
+        proof = json.loads(allocation.stdout)
+        assert proof['allocationStacksCollected'] and proof['detachReleasesSurfaces'] and proof['audioDevicesOpened'] is False
+        (output/'allocations.json').write_text(json.dumps(proof, indent=2)+'\n')
     baseline = next((r['cpuCorePercent'] for r in reports if r['case'] == 'E'), None)
     for report in reports:
         report['cpuDeltaFromE'] = None if baseline is None else report['cpuCorePercent']-baseline
