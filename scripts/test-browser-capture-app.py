@@ -39,6 +39,7 @@ assert process.returncode == 0, (process.returncode,stdout,stderr)
 report = json.loads(stdout)
 for name in [
     'autoRecordMicrophonePrecedesNotifications','browserMicrophonePrecedesNotifications','firstRecordingDoesNotWaitForNotifications',
+    'firstStartDeliveredWhileAcceptanceGated',
     'twoProfilesSameTabIndependent',
     'realSelectionUsesOwnedInputLifecycle',
     'pageStopLeavesOtherMeetingRecording',
