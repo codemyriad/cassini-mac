@@ -489,6 +489,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await absent.loseBrowser()
             try await wait { missing.owner.snapshot.browserLostUptime != nil }
             let disappeared = try missing.owner.snapshot.browserLostUptime.unwrap()
+            collection.pollLifetimeForTesting(at:disappeared+2.01)
+            try await wait { missing.owner.snapshot.usingSystem }
+            try await wait { fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id,returningID,missing.snapshot.manifest.id] }
             collection.pollLifetimeForTesting(at:disappeared+119.99)
             try require(collection.captures.count == 1,"The120-second grace cannot expire early")
             collection.pollLifetimeForTesting(at:disappeared+120.01)
@@ -526,7 +529,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures.values.contains { $0.snapshot.manifest.source == "macos" && $0.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } } }
             try require(CaptureFixture.microphoneStarts == beforeMicStarts,"Denied microphone did not start a device driver")
             try require(collection.first?.input.failedSides.contains(.me) == true,"Permission warning remains distinct from selection")
-            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id],"Only the two browser losses announce fallback; a normal native start does not")
+            try require(fallbacks == [second.snapshot.manifest.id,expiring.snapshot.manifest.id,returningID,missing.snapshot.manifest.id],"Only the four browser losses announce fallback; a normal native start does not")
             report["nativeStartDoesNotReportFallback"] = true
             let nativeMenu = RecordingMenuPayload(recorder:.shared,runtime:.shared)
             try require(nativeMenu.sourceLines?.contains(UXText.text("errors.othersFallback.line")) != true,"A normal native menu does not claim browser fallback")
