@@ -1,8 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Testing
+import Foundation
 @testable import CassiniSpectrogram
 
 @Suite struct DisplayClockTests {
+    @Test func maintainedPercentileMatchesAnIndependentBoundedWindow() {
+        var clock = SpectrogramDisplayClock(), arrivals: [(at:Double,late:Double)] = []
+        var expectedDelay = 40.0, target = 40.0, nextTarget = 0.0, previous: Double?
+        for tick in 0..<3000 {
+            let now = Double(tick)*7
+            arrivals.removeAll { $0.at < now-3000 }
+            for n in 0..<(tick%9) {
+                let value = Double((tick*7+n*13)%500)
+                clock.observe(columnMs:now-value,arrivalMs:now)
+                arrivals.append((now,value))
+                if arrivals.count > 1024 { arrivals.removeFirst() }
+            }
+            if now >= nextTarget {
+                let values = arrivals.map(\.late).sorted()
+                let p95 = values.isEmpty ? 0 : values[max(0,Int(ceil(Double(values.count)*0.95))-1)]
+                target = min(2000,max(40,p95+20)); nextTarget = now+100
+            }
+            if let previous {
+                expectedDelay = target > expectedDelay ? min(target,expectedDelay+(now-previous)*0.5) : max(target,expectedDelay-(now-previous)*0.02)
+            }
+            #expect(clock.advance(nowMs:now) == now-expectedDelay)
+            #expect(clock.delayMs == expectedDelay)
+            previous = now
+        }
+        // Expiry must remove every sorted occurrence, including duplicates.
+        _ = clock.advance(nowMs:100000)
+        #expect(clock.delayMs == 40)
+    }
     @Test func commonDelayAbsorbsBrowserChunksAndShrinksAtTwoPercent() {
         var clock = SpectrogramDisplayClock()
         _ = clock.advance(nowMs:0)

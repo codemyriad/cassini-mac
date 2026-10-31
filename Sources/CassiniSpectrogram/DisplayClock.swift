@@ -8,18 +8,23 @@ public struct SpectrogramDisplayClock {
     private struct Arrival { let at: Double, lateness: Double }
     private var arrivals: [Arrival?] = [Arrival?](repeating:nil,count:1024)
     private var first = 0, count = 0
+    // Maintain the exact order statistic as arrivals enter/leave the 3s window.
+    // This avoids allocating and sorting the whole window every 100ms.
+    private var lateness: [Double] = []
     private var lastTick: Double?
     private var lastArrival: Double = -.infinity
     private var nextTargetAt: Double = 0
     private var target: Double = 40
-    public init() {}
+    public init() { lateness.reserveCapacity(1024) }
     public mutating func reset() { self = .init() }
     public mutating func observe(columnMs: Double, arrivalMs: Double) {
         guard columnMs.isFinite, arrivalMs.isFinite, arrivalMs >= 0, arrivalMs >= lastArrival else { return }
         lastArrival = arrivalMs
         evict(before:arrivalMs-3000)
-        if count == arrivals.count { arrivals[first] = nil; first = (first+1)%arrivals.count; count -= 1 }
-        arrivals[(first+count)%arrivals.count] = .init(at:arrivalMs,lateness:max(0,arrivalMs-columnMs)); count += 1
+        if count == arrivals.count { removeOldest() }
+        let value = max(0,arrivalMs-columnMs)
+        arrivals[(first+count)%arrivals.count] = .init(at:arrivalMs,lateness:value); count += 1
+        lateness.insert(value,at:lowerBound(value))
     }
     /// Returns the page's audio time. A pill uses this minus 60 ms so its four
     /// 20 ms columns are complete before their 80 ms column appears.
@@ -28,8 +33,7 @@ public struct SpectrogramDisplayClock {
         guard lastTick == nil || nowMs >= lastTick! else { return lastTick!-delayMs }
         evict(before:nowMs-3000)
         if nowMs >= nextTargetAt {
-            var values = (0..<count).compactMap { arrivals[(first+$0)%arrivals.count]?.lateness }; values.sort()
-            let p95 = values.isEmpty ? 0 : values[max(0,Int(ceil(Double(values.count)*0.95))-1)]
+            let p95 = lateness.isEmpty ? 0 : lateness[max(0,Int(ceil(Double(lateness.count)*0.95))-1)]
             target = min(2000,max(40,p95+20)); nextTargetAt = nowMs+100
         }
         if let lastTick {
@@ -42,8 +46,21 @@ public struct SpectrogramDisplayClock {
     }
     private mutating func evict(before oldest: Double) {
         while count > 0, let value = arrivals[first], value.at < oldest {
-            arrivals[first] = nil; first = (first+1)%arrivals.count; count -= 1
+            removeOldest()
         }
+    }
+    private func lowerBound(_ value: Double) -> Int {
+        var low = 0, high = lateness.count
+        while low < high {
+            let middle = (low+high)/2
+            if lateness[middle] < value { low = middle+1 } else { high = middle }
+        }
+        return low
+    }
+    private mutating func removeOldest() {
+        let value = arrivals[first]!.lateness
+        lateness.remove(at:lowerBound(value))
+        arrivals[first] = nil; first = (first+1)%arrivals.count; count -= 1
     }
 }
 
