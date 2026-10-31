@@ -344,7 +344,9 @@ final class LibraryBoards: XCTestCase {
         let copied = NSPredicate { _,_ in !(NSPasteboard.general.string(forType:.string) ?? "").isEmpty }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:copied,object:nil)],timeout:5),.completed)
         let text = NSPasteboard.general.string(forType:.string) ?? ""
-        XCTAssertTrue(text.contains("budget"),text)
+        // Native Select All selects the focused text view (this first turn),
+        // rather than unrelated turns elsewhere in the transcript.
+        XCTAssertEqual(text,"Thanks for making the time. We wanted to go through the delivery dates before the end of the month.")
         XCTAssertFalse(text.contains("cassini-seek:"),"Copy carries readable words, not playback URLs")
         XCTAssertTrue(window.buttons["meeting-back"].exists,"Copy keeps the meeting open")
         start.click()
