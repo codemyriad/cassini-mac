@@ -4,15 +4,15 @@ from pathlib import Path
 
 application = Path(defines['app'])
 format = 'ULFO'
-filesystem = 'APFS'
+filesystem = 'HFS+'
 files = [str(application), defines['license'], (defines['background_license'], '.dmgbuild-LICENSE.txt')]
 symlinks = {'Applications': '/Applications'}
-background = 'builtin-arrow'
-window_rect = ((100, 100), (640, 340))
+background = defines['background']
+window_rect = ((100, 300), (640, 400))
 default_view = 'icon-view'
 icon_size = 112
 text_size = 13
-icon_locations = {application.name: (140, 120), 'Applications': (500, 120), 'COPYING': (320, 260)}
+icon_locations = {application.name: (140, 120), 'Applications': (500, 120), 'COPYING': (320, 280)}
 show_status_bar = False
 show_tab_view = False
 show_toolbar = False

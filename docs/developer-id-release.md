@@ -31,7 +31,7 @@ For example (use approved version/build values):
 ```sh
 python3 scripts/release.py --version 0.1.0 --build 2 \
   --base-url https://cassini.talk/download/mac \
-  --release-notes path/to/notes.html \
+  --release-notes Distribution/release-notes/0.1.0.html \
   --output build/release-2
 ```
 
@@ -88,3 +88,5 @@ check the actual quarantined DMG in a disposable VM: `spctl -a -vvv`,
 messaging from `/Applications`, and an N→N+1 Sparkle update including active
 recording/quit safety. D39 bundled-companion setup replaces the old store-listing
 release hold. The public site upload and user README are coordinator-owned.
+
+Versioned release-note sources are in `Distribution/release-notes/`. Pass the file matching the version being built. They describe that release’s changes and include local styling for both Sparkle and a browser; the exact final HTML is signed separately before the appcast is signed.

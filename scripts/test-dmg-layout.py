@@ -4,6 +4,7 @@
 import importlib.util
 from pathlib import Path
 import plistlib
+import struct
 import subprocess
 import tempfile
 
@@ -19,7 +20,14 @@ with DSStore.open(sys.argv[1], 'r') as store:
     assert store['.']['icvp']['backgroundImageAlias']
     assert store['Cassini talk.app']['Iloc'] == (140, 120)
     assert store['Applications']['Iloc'] == (500, 120)
-    print(json.dumps(dict(background=True, applicationPosition=store['Cassini talk.app']['Iloc'],
+    assert store['COPYING']['Iloc'] == (320, 280)
+    assert store['.']['bwsp']['WindowBounds'] == '{{100, 300}, {640, 400}}'
+    options=store['.']['icvp']
+    for name in ['Cassini talk.app','Applications','COPYING']:
+        x,y=store[name]['Iloc']
+        assert x-options['iconSize']/2 >= 0 and x+options['iconSize']/2 <= 640
+        assert y+options['iconSize']/2+2*options['textSize']+22 <= 400
+    print(json.dumps(dict(backgroundMetadata=True, applicationPosition=store['Cassini talk.app']['Iloc'],
                          applicationsPosition=store['Applications']['Iloc'])))
 '''
 
@@ -42,12 +50,14 @@ def main():
             assert (mount/'Applications').is_symlink() and (mount/'Applications').readlink() == Path('/Applications')
             assert (mount/'COPYING').read_bytes() == (ROOT/'COPYING').read_bytes()
             assert (mount/'.dmgbuild-LICENSE.txt').read_bytes() == (ROOT/'Distribution/dmgbuild-LICENSE.txt').read_bytes()
-            assert (mount/'.background.tiff').is_file()
+            background=(mount/'.background/background.png').read_bytes()
+            assert background.startswith(b'\x89PNG\r\n\x1a\n')
+            assert struct.unpack('>II',background[16:24]) == (640,400)
             result = subprocess.run([python, '-c', INSPECT_LAYOUT, mount/'.DS_Store'], check=True, capture_output=True, text=True)
             print(result.stdout.strip())
         finally:
             subprocess.run(['hdiutil', 'detach', mount], check=True, capture_output=True)
-    print('PASS private DMG fixture: final app name, arrow background, icon positions, Applications link and licences; no app execution')
+    print('PASS private DMG fixture: final app name, background file/metadata, unclipped icon bounds, Applications link and licences; Finder rendering requires the separate QA guest')
 
 
 if __name__ == '__main__':
