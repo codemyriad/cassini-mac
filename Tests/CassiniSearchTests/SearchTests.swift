@@ -134,19 +134,14 @@ struct SearchTests {
 }
 
 extension SearchTests {
-    @Test func echoFlagsRemoveSearchHitsAndRebuildAnExistingCache() async throws {
-        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
-        meeting.transcriptItems = [
-            .init(speaker:"me",startMs:300,endMs:400,text:"microphone-repeat"),
-            .init(speaker:"others",startMs:500,endMs:600,text:"original words")]
-        let index = try SearchIndex(cache:fixture.cache); try await index.replace([meeting])
-        #expect(try await index.search("microphone-repeat").count == 1)
-        meeting.transcriptItems[0] = .init(speaker:"me",startMs:300,endMs:400,text:"microphone-repeat",echo:true)
-        try await index.replace([meeting])
-        #expect(try await index.search("microphone-repeat").isEmpty)
-        #expect(try await index.search("original words").first?.positionMs == 500)
-        #expect(meeting.transcriptItems.count == 2)
+    @Test func legacyEchoFieldsRemainSearchable() async throws {
+        let fixture=try SearchFixture();var meeting=try #require(fixture.meetings().first)
+        let body=Data("[{\"speaker\":\"me\",\"startMs\":300,\"endMs\":400,\"text\":\"microphone repeat\",\"echo\":true}]".utf8)
+        meeting.transcriptItems=try JSONDecoder().decode([LibraryTranscriptItem].self,from:body)
+        let index=try SearchIndex(cache:fixture.cache);try await index.replace([meeting])
+        #expect(try await index.search("microphone repeat").first?.positionMs == 300)
     }
+
     @Test func quoteCleanupKeepsSearchOffsetsAndPlaybackPositions() async throws {
         let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
         meeting.transcriptItems = [

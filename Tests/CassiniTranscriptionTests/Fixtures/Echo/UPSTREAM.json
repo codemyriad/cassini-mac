@@ -1,7 +1,6 @@
 {
   "repository": "cassini-coordination",
   "path": "ux-draft/bleed/echo-vectors.json",
-  "sha256": "81805038e849a856783bd51c5965735f4d3f1246ac31eeb584050b7940365ad2",
   "recordingsSHA256": {
     "Recording-b1eed000-0000-4000-8000-000000000001/session.json": "a1410e0c1fbd52f27760676d67116850b7794baca5a631718b5f932b2ed7dcc1",
     "Recording-b1eed000-0000-4000-8000-000000000001/track-system.wav": "6c89c7d41c9eb6f385da9d64da28af1bcb97f027412d636ef597071c1c7b1d7c",
@@ -12,5 +11,8 @@
     "Recording-b1eed000-0000-4000-8000-000000000003/session.json": "38c9054fca839b96a32e3b8a3d35d2802749c8b419c3b24449c073b09d4ebcf7",
     "Recording-b1eed000-0000-4000-8000-000000000003/track-system.wav": "6c89c7d41c9eb6f385da9d64da28af1bcb97f027412d636ef597071c1c7b1d7c",
     "Recording-b1eed000-0000-4000-8000-000000000003/track-microphone.wav": "6f856f6068a4dcb5761636279169a59cdcd1d1180673939df58d8501320353a4"
-  }
+  },
+  "originalVectorsSHA256": "81805038e849a856783bd51c5965735f4d3f1246ac31eeb584050b7940365ad2",
+  "derivedPCMLevelsSHA256": "7f491e13e3bff76d54de9654770e1b2438cb5f915f251ba2af04bf3aba24e6d5",
+  "note": "Only raw track/window RMS values from the first two original cases are retained; no transcript matching/flags are used."
 }

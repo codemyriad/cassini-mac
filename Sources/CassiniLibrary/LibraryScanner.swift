@@ -178,7 +178,7 @@ public struct LibraryScanner: Sendable {
                     if let requested = reference.transcriptId { selected = file.transcripts.first { $0.entry.id == requested } }
                     else { selected = file.defaultTranscript }
                     guard let body = selected?.load.transcript else { throw MetadataError.invalid }
-                    words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, echo: $0.echo) }
+                    words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
                     meeting.transcriptLanguage = body.language
                     readable = true
                 }
@@ -333,24 +333,8 @@ private struct LibraryWords: Decodable {
 }
 public struct LibraryTranscriptItem: Codable, Equatable, Sendable {
     public let speaker: String; public let startMs: Int64; public let endMs: Int64; public let text: String
-    public let echo: Bool
-    public init(speaker: String, startMs: Int64, endMs: Int64, text: String, echo: Bool = false) {
-        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text; self.echo = echo
-    }
-    private enum CodingKeys: String, CodingKey { case speaker, startMs, endMs, text, echo }
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy:CodingKeys.self)
-        speaker = try values.decode(String.self,forKey:.speaker)
-        startMs = try values.decode(Int64.self,forKey:.startMs)
-        endMs = try values.decode(Int64.self,forKey:.endMs)
-        text = try values.decode(String.self,forKey:.text)
-        echo = (try? values.decode(Bool.self,forKey:.echo)) == true
-    }
-    public func encode(to encoder: Encoder) throws {
-        var values = encoder.container(keyedBy:CodingKeys.self)
-        try values.encode(speaker,forKey:.speaker); try values.encode(startMs,forKey:.startMs)
-        try values.encode(endMs,forKey:.endMs); try values.encode(text,forKey:.text)
-        if echo { try values.encode(true,forKey:.echo) }
+    public init(speaker: String, startMs: Int64, endMs: Int64, text: String) {
+        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text
     }
 }
 private func collapsed(_ text: String) -> String { text.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
@@ -365,7 +349,7 @@ private func normalizedOverride(_ quote: MeetingQuote?) -> MeetingQuote? {
 private func defaultQuote(_ words: [LibraryTranscriptItem]) -> MeetingQuote? {
     struct Turn { var speaker: String; var start: Int64; var end: Int64; var text: [String]; var ordinal: Int }
     var turns: [Turn] = []
-    for (index, word) in words.enumerated() where !word.echo {
+    for (index, word) in words.enumerated() {
         if turns.last?.speaker == word.speaker {
             turns[turns.count - 1].end = word.endMs
             turns[turns.count - 1].text.append(word.text)

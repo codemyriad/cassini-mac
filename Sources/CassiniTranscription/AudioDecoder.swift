@@ -88,6 +88,6 @@ public final class SegmentedAudio {
     }
     /// D38 reads the raw mono recognizer input, never Silero's HPF samples.
     func rmsDbfs(from startMs: Int64, to endMs: Int64, offsetMs: Int64) throws -> Double? {
-        try EchoAudioLevels.measure(stream:stream,sampleCount:sampleCount,from:startMs,to:endMs,offsetMs:offsetMs)
+        try PCMWindowLevels.measure(stream:stream,sampleCount:sampleCount,from:startMs,to:endMs,offsetMs:offsetMs)
     }
 }

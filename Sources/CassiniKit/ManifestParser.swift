@@ -138,7 +138,7 @@ enum ManifestParser {
             }
             items.append(Word(speaker: speaker, startMs: start, endMs: end, text: text,
                               lowConfidenceSpeaker: it["lowConfidenceSpeaker"]?.bool == true,
-                              attributionGapDb: it["attributionGapDb"]?.double, echo: it["echo"]?.bool == true))
+                              attributionGapDb: it["attributionGapDb"]?.double))
         }
         let language = json["language"]?.string.flatMap { $0.isEmpty ? nil : $0 }
         return WordsTranscript(language: language, items: items)
