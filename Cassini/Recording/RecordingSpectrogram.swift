@@ -47,7 +47,7 @@ import Darwin
     private var pageRate: Bool?
     private weak var clockView: RecordingSpectrogramView?
     private var notifications: [Notice] = []
-    private var generation = 0, inFlight = false, running = false, stopped = false
+    private var running = false, stopped = false
     private var pageBank: SpectrogramSurface?, pillBank: SpectrogramSurface?
     private var pageRevision = 0, pillRevision = 0
     private final class Pixels {
@@ -159,7 +159,7 @@ import Darwin
     }
     func stop(atMs: Double) {
         guard !stopped else { return }; stopped = true; running = false; engine.stop(atMs:atMs)
-        generation += 1; link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; inFlight = false
+        link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil
         engine.setVisible(false); observers?.set(nil)
         for view in views.values.compactMap(\.value) { view.freeze() }
     }
@@ -188,7 +188,7 @@ import Darwin
         }
         guard Self.enabled, let primary else {
             if running {
-                generation += 1; running = false; inFlight = false; engine.setVisible(false); observers?.set(nil)
+                running = false; engine.setVisible(false); observers?.set(nil)
                 link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; pageRate = nil
                 resetPicture()
             }
@@ -242,8 +242,6 @@ import Darwin
 
     private func tick(_ value: CADisplayLink) {
         guard value === link, running, !stopped else { return }
-        let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-        defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
         // Window/view notifications update membership synchronously. Re-querying
         // AppKit occlusion/visibleRect here can make a WindowServer IPC every
         // display frame; the display link already belongs to the visible set.
@@ -259,37 +257,33 @@ import Darwin
         requestFrame(timestamp:CACurrentMediaTime())
     }
     private func requestFrame(timestamp: Double) {
-        guard !inFlight else { skippedFrames += 1; return }; inFlight = true
-        let revision = generation
-        engine.requestFrame(nowMs:max(0,(timestamp-originUptime)*1000)) { [weak self] frame in
-            DispatchQueue.main.async {
-                guard let self, self.generation == revision, self.running, !self.stopped else { return }
-                self.inFlight = false; self.analyzedFrames = frame.analyzedFrames; self.analysisNanoseconds = frame.analysisNanoseconds
-                #if DEBUG
-                self.displayDelayMs = frame.delayMs; self.lateTiming = frame.lateSamples
-                #endif
-                self.lateColumns = frame.lateColumns; self.droppedColumns = frame.droppedColumns; self.droppedBuffers = frame.droppedBuffers
-                self.paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
-                if let previous = self.lastAppliedTime {
-                    let ms = (timestamp-previous)*1000
-                    self.maxFrameIntervalMs = max(self.maxFrameIntervalMs,ms)
-                    #if DEBUG
-                    if Self.measuring {
-                        let bin = min(511,max(0,Int(ceil(ms*10))))
-                        self.intervals[bin] += 1; self.intervalCount += 1
-                    }
-                    #endif
-                }
-                self.lastAppliedTime = timestamp; self.framesApplied += 1
-                #if SPECTROGRAM_PROBE
-                self.fixtureChanged?()
-                #endif
-            }
-        }
-    }
-    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double) {
         let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
         defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
+        // Read already-analyzed columns in the display-link callback. No
+        // utility→main handoff or second run-loop wake is needed per frame.
+        let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
+        analyzedFrames = frame.analyzedFrames; analysisNanoseconds = frame.analysisNanoseconds
+        #if DEBUG
+        displayDelayMs = frame.delayMs; lateTiming = frame.lateSamples
+        #endif
+        lateColumns = frame.lateColumns; droppedColumns = frame.droppedColumns; droppedBuffers = frame.droppedBuffers
+        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
+        if let previous = lastAppliedTime {
+            let ms = (timestamp-previous)*1000
+            maxFrameIntervalMs = max(maxFrameIntervalMs,ms)
+            #if DEBUG
+            if Self.measuring {
+                let bin = min(511,max(0,Int(ceil(ms*10))))
+                intervals[bin] += 1; intervalCount += 1
+            }
+            #endif
+        }
+        lastAppliedTime = timestamp; framesApplied += 1
+        #if SPECTROGRAM_PROBE
+        fixtureChanged?()
+        #endif
+    }
+    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double) {
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram draw",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram draw",signpostID:interval) }

@@ -31,8 +31,24 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private let queue = DispatchQueue(label:"io.codemyriad.cassini.spectro",qos:.utility)
     private let clock: @Sendable () -> Double
     private let measureCPU: Bool
-    private var analysisNanoseconds: UInt64 = 0
-    private let mailbox = SpectrogramMailbox()
+    private struct Presentation {
+        var generation: UInt64 = 0
+        var me = SpectrogramLaneAccumulator(), others = SpectrogramLaneAccumulator()
+        var clock = SpectrogramDisplayClock()
+        let mailbox = SpectrogramMailbox()
+        var analyzedFrames: UInt64 = 0, analysisNanoseconds: UInt64 = 0
+        var retainedTracks = 0
+        var stoppedAt: Double?
+        var lateSamples: [LateColumn] = []
+        mutating func reset(generation value: UInt64) {
+            guard value > generation else { return }
+            generation = value; me.reset(); others.reset(); clock.reset(); mailbox.reset()
+            analyzedFrames = 0; retainedTracks = 0; lateSamples.removeAll(keepingCapacity:true)
+        }
+    }
+    // FFTs never run under this lock. A display link drains ready powers at its
+    // own timestamp without dispatching to the analysis queue and back.
+    private let presentation = OSAllocatedUnfairLock(uncheckedState:Presentation())
     // Everything below belongs only to queue.
     private var generation: UInt64 = .max
     private var sources: [String:Source] = [:]
@@ -41,14 +57,10 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     private var occupiedIndices: UInt64 = 0
     private var retiredAnalyzedFrames: UInt64 = 0
     private var transforms: [Int:SpectrogramTransform] = [:]
-    private var me = SpectrogramLaneAccumulator(), others = SpectrogramLaneAccumulator()
     private var meSelection = SpectrogramSelection(), othersSelection = SpectrogramSelection()
-    private var displayClock = SpectrogramDisplayClock()
     private var mono: [Float] = [], right: [Float] = []
     private var alignedPCM: [Int16] = []
     private var nextChoiceAt: Double = 0
-    private var stoppedAt: Double?
-    private var lateSamples: [LateColumn] = []
 
     public init(originUptime: TimeInterval, measureCPU: Bool = false) {
         self.measureCPU = measureCPU
@@ -65,6 +77,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             return valueState.generation
         }
         guard let change else { return }
+        presentation.withLock { $0.reset(generation:change) }
         queue.async { [self] in
             guard state.withLock({ $0.generation == change }) else { return }
             ensureGeneration(change)
@@ -113,7 +126,12 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             occupiedIndices &= ~(UInt64(1)<<source.index)
             // Pending old powers remain visible. Only their duplicate guard is
             // released so a replacement can share a slot without losing data.
-            (source.lane == .me ? me : others).retire(trackIndex:source.index)
+            let sourceLane = source.lane, sourceIndex = source.index
+            presentation.withLock { value in
+                guard value.generation == generation else { return }
+                (sourceLane == .me ? value.me : value.others).retire(trackIndex:sourceIndex)
+                value.retainedTracks = sources.count
+            }
             nextChoiceAt = 0
             if source.lane == .me { meSelection.reset() } else { othersSelection.reset() }
         }
@@ -133,44 +151,66 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         public let analysisNanoseconds: UInt64
         public let lateSamples: [LateColumn]
     }
-    /// Completion is on the utility queue. Callers must reject an obsolete view
-    /// generation before dispatching CALayer changes back to the main actor.
+    /// A queue barrier for producers/tests that need all prior offers consumed.
+    /// The native display link instead calls pollFrame, which never waits for
+    /// queued PCM conversion or FFT work. Completion stays on the utility queue.
     public func requestFrame(nowMs: Double, completion: @escaping @Sendable (Frame) -> Void) {
         queue.async { [self] in
-            let cpuStart = measureCPU ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-            let status = state.withLock { ($0.visible,$0.generation,$0.dropped) }
-            ensureGeneration(status.1)
-            let now = nowMs.isFinite ? max(0,min(nowMs,stoppedAt ?? nowMs)) : 0
-            let display = displayClock.advance(nowMs:now)
-            if status.0 {
-                let slot = Int64(floor(display/20))
-                me.release(through:slot) { mailbox.append($0,lane:.me) }
-                others.release(through:slot) { mailbox.append($0,lane:.others) }
+            ensureGeneration(state.withLock { $0.generation })
+            completion(pollFrame(nowMs:nowMs))
+        }
+    }
+    /// Drain only ready analysis. The short presentation critical section never
+    /// contains FFT, IO, capture callbacks or user code. The same timestamp,
+    /// delay, power-sum/release and bounded mailbox rules serve both read paths.
+    public func pollFrame(nowMs: Double) -> Frame {
+        let cpuStart = measureCPU ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
+        let status = state.withLock { ($0.visible,$0.generation,$0.dropped) }
+        return presentation.withLock { value in
+            guard value.generation == status.1 else {
+                return .init(me:[],others:[],displayMs:0,delayMs:40,analyzedFrames:0,lateColumns:0,
+                    droppedBuffers:status.2,droppedColumns:0,retainedTracks:0,
+                    analysisNanoseconds:value.analysisNanoseconds,lateSamples:[])
             }
-            let batch = mailbox.drain()
-            // Delay estimation, lane power sums/release and the bounded mailbox
-            // are analysis work too, even though they run between PCM packets.
-            if measureCPU { analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart }
-            completion(.init(me:batch.me,others:batch.others,displayMs:display,delayMs:displayClock.delayMs,
-                analyzedFrames:sources.values.reduce(retiredAnalyzedFrames) { $0+$1.track.analyzedFrames },lateColumns:me.late+others.late,
-                droppedBuffers:status.2,droppedColumns:me.overflow+others.overflow+batch.droppedMe+batch.droppedOthers,retainedTracks:sources.count,analysisNanoseconds:analysisNanoseconds,lateSamples:lateSamples))
+            let now = nowMs.isFinite ? max(0,min(nowMs,value.stoppedAt ?? nowMs)) : 0
+            let display = value.clock.advance(nowMs:now)
+            if status.0 {
+                let slot = Int64(floor(display/20)), mailbox = value.mailbox
+                value.me.release(through:slot) { mailbox.append($0,lane:.me) }
+                value.others.release(through:slot) { mailbox.append($0,lane:.others) }
+            }
+            let batch = value.mailbox.drain()
+            // Include analysis work performed by the display's drain as well as
+            // utility FFT work. Moving it cannot make the CPU gate disappear.
+            if measureCPU { value.analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart }
+            return .init(me:batch.me,others:batch.others,displayMs:display,delayMs:value.clock.delayMs,
+                analyzedFrames:value.analyzedFrames,lateColumns:value.me.late+value.others.late,
+                droppedBuffers:status.2,droppedColumns:value.me.overflow+value.others.overflow+batch.droppedMe+batch.droppedOthers,
+                retainedTracks:value.retainedTracks,analysisNanoseconds:value.analysisNanoseconds,lateSamples:value.lateSamples)
         }
     }
     public func stop(atMs: Double) {
         guard atMs.isFinite, atMs >= 0 else { return }
         state.withLock { $0.accepting = false }
-        queue.async { [self] in stoppedAt = atMs }
+        presentation.withLock { $0.stoppedAt = atMs }
     }
     private func ensureGeneration(_ value: UInt64) {
         guard generation != value else { return }
         generation = value; sources = [:]; transforms = [:]; mono = []; right = []; alignedPCM = []
-        occupiedIndices = 0; retiredAnalyzedFrames = 0; lateSamples.removeAll(keepingCapacity:true)
-        me.reset(); others.reset(); meSelection.reset(); othersSelection.reset(); nextChoiceAt = 0; displayClock.reset(); mailbox.reset()
+        occupiedIndices = 0; retiredAnalyzedFrames = 0
+        meSelection.reset(); othersSelection.reset(); nextChoiceAt = 0
     }
     private func consume(_ descriptor: RecordedPCMSource, pcm: Data, offsetMs: Double) {
         guard !endedIDs.contains(descriptor.id) else { return }
         let cpuStart = measureCPU ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-        defer { if measureCPU { analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
+        defer {
+            let frames = sources.values.reduce(retiredAnalyzedFrames) { $0+$1.track.analyzedFrames }
+            let elapsed = measureCPU ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart : 0
+            presentation.withLock { value in
+                value.analysisNanoseconds &+= elapsed
+                if value.generation == generation { value.analyzedFrames = frames; value.retainedTracks = sources.count }
+            }
+        }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram analysis",signpostID:interval) }
@@ -215,19 +255,23 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
                 alignedPCM.withUnsafeBufferPointer { convert($0.baseAddress!,frames:count,channels:descriptor.channels) }
             }
         }
+        let sourceLane = source.lane, sourceIndex = source.index
         mono.withUnsafeBufferPointer { samples in
             source.track.appendNormalized(.init(start:samples.baseAddress,count:count),atFrame:max(0,original),
                 analyze:analyze) { frame in
                 // Release is keyed by the containing20ms slot, not the later
                 // FFT centre within it. Measure readiness on that same clock.
-                displayClock.observe(columnMs:Double(frame.slot)*20,arrivalMs:arrival)
-                let lane = source.lane == .me ? me : others
-                if measureCPU, frame.slot <= lane.releasedThrough {
-                    if lateSamples.count == 16 { lateSamples.removeFirst() }
-                    lateSamples.append(.init(ordinal:me.late+others.late+1,slot:frame.slot,
-                        releasedThrough:lane.releasedThrough,arrivalMs:arrival,delayMs:displayClock.delayMs))
+                presentation.withLock { value in
+                    guard value.generation == generation else { return }
+                    value.clock.observe(columnMs:Double(frame.slot)*20,arrivalMs:arrival)
+                    let lane = sourceLane == .me ? value.me : value.others
+                    if measureCPU, frame.slot <= lane.releasedThrough {
+                        if value.lateSamples.count == 16 { value.lateSamples.removeFirst() }
+                        value.lateSamples.append(.init(ordinal:value.me.late+value.others.late+1,slot:frame.slot,
+                            releasedThrough:lane.releasedThrough,arrivalMs:arrival,delayMs:value.clock.delayMs))
+                    }
+                    lane.append(slot:frame.slot,trackIndex:sourceIndex,powers:frame.powers)
                 }
-                lane.append(slot:frame.slot,trackIndex:source.index,powers:frame.powers)
             }
         }
     }

@@ -2,6 +2,7 @@
 import Testing
 import Foundation
 import CassiniRecording
+import os
 @testable import CassiniSpectrogram
 
 private final class SpectrumTestClock: @unchecked Sendable {
@@ -35,6 +36,46 @@ private final class RetainedPCM: @unchecked Sendable {
         var values = [Int16](repeating:0,count:frames*channels)
         for index in 0..<frames { for channel in 0..<channels { values[index*channels+channel] = Int16(1000*sin(2*Double.pi*1000*Double(index)/48000)).littleEndian } }
         return values.withUnsafeBytes { Data($0) }
+    }
+    @Test func displayDrainDoesNotWaitForTheAnalysisQueueAndRejectsItsOldGeneration() async throws {
+        let entered = DispatchSemaphore(value:0), proceed = DispatchSemaphore(value:0), completed = DispatchSemaphore(value:0)
+        let session = SpectrogramSession(clock:{ entered.signal(); proceed.wait(); return 200 })
+        session.setVisible(true)
+        let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
+        session.offer(source:source,pcm:tone(),offsetMs:0)
+        defer { proceed.signal() }
+        let blocked = await withCheckedContinuation { c in
+            DispatchQueue.global().async { c.resume(returning:entered.wait(timeout:.now()+2)) }
+        }
+        try #require(blocked == .success)
+        let result = OSAllocatedUnfairLock<SpectrogramSession.Frame?>(initialState:nil)
+        DispatchQueue.global().async {
+            let picture = session.pollFrame(nowMs:0)
+            result.withLock { $0 = picture }; completed.signal()
+        }
+        let drained = await withCheckedContinuation { c in
+            DispatchQueue.global().async { c.resume(returning:completed.wait(timeout:.now()+2)) }
+        }
+        try #require(drained == .success,"A display must not wait for queued/active analysis work")
+        #expect(result.withLock { $0?.me.isEmpty == true && $0?.retainedTracks == 0 })
+        session.setVisible(false);session.setVisible(true)
+        #expect(session.pollFrame(nowMs:0).analyzedFrames == 0)
+        proceed.signal()
+        let obsolete = await frame(session,at:200)
+        #expect(obsolete.me.isEmpty && obsolete.retainedTracks == 0 && obsolete.analyzedFrames == 0)
+    }
+    @Test func synchronousDrainKeepsTheStoppedAudioClock() async {
+        let session = SpectrogramSession(clock:{ 200 })
+        session.setVisible(true)
+        let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
+        session.offer(source:source,pcm:tone(),offsetMs:0)
+        _ = await frame(session,at:0)
+        session.stop(atMs:100)
+        let stopped = session.pollFrame(nowMs:500), later = session.pollFrame(nowMs:5000)
+        #expect(stopped.displayMs == later.displayMs && later.displayMs <= 100)
+        let count = later.analyzedFrames
+        session.offer(source:source,pcm:tone(),offsetMs:4096.0/48)
+        #expect(await frame(session,at:5000).analyzedFrames == count)
     }
     @Test(arguments:[false,true]) func lateTimingIsBoundedAndOnlyCollectedForMeasurement(_ measured: Bool) async {
         let session = SpectrogramSession(clock:{ 10000 },measureCPU:measured)
