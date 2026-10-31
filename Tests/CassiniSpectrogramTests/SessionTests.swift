@@ -44,8 +44,8 @@ private final class RetainedPCM: @unchecked Sendable {
         var packet = 0, steadyLate: UInt64 = 0, last: SpectrogramSession.Frame?
         for tick in 0...1800 {
             let now = Double(tick)*1000/60
-            while 120+Double(packet*chunk)/48 <= now {
-                time.set(120+Double(packet*chunk)/48)
+            while 120+Double((packet+1)*chunk)/48 <= now {
+                time.set(120+Double((packet+1)*chunk)/48)
                 session.offer(source:source,pcm:pcm,offsetMs:Double(packet*chunk)/48)
                 _ = await frame(session,at:now)
                 packet += 1

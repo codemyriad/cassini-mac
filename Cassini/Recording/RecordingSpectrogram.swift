@@ -69,6 +69,7 @@ import Darwin
     private(set) var skippedFrames: UInt64 = 0, maxFrameIntervalMs = 0.0
     #if DEBUG
     private(set) var displayOptionsChanges: UInt64 = 0
+    private(set) var displayDelayMs: Double = 0
     #endif
     private(set) var drawingNanoseconds: UInt64 = 0, analysisNanoseconds: UInt64 = 0
     private(set) var analyzedFrames: UInt64 = 0, lateColumns: UInt64 = 0, droppedColumns: UInt64 = 0
@@ -241,6 +242,9 @@ import Darwin
             DispatchQueue.main.async {
                 guard let self, self.generation == revision, self.running, !self.stopped else { return }
                 self.inFlight = false; self.analyzedFrames = frame.analyzedFrames; self.analysisNanoseconds = frame.analysisNanoseconds
+                #if DEBUG
+                self.displayDelayMs = frame.delayMs
+                #endif
                 self.lateColumns = frame.lateColumns; self.droppedColumns = frame.droppedColumns
                 self.paint(me:frame.me,others:frame.others,displayMs:frame.displayMs)
                 if let previous = self.lastAppliedTime {

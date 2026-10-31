@@ -90,6 +90,7 @@ import ScreenCaptureKit
                 "viewPayloadBytes":controller.payloadBytes,"surfaceAllocationBytes":controller.surfaceBytes,
                 "surfaceRevisions":controller.surfaceRevision,"minimized":window.isMiniaturized,
                 "reducedMotion":controller.usingReducedMotion,
+                "displayDelayMs":controller.displayDelayMs,
                 "indicatorEnabled":RecordingSpectrogram.enabled]
             if hidden {
                 try require(controller.frameCallbacks == 0 && controller.analyzedFrames == initialFrames,"hidden/off does no analysis or display callbacks")
@@ -322,10 +323,24 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     }
     func start() {
         let timer = DispatchSource.makeTimerSource(queue:queue); self.timer = timer
-        timer.schedule(deadline:.now(),repeating:Double(chunk)/48000,leeway:.milliseconds(1))
+        // The entire chunk must exist before a capture callback can deliver it.
+        // An immediate first callback would hand the analyser future samples
+        // and understate the real4096/8192-frame presentation latency.
+        let duration=Double(chunk)/48000
+        let elapsed=ProcessInfo.processInfo.systemUptime-origin
+        let first=max(1,ceil(elapsed/duration))*duration
+        timer.schedule(deadline:.now()+max(0,first-elapsed),repeating:duration,leeway:.milliseconds(1))
         timer.setEventHandler { [weak self] in self?.emit() }; timer.resume()
     }
     private func emit() {
+        let complete=Int(max(0,ProcessInfo.processInfo.systemUptime-origin)*48000)/chunk
+        // Dispatch timers can coalesce wakeups. Advance on the sample clock,
+        // rather than permanently delaying the source after one missed wakeup.
+        // Bound catch-up to ten chunks; a longer stall becomes a real gap.
+        if complete-frames/chunk > 10 { frames=(complete-10)*chunk }
+        while frames/chunk < complete { emitPacket() }
+    }
+    private func emitPacket() {
         let offset = Double(frames)/48, host = AVAudioTime.hostTime(forSeconds:origin+offset/1000)
         sink.receive(buffers[0],hostTime:host,id:"mic",label:"Mic",kind:"microphone")
         if othersMissing { /* Advance the clock without PCM: a genuine source gap. */ }
