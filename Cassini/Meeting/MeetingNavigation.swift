@@ -9,7 +9,7 @@ import Observation
     var detail: MeetingDetailModel?
     private(set) var loading = false
     @ObservationIgnored private var readTask: Task<Void, Never>?
-    @ObservationIgnored var openLibrary: (() -> Void)?
+    @ObservationIgnored var openLibrary: (() -> Void)? = { ApplicationWindows.library() }
     func open(_ meeting: LibraryMeeting, autoplay: Bool = false, frozen: Bool = false) {
         guard !LibraryMoveCoordinator.shared.busy || meeting.state.lifecycle != .saved else { return }
         if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() }

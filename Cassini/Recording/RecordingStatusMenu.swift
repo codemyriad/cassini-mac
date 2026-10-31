@@ -12,6 +12,9 @@ struct RecordingMenuPayload: Codable, Sendable {
     let noSleep: String?
     let sourceLines: [String]?
     let assertionHeld: Bool
+    #if DEBUG
+    let fixtureDirectory: String?
+    #endif
     var json: String { (try? String(data:JSONEncoder().encode(self),encoding:.utf8)) ?? "{}" }
     @MainActor init(recorder: RecordingController, runtime: RecordingRuntime) {
         header = UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(RecordingOverview.elapsedMs)])
@@ -22,9 +25,14 @@ struct RecordingMenuPayload: Codable, Sendable {
         ]
         actions = [
             .init(id:"stop",title:UXText.text("hidden.menu.stopRecording"),shortcut:runtime.shortcut.registered ? RecordingShortcut.glyph : nil),
-            .init(id:"open",title:UXText.text("hidden.openCassini"),shortcut:nil)
+            .init(id:"open",title:UXText.text("hidden.openCassini"),shortcut:nil),
+            .init(id:"settings",title:UXText.text("hidden.menu.settings"),shortcut:"⌘,"),
+            .init(id:"quit",title:UXText.text("hidden.menu.quit"),shortcut:"⌘Q")
         ]
         assertionHeld = runtime.power.held
+        #if DEBUG
+        fixtureDirectory = RecordingFixture.enabled ? RecordingOverview.directory?.path : nil
+        #endif
         noSleep = assertionHeld ? UXText.text("hidden.menu.noSleep") : nil
         var lines: [String] = []
         if let first = CaptureCollection.shared.first {
@@ -62,6 +70,7 @@ struct RecordingStatusMenu: View {
     @State private var power = RecordingRuntime.shared.power
     @State private var hovered: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openSettings) private var openSettings
     var body: some View {
         TimelineView(.periodic(from:.now,by:1)) { _ in
             let payload = RecordingMenuPayload(recorder:recorder,runtime:RecordingRuntime.shared)
@@ -104,6 +113,8 @@ struct RecordingStatusMenu: View {
             dismiss()
             switch item.id {
             case "stop": RecordingOverview.stop()
+            case "settings": NSApp.activate(ignoringOtherApps:true); openSettings()
+            case "quit": NSApp.activate(ignoringOtherApps:true); NSApp.terminate(nil)
             default: RecordCoordinator.shared.openCurrent()
             }
         } label: {
