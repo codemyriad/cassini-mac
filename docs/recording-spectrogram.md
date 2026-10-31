@@ -44,6 +44,10 @@ It feeds generated PCM through the production sink/file owner and exercises the
 production native renderer for 60 seconds per A–E case. Outputs include per-stage
 thread CPU, process CPU/delta fromE, frame intervals, late/drop counters, actual
 surface allocation, bounded payload bytes, top logs and a Time Profiler trace.
+A–E run without Time Profiler or allocation instrumentation. A separate sixty-second
+B-shaped diagnostic records the Time Profiler trace; its report is `profile.json`,
+not one of the performance-gated A–E reports. Profiling attachment/finalization can
+suspend its target, so neither operation belongs inside a pacing measurement.
 CPU/pacing/late/drop budgets are asserted, not relaxed for the fixture. Drawing
 CPU includes the whole main thread, including implicit Core Animation commits;
 utility CPU includes delay, release and mailbox work as well as FFT/PCM. After
@@ -65,6 +69,8 @@ Hosted images enable Reduce Motion by default. The probe temporarily changes the
 real hosted system preference for normal-motion pacing and restores its original
 value afterwards. B also exercises the real preference in both directions: a hosted XCTest driver
 changes the actual System Settings control and restores focus to the probe. The
+measurement starts only after the driver emits XCTest’s actual test-start event,
+so loading the test runner does not overlap the measured interval. The
 probe requires a real NSWorkspace notification, its real getter and a renderer
 clock transition. There is no synthetic notification or renderer-mode override.
 Failed lifecycle checks preserve partial metrics for diagnosis.

@@ -31,16 +31,57 @@ def relay_motion_ack(line: str, request: Path) -> bool:
     return True
 
 
-def probe_command(app: Path, case: str, output: Path, allocations: bool = False):
+def probe_command(app: Path, case: str, output: Path, allocations: bool = False, profile: bool = False):
     executable = app.resolve()
     if executable.suffix == '.app':
         info = plistlib.loads((executable/'Contents/Info.plist').read_bytes())
         executable = executable/'Contents/MacOS'/info['CFBundleExecutable']
     command = [str(executable), '--spectrogram-self-test', '-SpectrogramCase', case,
                '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
+    if allocations and profile:
+        raise ValueError('Allocation and Time Profiler are separate processes')
     if allocations:
         command += ['-SpectrogramAllocations', '1']
+    if profile:
+        command += ['-SpectrogramProfileOnly', '1']
     return command
+
+
+def motion_driver_started(line: str) -> bool:
+    # This is XCTest's actual test-start event, seen in hosted logs. A suite
+    # start or successful previous test cannot release the measurement.
+    return (line.startswith("Test Case '-[CassiniWindowScreenshots.SpectrogramMotion ") and
+            "testRealSystemSettingsMotionTransitions]' started." in line)
+
+
+def record_profile(app: Path, output: Path):
+    """A second generated-input process: profile overhead never enters A–E."""
+    process = trace = None
+    stdout = ''
+    with (output/'profile.stderr.txt').open('w') as stderr:
+        try:
+            process = subprocess.Popen(probe_command(app, 'B', output, profile=True),
+                                       env=dict(os.environ,CASSINI_SPECTRO='1'), stdout=subprocess.PIPE, stderr=stderr, text=True)
+            trace = subprocess.Popen(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler',
+                '--attach', str(process.pid), '--output', str(output/'B-TimeProfiler.trace')],
+                stdout=stderr, stderr=subprocess.STDOUT)
+            stdout, _ = process.communicate(timeout=100)
+        finally:
+            if process and process.poll() is None:
+                process.kill(); process.wait()
+            if trace:
+                # Source completion/exit is the event. Finalize only afterwards.
+                if trace.poll() is None: trace.send_signal(signal.SIGINT)
+                try: trace.wait(timeout=20)
+                except subprocess.TimeoutExpired: trace.kill(); trace.wait()
+    (output/'profile.stdout.txt').write_text(stdout)
+    proof = json.loads(stdout)
+    proof['traceExitStatus'] = trace.returncode
+    proof['processExitStatus'] = process.returncode
+    (output/'profile.json').write_text(json.dumps(proof, indent=2)+'\n')
+    return (process.returncode == 0 and trace.returncode == 0 and
+            proof.get('diagnosticProfileOnly') is True and proof.get('audioDevicesOpened') is False and
+            proof.get('analyzedFrames',0) > 0 and (output/'B-TimeProfiler.trace').is_dir())
 
 
 def measure(app: Path, output: Path):
@@ -53,8 +94,8 @@ def measure(app: Path, output: Path):
         subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
         command = probe_command(app, case, output)
-        trace = None
         motion_driver = None
+        motion_ready = threading.Event()
         motion_log = None
         motion_relay = None
         if case == 'B':
@@ -69,9 +110,10 @@ def measure(app: Path, output: Path):
                 '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
                 '-resultBundlePath', str(output/'Motion.xcresult')],
                 env=motion_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            def relay_motion_events(driver=motion_driver,log=motion_log,current=request):
+            def relay_motion_events(driver=motion_driver,log=motion_log,current=request,ready=motion_ready):
                 for line in driver.stdout:
                     log.write(line);log.flush()
+                    if motion_driver_started(line): ready.set()
                     try:
                         relay_motion_ack(line,current)
                     except OSError as error:
@@ -79,35 +121,21 @@ def measure(app: Path, output: Path):
             motion_relay = threading.Thread(target=relay_motion_events,daemon=True)
             motion_relay.start()
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
-            process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
-            top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
-                                    '-stats', 'pid,cpu'], stdout=top_log, stderr=subprocess.STDOUT)
+            process = top = None
             try:
-                if case == 'B':
-                    trace = subprocess.Popen(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler',
-                                              '--attach', str(process.pid),
-                                              '--output', str(output/'B-TimeProfiler.trace')],
-                                             stdout=stderr, stderr=subprocess.STDOUT)
+                if motion_driver and not motion_ready.wait(timeout=60):
+                    problems.append('B: motion test never entered execution; see motion-xctest.log')
+                    continue
+                process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
+                top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
+                                        '-stats', 'pid,cpu'], stdout=top_log, stderr=subprocess.STDOUT)
                 stdout, _ = process.communicate(timeout=200 if case == 'B' else 85)
             finally:
-                if process.poll() is None:
+                if process and process.poll() is None:
                     process.kill()
                     process.wait()
-                top.terminate()
-                top.wait(timeout=10)
-                if trace:
-                    # Finalising Instruments can suspend its target. Keep that
-                    # outside both CPU measurement and the subsequent PCM/state
-                    # tests: stop the trace only after the target has exited.
-                    if trace.poll() is None:
-                        trace.send_signal(signal.SIGINT)
-                    try:
-                        trace.wait(timeout=20)
-                    except subprocess.TimeoutExpired:
-                        trace.kill()
-                        trace.wait()
-                    if trace.returncode != 0:
-                        problems.append('B: Time Profiler did not finish; see stderr')
+                if top:
+                    top.terminate(); top.wait(timeout=10)
                 if motion_driver:
                     try:
                         motion_driver.wait(timeout=20)
@@ -157,11 +185,16 @@ def measure(app: Path, output: Path):
         proof = json.loads(allocation.stdout)
         assert proof['allocationStacksCollected'] and proof['detachReleasesSurfaces'] and proof['audioDevicesOpened'] is False
         (output/'allocations.json').write_text(json.dumps(proof, indent=2)+'\n')
+    try:
+        if not record_profile(app, output):
+            problems.append('Separate Time Profiler proof failed; see profile.json/profile.stderr.txt')
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        problems.append('Separate Time Profiler proof failed: '+str(error))
     baseline = next((r['cpuCorePercent'] for r in reports if r['case'] == 'E'), None)
     for report in reports:
         report['cpuDeltaFromE'] = None if baseline is None else report['cpuCorePercent']-baseline
     summary = {'measurements': reports, 'problems': problems,
-               'scope': 'Production analyser/native renderer and production sink/owner with generated RAM input. '
+               'scope': 'Uninstrumented A–E production analyser/native renderer and sink/owner with generated RAM input. Time Profiler and Allocations each use a separate process. '
                         'View payload includes actual IOSurface allocation and bounded raw rings, excludes framework/object overhead. '
                         'Actual device capture, WindowServer CPU, Allocations and visual review remain separate QA evidence.'}
     (output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
