@@ -113,7 +113,7 @@ jobs:
           python3 baseline/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release baseline/probe
           python3 candidate/scripts/compile-spectrogram-lab-sdk.py baseline/build/Build/Products/Release
           python3 candidate/scripts/build-spectrogram-probe.py candidate/build/lab-products candidate/probe
-      - name: Compare direct Metal against CA rings on one disposable hosted Mac
+      - name: Compare retained animation timing against manual positions
         run: python3 candidate/scripts/spectrogram-lab.py baseline/probe candidate/probe experiment
       - uses: actions/upload-artifact@v5
         if: always()

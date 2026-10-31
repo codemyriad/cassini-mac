@@ -2,7 +2,6 @@
 import AppKit
 import QuartzCore
 import IOSurface
-import Metal
 import SwiftUI
 import CassiniRecording
 import CassiniKit
@@ -50,7 +49,6 @@ import Darwin
     private var notifications: [Notice] = []
     private var running = false, stopped = false
     private var pageBank: SpectrogramSurface?, pillBank: SpectrogramSurface?
-    private lazy var metal = SpectrogramMetalRenderer()
     private var pageRevision = 0, pillRevision = 0
     private final class Pixels {
         var mePage: SpectrogramPixelRing, othersPage: SpectrogramPixelRing
@@ -82,7 +80,7 @@ import Darwin
     private var intervals: [UInt16] = []
     private var intervalCount: UInt64 = 0
     #endif
-    private var lastDisplayMs = 0.0
+    private var lastDisplayMs = 0.0, scrollTimestamp = 0.0, scrollRate = 1.0
     #if SPECTROGRAM_PROBE
     // Test observations only; no observer, scan or instrumentation in app builds.
     var fixtureChanged: (() -> Void)?
@@ -223,7 +221,7 @@ import Darwin
     }
     private func resetPicture() {
         pageBank = nil; pillBank = nil; lastPage = -1; lastPill = -1
-        pixels = nil; metal.releaseTextures()
+        pixels = nil
         #if SPECTROGRAM_PROBE
         fixtureLatest = [-1,-1]; fixtureNonzero = [-1,-1]
         #endif
@@ -237,7 +235,6 @@ import Darwin
         if visible.contains(where:{ $0.style == .pill }) {
             if pillBank == nil { pillBank = try? .init(style:.pill); pillNeedsBake = true }
         } else { pillBank = nil; pillNeedsBake = true }
-        metal.discardUnusedTextures()
     }
     private func selected(_ lane: SpectrogramLane, slot: Int64) -> Bool {
         selections.selected(lane,slot:slot)
@@ -264,14 +261,13 @@ import Darwin
         defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
         // Read already-analyzed columns in the display-link callback. No
         // utility→main handoff or second run-loop wake is needed per frame.
-        guard let command = metal.beginFrame() else { skippedFrames += 1; return }
         let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
         analyzedFrames = frame.analyzedFrames; analysisNanoseconds = frame.analysisNanoseconds
         #if DEBUG
         displayDelayMs = frame.delayMs; lateTiming = frame.lateSamples
         #endif
         lateColumns = frame.lateColumns; droppedColumns = frame.droppedColumns; droppedBuffers = frame.droppedBuffers
-        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs,command:command)
+        paint(me:frame.me,others:frame.others,displayMs:frame.displayMs,timestamp:timestamp,rate:frame.presentationRate)
         if let previous = lastAppliedTime {
             let ms = (timestamp-previous)*1000
             maxFrameIntervalMs = max(maxFrameIntervalMs,ms)
@@ -287,11 +283,9 @@ import Darwin
         fixtureChanged?()
         #endif
     }
-    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double, command supplied: MTLCommandBuffer? = nil) {
-        // A buffer still being sampled by the GPU must not be overwritten.
-        // Never wait on the main thread; the next display callback retries.
-        guard let command = supplied ?? metal.beginFrame() else { skippedFrames += 1; return }
-        defer { metal.endFrame(command) }
+    private func paint(me: [SpectrogramColumn], others: [SpectrogramColumn], displayMs: Double, timestamp: Double? = nil, rate: Double? = nil) {
+        if let timestamp { scrollTimestamp = timestamp }
+        if let rate { scrollRate = rate }
         let interval = OSSignpostID(log:Self.signposts,object:self)
         os_signpost(.begin,log:Self.signposts,name:"Spectrogram draw",signpostID:interval)
         defer { os_signpost(.end,log:Self.signposts,name:"Spectrogram draw",signpostID:interval) }
@@ -368,7 +362,8 @@ import Darwin
             guard let view = item.value else { continue }
             let bank = view.style == .pill ? pillBank : pageBank
             if let bank { view.present(bank:bank,revision:view.style == .pill ? pillRevision : pageRevision,
-                displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced,renderer:metal,command:command) }
+                displayMs:view.style == .pill ? displayMs-60 : displayMs,reduced:reduced,
+                timestamp:scrollTimestamp,rate:scrollRate,animate:running && !stopped && !reduced) }
         }
     }
     #if DEBUG && !SPECTROGRAM_PROBE
@@ -434,7 +429,7 @@ import Darwin
         #endif
     }
     var payloadBytes: Int {
-        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2+visibleViews.reduce(0) { total,item in total+(item.value.map { $0.style.columns*($0.style == .pill ? 20 : 32)*4*2 } ?? 0) }
+        (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2
     }
 }
 
@@ -452,10 +447,17 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     let rowLane: SpectrogramLane
     private weak var controller: RecordingSpectrogram?
     private weak var bank: SpectrogramSurface?
-
+    private var source: RecordingSurfaceContents?
     private var revision = -1
     private var reducedMode: Bool?
-
+    private struct ScrollSegment { let timestamp: Double, position: Double, rate: Double }
+    private final class LaneLayers {
+        let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer()
+        var segment: ScrollSegment?
+        var lastOrigin: CGFloat = 0
+    }
+    private static let scrollAnimation = "cassini-spectrogram-scroll"
+    private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
         wantsLayer = true; setAccessibilityElement(false)
@@ -466,13 +468,19 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
             "contentsRect":NSNull(),"mask":NSNull(),"hidden":NSNull(),"opacity":NSNull(),
             "instanceCount":NSNull(),"instanceTransform":NSNull()]
         layer?.actions = actions
-        guard let output = layer as? CAMetalLayer else { preconditionFailure("Metal backing layer") }
-        output.pixelFormat = .bgra8Unorm; output.framebufferOnly = true
-        output.isOpaque = false; output.maximumDrawableCount = 2
-        output.presentsWithTransaction = false; output.contentsScale = 1
-        output.drawableSize = .init(width:style.columns,height:style == .pill ? 20 : 32)
+        for _ in 0..<(style == .pill ? 2 : 1) {
+            let item = LaneLayers()
+            for owned in [item.clip,item.first,item.fade] { owned.actions = actions }
+            item.clip.masksToBounds = true; item.clip.cornerRadius = style == .pill ? 2 : 4
+            item.scrolling.anchorPoint = .zero; item.clip.addSublayer(item.scrolling)
+            item.first.anchorPoint = .zero; item.first.contentsGravity = .resize
+            item.first.minificationFilter = .linear; item.first.magnificationFilter = .linear
+            item.scrolling.addSublayer(item.first)
+            item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
+            item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
+            layer?.addSublayer(item.clip); lanes.append(item)
+        }
     }
-    override func makeBackingLayer() -> CALayer { CAMetalLayer() }
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
     // The picture is exclusively the owned sublayers. Avoid AppKit's draw(_:) /
@@ -498,117 +506,104 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     override func layout() { super.layout(); controller?.reconcile() }
     func detach() { controller?.remove(registrationID); controller = nil; suspend() }
     func suspend() {
-        bank = nil; revision = -1; reducedMode = nil
-        (layer as? CAMetalLayer)?.device = nil
+        guard source != nil || bank != nil else { return }
+        for lane in lanes {
+            lane.scrolling.removeAnimation(forKey:Self.scrollAnimation); lane.segment = nil
+            lane.scrolling.speed=1; lane.scrolling.beginTime=0; lane.scrolling.timeOffset=0
+            lane.first.contents = nil;lane.first.delegate = nil
+        }; bank = nil; source = nil; revision = -1; reducedMode = nil
     }
     func freeze() {
+        for lane in lanes {
+            lane.scrolling.removeAnimation(forKey:Self.scrollAnimation); lane.segment = nil
+            lane.scrolling.speed=1; lane.scrolling.beginTime=0; lane.scrolling.timeOffset=0
+            lane.scrolling.position = .init(x:lane.lastOrigin,y:0)
+        }
         guard layer?.opacity != 0.45 else { return }
-        if bank == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if source == nil || !visibleForSpectrogram || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             layer?.opacity = 0.45; return
         }
         let animation = CABasicAnimation(keyPath:"opacity"); animation.fromValue = layer?.presentation()?.opacity ?? 1
         animation.toValue = 0.45; animation.duration = 0.22
         layer?.opacity = 0.45; layer?.add(animation,forKey:"recording-stop")
     }
-    fileprivate func present(bank value: SpectrogramSurface, revision valueRevision: Int, displayMs: Double, reduced: Bool,
-                 renderer: SpectrogramMetalRenderer, command: MTLCommandBuffer) {
-        bank = value; revision = valueRevision; reducedMode = reduced
-        guard let output = layer as? CAMetalLayer else { return }
-        renderer.draw(output:output,bank:value,style:style,lane:rowLane,displayMs:displayMs,reduced:reduced,command:command)
+    func present(bank value: SpectrogramSurface, revision valueRevision: Int, displayMs: Double, reduced: Bool, timestamp: Double, rate: Double, animate: Bool) {
+        let bankChanged = bank !== value
+        let changed = bankChanged || revision != valueRevision
+        if bankChanged { source = RecordingSurfaceContents(value.surface) }
+        bank = value; revision = valueRevision
+        let width = CGFloat(style.columns), height = style == .pill ? CGFloat(9) : CGFloat(32)
+        let capacity = CGFloat(style.columns+2), position = displayMs/style.slotMs
+        let base = floor(position/Double(style.columns+2))*Double(style.columns+2)
+        let origin = width-CGFloat(position-base)
+        let modeChanged = reducedMode != reduced
+        reducedMode = reduced
+        for index in lanes.indices {
+            let lane = lanes[index], selected = style == .pill ? index : rowLane.rawValue
+            if bankChanged {
+            lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
+            lane.fade.frame = lane.clip.bounds
+                lane.scrolling.bounds = .init(x:0,y:0,width:capacity,height:height)
+                // Two GPU instances share one texture leaf, halving contents
+                // invalidations/exports while retaining the same wrap geometry.
+                lane.scrolling.instanceTransform = CATransform3DMakeTranslation(-capacity,0,0)
+            }
+            if bankChanged || modeChanged {
+                lane.clip.mask = reduced ? nil : lane.fade
+                lane.scrolling.instanceCount = reduced ? 1 : 2
+            }
+            let image=lane.first
+                if bankChanged {
+                    image.bounds = .init(x:0,y:0,width:capacity,height:height)
+                    image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
+                    image.delegate = source
+                }
+                if changed { image.setNeedsDisplay() }
+            if bankChanged {
+                lane.first.position = .zero
+            }
+            lane.lastOrigin = reduced ? 0 : origin
+            if !animate {
+                lane.scrolling.removeAnimation(forKey:Self.scrollAnimation); lane.segment = nil
+            lane.scrolling.speed=1; lane.scrolling.beginTime=0; lane.scrolling.timeOffset=0
+                lane.scrolling.position = .init(x:lane.lastOrigin,y:0)
+            } else {
+                let segment = lane.segment
+                let predicted = segment.map { $0.position+(timestamp-$0.timestamp)*1000*$0.rate/style.slotMs }
+                // Correct every clock-slope change at the current display
+                // timestamp. Unchanged linear segments run on the compositor;
+                // ring uploads and the production display clock still run at
+                // their original cadence.
+                if bankChanged || modeChanged || segment?.rate != rate ||
+                    predicted.map({ abs($0-position) > 0.000001 }) != false {
+                    // Keep one fixed animation. Adjust its local clock
+                    // instead of serializing a new animation at every retime.
+                    if lane.segment == nil {
+                        let animation=CABasicAnimation(keyPath:"position.x")
+                        animation.fromValue=width; animation.toValue=width-capacity
+                        animation.duration=Double(capacity)*style.slotMs/1000
+                        animation.beginTime=0; animation.repeatCount = .infinity
+                        animation.timingFunction=CAMediaTimingFunction(name:.linear)
+                        lane.scrolling.position = .init(x:width,y:0)
+                        lane.scrolling.add(animation,forKey:Self.scrollAnimation)
+                    }
+                    let parentTime=lane.scrolling.superlayer?.convertTime(timestamp,from:nil) ?? timestamp
+                    lane.scrolling.beginTime=parentTime
+                    lane.scrolling.timeOffset=displayMs/1000
+                    lane.scrolling.speed=Float(rate)
+                    lane.segment = .init(timestamp:timestamp,position:position,rate:rate)
+                }
+            }
+        }
     }
 }
 
-/// Experiment only: one shared GPU submission samples the current immutable
-/// ring across all visible strips. Completion releases CPU write admission.
-@MainActor private final class SpectrogramMetalRenderer {
-    private final class Admission: @unchecked Sendable {
-        let lock = NSLock()
-        var busy = false
-        func acquire() -> Bool { lock.lock(); defer {lock.unlock()}; guard !busy else {return false};busy=true;return true }
-        func release() {lock.lock();busy=false;lock.unlock()}
-    }
-    private let admission = Admission()
-    private let device: MTLDevice
-    private let queue: MTLCommandQueue
-    private let pipeline: MTLRenderPipelineState
-    private struct Texture { weak var bank: SpectrogramSurface?; let value: MTLTexture }
-    private var textures: [Int:Texture] = [:]
-    init() {
-        device = MTLCreateSystemDefaultDevice()!
-        queue = device.makeCommandQueue()!
-        let library = try! device.makeLibrary(source:Self.shader,options:nil)
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = library.makeFunction(name:"spectroVertex")
-        descriptor.fragmentFunction = library.makeFunction(name:"spectroFragment")
-        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
-        pipeline = try! device.makeRenderPipelineState(descriptor:descriptor)
-    }
-    func releaseTextures() {textures.removeAll()}
-    func discardUnusedTextures() {textures = textures.filter { $0.value.bank != nil }}
-    func beginFrame() -> MTLCommandBuffer? {
-        guard admission.acquire() else {return nil}
-        guard let command = queue.makeCommandBuffer() else {admission.release();return nil}
-        return command
-    }
-    func endFrame(_ command: MTLCommandBuffer) {
-        let state = admission
-        command.addCompletedHandler { _ in state.release() }
-        command.commit()
-    }
-    func draw(output:CAMetalLayer,bank:SpectrogramSurface,style:SpectrogramStripStyle,lane:SpectrogramLane,
-              displayMs:Double,reduced:Bool,command:MTLCommandBuffer) {
-        let key=style == .pill ? 0 : 1
-        let texture:MTLTexture
-        if let existing=textures[key],existing.bank === bank {texture=existing.value}
-        else {
-            let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat:.bgra8Unorm,width:bank.width,height:bank.height,mipmapped:false)
-            descriptor.usage = .shaderRead; descriptor.storageMode = .shared
-            guard let value=device.makeTexture(descriptor:descriptor,iosurface:bank.surface,plane:0) else {return}
-            texture=value;textures[key] = .init(bank:bank,value:value)
-        }
-        if output.device == nil {output.device=device}
-        guard let drawable=output.nextDrawable() else {return}
-        let pass=MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture=drawable.texture
-        pass.colorAttachments[0].loadAction = .clear;pass.colorAttachments[0].storeAction = .store
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
-        guard let encoder=command.makeRenderCommandEncoder(descriptor:pass) else {return}
-        let columns=Float(style.columns),capacity=columns+2
-        let position=Float(displayMs/style.slotMs)
-        var parameters=SIMD4<Float>(columns,columns-position.truncatingRemainder(dividingBy:capacity),
-                                    style == .pill ? -1 : Float(lane.rawValue),reduced ? 1 : 0)
-        encoder.setRenderPipelineState(pipeline)
-        encoder.setFragmentTexture(texture,index:0)
-        encoder.setFragmentBytes(&parameters,length:MemoryLayout<SIMD4<Float>>.size,index:0)
-        encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:3)
-        encoder.endEncoding();command.present(drawable)
-    }
-    private static let shader = """
-    #include <metal_stdlib>
-    using namespace metal;
-    vertex float4 spectroVertex(uint i [[vertex_id]]) {
-        const float2 vertices[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)};
-        return float4(vertices[i],0,1);
-    }
-    fragment float4 spectroFragment(float4 at [[position]],texture2d<float> image [[texture(0)]],constant float4& p [[buffer(0)]]) {
-        float width=p.x,capacity=width+2;
-        bool pill=p.z<0,reduced=p.w>0;
-        float height=pill ? 9 : 32;
-        float lane=pill ? (at.y<11 ? 0 : 1) : p.z;
-        float y=pill ? at.y-lane*11 : at.y;
-        if(y<0 || y>=height)return float4(0);
-        float sourceX=reduced ? at.x : fmod(at.x-p.y+capacity*2,capacity);
-        float2 uv=float2(sourceX/capacity,(lane+(y/height))/2);
-        constexpr sampler linearSampler(coord::normalized,address::repeat,filter::linear);
-        float4 colour=image.sample(linearSampler,uv);
-        float radius=pill ? 2 : 4;
-        float2 q=abs(float2(at.x,y)-float2(width,height)/2)-float2(width,height)/2+radius;
-        float distance=length(max(q,float2(0)))+min(max(q.x,q.y),0.0)-radius;
-        float edge=clamp(0.5-distance,0.0,1.0);
-        float fade=reduced ? 1 : clamp(at.x/(width*0.16),0.0,1.0);
-        return colour*(edge*fade);
-    }
-    """
+/// Public CALayerDelegate display callbacks replace the nonexistent public
+/// setContentsChanged selector. No CG backing store or full-image copy is made.
+private final class RecordingSurfaceContents: NSObject, CALayerDelegate {
+    private let surface: IOSurfaceRef
+    init(_ surface: IOSurfaceRef) { self.surface = surface }
+    func display(_ layer: CALayer) { layer.contents = surface }
 }
 
 struct RecordingSpectrogramStrip: NSViewRepresentable {

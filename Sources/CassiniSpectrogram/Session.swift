@@ -145,7 +145,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     }
     public struct Frame: Sendable {
         public let me: [SpectrogramColumn], others: [SpectrogramColumn]
-        public let displayMs: Double, delayMs: Double
+        public let displayMs: Double, delayMs: Double, presentationRate: Double
         public let analyzedFrames: UInt64, lateColumns: UInt64, droppedBuffers: UInt64, droppedColumns: UInt64
         public let retainedTracks: Int
         public let analysisNanoseconds: UInt64
@@ -168,7 +168,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         let status = state.withLock { ($0.visible,$0.generation,$0.dropped) }
         return presentation.withLock { value in
             guard value.generation == status.1 else {
-                return .init(me:[],others:[],displayMs:0,delayMs:40,analyzedFrames:0,lateColumns:0,
+                return .init(me:[],others:[],displayMs:0,delayMs:40,presentationRate:1,analyzedFrames:0,lateColumns:0,
                     droppedBuffers:status.2,droppedColumns:0,retainedTracks:0,
                     analysisNanoseconds:value.analysisNanoseconds,lateSamples:[])
             }
@@ -183,7 +183,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
             // Include analysis work performed by the display's drain as well as
             // utility FFT work. Moving it cannot make the CPU gate disappear.
             if measureCPU { value.analysisNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart }
-            return .init(me:batch.me,others:batch.others,displayMs:display,delayMs:value.clock.delayMs,
+            return .init(me:batch.me,others:batch.others,displayMs:display,delayMs:value.clock.delayMs,presentationRate:value.clock.presentationRate,
                 analyzedFrames:value.analyzedFrames,lateColumns:value.me.late+value.others.late,
                 droppedBuffers:status.2,droppedColumns:value.me.overflow+value.others.overflow+batch.droppedMe+batch.droppedOthers,
                 retainedTracks:value.retainedTracks,analysisNanoseconds:value.analysisNanoseconds,lateSamples:value.lateSamples)
