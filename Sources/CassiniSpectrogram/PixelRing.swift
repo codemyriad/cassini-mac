@@ -92,6 +92,24 @@ public struct SpectrogramPixelRing {
         guard slots[index] == slot, states[index] == State.recorded.rawValue else { return nil }
         return Array(values[index*style.rows..<(index+1)*style.rows])
     }
+    /// Current native column without retaining a second full-colour ring.
+    /// The raw slot identities, palette and two clear guards are shared with
+    /// the incremental painter, including the Reduced Motion sweep.
+    public func columnPixels(at column: Int) -> [UInt32] {
+        precondition((0..<capacity).contains(column))
+        guard latestSlot >= 0 else { return empty }
+        let width = reducedMotion ? style.columns : capacity
+        guard column < width else { return empty }
+        let head = Int(latestSlot%Int64(width))
+        guard column != (head+1)%width && column != (head+2)%width else { return empty }
+        let age = (head-column+width)%width
+        let slot = latestSlot-Int64(age)
+        guard slot >= 0 else { return empty }
+        let index = Int(slot%Int64(capacity))
+        guard slots[index] == slot else { return empty }
+        return pixels(index:index,slot:slot)
+    }
+
     private func pixelIndex(_ slot: Int64) -> Int { Int(slot%Int64(reducedMotion ? style.columns : capacity)) }
     private mutating func store(slot: Int64, bands: [UInt8]?, state: State, paint: (Int,[UInt32]) -> Void) {
         record(slot:slot,bands:bands,state:state)

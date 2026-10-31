@@ -6,7 +6,7 @@ on:
       mode:
         description: 'Generated PCM sink only, or sink plus actual process-tap hardware'
         type: choice
-        options: [full, sink-only, spectrogram-lab]
+        options: [full, sink-only, spectrogram-lab, spectrogram-environment]
         default: full
   schedule:
     - cron: '23 2 * * *'
@@ -119,4 +119,26 @@ jobs:
         if: always()
         with:
           name: spectrogram-lab
+          path: experiment
+
+  spectrogram-environment:
+    # Hardware capability diagnostic only; no app, capture or benchmark waiver.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/lab/spectrogram-d36' && inputs.mode == 'spectrogram-environment'
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Record disposable runner graphics capabilities
+        run: |
+          mkdir -p experiment
+          swift Spikes/Spectrogram/GraphicsEnvironment.swift > experiment/graphics.json
+          sw_vers > experiment/system.txt
+          xcodebuild -version >> experiment/system.txt
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: spectrogram-environment
           path: experiment
