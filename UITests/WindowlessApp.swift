@@ -88,8 +88,10 @@ extension LibraryBoards {
         XCTAssertTrue(show.waitForExistence(timeout:10)); XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"0")
         settings.buttons["_XCUI:CloseWindow"].click()
         status.click(); XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5)); app.buttons["recording-menu-quit"].click()
-        XCTAssertTrue(app.buttons["Stop and keep it"].waitForExistence(timeout:10),app.debugDescription)
-        app.buttons["Stop and keep it"].click()
+        let keep = app.dialogs.firstMatch.buttons["Stop and keep it"]
+        XCTAssertTrue(keep.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertFalse(library.exists,"Windowless Quit presents its own dialog, not a sheet on a disappearing menu")
+        keep.click()
         waitForWindowless { app.state == .notRunning }
         let saved = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("session.json"))) as? [String:Any])
         XCTAssertEqual(saved["state"] as? String,"completed")

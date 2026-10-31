@@ -143,7 +143,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await MeetingRenameCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
-            RecordingConfirmation.askToQuit(window: sender.keyWindow ?? sender.mainWindow) { choice in
+            // A menu-bar Quit may still have its transient popup as keyWindow.
+            // Never attach the save confirmation to a popup that is closing.
+            let parent = [sender.keyWindow,sender.mainWindow].compactMap { $0 }.first(where:Self.isContentWindow)
+                ?? sender.windows.first(where:Self.isContentWindow)
+            RecordingConfirmation.askToQuit(window: parent) { choice in
                 Task { @MainActor in
                     let stop = choice == .stop
                     if stop {
@@ -201,12 +205,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    @MainActor private static func isContentWindow(_ window: NSWindow) -> Bool {
+        window.isVisible && window.level == .normal && window.styleMask.contains(.titled)
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // MenuBarExtra owns visible status/popup windows too. Only ordinary
         // content windows (or an active modal) count as a way back into the app.
-        let visibleContent = sender.windows.contains {
-            $0.isVisible && $0.level == .normal && $0.styleMask.contains(.titled)
-        }
+        let visibleContent = sender.windows.contains(where:Self.isContentWindow)
         guard !visibleContent, sender.modalWindow == nil else { return true }
         MainActor.assumeIsolated {
             LibrarySearchModel.shared.close()
