@@ -34,6 +34,7 @@
     "scripts/test-recording-saving.py",
     "scripts/test-trash-app.py",
     "scripts/test-spectrogram-app.py",
+    "scripts/test-spectrogram-harness.py",
     "scripts/build-spectrogram-probe.py",
     "Spikes/Spectrogram/**"
   ],
