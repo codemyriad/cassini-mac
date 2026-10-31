@@ -474,7 +474,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(body["title"] as? String,"Title from the live page")
         XCTAssertEqual(body["noSleep"] as? String,"Your Mac will not sleep while Cassini records.")
         let actions = try XCTUnwrap(body["actions"] as? [[String:Any]])
-        XCTAssertEqual(actions.compactMap { $0["id"] as? String },["stop","open"])
+        XCTAssertEqual(actions.compactMap { $0["id"] as? String },["stop","open","settings","quit"])
         XCTAssertEqual(actions.first?["shortcut"] as? String,"⌥⌘R")
         let dump = XCTAttachment(data:data,uniformTypeIdentifier:"public.json")
         dump.name = "recording-menu.json"; dump.lifetime = .keepAlways; add(dump)
@@ -778,7 +778,7 @@ final class LibraryBoards: XCTestCase {
         configuration.activates = true
         _ = try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
     }
-    @MainActor private func launch(_ name: String, fixture: String, extra: [String] = []) throws -> XCUIApplication {
+    @MainActor func launch(_ name: String, fixture: String, extra: [String] = []) throws -> XCUIApplication {
         let app = XCUIApplication()
         let root = try fixtureDirectory().appendingPathComponent("Library/" + fixture)
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"

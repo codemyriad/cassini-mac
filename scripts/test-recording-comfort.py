@@ -34,7 +34,7 @@ for name in ('recordingComfort', 'sameNameCaptureIsolation', 'shortcutRegistered
     assert report[name] is True, (name, report)
 menu = report['menu']
 assert menu['assertionHeld'] is True and menu['levels'][0]['silent'] is True
-assert [action['id'] for action in menu['actions']] == ['stop', 'open']
+assert [action['id'] for action in menu['actions']] == ['stop', 'open', 'settings', 'quit']
 assert menu['actions'][0]['shortcut'] == '⌥⌘R'
 (args.output/'recording-comfort.json').write_text(json.dumps(report, indent=2)+'\n')
 (args.output/'recording-menu.json').write_text(json.dumps(menu, indent=2)+'\n')

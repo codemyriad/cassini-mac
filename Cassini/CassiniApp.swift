@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 struct CassiniApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
+    @AppStorage("CassiniShowMenuBar",store:RecordingPreferences.defaults) private var showIdleMenuBar = true
 
     var body: some Scene {
         let captureActive = RecordingOverview.active
@@ -26,7 +28,13 @@ struct CassiniApp: App {
         Settings { CassiniSettingsView() }
             .windowResizability(.contentSize)
 
-        MenuBarExtra(isInserted:.constant(captureActive)) { RecordingStatusMenu() } label: { RecordingStatusLabel() }
+        MenuBarExtra(isInserted:.constant(captureActive || (captures.autoRecord && showIdleMenuBar))) {
+            if captureActive { RecordingStatusMenu() }
+            else { IdleStatusMenu() }
+        } label: {
+            if captureActive { RecordingStatusLabel() }
+            else { IdleStatusLabel() }
+        }
             .menuBarExtraStyle(.window)
 
         WindowGroup(UXText.text("library.title"), id: "legacy-viewer", for: LegacyRoute.self) { $route in

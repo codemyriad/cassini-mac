@@ -199,6 +199,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { !CommandLine.arguments.contains("--recording-self-test") && !CommandLine.arguments.contains("--recording-sink-self-test") }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        MainActor.assumeIsolated {
+            LibrarySearchModel.shared.close()
+            MeetingNavigation.shared.back()
+            MeetingNavigation.shared.openLibrary?()
+            sender.activate(ignoringOtherApps:true)
+        }
+        return false
+    }
+
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
         // AppKit's outline consumes Return before SwiftUI onKeyPress. Treat it
