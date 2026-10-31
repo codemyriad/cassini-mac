@@ -15,9 +15,11 @@ spec.loader.exec_module(release)
 
 INSPECT_LAYOUT = '''from ds_store import DSStore
 import sys, json
+from pathlib import Path
 with DSStore.open(sys.argv[1], 'r') as store:
     assert store['.']['icvp']['backgroundType'] == 2
     assert store['.']['icvp']['backgroundImageAlias']
+    Path(sys.argv[2]).write_bytes(store['.']['pBBk'].to_bytes())
     assert store['Cassini talk.app']['Iloc'] == (140, 120)
     assert store['Applications']['Iloc'] == (500, 120)
     assert store['COPYING']['Iloc'] == (320, 280)
@@ -29,6 +31,16 @@ with DSStore.open(sys.argv[1], 'r') as store:
         assert y+options['iconSize']/2+2*options['textSize']+22 <= 400
     print(json.dumps(dict(backgroundMetadata=True, applicationPosition=store['Cassini talk.app']['Iloc'],
                          applicationsPosition=store['Applications']['Iloc'])))
+'''
+
+
+RESOLVE_BOOKMARK = '''import Foundation
+let data = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+var stale = false
+let url = try URL(resolvingBookmarkData: data, options: [.withoutUI, .withoutMounting],
+                  relativeTo: nil, bookmarkDataIsStale: &stale)
+precondition(url.standardizedFileURL.path == CommandLine.arguments[2])
+print("PASS Foundation bookmark resolves after a fresh read-only mount")
 '''
 
 
@@ -53,8 +65,11 @@ def main():
             background=(mount/'.background/background.png').read_bytes()
             assert background.startswith(b'\x89PNG\r\n\x1a\n')
             assert struct.unpack('>II',background[16:24]) == (640,400)
-            result = subprocess.run([python, '-c', INSPECT_LAYOUT, mount/'.DS_Store'], check=True, capture_output=True, text=True)
+            bookmark = root/'background.bookmark'
+            result = subprocess.run([python, '-c', INSPECT_LAYOUT, mount/'.DS_Store', bookmark], check=True, capture_output=True, text=True)
             print(result.stdout.strip())
+            subprocess.run(['xcrun', 'swift', '-e', RESOLVE_BOOKMARK, str(bookmark),
+                            str(mount/'.background/background.png')], check=True)
         finally:
             subprocess.run(['hdiutil', 'detach', mount], check=True, capture_output=True)
     print('PASS private DMG fixture: final app name, background file/metadata, unclipped icon bounds, Applications link and licences; Finder rendering requires the separate QA guest')

@@ -2,12 +2,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Create installer metadata without running Finder on the build machine."""
 import argparse
+import subprocess
 from pathlib import Path
 import dmgbuild
 from ds_store import DSStore
-from mac_alias import Alias, Bookmark
+from mac_alias import Alias
 
 ROOT=Path(__file__).resolve().parent.parent
+
+
+class FinderBookmark:
+    """DSStore's pBBk codec accepts bookmark objects exposing to_bytes()."""
+    def __init__(self, data):
+        self.data = data
+
+    def to_bytes(self):
+        return self.data
+
 
 def build(application,output):
     mounted=None
@@ -25,7 +36,12 @@ def build(application,output):
             options['backgroundType']=2
             options['backgroundImageAlias']=Alias.for_file(str(picture)).to_bytes()
             store['.']['icvp']=options
-            store['.']['pBBk']=Bookmark.for_file(str(picture))
+            # Finder rejected the Python-generated bookmark in fresh guest
+            # mounts, although URL resolution alone passed. Foundation creates
+            # the bookmark used by Finder, without opening any application.
+            bookmark = subprocess.check_output([
+                'xcrun', 'swift', str(ROOT/'scripts/dmg-background-bookmark.swift'), str(picture)])
+            store['.']['pBBk'] = FinderBookmark(bookmark)
     dmgbuild.build_dmg(str(output),'Cassini talk',settings_file=str(ROOT/'Distribution/dmg-settings.py'),
         settings={'create_hook':created},defines={'app':str(application),'license':str(ROOT/'COPYING'),
         'background_license':str(ROOT/'Distribution/dmgbuild-LICENSE.txt'),'background':str(ROOT/'Distribution/dmg-background.png')},callback=progress)
