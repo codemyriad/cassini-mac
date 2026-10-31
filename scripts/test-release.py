@@ -25,7 +25,8 @@ class ReleaseTests(unittest.TestCase):
             root = Path(temporary)
             args = SimpleNamespace(base_url=release.BASE_URL, version='1.0', build=2,
                 release_notes=root/'missing.html', output=root/'new-output')
-            for notes in [None, root/'missing.html']:
+            empty=root/'empty.html'; empty.write_bytes(b'')
+            for notes in [None, root/'missing.html', empty]:
                 args.release_notes = notes
                 with patch.object(release, 'notary_credentials') as credentials:
                     with self.assertRaises(ValueError): release.release(args)
@@ -104,7 +105,43 @@ class ReleaseTests(unittest.TestCase):
             tag = 'channel/item/{'+release.SPARKLE+'}releaseNotesLink'
             self.assertIsNone(ET.fromstring(release.appcast(*args)).find(tag))
             notes = 'https://cassini.talk/download/mac/notes/1.0.html'
-            self.assertEqual(ET.fromstring(release.appcast(*args, release_notes_url=notes)).find(tag).text, notes)
+            link = ET.fromstring(release.appcast(*args,release_notes_url=notes,release_notes_signature='B'*86+'==',release_notes_length=123)).find(tag)
+            self.assertEqual(link.text,notes)
+            self.assertEqual(link.attrib,{'{'+release.SPARKLE+'}edSignature':'B'*86+'==','{'+release.SPARKLE+'}length':'123'})
+            for signature,length in [(None,123),('bad',123),('B'*86+'==',None),('B'*86+'==',0),('B'*86+'==',True)]:
+                with self.assertRaises(ValueError):release.appcast(*args,release_notes_url=notes,release_notes_signature=signature,release_notes_length=length)
+
+    def testLinkedNotesAreSignedBeforeTheFeedAndTamperedHTMLIsRejected(self):
+        import subprocess
+        tools = ROOT/'.build/Sparkle/distribution/bin'
+        if not (tools/'sign_update').exists(): self.skipTest('Fetch pinned Sparkle tools before this cryptographic check')
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary); seed=folder/'test-seed'; public=folder/'test-public'
+            seed.write_text(base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')).decode()); seed.chmod(0o600)
+            public.write_text('11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=')
+            archive=folder/'Cassini-talk-1.0.dmg'; archive.write_bytes(b'signed archive fixture')
+            signature=release.run([tools/'sign_update','--ed-key-file',seed,'-p',archive]).decode().strip()
+            notes=folder/'notes/1.0.html'; notes.parent.mkdir()
+            original='<!doctype html>\r\n<p>Release notes: ✓</p>\r\n'.encode('utf-8'); notes.write_bytes(original)
+            urls=release.release_urls(release.BASE_URL,'1.0')
+            report=release.write_signed_appcast(folder,archive,signature,'1.0',2,urls,tools,seed,public)
+            feed=folder/'appcast.xml'; link=ET.fromstring(feed.read_bytes()).find('channel/item/{'+release.SPARKLE+'}releaseNotesLink')
+            actual_signature=link.attrib['{'+release.SPARKLE+'}edSignature']; length=int(link.attrib['{'+release.SPARKLE+'}length'])
+            self.assertEqual(notes.read_bytes(),original)
+            self.assertEqual(length,len(original)); self.assertEqual(actual_signature,report['edSignature'])
+            self.assertEqual(report['sha256'],release.sha256_file(notes)); self.assertEqual(link.text,urls['notes'])
+            release.verify_release_notes(notes,actual_signature,length,public)
+            # Sparkle verifies the finished feed including note attributes.
+            verify_feed=[tools/'sign_update','--verify','--ed-key-file',seed,feed]
+            release.run(verify_feed,timeout=180)
+            notes.write_bytes(original.replace(b'Release',b'Altered'))
+            release.run(verify_feed,timeout=180)  # Feed is still authentic.
+            with self.assertRaises(RuntimeError):release.verify_release_notes(notes,actual_signature,length,public)
+            notes.write_bytes(original+b'extra')
+            with self.assertRaises(ValueError):release.verify_release_notes(notes,actual_signature,length,public)
+            notes.write_bytes(original)
+            seed.unlink()  # Notes verification needs only the public key.
+            release.verify_release_notes(notes,actual_signature,length,public)
 
     def testHTTPSRedirectCannotDowngrade(self):
         from urllib.request import Request

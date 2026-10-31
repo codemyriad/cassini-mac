@@ -176,7 +176,8 @@ def notarize(path, credentials, report):
     run(['xcrun', 'stapler', 'validate', path], timeout=180)
 
 
-def appcast(archive, signature, version, build, download_url, now=None, release_notes_url=None):
+def appcast(archive, signature, version, build, download_url, now=None, release_notes_url=None,
+            release_notes_signature=None, release_notes_length=None):
     if not re.fullmatch(r'[A-Za-z0-9+/]{86}==', signature):
         raise ValueError('Invalid Ed25519 signature')
     root = ET.Element('rss', version='2.0')
@@ -189,10 +190,45 @@ def appcast(archive, signature, version, build, download_url, now=None, release_
     ET.SubElement(item, '{'+SPARKLE+'}minimumSystemVersion').text = '15.0'
     ET.SubElement(item, 'pubDate').text = format_datetime(now or datetime.now(timezone.utc))
     if release_notes_url:
-        ET.SubElement(item, '{'+SPARKLE+'}releaseNotesLink').text = https_url(release_notes_url)
+        if not isinstance(release_notes_signature, str) or not re.fullmatch(r'[A-Za-z0-9+/]{86}==', release_notes_signature):
+            raise ValueError('Linked release notes require an Ed25519 signature')
+        if type(release_notes_length) is not int or release_notes_length <= 0:
+            raise ValueError('Linked release notes require a positive byte length')
+        ET.SubElement(item, '{'+SPARKLE+'}releaseNotesLink', {
+            '{'+SPARKLE+'}edSignature': release_notes_signature,
+            '{'+SPARKLE+'}length': str(release_notes_length)}).text = https_url(release_notes_url)
+    elif release_notes_signature is not None or release_notes_length is not None:
+        raise ValueError('Release-notes authentication needs a linked document')
     ET.SubElement(item, 'enclosure', {'url': https_url(download_url), 'length': str(archive.stat().st_size),
         'type': 'application/octet-stream', '{'+SPARKLE+'}edSignature': signature})
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)+b'\n'
+
+
+def verify_release_notes(notes, signature, length, public_key=ROOT/'Distribution/sparkle-public-key.txt'):
+    if type(length) is not int or length <= 0 or Path(notes).stat().st_size != length:
+        raise ValueError('Release notes differ from their signed byte length')
+    verify_signature(notes, signature, public_key)
+
+
+def write_signed_appcast(output, archive, signature, version, build, urls, tools, key,
+                         public_key=ROOT/'Distribution/sparkle-public-key.txt'):
+    # SURequireSignedFeed authenticates linked HTML separately. Sign the final
+    # staged bytes, put both namespaced attributes into XML, then sign the feed.
+    notes = output/'notes'/(version+'.html')
+    if notes.stat().st_size <= 0:
+        raise ValueError('Release notes must not be empty')
+    # Preserve the final HTML; Sparkle otherwise inserts a signing-warning comment.
+    notes_signature = run([tools/'sign_update','--ed-key-file',key,'--disable-signing-warning','-p',notes],timeout=180).decode().strip()
+    length = notes.stat().st_size
+    run([tools/'sign_update','--verify','--ed-key-file',key,notes,notes_signature],timeout=180)
+    verify_release_notes(notes, notes_signature, length, public_key)
+    feed = output/'appcast.xml'
+    feed.write_bytes(appcast(archive, signature, version, build, urls['download'],release_notes_url=urls['notes'],
+        release_notes_signature=notes_signature,release_notes_length=length))
+    run([tools/'sign_update','--ed-key-file',key,feed],timeout=180)
+    run([tools/'sign_update','--verify','--ed-key-file',key,feed],timeout=180)
+    verify_release_notes(notes, notes_signature, length, public_key)
+    return dict(url=urls['notes'],bytes=length,edSignature=notes_signature,sha256=sha256_file(notes))
 
 
 def verify_update_key(key):
@@ -239,7 +275,7 @@ def release(args):
     urls = release_urls(args.base_url, args.version)
     if args.build < 1:
         raise ValueError('Expected a numeric version and positive increasing build number')
-    if not args.release_notes or not args.release_notes.is_file():
+    if not args.release_notes or not args.release_notes.is_file() or args.release_notes.stat().st_size == 0:
         raise ValueError('Release notes must name an existing HTML file')
     # Refuse to overwrite or mix artifacts from earlier builds/submissions.
     output = args.output.resolve()
@@ -294,15 +330,11 @@ def release(args):
     verify_signature(output/'Cassini-talk.dmg', signature)
     (output/'notes').mkdir()
     copy_new(args.release_notes, output/'notes'/(args.version+'.html'))
-    (output/'appcast.xml').write_bytes(appcast(dmg, signature, args.version, args.build, urls['download'],
-        release_notes_url=urls['notes']))
-    # Feed signing protects metadata as well as the download. Re-sign after edits.
-    run([tools/'sign_update', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
-    run([tools/'sign_update', '--verify', '--ed-key-file', key, output/'appcast.xml'], timeout=180)
+    notes_report = write_signed_appcast(output,dmg,signature,args.version,args.build,urls,tools,key)
     checksum = publication_plan(output, urls, args.version, signature, notes=True)
     (output/'release.json').write_text(json.dumps(dict(commit=run(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip(),
         version=args.version, build=args.build, baseURL=urls['base'], bytes=dmg.stat().st_size,
-        edSignature=signature, sha256=checksum, notarized=True, cleanVMChecked=False),indent=2)+'\n')
+        edSignature=signature, sha256=checksum, releaseNotes=notes_report, notarized=True, cleanVMChecked=False),indent=2)+'\n')
     print('Notarized and stapled '+dmg.name+' and identical Cassini-talk.dmg; SHA256 '+checksum)
     print('Clean-VM install/browser/update checks and publication are still required.')
 
