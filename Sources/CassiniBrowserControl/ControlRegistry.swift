@@ -386,10 +386,12 @@ public struct BrowserControlRegistry: Sendable {
             peer.autoAttempted.formUnion(peer.requestedStops)
         case "status":
             guard peer.hello else { throw BrowserControlStateError.malformed }
-            let captures = try Self.captures(json,peer:id,pageState:peer.supportsPageState), interrupted = try Self.interrupted(json,peer:id,pageState:peer.supportsPageState)
+            let inventory = try Self.captures(json,peer:id,includeInactive:true,pageState:peer.supportsPageState)
+            let captures = inventory.filter { $0.recording || $0.stopping }, interrupted = try Self.interrupted(json,peer:id,pageState:peer.supportsPageState)
+            let reports = try Self.pageReports(json,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
             retireMissing(peer.captures+peer.interrupted,current:captures+interrupted,peer:peer)
             peer.captures = captures; peer.interrupted = interrupted
-            stamp(&peer)
+            stamp(&peer,reports:reports)
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
             peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
             peer.statusRevision &+= 1
@@ -402,8 +404,10 @@ public struct BrowserControlRegistry: Sendable {
             let error = try Self.optionalString(json["error"],maximum:2000)
             if !ok, pending.request.action == .start { unboundStarts.removeValue(forKey:requestID) }
             if let status = json["status"], !status.isNull {
-                let captures = try Self.captures(status,peer:id,pageState:peer.supportsPageState)
+                let inventory = try Self.captures(status,peer:id,includeInactive:true,pageState:peer.supportsPageState)
+                let captures = inventory.filter { $0.recording || $0.stopping }
                 let interrupted = try Self.interrupted(status,peer:id,pageState:peer.supportsPageState)
+                let reports = try Self.pageReports(status,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
                 if pending.request.action == .start, ok, let instance = peer.peer.browserInstance,
                    let url = pending.url, let capture = captures.first(where:{ $0.key == pending.request.key }), let identity = capture.captureID {
                     bind(Data(identity.utf8),to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
@@ -429,7 +433,7 @@ public struct BrowserControlRegistry: Sendable {
                 if peer.statusRevision == pending.statusRevision && pending.order >= peer.lastResultOrder {
                     retireMissing(peer.captures+peer.interrupted,current:captures+interrupted,peer:peer)
                     peer.captures = captures; peer.interrupted = interrupted
-                    stamp(&peer)
+                    stamp(&peer,reports:reports)
                     peer.lastResultOrder = pending.order
                     peer.autoAttempted.formUnion(captures.map { $0.key.tabID })
                     peer.autoAttempted.formUnion(interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
@@ -611,14 +615,34 @@ public struct BrowserControlRegistry: Sendable {
     private func observe(_ page: BrowserCallLifecycle.Page?, tab: Int, peer: inout PeerState) -> (BrowserCallLifecycle.Page,TimeInterval)? {
         if peer.pages[tab]?.0 == .closed { return peer.pages[tab] }
         guard let page else { return nil }
-        if peer.pages[tab]?.0 != page { peer.pages[tab] = (page,ProcessInfo.processInfo.systemUptime) }
+        if peer.pages[tab]?.0 != page { peer.pages[tab] = (page,clock()) }
         if peer.pages.count > 512 {
             let kept = Set(peer.meetings.map { $0.key.tabID } + (peer.captures+peer.interrupted).map { $0.key.tabID } + [tab])
             peer.pages = peer.pages.filter { kept.contains($0.key) }
         }
         return peer.pages[tab]
     }
-    private func stamp(_ peer: inout PeerState) {
+    private static func pageReports(_ json: JSON, inventory: [BrowserCaptureStatus], interrupted: [BrowserCaptureStatus], enabled: Bool) throws -> [(Int,BrowserCallLifecycle.Page)] {
+        guard enabled else { return [] }
+        var reports: [(Int,BrowserCallLifecycle.Page)] = []
+        if let page = try page(json["pageState"],enabled:true), let tab = json["tabId"], !tab.isNull {
+            reports.append((try integer(tab),page))
+        }
+        reports += (inventory+interrupted).compactMap { row in row.pageState.map { (row.key.tabID,$0) } }
+        return reports
+    }
+    private func stamp(_ peer: inout PeerState, reports: [(Int,BrowserCallLifecycle.Page)]) {
+        for (tab,page) in reports {
+            guard let observed = observe(page,tab:tab,peer:&peer),
+                  let index = peer.meetings.firstIndex(where:{ $0.key.tabID == tab }) else { continue }
+            let row = peer.meetings[index], invalidated = observed.0 == .navigating || observed.0 == .closed
+            // Status supplies lifecycle evidence, never a fresh source count.
+            // A returning present status cannot revive the departed document's
+            // positive inventory. Other tabs retain their own evidence.
+            peer.meetings[index] = .init(key:row.key,title:row.title,url:row.url,
+                sourceCount:invalidated ? 0 : row.sourceCount,heard:invalidated ? false : row.heard,
+                pageState:observed.0,pageStateAt:observed.1)
+        }
         for index in peer.captures.indices {
             let value = observe(peer.captures[index].pageState,tab:peer.captures[index].key.tabID,peer:&peer)
             peer.captures[index].pageState = value?.0; peer.captures[index].pageStateAt = value?.1

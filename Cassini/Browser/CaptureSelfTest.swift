@@ -408,11 +408,19 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.record(); _ = try await modern.performNext()
             try await wait { collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true }
             let returning = try collection.captures.values.first.unwrap(), returningID = returning.snapshot.manifest.id
-            try await modern.page("navigating",active:false)
+            // PR23's literal rapid-return wire order: no fresh inventory lies
+            // between the two statuses. The old document's positive count must
+            // not turn the following zero inventory into a two-second hangup.
+            modern.pageState = "navigating"; try await modern.control.send(modern.status())
+            modern.pageState = "present"; try await modern.control.send(modern.status())
+            try await modern.meetings(false)
+            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.sourceCount == 0 }
             try await wait { !returning.owner.snapshot.browserAlive }
             let loss = try returning.owner.snapshot.browserLostUptime.unwrap()
             collection.pollLifetimeForTesting(at:loss+2.01)
             try await wait { returning.owner.snapshot.usingSystem }
+            try require(returning.owner.snapshot.phase == .recording && collection.captures[returningID] != nil,"Rapid return retains the original recording and long grace")
+            report["rapidReloadInvalidatesCachedSources"] = true
             try await modern.returnedSource(atMs:Int((loss+2.2-returning.originUptime)*1000))
             try await modern.page("present",active:true)
             try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }

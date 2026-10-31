@@ -16,6 +16,7 @@ public struct BrowserCallLifecycle: Sendable {
     private var observedLoss: TimeInterval?
     private var navigationPending = false
     private var stopped = false
+    var pendingTimers: (missing: TimeInterval?, ended: TimeInterval?) { (missingSince,emptySince) }
     public init() {}
 
     public mutating func step(now: TimeInterval, page: Page?, sourceCount: Int,
