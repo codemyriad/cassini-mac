@@ -93,6 +93,7 @@ import ScreenCaptureKit
             report = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
                 "input":"production RecordingSink"+(mode == "D" ? " + OwnedBrowserCapture.browserAudio" : ""),
                 "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":cpu/elapsed*100,
+                "measurementStartMs":(began-input.origin)*1000,"measurementEndMs":(began+elapsed-input.origin)*1000,
                 "analysisCorePercent":analysis,"drawingCorePercent":drawing,"frameCallbacks":controller.frameCallbacks,
                 "instrumentedDrawingCorePercent":regions,
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
@@ -382,22 +383,24 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     }
     func start() {
         let timer = DispatchSource.makeTimerSource(queue:queue); self.timer = timer
-        // The entire chunk must exist before a capture callback can deliver it.
-        // An immediate first callback would hand the analyser future samples
-        // and understate the real4096/8192-frame presentation latency.
-        let duration=Double(chunk)/48000
-        let elapsed=ProcessInfo.processInfo.systemUptime-origin
-        let first=max(1,ceil(elapsed/duration))*duration
-        timer.schedule(deadline:.now()+max(0,first-elapsed),repeating:duration,leeway:.milliseconds(1))
+        // A one-shot is rearmed from the next integer sample boundary. A
+        // repeating fractional-nanosecond period can drift ahead of that boundary
+        // and defer a ready buffer by a whole85/170ms on the next repeat.
+        timer.schedule(deadline:.now())
         timer.setEventHandler { [weak self] in self?.emit() }; timer.resume()
     }
     private func emit() {
-        let complete=Int(max(0,ProcessInfo.processInfo.systemUptime-origin)*48000)/chunk
+        let clock=SpectrogramFixtureClock(chunk:chunk)
+        let complete=clock.completeFrames(at:ProcessInfo.processInfo.systemUptime-origin)/chunk
         // Dispatch timers can coalesce wakeups. Advance on the sample clock,
         // rather than permanently delaying the source after one missed wakeup.
         // Bound catch-up to ten chunks; a longer stall becomes a real gap.
         if complete-frames/chunk > 10 { frames=(complete-10)*chunk }
         while frames/chunk < complete { emitPacket() }
+        if let timer {
+            let remaining=clock.nextDelay(after:frames,elapsed:ProcessInfo.processInfo.systemUptime-origin)
+            timer.schedule(deadline:.now()+remaining,leeway:.milliseconds(1))
+        }
     }
     private func emitPacket() {
         let offset = Double(frames)/48, host = AVAudioTime.hostTime(forSeconds:origin+offset/1000)

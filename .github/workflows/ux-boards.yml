@@ -54,6 +54,8 @@ jobs:
       if: always()
       run: |
         python3 scripts/test-spectrogram-harness.py
+        xcrun swiftc -O -parse-as-library Spikes/Spectrogram/SampleClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
+        build/check-spectrogram-clock
         python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
         python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --output build/ux-boards/spectrogram
     - name: Private stopped recording clock without devices or windows
