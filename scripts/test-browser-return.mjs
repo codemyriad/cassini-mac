@@ -62,7 +62,7 @@ const connected = async page => {
     return {key,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,
      localCandidates:(peer?.localDescription?.sdp.match(/^a=candidate:/gm)||[]).length,
      remoteCandidates:(peer?.remoteDescription?.sdp.match(/^a=candidate:/gm)||[]).length};
-   })}))).catch(() => ({pageUnavailable:true}));
+   })})).catch(() => ({pageUnavailable:true}));
   stderr+='Generated call diagnostics: '+JSON.stringify(diagnostic)+'\n';
   console.error('Generated call diagnostics',JSON.stringify(diagnostic));
   throw error;
