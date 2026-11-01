@@ -14,18 +14,8 @@ public enum MeetingMarkdown {
         let strings=LibraryLocalization.shared
         let title=title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? strings.text("library.untitled",language:language,locale:locale) : title
         var blocks = ["# " + escape(title)]
-        // The document language controls its absolute date as well as headings.
-        // Keep English regional conventions when supplied; the pinned en_GB
-        // cases retain HARMONY's comma-less header.
-        let dateLocale=language == .en ? (locale.language.languageCode?.identifier == "en" ? locale : Locale(identifier:"en_GB")) : Locale(identifier:language.rawValue)
-        if let start {
-            let date = DateFormatter(); date.locale = dateLocale
-            date.calendar = Calendar(identifier:.gregorian); date.timeZone = timeZone
-            date.dateStyle = .full;date.timeStyle = .none
-            if dateLocale.identifier == "en_GB" {date.dateFormat = "EEEE d MMMM yyyy"}
-            let time = LibraryFormat(timeZone:timeZone,locale:dateLocale,language:language).rowTime(start)
-            blocks.append(date.string(from:start) + ", " + time + (durationMs.map { " · " + LibraryFormat.meetingDuration($0,locale:locale,language:language) } ?? ""))
-        }
+        // D50.3: words follow the document language; the clock follows `locale`.
+        if let start { blocks.append(LibraryFormat(timeZone:timeZone,locale:locale,language:language).absoluteDateLine(start,durationMs:durationMs)) }
         let ordered = items.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
         }.map(\.element)
