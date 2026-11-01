@@ -261,6 +261,7 @@ struct LibraryView: View {
                         }
                     } header: {
                         Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(LibraryTheme.dim).textCase(nil)
+                            .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                     }
                 }
                 if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {

@@ -34,14 +34,14 @@ public struct MeetingState: Codable, Equatable, Sendable {
         self.transcript = transcript; self.etaMinutes = etaMinutes; self.error = error; self.liveMs = liveMs; self.audioAvailable = audioAvailable
     }
     public var badge: MeetingBadge? {
-        if lifecycle == .recording { return .init(kind: "recording", text: "Recording " + LibraryFormat.liveBadge(liveMs ?? 0), tint: "red", dot: true) }
-        if lifecycle == .saving { return .init(kind: "saving", text: "Saving…", tint: "grey") }
+        if lifecycle == .recording { return .init(kind: "recording", text: LibraryLocalization.shared.text("states.badge.recording",["liveBadge":LibraryFormat.liveBadge(liveMs ?? 0)]), tint: "red", dot: true) }
+        if lifecycle == .saving { return .init(kind: "saving", text: LibraryLocalization.shared.text("states.badge.saving"), tint: "grey") }
         if [.queued, .running].contains(transcript) {
-            return .init(kind: "transcribing", text: etaMinutes.map(LibraryFormat.eta) ?? "Transcribing…", tint: "accent")
+            return .init(kind: "transcribing", text: etaMinutes.map {LibraryFormat.eta($0)} ?? LibraryLocalization.shared.text("states.badge.transcribing.noEta"), tint: "accent")
         }
-        if error?.action != nil { return .init(kind: "needsAttention", text: "Needs attention", tint: "amber") }
-        if let interruptedAtMs { return .init(kind: "interrupted", text: "Interrupted at " + LibraryFormat.position(interruptedAtMs), tint: "amber") }
-        if origin == .received { return .init(kind: "received", text: "Received", tint: "grey") }
+        if error?.action != nil { return .init(kind: "needsAttention", text: LibraryLocalization.shared.text("states.badge.needsAttention"), tint: "amber") }
+        if let interruptedAtMs { return .init(kind: "interrupted", text: LibraryLocalization.shared.text("states.badge.interrupted",["position":LibraryFormat.position(interruptedAtMs)]), tint: "amber") }
+        if origin == .received { return .init(kind: "received", text: LibraryLocalization.shared.text("states.badge.received"), tint: "grey") }
         return nil
     }
     public var canWriteDown: Bool { lifecycle == .saved && [.none, .failed].contains(transcript) && audioAvailable != false }
@@ -62,7 +62,8 @@ public struct MeetingSpeaker: Sendable, Equatable {
     /// nil for old embedded names whose naming history is unknown.
     public var provenance: NameProvenance?
     public var colourIndex: Int
-    public var displayName: String { name ?? "Speaker \(colourIndex + 1)" }
+    public var label: String? = nil
+    public var displayName: String { name ?? label ?? "Speaker \(colourIndex + 1)" }
 }
 public struct MeetingQuote: Codable, Equatable, Sendable {
     public var atMs: Int64

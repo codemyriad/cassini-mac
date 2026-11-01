@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
     private var menuTrackingObservers: [NSObjectProtocol] = []
     @MainActor private static var trackingMenus: Set<ObjectIdentifier> = []
+    @MainActor private static var miniaturizingWindows: Set<ObjectIdentifier> = []
+    @MainActor private static var reopenAfterMiniaturizing: Set<ObjectIdentifier> = []
     private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -19,6 +21,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let menu = notification.object as? NSMenu else { return }
                     if notification.name == NSMenu.didBeginTrackingNotification { Self.trackingMenus.insert(ObjectIdentifier(menu)) }
                     else { Self.trackingMenus.remove(ObjectIdentifier(menu)) }
+                }
+            }
+        }
+        menuTrackingObservers += [NSWindow.willMiniaturizeNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification].map { name in
+            NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { notification in
+                MainActor.assumeIsolated {
+                    guard let window=notification.object as? NSWindow else {return}
+                    let id=ObjectIdentifier(window)
+                    if notification.name == NSWindow.willMiniaturizeNotification {Self.miniaturizingWindows.insert(id)}
+                    else {
+                        Self.miniaturizingWindows.remove(id)
+                        let requested=Self.reopenAfterMiniaturizing.remove(id) != nil
+                        if requested && notification.name == NSWindow.didMiniaturizeNotification {
+                            window.deminiaturize(nil);window.makeKeyAndOrderFront(nil)
+                            NSApp.activate(ignoringOtherApps:true)
+                        }
+                    }
                 }
             }
         }
@@ -226,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor private static func isContentWindow(_ window: NSWindow) -> Bool {
         window.isVisible && window.level == .normal && window.styleMask.contains(.titled)
     }
+
     @MainActor private static func isRestorableContentWindow(_ window:NSWindow) -> Bool {
         (window.isVisible || window.isMiniaturized) && window.level == .normal && window.styleMask.contains(.titled)
     }
@@ -233,8 +253,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // MenuBarExtra owns visible status/popup windows too. Only ordinary
         // content windows (or an active modal) count as a way back into the app.
-        let visibleContent = sender.windows.contains(where:Self.isRestorableContentWindow)
+        let visibleContent = sender.windows.contains {
+            Self.isContentWindow($0) && !$0.isMiniaturized && !Self.miniaturizingWindows.contains(ObjectIdentifier($0))
+        }
         guard !visibleContent, sender.modalWindow == nil else { return true }
+        // During the minimize animation neither isVisible nor isMiniaturized
+        // necessarily describes the final state. Reopen must preserve the
+        // mounted Meeting/Search and restore it after the actual AppKit event.
+        if let window=sender.windows.first(where:{
+            ($0.isMiniaturized || Self.miniaturizingWindows.contains(ObjectIdentifier($0))) &&
+            $0.level == .normal && $0.styleMask.contains(.titled)
+        }) {
+            let id=ObjectIdentifier(window)
+            if Self.miniaturizingWindows.contains(id) {Self.reopenAfterMiniaturizing.insert(id)}
+            else {window.deminiaturize(nil);window.makeKeyAndOrderFront(nil)}
+            sender.activate(ignoringOtherApps:true)
+            return false
+        }
         MainActor.assumeIsolated {
             LibrarySearchModel.shared.close()
             MeetingNavigation.shared.back()

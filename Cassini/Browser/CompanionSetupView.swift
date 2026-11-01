@@ -2,6 +2,7 @@
 import SwiftUI
 import Observation
 import CassiniBrowserSetup
+import CassiniLibrary
 
 @MainActor @Observable private final class PreparedCompanionFolder {
     var path: String?
@@ -230,8 +231,7 @@ struct CompanionSetupView: View {
         if !added { return UXText.text("companion.addStep.notAdded") }
         if browsers.count == 1 { return UXText.text("companion.addStep.done",["browser":browsers[0]]) }
         if browsers.isEmpty { return UXText.text("settings.browser.status.connectedGeneric") }
-        let formatter = ListFormatter(); formatter.locale = Locale(identifier:"en_GB")
-        return UXText.text("companion.addStep.doneSeveral",["browsers":formatter.string(from:browsers) ?? browsers.joined(separator:", ")])
+        return UXText.text("companion.addStep.doneSeveral",["browsers":LibraryFormat(locale:UXText.locale,language:UXText.language).list(browsers)])
     }
     private var connectCaption: String { added ? setup.stateLine : "" }
     private func step<Content:View>(_ number: Int, done: Bool, title: String, caption: String, @ViewBuilder action: () -> Content) -> some View {

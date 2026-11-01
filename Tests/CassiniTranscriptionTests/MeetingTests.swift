@@ -89,14 +89,59 @@ final class TranscriptionMeetingTests: XCTestCase {
         let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
         // The recognizer is deterministic here: this test isolates source to
         // speaker routing; existing hosted goldens verify both real engines.
-        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,uiLanguage:.fr,recognize:{ _ in
             .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
         })
         let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
         XCTAssertEqual(meeting.speakers.map(\.id),["track-remote-wire-1"])
+        XCTAssertEqual(meeting.speakers.first?.displayName,"Intervenant 1")
+        XCTAssertEqual(meeting.speakers.first?.label,"Intervenant 1")
         XCTAssertTrue(meeting.transcriptItems.contains { $0.startMs < 30000 })
         XCTAssertTrue(meeting.transcriptItems.contains { $0.startMs >= 30000 })
         XCTAssertEqual(Set(meeting.transcriptItems.map(\.speaker)),["track-remote-wire-1"])
+    }
+    func testProducedLabelsFollowFirstAppearanceWhenTheEarlierTrackFinishesLast() throws {
+        guard let assets=ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else {throw XCTSkip("Pinned offline VAD supplied by pipeline CI")}
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let session=try RecordingSession(parent:root,title:"Ordering",source:"chromium")
+        let input=try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens"))).dropFirst(44)
+        for (id,offset) in [("later",30000),("earlier",0)] {
+            try session.transition(starting:[.init(id:id,label:id,kind:"remote",sampleRate:16000,channels:1,sourceTrackId:id)])
+            for start in stride(from:0,to:input.count,by:160000) {
+                let first=input.startIndex+start,last=min(input.endIndex,first+160000)
+                try session.appendNative(id:id,pcm:Data(input[first..<last]),offsetMs:Double(offset)+Double(start)/32)
+            }
+            try session.transition(ending:[id])
+        }
+        try session.finish()
+        let detector=try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,uiLanguage:.fr,recognize:{_ in
+            .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
+        })
+        let meeting=try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(meeting.speakers.map(\.id),["track-earlier","track-later"])
+        XCTAssertEqual(meeting.speakers.map(\.displayName),["Intervenant 1","Intervenant 2"])
+        let writer=try MeetingMetadataWriter(directory:session.directory,id:meeting.id)
+        // Resume a partial that only contained the later voice. Its original
+        // number must change when the previously unseen earlier voice arrives.
+        let saved=try XCTUnwrap(meeting.transcriptItems.first(where:{$0.speaker=="track-later"}))
+        try JSONSerialization.data(withJSONObject:["language":"en","items":[["speaker":saved.speaker,"startMs":saved.startMs,"endMs":saved.endMs,"text":saved.text]]]).write(to:session.directory.appendingPathComponent("transcript.json"))
+        try writer.transaction {metadata in
+            var speakers=metadata["speakers"] as! [[String:Any]]
+            for index in speakers.indices {
+                if speakers[index]["id"] as? String == "track-later" {speakers[index]["label"]="Intervenant 1"}
+                else {speakers[index].removeValue(forKey:"label")}
+            }
+            metadata["speakers"]=speakers
+            var transcript=metadata["transcript"] as! [String:Any];transcript["status"]="queued";metadata["transcript"]=transcript
+        }
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,uiLanguage:.fr,recognize:{_ in
+            .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
+        })
+        XCTAssertEqual(try LibraryScanner(root:root).scan().meetings.first?.speakers.map(\.displayName),["Intervenant 1","Intervenant 2"])
+        try writer.transaction {$0["title"]="Edited later"}
+        XCTAssertEqual(try LibraryScanner(root:root).scan().meetings.first?.speakers.map(\.displayName),["Intervenant 1","Intervenant 2"])
     }
     func testReceivedPlainOpusBecomesOneUnnamedSpeaker() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }

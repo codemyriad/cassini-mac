@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniWhistle
 import CassiniTranscription
+import CassiniLibrary
 import Foundation
 import Darwin
 
 // One model per child process; sequential line requests reuse it. The app's
 // future transcription queue owns a single child, never an in-process engine.
-struct Request: Decodable { let id: String; let wav: String?; let meeting: String?; let me: String?; let others: String? }
+struct Request: Decodable { let id: String; let wav: String?; let meeting: String?; let me: String?; let others: String?; let uiLanguage: String? }
 struct Response: Encodable { let id: String?; var transcript: WhistleTranscript?; var error: String? }
 func emit(_ response: Response) throws {
     try WhistleIO.write(JSONEncoder().encode(response) + Data([10]), to: STDOUT_FILENO)
@@ -44,7 +45,7 @@ do {
                 let vad = try vadAssets ?? VADAssets.verified(for:assets)
                 vadAssets = vad
                 let detector = try SpeechDetector(assets: vad)
-                try MeetingTranscriber.run(directory: URL(fileURLWithPath: meeting), engine: engine, detector: detector, me: request.me ?? "Me", others: request.others ?? "The others")
+                try MeetingTranscriber.run(directory: URL(fileURLWithPath: meeting), engine: engine, detector: detector, me: request.me ?? "Me", others: request.others ?? "The others",uiLanguage:request.uiLanguage.flatMap(CassiniLanguage.init(rawValue:)) ?? .system)
                 response = Response(id: id)
             } else if let wav = request.wav, request.meeting == nil {
                 response = Response(id: id, transcript: try engine.transcribe(wav: URL(fileURLWithPath: wav)))
