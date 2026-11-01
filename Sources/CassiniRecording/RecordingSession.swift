@@ -14,7 +14,55 @@ public struct RecordingManifest: Codable, Sendable {
     public var tracks: [RecordingTrack]
     public var problemKind: String? = nil
     public var events: [CaptureEvent]? = nil
-    enum CodingKeys: String, CodingKey { case version, id, createdAt, title, source, state, problem, tracks, problemKind, events }
+    /// D52 capture record: every announced source, including ones that never opened a WAV.
+    public var captureOutcome: SessionCaptureOutcome? = nil
+    enum CodingKeys: String, CodingKey { case version, id, createdAt, title, source, state, problem, tracks, problemKind, events, captureOutcome }
+}
+
+/// D52 per-source outcome. neverAudio: no admitted frames; lowAudio: under 1000 ms;
+/// failed: a sticky source error. Padding never counts as received audio.
+public enum CaptureOutcome: String, Codable, CaseIterable, Sendable {
+    case captured, neverAudio, lowAudio, failed
+    public init(failed: Bool, audioMs: Double) {
+        self = failed ? .failed : audioMs <= 0 ? .neverAudio : audioMs < 1000 ? .lowAudio : .captured
+    }
+}
+
+public struct SessionCaptureOutcome: Codable, Sendable, Equatable {
+    public struct Source: Codable, Sendable, Equatable {
+        public var sourceTrackId: String
+        public var kind: String
+        public var label: String?
+        public var captureOutcome: CaptureOutcome
+        public var audioMs: Double
+        public var trackIds: [String]
+        /// R69: false only while a source was never selected and never opened a span.
+        public var captureExpected: Bool?
+        public init(sourceTrackId: String, kind: String, label: String?, captureOutcome: CaptureOutcome, audioMs: Double, trackIds: [String], captureExpected: Bool? = nil) {
+            self.sourceTrackId = sourceTrackId; self.kind = kind; self.label = label; self.captureOutcome = captureOutcome
+            self.audioMs = audioMs; self.trackIds = trackIds; self.captureExpected = captureExpected
+        }
+        public var expected: Bool { captureExpected != false }
+    }
+    public var sources: [Source]
+    public var unreportedSourceCount: Int?
+    public init(sources: [Source], unreportedSourceCount: Int? = nil) { self.sources = sources; self.unreportedSourceCount = unreportedSourceCount }
+    /// Readers ignore a malformed record rather than rejecting playable audio.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy:CodingKeys.self)
+        sources = ((try? c.decode([Lossy].self,forKey:.sources)) ?? []).compactMap(\.value)
+        unreportedSourceCount = (try? c.decodeIfPresent(Int.self,forKey:.unreportedSourceCount)).flatMap { $0.flatMap { $0 >= 0 ? $0 : nil } }
+    }
+    private struct Lossy: Decodable {
+        let value: Source?
+        init(from decoder: Decoder) throws {
+            let source = try? Source(from:decoder)
+            value = source.flatMap { s in
+                !s.sourceTrackId.isEmpty && s.sourceTrackId.utf8.count <= 200 && s.audioMs.isFinite && (0...86_400_000).contains(s.audioMs) && s.trackIds.count <= 64 ? s : nil
+            }
+        }
+    }
+    enum CodingKeys: String, CodingKey { case sources, unreportedSourceCount }
 }
 
 public struct RecordingTrack: Codable, Identifiable, Sendable {
@@ -32,7 +80,12 @@ public struct RecordingTrack: Codable, Identifiable, Sendable {
     public var sourceTrackId: String? = nil
     public var droppedFrames: UInt64? = nil
     public var gapFrames: UInt64? = nil
-    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames }
+    /// Admitted PCM frames, including zeros/DC, excluding inserted gap padding.
+    public var receivedFrames: UInt64? = nil
+    public var captureOutcome: CaptureOutcome? = nil
+    /// Per-track `capture` or `io`; the session keeps its own problemKind.
+    public var problemKind: String? = nil
+    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames, receivedFrames, captureOutcome, problemKind }
 }
 
 extension RecordingManifest {
@@ -45,6 +98,7 @@ extension RecordingManifest {
         problemKind = try c.decodeIfPresent(String.self,forKey:.problemKind)
         events = try? c.decodeIfPresent([CaptureEvent].self,forKey:.events)
         if (events?.count ?? 0) > 1000 { events = nil }
+        captureOutcome = (try? c.decodeIfPresent(SessionCaptureOutcome.self,forKey:.captureOutcome)) ?? nil
     }
 }
 extension RecordingTrack {
@@ -59,6 +113,9 @@ extension RecordingTrack {
         droppedFrames = try? c.decode(UInt64.self,forKey:.droppedFrames)
         gapFrames = try? c.decode(UInt64.self,forKey:.gapFrames)
         sourceTrackId = (try? c.decode(String.self,forKey:.sourceTrackId)).flatMap { !$0.isEmpty && $0.utf8.count <= 200 ? $0 : nil }
+        receivedFrames = try? c.decode(UInt64.self,forKey:.receivedFrames)
+        captureOutcome = try? c.decode(CaptureOutcome.self,forKey:.captureOutcome)
+        problemKind = (try? c.decode(String.self,forKey:.problemKind)).flatMap { ["capture","io"].contains($0) ? $0 : nil }
     }
 }
 
@@ -130,9 +187,8 @@ public final class RecordingSession {
         var history = manifest.events ?? []
         for event in events {
             guard event.isKnownValid, event.type != "end", let time = event.atMs, time >= previous else { throw RecordingError.invalid("Invalid or out-of-order capture event.") }
-            if event.type == "othersSource", event.reason == "restored" {
-                let state = CaptureSourceState(events:history,atMs:time)
-                guard state.others == true, state.source == "system", ["missing","lost"].contains(state.reason ?? ""),
+            if event.type == "othersSource", event.reason == "restored" || event.reason == "callConnected" {
+                guard CaptureSourceState(events:history,atMs:time).admitsBrowserReturn(event.reason),
                       manifest.tracks.filter({ $0.kind == "system" && $0.ended != true }).allSatisfy({ ids.contains($0.id) }),
                       sources.contains(where:{ ["remote","media","tab"].contains($0.kind) && $0.sourceTrackId != nil && !$0.endsImmediately }) else {
                     throw RecordingError.invalid("Browser restoration requires an active fallback and its new source span.")
@@ -228,7 +284,29 @@ public final class RecordingSession {
         }
         try writer.append(pcm)
         manifest.tracks[i].frames = writer.frames
+        manifest.tracks[i].receivedFrames = (manifest.tracks[i].receivedFrames ?? 0) + UInt64(pcm.count / (track.channels * 2))
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
+    }
+
+    /// D52 M5: end one failed span while every other writer keeps recording. The
+    /// track keeps its audio and records `problemKind`; the session continues.
+    public func failTrack(id: String, problemKind: String) throws {
+        guard !finished, ["capture","io"].contains(problemKind), let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else {
+            throw RecordingError.invalid("Invalid source failure.")
+        }
+        let writer = writers.removeValue(forKey:id)
+        var closeError: Error?
+        do { try writer?.close() } catch { closeError = error }
+        let track = manifest.tracks[index]
+        manifest.tracks[index].ended = true
+        manifest.tracks[index].endOffsetMs = track.endOffsetMs ?? track.startOffsetMs.map { $0 + Double(track.frames)/Double(track.sampleRate)*1000 }
+        manifest.tracks[index].problemKind = closeError != nil ? "io" : problemKind
+        try checkpoint()
+    }
+    /// The capture ledger owns this record; it is published at the next checkpoint.
+    public func setCaptureOutcome(_ outcome: SessionCaptureOutcome?, tracks: [String:CaptureOutcome] = [:]) {
+        manifest.captureOutcome = outcome
+        for (id,value) in tracks { if let i = manifest.tracks.firstIndex(where:{ $0.id == id }) { manifest.tracks[i].captureOutcome = value } }
     }
 
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
@@ -255,6 +333,8 @@ public final class RecordingSession {
             manifest.tracks[i].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames) / Double(track.sampleRate) * 1000 }
         }
         manifest.problemKind = failure != nil ? "io" : kind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
+        // A failed track's I/O loss takes precedence over a capture problem.
+        if manifest.problemKind == "capture", manifest.tracks.contains(where:{ $0.problemKind == "io" }) { manifest.problemKind = "io" }
         manifest.state = manifest.problem == nil ? "completed" : "interrupted"
         let boundary = max(atMs ?? 0,manifest.events?.last?.atMs ?? 0,manifest.tracks.compactMap(\.endOffsetMs).max() ?? 0)
         let stopReason: CaptureEndReason = failure != nil || kind == "io" ? .error : reason ?? (problem?.isEmpty == false && kind != "gap" ? .error : .user)

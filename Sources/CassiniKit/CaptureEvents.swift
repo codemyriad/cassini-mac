@@ -21,7 +21,7 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
         guard let atMs, atMs.isFinite, atMs >= 0 else { return false }
         switch type {
         case "othersSource":
-            if reason == "restored" { return source == "browser" }
+            if reason == "restored" || reason == "callConnected" { return source == "browser" }
             return ["browser","system","none"].contains(source ?? "") && ["start","missing","lost","user"].contains(reason ?? "")
         case "selection": return me != nil && others != nil && (me == true || others == true) && ["start","user"].contains(reason ?? "")
         case "end": return reason.flatMap(CaptureEndReason.init(rawValue:)) != nil
@@ -56,9 +56,8 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
             guard let time = value["atMs"]?.double, let type = value["type"]?.string else { continue }
             let event = CaptureEvent(atMs:time,type:type,source:value["source"]?.string,reason:value["reason"]?.string ?? "",me:value["me"]?.bool,others:value["others"]?.bool)
             guard event.isKnownValid, time >= previous else { continue }
-            if event.type == "othersSource", event.reason == "restored" {
-                let state = CaptureSourceState(events:result,atMs:time)
-                guard state.others == true, state.source == "system", ["missing","lost"].contains(state.reason ?? "") else { continue }
+            if event.type == "othersSource", event.reason == "restored" || event.reason == "callConnected" {
+                guard CaptureSourceState(events:result,atMs:time).admitsBrowserReturn(event.reason) else { continue }
             }
             result.append(event); previous = time
             if event.type == "end" { break }
@@ -73,6 +72,16 @@ public struct CaptureSourceState: Sendable, Equatable {
     public var reason: String?
     public var sinceMs: Double?
     public var fallback: Bool { reason == "missing" || reason == "lost" }
+    /// `restored` returns from either fallback; D49 `callConnected` only takes over
+    /// the initial system/missing stand-in. Both need an enabled others side.
+    public func admitsBrowserReturn(_ reason: String?) -> Bool {
+        guard others == true, source == "system" else { return false }
+        switch reason {
+        case "restored": return fallback
+        case "callConnected": return self.reason == "missing"
+        default: return false
+        }
+    }
     public init(events: [CaptureEvent], atMs: Double) {
         var previous: Double = 0
         for event in events {
@@ -82,7 +91,7 @@ public struct CaptureSourceState: Sendable, Equatable {
             guard time <= atMs else { continue }
             if event.type == "selection" { me = event.me; others = event.others }
             else if event.type == "othersSource" {
-                if event.reason == "restored", others != true || source != "system" || !["missing","lost"].contains(reason ?? "") { continue }
+                if event.reason == "restored" || event.reason == "callConnected", !admitsBrowserReturn(event.reason) { continue }
                 source = event.source; reason = event.reason; sinceMs = time
             }
         }
