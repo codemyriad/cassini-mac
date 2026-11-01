@@ -306,9 +306,27 @@ public final class RecordingSession {
     /// The capture ledger owns this record; it is published at the next checkpoint.
     public func setCaptureOutcome(_ outcome: SessionCaptureOutcome?, tracks: [String:CaptureOutcome] = [:]) {
         manifest.captureOutcome = outcome
-        for (id,value) in tracks { if let i = manifest.tracks.firstIndex(where:{ $0.id == id }) { manifest.tracks[i].captureOutcome = value } }
+        for (id,value) in tracks {
+            // Every source-outcomes-v1 track states its received frames, 0 when none arrived.
+            if let i = manifest.tracks.firstIndex(where:{ $0.id == id }) { manifest.tracks[i].captureOutcome = value; manifest.tracks[i].receivedFrames = manifest.tracks[i].receivedFrames ?? 0 }
+        }
+    }
+    /// D52 M2: when set, every checkpoint first refreshes the capture outcome from the
+    /// manifest it is about to publish, so one write carries a track change and its accounting.
+    public var captureOutcomeSource: ((RecordingManifest) -> (SessionCaptureOutcome,[String:CaptureOutcome]))?
+    /// A `sources` ACK means the record is durable even before any WAV exists.
+    public func publishCaptureOutcome(_ outcome: SessionCaptureOutcome?, tracks: [String:CaptureOutcome] = [:]) throws {
+        guard !finished else { throw RecordingError.invalid("Recording is already saved.") }
+        setCaptureOutcome(outcome,tracks:tracks)
+        try checkpoint()
     }
 
+    /// D52.2 Q3: producer drop counts accumulate on the span that recorded them.
+    public func addDroppedFrames(id: String, frames: UInt64) {
+        guard frames > 0, let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else { return }
+        let (sum,overflow) = (manifest.tracks[index].droppedFrames ?? 0).addingReportingOverflow(frames)
+        manifest.tracks[index].droppedFrames = overflow ? .max : sum
+    }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
         guard let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else { return }
         manifest.tracks[index].droppedFrames = droppedFrames > 0 ? droppedFrames : nil
@@ -363,6 +381,7 @@ public final class RecordingSession {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
+        if let captureOutcomeSource { let (outcome,tracks) = captureOutcomeSource(manifest); setCaptureOutcome(outcome,tracks:tracks) }
         // Commit audio before metadata so frames never advertise unsynced audio.
         for writer in writers.values { try writer.synchronize() }
         try checkpointObserver?(.audioSynchronized)

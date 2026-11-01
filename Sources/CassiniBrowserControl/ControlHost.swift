@@ -129,7 +129,9 @@ private enum NativeHostBridge {
                     while !state.cancellation.isCancelled, let data = try connection.receive() {
                         try FrameIO.writeFrame(STDOUT_FILENO,data:data,cancel:state.cancellation)
                         if role == .audio { state.forwardedResponse() }
-                        if role == .audio, (try? JSONParser.parse(data)["type"]?.string) == "error" {
+                        // D52: a source- or command-scoped refusal keeps the connection;
+                        // only an unscoped (session) error ends it.
+                        if role == .audio, let reply = try? JSONParser.parse(data), reply["type"]?.string == "error", reply["scope"] == nil {
                             state.reportProtocolError(); connection.stop(); break
                         }
                     }
