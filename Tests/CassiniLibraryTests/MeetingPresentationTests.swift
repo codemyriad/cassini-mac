@@ -107,9 +107,11 @@ struct TurnQuotePresentationTests {
             .init(speaker:"b",startMs:20,endMs:30,text:"\"Unpaired"),
             .init(speaker:"a",startMs:30,endMs:40,text:"Closing\"")]
         let turns = MeetingPresentation.turns(items)
-        #expect(turns.map { $0.items.map(\.text).joined(separator:" ") } == ["He said “hello world”.","Unpaired","Closing"])
-        #expect(turns.flatMap(\.items).map(\.startMs) == items.map(\.startMs))
-        #expect(turns.flatMap(\.items).map(\.endMs) == items.map(\.endMs))
+        // D52 M11: a's "Closing" rejoins its touching run; quotes still pair only within
+        // each consecutive run, so the unmatched closing quote is not paired across b.
+        #expect(turns.map { $0.items.map(\.text).joined(separator:" ") } == ["He said “hello world”. Closing","Unpaired"])
+        #expect(turns.flatMap(\.items).map(\.startMs).sorted() == items.map(\.startMs))
+        #expect(turns.flatMap(\.items).map(\.endMs).sorted() == items.map(\.endMs))
         #expect(items[0].text == "He said \"hello")
         #expect(LibraryTranscriptTurn.coalescing(items).map(\.text) == ["He said “hello world”.","Unpaired","Closing"])
         let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:items,notes:[])
