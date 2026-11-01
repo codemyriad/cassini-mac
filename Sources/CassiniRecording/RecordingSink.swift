@@ -8,6 +8,9 @@ public protocol RecordingSinkWriter: AnyObject {
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws
     /// D52.2: `writer` when the sink dropped frames since its last write, else `input`.
     func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws
+    /// D52.2/D52.4 R70: pad the sink's own lost frames in place as a `writer` range,
+    /// never as received audio.
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws
     func finish(problem: String?) throws
     func finish(problem: String?, kind: String?) throws
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64)
@@ -18,6 +21,15 @@ extension RecordingSinkWriter {
     public func finish(problem: String?, kind: String?) throws { try finish(problem: problem) }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {}
     public func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws { try appendNative(id:id,pcm:pcm,offsetMs:offsetMs) }
+    /// Writers without range support keep the earlier in-place zeros.
+    public func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
+        var frame: UInt64 = 0
+        while frame < frames {
+            let count = min(UInt64(8192),frames-frame)
+            try appendNative(id:id,pcm:Data(repeating:0,count:Int(count)*channels*2),offsetMs:offsetMs + Double(frame)/rate*1000)
+            frame += count
+        }
+    }
 }
 
 extension RecordingSession: RecordingSinkWriter {
@@ -226,12 +238,9 @@ public final class RecordingSink: @unchecked Sendable {
     private func padTail(_ snapshot: [String:Source]) throws {
         for (id,source) in snapshot where source.registered && source.submittedEnd < source.timeline.frames {
             var frame = source.submittedEnd
-            while frame < source.timeline.frames {
-                let count = min(UInt64(8192),source.timeline.frames-frame)
-                try writer.appendNative(id:id,pcm:Data(repeating:0,count:Int(count)*source.outputChannels*2),
-                    offsetMs:source.timeline.startOffsetMs + Double(frame)/source.rate*1000)
-                frame += count
-            }
+            // The lost tail is writer padding (D52.4 R70), not received audio.
+            try writer.padNative(id:id,frames:source.timeline.frames-frame,channels:source.outputChannels,rate:source.rate,offsetMs:source.timeline.startOffsetMs + Double(frame)/source.rate*1000)
+            frame = source.timeline.frames
         }
     }
 

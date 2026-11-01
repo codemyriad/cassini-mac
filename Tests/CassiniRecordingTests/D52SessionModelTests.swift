@@ -176,3 +176,22 @@ final class D52LegacyGapVectorTests: XCTestCase {
         }
     }
 }
+
+/// D52.4 R70: the native sink's in-place padding over its own lost frames is a
+/// `writer` range: counted as drops by the sink, never received audio, never a gap flag.
+final class D52WriterPaddingTests: XCTestCase {
+    func testWriterPaddingIsARangeButNeitherAudioNorAGap() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Writer-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Writer",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:48000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:1,count:96000),offsetMs:0)
+        try session.padNative(id:"mic",frames:96000,channels:1,rate:48000,offsetMs:1000)
+        try session.finish()
+        let track = try XCTUnwrap(try RecordingLoader.load(directory:session.directory).tracks.first)
+        XCTAssertEqual(track.frames,144000); XCTAssertEqual(track.receivedFrames,48000)
+        XCTAssertEqual(track.gaps,[.init(atMs:1000,durationMs:2000,frames:96000,kind:"writer")]); XCTAssertNil(track.gapFrames)
+        let manifest = try RecordingLoader.load(directory:session.directory)
+        XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
+    }
+}
