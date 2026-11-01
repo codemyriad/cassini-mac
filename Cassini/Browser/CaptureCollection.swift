@@ -30,6 +30,8 @@ struct LiveCapture {
     var callLifecycle = BrowserCallLifecycle()
     /// D52 M3: used instead of `callLifecycle` when the peer advertises multi-stream-v1.
     var callPolicy = BrowserCallPolicy()
+    /// D52.1 R67: this native stand-in already asked one call to join (never retried).
+    var resumeAttempted = false
     var modernLifecycle: Bool?
     var changingSource = false
     fileprivate var sourceObservation: BrowserSourceObservation?
@@ -175,7 +177,7 @@ private final class CaptureFiles: @unchecked Sendable {
                     try files.create(title:title,microphone:true,browser:false) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
                 }.value
                 guard !shuttingDown, generation == recordGeneration else { try await owner.finish(); settle(owner.snapshot); requestingRecord = false; return }
-                do { try broker.ownNative(owner) }
+                do { try broker.ownNative(owner,timelineOriginMs:origin,standInID:"native-" + owner.snapshot.manifest.id.uuidString) }
                 catch { try? await owner.finish(); settle(owner.snapshot); throw error }
                 await created(owner,info:.init(captureID:"native-" + owner.snapshot.manifest.id.uuidString,timelineOriginMs:origin,microphone:true))
                 requestingRecord = false
@@ -195,6 +197,7 @@ private final class CaptureFiles: @unchecked Sendable {
         guard let value = captures[id] else { return }
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         value.owner.requestEnd(reason,atMs:Double(value.elapsedMs))
+        broker.expectResume(value.owner,callGeneration:nil) // Stop fences a pending resume.
         value.input.cancelSourceChange()
         // A user's Stop still matters when an automatic Stop is already draining
         // or the control peer has gone away. Preserve the original capture URL.
@@ -411,16 +414,41 @@ private final class CaptureFiles: @unchecked Sendable {
             }
         }
     }
+    /// D49 via resume-capture-v1: a Record with no call keeps a system/missing
+    /// stand-in. When exactly one heard call with sources appears on a peer that
+    /// supports resume, ask it once to join this recording. No fresh Start follows.
+    private func offerStandIn(_ id: UUID, _ value: LiveCapture) {
+        let source = value.owner.snapshot
+        guard value.key == nil, !value.resumeAttempted, value.savingSinceMs == nil, source.phase == .recording,
+              source.manifest.source == "macos", source.others, !source.transportAlive else { return }
+        let state = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
+        guard state.source == "system", state.reason == "missing",
+              let identity = broker.standInIdentity(value.owner) else { return }
+        let busy = Set(captures.values.compactMap(\.key))
+        let calls = peers.filter { $0.reconciled && $0.supportsResume && $0.supportsMultiStream }.flatMap { peer in
+            peer.meetings.filter { meeting in meeting.sourceCount > 0 && meeting.heard && meeting.callGeneration != nil && !busy.contains(meeting.key)
+                && !peer.captures.contains { $0.key == meeting.key } }
+        }
+        guard calls.count == 1, let call = calls.first else { return }
+        captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
+        let owner = value.owner, broker = broker
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { generation in
+            broker.expectResume(owner,callGeneration:generation)
+        }
+    }
     private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         for id in Array(captures.keys) {
             guard let value = captures[id] else { continue }
+            offerStandIn(id,value)
             let status = value.input.status()
             captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
             if value.snapshot.browserAlive && value.snapshot.others {
                 captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
             }
             if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
-            if value.snapshot.manifest.source == "chromium", value.savingSinceMs == nil {
+            // A native stand-in joins this path once it asked a call to resume it.
+            let standIn = value.snapshot.manifest.source == "macos" && value.key != nil
+            if value.snapshot.manifest.source == "chromium" || standIn, value.savingSinceMs == nil {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
                 // Native Start can precede the control status that binds this
@@ -474,12 +502,17 @@ private final class CaptureFiles: @unchecked Sendable {
                     let observation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
                         sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
                         controlAlive:peer != nil,pcmLive:fresh)
-                    switch captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
-                    case .fallback?: action = .fallback
+                    let decision = captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready)
+                    // Until the call has taken over, a stand-in is a plain native recording:
+                    // a missing page never stops or re-routes it.
+                    let joined = !standIn || source.manifest.events?.contains { $0.reason == "callConnected" } == true
+                    switch decision {
+                    case .fallback? where joined: action = .fallback
                     case .restore?: action = .restore
-                    case .stop(let reason)?: action = .stop(reason)
-                    // The D49 take-over of a system/missing stand-in arrives with resume-capture-v1.
-                    case .callConnected?, nil: action = nil
+                    case .stop(let reason)? where joined: action = .stop(reason)
+                    // D49: the resumed browser PCM commits callConnected through the restore checkpoint.
+                    case .callConnected?: action = ready ? .restore : nil
+                    default: action = nil
                     }
                 } else {
                     action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
@@ -496,7 +529,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // task before it reaches the owner. Commit the still-observed
                 // source loss before attempting fallback, even after present.
                 // Under D52 a present page with zero sources is a possible rejoin, not loss.
-                let lost = source.browserAlive && (observedPage != .present || (!multiStream && count == 0)) || navigation
+                let lost = !standIn && (source.browserAlive && (observedPage != .present || (!multiStream && count == 0)) || navigation)
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
                 let fallback = action == .fallback && !value.input.failedSides.contains(.others)
                 let returned = multiStream ? action == .restore : observedPage == .present && (count ?? 0) > 0 && ready && source.others

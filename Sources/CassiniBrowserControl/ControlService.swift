@@ -62,6 +62,19 @@ public final class BrowserControlService: @unchecked Sendable {
             catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
+    /// D52.1 R67: ask the extension to join a native stand-in. `armed` receives the
+    /// selected call generation before the command is sent, so the native resume
+    /// can be validated; a failure is reported and never retried as a fresh Start.
+    public func resumeMeeting(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, armed: @escaping @Sendable (String?) -> Void) {
+        queue.async { [self] in
+            do {
+                guard canStart() else { throw BrowserIPCError.unavailable }
+                let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs)
+                armed(generation); send([request]); publish()
+            }
+            catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
+        }
+    }
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }

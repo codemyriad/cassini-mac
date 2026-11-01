@@ -100,10 +100,12 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         // before its first buffer cannot take it (it is released if Me is turned off).
         if microphone { reservedNative.insert(.me) }
         browserAlive = browser; transportAlive = browser; self.managedBrowser = managedBrowser && browser
-        systemReason = browser ? "lost" : "start"
+        // D52.3b/D49: a Record with no call starts the others as a system-sound
+        // stand-in (system/missing), which a later call may take over once.
+        systemReason = browser ? "lost" : "missing"
         queue = DispatchQueue(label:"io.codemyriad.cassini.capture." + recording.manifest.id.uuidString)
         notifications = DispatchQueue(label:"io.codemyriad.cassini.capture-notify." + recording.manifest.id.uuidString)
-        try recording.transition(events:[.init(atMs:0,type:"othersSource",source:browser ? "browser" : "none",reason:"start"),
+        try recording.transition(events:[browser ? .init(atMs:0,type:"othersSource",source:"browser",reason:"start") : .init(atMs:0,type:"othersSource",source:"system",reason:"missing"),
             .init(atMs:0,type:"selection",reason:"start",me:microphone,others:true)])
         cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,transportAlive:browser,restoreReady:false,browserReturnPCMAt:nil,managedBrowser:managedBrowser && browser,fallbackRequested:false,fallbackReason:nil,browserLostUptime:nil,browserLevel:0,levelTimestamp:0)
         queue.setSpecific(key:key,value:1)
@@ -223,6 +225,25 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             publish(force:firstSamples)
         }
     }
+    // MARK: D52.1 R67 resume-capture-v1
+
+    /// Atomically attach a resumed browser transport to this active stand-in. Runs
+    /// on the owner queue, which also serializes finalization, and checks the end
+    /// intent Stop claims first. A refusal changes nothing: no folder, clock,
+    /// microphone or selection change.
+    public func attachResumedBrowser() throws {
+        try sync {
+            let ending = endLock.withLock { endIntent != nil }
+            let current = recording.manifest.events?.last(where:{ $0.type == "othersSource" })
+            guard phase == .recording, !ending, others, !browserAlive, !transportAlive,
+                  current?.source == "system", current?.reason == "missing" else {
+                throw BrowserProtocolError("state","The recording cannot be resumed.")
+            }
+            transportAlive = true; managedBrowser = true
+            publish()
+        }
+    }
+
     // MARK: D52 source-outcomes-v1 (negotiated per connection)
 
     /// Called once, before any track, when the peer negotiated source-outcomes-v1.
@@ -415,7 +436,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             let ending = self.nativeSpans.filter { $0.value.side == .others && $0.value.registered }.map(\.key)
             let last = self.recording.manifest.events?.last(where:{ $0.type == "othersSource" })
-            let reason = last?.source == "system" && ["lost","missing"].contains(last?.reason ?? "") ? "restored" : "user"
+            // D49: a call taking over the initial stand-in is callConnected; returning from a fallback is restored.
+            let reason = last?.source == "system" ? (last?.reason == "missing" ? "callConnected" : last?.reason == "lost" ? "restored" : "user") : "user"
             try self.commitTransition(starting:starts,ending:ending,events:[.init(atMs:time,type:"othersSource",source:"browser",reason:reason)])
             for id in Array(self.browserSources.keys) {
                 if let span = spans[id], let key = self.browserSources[id]?.key { self.ledger?.bind(track:span,to:key) }
@@ -467,7 +489,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                     guard trim*span.channels*2 < pcm.count else { return }
                     bytes = Data(pcm.dropFirst(trim*span.channels*2)); offset += Double(trim)/Double(span.rate)*1000
                 }
-                let events: [CaptureEvent] = span.side == .others ? [.init(atMs:offset,type:"othersSource",source:"system",reason:systemReason)] : []
+                // The stand-in already published system/missing; its first PCM adds no event.
+                let current = recording.manifest.events?.last(where:{ $0.type == "othersSource" })
+                let announced = current?.source == "system" && current?.reason == systemReason
+                let events: [CaptureEvent] = span.side == .others && !announced ? [.init(atMs:offset,type:"othersSource",source:"system",reason:systemReason)] : []
                 try commitTransition(starting:[.init(id:id,label:span.label,kind:span.side == .me ? "microphone" : "system",sampleRate:span.rate,channels:span.channels,labelSource:"device")],events:events)
                 span.registered = true; nativeSpans[id] = span
             }

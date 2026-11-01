@@ -494,6 +494,24 @@ public struct BrowserControlRegistry: Sendable {
         peers[id] = peer
         bindCaptures(peer)
     }
+    /// D52.1 R67: join an active native stand-in. Requires the peer's resume-capture-v1
+    /// and multi-stream-v1 hello and the row's call generation; never a fresh Start.
+    public mutating func resume(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int) throws -> (BrowserControlRequest,String) {
+        guard var peer = peers[key.peer], !peer.superseded else { throw BrowserControlStateError.unavailable }
+        guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
+        guard peer.independent, peer.supportsResume, peer.supportsMultiStream else { throw BrowserControlStateError.incompatible }
+        guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }), let generation = meeting.callGeneration else { throw BrowserControlStateError.noSources }
+        guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
+        guard !captureID.isEmpty, captureID.utf8.count <= 128, (0...253402300799000).contains(timelineOriginMs) else { throw BrowserControlStateError.malformed }
+        let request = try Self.command(key,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
+                                       resume:(captureID,timelineOriginMs))
+        guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
+        peer.commandOrder &+= 1
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:meeting.url)
+        peer.autoAttempted.insert(key.tabID)
+        peers[key.peer] = peer
+        return (request,generation)
+    }
     public mutating func start(_ key: BrowserMeetingKey, microphone: Bool, automatic: Bool = false) throws -> BrowserControlRequest {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
         guard !peer.superseded else { throw BrowserControlStateError.unavailable }
@@ -622,7 +640,7 @@ public struct BrowserControlRegistry: Sendable {
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }
     }
     private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false,
-                                callGeneration: String? = nil, captureID: String? = nil) throws -> BrowserControlRequest {
+                                callGeneration: String? = nil, captureID: String? = nil, resume: (String,Int)? = nil) throws -> BrowserControlRequest {
         guard (0...9007199254740991).contains(key.tabID) else { throw BrowserControlStateError.malformed }
         let id = UUID().uuidString.lowercased()
         var fields: [(String,JSON)] = [("type",.string("command")),("requestId",.string(id)),("action",.string(action.rawValue)),("tabId",.number(String(key.tabID)))]
@@ -633,6 +651,9 @@ public struct BrowserControlRegistry: Sendable {
         // D52 M6: a Start names the call it was chosen for; a Stop names its capture.
         if action == .start, let callGeneration { fields.append(("callGeneration",.string(callGeneration))) }
         if action == .stop, let captureID { fields.append(("captureId",.string(captureID))) }
+        if action == .start, let resume {
+            fields.append(("resumeCapture",.object([("captureId",.string(resume.0)),("timelineOriginMs",.number(String(resume.1)))])))
+        }
         return .init(id:id,key:key,action:action,data:try JSON.object(fields).encoded(maximumBytes:FrameIO.maximum))
     }
     private static func generation(_ value: JSON?) throws -> String? {
