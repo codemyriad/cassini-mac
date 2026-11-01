@@ -501,7 +501,7 @@ private final class CaptureFiles: @unchecked Sendable {
                     let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
                     let observation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
                         sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
-                        controlAlive:peer != nil,pcmLive:fresh)
+                        controlAlive:peer != nil,pcmLive:fresh,transportAlive:source.transportAlive)
                     let decision = captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready)
                     // Until the call has taken over, a stand-in is a plain native recording:
                     // a missing page never stops or re-routes it.

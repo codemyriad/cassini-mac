@@ -92,10 +92,13 @@ public struct BrowserCallPolicy: Sendable {
         public var controlAlive = true
         /// Admitted browser PCM is flowing on the owned transport.
         public var pcmLive = false
+        /// D52.4: false once the recording's audio transport closed (EOF, error or the
+        /// PCM_STALE_AFTER watchdog). It is not missing-page evidence by itself.
+        public var transportAlive = true
         public init(page: BrowserCallLifecycle.Page?, rowPresent: Bool = true, sourceCount: Int?, sourceCountKnown: Bool = true,
-                    heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false) {
+                    heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false, transportAlive: Bool = true) {
             self.page = page; self.rowPresent = rowPresent; self.sourceCount = sourceCount; self.sourceCountKnown = sourceCountKnown
-            self.heard = heard; self.controlAlive = controlAlive; self.pcmLive = pcmLive
+            self.heard = heard; self.controlAlive = controlAlive; self.pcmLive = pcmLive; self.transportAlive = transportAlive
         }
     }
     public static let othersGoneGrace: TimeInterval = 30
@@ -118,11 +121,17 @@ public struct BrowserCallPolicy: Sendable {
             guard now - closed >= Self.tabClosedGrace else { return nil }
             stopped = true; return .stop(.tabClosed)
         }
-        if !o.controlAlive && o.pcmLive { missing = nil; ended = nil; return nil }
+        if !o.controlAlive && o.pcmLive && o.transportAlive { missing = nil; ended = nil; return nil }
         if let missing, now - missing >= Self.browserReturnGrace { stopped = true; return .stop(.pageGone) }
+        // D52.4 Q3: a closed audio transport falls back at once, whatever the page state
+        // or count. The rest of this step sees the fallback as committed.
+        var action: Action?, source = source
+        if !o.transportAlive, source != "system", others { action = .fallback; source = "system" }
         if o.page == .present, o.controlAlive, known, (o.sourceCount ?? 0) > 0 {
+            // A visibly ongoing call stays on fallback without a pageGone deadline;
+            // restoring needs a live audio transport.
             missing = nil; ended = nil
-            guard source == "system", heard, others else { return nil }
+            guard o.transportAlive, action == nil, source == "system", heard, others else { return action }
             // D49 takes over only the initial stand-in; restore only undoes a
             // fallback. An explicit system choice is never switched (D52.3b).
             switch reason {
@@ -134,13 +143,13 @@ public struct BrowserCallPolicy: Sendable {
         if o.page != .present || !o.controlAlive || missing != nil {
             ended = nil
             if missing == nil { missing = now }
-            return now - missing! >= Self.fallbackGrace && source != "system" && others ? .fallback : nil
+            return action ?? (now - missing! >= Self.fallbackGrace && source != "system" && others ? .fallback : nil)
         }
-        guard known else { ended = nil; return nil }
+        guard known else { ended = nil; return action }
         if heard {
             if ended == nil { ended = now }
             if now - ended! >= Self.othersGoneGrace { stopped = true; return .stop(.callEnded) }
         }
-        return nil
+        return action
     }
 }
