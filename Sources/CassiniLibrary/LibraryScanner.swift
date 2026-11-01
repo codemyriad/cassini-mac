@@ -242,7 +242,11 @@ public struct LibraryScanner: Sendable {
         struct Track: Decodable {
             let sourceID: String?; let sourceKind: String?; let sourceTrackID: String?
             let file: String?; let sampleRate: Int?; let channels: Int?; var startOffsetMs: DisplayOffset?; let gapFrames: Double?
-            enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames, id, kind, sourceTrackId }
+            var gaps: [TrackPresence.Gap]? = nil
+            enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames, id, kind, sourceTrackId, gaps }
+            struct GapRow: Decodable {
+                let atMs: Double; let durationMs: Double?; let frames: UInt64?; let kind: String
+            }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 let id = try? c.decode(String.self,forKey:.id)
@@ -254,6 +258,10 @@ public struct LibraryScanner: Sendable {
                 file = try? c.decode(String.self, forKey: .file)
                 sampleRate = try? c.decode(Int.self, forKey: .sampleRate); channels = try? c.decode(Int.self, forKey: .channels)
                 startOffsetMs = nil; gapFrames = try? c.decode(Double.self, forKey: .gapFrames)
+                // A malformed or null list is unknown, like a missing one.
+                gaps = (try? c.decode([GapRow].self, forKey: .gaps)).flatMap { rows in
+                    rows.count <= 1001 && rows.allSatisfy({ $0.atMs.isFinite && $0.atMs >= 0 && !$0.kind.isEmpty }) ? rows.map { .init(atMs:$0.atMs,durationMs:$0.durationMs,frames:$0.frames,kind:$0.kind) } : nil
+                }
             }
         }
         static func parse(_ data: Data) throws -> Self {
@@ -286,7 +294,7 @@ public struct LibraryScanner: Sendable {
                     let wave = try Self.wave(url)
                     guard wave.rate == track.sampleRate, wave.channels == track.channels else { throw MetadataError.invalid }
                     result.files.append(url)
-                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames, sourceID:track.sourceID, sourceKind:track.sourceKind, sourceTrackID:track.sourceTrackID, sampleRate:wave.rate))
+                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames, sourceID:track.sourceID, sourceKind:track.sourceKind, sourceTrackID:track.sourceTrackID, sampleRate:wave.rate, gaps:track.gaps))
                     if wave.frames > 0, track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
                     ends.append((track.startOffsetMs ?? .zero).end(frames: wave.frames, rate: wave.rate))
                 } catch { result.issues.append(.invalidAudio) } // R4: a completed session is trusted.

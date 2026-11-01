@@ -35,7 +35,7 @@ struct CompanionUpgradeTests {
         #expect(upgraded.updated && upgraded.version == "0.2.8")
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("background.js")) != background)
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("app-control.js")) != control)
-        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "c6f5fc72bfd9e31fc9db32c9f06d802f45baf168")
+        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "3238aabecce29ae4f7faca57383e6b0b37faa9df")
         var identities: [String:NSNumber] = [:], dates: [String:Date] = [:]
         let files = try #require(FileManager.default.enumerator(atPath:source.path))
         var count = 0

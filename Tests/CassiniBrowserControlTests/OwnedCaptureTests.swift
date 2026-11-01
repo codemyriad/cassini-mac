@@ -180,7 +180,10 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         try capture.browserAudio(id:"remote",sequence:1,offsetMs:1000,pcm:Data(repeating:0,count:16000))
         try await capture.finish()
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
-        XCTAssertEqual(manifest.tracks.count,2); XCTAssertEqual(manifest.tracks.filter { $0.kind == "microphone" }.first?.startOffsetMs,40)
+        XCTAssertEqual(manifest.tracks.count,2)
+        // D52.2: the mic starts at its selection boundary (0); its first 40 ms are a prefix.
+        let micTrack = try XCTUnwrap(manifest.tracks.first { $0.kind == "microphone" })
+        XCTAssertEqual(micTrack.startOffsetMs,0); XCTAssertEqual(micTrack.gaps,[.init(atMs:0,durationMs:40,frames:320,kind:"prefix")]); XCTAssertNil(micTrack.gapFrames)
         XCTAssertEqual(manifest.tracks.filter { $0.kind == "remote" }.first?.frames,16000)
         XCTAssertEqual(manifest.source,"chromium")
     }

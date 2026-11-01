@@ -6,6 +6,8 @@ import Foundation
 public protocol RecordingSinkWriter: AnyObject {
     func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws
+    /// D52.2: `writer` when the sink dropped frames since its last write, else `input`.
+    func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws
     func finish(problem: String?) throws
     func finish(problem: String?, kind: String?) throws
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64)
@@ -15,6 +17,7 @@ public protocol RecordingSinkWriter: AnyObject {
 extension RecordingSinkWriter {
     public func finish(problem: String?, kind: String?) throws { try finish(problem: problem) }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {}
+    public func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws { try appendNative(id:id,pcm:pcm,offsetMs:offsetMs) }
 }
 
 extension RecordingSession: RecordingSinkWriter {
@@ -79,6 +82,8 @@ public final class RecordingSink: @unchecked Sendable {
         let outputChannels: Int
         var timeline: NativeSourceTimeline
         var pendingFrames: UInt64 = 0
+        /// Frames dropped since the last admitted write; their padding is a `writer` range.
+        var dropsSinceWrite: UInt64 = 0
         var droppedFrames: UInt64 = 0
         var gapFrames: UInt64 = 0
         var lastHostOffset: Double?
@@ -159,11 +164,14 @@ public final class RecordingSink: @unchecked Sendable {
         sourceFrames[id] = source.timeline.frames
         guard source.pendingFrames + frames <= UInt64(rate * capacitySeconds) else {
             source.droppedFrames += frames
+            source.dropsSinceWrite += frames
             sources[id] = source
             lock.unlock()
             return
         }
         source.pendingFrames += frames
+        let gapKind = source.dropsSinceWrite > 0 ? "writer" : "input"
+        source.dropsSinceWrite = 0
         source.submittedEnd = source.timeline.frames
         let register = !source.registered
         source.registered = true
@@ -192,7 +200,7 @@ public final class RecordingSink: @unchecked Sendable {
                 if register {
                     try writer.addTrack(id: id, label: label, kind: kind, sampleRate: Int(rate), channels: outputChannels)
                 }
-                try writer.appendNative(id: id, pcm: pcm, offsetMs: offset)
+                try writer.appendNative(id: id, pcm: pcm, offsetMs: offset, gapKind: gapKind)
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()

@@ -85,7 +85,10 @@ public struct RecordingTrack: Codable, Identifiable, Sendable {
     public var captureOutcome: CaptureOutcome? = nil
     /// Per-track `capture` or `io`; the session keeps its own problemKind.
     public var problemKind: String? = nil
-    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames, receivedFrames, captureOutcome, problemKind }
+    /// D52.2: every padding write, session-absolute, half-open, never coalesced.
+    /// `[]` means none; nil (absent) means unknown.
+    public var gaps: [GapRange]? = nil
+    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames, receivedFrames, captureOutcome, problemKind, gaps }
 }
 
 extension RecordingManifest {
@@ -116,7 +119,19 @@ extension RecordingTrack {
         receivedFrames = try? c.decode(UInt64.self,forKey:.receivedFrames)
         captureOutcome = try? c.decode(CaptureOutcome.self,forKey:.captureOutcome)
         problemKind = (try? c.decode(String.self,forKey:.problemKind)).flatMap { ["capture","io"].contains($0) ? $0 : nil }
+        gaps = (try? c.decodeIfPresent([GapRange].self,forKey:.gaps)) ?? nil
     }
+}
+
+/// D52.2 (P7) gap range. Kinds are open: host-derived `jump`, `input`, `prefix`,
+/// `writer`, and the budget marker `overflow` (unknown from atMs to the track end).
+public struct GapRange: Codable, Sendable, Equatable {
+    public let atMs: Double
+    public let durationMs: Double?
+    public let frames: UInt64?
+    public let kind: String
+    public init(atMs: Double, durationMs: Double?, frames: UInt64?, kind: String) { self.atMs = atMs; self.durationMs = durationMs; self.frames = frames; self.kind = kind }
+    public static let budget = 1000
 }
 
 public struct RecordingSource: Sendable {
@@ -125,8 +140,12 @@ public struct RecordingSource: Sendable {
     public let sourceTrackId: String?
     public let labelSource: String?
     public let endsImmediately: Bool
-    public init(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, endsImmediately: Bool = false) {
+    /// D52.2 prefix: a span opened at a selection boundary starts there; the time
+    /// before its first frame is a `prefix` range (absence, never a gap).
+    public let boundaryMs: Double?
+    public init(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, endsImmediately: Bool = false, boundaryMs: Double? = nil) {
         self.id = id; self.label = label; self.kind = kind; self.sampleRate = sampleRate; self.channels = channels; self.sourceTrackId = sourceTrackId; self.labelSource = labelSource; self.endsImmediately = endsImmediately
+        self.boundaryMs = boundaryMs.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
     }
 }
 
@@ -154,6 +173,11 @@ public final class RecordingSession {
     public private(set) var manifest: RecordingManifest
     private var writers: [String: WAVWriter] = [:]
     private var finished = false
+    /// Tracks whose first write is still pending after a selection boundary.
+    private var prefixPending: Set<String> = []
+    /// Tracks with a jump/input padding write of at least one second, kept
+    /// independently of the stored (possibly overflowed) ranges.
+    private var longGaps: Set<String> = []
     private var lastCheckpoint = Date.distantPast
     private var metadataRevision: UInt64 = 0
     /// Build-only process-crash probes observe persistence boundaries. This is
@@ -218,6 +242,8 @@ public final class RecordingSession {
                     sampleRate:source.sampleRate,channels:source.channels,startOffsetMs:nil,frames:0)
                 track.sourceTrackId = source.sourceTrackId
                 track.labelSource = source.labelSource ?? (manifest.source == "chromium" ? "browser" : "device")
+                track.gaps = []
+                if let boundary = source.boundaryMs, !source.endsImmediately { track.startOffsetMs = boundary; prefixPending.insert(source.id) }
                 if source.endsImmediately { try writer.close(); track.ended = true }
                 staged.append((track,writer))
             }
@@ -264,8 +290,13 @@ public final class RecordingSession {
     public func appendNative(id: String, pcm: Data, offsetMs: Double) throws {
         try append(id: id, pcm: pcm, offsetMs: offsetMs, native: true)
     }
+    /// The native sink names why a jump happened: `input` (host-time gap) or
+    /// `writer` (its own dropped frames, padded in place; counted as drops).
+    public func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws {
+        try append(id: id, pcm: pcm, offsetMs: offsetMs, native: true, gapKind: gapKind == "writer" ? "writer" : "input")
+    }
 
-    private func append(id: String, pcm: Data, offsetMs: Double, native: Bool) throws {
+    private func append(id: String, pcm: Data, offsetMs: Double, native: Bool, gapKind: String? = nil) throws {
         guard !finished, let writer = writers[id], let i = manifest.tracks.firstIndex(where: { $0.id == id }),
               offsetMs.isFinite, (0...86_400_000).contains(offsetMs), !pcm.isEmpty,
               pcm.count <= 262_144, pcm.count % (manifest.tracks[i].channels * 2) == 0
@@ -280,12 +311,32 @@ public final class RecordingSession {
             guard native || delta <= Int64(track.sampleRate) * 60 else {
                 throw RecordingError.invalid("Audio source was interrupted for more than a minute. Start a new recording.")
             }
+            let kind = prefixPending.contains(id) ? "prefix" : native ? (gapKind ?? "input") : "jump"
+            recordGap(index:i,frames:UInt64(delta),kind:kind,framesBefore:writer.frames)
             try writer.silence(frames: Int(delta))
         }
+        prefixPending.remove(id)
         try writer.append(pcm)
         manifest.tracks[i].frames = writer.frames
         manifest.tracks[i].receivedFrames = (manifest.tracks[i].receivedFrames ?? 0) + UInt64(pcm.count / (track.channels * 2))
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
+    }
+
+    /// D52.2: one range per padding write, up to the budget, then one overflow
+    /// marker (unknown to the track end). jump/input count as gapFrames; a padding
+    /// write of at least one second flags the session even after the overflow.
+    private func recordGap(index i: Int, frames: UInt64, kind: String, framesBefore: UInt64) {
+        let track = manifest.tracks[i], rate = Double(track.sampleRate)
+        let at = (track.startOffsetMs ?? 0) + Double(framesBefore)/rate*1000
+        var gaps = track.gaps ?? []
+        let recorded = gaps.filter { $0.kind != "overflow" }.count
+        if recorded < GapRange.budget { gaps.append(.init(atMs:at,durationMs:Double(frames)/rate*1000,frames:frames,kind:kind)) }
+        else if !gaps.contains(where:{ $0.kind == "overflow" }) { gaps.append(.init(atMs:at,durationMs:nil,frames:nil,kind:"overflow")) }
+        manifest.tracks[i].gaps = gaps
+        if kind == "jump" || kind == "input" {
+            manifest.tracks[i].gapFrames = (track.gapFrames ?? 0) + frames
+            if frames >= UInt64(track.sampleRate) { longGaps.insert(track.id) }
+        }
     }
 
     /// D52 M5: end one failed span while every other writer keeps recording. The
@@ -350,7 +401,12 @@ public final class RecordingSession {
             manifest.tracks[i].ended = true
             manifest.tracks[i].endOffsetMs = track.startOffsetMs.map { $0 + Double(track.frames) / Double(track.sampleRate) * 1000 }
         }
-        manifest.problemKind = failure != nil ? "io" : kind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
+        // D52.2 Q4: only a jump/input padding write of at least one second flags the session.
+        if manifest.problem == nil, kind == nil, !empty, !longGaps.isEmpty {
+            manifest.problem = "Some audio is missing: the recording has a gap of at least one second."
+        }
+        let gapKind: String? = kind == nil && !longGaps.isEmpty && manifest.problem != nil && (problem?.isEmpty ?? true) && failure == nil ? "gap" : nil
+        manifest.problemKind = failure != nil ? "io" : kind ?? gapKind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
         // A failed track's I/O loss takes precedence over a capture problem.
         if manifest.problemKind == "capture", manifest.tracks.contains(where:{ $0.problemKind == "io" }) { manifest.problemKind = "io" }
         manifest.state = manifest.problem == nil ? "completed" : "interrupted"
