@@ -6,13 +6,13 @@ import CassiniKit
 import CassiniLibrary
 @testable import CassiniTranscription
 
-/// D52 shared production-shaped corpus (conformance/multistream, protocol
-/// c6f5fc7), materialized by its deterministic stdlib generator and hash-checked
+/// D52 shared production-shaped corpus (conformance/multistream, protocol 3238aab;
+/// was c6f5fc7), materialized by its deterministic stdlib generator and hash-checked
 /// against a pinned digest (D52.3e), then read through the Mac scanner, speaker
 /// lanes and others-ownership placement.
 final class D52CorpusTests: XCTestCase {
     /// SHA-256 of the sorted "./relative/path <sha256>\n" listing of every generated file.
-    static let pinnedDigest = "dc2a0187d386fe72d73fc9dca01bb6f6c929bc87bb8c46f44629328b3e69020d"
+    static let pinnedDigest = "b27a8422a8295d58f64f99e4ef188d2802fdb35f4008c0f0215c5daaa2f3b5b0"
     private func materialize() throws -> URL {
         let repository = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Corpus-"+UUID().uuidString)
