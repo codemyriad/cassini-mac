@@ -41,7 +41,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     static let recordAttemptLimit = 5
     /// D52.4 PCM_STALE_AFTER, 45 s per D52.5: the extension's longest source retry (30 s)
     /// plus its 10 s acknowledgement limit, with margin, and below the 60 s span cut.
-    public static let pcmStaleAfter: UInt64 = 45_000
+    public static let pcmStaleAfter = AudioTransportWatchdog.staleAfter
     fileprivate let clock: @Sendable () -> UInt64
     private var watchdog: DispatchSourceTimer?
     public init(make: @escaping @Sendable (String,Bool) throws -> OwnedBrowserCapture,
@@ -262,22 +262,15 @@ private final class AudioPeer: @unchecked Sendable {
     private var captureID: String?
     private var resumed = false
     private var timelineOriginMs: Int?
-    /// PCM_STALE_AFTER state: wire ids whose open span has delivered PCM, and the time of
-    /// the last frame of any type on this transport (D52.5: every frame counts).
+    /// PCM_STALE_AFTER for this transport (D52.5: every frame on it counts).
     private let liveness = NSLock()
     private let clock: @Sendable () -> UInt64
-    private var lastFrameAt: UInt64
-    private var delivering: Set<String> = []
+    private var watchdog = AudioTransportWatchdog()
     init(connection: BrowserPipeConnection, broker: BrowserAudioBroker, clock: @escaping @Sendable () -> UInt64) {
-        self.connection = connection; self.broker = broker; self.clock = clock; lastFrameAt = clock()
+        self.connection = connection; self.broker = broker; self.clock = clock
     }
-    /// Armed only while an open span has delivered PCM; before the first PCM and after the
-    /// last such span ends, nothing can go stale.
-    func isStale(at now: UInt64) -> Bool {
-        liveness.withLock { !delivering.isEmpty && now >= lastFrameAt && now - lastFrameAt >= BrowserAudioBroker.pcmStaleAfter }
-    }
+    func isStale(at now: UInt64) -> Bool { liveness.withLock { watchdog.isStale(at:now) } }
     func closeStale() { connection.close() }
-    private func delivering(_ change: (inout Set<String>) -> Void) { liveness.withLock { change(&delivering) } }
     private func string(_ json: JSON, _ key: String, optional: Bool = false, code: String = "source") throws -> String? {
         guard let value = json[key], !value.isNull else {
             if optional { return nil }; throw BrowserProtocolError(code,"Missing source information.")
@@ -289,13 +282,22 @@ private final class AudioPeer: @unchecked Sendable {
     }
     func receive(_ data: Data) {
         guard !failed else { return }
-        liveness.withLock { lastFrameAt = clock() }
         var packetType: String?, json: JSON = .null
         do {
             guard !data.isEmpty, data.count <= FrameIO.maximum else { throw BrowserProtocolError("framing","Invalid native frame size.") }
             do { json = try JSONParser.parse(data) } catch { throw BrowserProtocolError("framing","Invalid JSON message.") }
             guard let kind = json["type"]?.string, json.object != nil else { throw BrowserProtocolError("framing","Expected a message object.") }
             packetType = kind
+            let frameID = json["id"]?.string ?? ""
+            let frame: AudioTransportWatchdog.Frame = switch kind {
+            case "track": .track(frameID)
+            case "audio": .audio(frameID)
+            case "trackEnd": .trackEnd(frameID)
+            case "stop": .stop
+            default: .other
+            }
+            // A frame at or after the PCM_STALE_AFTER deadline is too late: close instead.
+            guard liveness.withLock({ watchdog.receive(frame,at:clock()) }) else { closeStale(); return }
             guard ["start","resume","track","audio","stop"].contains(kind) || (sourceOutcomes && ["trackEnd","sources"].contains(kind)) else { throw BrowserProtocolError("version","Unknown browser message type.") }
             // Finalized by a browser Stop, or natively first (the app's own Stop). While saving,
             // a Stop still joins the save so its reply follows the durable metadata.
@@ -309,7 +311,7 @@ private final class AudioPeer: @unchecked Sendable {
                 let summary: [CaptureLedger.Discovered]
                 do { summary = try discovered(json["discoveredSources"],required:false) } catch { throw ScopedRefusal("source",error.localizedDescription) }
                 guard summary.isEmpty else { throw ScopedRefusal("state","Capture already saved.") }
-                completed = true; delivering { $0.removeAll() }
+                completed = true
                 try connection.send(JSON.object([("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]).encoded(maximumBytes:FrameIO.maximum)); return
             }
             guard !completed else { throw BrowserProtocolError("state","Recording is already stopped.") }
@@ -382,7 +384,6 @@ private final class AudioPeer: @unchecked Sendable {
                     guard dropped <= 2147483629 else { throw BrowserProtocolError("source","Invalid dropped frame count.") }
                     guard let end = json["endOffsetMs"], end.isNull || end.double.map({ $0.isFinite && (0...86460000).contains($0) }) == true else { throw BrowserProtocolError("source","Invalid source end time.") }
                     try owner.trackEnd(id:id,reason:reason,droppedFrames:UInt64(dropped))
-                    delivering { $0.remove(id) }
                 case "sources":
                     try owner.discover(try discovered(json["discoveredSources"],required:true))
                 case "audio":
@@ -390,7 +391,6 @@ private final class AudioPeer: @unchecked Sendable {
                     guard let encoded = try string(json,"pcm",code:"chunk"), encoded.utf8.count <= 349528,
                           let pcm = Data(base64Encoded:encoded), let offset = json["offsetMs"]?.double, offset.isFinite else { throw BrowserProtocolError("chunk","Invalid audio chunk.") }
                     try owner.browserAudio(id:id,sequence:sequence,offsetMs:offset,pcm:pcm)
-                    delivering { $0.insert(id) }
                 case "stop":
                     if sourceOutcomes {
                         // A mismatched negotiated Stop is refused without ending this capture.
@@ -415,7 +415,7 @@ private final class AudioPeer: @unchecked Sendable {
                         guard done.wait(timeout:.now() + 60) == .success else { throw BrowserProtocolError("io","Recording is still saving.") }
                         try outcome.get()
                     }
-                    completed = true; delivering { $0.removeAll() }
+                    completed = true
                     var fields: [(String,JSON)] = [("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]
                     if let problem = owner.snapshot.manifest.problem { fields.append(("problem",.string(problem))) }
                     response = .object(fields)
@@ -455,7 +455,6 @@ private final class AudioPeer: @unchecked Sendable {
         // they are, and so does any refused re-declaration of an id that is still live.
         if error is KeptSourceRefusal || (type == "track" && owner.isLive(id)) { return reply("source",id:id) }
         let retired = owner.refuseSource(id:id,code:code)
-        delivering { $0.remove(id) }
         return reply("source",id:id,retired:retired && code == "state")
     }
     private func discovered(_ value: JSON?, required: Bool) throws -> [CaptureLedger.Discovered] {

@@ -82,7 +82,8 @@ public struct BrowserCallLifecycle: Sendable {
 /// browser PCM (never the native microphone) is evidence while control is absent.
 /// The caller supplies the committed others source; actions are requests only.
 public struct BrowserCallPolicy: Sendable {
-    public enum Action: Equatable, Sendable { case fallback, restore, callConnected, stop(BrowserCallLifecycle.StopReason) }
+    /// `askResume` (D52.5): send one resume-capture-v1 Start for this recording.
+    public enum Action: Equatable, Sendable { case fallback, restore, callConnected, askResume, stop(BrowserCallLifecycle.StopReason) }
     public struct Observation: Sendable {
         /// nil: no page report (unknown).
         public var page: BrowserCallLifecycle.Page?
@@ -96,15 +97,21 @@ public struct BrowserCallPolicy: Sendable {
         /// D52.4: false once the recording's audio transport closed (EOF, error or the
         /// PCM_STALE_AFTER watchdog). It is not missing-page evidence by itself.
         public var transportAlive = true
+        /// D52.5: the row's call generation, and the control connection it arrived on
+        /// (it changes only with a new hello).
+        public var callGeneration: String?
+        public var controlConnection: String = ""
         /// Producer stamps (uptime): when the page state was observed, and when the owner
         /// lost the browser source. A delayed poll still honours their deadlines.
         public var pageObservedAt: TimeInterval?
         public var lostAt: TimeInterval?
         public init(page: BrowserCallLifecycle.Page?, rowPresent: Bool = true, sourceCount: Int?, sourceCountKnown: Bool = true,
                     heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false, transportAlive: Bool = true,
+                    callGeneration: String? = nil, controlConnection: String = "",
                     pageObservedAt: TimeInterval? = nil, lostAt: TimeInterval? = nil) {
             self.page = page; self.rowPresent = rowPresent; self.sourceCount = sourceCount; self.sourceCountKnown = sourceCountKnown
             self.heard = heard; self.controlAlive = controlAlive; self.pcmLive = pcmLive; self.transportAlive = transportAlive
+            self.callGeneration = callGeneration; self.controlConnection = controlConnection
             self.pageObservedAt = pageObservedAt; self.lostAt = lostAt
         }
     }
@@ -112,10 +119,18 @@ public struct BrowserCallPolicy: Sendable {
     public static let tabClosedGrace: TimeInterval = 2
     public static let browserReturnGrace: TimeInterval = 120
     public static let fallbackGrace: TimeInterval = 2
-    private var heard = false, stopped = false
+    /// D52.5: the peer negotiated resume-capture-v1, and the recording's call generation.
+    /// heard latches only on rows of that generation (any generation while it is nil).
+    public var resumeCapture: Bool
+    public var callGeneration: String?
+    private var heard: Bool, stopped = false
     private var ended: TimeInterval?, closed: TimeInterval?, missing: TimeInterval?
     private var previous: TimeInterval?, observedLoss: TimeInterval?
-    public init() {}
+    /// The control connection this loss's resume was asked on (nil: not asked yet).
+    private var askedOn: String?
+    public init(resumeCapture: Bool = false, callGeneration: String? = nil, heard: Bool = false) {
+        self.resumeCapture = resumeCapture; self.callGeneration = callGeneration; self.heard = heard
+    }
 
     /// D49: a native stand-in that asked a call to resume it stays a plain native recording
     /// until the take-over commits (othersSource callConnected). While it is pending, browser
@@ -132,7 +147,7 @@ public struct BrowserCallPolicy: Sendable {
     /// a fresh policy seeing this observation. `legacy` steps the D33 lifecycle.
     public static func decide(pending: Bool, multiStream: Bool, policy: inout BrowserCallPolicy, now: TimeInterval, _ o: Observation,
                               source: String?, reason: String?, others: Bool, restoreReady: Bool,
-                              legacy: () -> BrowserCallLifecycle.Action?) -> BrowserCallLifecycle.Action? {
+                              legacy: () -> BrowserCallLifecycle.Action?, onAskResume: () -> Void = {}) -> BrowserCallLifecycle.Action? {
         if pending {
             guard multiStream else { return nil }
             var fresh = BrowserCallPolicy()
@@ -140,13 +155,16 @@ public struct BrowserCallPolicy: Sendable {
             return joins && restoreReady ? .restore : nil
         }
         guard multiStream else { return legacy() }
-        switch policy.step(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady) {
+        // D52.5: a step can ask to resume as well as act; the ask goes to `onAskResume`.
+        let actions = policy.steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady)
+        if actions.contains(.askResume) { onAskResume() }
+        switch actions.first(where:{ $0 != .askResume }) {
         case .fallback?: return .fallback
         case .restore?: return .restore
         case .stop(let reason)?: return .stop(reason)
         // D49: the resumed browser PCM commits callConnected through the restore checkpoint.
         case .callConnected?: return restoreReady ? .restore : nil
-        case nil: return nil
+        case .askResume?, nil: return nil
         }
     }
     /// When the current browser loss began (the producer's stamp when known), while one is pending.
@@ -169,55 +187,72 @@ public struct BrowserCallPolicy: Sendable {
         return .callEnded
     }
 
-    /// `source`/`reason`: the committed othersSource state. `others`: The others is on.
+    /// The first action of `steps`, for callers that never ask to resume.
     public mutating func step(now: TimeInterval, _ o: Observation, source: String?, reason: String?, others: Bool = true, restoreReady: Bool = true) -> Action? {
-        guard !stopped, now.isFinite, now >= 0, previous.map({ now >= $0 }) ?? true else { return nil }
+        steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady).first
+    }
+    /// `source`/`reason`: the committed othersSource state. `others`: The others is on.
+    /// A step can return a fallback and the resume ask together (D52.5).
+    public mutating func steps(now: TimeInterval, _ o: Observation, source: String?, reason: String?, others: Bool = true, restoreReady: Bool = true) -> [Action] {
+        guard !stopped, now.isFinite, now >= 0, previous.map({ now >= $0 }) ?? true else { return [] }
         previous = now
         let known = o.rowPresent && o.sourceCountKnown && o.sourceCount != nil
-        heard = heard || o.heard
+        // D52.5: another call's heard never arms this recording's restore, grace or resume ask.
+        heard = heard || (o.heard && (callGeneration == nil || callGeneration == o.callGeneration))
+        // A committed browser source ends any loss (and its ask) however it came back.
+        if source != "system" { askedOn = nil }
         func stamp(_ value: TimeInterval?) -> TimeInterval? {
             guard let value, value.isFinite, value >= 0, value <= now else { return nil }; return value
         }
         if o.page == .closed, closed == nil { closed = stamp(o.pageObservedAt) ?? now }
         if let closed {
-            guard now - closed >= Self.tabClosedGrace else { return nil }
-            stopped = true; return .stop(.tabClosed)
+            guard now - closed >= Self.tabClosedGrace else { return [] }
+            stopped = true; return [.stop(.tabClosed)]
         }
         // Each producer loss is seeded once, so a present page that acknowledged it
         // cannot restart its deadline while the owner retains the stamp.
         if let loss = stamp(o.lostAt), loss != observedLoss { observedLoss = loss; missing = min(missing ?? loss,loss) }
         if missing == nil, o.page == .navigating, let at = stamp(o.pageObservedAt) { missing = at }
-        if !o.controlAlive && o.pcmLive && o.transportAlive { missing = nil; ended = nil; return nil }
+        if !o.controlAlive && o.pcmLive && o.transportAlive { missing = nil; ended = nil; return [] }
         // This precedes positive-source recovery: a page that returns after the deadline,
         // first seen by a delayed poll, stops as pageGone.
-        if let missing, now - missing >= Self.browserReturnGrace { stopped = true; return .stop(.pageGone) }
+        if let missing, now - missing >= Self.browserReturnGrace { stopped = true; return [.stop(.pageGone)] }
         // D52.4 Q3: a closed audio transport falls back at once, whatever the page state
         // or count. The rest of this step sees the fallback as committed.
-        var action: Action?, source = source
-        if !o.transportAlive, source != "system", others { action = .fallback; source = "system" }
+        var actions: [Action] = [], source = source, reason = reason
+        if !o.transportAlive, source != "system", others { actions = [.fallback]; source = "system"; reason = "lost"; askedOn = nil }
         if o.page == .present, o.controlAlive, known, (o.sourceCount ?? 0) > 0 {
             // A visibly ongoing call stays on fallback without a pageGone deadline;
             // restoring needs a live audio transport.
             missing = nil; ended = nil
-            guard o.transportAlive, action == nil, source == "system", heard, others else { return action }
-            // D49 takes over only the initial stand-in; restore only undoes a
-            // fallback. An explicit system choice is never switched (D52.3b).
-            switch reason {
-            case "missing": return .callConnected
-            case "lost": return restoreReady ? .restore : nil
-            default: return nil
+            if o.transportAlive, actions.isEmpty, source == "system", heard, others {
+                // D49 takes over only the initial stand-in; restore only undoes a
+                // fallback. An explicit system choice is never switched (D52.3b).
+                switch reason {
+                case "missing": askedOn = nil; return [.callConnected]
+                case "lost": if restoreReady { askedOn = nil; return [.restore] }; return []
+                default: return []
+                }
             }
+            // D52.5: ask once per loss and control connection; never on a timer or later tick.
+            if resumeCapture, !o.transportAlive, source == "system", reason == "lost", others,
+               o.callGeneration == callGeneration, heard, askedOn != o.controlConnection {
+                askedOn = o.controlConnection
+                return actions + [.askResume]
+            }
+            return actions
         }
         if o.page != .present || !o.controlAlive || missing != nil {
             ended = nil
             if missing == nil { missing = now }
-            return action ?? (now - missing! >= Self.fallbackGrace && source != "system" && others ? .fallback : nil)
+            if actions.isEmpty, now - missing! >= Self.fallbackGrace, source != "system", others { askedOn = nil; return [.fallback] }
+            return actions
         }
-        guard known else { ended = nil; return action }
+        guard known else { ended = nil; return actions }
         if heard {
             if ended == nil { ended = now }
-            if now - ended! >= Self.othersGoneGrace { stopped = true; return .stop(.callEnded) }
+            if now - ended! >= Self.othersGoneGrace { stopped = true; return actions + [.stop(.callEnded)] }
         }
-        return action
+        return actions
     }
 }

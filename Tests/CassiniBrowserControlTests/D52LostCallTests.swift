@@ -23,8 +23,9 @@ final class D52LostCallTests: XCTestCase {
     func testACallWithALostRecordingIsNeverAutoStartedAfresh() throws {
         var state = BrowserControlRegistry(), peer = UUID()
         try ready(&state,peer,instance:nil,generation:"call-A")
-        state.setLostCalls([.init(instance:nil,peer:peer,tabID:2,callGeneration:"call-A")])
+        state.setLostCalls([.init(tabID:2,callGeneration:"call-A")])
         XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+        XCTAssertTrue(state.startAll(microphone:true).isEmpty,"Record all skips the recording call")
         // Another call in the same tab is a new call: it may start.
         try meeting(&state,peer,generation:"call-B")
         XCTAssertEqual(state.automaticStarts(microphone:true).map(\.key.tabID),[2])
@@ -34,7 +35,7 @@ final class D52LostCallTests: XCTestCase {
         let instance = BrowserInstance(pid:4242,startSeconds:1_793_000_000), old = UUID(), new = UUID()
         try ready(&state,old,instance:instance,generation:"call-A")
         state.disconnect(old)
-        state.setLostCalls([.init(instance:instance,peer:old,tabID:2,callGeneration:"call-A")])
+        state.setLostCalls([.init(tabID:2,callGeneration:"call-A")])
         try ready(&state,new,instance:instance,generation:"call-A")
         XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty,"the frozen companion's call is resumed, not started again")
         state.setLostCalls([])
