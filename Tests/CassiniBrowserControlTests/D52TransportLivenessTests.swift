@@ -29,6 +29,44 @@ final class D52TransportLivenessTests: XCTestCase {
         XCTAssertEqual(reply["type"]?.string,"ack","\(reply)",file:file,line:line)
     }
 
+    /// stale-watchdog.json (D52.5) through the watchdog the audio peer uses.
+    func testSharedStaleWatchdogVectors() throws {
+        let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("browser-protocol/conformance/multistream/stale-watchdog.json")
+        let file = try JSONParser.parse(Data(contentsOf:url))
+        XCTAssertEqual(file["constants"]?["PCM_STALE_AFTER"]?.int,Int(AudioTransportWatchdog.staleAfter))
+        let cases = try XCTUnwrap(file["cases"]?.array)
+        XCTAssertEqual(cases.count,10)
+        for vector in cases {
+            let name = try XCTUnwrap(vector["name"]?.string), frames = try XCTUnwrap(vector["frames"]?.array)
+            func closed(by now: Int) -> Bool {
+                var watchdog = AudioTransportWatchdog()
+                for frame in frames {
+                    guard let at = frame["atMs"]?.int, at <= now else { break }
+                    let id = frame["id"]?.string ?? ""
+                    let kind: AudioTransportWatchdog.Frame
+                    switch frame["frame"]?.string {
+                    case "control": continue   // control-connection frames never reach the audio peer
+                    case "track": kind = .track(id)
+                    case "audio": kind = .audio(id)
+                    case "trackEnd": kind = .trackEnd(id)
+                    case "stop": kind = .stop
+                    default: kind = .other
+                    }
+                    if !watchdog.receive(kind,at:UInt64(at)) { return true }
+                }
+                return watchdog.isStale(at:UInt64(now))
+            }
+            for probe in try XCTUnwrap(vector["probes"]?.array) {
+                let at = try XCTUnwrap(probe["atMs"]?.int)
+                XCTAssertEqual(closed(by:at),probe["closed"]?.bool,"\(name) at \(at)")
+            }
+            if let close = vector["closeAtMs"]?.int {
+                XCTAssertTrue(closed(by:close),name); XCTAssertFalse(closed(by:close - 1),name)
+            }
+        }
+    }
+
     func testAStaleDeliveringTransportClosesThroughTheEOFPath() async throws {
         let clock = ManualClock(), fixture = try AudioFixture(clock:clock.now)
         do {

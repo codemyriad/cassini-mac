@@ -302,23 +302,18 @@ public struct BrowserControlRegistry: Sendable {
             .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume)
         }
     }
-    /// D52.5: a call that has a recording on system/lost after its audio transport closed.
-    /// Such a call is asked to resume that recording and is never auto-Started afresh.
+    /// D52.5: a call (tabId, callGeneration) that has a recording on system/lost after its
+    /// audio transport closed. That call is recording: it is never Started again, by auto
+    /// or by Record, only resumed. callGeneration is browser-generated and unguessable, so
+    /// it matches across every control peer, past and present.
     public struct LostCall: Hashable, Sendable {
-        public let instance: BrowserInstance?, peer: UUID, tabID: Int, callGeneration: String?
-        public init(instance: BrowserInstance?, peer: UUID, tabID: Int, callGeneration: String?) {
-            self.instance = instance; self.peer = peer; self.tabID = tabID; self.callGeneration = callGeneration
-        }
+        public let tabID: Int, callGeneration: String?
+        public init(tabID: Int, callGeneration: String?) { self.tabID = tabID; self.callGeneration = callGeneration }
     }
     private var lostCalls: Set<LostCall> = []
     public mutating func setLostCalls(_ calls: Set<LostCall>) { lostCalls = calls }
-    /// The same tab of the same connection or browser instance, in the same call (an
-    /// unknown generation on either side counts as the same call).
-    private func hasLostRecording(_ meeting: BrowserMeeting, peer: PeerState) -> Bool {
-        lostCalls.contains { lost in
-            lost.tabID == meeting.key.tabID && (lost.peer == peer.peer.id || (lost.instance != nil && lost.instance == peer.peer.browserInstance)) &&
-                (lost.callGeneration == nil || meeting.callGeneration == nil || lost.callGeneration == meeting.callGeneration)
-        }
+    private func hasLostRecording(_ meeting: BrowserMeeting) -> Bool {
+        lostCalls.contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration))
     }
     public mutating func setRetainedCaptureIDs(_ ids: [String]) {
         retainedCaptureIDs = Set(ids.map { Data($0.utf8) })
@@ -537,6 +532,8 @@ public struct BrowserControlRegistry: Sendable {
         guard peer.independent else { throw BrowserControlStateError.incompatible }
         guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
+        // D52.5: the call already has a recording on a lost transport; it is resumed, not started.
+        guard !hasLostRecording(meeting) else { throw BrowserControlStateError.busy }
         if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
@@ -593,7 +590,7 @@ public struct BrowserControlRegistry: Sendable {
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where peer.reconciled && peer.independent {
             for meeting in peer.meetings where meeting.sourceCount > 0 && (!peer.callEvidence || meeting.heard) && !peer.autoAttempted.contains(meeting.key.tabID) && !peer.requestedStops.contains(meeting.key.tabID) {
-                guard newestOwner(peer,tab:meeting.key.tabID), !hasLostRecording(meeting,peer:peer) else { continue }
+                guard newestOwner(peer,tab:meeting.key.tabID), !hasLostRecording(meeting) else { continue }
                 if let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { continue }
                 keys.append(meeting.key)
             }
