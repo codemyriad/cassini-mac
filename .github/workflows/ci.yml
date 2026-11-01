@@ -78,7 +78,7 @@ jobs:
         PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/BrowserExtension/tests/node_modules/playwright/index.mjs" node browser-protocol/tests/product-topologies.mjs 2>&1 | tee BrowserExtension/tests/artifacts/topologies.log
         node BrowserExtension/tests/synthetic-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/synthetic.log
         node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
-        echo "Real tabCapture runs on drmeyers-audio; hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
+        echo "Real tabCapture is a manual check (node BrowserExtension/tests/tab-capture.mjs): hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
     - uses: actions/upload-artifact@v5
       if: failure()
       with:
@@ -93,6 +93,26 @@ jobs:
         grep -q " 0 fail" full.txt
         python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect --metadata" --profile metadata | tee metadata.txt
         grep -q " 0 fail" metadata.txt
+    needs:
+    - build
+  native:
+    name: Native recording sink (generated PCM)
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        debug: 'true'
+    - name: Generated 440/880 Hz stereo through the production sink and WAV writer
+      run: |
+        python3 scripts/run-native-ci.py --mode sink-only --app build/Build/Products/Debug/Cassini.app \
+          --artifacts "$RUNNER_TEMP/native-artifacts"
+    - uses: actions/upload-artifact@v5
+      if: always()
+      with:
+        name: native-recording-${{ github.sha }}
+        path: ${{ runner.temp }}/native-artifacts
     needs:
     - build
   app:

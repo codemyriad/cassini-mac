@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Bounded native diagnostic with persistent logs/results for self-hosted CI."""
+"""Bounded native diagnostic with persistent logs/results.
+
+Hosted CI runs sink-only against the once-built Debug app (--app). The full mode adds
+the actual Core Audio tap and needs genuine system-audio consent and an output
+device, so it is a manual check on a developer Mac."""
 import argparse, json, os, pathlib, signal, subprocess, time, uuid
 parser = argparse.ArgumentParser()
 parser.add_argument('--mode', choices=['sink-only', 'full'], default='full')
 parser.add_argument('--artifacts', type=pathlib.Path, default=pathlib.Path('native-artifacts'))
 parser.add_argument('--derived-data', type=pathlib.Path, default=pathlib.Path('build-native-ci'))
+parser.add_argument('--app', type=pathlib.Path, help='prebuilt Debug Cassini.app; skips generate/build')
 args = parser.parse_args()
 root = pathlib.Path(__file__).resolve().parent.parent
 os.chdir(root)
@@ -24,10 +29,14 @@ def run(command, name, timeout):
 
 try:
     save()
-    run(['xcodegen', 'generate'], 'generate', 60)
-    run(['xcodebuild', '-project', 'Cassini.xcodeproj', '-scheme', 'Cassini', '-configuration', 'Debug',
-         '-derivedDataPath', str(derived), 'CODE_SIGN_IDENTITY=-', 'CODE_SIGNING_ALLOWED=YES', '-quiet', 'build'], 'build', 900)
-    app = derived / 'Build/Products/Debug/Cassini.app'
+    if args.app:
+        app = args.app.resolve()
+        if not (app / 'Contents/MacOS/Cassini').is_file(): raise RuntimeError(f'no Cassini executable in {app}')
+    else:
+        run(['xcodegen', 'generate'], 'generate', 60)
+        run(['xcodebuild', '-project', 'Cassini.xcodeproj', '-scheme', 'Cassini', '-configuration', 'Debug',
+             '-derivedDataPath', str(derived), 'CODE_SIGN_IDENTITY=-', 'CODE_SIGNING_ALLOWED=YES', '-quiet', 'build'], 'build', 900)
+        app = derived / 'Build/Products/Debug/Cassini.app'
     for mode in (['sink-only'] if args.mode == 'sink-only' else ['sink-only', 'tap']):
         output = artifacts / (mode + '.stdout.log'); error = artifacts / (mode + '.stderr.log')
         nonce = str(uuid.uuid4())
