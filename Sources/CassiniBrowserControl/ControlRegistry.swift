@@ -2,13 +2,15 @@
 import Foundation
 import CassiniKit
 
+/// A meeting's UI identity. `peer` is the connection which first reported the
+/// call; a same-instance replacement inherits it, so it may name a released link.
 public struct BrowserMeetingKey: Hashable, Sendable {
     public let peer: UUID
     public let tabID: Int
     public init(peer: UUID, tabID: Int) { self.peer = peer; self.tabID = tabID }
 }
 public struct BrowserMeeting: Equatable, Sendable {
-    public let key: BrowserMeetingKey
+    public internal(set) var key: BrowserMeetingKey
     public let title: String
     public let url: String
     public let sourceCount: Int
@@ -22,7 +24,7 @@ public struct BrowserMeeting: Equatable, Sendable {
 }
 /// Reported paths are advisory status, never filesystem destinations or grants.
 public struct BrowserCaptureStatus: Equatable, Sendable {
-    public let key: BrowserMeetingKey
+    public internal(set) var key: BrowserMeetingKey
     public let captureID: String?
     public let path: String?
     public let recording: Bool
@@ -35,6 +37,7 @@ public struct BrowserCaptureStatus: Equatable, Sendable {
     public var failedSources: [String] = []
 }
 public struct BrowserControlPeerSnapshot: Sendable {
+    /// Physical connection; its meeting keys can retain an older origin.
     public let id: UUID
     public let browser: String?
     public let browserInstance: BrowserInstance?
@@ -46,11 +49,16 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public var supportsPageState = false
     public var supportsMultiStream = false
     public var supportsResume = false
+    /// Keys this connection inherited or committed; a key can outlive its origin link.
+    public var meetingKeys: Set<BrowserMeetingKey> = []
+    public func owns(_ key: BrowserMeetingKey?) -> Bool { key.map { $0.peer == id || meetingKeys.contains($0) } == true }
 }
 public enum BrowserControlAction: String, Sendable { case start, stop }
 public struct BrowserControlRequest: Sendable {
     public let id: String
     public let key: BrowserMeetingKey
+    /// Physical transport owner. A meeting key can outlive this connection.
+    public let connectionID: UUID
     public let action: BrowserControlAction
     public let data: Data
 }
@@ -72,6 +80,7 @@ public struct BrowserControlRegistry: Sendable {
         let order: UInt64
         let stopCaptureID: String?
         let url: String?
+        var generation: String? = nil
     }
     private struct PeerState: Sendable {
         let peer: BrowserPeer
@@ -97,7 +106,16 @@ public struct BrowserControlRegistry: Sendable {
         var supportsMultiStream = false, supportsResume = false
         var pages: [Int:(BrowserCallLifecycle.Page,TimeInterval)] = [:]
         var stopReasons: [Int:CaptureEndReason] = [:]
+        /// Per-tab UI keys, committed once by discovery or an issued command.
+        var keys: [Int:BrowserMeetingKey] = [:]
+        func key(_ tab: Int) -> BrowserMeetingKey { keys[tab] ?? .init(peer:peer.id,tabID:tab) }
     }
+    /// A disconnected identified link, kept briefly for its UI keys and any
+    /// unacknowledged Start. Never live: it issues nothing and is not reconciled.
+    private struct Released: Sendable { var peer: PeerState; let until: TimeInterval }
+    private var released: [UUID:Released] = [:]
+    static let reconnectGrace: TimeInterval = 10
+    var releasedCount: Int { released.count }
     /// Only tombstone owners survive disconnect. These summaries are not live
     /// peers/inventories and never participate in discovery or auto-start.
     private struct LineageHistory: Sendable {
@@ -134,6 +152,12 @@ public struct BrowserControlRegistry: Sendable {
     private var peers: [UUID:PeerState] = [:]
     private var retainedCaptureIDs: Set<Data> = []
     public private(set) var outcomes: [BrowserControlOutcome] = []
+    private var deliveries: [BrowserControlOutcome] = []
+    /// The driver drains after each mutation. History is capped separately so
+    /// expiring several links together cannot lose a pending completion.
+    public mutating func takeOutcomes() -> [BrowserControlOutcome] {
+        let result = deliveries; deliveries.removeAll(keepingCapacity:true); return result
+    }
     public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                 instanceAlive: @escaping @Sendable (BrowserInstance) -> Bool? = { $0.isAlive }) {
         self.clock = clock; self.instanceAlive = instanceAlive
@@ -212,6 +236,10 @@ public struct BrowserControlRegistry: Sendable {
     /// reconnect. Only the old live inventory can protect an otherwise old Stop.
     public mutating func expireRememberedStops() {
         let now = clock()
+        for id in Array(released.keys) {
+            guard let old = released[id], old.until <= now || old.peer.peer.browserInstance.map({ instanceAlive($0) == false }) == true else { continue }
+            retireReleased(id)
+        }
         let live = Set(peers.values.flatMap { peer in peer.meetings.filter { newestOwner(peer,tab:$0.key.tabID) }.compactMap { call($0,peer:peer) } })
         stoppedCalls.expire(now:now,priorLive:live,alive:instanceAlive)
         pruneDisconnectedLineages()
@@ -298,8 +326,17 @@ public struct BrowserControlRegistry: Sendable {
         }
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
-        peers.values.filter { !$0.superseded }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume)
+        let active = peers.values.filter { !$0.superseded }
+        var seen = Set(active.flatMap { $0.meetings.map(\.key) })
+        // A released link's meetings stay visible, unreconciled, until their
+        // replacement reports them, so Retry and microphone choices survive.
+        // A key inherited through several restarts is listed once, newest first.
+        let waiting = released.values.map(\.peer).filter { !$0.superseded }.sorted { $0.connectionOrder > $1.connectionOrder }.compactMap { old -> PeerState? in
+            var copy = old; copy.meetings.removeAll { !seen.insert($0.key).inserted }
+            return copy.meetings.isEmpty ? nil : copy
+        }
+        return (Array(active) + waiting).sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,meetingKeys:Set($0.keys.values))
         }
     }
     public mutating func setRetainedCaptureIDs(_ ids: [String]) {
@@ -328,9 +365,111 @@ public struct BrowserControlRegistry: Sendable {
             disconnectedLineages[id] = history
         }
         pruneDisconnectedLineages()
-        for pending in peer.pending.values {
+        // A Start without its result may be recording. Hold it briefly for the
+        // returning status of the same browser instance; never resend it.
+        var old = peer
+        old.reconciled = false; old.captures = []; old.interrupted = []
+        old.autoAttempted = []; old.requestedStops = []; old.stopReasons = [:]
+        old.pending = peer.pending.filter { $0.value.request.action == .start }
+        let held = peer.peer.browserInstance.map { instanceAlive($0) != false } == true && !(old.meetings.isEmpty && old.pending.isEmpty)
+        if held {
+            if released.count >= 128, let oldest = released.min(by:{ $0.value.until < $1.value.until })?.key { retireReleased(oldest) }
+            released[id] = .init(peer:old,until:clock()+Self.reconnectGrace)
+        }
+        for pending in peer.pending.values where !held || pending.request.action != .start {
             appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil))
         }
+        if held { resolveReturningStarts() } // Its replacement may have reported first.
+    }
+    private mutating func retireReleased(_ id: UUID) {
+        guard let old = released.removeValue(forKey:id) else { return }
+        for pending in old.peer.pending.values {
+            appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil))
+        }
+    }
+    /// Service shutdown: no returning status can settle a held Start any more.
+    public mutating func finishReconnects() {
+        for id in Array(released.keys) { retireReleased(id) }
+    }
+    /// D52 multi-stream peers name a call by its callGeneration, which survives
+    /// a service-worker restart; only legacy peers fall back to the exact URL.
+    private static func sameCall(_ meeting: BrowserMeeting, multiStream: Bool, generation: String?, url: String?) -> Bool {
+        if multiStream { return generation != nil && meeting.callGeneration == generation }
+        return url.map { Data($0.utf8) == Data(meeting.url.utf8) } == true
+    }
+    /// Keys are committed once per tab. A tab inherits the key of the newest
+    /// earlier link of the same browser instance which reported the same call
+    /// on that tab; a different call, profile tab or process gets a fresh key.
+    /// A late old tab therefore never re-keys a tab whose command was issued.
+    private func assignKeys(_ meetings: [BrowserMeeting], peer: inout PeerState) {
+        let donors = peer.peer.browserInstance.map { instance in
+            (Array(peers.values) + released.values.map(\.peer)).filter {
+                $0.peer.id != peer.peer.id && $0.peer.browserInstance == instance && $0.connectionOrder < peer.connectionOrder
+            }.sorted { $0.connectionOrder > $1.connectionOrder }
+        } ?? []
+        for meeting in meetings where peer.keys[meeting.key.tabID] == nil {
+            let tab = meeting.key.tabID, multiStream = peer.supportsMultiStream
+            var prior: BrowserMeetingKey?
+            for donor in donors {
+                prior = donor.meetings.first { $0.key.tabID == tab && Self.sameCall($0,multiStream:multiStream,generation:meeting.callGeneration,url:meeting.url) }?.key
+                if prior != nil { break }
+            }
+            peer.keys[tab] = prior ?? .init(peer:peer.peer.id,tabID:tab)
+        }
+        if peer.keys.count > 512 {
+            let needed = Set(meetings.map { $0.key.tabID } + peer.meetings.map { $0.key.tabID } + (peer.captures+peer.interrupted).map { $0.key.tabID } +
+                peer.pending.values.map { $0.request.key.tabID } + Array(peer.requestedStops) + Array(peer.stopReasons.keys))
+            peer.keys = peer.keys.filter { needed.contains($0.key) }
+        }
+    }
+    private static func rekeyed(_ rows: [BrowserCaptureStatus], _ peer: PeerState) -> [BrowserCaptureStatus] {
+        rows.map { var row = $0; row.key = peer.key(row.key.tabID); return row }
+    }
+    /// The live connection which currently owns a UI key, if any.
+    private func owner(_ key: BrowserMeetingKey) -> UUID? {
+        peers.values.filter { !$0.superseded && ($0.keys[key.tabID] == key || $0.peer.id == key.peer) }
+            .max { $0.connectionOrder < $1.connectionOrder }?.peer.id
+    }
+    /// A Start issued for this call on another link has no result yet.
+    private func uncertainStart(_ meeting: BrowserMeeting, multiStream: Bool) -> Bool {
+        (Array(peers.values) + released.values.map(\.peer)).contains { state in
+            state.pending.values.contains { pending in
+                pending.request.action == .start && pending.request.key == meeting.key &&
+                    Self.sameCall(meeting,multiStream:multiStream,generation:pending.generation,url:pending.url)
+            }
+        }
+    }
+    /// Settles each held Start once, as successful, when a newer live link of
+    /// the same browser instance reports a recording capture with an ID for the
+    /// same tab and call. A different callGeneration is a different call.
+    private mutating func resolveReturningStarts() {
+        for id in Array(released.keys) {
+            guard var old = released[id], let instance = old.peer.peer.browserInstance, !old.peer.pending.isEmpty else { continue }
+            for (requestID,pending) in old.peer.pending {
+                guard let capture = returningCapture(pending,instance:instance,after:old.peer.connectionOrder), let captureID = capture.captureID else { continue }
+                old.peer.pending.removeValue(forKey:requestID)
+                if let url = pending.url {
+                    bind(Data(captureID.utf8),to:.init(call:.init(instance:instance,tabID:capture.key.tabID,url:url),touched:clock()))
+                }
+                unboundStarts.removeValue(forKey:requestID)
+                appendOutcome(.init(requestID:requestID,key:pending.request.key,action:.start,ok:true,error:nil))
+            }
+            released[id] = old
+        }
+    }
+    private func returningCapture(_ pending: Pending, instance: BrowserInstance, after order: UInt64) -> BrowserCaptureStatus? {
+        let tab = pending.request.key.tabID
+        for peer in peers.values where peer.peer.browserInstance == instance && peer.connectionOrder > order && peer.reconciled && newestOwner(peer,tab:tab) {
+            guard let capture = peer.captures.first(where:{ $0.key.tabID == tab && $0.recording && $0.captureID != nil }) else { continue }
+            let meeting = peer.meetings.first { $0.key.tabID == tab }
+            if peer.supportsMultiStream {
+                guard let generation = pending.generation, (capture.callGeneration ?? meeting?.callGeneration) == generation else { continue }
+            } else {
+                guard let meeting, Self.sameCall(meeting,multiStream:false,generation:nil,url:pending.url) else { continue }
+            }
+            return capture
+        }
+        return nil
     }
     public mutating func receive(_ bytes: Data, from id: UUID) throws {
         let json = try JSONParser.parse(FrameIO.normalized(bytes))
@@ -351,7 +490,7 @@ public struct BrowserControlRegistry: Sendable {
         case "meetings":
             guard peer.hello, let values = json["meetings"]?.array, values.count <= 100 else { throw BrowserControlStateError.malformed }
             var found = Set<Int>()
-            let meetings = try values.map { value -> BrowserMeeting in
+            var meetings = try values.map { value -> BrowserMeeting in
                 let tab = try Self.integer(value["tabId"])
                 let title = try Self.string(value["title"],maximum:200)
                 let url = try Self.string(value["url"],maximum:2048)
@@ -384,6 +523,9 @@ public struct BrowserControlRegistry: Sendable {
                 peer.absentSince = Dictionary(uniqueKeysWithValues:keep.map { ($0.key,$0.value) })
             }
             identifyLineage(&peer, tabs:incomingTabs)
+            assignKeys(meetings,peer:&peer)
+            for index in meetings.indices { meetings[index].key = peer.key(meetings[index].key.tabID) }
+            peer.captures = Self.rekeyed(peer.captures,peer); peer.interrupted = Self.rekeyed(peer.interrupted,peer)
             for meeting in meetings {
                 if let old = previous[meeting.key.tabID], Data(old.utf8) != Data(meeting.url.utf8) {
                     peer.autoAttempted.remove(meeting.key.tabID)
@@ -393,8 +535,10 @@ public struct BrowserControlRegistry: Sendable {
                     if newestOwner(peer,tab:meeting.key.tabID) {
                         let fence = replacementFence(peer)
                         stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock(),retiredBy:fence.map { _ in .init(connection:peer.peer.id,lineage:peer.lineage ?? peer.peer.id) },maximumReplacementOrder:fence ?? 0)
+                        // A key can be shared with a replacement; a late old
+                        // inventory must not overwrite the current address.
+                        rememberContext(.init(call:identity,touched:clock()),key:meeting.key)
                     }
-                    rememberContext(.init(call:identity,touched:clock()),key:meeting.key)
                 }
             }
             for tab in incomingTabs { peer.absentSince.removeValue(forKey:tab) }
@@ -406,8 +550,8 @@ public struct BrowserControlRegistry: Sendable {
             peer.autoAttempted.formUnion(peer.requestedStops)
         case "status":
             guard peer.hello else { throw BrowserControlStateError.malformed }
-            let inventory = try Self.captures(json,peer:id,includeInactive:true,pageState:peer.supportsPageState)
-            let captures = inventory.filter { $0.recording || $0.stopping }, interrupted = try Self.interrupted(json,peer:id,pageState:peer.supportsPageState)
+            let inventory = Self.rekeyed(try Self.captures(json,peer:id,includeInactive:true,pageState:peer.supportsPageState),peer)
+            let captures = inventory.filter { $0.recording || $0.stopping }, interrupted = Self.rekeyed(try Self.interrupted(json,peer:id,pageState:peer.supportsPageState),peer)
             let reports = try Self.pageReports(json,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
             let current = Self.statusInventory(json,captures:captures,interrupted:interrupted,previous:peer,reports:reports)
             retireMissing(peer.captures+peer.interrupted,current:current.captures+current.interrupted,peer:peer)
@@ -425,9 +569,9 @@ public struct BrowserControlRegistry: Sendable {
             let error = try Self.optionalString(json["error"],maximum:2000)
             if !ok, pending.request.action == .start { unboundStarts.removeValue(forKey:requestID) }
             if let status = json["status"], !status.isNull {
-                let inventory = try Self.captures(status,peer:id,includeInactive:true,pageState:peer.supportsPageState)
+                let inventory = Self.rekeyed(try Self.captures(status,peer:id,includeInactive:true,pageState:peer.supportsPageState),peer)
                 let captures = inventory.filter { $0.recording || $0.stopping }
-                let interrupted = try Self.interrupted(status,peer:id,pageState:peer.supportsPageState)
+                let interrupted = Self.rekeyed(try Self.interrupted(status,peer:id,pageState:peer.supportsPageState),peer)
                 let reports = try Self.pageReports(status,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
                 if pending.request.action == .start, ok, let instance = peer.peer.browserInstance,
                    let url = pending.url, let capture = captures.first(where:{ $0.key == pending.request.key }), let identity = capture.captureID {
@@ -443,7 +587,7 @@ public struct BrowserControlRegistry: Sendable {
                         guard let stop = peer.pending[id],stop.request.action == .stop,
                               stop.request.key == pending.request.key,stop.order > pending.order,
                               stop.stopCaptureID == nil else { continue }
-                        peer.pending[id] = .init(request:stop.request,statusRevision:stop.statusRevision,order:stop.order,stopCaptureID:identity,url:stop.url)
+                        peer.pending[id] = .init(request:stop.request,statusRevision:stop.statusRevision,order:stop.order,stopCaptureID:identity,url:stop.url,generation:stop.generation)
                     }
                 }
                 // An asynchronous command result may carry an older replacement
@@ -462,6 +606,17 @@ public struct BrowserControlRegistry: Sendable {
                 }
             }
             peer.pending.removeValue(forKey:requestID)
+            if pending.request.action == .start, ok, let instance = peer.peer.browserInstance {
+                // A buffered success can arrive from the draining link after
+                // its replacement's empty first status. It confirms an actual
+                // Start, so the replacement must not start that call again.
+                for otherID in Array(peers.keys) {
+                    guard var other = peers[otherID], other.connectionOrder > peer.connectionOrder, other.peer.browserInstance == instance,
+                          other.meetings.contains(where:{ $0.key == pending.request.key &&
+                              Self.sameCall($0,multiStream:other.supportsMultiStream,generation:pending.generation,url:pending.url) }) else { continue }
+                    other.autoAttempted.insert(pending.request.key.tabID); peers[otherID] = other
+                }
+            }
             if let original = pending.url, let current = peer.meetings.first(where:{ $0.key == pending.request.key })?.url,
                Data(original.utf8) != Data(current.utf8) {
                 // An older command finishing after navigation must not keep
@@ -493,39 +648,45 @@ public struct BrowserControlRegistry: Sendable {
         }
         peers[id] = peer
         bindCaptures(peer)
+        resolveReturningStarts()
     }
     /// D52.1 R67: join an active native stand-in. Requires the peer's resume-capture-v1
     /// and multi-stream-v1 hello and the row's call generation; never a fresh Start.
     public mutating func resume(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int) throws -> (BrowserControlRequest,String) {
-        guard var peer = peers[key.peer], !peer.superseded else { throw BrowserControlStateError.unavailable }
+        guard let owner = owner(key), var peer = peers[owner] else { throw BrowserControlStateError.unavailable }
+        let key = peer.key(key.tabID)
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         guard peer.independent, peer.supportsResume, peer.supportsMultiStream else { throw BrowserControlStateError.incompatible }
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }), let generation = meeting.callGeneration else { throw BrowserControlStateError.noSources }
+        guard !uncertainStart(meeting,multiStream:true) else { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         guard !captureID.isEmpty, captureID.utf8.count <= 128, (0...253402300799000).contains(timelineOriginMs) else { throw BrowserControlStateError.malformed }
-        let request = try Self.command(key,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
+        let request = try Self.command(key,connection:owner,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
                                        resume:(captureID,timelineOriginMs))
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
-        peer.commandOrder &+= 1
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:meeting.url)
+        peer.commandOrder &+= 1; peer.keys[key.tabID] = key
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:meeting.url,generation:generation)
         peer.autoAttempted.insert(key.tabID)
-        peers[key.peer] = peer
+        peers[owner] = peer
         return (request,generation)
     }
+    /// Commands are routed to the live connection which now owns the key.
     public mutating func start(_ key: BrowserMeetingKey, microphone: Bool, automatic: Bool = false) throws -> BrowserControlRequest {
-        guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
-        guard !peer.superseded else { throw BrowserControlStateError.unavailable }
+        guard let owner = owner(key), var peer = peers[owner] else { throw BrowserControlStateError.unavailable }
+        let key = peer.key(key.tabID)
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         guard peer.independent else { throw BrowserControlStateError.incompatible }
         guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
         if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
-        guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
-        let request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
-                                       callGeneration:peer.supportsMultiStream ? meeting.callGeneration : nil)
+        guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }),
+              !uncertainStart(meeting,multiStream:peer.supportsMultiStream) else { throw BrowserControlStateError.busy }
+        let generation = peer.supportsMultiStream ? meeting.callGeneration : nil
+        let request = try Self.command(key,connection:owner,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
+                                       callGeneration:generation)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
-        peer.commandOrder &+= 1
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url)
+        peer.commandOrder &+= 1; peer.keys[key.tabID] = key
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:meeting.url,generation:generation)
         peer.autoAttempted.insert(key.tabID)
         if let identity = call(meeting,peer:peer) {
             if !automatic {
@@ -535,7 +696,7 @@ public struct BrowserControlRegistry: Sendable {
             unboundStarts[request.id] = .init(key:key,context:.init(call:identity,touched:clock()))
             if unboundStarts.count > UserStoppedCalls.limit, let oldest = unboundStarts.min(by:{ $0.value.context.touched < $1.value.context.touched })?.key { unboundStarts.removeValue(forKey:oldest) }
         }
-        peers[key.peer] = peer
+        peers[owner] = peer
         return request
     }
     /// An explicit Stop suppresses auto-restart until discovery says this call
@@ -543,29 +704,30 @@ public struct BrowserControlRegistry: Sendable {
     /// nil means already pending or deferred until drainStops() frees capacity.
     public mutating func stop(_ key: BrowserMeetingKey, captureID: String? = nil, userInitiated explicitIntent: Bool? = nil, reason: CaptureEndReason = .user) throws -> BrowserControlRequest? {
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
-        let currentCapture = peers[key.peer].flatMap { ($0.captures+$0.interrupted).first { $0.key == key } }?.captureID
+        let owner = owner(key), key = owner.flatMap { peers[$0]?.key(key.tabID) } ?? key
+        let currentCapture = owner.flatMap { peers[$0] }.flatMap { ($0.captures+$0.interrupted).first { $0.key == key } }?.captureID
         let originalCapture = captureID ?? currentCapture
         if userInitiated { rememberUserStop(key:key,captureID:originalCapture) }
-        guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
-        guard !peer.superseded else { throw BrowserControlStateError.unavailable }
+        guard let owner, var peer = peers[owner] else { throw BrowserControlStateError.unavailable }
         if let captureID, let currentCapture, Data(captureID.utf8) != Data(currentCapture.utf8) { return nil }
         if let captureID, currentCapture == nil, let original = captureCalls[Data(captureID.utf8)],
            knownCalls[key]?.call != original.call { return nil } // An old capture cannot stop the tab's new call.
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         peer.autoAttempted.insert(key.tabID)
         peer.requestedStops.insert(key.tabID)
+        peer.keys[key.tabID] = key
         if peer.stopReasons[key.tabID] == nil { peer.stopReasons[key.tabID] = reason }
-        if peer.pending.values.contains(where:{ $0.request.key == key && $0.request.action == .stop }) { peers[key.peer] = peer; return nil }
-        let request = try Self.command(key,action:.stop,independent:peer.independent,microphone:false,reason:peer.supportsPageState ? peer.stopReasons[key.tabID] : nil,
+        if peer.pending.values.contains(where:{ $0.request.key == key && $0.request.action == .stop }) { peers[owner] = peer; return nil }
+        let request = try Self.command(key,connection:owner,action:.stop,independent:peer.independent,microphone:false,reason:peer.supportsPageState ? peer.stopReasons[key.tabID] : nil,
                                        captureID:peer.supportsMultiStream ? currentCapture : nil)
-        guard peer.pending.count < 128 else { peers[key.peer] = peer; return nil }
+        guard peer.pending.count < 128 else { peers[owner] = peer; return nil }
         peer.commandOrder &+= 1
         let target = currentCapture
         let originalURL = target.flatMap { captureCalls[Data($0.utf8)]?.call.url }
             ?? peer.pending.values.first(where:{ $0.request.key == key && $0.request.action == .start })?.url
             ?? peer.meetings.first(where:{ $0.key == key })?.url
         peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:target,url:originalURL)
-        peers[key.peer] = peer
+        peers[owner] = peer
         return request
     }
     /// Called after every replacement snapshot and when auto-record is enabled.
@@ -575,7 +737,7 @@ public struct BrowserControlRegistry: Sendable {
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where peer.reconciled && peer.independent {
             for meeting in peer.meetings where meeting.sourceCount > 0 && (!peer.callEvidence || meeting.heard) && !peer.autoAttempted.contains(meeting.key.tabID) && !peer.requestedStops.contains(meeting.key.tabID) {
-                guard newestOwner(peer,tab:meeting.key.tabID) else { continue }
+                guard newestOwner(peer,tab:meeting.key.tabID), !uncertainStart(meeting,multiStream:peer.supportsMultiStream) else { continue }
                 if let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { continue }
                 keys.append(meeting.key)
             }
@@ -593,7 +755,7 @@ public struct BrowserControlRegistry: Sendable {
         if userInitiated {
             for id in Set(unretiredCaptures.keys).union(retainedCaptureIDs) { rememberUserStop(captureID:String(data:id,encoding:.utf8)) }
             for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }
-            for peer in peers.values {
+            for peer in Array(peers.values) + released.values.map(\.peer) {
                 guard let instance = peer.peer.browserInstance else { continue }
                 for pending in peer.pending.values {
                     if let url = pending.url { stoppedCalls.remember(.init(instance:instance,tabID:pending.request.key.tabID,url:url),now:clock()) }
@@ -604,16 +766,16 @@ public struct BrowserControlRegistry: Sendable {
         for peer in peers.values where !peer.superseded {
             keys.formUnion(peer.captures.map(\.key))
             keys.formUnion(peer.pending.values.map { $0.request.key })
-            keys.formUnion(peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) })
+            keys.formUnion(peer.requestedStops.map { peer.key($0) })
         }
         return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:userInitiated,reason:reason) }
     }
     /// Drain after results/timeouts free space. Stop intent survives a full
     /// command window instead of being lost when many starts are pending.
     public mutating func drainStops() -> [BrowserControlRequest] {
-        var keys: [BrowserMeetingKey] = []
-        for peer in peers.values where !peer.superseded { keys += peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) } }
-        var requests = keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:false,reason:peers[$0.peer]?.stopReasons[$0.tabID] ?? .user) }
+        var keys: [(BrowserMeetingKey,CaptureEndReason)] = []
+        for peer in peers.values where !peer.superseded { keys += peer.requestedStops.map { (peer.key($0),peer.stopReasons[$0] ?? .user) } }
+        var requests = keys.sorted { Self.ordered($0.0,$1.0) }.compactMap { try? stop($0.0,userInitiated:false,reason:$0.1) }
         // A Stop can precede ID binding or control reconciliation. When that
         // same capture returns, send its queued Stop without targeting a
         // replacement capture or treating a missing URL as a wildcard.
@@ -631,15 +793,16 @@ public struct BrowserControlRegistry: Sendable {
     }
     /// Timeouts/failed sends are not retried blindly: a Start may have succeeded.
     public mutating func failed(_ request: BrowserControlRequest) {
-        guard var peer = peers[request.key.peer], peer.pending.removeValue(forKey:request.id) != nil else { return }
-        peers[request.key.peer] = peer
+        guard var peer = peers[request.connectionID], peer.pending.removeValue(forKey:request.id) != nil else { return }
+        peers[request.connectionID] = peer
         if request.action == .start { unboundStarts.removeValue(forKey:request.id) }
         appendOutcome(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil))
     }
     private mutating func appendOutcome(_ outcome: BrowserControlOutcome) {
+        deliveries.append(outcome)
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }
     }
-    private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false,
+    private static func command(_ key: BrowserMeetingKey, connection: UUID, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false,
                                 callGeneration: String? = nil, captureID: String? = nil, resume: (String,Int)? = nil) throws -> BrowserControlRequest {
         guard (0...9007199254740991).contains(key.tabID) else { throw BrowserControlStateError.malformed }
         let id = UUID().uuidString.lowercased()
@@ -654,7 +817,7 @@ public struct BrowserControlRegistry: Sendable {
         if action == .start, let resume {
             fields.append(("resumeCapture",.object([("captureId",.string(resume.0)),("timelineOriginMs",.number(String(resume.1)))])))
         }
-        return .init(id:id,key:key,action:action,data:try JSON.object(fields).encoded(maximumBytes:FrameIO.maximum))
+        return .init(id:id,key:key,connectionID:connection,action:action,data:try JSON.object(fields).encoded(maximumBytes:FrameIO.maximum))
     }
     private static func generation(_ value: JSON?) throws -> String? {
         guard let value, !value.isNull else { return nil }

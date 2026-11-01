@@ -17,6 +17,14 @@ private final class Admission: @unchecked Sendable {
     func set(_ value: Bool) { lock.withLock { allowed = value } }
     func read() -> Bool { lock.withLock { allowed } }
 }
+private final class KeyLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var keys: Set<BrowserMeetingKey> = [], completions: [BrowserControlOutcome] = []
+    func record(_ peers: [BrowserControlPeerSnapshot]) { lock.withLock { keys.formUnion(peers.flatMap(\.meetings).map(\.key)) } }
+    func complete(_ outcome: BrowserControlOutcome) { lock.withLock { completions.append(outcome) } }
+    var meetingKeys: Set<BrowserMeetingKey> { lock.withLock { keys } }
+    var outcomes: [BrowserControlOutcome] { lock.withLock { completions } }
+}
 final class ControlServiceTests: XCTestCase {
     func testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -49,18 +57,19 @@ final class ControlServiceTests: XCTestCase {
     func testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let bound = expectation(description:"First status binds before audio registration")
-        let gone = expectation(description:"Control connection gone")
+        let gone = expectation(description:"Control connection gone"), closing = Admission()
         bound.assertForOverFulfill = false; gone.assertForOverFulfill = false
         let service = BrowserControlService(changed:{ peers in
             if peers.contains(where:{ $0.captures.first?.captureID == "capture" }) { bound.fulfill() }
-            if peers.isEmpty { gone.fulfill() }
+            // A released link stays listed, unreconciled, for its UI keys.
+            if closing.read(), !peers.contains(where:{ $0.reconciled }) { gone.fulfill() }
         },completed:{ _,_ in })
         try service.start(root:root); defer { service.stop() }
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
         var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
         try hello(try XCTUnwrap(first)); try send(status(true),try XCTUnwrap(first))
         wait(for:[bound],timeout:3)
-        first = nil
+        closing.set(true); first = nil
         wait(for:[gone],timeout:3)
         service.rememberUserStop(captureID:"capture",key:nil)
         service.setAutoRecord(true,microphone:false)
@@ -78,7 +87,7 @@ final class ControlServiceTests: XCTestCase {
             try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic)
         },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         let service = BrowserControlService(changed:{ peers in
-            if closing.read(), peers.isEmpty { gone.fulfill() }
+            if closing.read(), !peers.contains(where:{ $0.reconciled }) { gone.fulfill() }
         },completed:{ _,_ in },audio:broker)
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:false)
@@ -98,6 +107,48 @@ final class ControlServiceTests: XCTestCase {
         XCTAssertThrowsError(try receive(next,seconds:0.3))
         // This test opens only private files/FIFOs; no PCM or device is used.
         try send(["type":"stop"],audio); XCTAssertEqual(try receive(audio)["type"]?.string,"stopped")
+    }
+    /// A worker restart loses an automatic Start's result. The service never
+    /// resends it; the returning same-call status settles it once, keeping the
+    /// meeting's UI key and the automatic classification.
+    func testLostAutomaticStartAcrossAWorkerRestartSettlesOverRealPipes() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let disconnected = expectation(description:"Released link"), succeeded = expectation(description:"Recovered automatic Start")
+        disconnected.assertForOverFulfill = false
+        let closing = Admission(), log = KeyLog()
+        let service = BrowserControlService(changed:{ peers in
+            log.record(peers)
+            if closing.read(), !peers.contains(where:{ $0.reconciled }) { disconnected.fulfill() }
+        },completed:{ outcome,automatic in
+            log.complete(outcome); XCTAssertTrue(outcome.ok); XCTAssertTrue(automatic); succeeded.fulfill()
+        })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        func ready(_ client: PipeEndpoint) throws {
+            try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"]],client)
+            try send(["type":"meetings","meetings":[["tabId":2,"title":"Call","url":"https://meet.example/call","sourceCount":2,"callGeneration":"call-A"]]],client)
+            try send(status(false),client)
+        }
+        var recording = status(true), sessions = recording["sessions"] as! [[String:Any]]
+        sessions[0]["callGeneration"] = "call-A"; recording["sessions"] = sessions
+        var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try ready(try XCTUnwrap(first))
+        let start = try receive(try XCTUnwrap(first))
+        XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["callGeneration"]?.string,"call-A")
+        closing.set(true); first = nil; wait(for:[disconnected],timeout:3)
+        XCTAssertTrue(log.outcomes.isEmpty)
+        let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try ready(second)
+        XCTAssertThrowsError(try receive(second,seconds:0.2),"An uncertain Start must not be sent twice")
+        XCTAssertTrue(log.outcomes.isEmpty)
+        try send(recording,second)
+        wait(for:[succeeded],timeout:3)
+        try send(recording,second)
+        XCTAssertThrowsError(try receive(second,seconds:0.2))
+        XCTAssertEqual(log.outcomes.count,1)
+        XCTAssertEqual(log.meetingKeys.count,1,"The meeting keeps one UI key across the restart")
+        XCTAssertEqual(log.outcomes.first.map { log.meetingKeys.contains($0.key) },true)
     }
     func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
