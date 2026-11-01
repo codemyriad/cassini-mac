@@ -28,6 +28,8 @@ struct LiveCapture {
     var fallbackAnnounced = false
     var lifetime = BrowserCallLifetime()
     var callLifecycle = BrowserCallLifecycle()
+    /// D52 M3: used instead of `callLifecycle` when the peer advertises multi-stream-v1.
+    var callPolicy = BrowserCallPolicy()
     var modernLifecycle: Bool?
     var changingSource = false
     fileprivate var sourceObservation: BrowserSourceObservation?
@@ -456,9 +458,34 @@ private final class CaptureFiles: @unchecked Sendable {
                 }
                 let returnFloor = page?.1.map { max(0,$0-value.originUptime)*1000 }
                 let ready = source.restoreReady && source.browserReturnPCMAt.map { $0 >= (returnFloor ?? 0) } == true
-                let action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
-                    transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
-                    restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                let multiStream = peer?.supportsMultiStream == true
+                // D52 M6: a capture belongs to the call it started in. When the tab's
+                // call generation moves on, this session ends instead of absorbing B.
+                if multiStream, let started = status?.callGeneration, let current = meeting?.callGeneration, started != current {
+                    value.owner.requestEnd(.callEnded,atMs:max(0,now-value.originUptime)*1000)
+                    stop(id,reason:.callEnded); continue
+                }
+                let action: BrowserCallLifecycle.Action?
+                if multiStream {
+                    // D52 M3: unknown inventory is not zero; the 30 s grace arms only after
+                    // remote audio was heard; admitted browser PCM (never the microphone)
+                    // keeps a call alive while control is absent.
+                    let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
+                    let observation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
+                        sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
+                        controlAlive:peer != nil,pcmLive:fresh)
+                    switch captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
+                    case .fallback?: action = .fallback
+                    case .restore?: action = .restore
+                    case .stop(let reason)?: action = .stop(reason)
+                    // The D49 take-over of a system/missing stand-in arrives with resume-capture-v1.
+                    case .callConnected?, nil: action = nil
+                    }
+                } else {
+                    action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
+                        transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
+                        restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                }
                 if case .stop(let reason) = action, let end = CaptureEndReason(rawValue:reason.rawValue) {
                     value.owner.requestEnd(end,atMs:max(0,now-value.originUptime)*1000)
                     stop(id,reason:end); continue
@@ -468,10 +495,11 @@ private final class CaptureFiles: @unchecked Sendable {
                 // A present/zero report can cancel the queued navigation-loss
                 // task before it reaches the owner. Commit the still-observed
                 // source loss before attempting fallback, even after present.
-                let lost = source.browserAlive && (observedPage != .present || count == 0) || navigation
+                // Under D52 a present page with zero sources is a possible rejoin, not loss.
+                let lost = source.browserAlive && (observedPage != .present || (!multiStream && count == 0)) || navigation
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
                 let fallback = action == .fallback && !value.input.failedSides.contains(.others)
-                let returned = observedPage == .present && (count ?? 0) > 0 && ready && source.others
+                let returned = multiStream ? action == .restore : observedPage == .present && (count ?? 0) > 0 && ready && source.others
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
                 let atMs = max(0,now-value.originUptime)*1000
