@@ -150,6 +150,9 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
             }
         }
         try await capture.finish(problem:problem ?? nativeProblem,reason:reason,atMs:atMs)
+        // D52.1 R65: outside the capture queue; a failed metadata write keeps the PCM and is reported.
+        let saved = capture.snapshot
+        try CaptureRecordWriter.write(saved.manifest,directory:saved.directory)
     }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
