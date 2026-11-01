@@ -16,7 +16,7 @@ public enum MeetingFileExporter {
         if meeting.state.origin == .received, let file = meeting.audioFiles.first {
             return (try FileManager.default.attributesOfItem(atPath:file.path)[.size] as? NSNumber)?.int64Value
         }
-        let inputs = try meeting.audioTracks.map(PCMInput.init)
+        let inputs = try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
         let frames = inputs.map { $0.offsetFrames + $0.outputFrames }.max() ?? 0
         guard frames > 0 else { return nil }
         let choice = AudioEncodeChoice.choose(inputs.map(\.source))
@@ -48,7 +48,7 @@ public enum MeetingFileExporter {
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
         } else {
-            let inputs = try meeting.audioTracks.map(PCMInput.init)
+            let inputs = try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
             guard let assets else { throw MeetingExportError.invalidAssets }
             let selected = AudioEncodeChoice.choose(inputs.map(\.source))
             let bare = directory.appendingPathComponent("audio.opus")
@@ -59,7 +59,8 @@ public enum MeetingFileExporter {
         if shouldCancel() { throw CancellationError() }
         let complete = meeting.state.transcript == .done
         let items = complete ? meeting.transcriptItems : []
-        let language = complete ? (meeting.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language ?? "auto") : "auto"
+        // D53.2: body and descriptor carry the run's language, or "und" when unknown.
+        let language = TranscriptLanguage.written(complete ? (meeting.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language) : nil)
         struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
         let body = try encoder.encode(Body(language:language,items:items))

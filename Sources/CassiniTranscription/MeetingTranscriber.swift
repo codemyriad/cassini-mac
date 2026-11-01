@@ -3,6 +3,7 @@ import Foundation
 import CryptoKit
 import Darwin
 import CassiniLibrary
+import CassiniKit
 import CassiniRecording
 import CassiniWhistle
 
@@ -64,14 +65,17 @@ public enum MeetingTranscriber {
               [.none,.queued,.running,.failed].contains(meeting.state.transcript) else { throw TranscriptionFailure.invalidMeeting }
         let writer = try MeetingMetadataWriter(directory: directory, id: meeting.id)
         do {
+            let attemptStarted = ProcessInfo.processInfo.systemUptime
             try setStatus(directory: directory, id: meeting.id, status: "running")
             let received = meeting.state.origin == .received
             struct Track {
                 let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
+                /// Speech segments clipped to the half-open ranges this source owns.
+                let segments: [SpeechSegment]
             }
             var tracks: [Track] = []
-            let sources: [(URL, String, String, Double?, String?)]
-            if received { sources = [(meeting.audioFiles[0], "original", "original", 0, nil)] }
+            let sources: [(URL, String, String, Double?, String?, Double?)]
+            if received { sources = [(meeting.audioFiles[0], "original", "original", 0, nil, nil)] }
             else {
                 // The Library scanner already isolates damaged tracks and
                 // safely salvages unsupported/missing manifests. Reuse those
@@ -79,12 +83,36 @@ public enum MeetingTranscriber {
                 sources = meeting.audioTracks.compactMap { track in
                     guard track.frameCount != 0 else { return nil }
                     let filenameID = String(track.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count))
-                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID)
+                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs)
                 }
             }
-            for (url, id, kind, offset, sourceTrackID) in sources {
+            // D52 M1: one source becomes one speaker only while its spans are disjoint.
+            let lanes = SourceSpanLanes.assign(sources.compactMap { url, id, kind, offset, sourceTrackID, end in
+                let base = TranscriptSpeaker.fromTrack(id:id,kind:kind,sourceTrackID:sourceTrackID,received:received,me:me,others:others).id
+                guard base.hasPrefix("track-"), !received else { return nil }
+                return .init(id:id,base:base,startMs:offset,endMs:offset == nil ? nil : end)
+            })
+            let separated = lanes.values.contains { $0.contains(":overlap:") }
+            let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
+            for (url, id, kind, offset, sourceTrackID, _) in sources {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
-                tracks.append(.init(audio: try SegmentedAudio(url: url, detector: detector), speaker: .fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others), offset: Int64(floor(offset ?? 0))))
+                var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
+                if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
+                let audio = try SegmentedAudio(url: url, detector: detector)
+                var segments = audio.segments
+                // D49/D33 seams: audio outside this source's ownership is not recognized.
+                if let ownership, let offset {
+                    let owned = ownership.owned(kind:kind,startMs:offset,endMs:offset + Double(audio.sampleCount)/16)
+                    segments = segments.flatMap { segment in
+                        owned.compactMap { range -> SpeechSegment? in
+                            // D52.2 presence grid: [a,b) ms covers samples [ceil(16a-1e-6), ceil(16b-1e-6)).
+                            let a = max(segment.startSample,Int(((range.0-offset)*16 - 1e-6).rounded(.up)))
+                            let b = min(segment.endSample,Int(((range.1-offset)*16 - 1e-6).rounded(.up)))
+                            return b > a ? .init(startSample:a,endSample:b,reason:segment.reason) : nil
+                        }
+                    }
+                }
+                tracks.append(.init(audio: audio, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments))
             }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
@@ -93,12 +121,13 @@ public enum MeetingTranscriber {
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
-            var remaining = tracks.reduce(0.0) { sum, track in sum + track.audio.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
+            var remaining = tracks.reduce(0.0) { sum, track in sum + track.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
             let reference: [String:Any] = ["kind":"sidecar", "file":"transcript.json", "format":"cassini.words.v1"]
             func publish(status: String) throws {
                 let ordered = progress.published(items,complete:status == "done")
                 struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
-                let data = try JSONEncoder().encode(Body(language: language, items: ordered))
+                // D53.2: an unknown language is written as "und", never the "auto" request.
+                let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
                 try atomicTranscript(data, directory: directory)
                 let factor = processed > 0 ? elapsed / processed : initialETA
@@ -122,14 +151,29 @@ public enum MeetingTranscriber {
                         speakers[index]["label"]=(speakers[index]["name"] as? String) ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(number+1)],language:uiLanguage)
                     }
                     metadata["speakers"] = speakers
+                    if status == "done" {
+                        // D28 writingDown facts of this successful attempt (the schema requires
+                        // wallDurationMs, resumed and speakerSeparation). Known facts are replaced by
+                        // each completed attempt; unknown fields survive. Mac has no speaker separation.
+                        var details = metadata["recordingDetails"] as? [String:Any] ?? [:]
+                        var writing = details["writingDown"] as? [String:Any] ?? [:]
+                        writing["wallDurationMs"] = Int64(max(0,ProcessInfo.processInfo.systemUptime - attemptStarted) * 1000)
+                        writing["resumed"] = resumes
+                        writing["speechSegments"] = tracks.reduce(0) { $0 + $1.segments.count }
+                        writing["speakerSeparation"] = ["status":"skipped","reason":"unavailable"]
+                        // D52.3d: set only when separation actually ran.
+                        if separated { writing["sourceSpansSeparated"] = true } else { writing.removeValue(forKey:"sourceSpansSeparated") }
+                        details["writingDown"] = writing
+                        metadata["recordingDetails"] = details
+                    }
                 }
             }
             try publish(status: "running")
             for (index, track) in tracks.enumerated() {
-                for segment in track.audio.segments {
+                for segment in track.segments {
                     let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
                     let result = try recognize(samples)
-                    if language == "auto" { language = result.language }
+                    if ["auto","und",""].contains(language) { language = result.language }
                     let start = track.offset + Int64(segment.startSample * 1000 / 16000)
                     for word in result.words ?? [] {
                         guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start, word.end <= Double(samples.count) / 16000 + 1 else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }

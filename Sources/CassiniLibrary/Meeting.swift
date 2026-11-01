@@ -87,9 +87,15 @@ public struct LibraryAudioTrack: Sendable, Equatable {
     public let sourceID: String?
     public let sourceKind: String?
     public let sourceTrackID: String?
-    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil) {
+    public let sampleRate: Int?
+    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil, sampleRate: Int? = nil) {
         self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount
-        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID
+        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID; self.sampleRate = sampleRate
+    }
+    /// Exact physical end on the session timeline, when offset and length are known.
+    public var endOffsetMs: Double? {
+        guard let startOffsetMs, let frameCount, let sampleRate, sampleRate > 0 else { return nil }
+        return startOffsetMs + Double(frameCount)*1000/Double(sampleRate)
     }
 }
 public struct LibraryMeeting: Sendable {

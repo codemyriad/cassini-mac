@@ -10,3 +10,14 @@ struct TranscriptTextTests {
         #expect(TranscriptText.quotes(["\"one\" then \"two\" and \""]) == ["“one” then “two” and "])
     }
 }
+
+/// D53.2: an unknown recognizer language is written as "und", never "auto" or "".
+struct D53TranscriptLanguageTests {
+    @Test func unknownLanguageIsWrittenAsUnd() {
+        #expect(TranscriptLanguage.written(nil) == "und")
+        #expect(TranscriptLanguage.written("auto") == "und")
+        #expect(TranscriptLanguage.written("") == "und")
+        #expect(TranscriptLanguage.written("it-IT") == "it-IT")
+        #expect(TranscriptLanguage.written("en") == "en")
+    }
+}

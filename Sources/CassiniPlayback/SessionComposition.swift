@@ -21,7 +21,7 @@ public enum SessionComposition {
         public var errorDescription: String? { CocoaError(.fileReadCorruptFile).localizedDescription }
     }
 
-    public static func make(tracks: [LibraryAudioTrack]) async throws -> SessionTimeline {
+    public static func make(tracks: [LibraryAudioTrack], ownership: OthersOwnership? = nil) async throws -> SessionTimeline {
         guard !tracks.isEmpty else { throw Failure.noAudio }
         let composition = AVMutableComposition()
         let storage = PlaybackStorage()
@@ -45,7 +45,19 @@ public enum SessionComposition {
             // A nanosecond time base retains fractional millisecond offsets and
             // stays safely within Int64 across the protocol's one-day bound.
             let start = CMTime(seconds: offset / 1000, preferredTimescale: 1_000_000_000)
-            try output.insertTimeRange(range, of: input, at: start)
+            if let ownership {
+                // D52: insert only the half-open ranges this source owns.
+                let end = offset + range.duration.seconds*1000
+                let owned = ownership.owned(kind:source.sourceKind,startMs:offset,endMs:end)
+                for (a,b) in owned {
+                    let from = CMTime(seconds:(a-offset)/1000,preferredTimescale:1_000_000_000) + range.start
+                    let length = CMTime(seconds:(b-a)/1000,preferredTimescale:1_000_000_000)
+                    try output.insertTimeRange(CMTimeRange(start:from,duration:length),of:input,at:CMTime(seconds:a/1000,preferredTimescale:1_000_000_000))
+                }
+                if owned.isEmpty { composition.removeTrack(output); continue }
+            } else {
+                try output.insertTimeRange(range, of: input, at: start)
+            }
             sources += 1
         }
         try Task.checkCancellation()
