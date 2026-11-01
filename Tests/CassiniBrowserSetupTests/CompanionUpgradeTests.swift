@@ -31,11 +31,11 @@ struct CompanionUpgradeTests {
         // or installer mock. The home is private and no browser is launched.
         let program = "import os,runpy,sys; os.umask(0); sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')"
         try run("/usr/bin/env",["python3","-c",program,repository.appendingPathComponent("scripts/bundle-browser-companion.py").path,source.path])
-        let upgraded = try install(installer,stage:"real 0.2.8 upgrade")
-        #expect(upgraded.updated && upgraded.version == "0.2.8")
+        let upgraded = try install(installer,stage:"real 0.2.9 upgrade")
+        #expect(upgraded.updated && upgraded.version == "0.2.9")
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("background.js")) != background)
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("app-control.js")) != control)
-        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "3238aabecce29ae4f7faca57383e6b0b37faa9df")
+        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "a1be3bcf2678a308d5b17c5b09b1a57c1c8d5635")
         var identities: [String:NSNumber] = [:], dates: [String:Date] = [:]
         let files = try #require(FileManager.default.enumerator(atPath:source.path))
         var count = 0

@@ -1,26 +1,26 @@
-tree 7eb3951a6dfba043f749e3e22dfe4a0acde09680
-parent c6f5fc72bfd9e31fc9db32c9f06d802f45baf168
-parent 534ec9bc0ebd217639f82aa64a3672a9dcac7c1b
-author Silvio Tomatis <silviot@gmail.com> 1793552145 +0100
-committer GitHub <noreply@github.com> 1793552145 +0100
+tree 61e7b57af97010bf10ff6eda74eae1efbd54b90c
+parent 8e160acf194fc6e21e8b132893afd612f0223557
+parent cda50d4cd88461b339ffaa93df2c21c236920036
+author Silvio Tomatis <silviot@gmail.com> 1793570168 +0100
+committer GitHub <noreply@github.com> 1793570168 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq528RCRC1aQ7uu5UhlAAASYgQAK1jGw34zFyLfMfru6rA6AO9
- KQPlWL2hpYgW2kHo0eiqkl4KC8TzGJa1pU6LFG3v2vTEgtgVe77gfzSQFYn0b2b2
- ShuXIzkFFAqtdfEheTzt5TfH1ZDnc7Rnq9WBkdLKRMbuyNM6jLtMCq5XmpOWxmTk
- LDb7W1R5HtcTe2uMIsqkC2sVU8MGKyGod5vxWm1OQYr9ueztrSm922uW4dVZb7OH
- VSYjP4gNy407cEvM36y+KbNtx9ilgA8CpsGLvwmB4ebFLPLVkUNtauOe9BQMMcGb
- dVt25luhagG0ANZgu3q7M5oJDYmteR9QNDXsEISOwJ9ctJcphfsXd2hy91trSPJf
- VlQrZRwKEKAnK2I84BrhRZBwUrw7BCpFZy6kTBkeZk/BKm8FCWc54njfv8ZmPDMC
- a1KIxXqbXaVbIfogGfefE1ofmnPC/lft6Kpfb53PP9fiqdVc7al2xpEOLcrA+gbg
- iphMhnVsCaHAR9+3wzq2A5ED++iAWYXRFOX/QFsVJYsUImtWt/gGzp3O7ii7qcb+
- LduBjkTnIeHwJHlHMS+BtzcQzmqMAiTFAdWUdefBrY52MaCgFFe8hzOpG4imQq3p
- nCdP9HGb+Oqolbz6gyqDLLWoWULOb5D7wVD+V8QuxFhN2vZujnqW8KILD5CxvzvP
- CtzI6TX5cbilo7pkOuBC
- =VCxT
+ wsFcBAABCAAQBQJq57V4CRC1aQ7uu5UhlAAAJjoQAHaos9KfkRWz8q+oxeiroT5Z
+ o+y14+4SYYFF7QWQmXijGUgQTUDRSe38WqzJ6GRtaa0aGQPlff1t6bVvNBa8tKgH
+ ewqXMc2M9L5x9Yz04BKeSrncd4cf3FLheqtNCm7DW0Bw+I1yORppFP8Ric5jRmU+
+ NCTI3jWiO9Dbclt//gOVVT8aCOthQ+sXVdzcANvNZmYWqJH3DxlwIVL9weYF8RMk
+ DrxlUai+FWCf8UIKIHi14CTKvTzAnKfiU0fCjgpGL6mH3eYMj21AYSbyBPDzxkyJ
+ +1xlgBrQJ0FadgtHcH1YAkm+bM3Xze5gLgVekVIiLuhWHr1L/4NrNegrgbvZfNQ+
+ tem7pfPP7wR03B+oQq8hKEZRsPgC+WNvBtOQaUtT2EX9zld2hIfmvqPPd4YLSHwA
+ 7tXBOVe6pbCtyS6uLG1WxI298ZaRW73IuUu4skkEXv4Laf3RKRO5XuM2OU7CY7ML
+ 1hhUdikh8f5NYi00t/0vBqNAT2no5vr6b9VCTgscE7jsMQ2eOoQ1CjRQIofCn8cn
+ z47WgWhdi/38snxphv+JKvYnptt/TMlsfXr0a+1jYwUZ24pUFMQEbYsJmajp5bxZ
+ qkInAKA+vIL0BaOU8wzEbm0325zRKnzbMoMPYpNe55L7PTWQqliQZM/XsuIZ9ZeL
+ JoUNcgfsDE0lR+H80qyP
+ =W/Fm
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #29 from codemyriad/feat/gap-ranges
+Merge pull request #31 from codemyriad/feat/heartbeat-v1
 
-Record gap ranges and define presence for every writer (D52.2, P7)
+Add heartbeat-v1 control liveness and D52.4 transport-loss rules (extension 0.2.9)
