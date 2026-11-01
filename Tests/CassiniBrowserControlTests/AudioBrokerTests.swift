@@ -7,7 +7,7 @@ import CassiniKit
 import CassiniRecording
 @testable import CassiniBrowserControl
 
-private final class NativeFixtureInputs: @unchecked Sendable {
+final class NativeFixtureInputs: @unchecked Sendable {
     private let lock = NSLock()
     private var sinks: [UUID:RecordingSink] = [:]
     func started(_ capture: OwnedBrowserCapture, info: BrowserAudioStart) {
@@ -26,7 +26,7 @@ private final class NativeFixtureInputs: @unchecked Sendable {
         do { try sink?.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
     }
 }
-private final class NativeAudioClient: @unchecked Sendable {
+final class NativeAudioClient: @unchecked Sendable {
     let process = Process()
     let input = Pipe(), output = Pipe(), errors = Pipe()
     init(root: URL) throws {
@@ -53,7 +53,7 @@ private final class NativeAudioClient: @unchecked Sendable {
     }
     deinit { end() }
 }
-private final class AudioFixture {
+final class AudioFixture {
     let root: URL, ipc: URL, broker: BrowserAudioBroker, service: BrowserControlService
     var clients: [NativeAudioClient] = []
     init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil) throws {

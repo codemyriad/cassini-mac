@@ -149,6 +149,9 @@ private final class AudioPeer: @unchecked Sendable {
     private var owner: OwnedBrowserCapture?
     private var completed = false, failed = false
     private var originUptime: TimeInterval?
+    /// D52: this connection negotiated source-outcomes-v1.
+    private var sourceOutcomes = false
+    private var captureID: String?
     init(connection: BrowserPipeConnection, broker: BrowserAudioBroker) { self.connection = connection; self.broker = broker }
     private func string(_ json: JSON, _ key: String, optional: Bool = false, code: String = "source") throws -> String? {
         guard let value = json[key], !value.isNull else {
@@ -161,13 +164,21 @@ private final class AudioPeer: @unchecked Sendable {
     }
     func receive(_ data: Data) {
         guard !failed else { return }
+        var packetType: String?, json: JSON = .null
         do {
             guard !data.isEmpty, data.count <= FrameIO.maximum else { throw BrowserProtocolError("framing","Invalid native frame size.") }
-            let json: JSON
             do { json = try JSONParser.parse(data) } catch { throw BrowserProtocolError("framing","Invalid JSON message.") }
-            guard let type = json["type"]?.string, json.object != nil else { throw BrowserProtocolError("framing","Expected a message object.") }
+            guard let kind = json["type"]?.string, json.object != nil else { throw BrowserProtocolError("framing","Expected a message object.") }
+            packetType = kind
+            guard ["start","track","audio","stop"].contains(kind) || (sourceOutcomes && ["trackEnd","sources"].contains(kind)) else { throw BrowserProtocolError("version","Unknown browser message type.") }
+            if completed, sourceOutcomes, kind == "stop", let owner {
+                // A matching Stop after native finalization still ACKs; it cannot rewrite the saved meeting.
+                guard json["captureId"]?.string == captureID else { throw ScopedRefusal("state","Capture identity does not match.") }
+                guard (json["discoveredSources"]?.array ?? []).isEmpty else { throw ScopedRefusal("state","Capture already saved.") }
+                try connection.send(JSON.object([("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]).encoded(maximumBytes:FrameIO.maximum)); return
+            }
             guard !completed else { throw BrowserProtocolError("state","Recording is already stopped.") }
-            guard ["start","track","audio","stop"].contains(type) else { throw BrowserProtocolError("version","Unknown browser message type.") }
+            let type = kind
             var response: JSON = .object([("type",.string("ack"))])
             if type == "start" {
                 guard owner == nil else { throw BrowserProtocolError("state","Recording has already started.") }
@@ -180,21 +191,50 @@ private final class AudioPeer: @unchecked Sendable {
                 if let value = json["microphone"], !value.isNull {
                     guard let value = value.bool else { throw BrowserProtocolError("source","Invalid microphone choice.") }; mic = value
                 }
+                var features: [String] = []
+                if let value = json["features"], !value.isNull {
+                    guard let list = value.array, list.count <= 8 else { throw BrowserProtocolError("version","Invalid recording features.") }
+                    for item in list {
+                        guard let feature = item.string, feature.unicodeScalars.count <= 64, !features.contains(feature) else { throw BrowserProtocolError("version","Invalid recording features.") }
+                        features.append(feature)
+                    }
+                }
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
                 let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; response = .object([("type",.string("started")),("path",.string(capture.snapshot.directory.path))])
+                owner = capture; captureID = id
+                var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
+                if features.contains("source-outcomes-v1") {
+                    capture.enableSourceOutcomes(); sourceOutcomes = true
+                    fields.append(("features",.array([.string("source-outcomes-v1")])))
+                }
+                response = .object(fields)
             } else {
                 guard let owner else { throw BrowserProtocolError("state","No active recording.") }
                 switch type {
                 case "track":
-                    try owner.browserTrack(id:string(json,"id")!,label:string(json,"label",optional:true) ?? string(json,"kind")!,kind:string(json,"kind")!,sampleRate:integer(json["sampleRate"]),channels:integer(json["channels"]))
+                    try owner.browserTrack(id:string(json,"id")!,label:string(json,"label",optional:true) ?? string(json,"kind")!,kind:string(json,"kind")!,sampleRate:integer(json["sampleRate"]),channels:integer(json["channels"]),
+                                           sourceTrackId:sourceOutcomes || json["sourceTrackId"]?.isNull == false ? string(json,"sourceTrackId",optional:true) : nil)
+                case "trackEnd":
+                    let id = try string(json,"id")!, reason = try string(json,"reason")!
+                    let dropped = try integer(json["droppedFrames"])
+                    guard dropped <= 2147483629 else { throw BrowserProtocolError("source","Invalid dropped frame count.") }
+                    guard let end = json["endOffsetMs"], end.isNull || end.double.map({ $0.isFinite && (0...86460000).contains($0) }) == true else { throw BrowserProtocolError("source","Invalid source end time.") }
+                    try owner.trackEnd(id:id,reason:reason,droppedFrames:UInt64(dropped))
+                case "sources":
+                    try owner.discover(try discovered(json["discoveredSources"],required:true))
                 case "audio":
                     let id = try string(json,"id")!, sequence = try integer(json["sequence"],code:"sequence")
                     guard let encoded = try string(json,"pcm",code:"chunk"), encoded.utf8.count <= 349528,
                           let pcm = Data(base64Encoded:encoded), let offset = json["offsetMs"]?.double, offset.isFinite else { throw BrowserProtocolError("chunk","Invalid audio chunk.") }
                     try owner.browserAudio(id:id,sequence:sequence,offsetMs:offset,pcm:pcm)
                 case "stop":
+                    if sourceOutcomes {
+                        // A mismatched negotiated Stop is refused without ending this capture.
+                        guard json["captureId"]?.string == captureID else { throw ScopedRefusal("state","Capture identity does not match.") }
+                        let summary = try discovered(json["discoveredSources"],required:false)
+                        if !summary.isEmpty { try owner.discover(summary) }
+                    }
                     let reason = try string(json,"failureReason",optional:true), problem = try string(json,"problem",optional:true)
                     guard reason == nil || reason == "lost" else { throw BrowserProtocolError("source","Invalid failure reason.") }
                     let terminal = try string(json,"reason",optional:true)
@@ -221,10 +261,50 @@ private final class AudioPeer: @unchecked Sendable {
             }
             try connection.send(response.encoded(maximumBytes:FrameIO.maximum))
         } catch {
+            if sourceOutcomes, let refusal = scoped(error,type:packetType,json:json),
+               let bytes = try? refusal.encoded(maximumBytes:FrameIO.maximum) {
+                do { try connection.send(bytes); return } catch {}
+            }
             failed = true
             let fields: [(String,JSON)] = [("type",.string("error")),("code",.string((error as? BrowserProtocolError)?.code ?? "io")),("message",.string(error.localizedDescription))]
             if let bytes = try? JSON.object(fields).encoded(maximumBytes:FrameIO.maximum) { try? connection.send(bytes,closeAfter:true) }
             else { connection.close() }
+        }
+    }
+    /// D52: classify a refusal so only that source or command fails; framing,
+    /// version and connection failures stay session failures.
+    private func scoped(_ error: Error, type: String?, json: JSON) -> JSON? {
+        let code = (error as? BrowserProtocolError)?.code ?? (error as? ScopedRefusal)?.code ?? "io"
+        func reply(_ scope: String, id: String? = nil, retired: Bool = false) -> JSON {
+            var fields: [(String,JSON)] = [("type",.string("error")),("code",.string(code)),("message",.string(error.localizedDescription)),("scope",.string(scope))]
+            if let id { fields.append(("id",.string(id))) }
+            if retired { fields.append(("retired",.bool(true))) }
+            return .object(fields)
+        }
+        if error is ScopedRefusal { return reply("command") }
+        guard let type, !["framing","version"].contains(code) else { return nil }
+        if code == "state", completed || owner?.snapshot.phase != .recording { return reply("command") }
+        if type == "sources", error is BrowserProtocolError { return reply("command") }
+        guard ["track","audio","trackEnd"].contains(type), let owner else { return nil }
+        let id = json["id"]?.string
+        let retired = id.map { owner.refuseSource(id:$0,code:code) } ?? false
+        return reply("source",id:id,retired:retired && code == "state")
+    }
+    private func discovered(_ value: JSON?, required: Bool) throws -> [CaptureLedger.Discovered] {
+        guard let value, !value.isNull else {
+            if required { throw BrowserProtocolError("source","Invalid discovered audio sources.") }; return []
+        }
+        guard let rows = value.array, !required || !rows.isEmpty else { throw BrowserProtocolError("source","Invalid discovered audio sources.") }
+        return try rows.map { row in
+            guard row.object != nil, let id = row["sourceTrackId"]?.string, CaptureLedger.validIdentity(id), let kind = row["kind"]?.string,
+                  CaptureLedger.discoverableKinds.contains(kind) else { throw BrowserProtocolError("source","Invalid discovered audio source.") }
+            var label: String?
+            if let value = row["label"], !value.isNull {
+                guard let text = value.string, text.unicodeScalars.count <= 200 else { throw BrowserProtocolError("source","Invalid discovered audio source label.") }; label = text
+            }
+            var failed = false
+            if let value = row["failed"], !value.isNull { guard let flag = value.bool else { throw BrowserProtocolError("source","Invalid discovered audio source.") }; failed = flag }
+            return .init(sourceTrackId:id,kind:kind,label:label,failed:failed)
         }
     }
     private var lossTime: Double {
@@ -234,6 +314,12 @@ private final class AudioPeer: @unchecked Sendable {
         guard !completed, let owner else { return }
         try? owner.browserLost(atMs:lossTime)
     }
+}
+/// A negotiated command refusal that leaves the capture and connection running.
+private struct ScopedRefusal: LocalizedError {
+    let code: String, message: String
+    init(_ code: String, _ message: String) { self.code = code; self.message = message }
+    var errorDescription: String? { message }
 }
 private final class FinishResult: @unchecked Sendable {
     private let lock = NSLock()

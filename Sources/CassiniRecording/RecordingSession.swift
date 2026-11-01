@@ -308,7 +308,19 @@ public final class RecordingSession {
         manifest.captureOutcome = outcome
         for (id,value) in tracks { if let i = manifest.tracks.firstIndex(where:{ $0.id == id }) { manifest.tracks[i].captureOutcome = value } }
     }
+    /// A `sources` ACK means the record is durable even before any WAV exists.
+    public func publishCaptureOutcome(_ outcome: SessionCaptureOutcome?, tracks: [String:CaptureOutcome] = [:]) throws {
+        guard !finished else { throw RecordingError.invalid("Recording is already saved.") }
+        setCaptureOutcome(outcome,tracks:tracks)
+        try checkpoint()
+    }
 
+    /// D52.2 Q3: producer drop counts accumulate on the span that recorded them.
+    public func addDroppedFrames(id: String, frames: UInt64) {
+        guard frames > 0, let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else { return }
+        let (sum,overflow) = (manifest.tracks[index].droppedFrames ?? 0).addingReportingOverflow(frames)
+        manifest.tracks[index].droppedFrames = overflow ? .max : sum
+    }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
         guard let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else { return }
         manifest.tracks[index].droppedFrames = droppedFrames > 0 ? droppedFrames : nil
