@@ -42,14 +42,17 @@ final class LibraryBoards: XCTestCase {
         defer {if app.state != .notRunning {app.terminate()}}
         let window=app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:20),app.debugDescription)
-        XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"label == %@","Aujourd’hui")).firstMatch.waitForExistence(timeout:10),"French Today header with US region: "+app.debugDescription)
+        let header=window.descendants(matching:.any).matching(identifier:"library-day-header-Recording-a0000000-0000-4000-8000-000000000003").firstMatch
+        let today=NSPredicate {_,_ in header.exists && self.visibleText(header)=="Aujourd’hui"}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:today,object:nil)],timeout:10),.completed,"French Today header with US region: "+app.debugDescription)
         // The outline's narrow status capsule truncates its AX value along with
         // the drawn text. Inspect the complete phrase in the selected preview.
         let client=window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
         XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:10),app.debugDescription)
-        let eta=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Transcription, environ 4 minutes","Transcription, environ 4 minutes")).firstMatch
-        XCTAssertTrue(eta.waitForExistence(timeout:10),"Full French ETA in the selected preview: "+app.debugDescription)
+        let eta=window.staticTexts["preview-transcribing-label"]
+        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription, environ 4 minutes"}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:etaReady,object:nil)],timeout:10),.completed,"Full French ETA in the selected preview: "+app.debugDescription)
     }
     @MainActor func testFrenchSearchCountWithAmericanRegionalSettings() throws {
         // A separate test must still exercise Search if a Library check fails.

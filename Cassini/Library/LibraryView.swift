@@ -261,6 +261,7 @@ struct LibraryView: View {
                         }
                     } header: {
                         Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(LibraryTheme.dim).textCase(nil)
+                            .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                     }
                 }
                 if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
@@ -353,7 +354,7 @@ struct LibraryView: View {
                 if meeting.state.transcript == .queued || meeting.state.transcript == .running {
                     HStack(spacing:8) {
                         ProgressView().controlSize(.small)
-                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(LibraryTheme.dim) }
+                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-transcribing-label") }
                     }.accessibilityIdentifier("preview-transcribing")
                 }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
