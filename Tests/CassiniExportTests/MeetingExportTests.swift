@@ -8,6 +8,17 @@ import CassiniRecording
 @testable import CassiniExport
 
 struct MeetingExportTests {
+    @Test func markdownArtifactUsesItsExplicitLanguage() throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let source=try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let before=try Data(contentsOf:source)
+        let meeting=try LibraryImport.copy(source,into:root.appendingPathComponent("Library"))
+        let artifact=try MeetingFileExporter.markdown(meeting,timeZone:TimeZone(secondsFromGMT:0)!,locale:Locale(identifier:"en_US"),language:.fr,temporaryRoot:root)
+        let text=try String(contentsOf:artifact.url,encoding:.utf8)
+        #expect(text.contains("## Transcription\n"))
+        #expect(!text.contains("## Transcript\n"))
+        #expect(try Data(contentsOf:source)==before)
+    }
     @Test func legacyEchoFieldsCannotDropWordsFromExports() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let original = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
