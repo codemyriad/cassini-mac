@@ -19,8 +19,8 @@ try:
     trace=output/'B-TimeProfiler.trace'
     with (output/'profile-toc.xml').open('wb') as f:
         subprocess.run(['xcrun','xctrace','export','--input',str(trace),'--toc'],stdout=f,check=True)
-    with gzip.open(output/'pill-profile.xml.gz','wb') as f:
-        subprocess.run(['xcrun','xctrace','export','--input',str(trace),'--xpath','/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]'],stdout=f,check=True)
+    data=subprocess.run(['xcrun','xctrace','export','--input',str(trace),'--xpath','/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]'],capture_output=True,check=True).stdout
+    (output/'pill-profile.xml.gz').write_bytes(gzip.compress(data))
     (output/'scope.json').write_text(json.dumps({'case':'A','rendererCommit':'8aebea3','sdkSource':'6e940e8 (same Sources bytes as 8aebea3)','diagnosticOnly':True,'nativeDevices':False,'CVClock':False})+'\n')
 finally:
     command=['defaults','write','com.apple.universalaccess','reduceMotion','-bool','true' if old.stdout.strip()=='1' else 'false'] if old.returncode==0 else ['defaults','delete','com.apple.universalaccess','reduceMotion']

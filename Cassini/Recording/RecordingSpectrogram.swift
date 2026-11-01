@@ -449,6 +449,7 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     private var reducedMode: Bool?
     private struct LaneLayers { let clip = CALayer(), scrolling = RecordingSpectrogramScrollLayer(), first = CALayer(), fade = CAGradientLayer() }
     private var lanes: [LaneLayers] = []
+    private var pillMask: CAShapeLayer?
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
         wantsLayer = true; setAccessibilityElement(false)
@@ -470,6 +471,20 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
             item.fade.colors = [NSColor.clear.cgColor,NSColor.white.cgColor,NSColor.white.cgColor]
             item.fade.locations = [0,0.16,1]; item.fade.startPoint = .init(x:0,y:0.5); item.fade.endPoint = .init(x:1,y:0.5)
             layer?.addSublayer(item.clip); lanes.append(item)
+        }
+        if style == .pill {
+            // Both lanes share exactly the same horizontal phase. One parent
+            // translation avoids dirtying two independent replicator trees.
+            let first=lanes[0],second=lanes[1]
+            second.first.removeFromSuperlayer();second.clip.removeFromSuperlayer()
+            first.scrolling.addSublayer(second.first)
+            first.clip.cornerRadius=0
+            let mask=CAShapeLayer();mask.actions=actions;mask.fillColor=NSColor.black.cgColor
+            let path=CGMutablePath()
+            for y in [CGFloat(0),CGFloat(11)] {
+                path.addPath(CGPath(roundedRect:CGRect(x:0,y:y,width:50,height:9),cornerWidth:2,cornerHeight:2,transform:nil))
+            }
+            mask.path=path;first.clip.mask=mask;pillMask=mask
         }
     }
     required init?(coder: NSCoder) { nil }
@@ -522,6 +537,29 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
         let origin = width-CGFloat(position-base)
         let modeChanged = reducedMode != reduced
         reducedMode = reduced
+        if style == .pill {
+            let shared=lanes[0]
+            if bankChanged {
+                shared.clip.frame=CGRect(x:0,y:0,width:50,height:20)
+                pillMask?.frame=shared.clip.bounds;shared.fade.frame=shared.clip.bounds
+                shared.scrolling.bounds=CGRect(x:0,y:0,width:capacity,height:20)
+                shared.scrolling.instanceTransform=CATransform3DMakeTranslation(-capacity,0,0)
+                for index in lanes.indices {
+                    let image=lanes[index].first
+                    image.bounds=CGRect(x:0,y:0,width:capacity,height:9)
+                    image.position=CGPoint(x:0,y:CGFloat(index)*11)
+                    image.contentsRect=CGRect(x:0,y:Double(index)/2,width:1,height:0.5)
+                    image.delegate=source
+                }
+            }
+            if bankChanged || modeChanged {
+                pillMask?.mask=reduced ? nil : shared.fade
+                shared.scrolling.instanceCount=reduced ? 1 : 2
+            }
+            if changed {for item in lanes {item.first.setNeedsDisplay()}}
+            shared.scrolling.position=CGPoint(x:reduced ? 0 : origin,y:0)
+            return
+        }
         for index in lanes.indices {
             let lane = lanes[index], selected = style == .pill ? index : rowLane.rawValue
             if bankChanged {

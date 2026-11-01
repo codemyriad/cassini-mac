@@ -90,6 +90,11 @@ jobs:
           path: baseline
           ref: 4cdfc950b6d62c6d0ed584eafc1865a39417d472
           persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          path: control
+          ref: 8aebea3688af1bc88032e3f7663ff35d2b7fb8db
+          persist-credentials: false
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - uses: actions/download-artifact@v5
         with:
@@ -107,9 +112,10 @@ jobs:
       - run: python3 baseline/scripts/hosted-display.py
       - name: Compile attribution probe with the exact production Release SDK
         run: |
+          python3 control/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release control/probe
           python3 candidate/scripts/build-spectrogram-probe.py baseline/build/Build/Products/Release candidate/probe
-      - name: Profile the unchanged production pill without device capture
-        run: python3 candidate/scripts/profile-spectrogram-pill.py candidate/probe experiment
+      - name: Compare shared pill parent with unchanged production control
+        run: python3 candidate/scripts/measure-pill-parent.py control/probe candidate/probe experiment
       - uses: actions/upload-artifact@v5
         if: always()
         with:

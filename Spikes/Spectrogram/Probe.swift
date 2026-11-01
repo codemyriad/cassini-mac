@@ -143,17 +143,33 @@ import ScreenCaptureKit
                 // Verify pixels from this process's own window, after the CPU
                 // measurement. A ring/seed counter alone cannot prove that CA
                 // sees repeated writes to the same IOSurface object.
+                let pillMe = try await darkPixels(window:window,view:strips[0],name:"B-pill-me-sound",lane:0)
+                let pillOthers = try await darkPixels(window:window,view:strips[0],name:"B-pill-others-sound",lane:1)
+                try require(pillMe >= 100 && pillOthers >= 100,"Both real pill lanes contain sound")
                 let sounding = try await darkPixels(window:window,view:strips[2],name:"B-sound")
                 let meBoundary = input.silence(microphoneOnly:true)
                 try await wait("Me silence replaces visible history",controller:controller) { controller.fixtureIsSilent(0,since:meBoundary) }
                 let meSilent = try await darkPixels(window:window,view:strips[1],name:"B-microphone-silent")
                 let othersSounding = try await darkPixels(window:window,view:strips[2],name:"B-others-still-sounding")
+                let pillMeSilent = try await darkPixels(window:window,view:strips[0],name:"B-pill-me-silent",lane:0)
+                let pillOthersSounding = try await darkPixels(window:window,view:strips[0],name:"B-pill-others-still-sounding",lane:1)
+                try require(pillMeSilent <= 4 && pillOthersSounding >= 100,"Pill Me silence preserves sounding Others")
                 try require(meSilent <= 4 && othersSounding >= 100,"native lane crops keep silent Me separate from sounding Others (\(meSilent),\(othersSounding))")
                 let silenceBoundary = input.silence()
                 try await wait("Others silence replaces visible history",controller:controller) { controller.fixtureIsSilent(1,since:silenceBoundary) }
                 let silent = try await darkPixels(window:window,view:strips[2],name:"B-silence")
                 try require(sounding >= 100 && silent <= 4,"composited pixels follow live same-surface sound→silence (\(sounding)→\(silent))")
                 report["liveCompositedInkPixels"] = ["sound":sounding,"silence":silent,"microphoneAfterMicSilence":meSilent,"othersAfterMicSilence":othersSounding]
+                let pillSilent = try await darkPixels(window:window,view:strips[0],name:"B-pill-silence")
+                try require(pillSilent <= 4,"Both pill lanes clear on real silence")
+                report["pillCompositedInkPixels"] = ["me":pillMe,"others":pillOthers,"meAfterMicSilence":pillMeSilent,"othersAfterMicSilence":pillOthersSounding,"silence":pillSilent]
+                if argument("-SpectrogramPixelsOnly") == "1" {
+                    report["diagnosticPixelsOnly"]=true
+                    controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
+                    strips.forEach {$0.detach()};window.orderOut(nil);try await input.finish()
+                    try? FileManager.default.removeItem(at:root)
+                    FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]));exit(0)
+                }
             }
             if mode == "B" {
                 let bothStyles = controller.surfaceBytes
@@ -293,7 +309,7 @@ import ScreenCaptureKit
             }
         }.value
     }
-    private static func darkPixels(window: NSWindow, view: NSView, name: String) async throws -> Int {
+    private static func darkPixels(window: NSWindow, view: NSView, name: String, lane: Int? = nil) async throws -> Int {
         // This API only returns content already available to the current process
         // without TCC consent. Never enumerate/capture another app or a display.
         let content = try await SCShareableContent.currentProcess
@@ -310,7 +326,9 @@ import ScreenCaptureKit
            let png = NSBitmapImageRep(cgImage:image).representation(using:.png,properties:[:]) {
             try png.write(to:URL(fileURLWithPath:directory).appendingPathComponent(name+".png"))
         }
-        let rect = window.convertToScreen(view.convert(view.bounds,to:nil))
+        let pill=(view as? RecordingSpectrogramView)?.style == .pill
+        let area = pill && lane != nil ? CGRect(x:0,y:lane!*11,width:50,height:9) : view.bounds
+        let rect = window.convertToScreen(view.convert(area,to:nil))
         let sx = Double(image.width)/window.frame.width, sy = Double(image.height)/window.frame.height
         let crop = CGRect(x:(rect.minX-window.frame.minX)*sx,y:(window.frame.maxY-rect.maxY)*sy,
                           width:rect.width*sx,height:rect.height*sy).integral
@@ -321,7 +339,8 @@ import ScreenCaptureKit
                 space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.check("own strip pixel conversion") }
             context.draw(strip,in:CGRect(x:0,y:0,width:200,height:32))
             return stride(from:0,to:bytes.count,by:4).reduce(0) { count,index in
-                count + (bytes[index] < 200 && bytes[index+1] < 200 && bytes[index+2] < 200 ? 1 : 0)
+                let ink = pill ? Int(bytes[index])-Int(bytes[index+1]) > 40 && Int(bytes[index])-Int(bytes[index+2]) > 40 : bytes[index] < 200 && bytes[index+1] < 200 && bytes[index+2] < 200
+                return count + (ink ? 1 : 0)
             }
         }
     }
