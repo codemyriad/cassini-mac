@@ -1,4 +1,5 @@
 import CassiniKit
+import CassiniLibrary
 import SwiftUI
 
 /// Mirrors Finder's Get Info: what the file is, whether its audio and transcript belong together.
@@ -8,49 +9,35 @@ struct InspectorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("File Info")
+                Text(UXText.text("mac.inspector.title"))
                     .font(.headline)
                     .frame(minHeight: 28)
 
                 IntegrityBadge(session: session)
 
                 if let m = session.manifest {
-                    InfoSection("Recording") {
-                        row("Duration", formatClock(session.player?.durationMs ?? m.meeting.durationMs))
-                        if let d = session.recordingDateText { row("Recorded", d) }
-                        row("Format", "Ogg Opus")
-                        row("Sample rate", "\(m.audio.sampleRate / 1000) kHz")
-                        row("Channels", m.audio.channels == 1 ? "Mono" : "Stereo")
+                    InfoSection(UXText.text("mac.inspector.recording")) {
+                        row(UXText.text("mac.inspector.duration"), formatClock(session.player?.durationMs ?? m.meeting.durationMs))
+                        if let d = session.recordingDateText { row(UXText.text("mac.inspector.recorded"), d) }
                     }
 
-                    InfoSection("Transcript") {
+                    InfoSection(UXText.text("library.preview.transcriptHeading")) {
                         if session.availableTranscripts.count > 1 {
-                            Picker("Transcript", selection: $session.selectedTranscriptId) {
+                            Picker(UXText.text("library.preview.transcriptHeading"), selection: $session.selectedTranscriptId) {
                                 ForEach(session.availableTranscripts) { t in
                                     Text(t.id).tag(Optional(t.id))
                                 }
                             }
                             .font(.caption)
                         }
-                        if let entry = currentEntry {
-                            row("Schema", entry.format, mono: true)
-                            if let lang = session.timeline.flatMap({ _ in entry.language }) { row("Language", lang) }
+                        if let entry = currentEntry, let lang = session.timeline.flatMap({ _ in entry.language }) {
+                            row(UXText.text("details.writing.language"), Self.languageName(lang))
                         }
-                        row("Speakers", "\(m.speakers.count)")
-                        if let tl = session.timeline {
-                            row("Words", tl.words.count.formatted())
-                            row("Timing", "Per word, ms")
-                        }
-                    }
-
-                    if let prov = m.provenance, let lines = Optional(provenanceLines(prov)), !lines.isEmpty {
-                        InfoSection("Provenance") {
-                            ForEach(lines, id: \.0) { k, v in row(k, v) }
-                        }
+                        row(UXText.text("common.speakers"), m.speakers.count.formatted())
                     }
 
                     if let file = session.file, !file.errors.isEmpty || !file.warnings.isEmpty {
-                        InfoSection("Details") {
+                        InfoSection(UXText.text("mac.inspector.details")) {
                             ForEach(Array((file.errors + file.warnings).enumerated()), id: \.offset) { _, f in
                                 Text(f.message)
                                     .font(.caption)
@@ -60,7 +47,7 @@ struct InspectorView: View {
                         }
                     }
                 } else if let file = session.file, !file.errors.isEmpty {
-                    InfoSection("Details") {
+                    InfoSection(UXText.text("mac.inspector.details")) {
                         ForEach(Array(file.errors.enumerated()), id: \.offset) { _, f in
                             Text(f.message).font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -68,13 +55,13 @@ struct InspectorView: View {
                     }
                 }
 
-                Text("Transcript and speakers live inside this .opus file, so any audio player can still play it.")
+                Text(UXText.text("mac.inspector.footer"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 8) {
-                    Button("Show in Finder") { session.showInFinder() }
+                    Button(UXText.text("mac.inspector.showInFinder")) { session.showInFinder() }
                         .disabled(session.fileURL == nil)
                 }
                 .controlSize(.small)
@@ -102,24 +89,10 @@ struct InspectorView: View {
         .font(.caption)
     }
 
-    /// Flattens provenance to "path: value" lines, strings and numbers only, as the spec keeps it.
-    private func provenanceLines(_ json: JSON) -> [(String, String)] {
-        var out: [(String, String)] = []
-        func walk(_ j: JSON, _ path: String) {
-            switch j {
-            case .string(let s): out.append((path, s))
-            case .number(let n): out.append((path, n))
-            case .bool(let b): out.append((path, b ? "yes" : "no"))
-            case .object(let members): for (k, v) in members { walk(v, path.isEmpty ? k : "\(path).\(k)") }
-            case .array(let items):
-                let strings = items.compactMap(\.string)
-                if strings.count == items.count { out.append((path, strings.joined(separator: ", "))) }
-                else { for (i, v) in items.enumerated() { walk(v, "\(path)[\(i)]") } }
-            case .null: break
-            }
-        }
-        walk(json, "")
-        return Array(out.prefix(40))
+    /// A stored recognizer language shown by its catalog name when one exists, else verbatim (D47).
+    static func languageName(_ code: String) -> String {
+        let id = "details.language." + (code.lowercased().split(separator:"-").first.map(String.init) ?? "")
+        return LibraryLocalization.shared.contains(id) ? UXText.text(id) : code
     }
 }
 
@@ -189,22 +162,21 @@ struct IntegrityBadge: View {
 
     private var headline: String {
         switch state {
-        case .ok?: return "Audio matches transcript"
-        case .staleAudio?: return "Audio doesn’t match transcript"
-        case .unverified?: return "Audio not verified"
-        case .plainAudio?: return "No transcript in this file"
-        case .unknownCassiniFormat?: return "Newer Cassini format"
-        case .invalidCassiniMetadata?: return "Transcript unreadable"
-        case nil: return "Can’t read this file"
+        case .ok?: return UXText.text("mac.inspector.audio.ok")
+        case .staleAudio?: return UXText.text("mac.inspector.audio.staleAudio")
+        case .unverified?: return UXText.text("mac.inspector.audio.unverified")
+        case .plainAudio?: return UXText.text("mac.inspector.audio.plainAudio")
+        case .unknownCassiniFormat?: return UXText.text("mac.inspector.audio.newerFormat")
+        case .invalidCassiniMetadata?: return UXText.text("mac.inspector.audio.invalid")
+        case nil: return UXText.text("mac.inspector.audio.unreadable")
         }
     }
 
     private var detail: String {
         switch state {
-        case .ok?: return "SHA-256 of the Opus audio checked against the file’s manifest."
-        case .plainAudio?: return "An ordinary Opus file without Cassini metadata."
-        case nil: return session.readError ?? ""
-        default: return session.file?.stateReason ?? ""
+        // Only published copy is shown; reader diagnostics stay in the Details section.
+        case .plainAudio?: return UXText.text("mac.inspector.audio.plainAudioDetail")
+        default: return ""
         }
     }
 }

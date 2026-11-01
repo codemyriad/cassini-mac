@@ -133,6 +133,13 @@ import Testing
         let sameYear=LibraryFormat(timeZone:zone,now:at.addingTimeInterval(7*86400),locale:american,language:.ptPT)
         #expect(sameYear.dayGroup(at)=="domingo, 1 de novembro")
     }
+    @Test func absoluteDateUsesUILanguageWordsWithoutTime() {
+        // D50.3, legacy viewer and QuickLook: 1 November 2026 in the UI language, whatever the region.
+        let zone=TimeZone(secondsFromGMT:0)!,at=Date(timeIntervalSince1970:1_793_523_600),us=Locale(identifier:"en_US")
+        #expect(LibraryFormat(timeZone:zone,locale:us,language:.fr).absoluteDate(at)=="dimanche 1 novembre 2026")
+        #expect(LibraryFormat(timeZone:zone,locale:us,language:.en).absoluteDate(at)=="Sunday 1 November 2026")
+        #expect(LibraryFormat(timeZone:zone,locale:us,language:.it).absoluteDate(at)=="domenica 1 novembre 2026")
+    }
     @Test func listConjunctionsFollowTheUILanguageWithAmericanRegions() {
         let french=LibraryFormat(locale:Locale(identifier:"en_US"),language:.fr)
         #expect(french.list(["Chrome","Edge"])=="Chrome et Edge")

@@ -60,6 +60,13 @@ public struct LibraryFormat: Sendable {
         if let yesterday=calendar.date(byAdding:.day,value:-1,to:now),calendar.isDate(at,inSameDayAs:yesterday) {return Self.text("format.yesterday",locale:locale,language:language)}
         return date(at,template:calendar.component(.year,from:at)==calendar.component(.year,from:now) ? "EEEEdMMMM" : "EEEEdMMMMyyyy")
     }
+    /// D50.3 absolute date (no time): words and pattern in the UI language.
+    public func absoluteDate(_ at:Date)->String {
+        let formatter=DateFormatter();formatter.locale=wordLocale;formatter.calendar=calendar;formatter.timeZone=timeZone
+        formatter.dateStyle = .full;formatter.timeStyle = .none
+        if language == .en {formatter.dateFormat="EEEE d MMMM yyyy"}
+        return formatter.string(from:at)
+    }
     public func rowTime(_ at:Date)->String {
         let formatter=DateFormatter();formatter.locale=locale
         formatter.timeZone=timeZone;formatter.dateStyle = .none;formatter.timeStyle = .short

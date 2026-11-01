@@ -291,6 +291,9 @@ targets:
     dependencies:
       - package: CassiniKit
         product: CassiniKit
+      # D50: the preview reads the shared six-language catalog.
+      - package: CassiniKit
+        product: CassiniLibrary
       - sdk: Quartz.framework
     info:
       path: QuickLook/Info.plist

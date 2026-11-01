@@ -130,6 +130,7 @@ public struct LibraryLocalization: Sendable {
             return (entry.id, translations)
         })
     }
+    public func contains(_ id: String) -> Bool { forms[id] != nil }
     public func text(_ id: String, _ values: [String: String] = [:], language: CassiniLanguage = .system, locale: Locale = .current, omitting: Set<String> = []) -> String {
         guard let entry = forms[id], let selected = entry[language] ?? entry[.en] else { preconditionFailure("Missing UX string: \(id)") }
         let template = values["n"].flatMap { selected.plural[language.pluralCategory($0)] ?? selected.plural["other"] } ?? selected.base
