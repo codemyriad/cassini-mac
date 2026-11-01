@@ -101,7 +101,8 @@ public enum BrowserControlHost {
 public enum BrowserAudioHost {
     public static func usesBroker(_ data: Data) -> Bool {
         guard let message = try? JSONParser.parse(data) else { return false }
-        return message["type"]?.string == "start" && message["independent"]?.bool == true
+        // D52.1 R67: a resume always targets an app-owned stand-in.
+        return ["start","resume"].contains(message["type"]?.string ?? "") && message["independent"]?.bool == true
     }
     public static func run(firstRequest: Data, environment: [String:String] = ProcessInfo.processInfo.environment) -> Int32 {
         NativeHostBridge.run(role:.audio,initial:firstRequest,environment:environment)

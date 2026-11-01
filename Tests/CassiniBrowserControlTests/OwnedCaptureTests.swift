@@ -112,7 +112,9 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Native",microphone:true,browser:false)
         XCTAssertTrue(capture.snapshot.needsSystem); XCTAssertEqual(capture.snapshot.manifest.source,"macos")
-        XCTAssertEqual(capture.snapshot.manifest.events?.first?.source,"none")
+        // D52.3b: a Record with no call starts the others as the system/missing stand-in.
+        XCTAssertEqual(capture.snapshot.manifest.events?.first?.source,"system")
+        XCTAssertEqual(capture.snapshot.manifest.events?.first?.reason,"missing")
         let first = capture.nativeWriter(side:.others)
         try first.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
         XCTAssertEqual(capture.snapshot.manifest.events?.count,2)
