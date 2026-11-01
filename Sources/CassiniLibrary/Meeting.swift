@@ -57,6 +57,8 @@ public struct CaptureActivitySnapshot: CaptureActivityProviding {
 }
 public enum NameProvenance: String, Codable, Sendable { case user, recognised, unnamed, source }
 public struct MeetingSpeaker: Sendable, Equatable {
+    /// The speaker id written for a system-sound ("The others") track: a mixed source, not a person.
+    public static let mixedOthersID = "others"
     public var id: String
     public var name: String?
     /// nil for old embedded names whose naming history is unknown.
@@ -151,7 +153,11 @@ public struct LibraryMeeting: Sendable {
         state.audioAvailable == true && !audioFiles.isEmpty
     }
     public var canWriteDown: Bool { state.canWriteDown || (hasNoSpeech && !metadataReadOnly) }
-    public var speakerNames: [String] { speakers.map(\.displayName) }
+    /// D52 M12: people, not devices. "The others" is a mixed capture of system sound,
+    /// so it is left out of row names and people counts (it still has its own speaker
+    /// row and transcript turns).
+    public var people: [MeetingSpeaker] { speakers.filter { $0.id != MeetingSpeaker.mixedOthersID } }
+    public var speakerNames: [String] { people.map(\.displayName) }
 }
 public struct LibraryTranscriptTurn: Equatable, Sendable {
     public let speaker: String
