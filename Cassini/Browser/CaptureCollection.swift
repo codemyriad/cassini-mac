@@ -18,6 +18,7 @@ struct LiveCapture {
     let input: CaptureInputLifecycle
     let captureID: String
     let originUptime: TimeInterval
+    let spectrogram: RecordingSpectrogram?
     var snapshot: OwnedCaptureSnapshot
     var key: BrowserMeetingKey?
     var levels: [CaptureSide:Float] = [:]
@@ -86,6 +87,8 @@ private final class CaptureFiles: @unchecked Sendable {
     private(set) var diskStopped = false
     private(set) var failedMeetings: [BrowserMeetingKey:String] = [:]
     @ObservationIgnored private var manualIssued = false
+    @ObservationIgnored private var browserStopSent: [UUID:BrowserMeetingKey] = [:]
+    @ObservationIgnored private var browserStopReasons: [UUID:CaptureEndReason] = [:]
     @ObservationIgnored private var manualPending: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var manualCompleted: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var manualSucceeded: Set<BrowserMeetingKey> = []
@@ -198,18 +201,20 @@ private final class CaptureFiles: @unchecked Sendable {
         // or the control peer has gone away. Preserve the original capture URL.
         if userInitiated { service.rememberUserStop(captureID:value.captureID,key:value.key) }
         guard stopping[id] == nil else { return }
+        value.spectrogram?.stop(atMs:Double(value.elapsedMs))
+        browserStopReasons[id] = reason
         MeetingNavigation.shared.captureBeganSaving(at:value.snapshot.directory)
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
-        if let key = value.key { service.stopMeeting(key,captureID:value.captureID,userInitiated:false,reason:reason) }
+        requestBrowserStop(id)
         let task = Task { [weak self] in
             // Native inputs stop at the user's request, independently of a
             // delayed page flush. Broker finalization reuses this same drain.
             try? await value.input.stop()
             // The browser Stop flushes its pending PCM and normally finalizes
             // this owner itself. Keep admission open until that tail arrives.
-            let deadline = ProcessInfo.processInfo.systemUptime + (value.owner.snapshot.transportAlive && value.key != nil ? 12 : 0)
+            let deadline = ProcessInfo.processInfo.systemUptime + (value.owner.snapshot.transportAlive ? 12 : 0)
             while value.owner.snapshot.phase == .recording && ProcessInfo.processInfo.systemUptime < deadline {
                 do { try await Task.sleep(for:.milliseconds(50)) } catch { break }
             }
@@ -219,6 +224,14 @@ private final class CaptureFiles: @unchecked Sendable {
             self?.stopping.removeValue(forKey:id)
         }
         stopping[id] = task
+    }
+    private func requestBrowserStop(_ id: UUID) {
+        guard let value = captures[id], value.snapshot.manifest.source == "chromium", value.savingSinceMs != nil,
+              let key = key(for:value.captureID),
+              peers.contains(where:{ $0.id == key.peer && $0.reconciled }),
+              browserStopSent[id] != key else { return }
+        browserStopSent[id] = key
+        service.stopMeeting(key,captureID:value.captureID,userInitiated:false,reason:browserStopReasons[id] ?? .user)
     }
     func stopAll(reason: CaptureEndReason = .user) {
         recordGeneration += 1; requestingRecord = false
@@ -278,7 +291,9 @@ private final class CaptureFiles: @unchecked Sendable {
         })
         let meetingKey = key(for:info.captureID)
         let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
-        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
+        let spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:owner.pcmObservers,me:snapshot.me,others:snapshot.others) : nil
+        spectrogram?.update(events:snapshot.manifest.events ?? [])
+        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,spectrogram:spectrogram,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
         if let modern { try? await owner.manageBrowserLifecycle(modern) }
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
         CaptureActivityStore.shared.set(id,activity[id])
@@ -297,6 +312,8 @@ private final class CaptureFiles: @unchecked Sendable {
         let id = snapshot.manifest.id
         guard captures[id] != nil else { if snapshot.phase == .saved { settle(snapshot) }; return }
         captures[id]?.snapshot = snapshot
+        captures[id]?.spectrogram?.update(events:snapshot.manifest.events ?? [])
+        if snapshot.phase != .recording, let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
         if snapshot.phase == .saving { MeetingNavigation.shared.captureBeganSaving(at:snapshot.directory) }
         if snapshot.phase == .saved {
             settle(snapshot)
@@ -333,7 +350,8 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
             let id = snapshot.manifest.id
-            captures.removeValue(forKey:id); announced.remove(id)
+            if let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
+            captures.removeValue(forKey:id); announced.remove(id); browserStopSent.removeValue(forKey:id); browserStopReasons.removeValue(forKey:id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)
             LibraryStore.shared.refresh(affected:snapshot.directory)
@@ -369,6 +387,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 }
             }
         }
+        for id in captures.keys { requestBrowserStop(id) }
         announce()
         poll() // Invalidate pending source work immediately on control updates.
     }

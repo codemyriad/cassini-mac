@@ -96,6 +96,7 @@ import CassiniRecording
 /// A deterministic disk-finalization stall makes the production Saving state
 /// observable to hosted UI tests. All file writes still use RecordingSession.
 final class HostedFinalizationWriter: RecordingSinkWriter {
+    var recordedPCM: RecordedPCMPolicy? { session.recordedPCM }
     private let session: RecordingSession
     init(_ session: RecordingSession) { self.session = session }
     var recordingProblem: String? { session.recordingProblem }

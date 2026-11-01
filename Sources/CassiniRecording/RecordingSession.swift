@@ -94,6 +94,8 @@ public enum RecordingError: LocalizedError {
 /// preserves source provenance and offsets without claiming that track IDs are people.
 public final class RecordingSession {
     public let directory: URL
+    public let pcmObservers: RecordedPCMObservers
+    public let recordedPCM: RecordedPCMPolicy?
     public private(set) var manifest: RecordingManifest
     private var writers: [String: WAVWriter] = [:]
     private var finished = false
@@ -104,6 +106,8 @@ public final class RecordingSession {
     @_spi(Testing) public var checkpointObserver: ((RecordingCheckpointPhase) throws -> Void)?
 
     public init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
+        let observers = RecordedPCMObservers(); pcmObservers = observers
+        recordedPCM = RecordedPCMPolicy(observers:observers)
         directory = parent.appendingPathComponent("Recording-\(id.uuidString.lowercased())", isDirectory: true)
         manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))),
                                      source: source, state: "recording", tracks: [])
@@ -214,7 +218,8 @@ public final class RecordingSession {
               offsetMs.isFinite, (0...86_400_000).contains(offsetMs), !pcm.isEmpty,
               pcm.count <= 262_144, pcm.count % (manifest.tracks[i].channels * 2) == 0
         else { throw RecordingError.invalid("Invalid audio chunk or timestamp.") }
-        if manifest.tracks[i].startOffsetMs == nil { manifest.tracks[i].startOffsetMs = offsetMs }
+        let first = manifest.tracks[i].startOffsetMs == nil
+        if first { manifest.tracks[i].startOffsetMs = offsetMs }
         let track = manifest.tracks[i]
         let target = Int64(((offsetMs - track.startOffsetMs!) * Double(track.sampleRate) / 1000).rounded())
         let delta = target - Int64(writer.frames)
@@ -228,6 +233,9 @@ public final class RecordingSession {
         }
         try writer.append(pcm)
         manifest.tracks[i].frames = writer.frames
+        if first {
+            recordedPCM?.publish(.init(id:track.id,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:track.startOffsetMs!),for:id)
+        }
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
     }
 

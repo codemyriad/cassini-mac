@@ -13,12 +13,13 @@ jobs:
     uses: ./.github/workflows/ci-build.yml
   boards:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
+        release: 'true'
     - run: test "$RUNNER_ENVIRONMENT" = github-hosted
     - run: brew install displayplacer
     - uses: actions/setup-python@v5
@@ -49,6 +50,18 @@ jobs:
     - name: Real recording controls without devices
       if: always()
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
+    - name: Pure hosted budget policy boundaries (D36.2)
+      run: |
+        swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
+        "$RUNNER_TEMP/spectrogram-budget"
+    - name: Production spectrogram A–E, native views and Time Profiler without devices
+      if: always()
+      run: |
+        python3 scripts/test-spectrogram-harness.py
+        xcrun swiftc -O -parse-as-library Spikes/Spectrogram/SampleClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
+        build/check-spectrogram-clock
+        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --output build/ux-boards/spectrogram
     - name: Private stopped recording clock without devices or windows
       run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/saving-clock.json
     - name: Private import and queue lifecycle without devices

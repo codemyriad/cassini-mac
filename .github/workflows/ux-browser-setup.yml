@@ -34,8 +34,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Native control transport lifecycle
-        run: swift test --skip-build --filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests'
+      - name: Native control lifecycle and shared spectrogram goldens
+        run: swift test --skip-build --filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests'
       - name: Shared control-host vectors
         run: |
           python3 -m pip install -r browser-protocol/requirements-test.txt

@@ -8,15 +8,32 @@ private let pin = ModelPin(id:"fixture-model",sourceSHA256:String(repeating:"a",
 private let enough: @Sendable (URL) throws -> ModelDiskSpace = { _ in .init(free:20 << 30,total:100 << 30) }
 private final class Server: @unchecked Sendable {
     let process = Process()
+    private let control = Pipe(), prefixLock = NSLock()
+    private var sentPrefix = false
+    var prefixAcknowledged: Bool { prefixLock.withLock { sentPrefix } }
+    func acknowledgePersistedPrefix(_ progress: ModelDownloadProgress) {
+        guard progress.receivedBytes > 0 else { return }
+        prefixLock.withLock {
+            guard !sentPrefix else { return }
+            do {
+                try control.fileHandleForWriting.write(contentsOf:Data("prefix-persisted\n".utf8))
+                sentPrefix = true
+            } catch { /* The caller asserts the acknowledgement before retry. */ }
+        }
+    }
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniModelTests-" + UUID().uuidString)
     let origin: URL
     let log: URL
     init(_ scenario: String) throws {
+        guard fcntl(control.fileHandleForWriting.fileDescriptor,F_SETNOSIGPIPE,1) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
+        }
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false)
         log = root.appendingPathComponent("requests.jsonl")
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath:"/usr/bin/env")
         process.arguments = ["python3",Bundle.module.url(forResource:"server",withExtension:"py",subdirectory:"Fixtures")!.path,"--scenario",scenario,"--log",log.path]
+        process.standardInput = control
         process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
         try process.run()
         var line = Data()
@@ -190,7 +207,8 @@ private final class ProgressLog: @unchecked Sendable {
     }
     @Test(arguments:["truncated","416","ignore-range"]) func resumeWithRangeAndIfRange(_ scenario: String) async throws {
         let server = try Server(scenario), downloader = try server.downloader()
-        _ = await fails { _ = try await downloader.install(pin) }
+        _ = await fails { _ = try await downloader.install(pin) { server.acknowledgePersistedPrefix($0) } }
+        try #require(server.prefixAcknowledged,"Fault follows a real persisted-prefix event")
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
         _ = try await downloader.install(pin)
         let ranged = server.requests.filter { $0["range"] is String }
@@ -201,7 +219,8 @@ private final class ProgressLog: @unchecked Sendable {
     }
     @Test func transientServerFailureRetainsPreviouslyValidatedPrefix() async throws {
         let server = try Server("503"), downloader = try server.downloader()
-        _ = await fails { _ = try await downloader.install(pin) }
+        _ = await fails { _ = try await downloader.install(pin) { server.acknowledgePersistedPrefix($0) } }
+        try #require(server.prefixAcknowledged,"Fault follows a real persisted-prefix event")
         let error = await fails { _ = try await downloader.install(pin) }
         #expect(error as? ModelDownloadError == .response)
         _ = try await downloader.install(pin)
@@ -210,7 +229,8 @@ private final class ProgressLog: @unchecked Sendable {
     }
     @Test(arguments:["changed-etag","bad-range"]) func changedIdentityNeverAppends(_ scenario: String) async throws {
         let server = try Server(scenario), downloader = try server.downloader()
-        _ = await fails { _ = try await downloader.install(pin) }
+        _ = await fails { _ = try await downloader.install(pin) { server.acknowledgePersistedPrefix($0) } }
+        try #require(server.prefixAcknowledged,"Fault follows a real persisted-prefix event")
         let error = await fails { _ = try await downloader.install(pin) }
         #expect((error as? ModelDownloadError) == (scenario == "changed-etag" ? .etag : .range))
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
