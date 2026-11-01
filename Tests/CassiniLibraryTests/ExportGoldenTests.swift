@@ -11,26 +11,60 @@ struct ExportGoldenTests {
         #expect(SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined() == sha)
         return data
     }
-    @Test func markdownMatchesBothPublishedCasesByteForByte() throws {
+    @Test func markdownMatchesAllPublishedCasesWithNativeDateLines() throws {
         struct Cases: Decodable {
             struct Case: Decodable {
                 struct Input: Decodable {
                     struct Speaker: Decodable { let id: String; let name: String }
-                    let title: String; let startMs: Int64; let tz: String; let durationMs: Int64?
+                    let title: String; let startMs: Int64; let tz: String; let durationMs: Int64?; let uiLanguage: String?
                     let speakers: [Speaker]; let items: [LibraryTranscriptItem]; let notes: [MeetingNote]
                 }
                 let name: String; let input: Input; let expected: String
             }
             let cases: [Case]
         }
-        let values = try JSONDecoder().decode(Cases.self,from:input("markdown-cases",sha:"16541a9fc08815064000fc935c0d2d0e4b1933c8bbf2d7046232e1a8882bd5da"))
-        #expect(values.cases.count == 2)
+        let values = try JSONDecoder().decode(Cases.self,from:input("markdown-cases",sha:"3e4bfb01771e3f82a5d289026915454a8e17dc75095cfe4f9bbf6a16b06d7d3e"))
+        #expect(values.cases.count == 4)
         for value in values.cases {
             let v = value.input
+            let language=CassiniLanguage(languageTag:v.uiLanguage ?? "en")
+            let locale=Locale(identifier:v.uiLanguage ?? "en_GB")
+            let zone=try #require(TimeZone(identifier:v.tz))
+            let start=Date(timeIntervalSince1970:Double(v.startMs)/1000)
             let text = MeetingMarkdown.render(title:v.title,start:Date(timeIntervalSince1970:Double(v.startMs)/1000),durationMs:v.durationMs,
-                timeZone:try #require(TimeZone(identifier:v.tz)),names:Dictionary(uniqueKeysWithValues:v.speakers.map { ($0.id,$0.name) }),items:v.items,notes:v.notes,locale:Locale(identifier:"en_GB"))
-            #expect(Data(text.utf8) == Data(value.expected.utf8),"\(value.name)")
+                timeZone:zone,names:Dictionary(uniqueKeysWithValues:v.speakers.map { ($0.id,$0.name) }),items:v.items,notes:v.notes,locale:locale,language:language)
+            var expected=value.expected
+            if v.uiLanguage != nil {
+                let day=DateFormatter();day.locale=locale;day.timeZone=zone;day.dateStyle = .full;day.timeStyle = .none
+                let time=DateFormatter();time.locale=locale;time.timeZone=zone;time.dateStyle = .none;time.timeStyle = .short
+                // Published localized fixtures both have 52 min. Only their
+                // platform date/time is variable; all other bytes are frozen.
+                #expect(v.durationMs==3120000)
+                let dateLine=day.string(from:start)+", "+time.string(from:start)+" · 52 min"
+                expected=expected.replacingOccurrences(of:"{DATE_LINE}",with:dateLine)
+            }
+            #expect(Data(text.utf8) == Data(expected.utf8),"\(value.name)")
         }
+    }
+    @Test func unknownTitlesUseTheSelectedDocumentLanguage() {
+        for language in CassiniLanguage.allCases {
+            let title=LibraryLocalization.shared.text("library.untitled",language:language)
+            #expect(MeetingMarkdown.filename(title:"  ",language:language)==title+".md")
+            let text=MeetingMarkdown.render(title:"  ",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:[],notes:[],language:language)
+            #expect(text.hasPrefix("# "+title+"\n\n"))
+            #expect(!text.contains("Speakers:"))
+            #expect(!text.contains("{DATE_LINE}"))
+        }
+    }
+    @Test func markdownDateAndHeadingsUseFrenchWithAmericanRegionalSettings() {
+        let start=Date(timeIntervalSince1970:0),zone=TimeZone(secondsFromGMT:0)!,french=Locale(identifier:"fr")
+        let day=DateFormatter();day.locale=french;day.timeZone=zone;day.dateStyle = .full;day.timeStyle = .none
+        let time=DateFormatter();time.locale=french;time.timeZone=zone;time.dateStyle = .none;time.timeStyle = .short
+        let text=MeetingMarkdown.render(title:"Stored title",start:start,durationMs:nil,timeZone:zone,names:["a":"Speaker 7"],items:[.init(speaker:"a",startMs:0,endMs:100,text:"Stored words")],notes:[],locale:Locale(identifier:"en_US"),language:.fr)
+        #expect(text.contains(day.string(from:start)+", "+time.string(from:start)))
+        #expect(text.contains("Intervenants\u{a0}: Speaker 7"))
+        #expect(text.contains("## Transcription"))
+        #expect(text.contains("**Speaker 7** · 00:00:00\nStored words"))
     }
     @Test func everyPublishedEncodeChoiceMatches() throws {
         struct Cases: Decodable {
@@ -52,7 +86,7 @@ struct ExportGoldenTests {
         #expect(AudioEncodeChoice.speechBitrate(histogram:[24000:50]) == 24000)
     }
     @Test func filenamesAndMarkdownCannotCreateExtraBlocksOrPaths() {
-        #expect(MeetingMarkdown.filename(title:"   ") == "Untitled meeting.md")
+        #expect(MeetingMarkdown.filename(title:"   ",language:.en) == "Untitled meeting.md")
         #expect(MeetingMarkdown.filename(title:"a/b\\c\u{0}d",collision:2) == "a-b-c-d 2.md")
         #expect(MeetingMarkdown.filename(title:String(repeating:"界",count:121)).dropLast(3).count == 120)
         #expect(MeetingMarkdown.escape("  # Head\n\ttext ") == "\\# Head text")

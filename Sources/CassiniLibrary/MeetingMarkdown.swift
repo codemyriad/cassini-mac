@@ -4,20 +4,27 @@ import Foundation
 /// Binding S-5 export. This consumes derived labels, never naming provenance or
 /// voiceprints. Dates are absolute and never use the Library's Today/Yesterday.
 public enum MeetingMarkdown {
-    public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current) -> String {
-        render(title:meeting.title ?? "Untitled meeting",start:meeting.start,durationMs:meeting.durationMs,
+    public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current, language: CassiniLanguage = .system) -> String {
+        render(title:meeting.title ?? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale),start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,locale:locale)
+            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,locale:locale,language:language)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
-                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], locale: Locale = .current) -> String {
+                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], locale: Locale = .current, language: CassiniLanguage = .system) -> String {
+        let strings=LibraryLocalization.shared
+        let title=title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? strings.text("library.untitled",language:language,locale:locale) : title
         var blocks = ["# " + escape(title)]
+        // The document language controls its absolute date as well as headings.
+        // Keep English regional conventions when supplied; the pinned en_GB
+        // cases retain HARMONY's comma-less header.
+        let dateLocale=language == .en ? (locale.language.languageCode?.identifier == "en" ? locale : Locale(identifier:"en_GB")) : Locale(identifier:language.rawValue)
         if let start {
-            let date = DateFormatter(); date.locale = Locale(identifier:"en_GB")
+            let date = DateFormatter(); date.locale = dateLocale
             date.calendar = Calendar(identifier:.gregorian); date.timeZone = timeZone
-            date.dateFormat = "EEEE d MMMM yyyy"
-            let time = LibraryFormat(timeZone:timeZone,locale:locale).rowTime(start)
-            blocks.append(date.string(from:start) + ", " + time + (durationMs.map { " · " + LibraryFormat.meetingDuration($0,locale:locale) } ?? ""))
+            date.dateStyle = .full;date.timeStyle = .none
+            if dateLocale.identifier == "en_GB" {date.dateFormat = "EEEE d MMMM yyyy"}
+            let time = LibraryFormat(timeZone:timeZone,locale:dateLocale,language:language).rowTime(start)
+            blocks.append(date.string(from:start) + ", " + time + (durationMs.map { " · " + LibraryFormat.meetingDuration($0,locale:locale,language:language) } ?? ""))
         }
         let ordered = items.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
@@ -25,15 +32,15 @@ public enum MeetingMarkdown {
         let turns = LibraryTranscriptTurn.coalescing(ordered)
         var speaking: [String] = []
         for turn in turns where !speaking.contains(turn.speaker) { speaking.append(turn.speaker) }
-        if !speaking.isEmpty { blocks.append("Speakers: " + speaking.map { escape(names[$0] ?? $0) }.joined(separator:", ")) }
-        blocks.append("## Transcript")
+        if !speaking.isEmpty { blocks.append(strings.text("export.markdown.speakersLine",["names":speaking.map { escape(names[$0] ?? $0) }.joined(separator:", ")],language:language,locale:locale)) }
+        blocks.append("## "+strings.text("export.markdown.transcriptHeading",language:language,locale:locale))
         for turn in turns {
-            blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs) + "\n" + escape(turn.text))
+            blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs,locale:locale,language:language) + "\n" + escape(turn.text))
         }
         if !notes.isEmpty {
-            blocks.append("## Notes")
+            blocks.append("## "+strings.text("export.markdown.notesHeading",language:language,locale:locale))
             let sorted = notes.enumerated().sorted { $0.element.atMs == $1.element.atMs ? $0.offset < $1.offset : $0.element.atMs < $1.element.atMs }.map(\.element)
-            blocks.append(sorted.map { "- " + LibraryFormat.position($0.atMs) + " " + escape($0.text) }.joined(separator:"\n"))
+            blocks.append(sorted.map { "- " + LibraryFormat.position($0.atMs,locale:locale,language:language) + " " + escape($0.text) }.joined(separator:"\n"))
         }
         return blocks.joined(separator:"\n\n") + "\n"
     }
@@ -49,11 +56,11 @@ public enum MeetingMarkdown {
                 result[..<dot].allSatisfy({ $0 >= "0" && $0 <= "9" }) { result.insert("\\",at:dot) }
         return result
     }
-    public static func filename(title: String, extension suffix: String = "md", collision: Int = 1) -> String {
+    public static func filename(title: String, extension suffix: String = "md", collision: Int = 1, language: CassiniLanguage = .system, locale: Locale = .current) -> String {
         let replaced = title.unicodeScalars.map { scalar in
             scalar == "/" || scalar == "\\" || CharacterSet.controlCharacters.contains(scalar) ? "-" : String(scalar)
         }.joined().trimmingCharacters(in:.whitespacesAndNewlines)
-        let stem = replaced.isEmpty ? "Untitled meeting" : String(replaced.prefix(120))
+        let stem = replaced.isEmpty ? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale) : String(replaced.prefix(120))
         return stem + (collision > 1 ? " \(collision)" : "") + "." + suffix
     }
 }
