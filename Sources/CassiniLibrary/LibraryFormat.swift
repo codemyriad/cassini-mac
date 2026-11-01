@@ -62,6 +62,12 @@ public struct LibraryFormat: Sendable {
         formatter.timeZone=timeZone;formatter.dateStyle = .none;formatter.timeStyle = .short
         return formatter.string(from:at)
     }
+    /// List conjunctions belong to the UI language, independently of the region.
+    public func list(_ values:[String])->String {
+        let formatter=ListFormatter()
+        formatter.locale=Locale(identifier:language == .en ? "en_GB" : language.rawValue)
+        return formatter.string(from:values) ?? values.joined(separator:", ")
+    }
     public func previewSubtitle(_ at:Date,durationMs:Int64?,received:Bool=false)->String {
         Self.text(received ? "format.previewSubtitle.received" : "format.previewSubtitle",
             ["day":dayGroup(at),"time":rowTime(at),"duration":durationMs.map {Self.meetingDuration($0,locale:locale,language:language)} ?? ""],

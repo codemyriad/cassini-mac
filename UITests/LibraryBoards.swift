@@ -37,25 +37,27 @@ final class LibraryBoards: XCTestCase {
         XCTAssertGreaterThanOrEqual(start.frame.width,intrinsic)
         capture(empty,name:"record-first-fr")
     }
-    @MainActor func testFrenchPhrasesWithAmericanRegionalSettings() throws {
+    @MainActor func testFrenchLibraryPhrasesWithAmericanRegionalSettings() throws {
         let app=try launch("library",fixture:"main",language:"fr",locale:"en_US")
         defer {if app.state != .notRunning {app.terminate()}}
         let window=app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:20),app.debugDescription)
-        XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"label == %@","Aujourd’hui")).firstMatch.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"label == %@","Aujourd’hui")).firstMatch.waitForExistence(timeout:10),"French Today header with US region: "+app.debugDescription)
         // The outline's narrow status capsule truncates its AX value along with
         // the drawn text. Inspect the complete phrase in the selected preview.
         let client=window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
         XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:10),app.debugDescription)
         let eta=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Transcription, environ 4 minutes","Transcription, environ 4 minutes")).firstMatch
-        XCTAssertTrue(eta.waitForExistence(timeout:10),app.debugDescription)
-        app.terminate()
+        XCTAssertTrue(eta.waitForExistence(timeout:10),"Full French ETA in the selected preview: "+app.debugDescription)
+    }
+    @MainActor func testFrenchSearchCountWithAmericanRegionalSettings() throws {
+        // A separate test must still exercise Search if a Library check fails.
         let search=try launch("search",fixture:"main",language:"fr",locale:"en_US")
         defer {search.terminate()}
         let count=search.windows["cassini-library-window"].staticTexts["search-count"]
         let ready=NSPredicate {_,_ in count.exists && self.visibleText(count)=="4 occurrences dans 3 réunions"}
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:20),.completed,search.debugDescription)
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:20),.completed,"French Search count with US region: "+search.debugDescription)
     }
     @MainActor func testMoveToTrashMenusAndFirstRun() throws {
         let extra = ["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString]

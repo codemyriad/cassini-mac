@@ -115,6 +115,16 @@ import Testing
         #expect(LibraryFormat.searchCount(places:0,meetings:2,locale:Locale(identifier:"pt_PT"),language:.ptBR)=="0 trecho em 2 reuniões")
         #expect(LibraryFormat.searchCount(places:0,meetings:2,locale:Locale(identifier:"pt_BR"),language:.ptPT)=="0 ocorrências em 2 reuniões")
     }
+    @Test func listConjunctionsFollowTheUILanguageWithAmericanRegions() {
+        let french=LibraryFormat(locale:Locale(identifier:"en_US"),language:.fr)
+        #expect(french.list(["Chrome","Edge"])=="Chrome et Edge")
+        #expect(french.list(["Dario","Ana","Lea"])=="Dario, Ana et Lea")
+        // Export substitutes styled names after formatting opaque tokens.
+        let tokens=["\u{F0000}0\u{F0001}","\u{F0000}1\u{F0001}","\u{F0000}2\u{F0001}"]
+        #expect(french.list(tokens)==tokens[0]+", "+tokens[1]+" et "+tokens[2])
+        let english=LibraryFormat(locale:Locale(identifier:"fr_FR"),language:.en)
+        #expect(english.list(["Dario","Ana","Lea"])=="Dario, Ana and Lea")
+    }
     @Test func storedSpeakerLabelsSurviveAnEditAndAreDisplayedVerbatim() throws {
         let fixture=try Fixture()
         let words:[String:Any]=["language":"fr","items":[["speaker":"remote","startMs":0,"endMs":100,"text":"Original words"]]]
