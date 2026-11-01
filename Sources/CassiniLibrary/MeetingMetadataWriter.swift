@@ -18,7 +18,11 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
     public func transaction(_ edit: (inout [String: Any]) throws -> Void) throws {
         try perform(createOnly: false, edit)
     }
-    private func perform(createOnly: Bool, _ edit: (inout [String: Any]) throws -> Void) throws {
+    /// An edit that changes nothing writes nothing and keeps the revision.
+    public func transaction(skippingUnchanged: Bool, _ edit: (inout [String: Any]) throws -> Void) throws {
+        try perform(createOnly: false, skippingUnchanged: skippingUnchanged, edit)
+    }
+    private func perform(createOnly: Bool, skippingUnchanged: Bool = false, _ edit: (inout [String: Any]) throws -> Void) throws {
         lock.lock(); defer { lock.unlock() }
         let fd = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw POSIXError(.ENOENT) }; defer { Darwin.close(fd) }
@@ -39,6 +43,11 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
             if createOnly { return }
             guard metadata.revision < AppMetadata.safe else { throw MetadataError.invalid }
             document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            if skippingUnchanged {
+                var probe = document
+                try edit(&probe)
+                if (probe as NSDictionary).isEqual(to: document) { return }
+            }
             document["revision"] = metadata.revision + 1
         } else {
             guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
