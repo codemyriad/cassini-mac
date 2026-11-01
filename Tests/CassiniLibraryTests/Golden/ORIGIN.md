@@ -9,3 +9,6 @@ S-3a (D7): main Library plus one case per R1–R9, pending the coordinator's fix
 
 D16: meeting.schema.json and LIBRARY.md re-synced verbatim for optional transcript.model.
 Schema SHA256 aed7704a3f6916d156f122cb60dd31c2cffe4a5701fcaebae691dd14dd5be03c.
+
+D55: meeting.schema.json re-synced verbatim from cassini-coordination b81602e (recordingDetails.writingDown.offsetsAssumedZero, recordingDetails.captureRecord).
+Schema SHA256 b4debac07480b4da057b24b2b8f249a5d6cd2389cc823b7a6a66688e38dcd421.

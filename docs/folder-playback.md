@@ -3,7 +3,10 @@
 The Library preview plays a saved Recording-* folder as one AVMutableComposition.
 Each validated WAV gets its own audio track at the original session.json
 startOffsetMs. AVFoundation mixes concurrent sources and converts differing sample
-rates. Fractional offsets retain a nanosecond time base. The original files and
+rates. Each track starts at its D55 placement frame, startOffsetMs · rate / 1000
+rounded half away from zero at the track's own rate (`TrackPlacement`), the same
+placement recognition (16 kHz) and the export mix (48 kHz) use; an unknown offset
+is refused (D19). The original files and
 metadata remain read-only; no merged temporary audio file is required.
 
 Play toggles to Pause (shared catalog player.pause). Selection changes and Library

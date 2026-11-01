@@ -486,6 +486,10 @@
          }
         }
        ]
+      },
+      "offsetsAssumedZero": {
+       "type": "boolean",
+       "description": "D55 (M9): true when this attempt placed at least one track at an assumed offset of 0 because its offset was unknown. Absent or false otherwise. Replaced with each attempt. Playback never aligns from an assumed offset (D19)."
       }
      },
      "required": [
@@ -494,6 +498,33 @@
       "speakerSeparation"
      ],
      "additionalProperties": true
+    },
+    "captureRecord": {
+     "type": "object",
+     "required": [
+      "version"
+     ],
+     "properties": {
+      "version": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "sources": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "captureExpected": {
+          "type": "boolean",
+          "$comment": "D52.1 R69. Optional; missing means true. False only if the source was never selected and never opened a span."
+         }
+        },
+        "additionalProperties": true
+       }
+      }
+     },
+     "additionalProperties": true,
+     "$comment": "D52.1 R65. Optional; version 1. Source outcome rows (every announced source, incl. never-opened), whitelisted track diagnostics and S-6 events, kept through publication and cache deletion. Readers preserve unknown fields and never downgrade a newer version. Shape owned by GNOME #144 (docs/d52-capture-record.md); Mac writes the same."
     }
    },
    "additionalProperties": true

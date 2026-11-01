@@ -68,6 +68,17 @@ import CassiniLibrary
         #expect(abs(mean(samples, from: 6000, to: 9600) - 2000.0 / 32768) < 0.0002)
     }
 
+    /// D55 (M9): playback places a track with the one placement, at the track's own rate.
+    @Test func placesATrackAtTheSharedPlacementFrame() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = try wave(root, "placed", rate: 16000, frames: 1600, value: 3000)
+        let timeline = try await SessionComposition.make(tracks: [.init(url: source, startOffsetMs: 1234.5104, frameCount: 1600, sampleRate: 16000)])
+        let track = try #require(try await timeline.asset.loadTracks(withMediaType: .audio).first)
+        let start = try #require(try await track.load(.segments).first { !$0.isEmpty }?.timeMapping.target.start)
+        #expect(TrackPlacement.frame(ms: 1234.5104, rate: 16000) == 19752)
+        #expect(CMTimeCompare(start, CMTime(value: 19752, timescale: 16000)) == 0)
+        #expect(CMTimeCompare(start, CMTime(value: 19753, timescale: 16000)) != 0, "a one-frame shift is not the placement")
+    }
     @Test func refusesUnknownOrInvalidTimingInsteadOfAssumingZero() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let source = try wave(root, "source", rate: 8000, frames: 80, value: 1)

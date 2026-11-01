@@ -29,7 +29,7 @@ final class PCMInput {
         if let ownership, let start = track.startOffsetMs, frameCount > 0 {
             let end = start + Double(outputFrames)/48
             owned = ownership.owned(kind:track.sourceKind,startMs:start,endMs:end).map {
-                (Int64(($0.0*48).rounded(.toNearestOrAwayFromZero)),Int64(($0.1*48).rounded(.toNearestOrAwayFromZero)))
+                (TrackPlacement.frame(ms:$0.0,rate:48000),TrackPlacement.frame(ms:$0.1,rate:48000))
             }
         }
     }
@@ -55,7 +55,7 @@ final class PCMInput {
         if frameCount > 0 {
             let ms = track.startOffsetMs ?? 0 // D19: marked as assumed in export provenance.
             guard ms.isFinite, ms >= 0, ms <= 9_007_199_254_740_991 else { throw MeetingExportError.invalidSource }
-            offsetFrames = Int64((ms * 48).rounded(.toNearestOrAwayFromZero))
+            offsetFrames = TrackPlacement.frame(ms:ms,rate:48000) // D55: the one placement, at 48 kHz.
         } else { offsetFrames = 0 }
         guard outputFrames <= Int64.max - offsetFrames - 960 else { throw MeetingExportError.tooLarge }
         inputRemaining = frameCount; outputRemaining = outputFrames
