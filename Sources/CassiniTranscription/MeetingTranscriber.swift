@@ -69,12 +69,15 @@ public enum MeetingTranscriber {
             try setStatus(directory: directory, id: meeting.id, status: "running")
             let received = meeting.state.origin == .received
             struct Track {
-                let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
+                /// D52 M15: planned from a first pass whose scratch is already released.
+                let url: URL; let sampleCount: Int; let speaker: TranscriptSpeaker; let offset: Int64
                 /// Speech segments clipped to the half-open ranges this source owns.
                 let segments: [SpeechSegment]
                 let id: String
                 /// Track-local 16 kHz sample ranges inside D52.2 presence and ownership.
                 let kept: [Range<Int>]
+                /// D52.4 R71 activity inside `kept`, measured while planning.
+                let active: [Bool]; let activeSeconds: Double
             }
             var tracks: [Track] = []
             let sources: [(URL, String, String, Double?, String?, Double?, [TrackPresence.Gap]?)]
@@ -129,7 +132,21 @@ public enum MeetingTranscriber {
                         }
                     }
                 }
-                tracks.append(.init(audio: audio, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept))
+                // D52.4 R71: activity inside this track's present, owned time (never the mix).
+                var meter = RecognitionFallback.ActivityMeter(), cursor = 0
+                for range in kept {
+                    if range.lowerBound > cursor { meter.feed([Float](repeating:0,count:range.lowerBound - cursor)) }
+                    var at = range.lowerBound
+                    while at < range.upperBound {
+                        let end = min(range.upperBound,at + 240000)
+                        meter.feed(try audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
+                    }
+                    cursor = range.upperBound
+                }
+                let active = meter.active()
+                tracks.append(.init(url: url, sampleCount: audio.sampleCount, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept,
+                                    active: active, activeSeconds: meter.activeSeconds(active)))
+                // The planning scratch is released here (end of scope), before the next track.
             }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
@@ -194,8 +211,8 @@ public enum MeetingTranscriber {
             }
             try publish(status: "running")
             /// Recognise one range of a track; word times are clamped to its own audio (G11).
-            func words(_ track: Track, _ segment: SpeechSegment) throws -> [RecognitionFallback.Word] {
-                let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
+            func words(_ track: Track, _ audio: SegmentedAudio, _ segment: SpeechSegment) throws -> [RecognitionFallback.Word] {
+                let began = ProcessInfo.processInfo.systemUptime, samples = try audio.samples(segment)
                 let result = try recognize(samples)
                 if ["auto","und",""].contains(language) { language = result.language }
                 let start = track.offset + Int64(segment.startSample * 1000 / 16000), length = Int64(samples.count) * 1000 / 16000
@@ -214,23 +231,15 @@ public enum MeetingTranscriber {
                 for word in words { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
             }
             for (index, track) in tracks.enumerated() {
-                // D52.4 R71: activity inside this track's present, owned time (never the mix).
-                var meter = RecognitionFallback.ActivityMeter(), cursor = 0
-                for range in track.kept {
-                    if range.lowerBound > cursor { meter.feed([Float](repeating:0,count:range.lowerBound - cursor)) }
-                    var at = range.lowerBound
-                    while at < range.upperBound {
-                        let end = min(range.upperBound,at + 240000)
-                        meter.feed(try track.audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
-                    }
-                    cursor = range.upperBound
-                }
-                let active = meter.active(), activeSeconds = meter.activeSeconds(active)
+                // D52 M15: one track's scratch at a time; the same deterministic decode as planning.
+                let audio = try SegmentedAudio(url: track.url)
+                guard audio.sampleCount == track.sampleCount else { throw TranscriptionFailure.audioFormat }
+                let active = track.active, activeSeconds = track.activeSeconds
                 // A track with plenty of active audio holds its VAD words until it reaches the threshold.
                 var held: [RecognitionFallback.Word]? = activeSeconds >= RecognitionFallback.minActiveSeconds ? [] : nil
                 var heldEnd: Int64?, vadWords = 0
                 for segment in track.segments {
-                    let found = try words(track,segment)
+                    let found = try words(track,audio,segment)
                     vadWords += found.count
                     let end = track.offset + Int64(segment.endSample * 1000 / 16000)
                     if held == nil { append(found,track:index); progress.advance(track:index,to:end); try publish(status: "running"); continue }
@@ -254,7 +263,7 @@ public enum MeetingTranscriber {
                     for window in windows {
                         let segment = SpeechSegment(startSample:window.lowerBound,endSample:window.upperBound,reason:"noVadWindow")
                         let base = track.offset + Int64(window.lowerBound * 1000 / 16000)
-                        let kept = RecognitionFallback.energetic(try words(track,segment),samples:try track.audio.samples(segment),baseMs:base)
+                        let kept = RecognitionFallback.energetic(try words(track,audio,segment),samples:try audio.samples(segment),baseMs:base)
                         if let previousEnd, window.lowerBound < previousEnd {
                             fallback = RecognitionFallback.mergeSeam(fallback,kept,windowStartMs:base,overlapMs:Int64((previousEnd - window.lowerBound) * 1000 / 16000))
                         } else { fallback += kept }
