@@ -143,6 +143,32 @@ final class TranscriptionMeetingTests: XCTestCase {
         try writer.transaction {$0["title"]="Edited later"}
         XCTAssertEqual(try LibraryScanner(root:root).scan().meetings.first?.speakers.map(\.displayName),["Intervenant 1","Intervenant 2"])
     }
+    /// D52 M1: two physically overlapping spans of one source are never summed
+    /// into one speaker; the separation is stored as a write-down fact.
+    func testOverlappingSpansOfOneSourceBecomeSeparateSpeakers() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Overlap",source:"chromium")
+        let input = try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens"))).dropFirst(44)
+        try session.transition(starting:["a","b"].map { .init(id:$0,label:"Guest",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"receiver-1") })
+        for (index,id) in ["a","b"].enumerated() {
+            for start in stride(from:0,to:input.count,by:160000) {
+                let first = input.startIndex + start, last = min(input.endIndex,first + 160000)
+                try session.appendNative(id:id,pcm:Data(input[first..<last]),offsetMs:Double(index*2000) + Double(start)/32)
+            }
+        }
+        try session.finish()
+        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
+            .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
+        })
+        let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(Set(meeting.transcriptItems.map(\.speaker)),["track-receiver-1","track-receiver-1:overlap:1"])
+        let stored = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as? [String:Any]
+        let details = stored?["recordingDetails"] as? [String:Any]
+        XCTAssertEqual((details?["writingDown"] as? [String:Any])?["sourceSpansSeparated"] as? Bool,true)
+    }
     func testReceivedPlainOpusBecomesOneUnnamedSpeaker() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
         let original = Bundle.module.url(forResource: "jfk-received", withExtension: "opus", subdirectory: "Fixtures")!
