@@ -30,22 +30,25 @@ public actor ModelDownloader {
     private let dataRoot: URL
     private let origin: ModelOrigin
     private let budget: @Sendable (URL) throws -> ModelDiskSpace
+    /// D54: sent on every request (manifest, NOTICE, artifacts and any redirect hop).
+    private let userAgent: String
     private struct Operation { let id: UUID; let task: Task<URL,Error> }
     private var operations: [ModelPin:Operation] = [:]
     private var removing = Set<ModelPin>()
-    public init(appData: URL) {
-        dataRoot = appData.resolvingSymlinksInPath()
+    /// `userAgent`: `ModelUserAgent.app()`, built once by the app layer.
+    public init(appData: URL, userAgent: String) {
+        dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent
         origin = try! ModelOrigin(URL(string:"https://dist.gocassini.com")!)
         budget = ModelDiskSpace.measured
     }
     // Loopback HTTP is available only to module tests, never the app consumer.
-    init(appData: URL, fixtureOrigin: URL, budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = ModelDiskSpace.measured) throws {
-        dataRoot = appData.resolvingSymlinksInPath(); origin = try ModelOrigin(fixtureOrigin,fixture:true); self.budget = budget
+    init(appData: URL, fixtureOrigin: URL, userAgent: String, budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = ModelDiskSpace.measured) throws {
+        dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent; origin = try ModelOrigin(fixtureOrigin,fixture:true); self.budget = budget
     }
     public func plan(_ pin: ModelPin) async throws -> ModelPlan {
         guard pin.valid else { throw ModelDownloadError.manifest }
         try ModelFiles.directory(dataRoot)
-        let manifest = try await Self.metadata(origin.endpoint("manifest.json"),origin:origin,temporary:dataRoot,limit:4 << 20)
+        let manifest = try await Self.metadata(origin.endpoint("manifest.json"),origin:origin,userAgent:userAgent,temporary:dataRoot,limit:4 << 20)
         return try ModelManifest.plan(manifest,pin:pin,origin:origin)
     }
     public func spaceRequired(for plan: ModelPlan) throws -> UInt64 {
@@ -59,8 +62,8 @@ public actor ModelDownloader {
         guard !removing.contains(pin) else { throw ModelDownloadError.busy }
         if let operation = operations[pin] { return try await operation.task.value }
         guard operations.isEmpty else { throw ModelDownloadError.busy }
-        let id = UUID(), root = dataRoot, origin = origin, budget = budget
-        let task = Task.detached(priority:.utility) { try await Self.perform(pin,root:root,origin:origin,budget:budget,progress:progress) }
+        let id = UUID(), root = dataRoot, origin = origin, budget = budget, userAgent = userAgent
+        let task = Task.detached(priority:.utility) { try await Self.perform(pin,root:root,origin:origin,userAgent:userAgent,budget:budget,progress:progress) }
         operations[pin] = .init(id:id,task:task)
         defer { if operations[pin]?.id == id { operations[pin] = nil } }
         return try await withTaskCancellationHandler(operation:{ try await task.value },onCancel:{ task.cancel() })
@@ -145,7 +148,7 @@ public actor ModelDownloader {
         guard let size = try ModelFiles.size(notice),size > 0,size <= 2 << 20,
               String(data:try Data(contentsOf:notice),encoding:.utf8) != nil else { throw ModelDownloadError.installation }
     }
-    private static func perform(_ pin: ModelPin, root: URL, origin: ModelOrigin,
+    private static func perform(_ pin: ModelPin, root: URL, origin: ModelOrigin, userAgent: String,
                                 budget: @Sendable (URL) throws -> ModelDiskSpace, progress: @escaping @Sendable (ModelDownloadProgress) -> Void) async throws -> URL {
         try ModelFiles.directory(root)
         let modelsRoot = root.appendingPathComponent("models",isDirectory:true)
@@ -155,7 +158,7 @@ public actor ModelDownloader {
         try ModelFiles.directory(modelRoot)
         let lock = try lock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock")); defer { close(lock) }
         let destination = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
-        let manifest = try await metadata(origin.endpoint("manifest.json"),origin:origin,temporary:root,limit:4 << 20)
+        let manifest = try await metadata(origin.endpoint("manifest.json"),origin:origin,userAgent:userAgent,temporary:root,limit:4 << 20)
         let plan = try ModelManifest.plan(manifest,pin:pin,origin:origin)
         progress(.init(receivedBytes:0,totalBytes:plan.compressedBytes,isInstalled:false))
         if FileManager.default.fileExists(atPath:destination.path) {
@@ -183,7 +186,7 @@ public actor ModelDownloader {
             try Task.checkCancellation()
             let compressed = partials.appendingPathComponent(asset.compressedSHA256 + ".part")
             let before = completedBytes, total = plan.compressedBytes
-            try await download(asset,to:compressed,origin:origin) { bytes in
+            try await download(asset,to:compressed,origin:origin,userAgent:userAgent) { bytes in
                 progress(.init(receivedBytes:before + bytes,totalBytes:total,isInstalled:false))
             }
             let decoded = staging.appendingPathComponent(asset.path)
@@ -191,7 +194,7 @@ public actor ModelDownloader {
             try ModelFiles.decode(asset,compressed:compressed,output:decoded)
             completedBytes += asset.compressedBytes
         }
-        let notice = try await metadata(origin.endpoint("NOTICE.txt"),origin:origin,temporary:root,limit:2 << 20)
+        let notice = try await metadata(origin.endpoint("NOTICE.txt"),origin:origin,userAgent:userAgent,temporary:root,limit:2 << 20)
         guard !notice.isEmpty, String(data:notice,encoding:.utf8) != nil else { throw ModelDownloadError.response }
         try save(notice,to:staging.appendingPathComponent("NOTICE.txt"))
         try save(try JSONEncoder().encode(Receipt(plan:plan)),to:staging.appendingPathComponent("receipt.json"))
@@ -228,18 +231,18 @@ public actor ModelDownloader {
         let file = FileHandle(fileDescriptor:fd,closeOnDealloc:true); defer { try? file.close() }
         try file.write(contentsOf:bytes); try file.synchronize()
     }
-    private static func metadata(_ url: URL, origin: ModelOrigin, temporary: URL, limit: UInt64) async throws -> Data {
+    private static func metadata(_ url: URL, origin: ModelOrigin, userAgent: String, temporary: URL, limit: UInt64) async throws -> Data {
         guard origin.permits(url) else { throw ModelDownloadError.origin }
         let file = temporary.appendingPathComponent(".metadata-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:file) }
         var request = URLRequest(url:url); request.setValue("identity",forHTTPHeaderField:"Accept-Encoding")
-        _ = try await ModelHTTP.transfer(request,to:file,limit:limit) { response in
+        _ = try await ModelHTTP.transfer(request,userAgent:userAgent,to:file,limit:limit) { response in
             guard response.statusCode == 200 else { throw ModelDownloadError.response }; return .replace
         }
         try Task.checkCancellation()
         return try Data(contentsOf:file)
     }
-    private static func download(_ asset: ModelAsset, to file: URL, origin: ModelOrigin, progress: @escaping @Sendable (UInt64) -> Void) async throws {
+    private static func download(_ asset: ModelAsset, to file: URL, origin: ModelOrigin, userAgent: String, progress: @escaping @Sendable (UInt64) -> Void) async throws {
         guard origin.permits(asset.url) else { throw ModelDownloadError.origin }
         for attempt in 0..<2 {
             try Task.checkCancellation()
@@ -254,7 +257,7 @@ public actor ModelDownloader {
             let etag = "\"" + asset.compressedSHA256 + "\""
             if existing > 0 { request.setValue("bytes=\(existing)-",forHTTPHeaderField:"Range"); request.setValue(etag,forHTTPHeaderField:"If-Range") }
             do {
-                let response = try await ModelHTTP.transfer(request,to:file,limit:asset.compressedBytes,progress:progress) { response in
+                let response = try await ModelHTTP.transfer(request,userAgent:userAgent,to:file,limit:asset.compressedBytes,progress:progress) { response in
                     if response.statusCode == 416 && existing > 0 { return .ignore }
                     guard response.statusCode == 200 || response.statusCode == 206 else { throw ModelDownloadError.response }
                     guard response.value(forHTTPHeaderField:"ETag") == etag else { throw ModelDownloadError.etag }
