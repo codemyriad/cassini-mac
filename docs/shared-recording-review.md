@@ -11,7 +11,7 @@ For each upstream G2/G4/G5 PR:
 3. Build the Mac host and run the upstream vectors against it. If the PR adds host semantics,
    use the corresponding Swift implementation in the same review window.
 4. Run shared unit/topology tests and Mac synthetic/loaded-extension/tab-capture scenarios.
-   Tab capture needs DrMeyers's output device. Include new regression scenarios from the PR.
+   Tab capture needs a real output device, so it is a manual check on a developer Mac. Include new regression scenarios from the PR.
 5. Check mute/gating, duplicate prevention, lifecycle cleanup and Chrome 116 APIs. Verify
    page labels remain untrusted and overlays report the audio admitted by the recorder.
 6. Review/approve only the tested SHA. If the PR changes afterward, inspect the delta and
