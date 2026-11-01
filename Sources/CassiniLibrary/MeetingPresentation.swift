@@ -29,21 +29,55 @@ public enum MeetingPresentation {
         public var items: [LibraryTranscriptItem]
         public var startMs: Int64 { items.first?.startMs ?? 0 }
     }
+    /// D52 M11 (GNOME transcript.py build_turns, from gocassini): rejoin a speaker's
+    /// interrupted run when competing speech overlaps it, so mutual overlap reads as
+    /// whole interleaved turns instead of alternating fragments. Quotes stay paired
+    /// within each consecutive run (D38.5). Markdown export keeps consecutive runs (S-5).
+    public static let seamGapMs: Int64 = 400
+    public static let touchToleranceMs: Int64 = 20
     public static func turns(_ items: [LibraryTranscriptItem]) -> [Turn] {
-        var result: [Turn] = []
+        var fragments: [[LibraryTranscriptItem]] = []
         for item in items where !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if result.last?.speaker == item.speaker { result[result.count - 1].items.append(item) }
-            else { result.append(.init(id: result.count, speaker: item.speaker, items: [item])) }
+            if fragments.last?.first?.speaker == item.speaker { fragments[fragments.count - 1].append(item) } else { fragments.append([item]) }
         }
-        return result.compactMap { turn in
-            let pieces = TranscriptText.quotes(turn.items.map(\.text))
-            let items = zip(turn.items,pieces).compactMap { item,text -> LibraryTranscriptItem? in
+        let displayed: [[LibraryTranscriptItem]] = fragments.map { fragment in
+            zip(fragment,TranscriptText.quotes(fragment.map(\.text))).compactMap { item,text in
                 let text = text.split(whereSeparator: \.isWhitespace).joined(separator:" ")
-                guard !text.isEmpty else { return nil }
-                return .init(speaker:item.speaker,startMs:item.startMs,endMs:item.endMs,text:text)
+                return text.isEmpty ? nil : .init(speaker:item.speaker,startMs:item.startMs,endMs:item.endMs,text:text)
             }
-            return items.isEmpty ? nil : Turn(id:turn.id,speaker:turn.speaker,items:items)
         }
+        /// Union of audible word intervals, excluding zero durations.
+        func spans(_ words: [LibraryTranscriptItem]) -> [(Int64,Int64)] {
+            var out: [(Int64,Int64)] = []
+            for w in words.sorted(by:{ $0.startMs < $1.startMs }) where w.endMs > w.startMs {
+                if let last = out.last, w.startMs <= last.1 { out[out.count-1].1 = max(last.1,w.endMs) } else { out.append((w.startMs,w.endMs)) }
+            }
+            return out
+        }
+        func touches(_ left: [(Int64,Int64)], _ right: [(Int64,Int64)]) -> Bool {
+            left.contains { a in right.contains { c in max(a.0,c.0) - min(a.1,c.1) <= touchToleranceMs } }
+        }
+        let pools = fragments.map(spans)
+        var result: [Turn] = [], ends: [Int64] = [], open: [String:(turn: Int,fragment: Int)] = [:]
+        for (position,fragment) in fragments.enumerated() {
+            let speaker = fragment[0].speaker
+            var joined = false
+            if let previous = open[speaker], let first = pools[position].first, !pools[previous.fragment].isEmpty,
+               abs(first.0 - ends[previous.turn]) <= seamGapMs {
+                let intervening = pools[(previous.fragment + 1)..<position].flatMap { $0 }
+                if intervening.isEmpty || touches(intervening,pools[previous.fragment] + pools[position]) {
+                    result[previous.turn].items += displayed[position]
+                    ends[previous.turn] = max(ends[previous.turn],fragment.map(\.endMs).max() ?? 0)
+                    open[speaker] = (previous.turn,position); joined = true
+                }
+            }
+            if !joined, !displayed[position].isEmpty {
+                result.append(.init(id:result.count,speaker:speaker,items:displayed[position]))
+                ends.append(fragment.map(\.endMs).max() ?? 0)
+                open[speaker] = (result.count - 1,position)
+            } else if !joined { open[speaker] = nil }
+        }
+        return result
     }
     /// Meeting data for directly opened files, without an app-owned sidecar.
     public static func external(_ file: CassiniFile, url: URL) -> LibraryMeeting {
