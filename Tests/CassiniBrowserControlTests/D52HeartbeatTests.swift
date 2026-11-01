@@ -78,12 +78,19 @@ final class D52HeartbeatTests: XCTestCase {
         let ping = try receive(client)
         XCTAssertEqual(ping["type"]?.string,"ping"); XCTAssertEqual(ping["seq"]?.int,0)
         try send(["type":"pong","seq":0],client)
+        // Wait until the service has taken the pong, so the clock never moves under it.
+        let deadline = Date().addingTimeInterval(3)
+        while service.lastHeartbeatInbound() != clock.now() {
+            guard Date() < deadline else { return XCTFail("the pong was never received") }
+            Thread.sleep(forTimeInterval:0.005)
+        }
         clock.advance(10_000); service.tickHeartbeats()
         XCTAssertEqual(try receive(client)["seq"]?.int,1)
-        // Nothing more from the extension: 25 s after its last frame, control is lost.
-        // (The exact deadlines are the shared vectors' job; the pong's arrival time on
-        // the service queue is not observable here.)
-        clock.advance(25_000); service.tickHeartbeats()
+        // Nothing more from the extension: control is lost exactly 25 s after the pong.
+        clock.advance(14_999); service.tickHeartbeats()
+        XCTAssertNotNil(service.lastHeartbeatInbound(),"still connected 1 ms before the deadline")
+        XCTAssertEqual(try receive(client)["seq"]?.int,2,"pings are unconditional, not idle-only")
+        clock.advance(1); service.tickHeartbeats()
         wait(for:[gone],timeout:3)
         XCTAssertThrowsError(try receive(client,seconds:1),"the app closed the lost control connection")
     }

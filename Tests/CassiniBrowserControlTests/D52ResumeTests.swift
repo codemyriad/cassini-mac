@@ -109,13 +109,76 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
     func testSharedResumeSeamOwnership() throws {
         let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("browser-protocol/conformance/control/resume-capture-vectors.json")
-        let seam = try XCTUnwrap(try JSONParser.parse(Data(contentsOf:url))["seam"])
-        let ownership = try XCTUnwrap(OthersOwnership(events:CaptureEvent.read(seam["events"])))
-        for track in seam["tracks"]!.array! {
-            let id = track["id"]!.string!
-            let owned = ownership.owned(kind:track["kind"]!.string!,startMs:track["startMs"]!.double!,endMs:track["endMs"]!.double!)
-            let expected = seam["expectedWindows"]![id]!.array!.map { [$0.array![0].double!,$0.array![1].double!] }
-            XCTAssertEqual(owned.map { [$0.0,$0.1] },expected,id)
+        let file = try JSONParser.parse(Data(contentsOf:url))
+        // D52.4: the D49 seam and the seam after a lost audio transport place the same way.
+        for name in ["seam","lostSeam"] {
+            let seam = try XCTUnwrap(file[name],name)
+            let ownership = try XCTUnwrap(OthersOwnership(events:CaptureEvent.read(seam["events"])))
+            for track in seam["tracks"]!.array! {
+                let id = track["id"]!.string!
+                let owned = ownership.owned(kind:track["kind"]!.string!,startMs:track["startMs"]!.double!,endMs:track["endMs"]!.double!)
+                let expected = seam["expectedWindows"]![id]!.array!.map { [$0.array![0].double!,$0.array![1].double!] }
+                XCTAssertEqual(owned.map { [$0.0,$0.1] },expected,"\(name) \(id)")
+            }
+        }
+    }
+    /// D52.4 `targets`: which current othersSource a resume may attach to, and the seam it writes.
+    func testSharedResumeTargets() throws {
+        let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("browser-protocol/conformance/control/resume-capture-vectors.json")
+        let targets = try XCTUnwrap(try JSONParser.parse(Data(contentsOf:url))["targets"])
+        let eligible = try XCTUnwrap(targets["eligible"]?.array), ineligible = try XCTUnwrap(targets["ineligible"]?.array)
+        XCTAssertFalse(eligible.isEmpty); XCTAssertFalse(ineligible.isEmpty)
+        for row in eligible {
+            XCTAssertEqual(OwnedBrowserCapture.resumeSeamReason(source:row["source"]?.string,reason:row["reason"]?.string),row["seamReason"]?.string,"\(row)")
+        }
+        for row in ineligible { XCTAssertNil(OwnedBrowserCapture.resumeSeamReason(source:row["source"]?.string,reason:row["reason"]?.string),"\(row)") }
+    }
+    /// D52.4 through the real host: a browser recording whose audio transport closed falls
+    /// back to system/lost, keeps its identity, and a resume joins it with browser/restored.
+    func testALostBrowserRecordingResumesOntoItsFallbackAsRestored() async throws {
+        try await run { fixture in
+            let origin = Int(Date().timeIntervalSince1970*1000)
+            let first = try fixture.client()
+            let started = try first.request(["type":"start","version":1,"independent":true,"captureId":"lost-call","timelineOriginMs":origin,"microphone":false,
+                                             "title":"Call","features":["source-outcomes-v1"],"callGeneration":"call-A","documentGeneration":1])
+            XCTAssertEqual(started["type"]?.string,"started")
+            let capture = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string })
+            XCTAssertEqual(try first.request(["type":"track","id":"a","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
+            XCTAssertEqual(try first.request(["type":"audio","id":"a","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:1600).base64EncodedString()])["type"]?.string,"ack")
+            first.end()
+            let deadline = Date().addingTimeInterval(5)
+            while capture.snapshot.transportAlive || fixture.broker.standInIdentity(capture) == nil {
+                guard Date() < deadline else { return XCTFail("the transport loss was never observed") }
+                try await Task.sleep(nanoseconds:10_000_000)
+            }
+            // The identity stays taken: a fresh Start reusing it creates nothing.
+            XCTAssertEqual(try fixture.client().request(["type":"start","version":1,"independent":true,"captureId":"lost-call","timelineOriginMs":origin,
+                                                          "microphone":false,"title":"Again"])["type"]?.string,"error")
+            XCTAssertEqual(folders(fixture),1)
+            // none/lost (the fallback has not started yet) is not a target.
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            XCTAssertEqual(try fixture.client().request(resume("lost-call",origin:origin))["type"]?.string,"error")
+            // Fall back to computer sound, as the policy does at once.
+            try await capture.requestSystemFallback()
+            let stage = StagedNativeWriter()
+            try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            try await capture.activateNative(stage,side:.others,allowed:{ true })
+            let fallback = capture.snapshot.manifest.events?.last { $0.type == "othersSource" }
+            XCTAssertEqual(fallback?.source,"system"); XCTAssertEqual(fallback?.reason,"lost")
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            let client = try fixture.client()
+            let resumed = try client.request(resume("lost-call",origin:origin))
+            XCTAssertEqual(resumed["resumed"]?.bool,true); XCTAssertEqual(resumed["path"]?.string,capture.snapshot.directory.path)
+            let declared = try client.request(["type":"track","id":"r1","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"]); XCTAssertEqual(declared["type"]?.string,"ack","\(declared)")
+            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":5000,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
+            XCTAssertTrue(capture.snapshot.restoreReady)
+            try await capture.restoreBrowser(atMs:6000)
+            let seam = capture.snapshot.manifest.events?.last { $0.type == "othersSource" }
+            XCTAssertEqual(seam?.source,"browser"); XCTAssertEqual(seam?.reason,"restored")
+            XCTAssertEqual(folders(fixture),1,"No new folder")
+            XCTAssertEqual(try client.request(["type":"stop","captureId":"lost-call"])["type"]?.string,"stopped")
         }
     }
 }

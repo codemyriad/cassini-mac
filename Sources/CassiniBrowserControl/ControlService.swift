@@ -79,6 +79,10 @@ public final class BrowserControlService: @unchecked Sendable {
             catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
+    /// D52.5: calls whose recording is on system/lost; they are resumed, never auto-Started.
+    public func setLostCalls(_ calls: Set<BrowserControlRegistry.LostCall>) {
+        queue.async { [self] in registry.setLostCalls(calls); reconcile() }
+    }
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }
@@ -163,6 +167,8 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     /// Runs the heartbeat now, as the 1 s timer does (tests drive it with an injected clock).
     func tickHeartbeats() { sync { beat() } }
+    /// The latest inbound frame time across control connections (tests wait on it).
+    func lastHeartbeatInbound() -> UInt64? { sync { heartbeats.values.map(\.lastInboundAt).max() } }
     private func beat() {
         let now = clock()
         for (id,var heartbeat) in heartbeats {

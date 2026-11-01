@@ -111,6 +111,18 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         lock.withLock { standIns[identity]?.expected = nil }
         return capture
     }
+    /// D52.4: once its audio transport closed, a browser recording is a resume target under
+    /// its own capture identity and origin (attachResumedBrowser admits only system/lost).
+    /// Its identity stays taken: a fresh Start reusing it is still refused.
+    fileprivate func transportLost(_ capture: OwnedBrowserCapture, captureID: String, timelineOriginMs: Int, peer: UUID) {
+        lock.withLock {
+            let id = capture.snapshot.manifest.id, identity = Data(captureID.utf8)
+            guard captures[id] === capture, identities[id] == identity, standIns[identity] == nil,
+                  (0...253402300799000).contains(timelineOriginMs) else { return }
+            standIns[identity] = .init(capture:id,origin:timelineOriginMs,expected:nil)
+            if reservations[identity] == peer { reservations.removeValue(forKey:identity) }
+        }
+    }
     /// A failed or ended resumed transport releases its claim; the stand-in keeps recording.
     fileprivate func releaseResume(captureID: String, peer: UUID) {
         lock.withLock { let identity = Data(captureID.utf8); if reservations[identity] == peer, standIns[identity] != nil { reservations.removeValue(forKey:identity) } }
@@ -135,7 +147,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     fileprivate func begin(_ info: BrowserAudioStart, title: String, peer: UUID) throws -> OwnedBrowserCapture {
         let identity = Data(info.captureID.utf8)
         lock.lock()
-        guard !admissionClosed, reservations[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
+        guard !admissionClosed, reservations[identity] == nil, standIns[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
         reservations[identity] = peer; creating.enter(); lock.unlock()
         defer { creating.leave() }
         let capture: OwnedBrowserCapture
@@ -218,6 +230,7 @@ private final class AudioPeer: @unchecked Sendable {
     private var sourceOutcomes = false
     private var captureID: String?
     private var resumed = false
+    private var timelineOriginMs: Int?
     /// PCM_STALE_AFTER state: wire ids whose open span has delivered PCM, and the time of
     /// the last frame of any type on this transport (D52.5: every frame counts).
     private let liveness = NSLock()
@@ -319,7 +332,7 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
                 let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id
+                owner = capture; captureID = id; timelineOriginMs = origin
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
                 if features.contains("source-outcomes-v1") {
                     capture.enableSourceOutcomes(); sourceOutcomes = true
@@ -438,6 +451,10 @@ private final class AudioPeer: @unchecked Sendable {
         guard !completed, let owner else { return }
         // A resumed transport's EOF keeps the native recording and its fallback (D33).
         try? owner.browserLost(atMs:lossTime)
+        // D52.4: the call may later resume this recording onto its system/lost fallback.
+        if !resumed, let captureID, let timelineOriginMs {
+            broker?.transportLost(owner,captureID:captureID,timelineOriginMs:timelineOriginMs,peer:connection.peer.id)
+        }
     }
 }
 /// A negotiated command refusal that leaves the capture and connection running.

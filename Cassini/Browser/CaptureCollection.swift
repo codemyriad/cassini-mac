@@ -32,6 +32,12 @@ struct LiveCapture {
     var callPolicy = BrowserCallPolicy()
     /// D52.1 R67: this native stand-in already asked one call to join (never retried).
     var resumeAttempted = false
+    /// D52.4/D52.5: the call this browser recording belongs to, kept so a resume can find it
+    /// again on a new control connection of the same browser.
+    var callGeneration: String?
+    var controlInstance: BrowserInstance?
+    /// D52.5: the loss (and control connection) a resume was already asked for.
+    var resumeAsked: (loss: TimeInterval?, peer: UUID)?
     var modernLifecycle: Bool?
     var changingSource = false
     fileprivate var sourceObservation: BrowserSourceObservation?
@@ -436,10 +442,46 @@ private final class CaptureFiles: @unchecked Sendable {
             broker.expectResume(owner,callGeneration:generation)
         }
     }
+    /// D52.4/D52.5: a browser recording whose audio transport closed and that fell back to
+    /// system/lost asks its call to resume it: once per loss, and again only on a new
+    /// control connection. The call is the same tab and call generation, on the same
+    /// connection or a reconnect of the same browser instance.
+    private func offerResume(_ id: UUID, _ value: LiveCapture) {
+        let source = value.owner.snapshot
+        guard source.manifest.source == "chromium", let key = value.key, value.savingSinceMs == nil,
+              source.phase == .recording, source.others, !source.transportAlive else { return }
+        let state = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
+        guard state.source == "system", state.reason == "lost", let identity = broker.standInIdentity(value.owner) else { return }
+        let match = peers.filter { $0.reconciled && $0.supportsResume && $0.supportsMultiStream &&
+            ($0.id == key.peer || ($0.browserInstance != nil && $0.browserInstance == value.controlInstance)) }
+            .lazy.compactMap { peer in peer.meetings.first { $0.key.tabID == key.tabID }.map { (peer,$0) } }.first
+        guard let (peer,meeting) = match, meeting.sourceCount > 0, meeting.heard, let generation = meeting.callGeneration,
+              value.callGeneration == nil || value.callGeneration == generation else { return }
+        if let asked = value.resumeAsked, asked.loss == source.browserLostUptime, asked.peer == peer.id { return }
+        captures[id]?.resumeAsked = (source.browserLostUptime,peer.id); captures[id]?.key = meeting.key
+        let owner = value.owner, broker = broker
+        service.resumeMeeting(meeting.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { generation in
+            broker.expectResume(owner,callGeneration:generation)
+        }
+    }
+    /// D52.5: calls with a recording on a lost transport are resumed, never auto-Started afresh.
+    private func publishLostCalls() {
+        let lost = Set(captures.values.compactMap { value -> BrowserControlRegistry.LostCall? in
+            let source = value.owner.snapshot
+            guard source.manifest.source == "chromium", let key = value.key, value.savingSinceMs == nil, source.phase == .recording,
+                  !source.transportAlive, CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity).reason == "lost" else { return nil }
+            return .init(instance:value.controlInstance,peer:key.peer,tabID:key.tabID,callGeneration:value.callGeneration)
+        })
+        guard lost != publishedLostCalls else { return }
+        publishedLostCalls = lost; service.setLostCalls(lost)
+    }
+    @ObservationIgnored private var publishedLostCalls: Set<BrowserControlRegistry.LostCall> = []
     private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        defer { publishLostCalls() }
         for id in Array(captures.keys) {
             guard let value = captures[id] else { continue }
             offerStandIn(id,value)
+            offerResume(id,value)
             let status = value.input.status()
             captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
             if value.snapshot.browserAlive && value.snapshot.others {
@@ -465,6 +507,8 @@ private final class CaptureFiles: @unchecked Sendable {
                 let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
                 let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
                 let meeting = peer?.meetings.first { $0.key == value.key }
+                if let generation = status?.callGeneration { captures[id]?.callGeneration = generation }
+                if let instance = peer?.browserInstance { captures[id]?.controlInstance = instance }
                 let pages: [(BrowserCallLifecycle.Page,TimeInterval?)] = [
                     status?.pageState.map { ($0,status?.pageStateAt) },
                     meeting?.pageState.map { ($0,meeting?.pageStateAt) }

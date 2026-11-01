@@ -231,12 +231,22 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     /// on the owner queue, which also serializes finalization, and checks the end
     /// intent Stop claims first. A refusal changes nothing: no folder, clock,
     /// microphone or selection change.
+    /// resume-capture-v1 targets (D49, D52.4): the reason the committed browser seam writes,
+    /// or nil when the current othersSource is not an eligible target.
+    public static func resumeSeamReason(source: String?, reason: String?) -> String? {
+        guard source == "system" else { return nil }
+        switch reason {
+        case "missing": return "callConnected"   // the initial stand-in
+        case "lost": return "restored"           // a fallback after the audio transport closed
+        default: return nil
+        }
+    }
     public func attachResumedBrowser() throws {
         try sync {
             let ending = endLock.withLock { endIntent != nil }
             let current = recording.manifest.events?.last(where:{ $0.type == "othersSource" })
             guard phase == .recording, !ending, others, !browserAlive, !transportAlive,
-                  current?.source == "system", current?.reason == "missing" else {
+                  Self.resumeSeamReason(source:current?.source,reason:current?.reason) != nil else {
                 throw BrowserProtocolError("state","The recording cannot be resumed.")
             }
             transportAlive = true; managedBrowser = true
@@ -377,7 +387,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let transportDied = self.transportAlive && !transportAlive
             self.transportAlive = self.transportAlive && transportAlive
             guard browserAlive else {
-                if transportDied { browserLostUptime = lost }
+                if transportDied { browserLostUptime = lost; forgetDeadTransportSources() }
                 for id in Array(browserSources.keys) { browserSources[id]?.returning = false; browserSources[id]?.current = false }
                 browserReturnAt = max(browserReturnAt,atMs)
                 publish(); return
@@ -390,8 +400,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 browserSources[id] = source
             }
             browserReturnAt = eventTime(atMs)
+            if transportDied { forgetDeadTransportSources() }
             browserAlive = false; fallbackReason = "lost"; browserLostUptime = lost; publish()
         }
+    }
+    /// The sources of a closed audio transport can never continue on it; a resumed transport
+    /// declares fresh spans under the same source keys (D52.4). Their ledger rows stay.
+    private func forgetDeadTransportSources() {
+        browserSources.removeAll(); browserPeaks.removeAll()
     }
     public func manageBrowserLifecycle(_ enabled: Bool) async throws {
         try await operation {
