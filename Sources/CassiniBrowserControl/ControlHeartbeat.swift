@@ -10,6 +10,8 @@ public struct ControlHeartbeat: Sendable {
     private var negotiated = false, active = false, lost = false
     private var lastInbound: UInt64 = 0, lastPing: UInt64 = 0, sequence: UInt64 = 0
     public init() {}
+    /// The time of the last inbound frame (for diagnostics and tests).
+    public var lastInboundAt: UInt64 { lastInbound }
     /// A hello opens the connection: nothing carries over. A hello without the
     /// capability is never pinged and never timed out.
     public mutating func hello(capabilities: [String], at now: UInt64) {
