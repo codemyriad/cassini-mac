@@ -230,12 +230,15 @@ extension LibraryBoards {
     }
 
     @MainActor private func dockReopen(_ app:XCUIApplication) async throws {
-        let bundle=try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier:"io.codemyriad.cassini").first?.bundleURL)
-        try await withCheckedThrowingContinuation { (reply:CheckedContinuation<Void,Error>) in
-            NSWorkspace.shared.openApplication(at:bundle,configuration:NSWorkspace.OpenConfiguration()) { _,error in
-                if let error {reply.resume(throwing:error)} else {reply.resume()}
-            }
-        }
+        let name=try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier:"io.codemyriad.cassini").first?.localizedName)
+        // Exercise the actual Dock activation/minimized-window path. A
+        // successful openApplication reply only acknowledges the launch request;
+        // it does not prove that the Dock's restore action was performed.
+        // The idle-menu test above retains independent LaunchServices coverage.
+        let dock=XCUIApplication(bundleIdentifier:"com.apple.dock")
+        let icon=dock.dockItems[name]
+        XCTAssertTrue(icon.waitForExistence(timeout:10),dock.debugDescription)
+        icon.click()
     }
     @MainActor private func backgroundClick(_ target:XCUIElement,through foreground:XCUIApplication) {
         let anchor=foreground.menuBars.firstMatch
