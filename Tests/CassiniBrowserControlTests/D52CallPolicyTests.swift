@@ -15,7 +15,7 @@ final class D52CallPolicyTests: XCTestCase {
         XCTAssertEqual(file["constants"]?["TAB_CLOSED_GRACE"]?.double,BrowserCallPolicy.tabClosedGrace*1000)
         XCTAssertEqual(file["constants"]?["BROWSER_RETURN_GRACE"]?.double,BrowserCallPolicy.browserReturnGrace*1000)
         let cases = try XCTUnwrap(file["cases"]?.array)
-        XCTAssertEqual(cases.count,10)
+        XCTAssertEqual(cases.count,19)
         for vector in cases {
             let name = vector["name"]!.string!
             var policy = BrowserCallPolicy()
@@ -24,7 +24,8 @@ final class D52CallPolicyTests: XCTestCase {
                 let page: BrowserCallLifecycle.Page? = step["pageState"]?.string.map { BrowserCallLifecycle.Page(rawValue:$0) } ?? .present
                 let observation = BrowserCallPolicy.Observation(page:page,rowPresent:step["rowPresent"]?.bool ?? true,sourceCount:step["sourceCount"]?.int,
                     sourceCountKnown:step["sourceCountKnown"]?.bool ?? (step["sourceCount"]?.int != nil),heard:step["heard"]?.bool ?? false,
-                    controlAlive:step["controlAlive"]?.bool ?? true,pcmLive:step["pcmLive"]?.bool ?? false)
+                    controlAlive:step["controlAlive"]?.bool ?? true,pcmLive:step["pcmLive"]?.bool ?? false,
+                    transportAlive:step["transportAlive"]?.bool ?? true)
                 let at = step["atMs"]!.double!
                 let action = policy.step(now:at/1000,observation,source:source,reason:reason)
                 let actual: [String]

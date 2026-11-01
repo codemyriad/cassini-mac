@@ -513,7 +513,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
                 let callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
                     sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
-                    controlAlive:peer != nil,pcmLive:fresh,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                    controlAlive:peer != nil,pcmLive:fresh,transportAlive:source.transportAlive,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
                 var policy = captures[id]?.callPolicy ?? BrowserCallPolicy()
                 let action = BrowserCallPolicy.decide(pending:pending,multiStream:multiStream,policy:&policy,now:now,callObservation,
                     source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
