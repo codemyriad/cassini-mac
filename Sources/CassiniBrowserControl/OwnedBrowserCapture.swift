@@ -506,7 +506,11 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try sync {
             guard phase == .recording else { return }
             let live = ids.filter { nativeSpans[$0]?.registered == true }
-            if !live.isEmpty { try commitTransition(ending:live) }
+            // D52 (GNOME live_problem): a native input lost to an I/O failure ends its
+            // track with problemKind io, which the Recording page reports per source.
+            if kind == "io", problem?.isEmpty == false {
+                for id in live { try recording.failTrack(id:id,problemKind:"io") }
+            } else if !live.isEmpty { try commitTransition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }
             reservedNative.remove(side)
             if let problem, !problem.isEmpty {
