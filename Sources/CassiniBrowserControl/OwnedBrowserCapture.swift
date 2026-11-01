@@ -154,8 +154,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
             let span = UUID().uuidString.lowercased(), live = others && browserAlive
-            try commitTransition(starting:[.init(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)])
-            ledger?.bind(track:span,to:key,expected:live)
+            try commitBound([(span,key,live)],starting:[.init(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)])
             browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
             publish()
         }
@@ -183,8 +182,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if managedBrowser, browserAlive, others, source.span == nil,
                normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > resumeAt {
                 let span = UUID().uuidString.lowercased()
-                try commitTransition(starting:[.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser")])
-                ledger?.bind(track:span,to:source.key)
+                try commitBound([(span,source.key,true)],starting:[.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser")])
                 source.span = span; source.current = true
                 browserSources[Data(id.utf8)] = source
             }
@@ -331,10 +329,11 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if newOthers != self.others {
                 events.append(.init(atMs:time,type:"othersSource",source:!newOthers ? "none" : browserAvailable ? "browser" : "none",reason:newOthers && !browserAvailable ? self.fallbackReason ?? "user" : "user"))
             }
-            try self.commitTransition(starting:starts,ending:ends,events:events)
+            let bound = spans.compactMap { id,span in self.browserSources[id].map { (span,$0.key,true) } }
+            try self.commitBound(bound,starting:starts,ending:ends,events:events)
             for id in Array(self.browserSources.keys) {
                 if !newOthers { self.browserSources[id]?.span = nil }
-                else if let span = spans[id], let key = self.browserSources[id]?.key { self.browserSources[id]?.span = span; self.ledger?.bind(track:span,to:key) }
+                else if let span = spans[id] { self.browserSources[id]?.span = span }
             }
             if newOthers { self.ledger?.select { $0 != "local" } }
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me ? newMe : newOthers }
@@ -416,9 +415,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let ending = self.nativeSpans.filter { $0.value.side == .others && $0.value.registered }.map(\.key)
             let last = self.recording.manifest.events?.last(where:{ $0.type == "othersSource" })
             let reason = last?.source == "system" && ["lost","missing"].contains(last?.reason ?? "") ? "restored" : "user"
-            try self.commitTransition(starting:starts,ending:ending,events:[.init(atMs:time,type:"othersSource",source:"browser",reason:reason)])
+            let bound = spans.compactMap { id,span in self.browserSources[id].map { (span,$0.key,true) } }
+            try self.commitBound(bound,starting:starts,ending:ending,events:[.init(atMs:time,type:"othersSource",source:"browser",reason:reason)])
             for id in Array(self.browserSources.keys) {
-                if let span = spans[id], let key = self.browserSources[id]?.key { self.ledger?.bind(track:span,to:key) }
                 self.browserSources[id]?.span = spans[id]; self.browserSources[id]?.returning = false
                 self.browserSources[id]?.current = spans[id] != nil
             }
@@ -533,6 +532,16 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     // Once the metadata rename succeeds, source state must follow it even if
     // directory sync/retiring-file close fails. Preserve the diagnostic for Stop.
+    /// Binds new spans to their sources before the transition's checkpoint, so that one
+    /// write carries the tracks with their captureOutcome and trackIds. A refused
+    /// transition leaves the ledger as it was.
+    private func commitBound(_ bindings: [(span: String, key: String, expected: Bool)], starting: [RecordingSource] = [], ending: [String] = [], events: [CaptureEvent] = []) throws {
+        let saved = ledger
+        for binding in bindings { ledger?.bind(track:binding.span,to:binding.key,expected:binding.expected) }
+        do { try commitTransition(starting:starting,ending:ending,events:events) } catch { ledger = saved; throw error }
+    }
+    /// A declared wire id with a span that has not ended or been refused.
+    func isLive(_ id: String) -> Bool { sync { browserSources[Data(id.utf8)] != nil } }
     private func commitTransition(starting: [RecordingSource] = [], ending: [String] = [], events: [CaptureEvent] = []) throws {
         do { try recording.transition(starting:starting,ending:ending,events:events) }
         catch let error as RecordingTransitionCommittedError {

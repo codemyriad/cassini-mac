@@ -297,8 +297,9 @@ private final class AudioPeer: @unchecked Sendable {
         guard ["track","audio","trackEnd"].contains(type), let owner else { return nil }
         // An id outside the protocol bounds is neither echoed nor acted on.
         guard let id = json["id"]?.string, CaptureLedger.validIdentity(id) else { return reply("source") }
-        // An overlap, conflicting re-declaration or suspension gap leaves the span and source as they are.
-        if error is KeptSourceRefusal { return reply("source",id:id) }
+        // An overlap, conflicting re-declaration or suspension gap leaves the span and source as
+        // they are, and so does any refused re-declaration of an id that is still live.
+        if error is KeptSourceRefusal || (type == "track" && owner.isLive(id)) { return reply("source",id:id) }
         let retired = owner.refuseSource(id:id,code:code)
         return reply("source",id:id,retired:retired && code == "state")
     }

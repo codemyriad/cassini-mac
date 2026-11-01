@@ -33,6 +33,15 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
     private func ack(_ reply: JSON, _ file: StaticString = #filePath, _ line: UInt = #line) {
         XCTAssertEqual(reply["type"]?.string,"ack","\(reply)",file:file,line:line)
     }
+    /// The native microphone starts asynchronously after Start; wait for its first frames.
+    private func microphoneRecording(_ fixture: AudioFixture, _ started: JSON) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while !fixture.broker.activeCaptures.contains(where:{ capture in
+            capture.snapshot.directory.path == started["path"]?.string && capture.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } }) {
+            guard Date() < deadline else { XCTFail("The microphone never recorded"); return }
+            try await Task.sleep(nanoseconds:10_000_000)
+        }
+    }
     private func saved(_ reply: JSON) throws -> RecordingManifest {
         try RecordingLoader.decode(Data(contentsOf:URL(fileURLWithPath:XCTUnwrap(reply["path"]?.string)).appendingPathComponent("session.json")))
     }
@@ -134,6 +143,12 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
             var conflicting = track("a1",source:"guest"); conflicting["sampleRate"] = 16000
             let conflict = try client.request(conflicting)
             XCTAssertEqual(conflict["scope"]?.string,"source"); XCTAssertEqual(conflict["code"]?.string,"source"); XCTAssertNil(conflict["retired"])
+            // Nor does a re-declaration that fails validation (bad rate, channels, kind or identity).
+            for (field,value) in [("sampleRate",1),("channels",9),("kind","microphone"),("sourceTrackId","")] as [(String,Any)] {
+                var invalid = track("a1",source:"guest"); invalid[field] = value
+                let refused = try client.request(invalid)
+                XCTAssertEqual(refused["scope"]?.string,"source",field); XCTAssertEqual(refused["id"]?.string,"a1",field); XCTAssertNil(refused["retired"],field)
+            }
             // The conflicting declaration never tears down the live span it names.
             ack(try client.request(audio("a1",0)))
             ack(try client.request(track("b1",source:"host")))
@@ -183,18 +198,19 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
         do {
             // Limit: the microphone's slot is reserved from Start, so 63 browser sources fit.
             let limited = try fixture.client()
-            _ = try limited.request(start("mic-limit",microphone:true))
+            let limitStarted = try limited.request(start("mic-limit",microphone:true))
             for index in 0..<63 { ack(try limited.request(track("t\(index)",source:"s\(index)"))) }
             let refused = try limited.request(track("t63",source:"s63"))
             XCTAssertEqual(refused["code"]?.string,"limit"); XCTAssertEqual(refused["scope"]?.string,"source"); XCTAssertEqual(refused["id"]?.string,"t63")
             for index in 0..<63 { ack(try limited.request(audio("t\(index)",0))) }
+            try await microphoneRecording(fixture,limitStarted)
             let full = try saved(try limited.request(["type":"stop","captureId":"mic-limit"]))
             XCTAssertEqual(full.tracks.count,64)
             XCTAssertGreaterThan(try XCTUnwrap(full.tracks.first { $0.kind == "microphone" }).frames,0,"the microphone kept its slot")
 
             // A suspension over 60 s refuses only that chunk; the span stays open and a new span resumes.
             let gap = try fixture.client()
-            _ = try gap.request(start("mic-gap",microphone:true))
+            let gapStarted = try gap.request(start("mic-gap",microphone:true))
             ack(try gap.request(track("a",source:"same"))); ack(try gap.request(track("h",source:"healthy")))
             ack(try gap.request(audio("a",0))); ack(try gap.request(audio("h",0)))
             let suspended = try gap.request(audio("a",1,offsetMs:90000))
@@ -202,6 +218,7 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
             ack(try gap.request(audio("h",1,offsetMs:1000)))
             ack(try gap.request(trackEnd("a","ended"))); ack(try gap.request(track("after",source:"same")))
             ack(try gap.request(audio("after",0,offsetMs:90000)))
+            try await microphoneRecording(fixture,gapStarted)
             let resumed = try saved(try gap.request(["type":"stop","captureId":"mic-gap"]))
             XCTAssertEqual(resumed.tracks.filter { $0.sourceTrackId == "same" }.map(\.frames),[8000,8000])
             XCTAssertEqual(resumed.tracks.first { $0.sourceTrackId == "healthy" }?.frames,16000)
@@ -217,6 +234,7 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
             let failed = try io.request(audio("bad",0))
             XCTAssertEqual(failed["code"]?.string,"io"); XCTAssertEqual(failed["scope"]?.string,"source"); XCTAssertEqual(failed["id"]?.string,"bad")
             ack(try io.request(audio("h",0)))
+            try await microphoneRecording(fixture,started)
             let broken = try saved(try io.request(["type":"stop","captureId":"mic-io"]))
             XCTAssertEqual(broken.problemKind,"io"); XCTAssertEqual(broken.state,"interrupted")
             XCTAssertEqual(broken.tracks.first { $0.sourceTrackId == "full-disk" }?.problemKind,"io")
