@@ -78,9 +78,9 @@ import Testing
             ("fr_FR",0,2,"0 occurrence dans 2 réunions"),("pt_BR",0,2,"0 trecho em 2 reuniões"),
             ("pt_PT",0,2,"0 ocorrências em 2 reuniões")]
         for (locale,places,meetings,expected) in examples {
-            #expect(LibraryFormat.searchCount(places:places,meetings:meetings,locale:Locale(identifier:locale))==expected)
+            #expect(LibraryFormat.searchCount(places:places,meetings:meetings,locale:Locale(identifier:locale),language:CassiniLanguage(languageTag:locale))==expected)
         }
-        #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:Locale(identifier:"fr_FR"))=="12\u{202f}345 occurrences dans 2 réunions")
+        #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:Locale(identifier:"fr_FR"),language:.fr)=="12\u{202f}345 occurrences dans 2 réunions")
     }
     @Test func insertedTextIsNeverReinterpretedAsAnotherPlaceholder() throws {
         let data=Data(#"{"entries":[{"id":"test","en":"{title} in {folder}"}]}"#.utf8)
@@ -89,13 +89,29 @@ import Testing
     }
     @Test func localeFormattersPreserveTheRulesAndTranslateLabels() {
         let date=Date(timeIntervalSince1970:0),zone=TimeZone(secondsFromGMT:0)!
-        let french=LibraryFormat(timeZone:zone,now:date,locale:Locale(identifier:"fr_FR"))
+        let french=LibraryFormat(timeZone:zone,now:date,locale:Locale(identifier:"fr_FR"),language:.fr)
         #expect(french.dayGroup(date)=="Aujourd’hui")
         #expect(french.searchContext(date,durationMs:nil,positionMs:300000)=="Aujourd’hui, 00:00 · à 00:05:00")
-        #expect(LibraryFormat.meetingDuration(59000,locale:Locale(identifier:"it_IT"))=="meno di 1 min")
-        #expect(LibraryFormat.size(bytes:1_288_490_189,approximate:true,locale:Locale(identifier:"fr_FR"))=="environ 1,2 Go")
-        #expect(LibraryFormat.size(bytes:458*1024,locale:Locale(identifier:"fr_FR"))=="458 Ko")
-        #expect(LibraryFormat.position(Int64.max,locale:Locale(identifier:"fr_FR"))=="2562047788015:12:55")
+        #expect(LibraryFormat.meetingDuration(59000,locale:Locale(identifier:"it_IT"),language:.it)=="meno di 1 min")
+        #expect(LibraryFormat.size(bytes:1_288_490_189,approximate:true,locale:Locale(identifier:"fr_FR"),language:.fr)=="environ 1,2 Go")
+        #expect(LibraryFormat.size(bytes:458*1024,locale:Locale(identifier:"fr_FR"),language:.fr)=="458 Ko")
+        #expect(LibraryFormat.position(Int64.max,locale:Locale(identifier:"fr_FR"),language:.fr)=="2562047788015:12:55")
+    }
+    @Test func uiLanguageAndRegionalFormatsAreIndependent() {
+        let date=Date(timeIntervalSince1970:0),zone=TimeZone(secondsFromGMT:0)!
+        let american=Locale(identifier:"en_US"),french=Locale(identifier:"fr_FR")
+        let format=LibraryFormat(timeZone:zone,now:date,locale:american,language:.fr)
+        #expect(format.dayGroup(date)=="Aujourd’hui")
+        #expect(format.searchDate(date)=="Aujourd’hui")
+        let nativeTime=DateFormatter();nativeTime.locale=american;nativeTime.timeZone=zone;nativeTime.timeStyle = .short;nativeTime.dateStyle = .none
+        #expect(format.rowTime(date)==nativeTime.string(from:date))
+        #expect(format.searchContext(date,durationMs:59000,positionMs:300000)=="Aujourd’hui, "+nativeTime.string(from:date)+" · moins d’1 min · à 00:05:00")
+        #expect(LibraryFormat.eta(2,locale:american,language:.fr)=="Transcription, environ 2 minutes")
+        #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:american,language:.fr)=="12,345 occurrences dans 2 réunions")
+        #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:french,language:.en)=="12\u{202f}345 places in 2 meetings")
+        // Portuguese zero follows the UI variant even when the regional locale disagrees.
+        #expect(LibraryFormat.searchCount(places:0,meetings:2,locale:Locale(identifier:"pt_PT"),language:.ptBR)=="0 trecho em 2 reuniões")
+        #expect(LibraryFormat.searchCount(places:0,meetings:2,locale:Locale(identifier:"pt_BR"),language:.ptPT)=="0 ocorrências em 2 reuniões")
     }
     @Test func storedSpeakerLabelsSurviveAnEditAndAreDisplayedVerbatim() throws {
         let fixture=try Fixture()
@@ -129,6 +145,17 @@ import Testing
         let writer=try MeetingMetadataWriter(directory:imported.folder,id:imported.id)
         try writer.transaction {$0["title"]="Edited title"}
         #expect(try LibraryScanner(root:fixture.root.appendingPathComponent("Library")).scan().meetings.first?.speakerNames==[label])
+        // An existing metadata entry without an original-label replacement is
+        // not a Clear action. Keep the verified embedded label verbatim.
+        try writer.transaction {$0["speakers"]=[["id":speaker,"name":NSNull(),"provenance":"unnamed","colourIndex":0]]}
+        let scanned=try #require(LibraryScanner(root:fixture.root.appendingPathComponent("Library")).scan().meetings.first)
+        #expect(scanned.speakerNames==[label])
+        #expect(scanned.speakers.first?.label==label)
+        // An explicit Clear is distinguishable from absent optional metadata.
+        try writer.transaction {$0["speakers"]=[["id":speaker,"name":NSNull(),"provenance":"unnamed","colourIndex":0,"nameCleared":true]]}
+        #expect(try LibraryScanner(root:fixture.root.appendingPathComponent("Library")).scan().meetings.first?.speakers.first?.label==nil)
+        try writer.transaction {$0["speakers"]=[["id":speaker,"name":NSNull(),"provenance":"unnamed","colourIndex":0,"nameCleared":true,"label":"Intervenant 1"]]}
+        #expect(try LibraryScanner(root:fixture.root.appendingPathComponent("Library")).scan().meetings.first?.speakerNames==["Intervenant 1"])
     }
     @Test func everyLanguageHasNativePermissionCopyAndDeclaredBundleSupport() throws {
         let root=URL(fileURLWithPath:#filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

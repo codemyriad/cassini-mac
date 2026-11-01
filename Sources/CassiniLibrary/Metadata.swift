@@ -15,7 +15,7 @@ struct AppMetadata: Decodable {
     let error: MeetingIssue?
     let quoteOverride: MeetingQuote?
     let received: Received?
-    struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int; let label: String? }
+    struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int; let label: String?; let nameCleared: Bool? }
     struct Transcript: Decodable { let status: TranscriptStatus; let reference: Reference?; let model: String? }
     struct Reference: Decodable { let kind: String; let file: String; let format: String?; let transcriptId: String? }
     struct Received: Decodable { let originalName: String; let originalFolderName: String?; let sha256: String; let importedAtMs: Int64 }

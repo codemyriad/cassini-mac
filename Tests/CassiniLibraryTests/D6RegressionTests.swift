@@ -87,7 +87,7 @@ private func row(_ f: Fixture) throws -> LibraryMeeting { try #require(LibrarySc
         #expect(!empty.canWriteDown)
         #expect(LibraryFormat.rowMeta(durationMs: nil, names: []) == "")
         #expect(LibraryFormat.rowMeta(durationMs: nil, names: ["Ada"]) == "Ada")
-        let format = LibraryFormat(timeZone: TimeZone(secondsFromGMT: 0)!, now: Date(timeIntervalSince1970: 0),locale:Locale(identifier:"en_GB"))
+        let format = LibraryFormat(timeZone: TimeZone(secondsFromGMT: 0)!, now: Date(timeIntervalSince1970: 0),locale:Locale(identifier:"en_GB"),language:.en)
         #expect(format.previewSubtitle(Date(timeIntervalSince1970: 0), durationMs: nil) == "Today, 00:00")
     }
     @Test func firstSpeakingOrderIgnoresStoredColoursAndSilentSpeakersAndDoesNotJoinInterjections() throws {

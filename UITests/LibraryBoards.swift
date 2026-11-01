@@ -37,6 +37,20 @@ final class LibraryBoards: XCTestCase {
         XCTAssertGreaterThanOrEqual(start.frame.width,intrinsic)
         capture(empty,name:"record-first-fr")
     }
+    @MainActor func testFrenchPhrasesWithAmericanRegionalSettings() throws {
+        let app=try launch("library",fixture:"main",language:"fr",locale:"en_US")
+        defer {if app.state != .notRunning {app.terminate()}}
+        let window=app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:20),app.debugDescription)
+        let phrases=NSPredicate {_,_ in self.text("Aujourd’hui",in:window) && self.text("Transcription, environ 4 minutes",in:window)}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:phrases,object:nil)],timeout:10),.completed,app.debugDescription)
+        app.terminate()
+        let search=try launch("search",fixture:"main",language:"fr",locale:"en_US")
+        defer {search.terminate()}
+        let count=search.windows["cassini-library-window"].staticTexts["search-count"]
+        let ready=NSPredicate {_,_ in count.exists && self.visibleText(count)=="4 occurrences dans 3 réunions"}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:20),.completed,search.debugDescription)
+    }
     @MainActor func testMoveToTrashMenusAndFirstRun() throws {
         let extra = ["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString]
         let app = try launch("first-run",fixture:"empty",extra:extra); defer { app.terminate() }
