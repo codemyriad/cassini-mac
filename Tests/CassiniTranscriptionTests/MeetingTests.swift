@@ -159,7 +159,7 @@ final class TranscriptionMeetingTests: XCTestCase {
             }
         }
         try session.finish()
-        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        let detector = try SpeechDetector(assets:(try? VADAssets.forWorker(arguments:["--assets",assets])) ?? VADAssets.pinned(directory:URL(fileURLWithPath:assets)))
         try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
             .init(text:"Word",language:"en",words:[.init(word:"Word",start:0,end:0.1,probability:1)])
         })
@@ -168,6 +168,9 @@ final class TranscriptionMeetingTests: XCTestCase {
         let stored = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as? [String:Any]
         let details = stored?["recordingDetails"] as? [String:Any]
         XCTAssertEqual((details?["writingDown"] as? [String:Any])?["sourceSpansSeparated"] as? Bool,true)
+        // The complete writingDown facts satisfy the meeting schema, so the write-down succeeds.
+        XCTAssertEqual(meeting.state.transcript,.done); XCTAssertFalse(meeting.metadataReadOnly)
+        XCTAssertNotNil((details?["writingDown"] as? [String:Any])?["wallDurationMs"]); XCTAssertEqual(((details?["writingDown"] as? [String:Any])?["speakerSeparation"] as? [String:Any])?["status"] as? String,"skipped")
     }
     func testReceivedPlainOpusBecomesOneUnnamedSpeaker() throws {
         guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
@@ -199,7 +202,7 @@ final class TranscriptionMeetingTests: XCTestCase {
         let session = try RecordingSession(parent:root,title:"Silent",source:"macos")
         try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
         try session.append(id:"mic",pcm:Data(repeating:0,count:64000),offsetMs:0); try session.finish()
-        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        let detector = try SpeechDetector(assets:(try? VADAssets.forWorker(arguments:["--assets",assets])) ?? VADAssets.pinned(directory:URL(fileURLWithPath:assets)))
         try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
             .init(text:"",language:"en",words:[])
         })

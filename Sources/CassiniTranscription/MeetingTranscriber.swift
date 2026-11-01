@@ -65,6 +65,7 @@ public enum MeetingTranscriber {
               [.none,.queued,.running,.failed].contains(meeting.state.transcript) else { throw TranscriptionFailure.invalidMeeting }
         let writer = try MeetingMetadataWriter(directory: directory, id: meeting.id)
         do {
+            let attemptStarted = ProcessInfo.processInfo.systemUptime
             try setStatus(directory: directory, id: meeting.id, status: "running")
             let received = meeting.state.origin == .received
             struct Track {
@@ -151,12 +152,19 @@ public enum MeetingTranscriber {
                     }
                     metadata["speakers"] = speakers
                     if status == "done" {
-                        // D52.3d: a stored fact, replaced by each completed attempt; unknown fields survive.
+                        // D28 writingDown facts of this successful attempt (the schema requires
+                        // wallDurationMs, resumed and speakerSeparation). Known facts are replaced by
+                        // each completed attempt; unknown fields survive. Mac has no speaker separation.
                         var details = metadata["recordingDetails"] as? [String:Any] ?? [:]
                         var writing = details["writingDown"] as? [String:Any] ?? [:]
+                        writing["wallDurationMs"] = Int64(max(0,ProcessInfo.processInfo.systemUptime - attemptStarted) * 1000)
+                        writing["resumed"] = resumes
+                        writing["speechSegments"] = tracks.reduce(0) { $0 + $1.segments.count }
+                        writing["speakerSeparation"] = ["status":"skipped","reason":"unavailable"]
+                        // D52.3d: set only when separation actually ran.
                         if separated { writing["sourceSpansSeparated"] = true } else { writing.removeValue(forKey:"sourceSpansSeparated") }
-                        if writing.isEmpty { details.removeValue(forKey:"writingDown") } else { details["writingDown"] = writing }
-                        if details.isEmpty { metadata.removeValue(forKey:"recordingDetails") } else { metadata["recordingDetails"] = details }
+                        details["writingDown"] = writing
+                        metadata["recordingDetails"] = details
                     }
                 }
             }
