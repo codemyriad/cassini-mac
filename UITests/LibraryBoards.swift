@@ -42,8 +42,14 @@ final class LibraryBoards: XCTestCase {
         defer {if app.state != .notRunning {app.terminate()}}
         let window=app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:20),app.debugDescription)
-        let phrases=NSPredicate {_,_ in self.text("Aujourd’hui",in:window) && self.text("Transcription, environ 4 minutes",in:window)}
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:phrases,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"label == %@","Aujourd’hui")).firstMatch.waitForExistence(timeout:10),app.debugDescription)
+        // The outline's narrow status capsule truncates its AX value along with
+        // the drawn text. Inspect the complete phrase in the selected preview.
+        let client=window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
+        XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
+        XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:10),app.debugDescription)
+        let eta=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Transcription, environ 4 minutes","Transcription, environ 4 minutes")).firstMatch
+        XCTAssertTrue(eta.waitForExistence(timeout:10),app.debugDescription)
         app.terminate()
         let search=try launch("search",fixture:"main",language:"fr",locale:"en_US")
         defer {search.terminate()}
