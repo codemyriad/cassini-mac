@@ -89,10 +89,7 @@ public enum MeetingTranscriber {
                 sources = meeting.audioTracks.compactMap { track in
                     guard track.frameCount != 0 else { return nil }
                     let filenameID = String(track.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count))
-                    // Gap frames are at the track's own rate; carry them as milliseconds.
-                    let rate = Double(track.sampleRate ?? 48000)
-                    let gaps = track.gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
-                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs,gaps)
+                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs,presenceGaps(track))
                 }
             }
             // D52 M1: one source becomes one speaker only while its spans are disjoint.
@@ -110,19 +107,10 @@ public enum MeetingTranscriber {
                 let audio = try SegmentedAudio(url: url, detector: detector)
                 var segments = audio.segments
                 var kept = audio.sampleCount > 0 ? [0..<audio.sampleCount] : []
-                // D49/D33 seams: audio outside this source's ownership is not recognized.
-                if let offset, ownership != nil || gaps?.isEmpty == false {
-                    let end = offset + Double(audio.sampleCount)/16
-                    // D52.2: recognise only owned time, minus stored gap ranges (prefix and
-                    // padding are absence); unknown time is kept because its audio exists.
-                    let mask = ownership.map { $0.owned(kind:kind,startMs:offset,endMs:end).map { (start:$0.0,end:$0.1) } }
-                    let presence = TrackPresence.windows(startOffsetMs:offset,sampleRate:16000,frames:UInt64(audio.sampleCount),gaps:gaps,ownership:mask)
-                    // Present and unknown windows are disjoint; together they are the kept time.
-                    let owned = (presence.present + presence.unknown).sorted { $0.start < $1.start }.map { ($0.start,$0.end) }
-                    kept = owned.compactMap { range -> Range<Int>? in
-                        let a = max(0,Int(((range.0-offset)*16 - 1e-6).rounded(.up))), b = min(audio.sampleCount,Int(((range.1-offset)*16 - 1e-6).rounded(.up)))
-                        return b > a ? a..<b : nil
-                    }
+                // D49/D33 seams and D52.2 presence: audio outside this source's ownership,
+                // or inside a stored gap range, is not recognized.
+                if let offset, let owned = ownedWindows(offsetMs:offset,sampleCount:audio.sampleCount,kind:kind,gaps:gaps,ownership:ownership) {
+                    kept = keptRanges(owned,offsetMs:offset,sampleCount:audio.sampleCount)
                     segments = segments.flatMap { segment in
                         owned.compactMap { range -> SpeechSegment? in
                             // D52.2 presence grid: [a,b) ms covers samples [ceil(16a-1e-6), ceil(16b-1e-6)).
@@ -133,16 +121,7 @@ public enum MeetingTranscriber {
                     }
                 }
                 // D52.4 R71: activity inside this track's present, owned time (never the mix).
-                var meter = RecognitionFallback.ActivityMeter(), cursor = 0
-                for range in kept {
-                    if range.lowerBound > cursor { meter.feed([Float](repeating:0,count:range.lowerBound - cursor)) }
-                    var at = range.lowerBound
-                    while at < range.upperBound {
-                        let end = min(range.upperBound,at + 240000)
-                        meter.feed(try audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
-                    }
-                    cursor = range.upperBound
-                }
+                let meter = try activity(audio,kept:kept)
                 let active = meter.active()
                 tracks.append(.init(url: url, sampleCount: audio.sampleCount, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept,
                                     active: active, activeSeconds: meter.activeSeconds(active)))
@@ -281,6 +260,44 @@ public enum MeetingTranscriber {
             }
             try publish(status: "done")
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
+    }
+    /// Stored gap ranges as presence gaps. Gap frames are at the track's own rate;
+    /// they are carried as milliseconds.
+    static func presenceGaps(_ track: LibraryAudioTrack) -> [TrackPresence.Gap]? {
+        let rate = Double(track.sampleRate ?? 48000)
+        return track.gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
+    }
+    /// The session-millisecond windows of a 16 kHz track that are recognized: owned
+    /// time (D49/D33) minus stored gap ranges (D52.2; prefix and padding are absence).
+    /// Unknown time is kept because its audio exists. nil keeps the whole track.
+    static func ownedWindows(offsetMs offset: Double, sampleCount: Int, kind: String, gaps: [TrackPresence.Gap]?, ownership: OthersOwnership?) -> [(Double,Double)]? {
+        guard ownership != nil || gaps?.isEmpty == false else { return nil }
+        let end = offset + Double(sampleCount)/16
+        let mask = ownership.map { $0.owned(kind:kind,startMs:offset,endMs:end).map { (start:$0.0,end:$0.1) } }
+        let presence = TrackPresence.windows(startOffsetMs:offset,sampleRate:16000,frames:UInt64(sampleCount),gaps:gaps,ownership:mask)
+        // Present and unknown windows are disjoint; together they are the kept time.
+        return (presence.present + presence.unknown).sorted { $0.start < $1.start }.map { ($0.start,$0.end) }
+    }
+    /// Track-local 16 kHz sample ranges of `owned`, on the D52.2 presence grid.
+    static func keptRanges(_ owned: [(Double,Double)], offsetMs offset: Double, sampleCount: Int) -> [Range<Int>] {
+        owned.compactMap { range -> Range<Int>? in
+            let a = max(0,Int(((range.0-offset)*16 - 1e-6).rounded(.up))), b = min(sampleCount,Int(((range.1-offset)*16 - 1e-6).rounded(.up)))
+            return b > a ? a..<b : nil
+        }
+    }
+    /// D52.4 R71 activity of one track: time outside `kept` is fed as silence.
+    static func activity(_ audio: SegmentedAudio, kept: [Range<Int>]) throws -> RecognitionFallback.ActivityMeter {
+        var meter = RecognitionFallback.ActivityMeter(), cursor = 0
+        for range in kept {
+            if range.lowerBound > cursor { meter.feed([Float](repeating:0,count:range.lowerBound - cursor)) }
+            var at = range.lowerBound
+            while at < range.upperBound {
+                let end = min(range.upperBound,at + 240000)
+                meter.feed(try audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
+            }
+            cursor = range.upperBound
+        }
+        return meter
     }
     private static func atomicTranscript(_ data: Data, directory: URL) throws {
         let temp = directory.appendingPathComponent(".transcript-" + UUID().uuidString + ".tmp")
