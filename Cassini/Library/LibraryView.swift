@@ -18,6 +18,7 @@ struct LibraryView: View {
     @State private var trash = MeetingTrashCoordinator.shared
     @Environment(\.undoManager) private var undoManager
     @State private var exporter = MeetingExportCoordinator.shared
+    @State private var recordingDetails = RecordingDetailsCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
@@ -109,11 +110,13 @@ struct LibraryView: View {
                     LibraryToolbarAction(title:UXText.text("common.exportEllipsis"),label:UXText.text("common.exportEllipsis"),identifier:"meeting-export",style:.capsule,enabled:MeetingExportCoordinator.canExport(detail.meeting)) { exporter.show(detail.meeting) }
                 }
                 ToolbarItem(placement:.primaryAction) {
-                    LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,enabled:trash.canTrash(detail.meeting),menu:{
-                        LibraryToolbarAction.singleMenu(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash") {
-                            store.selectedKey = detail.meeting.libraryKey
-                            trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
-                        }
+                    LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
+                        LibraryToolbarAction.menu([
+                            .init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(detail.meeting) },
+                            .init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
+                                store.selectedKey = detail.meeting.libraryKey
+                                trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
+                            }])
                     }) { }
                 }
             } else {
@@ -147,6 +150,7 @@ struct LibraryView: View {
         })
         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
+        .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         #if DEBUG
         .overlay(alignment:.topLeading) {
@@ -484,6 +488,19 @@ private struct LibraryToolbarAction: NSViewRepresentable {
     let action: () -> Void
     func makeNSView(context: Context) -> LibraryToolbarActionView { LibraryToolbarActionView() }
     func updateNSView(_ view: LibraryToolbarActionView, context: Context) { view.update(self) }
+    struct MenuEntry {
+        let title: String, identifier: String
+        var enabled = true
+        let action: () -> Void
+    }
+    static func menu(_ entries: [MenuEntry]) -> NSMenu {
+        let menu = NSMenu(); menu.autoenablesItems = false
+        for entry in entries {
+            let item = ActionItem(title:entry.title,handler:entry.action)
+            item.isEnabled = entry.enabled; item.setAccessibilityIdentifier(entry.identifier); menu.addItem(item)
+        }
+        return menu
+    }
     static func singleMenu(title: String, identifier: String, action: @escaping () -> Void) -> NSMenu {
         let menu = NSMenu(); menu.autoenablesItems = false
         let item = ActionItem(title:title,handler:action)

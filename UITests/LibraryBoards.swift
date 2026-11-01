@@ -93,6 +93,27 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.sheets.firstMatch.exists,"No confirmation")
         capture(window,name:"trash-after")
     }
+    /// D52.3a: Recording details opens from the meeting's More menu and closes again.
+    @MainActor func testRecordingDetailsFromTheMoreMenu() throws {
+        let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription)
+        more.click()
+        let item = window.menuItems["recording-details"]
+        XCTAssertTrue(item.waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(item.isEnabled); XCTAssertEqual(item.title,"Recording details…")
+        XCTAssertTrue(window.menuItems["move-to-trash"].exists)
+        item.click()
+        let sheet = window.sheets.firstMatch
+        XCTAssertTrue(sheet.descendants(matching:.any)["recording-details-sheet"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(sheet.staticTexts["recording-details-end"].waitForExistence(timeout:10),"The end line renders after the files are read")
+        XCTAssertTrue(sheet.staticTexts["Recording details"].exists)
+        capture(window,name:"recording-details")
+        sheet.buttons["recording-details-close"].click()
+        let closed = NSPredicate { _,_ in !sheet.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:10),.completed)
+    }
     @MainActor func testMeetingTrashAndSearchKeyboardGuard() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
