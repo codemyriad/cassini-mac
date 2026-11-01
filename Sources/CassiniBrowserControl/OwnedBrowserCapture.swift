@@ -84,6 +84,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private struct Declaration: Equatable { let kind: String, rate: Int, channels: Int, key: String }
     private var declarations: [String:Declaration] = [:]
     private var retired: Set<String> = []
+    /// Test seam, like the reference host's `fail-audio-<id>`: writes for these wire ids fail as ENOSPC.
+    private var failingWrites: Set<String> = []
+    func injectWriteFailure(wireID: String) { sync { _ = failingWrites.insert(wireID) } }
     private let changed: @Sendable (OwnedCaptureSnapshot) -> Void
     private let notifications: DispatchQueue
     private var lastPublished = DispatchTime.now().uptimeNanoseconds
@@ -93,6 +96,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void = { _ in }) throws {
         recording = try RecordingSession(parent:parent,title:title,source:browser ? "chromium" : "macos",id:id)
         me = microphone; self.changed = changed
+        // The microphone's track slot is held from the start: browser sources declared
+        // before its first buffer cannot take it (it is released if Me is turned off).
+        if microphone { reservedNative.insert(.me) }
         browserAlive = browser; transportAlive = browser; self.managedBrowser = managedBrowser && browser
         systemReason = browser ? "lost" : "start"
         queue = DispatchQueue(label:"io.codemyriad.cassini.capture." + recording.manifest.id.uuidString)
@@ -123,28 +129,33 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try sync {
             guard phase == .recording, transportAlive, browserAlive || managedBrowser else { throw BrowserProtocolError("state","No active browser capture.") }
             guard sourceTrackId == nil || CaptureLedger.validIdentity(sourceTrackId) else { throw BrowserProtocolError("source","Invalid source identity.") }
+            // Validate the declaration before it can change the ledger or be echoed.
+            guard CaptureLedger.validIdentity(id), ["remote","media","tab"].contains(kind), (8000...192000).contains(sampleRate), (1...2).contains(channels) else {
+                throw BrowserProtocolError("source","Invalid or duplicate browser source.")
+            }
             let key = sourceTrackId ?? id
             if ledger != nil {
                 guard !retired.contains(id) else { throw BrowserProtocolError("state","Audio source has ended.") }
                 let declaration = Declaration(kind:kind,rate:sampleRate,channels:channels,key:key)
                 if let known = declarations[id] {
-                    // A repeated identical declaration is idempotent; a conflicting one is refused.
-                    guard known == declaration else { throw BrowserProtocolError("source","Conflicting track declaration.") }
                     guard browserSources[Data(id.utf8)] != nil else { throw BrowserProtocolError("source","Source declaration was refused.") }
+                    // A repeated identical declaration is idempotent; a conflicting one is
+                    // refused and never tears down the live span it names.
+                    guard known == declaration else { throw KeptSourceRefusal("source","Conflicting track declaration.") }
                     return
                 }
-                guard ["remote","media","tab"].contains(kind) else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
-                do { try ledger!.observe(key,kind:kind,label:label,expected:others) }
+                // Refused without failing or retiring anything: the live span keeps recording,
+                // and this id may be declared again once that span ends.
+                guard !browserSources.values.contains(where:{ $0.key == key }) else { throw KeptSourceRefusal("source","Overlapping live source spans.") }
+                do { try ledger!.observe(key,kind:kind,label:RecordingSession.cleanLabel(label),expected:others) }
                 catch { throw BrowserProtocolError("source",error.localizedDescription) }
                 declarations[id] = declaration
-                guard !browserSources.values.contains(where:{ $0.key == key }) else { throw BrowserProtocolError("source","Overlapping live source spans.") }
             }
-            guard !id.isEmpty, id.utf8.count <= 200, browserSources[Data(id.utf8)] == nil,
-                  ["remote","media","tab"].contains(kind), (8000...192000).contains(sampleRate), (1...2).contains(channels) else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
+            guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
             let span = UUID().uuidString.lowercased(), live = others && browserAlive
             try commitTransition(starting:[.init(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)])
-            if live { ledger?.bind(track:span,to:key) }
+            ledger?.bind(track:span,to:key,expected:live)
             browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
             publish()
         }
@@ -159,7 +170,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let start = source.clockStart ?? offsetMs
             let target = Int64(((offsetMs-start)*Double(source.rate)/1000).rounded())
             let delta = target-source.frames, tolerance = Int64(source.rate/50)
-            guard delta >= -tolerance, delta <= Int64(source.rate)*60 else { throw BrowserProtocolError("chunk","Audio source clock is out of range.") }
+            guard delta >= -tolerance else { throw BrowserProtocolError("chunk","Audio source clock is out of range.") }
+            // After a suspension over 60 s the extension opens a new span; this one stays open.
+            guard delta <= Int64(source.rate)*60 else { throw KeptSourceRefusal("chunk","New span required after suspension.") }
             if delta > tolerance { source.frames += delta }
             let normalized = start + Double(source.frames)/Double(source.rate)*1000
             var firstSamples = false
@@ -183,11 +196,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                     firstSamples = recording.manifest.tracks.first { $0.id == span }?.frames == 0
                     let bytes = Data(pcm.dropFirst(trim*source.channels*2)), at = normalized + Double(trim)/Double(source.rate)*1000
                     if let ledger {
-                        let stored = recording.manifest.tracks.first { $0.id == span }
-                        let first = stored.flatMap { t in t.startOffsetMs.map { UInt64(max(0,((at-$0)*Double(t.sampleRate)/1000).rounded())) } } ?? 0
-                        guard !ledger.overlaps(recording.manifest,track:span,firstFrame:first,frames:UInt64(bytes.count/(source.channels*2))) else {
-                            throw BrowserProtocolError("source","Overlapping source spans.")
+                        guard !ledger.overlaps(recording.manifest,track:span,atMs:at,frames:UInt64(bytes.count/(source.channels*2))) else {
+                            throw KeptSourceRefusal("source","Overlapping stored source spans.")
                         }
+                        if failingWrites.contains(id) { throw SourceWriteError(underlying:POSIXError(.ENOSPC)) }
                         do { try recording.append(id:span,pcm:bytes,offsetMs:at) }
                         catch let error as RecordingError { throw BrowserProtocolError("chunk",error.localizedDescription) }
                         catch { throw SourceWriteError(underlying:error) }
@@ -215,7 +227,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
 
     /// Called once, before any track, when the peer negotiated source-outcomes-v1.
     public func enableSourceOutcomes() {
-        sync { if ledger == nil, declarations.isEmpty { ledger = CaptureLedger() } }
+        sync {
+            guard ledger == nil, declarations.isEmpty else { return }
+            ledger = CaptureLedger()
+            // Runs inside the session's checkpoints, which happen on this capture's queue.
+            recording.captureOutcomeSource = { [unowned self] manifest in
+                let result = ledger!.result(manifest); return (result.outcome,result.tracks)
+            }
+        }
     }
     public var sourceOutcomesEnabled: Bool { sync { ledger != nil } }
     public func isRetired(_ id: String) -> Bool { sync { retired.contains(id) } }
@@ -242,13 +261,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             // Drops add (+=) to the latest span that recorded this wire id, even after it ended;
             // a source that never recorded stores none. They never become a range or change state.
             if let recorded = source.recorded { recording.addDroppedFrames(id:recorded,frames:droppedFrames) }
+            // The ledger changes first, so the span's checkpoint also publishes its accounting.
+            if reason == "failed" { ledger!.markFailed(source.key) }
             if let span = source.span {
                 if reason == "failed" { try recording.failTrack(id:span,problemKind:"capture") }
                 else { try commitTransition(ending:[span]) }
-            }
-            if reason == "failed" { ledger!.markFailed(source.key) }
+            } else { try publishLedger() }
             retired.insert(id); browserSources.removeValue(forKey:Data(id.utf8)); browserPeaks.removeValue(forKey:Data(id.utf8))
-            try publishLedger(); publish()
+            publish()
         }
     }
     /// A refused `track`/`audio`/`trackEnd` fails only that source; the capture
@@ -260,11 +280,12 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard phase == .recording, let declaration = declarations[id] else { return false }
             ledger!.markFailed(declaration.key,io:code == "io")
             if let span = browserSources[Data(id.utf8)]?.span, recording.manifest.tracks.contains(where:{ $0.id == span && $0.ended != true }) {
+                // One checkpoint carries the failed span and its accounting.
                 do { try recording.failTrack(id:span,problemKind:code == "io" ? "io" : "capture") }
                 catch { nativeProblem = nativeProblem ?? error.localizedDescription; nativeProblemKind = "io" }
-            }
+            } else { try? publishLedger() }
             retired.insert(id); browserSources.removeValue(forKey:Data(id.utf8)); browserPeaks.removeValue(forKey:Data(id.utf8))
-            try? publishLedger(); publish()
+            publish()
             return false
         }
     }
@@ -530,6 +551,13 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
 }
 
+/// A per-source refusal that leaves the named span and its source untouched: an overlap,
+/// a conflicting re-declaration or a suspension gap (the reference host never fails these).
+struct KeptSourceRefusal: LocalizedError {
+    let code: String, message: String
+    init(_ code: String, _ message: String) { self.code = code; self.message = message }
+    var errorDescription: String? { message }
+}
 /// An append failed for one span's file; the broker refuses that source as `io`.
 struct SourceWriteError: LocalizedError {
     let underlying: Error

@@ -306,8 +306,14 @@ public final class RecordingSession {
     /// The capture ledger owns this record; it is published at the next checkpoint.
     public func setCaptureOutcome(_ outcome: SessionCaptureOutcome?, tracks: [String:CaptureOutcome] = [:]) {
         manifest.captureOutcome = outcome
-        for (id,value) in tracks { if let i = manifest.tracks.firstIndex(where:{ $0.id == id }) { manifest.tracks[i].captureOutcome = value } }
+        for (id,value) in tracks {
+            // Every source-outcomes-v1 track states its received frames, 0 when none arrived.
+            if let i = manifest.tracks.firstIndex(where:{ $0.id == id }) { manifest.tracks[i].captureOutcome = value; manifest.tracks[i].receivedFrames = manifest.tracks[i].receivedFrames ?? 0 }
+        }
     }
+    /// D52 M2: when set, every checkpoint first refreshes the capture outcome from the
+    /// manifest it is about to publish, so one write carries a track change and its accounting.
+    public var captureOutcomeSource: ((RecordingManifest) -> (SessionCaptureOutcome,[String:CaptureOutcome]))?
     /// A `sources` ACK means the record is durable even before any WAV exists.
     public func publishCaptureOutcome(_ outcome: SessionCaptureOutcome?, tracks: [String:CaptureOutcome] = [:]) throws {
         guard !finished else { throw RecordingError.invalid("Recording is already saved.") }
@@ -375,6 +381,7 @@ public final class RecordingSession {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
+        if let captureOutcomeSource { let (outcome,tracks) = captureOutcomeSource(manifest); setCaptureOutcome(outcome,tracks:tracks) }
         // Commit audio before metadata so frames never advertise unsynced audio.
         for writer in writers.values { try writer.synchronize() }
         try checkpointObserver?(.audioSynchronized)

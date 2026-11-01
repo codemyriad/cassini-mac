@@ -50,20 +50,25 @@ public struct CaptureLedger: Sendable {
     public mutating func select(expected: (String) -> Bool) {
         for identity in order where expected(seen[identity]!.kind) { seen[identity]!.expected = true }
     }
-    public mutating func bind(track: String, to identity: String) {
+    /// A span is always bound to its source; it makes the source expected only when
+    /// it records a selected side (a span opened while The others is off does not, R69).
+    public mutating func bind(track: String, to identity: String, expected: Bool = true) {
         guard seen[identity] != nil else { return }
-        bindings[track] = identity; seen[identity]!.expected = true
+        bindings[track] = identity; seen[identity]!.expected = seen[identity]!.expected || expected
     }
     public func identity(ofTrack track: String) -> String? { bindings[track] }
     public mutating func markFailed(_ identity: String, io: Bool = false) {
         ioFailed = ioFailed || io
         seen[identity]?.failed = true
     }
-    /// True when [start, start+frames) of a span overlaps another stored span of
-    /// the same source; spans are compared exactly on 48 kHz-free rational ms.
-    public func overlaps(_ manifest: RecordingManifest, track id: String, firstFrame: UInt64, frames: UInt64) -> Bool {
-        guard let identity = bindings[id], let track = manifest.tracks.first(where:{ $0.id == id }), let offset = track.startOffsetMs else { return false }
-        let start = offset + Double(firstFrame)*1000/Double(track.sampleRate), end = start + Double(frames)*1000/Double(track.sampleRate)
+    /// True when appending `frames` at `atMs` to span `id` would store audio that overlaps
+    /// another stored span of the same source. The stored interval starts where the span's
+    /// audio ends (any gap up to `atMs` is padded on disk), or at `atMs` for its first chunk.
+    public func overlaps(_ manifest: RecordingManifest, track id: String, atMs: Double, frames: UInt64) -> Bool {
+        guard let identity = bindings[id], let track = manifest.tracks.first(where:{ $0.id == id }) else { return false }
+        let rate = Double(track.sampleRate)
+        let start = track.startOffsetMs.map { $0 + Double(track.frames)*1000/rate } ?? atMs
+        let end = max(start,atMs + Double(frames)*1000/rate)
         for other in manifest.tracks where other.id != id && bindings[other.id] == identity && other.frames > 0 {
             guard let previous = other.startOffsetMs else { continue }
             let previousEnd = previous + Double(other.frames)*1000/Double(other.sampleRate)

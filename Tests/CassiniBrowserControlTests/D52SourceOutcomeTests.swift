@@ -9,9 +9,9 @@ import CassiniRecording
 /// negotiated source-outcomes-v1, per-source refusals, trackEnd, sources and
 /// the Stop captureId fence. Shared vectors: conformance/multistream/outcomes.json.
 final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
-    private func start(_ id: String, features: [String] = ["source-outcomes-v1"]) -> [String:Any] {
+    private func start(_ id: String, features: [String] = ["source-outcomes-v1"], microphone: Bool = false) -> [String:Any] {
         ["type":"start","version":1,"independent":true,"captureId":id,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),
-         "microphone":false,"title":"Generated call","features":features,"callGeneration":1,"documentGeneration":1]
+         "microphone":microphone,"title":"Generated call","features":features,"callGeneration":1,"documentGeneration":1]
     }
     private func track(_ id: String, source: String? = nil, kind: String = "remote") -> [String:Any] {
         var packet: [String:Any] = ["type":"track","id":id,"kind":kind,"label":"Guest "+id,"sampleRate":8000,"channels":1]
@@ -92,6 +92,9 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
                         let stored = manifest.tracks.filter { $0.sourceTrackId == source }
                         XCTAssertEqual(stored.count,1,"\(name): \(wire)")
                         XCTAssertEqual(stored.first?.captureOutcome?.rawValue,vector["expected"]?[wire]?.string,"\(name): \(wire)")
+                        // Every negotiated track states its received frames, 0 when none arrived.
+                        let received = try XCTUnwrap(stored.first?.receivedFrames,"\(name): \(wire)")
+                        if vector["expected"]?[wire]?.string == "neverAudio" { XCTAssertEqual(received,0,"\(name): \(wire)") }
                         XCTAssertEqual(row.trackIds,stored.map(\.id),name)
                     }
                 }
@@ -123,24 +126,125 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
         }
     }
 
-    func testRepeatedIdenticalTrackIsIdempotentAndOverlappingLiveSpansAreRefused() async throws {
+    func testRepeatedIdenticalTrackIsIdempotentAndRefusedDeclarationsKeepTheLiveSpan() async throws {
         try await run { _, client in
             _ = try client.request(start("declare"))
             ack(try client.request(track("a1",source:"guest")))
             ack(try client.request(track("a1",source:"guest")))
             var conflicting = track("a1",source:"guest"); conflicting["sampleRate"] = 16000
             let conflict = try client.request(conflicting)
-            XCTAssertEqual(conflict["scope"]?.string,"source"); XCTAssertEqual(conflict["code"]?.string,"source")
-            // a1 was refused, so it is retired; its source is now a sticky failure.
-            let overlap = try client.request(track("b1",source:"host"))
-            ack(overlap)
+            XCTAssertEqual(conflict["scope"]?.string,"source"); XCTAssertEqual(conflict["code"]?.string,"source"); XCTAssertNil(conflict["retired"])
+            // The conflicting declaration never tears down the live span it names.
+            ack(try client.request(audio("a1",0)))
+            ack(try client.request(track("b1",source:"host")))
             let second = try client.request(track("b2",source:"host"))
             XCTAssertEqual(second["scope"]?.string,"source"); XCTAssertEqual(second["id"]?.string,"b2")
             ack(try client.request(audio("b1",0)))
+            // Once the live span ends, the refused id may be declared for the next span.
+            ack(try client.request(trackEnd("b1","ended")))
+            ack(try client.request(track("b2",source:"host")))
+            ack(try client.request(audio("b2",0,offsetMs:1000)))
+            // An id outside the protocol bounds is refused without being echoed.
+            let invalid = try client.request(track(String(repeating:"x",count:201),source:"other"))
+            XCTAssertEqual(invalid["scope"]?.string,"source"); XCTAssertNil(invalid["id"])
+            // A raw label over 200 scalars is cleaned and truncated, not refused.
+            var long = track("c1",source:"long-label"); long["label"] = "\u{7}" + String(repeating:"é",count:250)
+            ack(try client.request(long))
             let manifest = try saved(try client.request(["type":"stop","captureId":"declare"]))
-            XCTAssertEqual(Set(manifest.tracks.compactMap(\.sourceTrackId)),["guest","host"])
-            XCTAssertEqual(manifest.captureOutcome?.sources.first { $0.sourceTrackId == "host" }?.captureOutcome,.failed)
+            XCTAssertEqual(Set(manifest.tracks.compactMap(\.sourceTrackId)),["guest","host","long-label"])
+            XCTAssertEqual(manifest.captureOutcome?.sources.first { $0.sourceTrackId == "guest" }?.captureOutcome,.captured)
+            XCTAssertEqual(manifest.captureOutcome?.sources.first { $0.sourceTrackId == "host" }?.captureOutcome,.captured)
+            XCTAssertEqual(manifest.captureOutcome?.sources.first { $0.sourceTrackId == "long-label" }?.label,String(repeating:"é",count:200))
         }
+    }
+
+    /// test_multistream.py `test_overlapping_live_and_closed_spans_are_refused_without_merging`.
+    func testASecondSpanOverlappingAClosedSpanIsRefusedOnItsFirstChunk() async throws {
+        try await run { _, client in
+            _ = try client.request(start("overlap"))
+            ack(try client.request(track("a",source:"same"))); ack(try client.request(audio("a",0)))
+            let simultaneous = try client.request(track("simultaneous",source:"same"))
+            XCTAssertEqual(simultaneous["code"]?.string,"source"); XCTAssertEqual(simultaneous["scope"]?.string,"source")
+            ack(try client.request(trackEnd("a","ended"))); ack(try client.request(track("b",source:"same")))
+            let refused = try client.request(audio("b",0,offsetMs:500))
+            XCTAssertEqual(refused["code"]?.string,"source"); XCTAssertEqual(refused["scope"]?.string,"source")
+            XCTAssertEqual(refused["id"]?.string,"b"); XCTAssertNil(refused["retired"])
+            ack(try client.request(audio("b",0,offsetMs:1000)))
+            let manifest = try saved(try client.request(["type":"stop","captureId":"overlap"]))
+            XCTAssertEqual(manifest.tracks.map(\.frames),[8000,8000])
+            XCTAssertEqual(manifest.captureOutcome?.sources.first?.captureOutcome,.captured)
+        }
+    }
+
+    /// With the native microphone on, refusals stay per source: the microphone keeps its
+    /// track slot and keeps recording.
+    func testRefusalsWithTheMicrophoneOnLeaveTheMicrophoneAndHealthySourcesRecording() async throws {
+        let fixture = try AudioFixture()
+        do {
+            // Limit: the microphone's slot is reserved from Start, so 63 browser sources fit.
+            let limited = try fixture.client()
+            _ = try limited.request(start("mic-limit",microphone:true))
+            for index in 0..<63 { ack(try limited.request(track("t\(index)",source:"s\(index)"))) }
+            let refused = try limited.request(track("t63",source:"s63"))
+            XCTAssertEqual(refused["code"]?.string,"limit"); XCTAssertEqual(refused["scope"]?.string,"source"); XCTAssertEqual(refused["id"]?.string,"t63")
+            for index in 0..<63 { ack(try limited.request(audio("t\(index)",0))) }
+            let full = try saved(try limited.request(["type":"stop","captureId":"mic-limit"]))
+            XCTAssertEqual(full.tracks.count,64)
+            XCTAssertGreaterThan(try XCTUnwrap(full.tracks.first { $0.kind == "microphone" }).frames,0,"the microphone kept its slot")
+
+            // A suspension over 60 s refuses only that chunk; the span stays open and a new span resumes.
+            let gap = try fixture.client()
+            _ = try gap.request(start("mic-gap",microphone:true))
+            ack(try gap.request(track("a",source:"same"))); ack(try gap.request(track("h",source:"healthy")))
+            ack(try gap.request(audio("a",0))); ack(try gap.request(audio("h",0)))
+            let suspended = try gap.request(audio("a",1,offsetMs:90000))
+            XCTAssertEqual(suspended["code"]?.string,"chunk"); XCTAssertEqual(suspended["scope"]?.string,"source"); XCTAssertNil(suspended["retired"])
+            ack(try gap.request(audio("h",1,offsetMs:1000)))
+            ack(try gap.request(trackEnd("a","ended"))); ack(try gap.request(track("after",source:"same")))
+            ack(try gap.request(audio("after",0,offsetMs:90000)))
+            let resumed = try saved(try gap.request(["type":"stop","captureId":"mic-gap"]))
+            XCTAssertEqual(resumed.tracks.filter { $0.sourceTrackId == "same" }.map(\.frames),[8000,8000])
+            XCTAssertEqual(resumed.tracks.first { $0.sourceTrackId == "healthy" }?.frames,16000)
+            XCTAssertGreaterThan(try XCTUnwrap(resumed.tracks.first { $0.kind == "microphone" }).frames,0)
+
+            // A per-track write error refuses that source as io and saves with problemKind io.
+            let io = try fixture.client()
+            let started = try io.request(start("mic-io",microphone:true))
+            ack(try io.request(track("bad",source:"full-disk"))); ack(try io.request(track("h",source:"healthy")))
+            let path = try XCTUnwrap(started["path"]?.string)
+            let owner = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == path })
+            owner.injectWriteFailure(wireID:"bad")
+            let failed = try io.request(audio("bad",0))
+            XCTAssertEqual(failed["code"]?.string,"io"); XCTAssertEqual(failed["scope"]?.string,"source"); XCTAssertEqual(failed["id"]?.string,"bad")
+            ack(try io.request(audio("h",0)))
+            let broken = try saved(try io.request(["type":"stop","captureId":"mic-io"]))
+            XCTAssertEqual(broken.problemKind,"io"); XCTAssertEqual(broken.state,"interrupted")
+            XCTAssertEqual(broken.tracks.first { $0.sourceTrackId == "full-disk" }?.problemKind,"io")
+            XCTAssertEqual(broken.tracks.first { $0.sourceTrackId == "healthy" }?.frames,8000)
+            XCTAssertGreaterThan(try XCTUnwrap(broken.tracks.first { $0.kind == "microphone" }).frames,0)
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+
+    /// After the app's own Stop saved the capture, every packet is a command refusal and a
+    /// matching Stop still ACKs the saved folder.
+    func testPacketsAfterANativeFirstStopAreCommandRefusals() async throws {
+        let fixture = try AudioFixture()
+        do {
+            let client = try fixture.client()
+            let started = try client.request(start("native-first"))
+            ack(try client.request(track("a",source:"guest")))
+            let owner = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string })
+            try await fixture.broker.finish(owner)
+            for packet in [track("",source:"x"),audio("a",0,offsetMs:-5),["type":"trackEnd","id":"a"],["type":"sources","discoveredSources":"x"]] as [[String:Any]] {
+                let reply = try client.request(packet)
+                XCTAssertEqual(reply["code"]?.string,"state","\(packet)"); XCTAssertEqual(reply["scope"]?.string,"command","\(packet)")
+            }
+            let malformed = try client.request(["type":"stop","captureId":"native-first","discoveredSources":123])
+            XCTAssertEqual(malformed["scope"]?.string,"command")
+            XCTAssertEqual(try client.request(["type":"stop","captureId":"native-first"])["type"]?.string,"stopped")
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
     }
 
     func testCallChangedRetirementIsNotAFailureAndRetiredPacketsAreRefused() async throws {
@@ -232,6 +336,32 @@ final class D52UnselectedSourceTests: XCTestCase {
         let selected = try XCTUnwrap(late.snapshot.manifest.captureOutcome?.sources.first)
         XCTAssertNil(selected.captureExpected,"Selection makes the source expected permanently")
         XCTAssertEqual(late.snapshot.manifest.problemKind,"capture")
+    }
+    /// A page microphone is recorded natively as Me, so it is never expected from the browser.
+    func testAPageMicrophoneIsNotExpectedEvenWithTheOthersOn() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Local-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try owner(root)
+        try capture.discover([.init(sourceTrackId:"page-mic",kind:"local",label:"Microphone")])
+        try await capture.finish()
+        let row = try XCTUnwrap(capture.snapshot.manifest.captureOutcome?.sources.first)
+        XCTAssertEqual(row.captureExpected,false); XCTAssertEqual(row.captureOutcome,.neverAudio)
+        // No audio at all saves as "empty"; the page microphone never makes it a capture problem.
+        XCTAssertNotEqual(capture.snapshot.manifest.problemKind,"capture")
+    }
+    /// A span declared while The others is off is still bound to its source, as unexpected.
+    func testADeselectedSpanIsBoundButNotExpected() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Deselected-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let capture = try owner(root)
+        try await capture.select(me:true,others:false,atMs:0)
+        try capture.browserTrack(id:"w",label:"Guest",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        let span = try XCTUnwrap(capture.snapshot.manifest.tracks.first { $0.sourceTrackId == "guest" })
+        try await capture.finish()
+        let row = try XCTUnwrap(capture.snapshot.manifest.captureOutcome?.sources.first { $0.sourceTrackId == "guest" })
+        XCTAssertEqual(row.trackIds,[span.id]); XCTAssertEqual(row.captureExpected,false)
+        XCTAssertEqual(capture.snapshot.manifest.tracks.first { $0.id == span.id }?.captureOutcome,.neverAudio)
+        XCTAssertNotEqual(capture.snapshot.manifest.problemKind,"capture")
     }
 }
 

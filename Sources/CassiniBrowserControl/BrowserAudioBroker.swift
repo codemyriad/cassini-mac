@@ -171,10 +171,19 @@ private final class AudioPeer: @unchecked Sendable {
             guard let kind = json["type"]?.string, json.object != nil else { throw BrowserProtocolError("framing","Expected a message object.") }
             packetType = kind
             guard ["start","track","audio","stop"].contains(kind) || (sourceOutcomes && ["trackEnd","sources"].contains(kind)) else { throw BrowserProtocolError("version","Unknown browser message type.") }
-            if completed, sourceOutcomes, kind == "stop", let owner {
-                // A matching Stop after native finalization still ACKs; it cannot rewrite the saved meeting.
+            // Finalized by a browser Stop, or natively first (the app's own Stop). While saving,
+            // a Stop still joins the save so its reply follows the durable metadata.
+            let phase = owner?.snapshot.phase
+            if sourceOutcomes, owner != nil, kind != "stop", completed || (phase != nil && phase != .recording) {
+                throw ScopedRefusal("state","Capture already saved.")
+            }
+            if sourceOutcomes, let owner, kind == "stop", completed || phase == .saved {
+                // A matching Stop after finalization still ACKs; it cannot rewrite the saved meeting.
                 guard json["captureId"]?.string == captureID else { throw ScopedRefusal("state","Capture identity does not match.") }
-                guard (json["discoveredSources"]?.array ?? []).isEmpty else { throw ScopedRefusal("state","Capture already saved.") }
+                let summary: [CaptureLedger.Discovered]
+                do { summary = try discovered(json["discoveredSources"],required:false) } catch { throw ScopedRefusal("source",error.localizedDescription) }
+                guard summary.isEmpty else { throw ScopedRefusal("state","Capture already saved.") }
+                completed = true
                 try connection.send(JSON.object([("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]).encoded(maximumBytes:FrameIO.maximum)); return
             }
             guard !completed else { throw BrowserProtocolError("state","Recording is already stopped.") }
@@ -274,7 +283,7 @@ private final class AudioPeer: @unchecked Sendable {
     /// D52: classify a refusal so only that source or command fails; framing,
     /// version and connection failures stay session failures.
     private func scoped(_ error: Error, type: String?, json: JSON) -> JSON? {
-        let code = (error as? BrowserProtocolError)?.code ?? (error as? ScopedRefusal)?.code ?? "io"
+        let code = (error as? BrowserProtocolError)?.code ?? (error as? ScopedRefusal)?.code ?? (error as? KeptSourceRefusal)?.code ?? "io"
         func reply(_ scope: String, id: String? = nil, retired: Bool = false) -> JSON {
             var fields: [(String,JSON)] = [("type",.string("error")),("code",.string(code)),("message",.string(error.localizedDescription)),("scope",.string(scope))]
             if let id { fields.append(("id",.string(id))) }
@@ -286,8 +295,11 @@ private final class AudioPeer: @unchecked Sendable {
         if code == "state", completed || owner?.snapshot.phase != .recording { return reply("command") }
         if type == "sources", error is BrowserProtocolError { return reply("command") }
         guard ["track","audio","trackEnd"].contains(type), let owner else { return nil }
-        let id = json["id"]?.string
-        let retired = id.map { owner.refuseSource(id:$0,code:code) } ?? false
+        // An id outside the protocol bounds is neither echoed nor acted on.
+        guard let id = json["id"]?.string, CaptureLedger.validIdentity(id) else { return reply("source") }
+        // An overlap, conflicting re-declaration or suspension gap leaves the span and source as they are.
+        if error is KeptSourceRefusal { return reply("source",id:id) }
+        let retired = owner.refuseSource(id:id,code:code)
         return reply("source",id:id,retired:retired && code == "state")
     }
     private func discovered(_ value: JSON?, required: Bool) throws -> [CaptureLedger.Discovered] {
