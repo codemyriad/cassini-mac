@@ -17,10 +17,14 @@ const base = await mkdtemp(path.join(root, 'build/browser-background-return-'));
 const app = path.join(base, 'Installed Cassini.app');
 const profile = path.join(os.userInfo().homedir, 'Library/Application Support/Google/Chrome for Testing');
 const controlRoot = path.join(os.userInfo().homedir, 'Library/Containers/io.codemyriad.cassini/Data/tmp', path.basename(base), 'control');
-const pageBody = `<!doctype html><title>D33 real call</title><body>Generated WebRTC call<script>
+// D52 (protocol #24): a different call address is a new call that ends the old
+// capture. The return path therefore reloads the same address; the returning
+// document holds its call until the test releases it after the app's fallback.
+const pageBody = returning => `<!doctype html><title>D33 real call</title><body>Generated WebRTC call<script>
 (async () => {
+ ${returning ? "await fetch('/go');" : ''}
  const context = new AudioContext(); const oscillator = context.createOscillator();
- oscillator.frequency.value = location.pathname === '/return' ? 660 : 880;
+ oscillator.frequency.value = ${returning ? 660 : 880};
  const output = context.createMediaStreamDestination(); oscillator.connect(output); oscillator.start(); await context.resume();
  const sender = new RTCPeerConnection(), receiver = new RTCPeerConnection();
  window.generatedCall = {context,oscillator,output,sender,receiver};
@@ -33,9 +37,17 @@ const pageBody = `<!doctype html><title>D33 real call</title><body>Generated Web
  window.generatedCall = {context,oscillator,output,sender,receiver};
 })().catch(error => { window.callError = String(error); });
 </script>`;
-const server = http.createServer((_request,response) => {
- response.writeHead(200, {'Content-Type':'text/html'}); response.end(pageBody);
+let returning = false, released = false;
+const held = [];
+const server = http.createServer((request,response) => {
+ if (request.url === '/go') {
+  // Long-poll: answered only when the test releases the returning call.
+  if (released) { response.writeHead(200); response.end('go'); } else held.push(response);
+  return;
+ }
+ response.writeHead(200, {'Content-Type':'text/html','Cache-Control':'no-store'}); response.end(pageBody(returning));
 });
+const release = () => { released = true; for (const response of held.splice(0)) { response.writeHead(200); response.end('go'); } };
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
 const url = `http://127.0.0.1:${server.address().port}`;
 let ownsProfile = false, context, child, stderr = '', stdout = '', exited = false, exitCode;
@@ -97,11 +109,12 @@ try {
  child.on('error',error => {stderr+=String(error); exited=true; exitCode=-1;});
  child.on('exit',code => {exited=true; exitCode=code;});
  await wait(() => phases.has('recording'),'No real app-owned browser recording');
- // about:blank commits a real unload without injecting a new relay yet.
- // A request stalled before response headers can leave the old document alive.
- await page.goto('about:blank');
+ // Reload the same call address: the old document unloads and the new one
+ // keeps its call silent until the app has fallen back to computer sound.
+ returning = true;
+ await page.reload();
  await wait(() => phases.has('fallback'),'App did not start fallback after the old document unloaded');
- await page.goto(url+'/return');
+ release();
  await connected(page);
  await wait(() => phases.has('restored'),'App did not restore real browser PCM');
  assert.equal(phases.get('recording').id,phases.get('fallback').id);

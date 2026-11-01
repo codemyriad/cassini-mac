@@ -5,7 +5,7 @@ import Testing
 import CassiniBrowserSetup
 
 struct CompanionUpgradeTests {
-    @Test func actual022RuntimeUpgradesToReviewed023AndThenStaysUnchanged() throws {
+    @Test func actual022RuntimeUpgradesToReviewed028AndThenStaysUnchanged() throws {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("CassiniCompanionUpgrade-"+UUID().uuidString)
         let source = root.appendingPathComponent("source"), home = root.appendingPathComponent("home")
         try FileManager.default.createDirectory(at:source,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
@@ -31,11 +31,11 @@ struct CompanionUpgradeTests {
         // or installer mock. The home is private and no browser is launched.
         let program = "import os,runpy,sys; os.umask(0); sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')"
         try run("/usr/bin/env",["python3","-c",program,repository.appendingPathComponent("scripts/bundle-browser-companion.py").path,source.path])
-        let upgraded = try install(installer,stage:"real 0.2.3 upgrade")
-        #expect(upgraded.updated && upgraded.version == "0.2.3")
+        let upgraded = try install(installer,stage:"real 0.2.8 upgrade")
+        #expect(upgraded.updated && upgraded.version == "0.2.8")
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("background.js")) != background)
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("app-control.js")) != control)
-        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "6e581d66cfe897f13b05445ae4f67392619e08ff")
+        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "c6f5fc72bfd9e31fc9db32c9f06d802f45baf168")
         var identities: [String:NSNumber] = [:], dates: [String:Date] = [:]
         let files = try #require(FileManager.default.enumerator(atPath:source.path))
         var count = 0
