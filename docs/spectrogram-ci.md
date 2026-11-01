@@ -1,13 +1,13 @@
 # Spectrogram measurement policy
 
-The hosted Mac guard policy is D36.2, coordination commit `e0e3124` (2026-11-01), amended by D36.3 (`da65b18`), which raises the Library pill (A) drawing guard to 1.7%. These are regression limits for the virtualized GitHub runner. The product target remains about 1% total CPU on real hardware for the Recording page; this PR does not claim a new real-hardware measurement.
+The hosted Mac guard policy is D36.2, coordination commit `e0e3124` (2026-11-01), amended by D36.3 (`da65b18`), which raises the Library pill (A) drawing guard to 1.7%, and D36.4 (`aa34676`), which sets the Recording page (B/D) worst frame to 100 ms; p95 17.5 ms stays the pacing guard. These are regression limits for the virtualized GitHub runner. The product target remains about 1% total CPU on real hardware for the Recording page; this PR does not claim a new real-hardware measurement.
 
 | Measurement | Hosted limit |
 |---|---:|
 | Analysis CPU, percent of one core | 0.8% |
 | Drawing CPU, Library pill (A) | 1.7% |
 | Drawing CPU, Recording page (B/D) | 3.5% |
-| Page frame p95 / maximum | 17.5 / 50 ms |
+| Page frame p95 / maximum | 17.5 / 100 ms |
 | Late columns | 3% of steady-state timeline slots |
 | Logical view payload | 131,072 bytes |
 

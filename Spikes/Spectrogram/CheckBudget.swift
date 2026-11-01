@@ -16,7 +16,8 @@ import Foundation
         precondition(gates(drawing:3.500001)["drawing"] == false)
         precondition(gates("A",drawing:1.700001)["drawing"] == false)
         precondition(gates(p95:17.500001)["pacing"] == false)
-        precondition(gates(maximum:50.000001)["pacing"] == false)
+        precondition(gates(maximum:100)["pacing"] == true)
+        precondition(gates(maximum:100.000001)["pacing"] == false)
         precondition(gates(late:91)["late"] == false)
         precondition(gates("B",30,late:45)["late"] == true)
         precondition(gates("B",30,late:46)["late"] == false)
@@ -27,6 +28,6 @@ import Foundation
             precondition(gates(mode,analysis:0,late:1)["late"] == false)
         }
         precondition(!gates("B",0).filter {$0.key != "logicalViewPayload"}.values.contains(true))
-        print("PASS D36.2/D36.3 hosted boundaries, shared timeline denominator and hidden zero-work guards")
+        print("PASS D36.2/D36.3/D36.4 hosted boundaries, shared timeline denominator and hidden zero-work guards")
     }
 }

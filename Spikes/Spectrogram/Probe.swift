@@ -114,7 +114,7 @@ import ScreenCaptureKit
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
-                "budgetPolicy":"D36.2","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
+                "budgetPolicy":"D36.4","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
                 "lateColumnFraction":Double(controller.lateColumns-initialLate)/SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
