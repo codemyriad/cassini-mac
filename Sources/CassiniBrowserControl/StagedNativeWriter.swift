@@ -6,7 +6,7 @@ import CassiniRecording
 /// Preparation is bounded independently of RecordingSink's active write queue.
 final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
     private struct Format { let id: String, label: String, kind: String; let rate: Int, channels: Int }
-    private struct Chunk { let id: String; let pcm: Data; let offset: Double }
+    private struct Chunk { let id: String; let pcm: Data; let offset: Double; var gapKind = "input"; var padding: (frames: UInt64, channels: Int, rate: Double)? = nil }
     private let lock = NSLock(), problemLock = NSLock()
     private var target: (any RecordingSinkWriter)?
     private var formats: [Format] = [], chunks: [Chunk] = []
@@ -31,6 +31,24 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
             }
         }
     }
+    // D52.2/D52.4: forward the sink's gap kind and writer padding to the active writer.
+    func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws {
+        try lock.withLock {
+            guard !discarded else { return }
+            if let target { try target.appendNative(id:id,pcm:pcm,offsetMs:offsetMs,gapKind:gapKind) }
+            else {
+                guard bytes + pcm.count <= 8*1024*1024 else { throw RecordingError.limit("The new audio source could not be prepared within its memory limit.") }
+                chunks.append(.init(id:id,pcm:pcm,offset:offsetMs,gapKind:gapKind)); bytes += pcm.count
+            }
+        }
+    }
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
+        try lock.withLock {
+            guard !discarded else { return }
+            if let target { try target.padNative(id:id,frames:frames,channels:channels,rate:rate,offsetMs:offsetMs) }
+            else { chunks.append(.init(id:id,pcm:Data(),offset:offsetMs,padding:(frames,channels,rate))) }
+        }
+    }
     func activate(_ writer: any RecordingSinkWriter) throws {
         try lock.withLock {
             guard !discarded, target == nil else { throw BrowserIPCError.closed }
@@ -38,7 +56,10 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
             target = writer
             defer { formats = []; chunks = []; bytes = 0 }
             for value in formats { try writer.addTrack(id:value.id,label:value.label,kind:value.kind,sampleRate:value.rate,channels:value.channels) }
-            for value in chunks { try writer.appendNative(id:value.id,pcm:value.pcm,offsetMs:value.offset) }
+            for value in chunks {
+                if let padding = value.padding { try writer.padNative(id:value.id,frames:padding.frames,channels:padding.channels,rate:padding.rate,offsetMs:value.offset) }
+                else { try writer.appendNative(id:value.id,pcm:value.pcm,offsetMs:value.offset,gapKind:value.gapKind) }
+            }
         }
     }
     func discard() { lock.withLock { discarded = true; formats = []; chunks = []; bytes = 0 } }
