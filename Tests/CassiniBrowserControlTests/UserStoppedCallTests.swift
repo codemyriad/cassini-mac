@@ -55,7 +55,8 @@ final class UserStoppedCallTests: XCTestCase {
         // Complete the in-flight Stop before navigating to a new call.
         try send(["type":"result","requestId":stop.id,"ok":true,"status":status()],&state,peer)
         try meetings([(2,"https://meet.example/new")],&state,peer)
-        XCTAssertEqual(state.automaticStarts(microphone:false).count,1)
+        let start = try XCTUnwrap(state.automaticStarts(microphone:false).first)
+        try send(["type":"result","requestId":start.id,"ok":false],&state,peer)
         state.disconnect(peer); _ = try ready(&state,entries:[(2,"https://meet.example/new")])
         XCTAssertEqual(state.rememberedStopCount,0)
         XCTAssertEqual(state.automaticStarts(microphone:false).count,1)
@@ -155,7 +156,12 @@ final class UserStoppedCallTests: XCTestCase {
         for automaticStop in [false,true] {
             var state = state(); let peer = try ready(&state)
             if automaticStop { _ = try state.stop(.init(peer:peer,tabID:2),userInitiated:false) }
-            else { _ = state.automaticStarts(microphone:false) }
+            else {
+                // A failed acknowledgement is not suppression; an unacknowledged
+                // Start is held across the reconnect (MeetingReconnectTests).
+                let start = try XCTUnwrap(state.automaticStarts(microphone:false).first)
+                try send(["type":"result","requestId":start.id,"ok":false],&state,peer)
+            }
             state.disconnect(peer); _ = try ready(&state)
             XCTAssertEqual(state.rememberedStopCount,0)
             XCTAssertEqual(state.automaticStarts(microphone:false).count,1)

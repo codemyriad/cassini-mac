@@ -34,9 +34,28 @@ per live connection. It survives empty inventories and late discovery. A newer
 connection which has not reported any tabs remains ambiguous and prevents old
 links from erasing Stops. Once its disjoint profile is identified, it cannot
 veto another profile's verified absence or navigation, even if it later reports
-an empty inventory. No pending command keys are renamed or replayed. The original audit's stable
-meeting-key aliases and lost-Start failure grace remain separate follow-ups;
-this PR implements the coordinator's user-stop-only direction.
+an empty inventory. No issued command is moved to another FIFO or replayed.
+
+### Meeting keys and lost Starts across a worker restart
+
+A meeting's UI key is separate from its physical connection; every command
+carries its `connectionID`. A tab's key is committed once per connection, by
+discovery or an issued command. On first discovery it inherits the key of the
+newest earlier link of the same browser instance that reported the same call on
+that tab: the same `callGeneration` for a `multi-stream-v1` peer, the exact URL
+only for an older peer. A different call, process or profile tab gets a fresh
+key, and a late old tab never re-keys a tab whose command was already issued.
+
+A disconnected identified link stays listed, unreconciled, for at most ten
+seconds so Retry and microphone choices survive; it never issues commands. Its
+unacknowledged Starts are held, never resent, and settle once as successful
+when a newer link of that instance reports a recording capture with an ID for
+the same tab and call (a different `callGeneration` never settles it). They
+fail at the deadline, on known browser exit or at service shutdown. A buffered
+old success also prevents a duplicate Start; failed Starts and automatic stops
+are still not learned. The driver drains a separate completion queue, so many
+simultaneous expiries cannot exceed the 128-entry outcome history. At most 128
+released links are kept; per-link key maps are trimmed beyond 512 tabs.
 
 Local verification uses actual source with focused file/IPC tests, plus the
 same two regression assertions against an origin/main snapshot: both fail on

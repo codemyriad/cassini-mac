@@ -12,7 +12,9 @@ public final class BrowserControlService: @unchecked Sendable {
     private var registry = BrowserControlRegistry()
     private var connections: [UUID:BrowserPipeConnection] = [:]
     private var deadlines: [String:(BrowserControlRequest,UInt64)] = [:]
-    private var automatic: Set<String> = []
+    /// requestID -> automatic. Completions come only from registry outcomes,
+    /// including Starts held across a reconnect and settled later.
+    private var callbacks: [String:Bool] = [:]
     private var autoRecord = false, microphone = true
     private let changed: @Sendable ([BrowserControlPeerSnapshot]) -> Void
     private let audio: (any BrowserAudioHandler)?
@@ -99,6 +101,7 @@ public final class BrowserControlService: @unchecked Sendable {
             timer?.cancel(); timer = nil
             server?.stop(); server = nil
             for id in Array(connections.keys) { disconnect(id) }
+            registry.finishReconnects(); publish(); callbacks.removeAll()
         }
     }
     private func sync<T>(_ body: () throws -> T) rethrows -> T {
@@ -116,11 +119,8 @@ public final class BrowserControlService: @unchecked Sendable {
             let message = try JSONParser.parse(data)
             try registry.receive(data,from:connection.peer.id)
             if message["type"]?.string == "result", let id = message["requestId"]?.string,
-               let (request,_) = deadlines[id], request.key.peer == connection.peer.id,
-               let outcome = registry.outcomes.last, outcome.requestID == id {
+               deadlines[id]?.0.connectionID == connection.peer.id, registry.outcomes.contains(where:{ $0.requestID == id }) {
                 deadlines.removeValue(forKey:id)
-                let wasAutomatic = automatic.remove(id) != nil
-                completed(outcome,wasAutomatic)
             }
             reconcile()
         } catch { connection.close(); disconnect(connection.peer.id) }
@@ -132,36 +132,42 @@ public final class BrowserControlService: @unchecked Sendable {
         publish()
     }
     private func send(_ requests: [BrowserControlRequest], automatic isAutomatic: Bool = false) {
+        // One failed write can disconnect every request in this batch before
+        // the loop reaches the others. Register their completions first.
+        for request in requests { callbacks[request.id] = isAutomatic }
         for request in requests {
             do {
-                guard let connection = connections[request.key.peer] else { throw BrowserIPCError.closed }
+                guard let connection = connections[request.connectionID] else { throw BrowserIPCError.closed }
                 try connection.send(request.data)
                 deadlines[request.id] = (request,DispatchTime.now().uptimeNanoseconds + 30_000_000_000)
-                if isAutomatic { automatic.insert(request.id) }
-            } catch { connections[request.key.peer]?.close(); disconnect(request.key.peer) }
+            } catch {
+                if let connection = connections[request.connectionID] { connection.close(); disconnect(request.connectionID) }
+                else { registry.failed(request) }
+            }
         }
     }
     private func disconnect(_ id: UUID) {
         guard connections.removeValue(forKey:id) != nil else { return }
-        let requests = deadlines.values.map(\.0).filter { $0.key.peer == id }
-        registry.disconnect(id)
-        for request in requests {
-            deadlines.removeValue(forKey:request.id)
-            let wasAutomatic = automatic.remove(request.id) != nil
-            completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil),wasAutomatic)
-        }
+        for request in deadlines.values.map(\.0) where request.connectionID == id { deadlines.removeValue(forKey:request.id) }
+        registry.disconnect(id) // Fails its commands, or holds an uncertain Start briefly.
         publish()
     }
     private func expire() {
         registry.expireRememberedStops()
         let now = DispatchTime.now().uptimeNanoseconds
-        let peers = Set(deadlines.values.filter { $0.1 <= now }.map { $0.0.key.peer })
+        let peers = Set(deadlines.values.filter { $0.1 <= now }.map { $0.0.connectionID })
         // An unacknowledged Start may already be recording. Reconnect reconciles
         // fresh status; it never resends that command or stops its audio host.
         for id in peers { connections[id]?.close(); disconnect(id) }
         reconcile()
     }
-    private func publish() { changed(registry.snapshots) }
+    /// Publishes the new state before delivering the completions it caused.
+    private func publish() {
+        changed(registry.snapshots)
+        for outcome in registry.takeOutcomes() {
+            if let wasAutomatic = callbacks.removeValue(forKey:outcome.requestID) { completed(outcome,wasAutomatic) }
+        }
+    }
     deinit {
         timer?.cancel(); server?.stop()
         for connection in connections.values { connection.close() }
