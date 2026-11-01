@@ -115,6 +115,24 @@ import Testing
         #expect(LibraryFormat.searchCount(places:0,meetings:2,locale:Locale(identifier:"pt_PT"),language:.ptBR)=="0 trecho em 2 reuniões")
         #expect(LibraryFormat.searchCount(places:0,meetings:2,locale:Locale(identifier:"pt_BR"),language:.ptPT)=="0 ocorrências em 2 reuniões")
     }
+    @Test func dateWordsFollowTheUILanguageAndTheClockFollowsTheRegion() {
+        // D50.3: Sunday 1 November 2026, 09:00 UTC; "now" is a later year so the year shows.
+        let zone=TimeZone(secondsFromGMT:0)!,at=Date(timeIntervalSince1970:1_793_523_600),later=Date(timeIntervalSince1970:1_830_000_000)
+        let american=Locale(identifier:"en_US"),french=Locale(identifier:"fr_FR")
+        let frenchUI=LibraryFormat(timeZone:zone,now:later,locale:american,language:.fr)
+        #expect(frenchUI.dayGroup(at)=="dimanche 1 novembre 2026")
+        #expect(frenchUI.searchDate(at)=="1 novembre 2026")
+        #expect(frenchUI.rowTime(at)=="9:00\u{202f}AM")
+        let englishUI=LibraryFormat(timeZone:zone,now:later,locale:american,language:.en)
+        #expect(englishUI.dayGroup(at)=="Sunday 1 November 2026")
+        #expect(englishUI.searchDate(at)=="1 November 2026")
+        #expect(englishUI.rowTime(at)=="9:00\u{202f}AM")
+        let englishFrenchRegion=LibraryFormat(timeZone:zone,now:later,locale:french,language:.en)
+        #expect(englishFrenchRegion.dayGroup(at)=="Sunday 1 November 2026")
+        #expect(englishFrenchRegion.rowTime(at)=="09:00")
+        let sameYear=LibraryFormat(timeZone:zone,now:at.addingTimeInterval(7*86400),locale:american,language:.ptPT)
+        #expect(sameYear.dayGroup(at)=="domingo, 1 de novembro")
+    }
     @Test func listConjunctionsFollowTheUILanguageWithAmericanRegions() {
         let french=LibraryFormat(locale:Locale(identifier:"en_US"),language:.fr)
         #expect(french.list(["Chrome","Edge"])=="Chrome et Edge")

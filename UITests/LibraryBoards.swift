@@ -49,8 +49,9 @@ final class LibraryBoards: XCTestCase {
         // the drawn text. Inspect the complete phrase in the selected preview.
         let client=window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
-        XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:10),app.debugDescription)
-        let eta=window.staticTexts["preview-transcribing-label"]
+        // SwiftUI gives every child of the preview-transcribing HStack the
+        // stack's identifier, so select the typed StaticText (not the spinner).
+        let eta=window.staticTexts["preview-transcribing"]
         let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription, environ 4 minutes"}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:etaReady,object:nil)],timeout:10),.completed,"Full French ETA in the selected preview: "+app.debugDescription)
     }

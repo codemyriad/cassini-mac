@@ -10,11 +10,14 @@ public struct LibraryFormat: Sendable {
     public let language: CassiniLanguage
     public init(timeZone: TimeZone = .current, now: Date = Date(), locale: Locale = .current, language: CassiniLanguage = .system) { self.timeZone = timeZone; self.now = now; self.locale = locale; self.language = language }
     private var calendar: Calendar { var c = Calendar(identifier: .gregorian); c.locale = locale; c.timeZone = timeZone; return c }
+    /// D50.3: date words and their pattern follow the UI language (English is en-GB);
+    /// the clock, separators and all-numeric dates stay with `locale`.
+    private var wordLocale: Locale { Locale(identifier: language == .en ? "en_GB" : language.rawValue) }
     private func date(_ value: Date, template: String) -> String {
-        let formatter = DateFormatter(); formatter.locale = locale
+        let formatter = DateFormatter(); formatter.locale = wordLocale
         formatter.calendar = calendar; formatter.timeZone = timeZone; formatter.setLocalizedDateFormatFromTemplate(template)
         // HARMONY's pinned British-English header omits the optional comma.
-        if locale.identifier == "en_GB" && template == "EEEEdMMMMyyyy" {formatter.dateFormat="EEEE d MMMM yyyy"}
+        if language == .en && template == "EEEEdMMMMyyyy" {formatter.dateFormat="EEEE d MMMM yyyy"}
         return formatter.string(from:value)
     }
     private static func text(_ id:String,_ values:[String:String]=[:],locale:Locale,language:CassiniLanguage,omitting:Set<String>=[])->String {
@@ -65,7 +68,7 @@ public struct LibraryFormat: Sendable {
     /// List conjunctions belong to the UI language, independently of the region.
     public func list(_ values:[String])->String {
         let formatter=ListFormatter()
-        formatter.locale=Locale(identifier:language == .en ? "en_GB" : language.rawValue)
+        formatter.locale=wordLocale
         return formatter.string(from:values) ?? values.joined(separator:", ")
     }
     public func previewSubtitle(_ at:Date,durationMs:Int64?,received:Bool=false)->String {

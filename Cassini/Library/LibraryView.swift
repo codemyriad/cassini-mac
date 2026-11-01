@@ -354,7 +354,7 @@ struct LibraryView: View {
                 if meeting.state.transcript == .queued || meeting.state.transcript == .running {
                     HStack(spacing:8) {
                         ProgressView().controlSize(.small)
-                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-transcribing-label") }
+                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(LibraryTheme.dim) }
                     }.accessibilityIdentifier("preview-transcribing")
                 }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
