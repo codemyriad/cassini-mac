@@ -4,6 +4,7 @@ import CassiniLibrary
 
 struct RecordingPageView: View {
     @State private var changingCapture = false
+    @State private var sourceProblem = false
     @State private var explainingFallback = false
     let detail: MeetingDetailModel
     let format: LibraryFormat
@@ -41,6 +42,10 @@ struct RecordingPageView: View {
                 }
                 if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
                 if let owned = model.owned, owned.input.failedSides.contains(.me) { CapturePermissionNotice(side:.me) }
+                if sourceProblem {
+                    Text(UXText.text("recording.sourceProblem")).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true)
+                        .accessibilityIdentifier("recording-source-problem")
+                }
                 VStack(alignment:.leading,spacing:6) {
                     caption("recording.title.label")
                     TextField("",text:Binding(get:{ model.title },set:{ value in
@@ -62,6 +67,10 @@ struct RecordingPageView: View {
                     Button(UXText.text("recording.changeWhatIsRecorded")) { changingCapture = true }.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
                         .foregroundStyle(Color.accentColor).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading).disabled(model.owned == nil && !model.frozen)
                         .accessibilityIdentifier("recording-change-sources")
+                    Divider()
+                    Button(UXText.text("details.link")) { RecordingDetailsCoordinator.shared.show(detail.meeting) }.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
+                        .foregroundStyle(Color.accentColor).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading)
+                        .accessibilityIdentifier("recording-details-link")
                 }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:10))
                     .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(Color.secondary.opacity(0.25)) }
                 if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive,
@@ -86,6 +95,14 @@ struct RecordingPageView: View {
                 }.font(.system(size:13)).padding(26).frame(width:480).onExitCommand { explainingFallback = false }
             }
             .onAppear { model.update(detail.meeting) }
+            // D52: the live source line comes from session.json only (GNOME live_problem).
+            .task(id:"\(detail.meeting.libraryKey)#\(LibraryStore.shared.revision)") {
+                let folder = detail.meeting.folder
+                let problem = await Task.detached {
+                    RecordingDetailsReport.liveSourceProblem(session:RecordingDetailsReport.Inputs.load(folder:folder,lifecycle:.recording,title:"",transcriptDone:false).session)
+                }.value
+                if !Task.isCancelled { sourceProblem = problem }
+            }
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
             .onChange(of:detail.meeting.state.lifecycle) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
