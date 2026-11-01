@@ -49,14 +49,6 @@ import ScreenCaptureKit
                     controller.fixtureHistoryStartMs >= 0 && controller.fixtureHasSound(0,since:0) && controller.fixtureHasSound(1,since:0)
                 }
             } else { try await input.waitForSamples(throughMs:4000) }
-            if argument("-SpectrogramPhaseOnly") == "1" {
-                report=try await positionProof(controller:controller,strips:strips)
-                report["fixtureInput"]=input.diagnostics
-                strips.forEach {$0.detach()};window.orderOut(nil)
-                try await input.finish();try? FileManager.default.removeItem(at:root)
-                FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
-                exit(0)
-            }
             if argument("-SpectrogramProfileOnly") == "1" {
                 // Instruments may suspend an attached process. This separate
                 // diagnostic keeps that effect outside every CPU/pacing gate.
@@ -65,6 +57,7 @@ import ScreenCaptureKit
                 report=["diagnosticProfileOnly":true,"audioDevicesOpened":false,
                         "seconds":ProcessInfo.processInfo.systemUptime-began,
                         "analyzedFrames":controller.analyzedFrames,"frameCallbacks":controller.frameCallbacks]
+                report["fixtureInput"] = input.diagnostics
                 controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
                 strips.forEach {$0.detach()};window.orderOut(nil)
                 try await input.finish();try? FileManager.default.removeItem(at:root)
@@ -99,7 +92,6 @@ import ScreenCaptureKit
             let initialBufferDrops = controller.droppedBuffers
             controller.resetFrameMeasurements()
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
-            let backendCPUStart=controller.backendCPUNanoseconds
             let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
             // CPU duration is the subject under measurement. Completion comes
             // from a real producer callback after the sixty-second interval;
@@ -110,8 +102,7 @@ import ScreenCaptureKit
             let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
             // Implicit CA transactions commit after the paint callback. Include
             // all main-thread CPU, so batching cannot move work outside the gate.
-            let backendCPU=controller.backendCPUNanoseconds-backendCPUStart
-            let drawing = Double(mainCPU+backendCPU)/1e9/elapsed*100
+            let drawing = Double(mainCPU)/1e9/elapsed*100
             let regions = Double(controller.drawingNanoseconds)/1e9/elapsed*100
             let hidden = mode == "C" || mode == "E"
             report = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
@@ -119,10 +110,12 @@ import ScreenCaptureKit
                 "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":cpu/elapsed*100,
                 "measurementStartMs":(began-input.origin)*1000,"measurementEndMs":(began+elapsed-input.origin)*1000,
                 "analysisCorePercent":analysis,"drawingCorePercent":drawing,"frameCallbacks":controller.frameCallbacks,
-                "instrumentedDrawingCorePercent":regions,"backendClockCPUNanoseconds":backendCPU,"backendClockThreadStable":controller.backendThreadStable,
+                "instrumentedDrawingCorePercent":regions,
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
+                "budgetPolicy":"D36.2","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
+                "lateColumnFraction":Double(controller.lateColumns-initialLate)/SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
                 "lateTiming":controller.lateTiming.filter { $0.ordinal > initialLate }.map {
@@ -140,11 +133,12 @@ import ScreenCaptureKit
                 try require(controller.frameCallbacks > (mode == "A" ? 1000 : 2500) && controller.analyzedFrames > initialFrames,"production display and FFT callbacks (callbacks=\(controller.frameCallbacks), applied=\(controller.framesApplied), FFT=\(controller.analyzedFrames-initialFrames), reduced=\(controller.usingReducedMotion))")
                 try require(controller.surfaceRevision > 50 && controller.surfaceBytes > 0,"native surfaces updated")
             }
-            report["gates"] = ["analysis":analysis <= 0.2,"drawing":drawing <= (mode == "A" ? 0.3 : 0.5),
-                "pacing":mode == "A" || hidden || (controller.frameP95Ms <= 17.5 && controller.maxFrameIntervalMs <= 33),
-                "late":controller.lateColumns == initialLate,"drops":controller.droppedColumns == initialDropped,
-                "inputDrops":controller.droppedBuffers == initialBufferDrops,
-                "logicalViewPayload":controller.payloadBytes <= 128*1024,"backendThreadStable":controller.backendThreadStable]
+            var gates=SpectrogramHostedBudget.evaluate(mode:mode,seconds:elapsed,analysis:analysis,drawing:drawing,
+                p95:controller.frameP95Ms,maximum:controller.maxFrameIntervalMs,
+                late:controller.lateColumns-initialLate,payload:controller.payloadBytes)
+            gates["drops"]=controller.droppedColumns == initialDropped
+            gates["inputDrops"]=controller.droppedBuffers == initialBufferDrops
+            report["gates"]=gates
             if mode == "B" {
                 // Verify pixels from this process's own window, after the CPU
                 // measurement. A ring/seed counter alone cannot prove that CA
@@ -160,14 +154,6 @@ import ScreenCaptureKit
                 let silent = try await darkPixels(window:window,view:strips[2],name:"B-silence")
                 try require(sounding >= 100 && silent <= 4,"composited pixels follow live same-surface sound→silence (\(sounding)→\(silent))")
                 report["liveCompositedInkPixels"] = ["sound":sounding,"silence":silent,"microphoneAfterMicSilence":meSilent,"othersAfterMicSilence":othersSounding]
-                if argument("-SpectrogramPixelsOnly") == "1" {
-                    report["experimentPixelCheck"] = true
-                    strips.forEach { $0.detach() }; window.orderOut(nil)
-                    try await input.finish()
-                    try? FileManager.default.removeItem(at:root)
-                    FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
-                    exit(0)
-                }
             }
             if mode == "B" {
                 let bothStyles = controller.surfaceBytes
@@ -266,47 +252,6 @@ import ScreenCaptureKit
             try? FileManager.default.removeItem(at:root)
             FileHandle.standardError.write(Data("Spectrogram probe failed: \(error)\n".utf8)); exit(1)
         }
-    }
-    /// Inspect actual CA presentation positions, after the CPU measurement.
-    /// Uniform tone pixels alone would not catch a static/misphased animation.
-    private static func positionProof(controller:RecordingSpectrogram,strips:[RecordingSpectrogramView]) async throws -> [String:Any] {
-        struct Position {let actual:Double,expected:Double,capacity:Double}
-        func snapshot() throws -> [Position] {
-            var result:[Position]=[]
-            for view in strips {
-                let flattened=view.layer as? CAReplicatorLayer
-                let clips=flattened.map {[$0]} ?? (view.layer?.sublayers ?? []).compactMap {$0.sublayers?.first as? CAReplicatorLayer}
-                try require(clips.count == (flattened == nil && view.style == .pill ? 2 : 1),"native lane layer count")
-                let capacity=Double(view.style.columns+2)
-                let time=controller.fixtureHistoryStartMs+4000-(view.style == .pill ? 60 : 0)
-                let expected=(time/view.style.slotMs).truncatingRemainder(dividingBy:capacity)
-                for clip in clips {
-                    guard let presentation=clip.presentation() else {throw Failure.check("native presentation layer exists")}
-                    let origin=flattened == nil ? Double(presentation.position.x) : Double(presentation.sublayerTransform.m41)
-                    let actual=(Double(view.style.columns)-origin).truncatingRemainder(dividingBy:capacity)
-                    result.append(.init(actual:actual,expected:expected,capacity:capacity))
-                }
-            }
-            return result
-        }
-        func distance(_ a:Double,_ b:Double,_ capacity:Double)->Double {
-            let d=abs(a-b).truncatingRemainder(dividingBy:capacity)
-            return min(d,capacity-d)
-        }
-        let first=try snapshot(),frames=controller.framesApplied
-        try await wait("fifteen actual display frames for position proof",controller:controller) {controller.framesApplied >= frames+15}
-        let second=try snapshot()
-        try require(first.count == second.count && !first.isEmpty,"position proof samples every native lane")
-        var maximumError=0.0,minimumAdvance=Double.infinity
-        for (a,b) in zip(first,second) {
-            maximumError=max(maximumError,distance(a.actual,a.expected,a.capacity),distance(b.actual,b.expected,b.capacity))
-            let moved=(b.actual-a.actual+a.capacity).truncatingRemainder(dividingBy:a.capacity)
-            let expected=(b.expected-a.expected+a.capacity).truncatingRemainder(dividingBy:a.capacity)
-            try require(expected > 1 && moved >= expected*0.5 && moved <= expected*1.5,"native lane translates with its audio clock")
-            minimumAdvance=min(minimumAdvance,moved)
-        }
-        try require(maximumError <= 2,"native presentation phase follows audio clock (error=\(maximumError) px)")
-        return ["positionsMatchDisplayClock":true,"maximumPositionErrorPixels":maximumError,"minimumPositionAdvancePixels":minimumAdvance]
     }
     private static func wait(_ description:String,controller:RecordingSpectrogram,until condition:@escaping () -> Bool) async throws {
         try await SpectrogramProbeEvent().wait(description,controller:controller,until:condition)

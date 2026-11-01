@@ -2,7 +2,6 @@
 import AppKit
 import QuartzCore
 import IOSurface
-import CoreVideo
 import SwiftUI
 import CassiniRecording
 import CassiniKit
@@ -23,11 +22,6 @@ import Darwin
         return false
         #endif
     }()
-    #if SPECTROGRAM_PROBE
-    private static let cpuCounters = measuring && ProcessInfo.processInfo.environment["CASSINI_SPECTRO_COUNTERS"] != "0"
-    #else
-    private static let cpuCounters = measuring
-    #endif
     let engine: SpectrogramSession
     let originUptime: TimeInterval
     private let observers: RecordedPCMObservers?
@@ -39,7 +33,6 @@ import Darwin
     private struct Notice { let center: NotificationCenter, token: NSObjectProtocol }
     private struct Cleanup: @unchecked Sendable {
         let link: CADisplayLink?
-        let alternate: SpectrogramCVClock?
         let timer: Timer?
         let notifications: [Notice]
     }
@@ -49,7 +42,6 @@ import Darwin
     private var eventCount = -1
     private let target = LinkTarget()
     private var link: CADisplayLink?
-    private var alternateClock: SpectrogramCVClock?
     private var reducedTimer: Timer?
     private var timerInterval: TimeInterval = 0
     private var pageRate: Bool?
@@ -106,7 +98,7 @@ import Darwin
 
     init(originUptime: TimeInterval, observers: RecordedPCMObservers? = nil, me: Bool = true, others: Bool = true) {
         self.observers = observers
-        self.originUptime = originUptime; engine = .init(originUptime:originUptime,measureCPU:Self.cpuCounters)
+        self.originUptime = originUptime; engine = .init(originUptime:originUptime,measureCPU:Self.measuring)
         selections = .init(me:me,others:others)
         #if DEBUG
         if Self.measuring { intervals = [UInt16](repeating:0,count:512) }
@@ -139,9 +131,9 @@ import Darwin
     }
     deinit {
         engine.setVisible(false); observers?.set(nil)
-        let cleanup = Cleanup(link:link,alternate:alternateClock,timer:reducedTimer,notifications:notifications)
+        let cleanup = Cleanup(link:link,timer:reducedTimer,notifications:notifications)
         DispatchQueue.main.async {
-            cleanup.link?.invalidate();cleanup.alternate?.stop(); cleanup.timer?.invalidate()
+            cleanup.link?.invalidate(); cleanup.timer?.invalidate()
             cleanup.notifications.forEach { $0.center.removeObserver($0.token) }
         }
     }
@@ -167,7 +159,7 @@ import Darwin
     }
     func stop(atMs: Double) {
         guard !stopped else { return }; stopped = true; running = false; engine.stop(atMs:atMs)
-        link?.invalidate(); link = nil; alternateClock?.stop(); alternateClock = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil
+        link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil
         engine.setVisible(false); observers?.set(nil)
         for view in views.values.compactMap(\.value) { view.freeze() }
     }
@@ -197,14 +189,14 @@ import Darwin
         guard Self.enabled, let primary else {
             if running {
                 running = false; engine.setVisible(false); observers?.set(nil)
-                link?.invalidate(); link = nil; alternateClock?.stop(); alternateClock = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; pageRate = nil
+                link?.invalidate(); link = nil; reducedTimer?.invalidate(); reducedTimer = nil; clockView = nil; pageRate = nil
                 resetPicture()
             }
             return
         }
         if !running { running = true; engine.setVisible(true); observers?.set(engine); lastAppliedTime = nil }
         if reduced {
-            link?.invalidate(); link = nil; alternateClock?.stop(); alternateClock = nil; clockView = nil; pageRate = nil
+            link?.invalidate(); link = nil; clockView = nil; pageRate = nil
             let interval: TimeInterval = page ? 0.02 : 0.08
             if reducedTimer == nil || timerInterval != interval {
                 reducedTimer?.invalidate(); timerInterval = interval
@@ -215,16 +207,6 @@ import Darwin
             }
         } else {
             reducedTimer?.invalidate(); reducedTimer = nil
-            if ProcessInfo.processInfo.environment["CASSINI_SPECTRO_CV"] == "1" {
-                if alternateClock == nil {
-                    let display=(primary.window?.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? CGMainDisplayID()
-                    alternateClock=SpectrogramCVClock(display:display) { [weak self] timestamp in
-                        guard let self,self.running,!self.stopped,!self.reduced else {return}
-                        self.frameCallbacks += 1;self.requestFrame(timestamp:timestamp)
-                    }
-                }
-                alternateClock?.setMaximumHz(page ? 0 : 30)
-            } else {
             if clockView !== primary || link == nil {
                 link?.invalidate(); clockView = primary; pageRate = nil
                 let value = primary.displayLink(target:target,selector:#selector(LinkTarget.tick(_:)))
@@ -233,7 +215,6 @@ import Darwin
             if let link, pageRate != page {
                 link.preferredFrameRateRange = page ? .default : .init(minimum:30,maximum:30,preferred:30)
                 pageRate = page
-            }
             }
         }
         ensureBanks(visible)
@@ -276,8 +257,8 @@ import Darwin
         requestFrame(timestamp:CACurrentMediaTime())
     }
     private func requestFrame(timestamp: Double) {
-        let cpuStart = Self.cpuCounters ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-        defer { if Self.cpuCounters { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
+        let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
+        defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
         // Read already-analyzed columns in the display-link callback. No
         // utility→main handoff or second run-loop wake is needed per frame.
         let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
@@ -444,8 +425,6 @@ import Darwin
         return 0
         #endif
     }
-    var backendCPUNanoseconds: UInt64 { alternateClock?.cpuNanoseconds ?? 0 }
-    var backendThreadStable: Bool { alternateClock?.threadStable ?? true }
     var payloadBytes: Int {
         (pageBank?.allocatedBytes ?? 0)+(pillBank?.allocatedBytes ?? 0)+(pixels?.bytes ?? 0)+measurementStorageBytes+selections.storageBytes+64*37*2
     }
@@ -460,16 +439,6 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
 }
 
 @MainActor final class RecordingSpectrogramView: NSView {
-    // Hosted attribution only: deliberately incomplete pictures isolate costs.
-    // These switches exist solely in this lab probe and never in app builds.
-    #if SPECTROGRAM_PROBE
-    private static let ablation = ProcessInfo.processInfo.environment["CASSINI_SPECTRO_ABLATION"] ?? "full"
-    private static let hostedLayer = ProcessInfo.processInfo.environment["CASSINI_SPECTRO_HOSTING"] == "1"
-    private static var publishesContents: Bool { ablation != "no-contents" && ablation != "none" }
-    private static var translates: Bool { ablation != "no-scroll" && ablation != "none" }
-    #else
-    private static let publishesContents = true, translates = true, hostedLayer = false
-    #endif
     let registrationID = UUID()
     let style: SpectrogramStripStyle
     let rowLane: SpectrogramLane
@@ -482,9 +451,6 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
-        // A hosted root omits AppKit's backing-store ownership. This remains a
-        // measured lab alternative; all texture, clock and frame work is equal.
-        if Self.hostedLayer { layer = CALayer() }
         wantsLayer = true; setAccessibilityElement(false)
         // Disable implicit actions only on our layers. Let AppKit coalesce the
         // implicit transaction at its normal frame boundary, instead of forcing
@@ -576,11 +542,11 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
                     image.contentsRect = .init(x:0,y:Double(selected)/2,width:1,height:0.5)
                     image.delegate = source
                 }
-                if changed && Self.publishesContents { image.setNeedsDisplay() }
+                if changed { image.setNeedsDisplay() }
             if bankChanged {
                 lane.first.position = .zero
             }
-            if Self.translates { lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0) }
+            lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
         }
     }
 }
@@ -604,47 +570,4 @@ struct RecordingSpectrogramStrip: NSViewRepresentable {
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingSpectrogramView, context: Context) -> CGSize? { .init(width:200,height:32) }
     static func dismantleNSView(_ view: RecordingSpectrogramView, coordinator: ()) { view.detach() }
-}
-
-/// Branch-only clock experiment. A single queued main frame bounds the handoff.
-/// The probe adds ALL dedicated CV-thread CPU to main-thread drawing CPU.
-private final class SpectrogramCVClock: @unchecked Sendable {
-    private let lock=NSLock()
-    private var link:CVDisplayLink?
-    private var active=true,pending=false,maximumHz=0.0,lastTimestamp = -Double.infinity
-    private var firstCPU:UInt64?,latestCPU:UInt64=0,thread:mach_port_t?,stable=true
-    private let frame:@MainActor @Sendable (Double)->Void
-    init?(display:CGDirectDisplayID,frame:@escaping @MainActor @Sendable (Double)->Void) {
-        self.frame=frame
-        var value:CVDisplayLink?
-        guard CVDisplayLinkCreateWithCGDisplay(display,&value)==kCVReturnSuccess,let value else {return nil}
-        link=value
-        guard CVDisplayLinkSetOutputHandler(value,{[weak self] _,now,_,_,_ in
-            self?.tick(timestamp:Double(now.pointee.hostTime)/CVGetHostClockFrequency())
-            return kCVReturnSuccess
-        })==kCVReturnSuccess,CVDisplayLinkStart(value)==kCVReturnSuccess else {return nil}
-    }
-    deinit {stop()}
-    func stop() {
-        lock.lock();active=false;let value=link;link=nil;lock.unlock()
-        if let value {CVDisplayLinkStop(value)}
-    }
-    func setMaximumHz(_ value:Double) {lock.lock();maximumHz=value;lock.unlock()}
-    var cpuNanoseconds:UInt64 {lock.lock();defer {lock.unlock()};return latestCPU-(firstCPU ?? latestCPU)}
-    var threadStable:Bool {lock.lock();defer {lock.unlock()};return stable}
-    private func tick(timestamp:Double) {
-        let cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID),identity=pthread_mach_thread_np(pthread_self())
-        lock.lock()
-        if let thread {if thread != identity {stable=false}} else {thread=identity}
-        if firstCPU == nil {firstCPU=cpu}
-        latestCPU=max(cpu,firstCPU ?? cpu)
-        guard active,timestamp.isFinite,maximumHz==0 || timestamp-lastTimestamp+0.000001 >= 1/maximumHz else {lock.unlock();return}
-        guard !pending else {lock.unlock();return}
-        pending=true;lastTimestamp=timestamp;lock.unlock()
-        DispatchQueue.main.async { [weak self] in
-            guard let self else {return}
-            self.lock.lock();self.pending=false;let active=self.active;self.lock.unlock()
-            if active {self.frame(timestamp)}
-        }
-    }
 }
