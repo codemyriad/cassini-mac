@@ -106,6 +106,8 @@ import Testing
         let nativeTime=DateFormatter();nativeTime.locale=american;nativeTime.timeZone=zone;nativeTime.timeStyle = .short;nativeTime.dateStyle = .none
         #expect(format.rowTime(date)==nativeTime.string(from:date))
         #expect(format.searchContext(date,durationMs:59000,positionMs:300000)=="Aujourd’hui, "+nativeTime.string(from:date)+" · moins d’1 min · à 00:05:00")
+        #expect(LibraryFormat.size(bytes:1_288_490_189,approximate:true,locale:american,language:.fr)=="environ 1.2 Go")
+        #expect(LibraryFormat.size(bytes:1_288_490_189,approximate:true,locale:french,language:.en)=="about 1,2 GB")
         #expect(LibraryFormat.eta(2,locale:american,language:.fr)=="Transcription, environ 2 minutes")
         #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:american,language:.fr)=="12,345 occurrences dans 2 réunions")
         #expect(LibraryFormat.searchCount(places:12345,meetings:2,locale:french,language:.en)=="12\u{202f}345 places in 2 meetings")

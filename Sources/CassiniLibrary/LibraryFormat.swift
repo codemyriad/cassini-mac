@@ -102,7 +102,7 @@ public struct LibraryFormat: Sendable {
             let formatter=NumberFormatter();formatter.locale=locale;formatter.numberStyle = .decimal
             formatter.usesGroupingSeparator=false;formatter.minimumFractionDigits=1;formatter.maximumFractionDigits=1
             let count=formatter.string(from:NSDecimalNumber(decimal:Decimal(tenths)/10))!
-            let units=MeasurementFormatter();units.locale=locale;units.unitStyle = .short;units.unitOptions = .providedUnit
+            let units=MeasurementFormatter();units.locale=Locale(identifier:language.rawValue);units.unitStyle = .short;units.unitOptions = .providedUnit
             value=[count,units.string(from:UnitInformationStorage.gigabytes)].joined(separator:" ")
         }
         return approximate ? text("format.size.approx",["size":value],locale:locale,language:language) : value
