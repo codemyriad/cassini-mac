@@ -368,7 +368,7 @@ private final class CaptureFiles: @unchecked Sendable {
             if let value = captures[id] {
                 let key = key(for:value.captureID) ?? value.key; captures[id]?.key = key
                 if let key { microphones[key] = value.owner.snapshot.me }
-                if value.modernLifecycle == nil, let peer = peers.first(where:{ $0.id == key?.peer }) {
+                if value.modernLifecycle == nil, let peer = peers.first(where:{ $0.reconciled && $0.owns(key) }) ?? peers.first(where:{ $0.owns(key) }) {
                     captures[id]?.modernLifecycle = peer.supportsPageState
                     Task { try? await value.owner.manageBrowserLifecycle(peer.supportsPageState); try? await value.input.update() }
                 }
@@ -449,7 +449,7 @@ private final class CaptureFiles: @unchecked Sendable {
             // A native stand-in joins this path once it asked a call to resume it.
             let standIn = value.snapshot.manifest.source == "macos" && value.key != nil
             if value.snapshot.manifest.source == "chromium" || standIn, value.savingSinceMs == nil {
-                let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
+                let peer = peers.first { $0.reconciled && $0.owns(value.key) }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
                 // Native Start can precede the control status that binds this
                 // capture to its peer. Absence during that handshake is not loss.

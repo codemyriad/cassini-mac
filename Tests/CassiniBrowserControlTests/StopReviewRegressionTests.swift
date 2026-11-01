@@ -45,7 +45,10 @@ final class StopReviewRegressionTests: XCTestCase {
         try send(status([2]),&state,first); try meetings(&state,first,url:"new")
         let stop = try XCTUnwrap(state.stopAll().first)
         try send(["type":"result","requestId":stop.id,"ok":true,"status":status()],&state,first)
-        XCTAssertEqual(state.automaticStarts(microphone:false).map(\.key.tabID),[2],"Old Stop completion cannot suppress the navigated call")
+        let start = try XCTUnwrap(state.automaticStarts(microphone:false).first)
+        XCTAssertEqual(start.key.tabID,2,"Old Stop completion cannot suppress the navigated call")
+        // An unacknowledged Start would be held across the reconnect instead.
+        try send(["type":"result","requestId":start.id,"ok":false],&state,first)
         state.disconnect(first); _ = try ready(&state,url:"new")
         XCTAssertEqual(state.automaticStarts(microphone:false).map(\.key.tabID),[2])
     }
@@ -69,7 +72,7 @@ final class StopReviewRegressionTests: XCTestCase {
         state.rememberUserStop(key:.init(peer:first,tabID:2),captureID:"capture-2")
         let next = try ready(&state); try send(status([2]),&state,next)
         let stop = try XCTUnwrap(state.drainStops().first)
-        XCTAssertEqual(stop.action,.stop); XCTAssertEqual(stop.key.peer,next)
+        XCTAssertEqual(stop.action,.stop); XCTAssertEqual(stop.connectionID,next)
         state.disconnect(next); _ = try ready(&state)
         XCTAssertTrue(state.automaticStarts(microphone:false).isEmpty)
     }
