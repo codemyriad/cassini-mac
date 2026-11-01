@@ -72,6 +72,9 @@ public enum MeetingTranscriber {
                 let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
                 /// Speech segments clipped to the half-open ranges this source owns.
                 let segments: [SpeechSegment]
+                let id: String
+                /// Track-local 16 kHz sample ranges inside D52.2 presence and ownership.
+                let kept: [Range<Int>]
             }
             var tracks: [Track] = []
             let sources: [(URL, String, String, Double?, String?, Double?, [TrackPresence.Gap]?)]
@@ -103,6 +106,7 @@ public enum MeetingTranscriber {
                 if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
                 let audio = try SegmentedAudio(url: url, detector: detector)
                 var segments = audio.segments
+                var kept = audio.sampleCount > 0 ? [0..<audio.sampleCount] : []
                 // D49/D33 seams: audio outside this source's ownership is not recognized.
                 if let offset, ownership != nil || gaps?.isEmpty == false {
                     let end = offset + Double(audio.sampleCount)/16
@@ -112,6 +116,10 @@ public enum MeetingTranscriber {
                     let presence = TrackPresence.windows(startOffsetMs:offset,sampleRate:16000,frames:UInt64(audio.sampleCount),gaps:gaps,ownership:mask)
                     // Present and unknown windows are disjoint; together they are the kept time.
                     let owned = (presence.present + presence.unknown).sorted { $0.start < $1.start }.map { ($0.start,$0.end) }
+                    kept = owned.compactMap { range -> Range<Int>? in
+                        let a = max(0,Int(((range.0-offset)*16 - 1e-6).rounded(.up))), b = min(audio.sampleCount,Int(((range.1-offset)*16 - 1e-6).rounded(.up)))
+                        return b > a ? a..<b : nil
+                    }
                     segments = segments.flatMap { segment in
                         owned.compactMap { range -> SpeechSegment? in
                             // D52.2 presence grid: [a,b) ms covers samples [ceil(16a-1e-6), ceil(16b-1e-6)).
@@ -121,7 +129,7 @@ public enum MeetingTranscriber {
                         }
                     }
                 }
-                tracks.append(.init(audio: audio, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments))
+                tracks.append(.init(audio: audio, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept))
             }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
@@ -132,6 +140,7 @@ public enum MeetingTranscriber {
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
             var remaining = tracks.reduce(0.0) { sum, track in sum + track.segments.reduce(0.0) { $0 + Double($1.endSample - $1.startSample) / 16000 } }
             let reference: [String:Any] = ["kind":"sidecar", "file":"transcript.json", "format":"cassini.words.v1"]
+            var fallbackDecisions: [[String:Any]] = []
             func publish(status: String) throws {
                 let ordered = progress.published(items,complete:status == "done")
                 struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
@@ -172,27 +181,91 @@ public enum MeetingTranscriber {
                         writing["speakerSeparation"] = ["status":"skipped","reason":"unavailable"]
                         // D52.3d: set only when separation actually ran.
                         if separated { writing["sourceSpansSeparated"] = true } else { writing.removeValue(forKey:"sourceSpansSeparated") }
+                        // D52.4 R71: this attempt's per-track fallback decisions (additive, not displayed).
+                        if fallbackDecisions.isEmpty { writing.removeValue(forKey:"recognitionFallback") }
+                        else {
+                            writing["recognitionFallback"] = ["method":"vadFreeWindows","windowMs":RecognitionFallback.window*1000/RecognitionFallback.rate,
+                                "overlapMs":RecognitionFallback.overlap*1000/RecognitionFallback.rate,"tracks":fallbackDecisions]
+                        }
                         details["writingDown"] = writing
                         metadata["recordingDetails"] = details
                     }
                 }
             }
             try publish(status: "running")
+            /// Recognise one range of a track; word times are clamped to its own audio (G11).
+            func words(_ track: Track, _ segment: SpeechSegment) throws -> [RecognitionFallback.Word] {
+                let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
+                let result = try recognize(samples)
+                if ["auto","und",""].contains(language) { language = result.language }
+                let start = track.offset + Int64(segment.startSample * 1000 / 16000), length = Int64(samples.count) * 1000 / 16000
+                var out: [RecognitionFallback.Word] = []
+                for word in result.words ?? [] {
+                    guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }
+                    let a = Int64((word.start * 1000).rounded(.toNearestOrEven)), b = Int64((word.end * 1000).rounded(.toNearestOrEven))
+                    guard a <= length else { continue }
+                    out.append(.init(text:word.word,startMs:start + a,endMs:start + min(b,length)))
+                }
+                let speech = Double(samples.count) / 16000
+                processed += speech; remaining = max(0,remaining - speech); elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
+                return out
+            }
+            func append(_ words: [RecognitionFallback.Word], track index: Int) {
+                for word in words { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
+            }
             for (index, track) in tracks.enumerated() {
-                for segment in track.segments {
-                    let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
-                    let result = try recognize(samples)
-                    if ["auto","und",""].contains(language) { language = result.language }
-                    let start = track.offset + Int64(segment.startSample * 1000 / 16000)
-                    for word in result.words ?? [] {
-                        guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start, word.end <= Double(samples.count) / 16000 + 1 else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }
-                        let a = start + Int64((word.start * 1000).rounded(.toNearestOrEven)), b = start + Int64((word.end * 1000).rounded(.toNearestOrEven))
-                        items.append(.init(word: .init(speaker: track.speaker.id, startMs: a, endMs: b, text: word.word), track: index, ordinal: items.count))
+                // D52.4 R71: activity inside this track's present, owned time (never the mix).
+                var meter = RecognitionFallback.ActivityMeter(), cursor = 0
+                for range in track.kept {
+                    if range.lowerBound > cursor { meter.feed([Float](repeating:0,count:range.lowerBound - cursor)) }
+                    var at = range.lowerBound
+                    while at < range.upperBound {
+                        let end = min(range.upperBound,at + 240000)
+                        meter.feed(try track.audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
                     }
-                    let speech = Double(samples.count) / 16000
-                    processed += speech; remaining -= speech; elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
-                    progress.advance(track:index,to:track.offset + Int64(segment.endSample * 1000 / 16000))
-                    try publish(status: "running")
+                    cursor = range.upperBound
+                }
+                let active = meter.active(), activeSeconds = meter.activeSeconds(active)
+                // A track with plenty of active audio holds its VAD words until it reaches the threshold.
+                var held: [RecognitionFallback.Word]? = activeSeconds >= RecognitionFallback.minActiveSeconds ? [] : nil
+                var heldEnd: Int64?, vadWords = 0
+                for segment in track.segments {
+                    let found = try words(track,segment)
+                    vadWords += found.count
+                    let end = track.offset + Int64(segment.endSample * 1000 / 16000)
+                    if held == nil { append(found,track:index); progress.advance(track:index,to:end); try publish(status: "running"); continue }
+                    held! += found; heldEnd = end
+                    if vadWords >= RecognitionFallback.fewWords {
+                        append(held!,track:index); held = nil
+                        progress.advance(track:index,to:end); try publish(status: "running")
+                    }
+                }
+                if let vad = held {
+                    // Active 15 s windows inside the kept ranges, so none crosses a gap or ownership edge.
+                    let needed = Int((0.5 * 16000 / 512.0).rounded(.up))
+                    let windows = track.kept.flatMap { range in
+                        RecognitionFallback.windowBounds(range.count).map { (range.lowerBound + $0.lowerBound)..<(range.lowerBound + $0.upperBound) }
+                    }.filter { w in
+                        let a = w.lowerBound / 512, b = min(active.count,(w.upperBound + 511) / 512)
+                        return a < b && active[a..<b].filter { $0 }.count >= needed
+                    }
+                    remaining += Double(windows.reduce(0) { $0 + $1.count }) / 16000
+                    var fallback: [RecognitionFallback.Word] = [], previousEnd: Int?
+                    for window in windows {
+                        let segment = SpeechSegment(startSample:window.lowerBound,endSample:window.upperBound,reason:"noVadWindow")
+                        let base = track.offset + Int64(window.lowerBound * 1000 / 16000)
+                        let kept = RecognitionFallback.energetic(try words(track,segment),samples:try track.audio.samples(segment),baseMs:base)
+                        if let previousEnd, window.lowerBound < previousEnd {
+                            fallback = RecognitionFallback.mergeSeam(fallback,kept,windowStartMs:base,overlapMs:Int64((previousEnd - window.lowerBound) * 1000 / 16000))
+                        } else { fallback += kept }
+                        previousEnd = window.upperBound
+                    }
+                    let used = fallback.count >= RecognitionFallback.need(vadWords)
+                    // The fallback replaces the VAD words only past the margin; never both.
+                    append(used ? fallback : vad,track:index)
+                    fallbackDecisions.append(["trackId":track.id,"vadWords":vadWords,"fallbackWords":fallback.count,
+                                              "activeSeconds":(activeSeconds * 1000).rounded() / 1000,"used":used])
+                    if let heldEnd { progress.advance(track:index,to:heldEnd) }
                 }
                 progress.finish(track:index)
                 try publish(status:"running")
