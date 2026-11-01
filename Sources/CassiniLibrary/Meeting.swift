@@ -88,9 +88,11 @@ public struct LibraryAudioTrack: Sendable, Equatable {
     public let sourceKind: String?
     public let sourceTrackID: String?
     public let sampleRate: Int?
-    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil, sampleRate: Int? = nil) {
+    /// D52.2 stored gap ranges; nil means unknown (an older or foreign writer).
+    public let gaps: [TrackPresence.Gap]?
+    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil, sampleRate: Int? = nil, gaps: [TrackPresence.Gap]? = nil) {
         self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount
-        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID; self.sampleRate = sampleRate
+        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID; self.sampleRate = sampleRate; self.gaps = gaps
     }
     /// Exact physical end on the session timeline, when offset and length are known.
     public var endOffsetMs: Double? {

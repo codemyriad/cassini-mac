@@ -342,7 +342,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if newOthers && !self.others && browserAvailable {
                 for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where (self.browserAlive && source.current) || source.returning {
                     let span = UUID().uuidString.lowercased(); spans[id] = span
-                    starts.append(.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser"))
+                    starts.append(.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser",boundaryMs:time))
                 }
             }
             let keptPending = self.nativeSpans.values.filter { !$0.registered && ($0.side == .me ? newMe : newOthers) }.count
@@ -475,7 +475,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             return id
         }
     }
-    fileprivate func nativeAudio(id: String, pcm: Data, offsetMs: Double) throws {
+    fileprivate func nativeAudio(id: String, pcm: Data, offsetMs: Double, gapKind: String = "input") throws {
         try sync {
             guard phase == .recording, var span = nativeSpans[id], span.side == .me ? me : others else { return }
             guard offsetMs.isFinite, (0...86400000).contains(offsetMs), !pcm.isEmpty,
@@ -493,10 +493,25 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 let current = recording.manifest.events?.last(where:{ $0.type == "othersSource" })
                 let announced = current?.source == "system" && current?.reason == systemReason
                 let events: [CaptureEvent] = span.side == .others && !announced ? [.init(atMs:offset,type:"othersSource",source:"system",reason:systemReason)] : []
-                try commitTransition(starting:[.init(id:id,label:span.label,kind:span.side == .me ? "microphone" : "system",sampleRate:span.rate,channels:span.channels,labelSource:"device")],events:events)
+                // D52.2: a native span starts at its selection boundary; the wait for its first buffer is a prefix.
+                try commitTransition(starting:[.init(id:id,label:span.label,kind:span.side == .me ? "microphone" : "system",sampleRate:span.rate,channels:span.channels,labelSource:"device",
+                                                     boundaryMs:nativeBoundary(span.side).flatMap { $0 < offset ? $0 : nil })],events:events)
                 span.registered = true; nativeSpans[id] = span
             }
-            try recording.appendNative(id:id,pcm:bytes,offsetMs:offset); publish(force:first)
+            try recording.appendNative(id:id,pcm:bytes,offsetMs:offset,gapKind:gapKind); publish(force:first)
+        }
+    }
+    /// D52.2 selection boundaries for native spans: the microphone's selection time,
+    /// and the no-call stand-in's start. A fallback system span switches source, so it
+    /// starts at its first frame.
+    private func nativeBoundary(_ side: CaptureSide) -> Double? {
+        if side == .me { return meResumeAt }
+        return recording.manifest.source == "macos" && systemReason == "missing" ? resumeAt : nil
+    }
+    fileprivate func nativePadding(id: String, frames: UInt64, offsetMs: Double) throws {
+        try sync {
+            guard phase == .recording, let span = nativeSpans[id], span.registered, span.side == .me ? me : others else { return }
+            try recording.padNative(id:id,frames:frames,channels:span.channels,rate:Double(span.rate),offsetMs:offsetMs); publish(force:false)
         }
     }
     fileprivate func reportNativeLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
@@ -608,6 +623,12 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     }
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws {
         guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs)
+    }
+    func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws {
+        guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs,gapKind:gapKind)
+    }
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
+        guard let span = spans[id] else { return }; try owner.nativePadding(id:span,frames:frames,offsetMs:offsetMs)
     }
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
         guard let span = spans[id] else { return }

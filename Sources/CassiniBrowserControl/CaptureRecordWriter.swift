@@ -10,7 +10,7 @@ import CassiniRecording
 /// device identities are written.
 public enum CaptureRecordWriter {
     static let trackFields: Set<String> = ["id","kind","label","sourceTrackId","frames","sampleRate","channels","startOffsetMs","endOffsetMs",
-                                           "gapFrames","droppedFrames","problemKind","captureOutcome","receivedFrames"]
+                                           "gapFrames","droppedFrames","problemKind","captureOutcome","receivedFrames","gaps"]
     public static func record(_ manifest: RecordingManifest) throws -> [String:Any] {
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
         let session = try JSONSerialization.jsonObject(with:encoder.encode(manifest)) as? [String:Any] ?? [:]

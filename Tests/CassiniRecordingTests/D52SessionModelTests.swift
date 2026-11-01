@@ -149,3 +149,49 @@ final class D52SessionModelTests: XCTestCase {
         XCTAssertNil(loaded.tracks[0].captureOutcome); XCTAssertNil(loaded.tracks[0].problemKind); XCTAssertNil(loaded.tracks[0].receivedFrames)
     }
 }
+
+/// D52.2: the two legacy stdio vectors protocol #29 changed (conformance/vectors.json),
+/// replayed through the standalone BrowserRecordingHost into a temporary folder
+/// (the conformance runner itself writes into the real Library).
+final class D52LegacyGapVectorTests: XCTestCase {
+    func testLegacyGapVectors() throws {
+        let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("browser-protocol/conformance/vectors.json")
+        let vectors = try XCTUnwrap(try JSONParser.parse(Data(contentsOf:url)).array)
+        for name in ["gap-preserved","gap-exactly-minute"] {
+            let vector = try XCTUnwrap(vectors.first { $0["name"]?.string == name })
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Legacy-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let host = BrowserRecordingHost { title in try RecordingSession(parent:root,title:title,source:"chromium") }
+            let replies = try vector["requests"]!.array!.map { try host.receive(Data($0.string!.utf8))["type"] }
+            XCTAssertEqual(replies,vector["expect"]!.array!.map { $0["type"]?.string },name)
+            let manifest = try RecordingLoader.load(directory:XCTUnwrap(host.session).directory)
+            XCTAssertEqual(manifest.state,vector["state"]!.string!,name)
+            for (id,want) in vector["tracks"]!.object! {
+                let track = try XCTUnwrap(manifest.tracks.first { $0.id == id },name)
+                XCTAssertEqual(track.gapFrames,UInt64(want["gapFrames"]!.int!),name)
+                XCTAssertEqual(track.gaps?.map(\.kind),["jump"],name)
+            }
+            if let frames = vector["frames"]?.array { XCTAssertEqual(manifest.tracks.map(\.frames),frames.map { UInt64($0.int!) },name) }
+        }
+    }
+}
+
+/// D52.4 R70: the native sink's in-place padding over its own lost frames is a
+/// `writer` range: counted as drops by the sink, never received audio, never a gap flag.
+final class D52WriterPaddingTests: XCTestCase {
+    func testWriterPaddingIsARangeButNeitherAudioNorAGap() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Writer-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Writer",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:48000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:1,count:96000),offsetMs:0)
+        try session.padNative(id:"mic",frames:96000,channels:1,rate:48000,offsetMs:1000)
+        try session.finish()
+        let track = try XCTUnwrap(try RecordingLoader.load(directory:session.directory).tracks.first)
+        XCTAssertEqual(track.frames,144000); XCTAssertEqual(track.receivedFrames,48000)
+        XCTAssertEqual(track.gaps,[.init(atMs:1000,durationMs:2000,frames:96000,kind:"writer")]); XCTAssertNil(track.gapFrames)
+        let manifest = try RecordingLoader.load(directory:session.directory)
+        XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
+    }
+}
