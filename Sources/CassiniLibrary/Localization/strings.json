@@ -17451,6 +17451,99 @@
      "text": "{places} em {meetings}"
     }
    }
+  },
+  {
+   "id": "export.markdown.speakersLine",
+   "en": "Speakers: {names}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D50.2",
+   "placeholders": {
+    "names": "comma-joined speaker names"
+   },
+   "note": "Coordinator (D50.2). Markdown export (S-5) line after the date; {names} is the comma-joined speaking speakers in first-speaking order, as stored.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Voci: {names}"
+    },
+    "fr": {
+     "text": "Intervenants : {names}"
+    },
+    "es": {
+     "text": "Hablantes: {names}"
+    },
+    "pt-BR": {
+     "text": "Locutores: {names}"
+    },
+    "pt-PT": {
+     "text": "Oradores: {names}"
+    }
+   }
+  },
+  {
+   "id": "export.markdown.transcriptHeading",
+   "en": "Transcript",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D50.2",
+   "note": "Coordinator (D50.2). Markdown export (S-5) level-2 heading before the turns.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione"
+    },
+    "fr": {
+     "text": "Transcription"
+    },
+    "es": {
+     "text": "Transcripción"
+    },
+    "pt-BR": {
+     "text": "Transcrição"
+    },
+    "pt-PT": {
+     "text": "Transcrição"
+    }
+   }
+  },
+  {
+   "id": "export.markdown.notesHeading",
+   "en": "Notes",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D50.2",
+   "note": "Coordinator (D50.2). Markdown export (S-5) level-2 heading before the notes (only when there are notes).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Note"
+    },
+    "fr": {
+     "text": "Notes"
+    },
+    "es": {
+     "text": "Notas"
+    },
+    "pt-BR": {
+     "text": "Notas"
+    },
+    "pt-PT": {
+     "text": "Notas"
+    }
+   }
   }
  ]
 }

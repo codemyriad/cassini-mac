@@ -60,6 +60,14 @@ public struct LibraryFormat: Sendable {
         if let yesterday=calendar.date(byAdding:.day,value:-1,to:now),calendar.isDate(at,inSameDayAs:yesterday) {return Self.text("format.yesterday",locale:locale,language:language)}
         return date(at,template:calendar.component(.year,from:at)==calendar.component(.year,from:now) ? "EEEEdMMMM" : "EEEEdMMMMyyyy")
     }
+    /// D50.3 absolute date line: the full-date words and CLDR pattern follow the UI
+    /// language (en-GB for English, without the optional comma); the clock follows `locale`.
+    public func absoluteDateLine(_ at:Date,durationMs:Int64?)->String {
+        let formatter=DateFormatter();formatter.locale=wordLocale;formatter.calendar=calendar;formatter.timeZone=timeZone
+        formatter.dateStyle = .full;formatter.timeStyle = .none
+        if language == .en {formatter.dateFormat="EEEE d MMMM yyyy"}
+        return formatter.string(from:at)+", "+rowTime(at)+(durationMs.map {" · "+Self.meetingDuration($0,locale:locale,language:language)} ?? "")
+    }
     public func rowTime(_ at:Date)->String {
         let formatter=DateFormatter();formatter.locale=locale
         formatter.timeZone=timeZone;formatter.dateStyle = .none;formatter.timeStyle = .short
