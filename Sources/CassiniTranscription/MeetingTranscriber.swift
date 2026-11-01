@@ -74,8 +74,8 @@ public enum MeetingTranscriber {
                 let segments: [SpeechSegment]
             }
             var tracks: [Track] = []
-            let sources: [(URL, String, String, Double?, String?, Double?)]
-            if received { sources = [(meeting.audioFiles[0], "original", "original", 0, nil, nil)] }
+            let sources: [(URL, String, String, Double?, String?, Double?, [TrackPresence.Gap]?)]
+            if received { sources = [(meeting.audioFiles[0], "original", "original", 0, nil, nil, nil)] }
             else {
                 // The Library scanner already isolates damaged tracks and
                 // safely salvages unsupported/missing manifests. Reuse those
@@ -83,26 +83,35 @@ public enum MeetingTranscriber {
                 sources = meeting.audioTracks.compactMap { track in
                     guard track.frameCount != 0 else { return nil }
                     let filenameID = String(track.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count))
-                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs)
+                    // Gap frames are at the track's own rate; carry them as milliseconds.
+                    let rate = Double(track.sampleRate ?? 48000)
+                    let gaps = track.gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
+                    return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs,gaps)
                 }
             }
             // D52 M1: one source becomes one speaker only while its spans are disjoint.
-            let lanes = SourceSpanLanes.assign(sources.compactMap { url, id, kind, offset, sourceTrackID, end in
+            let lanes = SourceSpanLanes.assign(sources.compactMap { url, id, kind, offset, sourceTrackID, end, _ in
                 let base = TranscriptSpeaker.fromTrack(id:id,kind:kind,sourceTrackID:sourceTrackID,received:received,me:me,others:others).id
                 guard base.hasPrefix("track-"), !received else { return nil }
                 return .init(id:id,base:base,startMs:offset,endMs:offset == nil ? nil : end)
             })
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
-            for (url, id, kind, offset, sourceTrackID, _) in sources {
+            for (url, id, kind, offset, sourceTrackID, _, gaps) in sources {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
                 let audio = try SegmentedAudio(url: url, detector: detector)
                 var segments = audio.segments
                 // D49/D33 seams: audio outside this source's ownership is not recognized.
-                if let ownership, let offset {
-                    let owned = ownership.owned(kind:kind,startMs:offset,endMs:offset + Double(audio.sampleCount)/16)
+                if let offset, ownership != nil || gaps?.isEmpty == false {
+                    let end = offset + Double(audio.sampleCount)/16
+                    // D52.2: recognise only owned time, minus stored gap ranges (prefix and
+                    // padding are absence); unknown time is kept because its audio exists.
+                    let mask = ownership.map { $0.owned(kind:kind,startMs:offset,endMs:end).map { (start:$0.0,end:$0.1) } }
+                    let presence = TrackPresence.windows(startOffsetMs:offset,sampleRate:16000,frames:UInt64(audio.sampleCount),gaps:gaps,ownership:mask)
+                    // Present and unknown windows are disjoint; together they are the kept time.
+                    let owned = (presence.present + presence.unknown).sorted { $0.start < $1.start }.map { ($0.start,$0.end) }
                     segments = segments.flatMap { segment in
                         owned.compactMap { range -> SpeechSegment? in
                             // D52.2 presence grid: [a,b) ms covers samples [ceil(16a-1e-6), ceil(16b-1e-6)).
