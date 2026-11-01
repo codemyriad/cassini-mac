@@ -3,6 +3,7 @@ import Foundation
 import CryptoKit
 import Darwin
 import CassiniLibrary
+import CassiniKit
 import CassiniRecording
 import CassiniWhistle
 
@@ -124,7 +125,8 @@ public enum MeetingTranscriber {
             func publish(status: String) throws {
                 let ordered = progress.published(items,complete:status == "done")
                 struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
-                let data = try JSONEncoder().encode(Body(language: language, items: ordered))
+                // D53.2: an unknown language is written as "und", never the "auto" request.
+                let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
                 try atomicTranscript(data, directory: directory)
                 let factor = processed > 0 ? elapsed / processed : initialETA
@@ -163,7 +165,7 @@ public enum MeetingTranscriber {
                 for segment in track.segments {
                     let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
                     let result = try recognize(samples)
-                    if language == "auto" { language = result.language }
+                    if ["auto","und",""].contains(language) { language = result.language }
                     let start = track.offset + Int64(segment.startSample * 1000 / 16000)
                     for word in result.words ?? [] {
                         guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start, word.end <= Double(samples.count) / 16000 + 1 else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }

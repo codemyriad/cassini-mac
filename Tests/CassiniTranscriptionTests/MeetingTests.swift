@@ -191,6 +191,21 @@ final class TranscriptionMeetingTests: XCTestCase {
         XCTAssertNil(written.speakers.first?.name)
         XCTAssertEqual(SHA256.hash(data: try Data(contentsOf: original)),before)
     }
+    /// D53.2: a write-down that never learned its language stores "und".
+    func testSilentMeetingWritesUndAsItsLanguage() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline assets supplied by pipeline CI") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Silent",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.append(id:"mic",pcm:Data(repeating:0,count:64000),offsetMs:0); try session.finish()
+        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:{ _ in
+            .init(text:"",language:"en",words:[])
+        })
+        let body = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("transcript.json"))) as? [String:Any]
+        XCTAssertEqual(body?["language"] as? String,"und")
+    }
     func testPausePreservesPartialWordsAndExistingMetadata() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

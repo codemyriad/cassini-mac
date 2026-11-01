@@ -59,7 +59,8 @@ public enum MeetingFileExporter {
         if shouldCancel() { throw CancellationError() }
         let complete = meeting.state.transcript == .done
         let items = complete ? meeting.transcriptItems : []
-        let language = complete ? (meeting.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language ?? "auto") : "auto"
+        // D53.2: body and descriptor carry the run's language, or "und" when unknown.
+        let language = TranscriptLanguage.written(complete ? (meeting.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language) : nil)
         struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
         let body = try encoder.encode(Body(language:language,items:items))

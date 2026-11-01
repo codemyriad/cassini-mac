@@ -6,7 +6,7 @@ import zlib
 /// One canonical word-timed body, with standard Cassini v1 chunk descriptors.
 /// Input manifest supplies meeting/audio/integrity/speakers and approved hints.
 public enum PortableMeetingTags {
-    public static func make(manifest: JSON, transcript: Data, language: String = "auto", wordCount: Int,
+    public static func make(manifest: JSON, transcript: Data, language: String = "und", wordCount: Int,
                             shouldCancel: () -> Bool = { false }) throws -> Data {
         let body = try ManifestParser.words(JSONParser.parse(transcript))
         guard body.items.count == wordCount else { throw PayloadError.json("word count mismatch") }
@@ -78,5 +78,14 @@ public enum PortableMeetingTags {
             }
         }
         return output
+    }
+}
+
+/// D53.2: the language of the recognizer run that made the words, written the same
+/// way in the transcript body, descriptor and provenance; "und" when unknown.
+public enum TranscriptLanguage {
+    public static func written(_ value: String?) -> String {
+        guard let value, !value.isEmpty, value != "auto" else { return "und" }
+        return value
     }
 }
