@@ -412,6 +412,10 @@ private final class CaptureFiles: @unchecked Sendable {
         peers.flatMap { $0.captures + $0.interrupted }.first { $0.captureID.map { Data($0.utf8) == Data(captureID.utf8) } == true }?.key
     }
     private func completed(_ outcome: BrowserControlOutcome, automatic: Bool) {
+        // D58 #10: a resume ask's answer belongs to the recording it asked to join. A refusal
+        // the browser answered is recorded there, in Details only; a timeout, a closed
+        // connection or a local failure records nothing. Never a failed meeting or a banner.
+        if outcome.resume { broker.resumeAnswered(outcome); return }
         if outcome.action == .start {
             if outcome.ok { failedMeetings.removeValue(forKey:outcome.key); meetingRefusals.removeValue(forKey:outcome.key) }
             else {
@@ -470,9 +474,9 @@ private final class CaptureFiles: @unchecked Sendable {
         }
         guard calls.count == 1, let call = calls.first else { return }
         captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
-        let owner = value.owner, broker = broker
-        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation in
-            broker.expectResume(owner,callGeneration:generation)
+        let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation,request in
+            broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
             // The generation the resume was sent with (nil: refused). After the take-over this
             // recording is that call's, so it follows and suppresses exactly that call (D52.5).
             guard let generation else { return }
@@ -508,9 +512,9 @@ private final class CaptureFiles: @unchecked Sendable {
     /// recording onto its system/lost fallback through resume-capture-v1.
     private func askResume(_ value: LiveCapture, _ meeting: BrowserMeetingKey) {
         guard let identity = broker.standInIdentity(value.owner) else { return }
-        let owner = value.owner, broker = broker
-        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:value.callGeneration) { generation in
-            broker.expectResume(owner,callGeneration:generation)
+        let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
+        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:value.callGeneration) { generation,request in
+            broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
         }
     }
     /// D52.5: feed every recording's binding. The service reads the held calls itself, on its

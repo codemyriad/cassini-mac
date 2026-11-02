@@ -56,6 +56,8 @@ public struct BrowserControlRequest: Sendable {
     public let key: BrowserMeetingKey
     public let action: BrowserControlAction
     public let data: Data
+    /// D58 #10: a resume ask. Its refusal belongs to the recording it would join.
+    public var resume = false
 }
 public struct BrowserControlOutcome: Equatable, Sendable {
     public let requestID: String
@@ -68,10 +70,12 @@ public struct BrowserControlOutcome: Equatable, Sendable {
     /// D58: why a Start got no answer or was refused locally (startFailed detail: timeout,
     /// disconnected, busy, noSources, limit, notReady). nil for an answered result.
     public var failure: String? = nil
+    /// D58 #10: the answer to a resume ask, never a Start refusal: no failed meeting, no banner.
+    public var resume = false
     /// The refusal a refused Start records for the attempt: startRejected when the browser
     /// answered ok:false, startFailed (banner only) when it never answered or was refused here.
     public func startRefusal(atMs: Double = 0) -> CaptureRefusal? {
-        guard action == .start, !ok else { return nil }
+        guard action == .start, !ok, !resume else { return nil }
         if let failure { return CaptureRefusal(atMs:atMs,side:"browser",code:CaptureRefusal.startFailed,detail:failure) }
         return CaptureRefusal.startRejected(atMs:atMs,code:code,error:error)
     }
@@ -366,7 +370,7 @@ public struct BrowserControlRegistry: Sendable {
         }
         pruneDisconnectedLineages()
         for pending in peer.pending.values {
-            appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil,failure:"disconnected"))
+            appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil,failure:"disconnected",resume:pending.request.resume))
         }
     }
     public mutating func receive(_ bytes: Data, from id: UUID) throws {
@@ -531,7 +535,7 @@ public struct BrowserControlRegistry: Sendable {
                 }
             }
             let code = ok ? nil : json["code"]?.string.flatMap { CaptureRefusal.isToken($0) ? $0 : nil }
-            appendOutcome(.init(requestID:requestID,key:pending.request.key,action:pending.request.action,ok:ok,error:error,code:code))
+            appendOutcome(.init(requestID:requestID,key:pending.request.key,action:pending.request.action,ok:ok,error:error,code:code,resume:pending.request.resume))
         default: return // Forward-compatible messages are not management actions.
         }
         peers[id] = peer
@@ -548,8 +552,9 @@ public struct BrowserControlRegistry: Sendable {
         if let expectedGeneration, Data(expectedGeneration.utf8) != Data(generation.utf8) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         guard !captureID.isEmpty, captureID.utf8.count <= 128, (0...253402300799000).contains(timelineOriginMs) else { throw BrowserControlStateError.malformed }
-        let request = try Self.command(key,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
+        var request = try Self.command(key,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
                                        resume:(captureID,timelineOriginMs))
+        request.resume = true
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
         peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:meeting.url)
@@ -681,7 +686,7 @@ public struct BrowserControlRegistry: Sendable {
         guard var peer = peers[request.key.peer], peer.pending.removeValue(forKey:request.id) != nil else { return }
         peers[request.key.peer] = peer
         if request.action == .start { unboundStarts.removeValue(forKey:request.id) }
-        appendOutcome(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:"timeout"))
+        appendOutcome(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:"timeout",resume:request.resume))
     }
     private mutating func appendOutcome(_ outcome: BrowserControlOutcome) {
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }

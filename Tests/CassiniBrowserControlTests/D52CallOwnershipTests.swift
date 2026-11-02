@@ -457,7 +457,7 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                     // As the app's askResume does.
                     guard let identity = fixture.broker.standInIdentity(owner) else { return XCTFail("not a resume target") }
                     let broker = fixture.broker
-                    fixture.service.resumeMeeting(key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:"call-A") { generation in
+                    fixture.service.resumeMeeting(key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:"call-A") { generation,_ in
                         broker.expectResume(owner,callGeneration:generation); armed.fulfill()
                     }
                 })

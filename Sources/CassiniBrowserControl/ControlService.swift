@@ -76,19 +76,20 @@ public final class BrowserControlService: @unchecked Sendable {
         }
     }
     /// D52.1 R67: ask the extension to join a native stand-in. `armed` receives the
-    /// selected call generation before the command is sent, so the native resume
-    /// can be validated; a failure is reported and never retried as a fresh Start.
+    /// selected call generation and the ask's fresh requestId before the command is
+    /// sent, so the native resume can be validated and its refusal booked on this ask
+    /// alone (D58 #10, protocol #37); a failure is reported and never retried as a fresh Start.
     /// `expectedGeneration`: the call the caller judged (a lost recording's own call); a tab
     /// that moved on to another call since is refused, never resumed into the new call.
     public func resumeMeeting(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, expectedGeneration: String? = nil,
-                              armed: @escaping @Sendable (String?) -> Void) {
+                              armed: @escaping @Sendable (String?,String?) -> Void) {
         queue.async { [self] in
             do {
                 guard canStart() else { throw BrowserIPCError.unavailable }
                 let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,expectedGeneration:expectedGeneration)
-                armed(generation); send([request]); publish()
+                armed(generation,request.id); send([request]); publish()
             }
-            catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil,failure:BrowserControlOutcome.localFailure(error)),false) }
+            catch { armed(nil,nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil,failure:BrowserControlOutcome.localFailure(error),resume:true),false) }
         }
     }
     /// D52.5: an ownership change that may release a call (a recording saving or retired) is
@@ -191,7 +192,7 @@ public final class BrowserControlService: @unchecked Sendable {
         for request in requests {
             deadlines.removeValue(forKey:request.id)
             let wasAutomatic = automatic.remove(request.id) != nil
-            completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:failure),wasAutomatic)
+            completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:failure,resume:request.resume),wasAutomatic)
         }
         publish()
     }
