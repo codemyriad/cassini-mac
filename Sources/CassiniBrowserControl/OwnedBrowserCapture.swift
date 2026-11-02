@@ -24,6 +24,9 @@ public struct OwnedCaptureSnapshot: Sendable {
     public let browserLostUptime: TimeInterval?
     public let browserLevel: Float
     public let levelTimestamp: TimeInterval
+    /// Audio and the final session are saved; only the portable capture record is pending
+    /// (cached, so a broker scan never waits on this capture's I/O queue).
+    public var recordPending = false
     public var needsSystem: Bool { phase == .recording && others && !browserAlive && (!managedBrowser || fallbackRequested) && !manifest.tracks.contains { $0.kind == "system" && $0.ended != true } }
 }
 
@@ -125,7 +128,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         let now = DispatchTime.now().uptimeNanoseconds
         let uptime = ProcessInfo.processInfo.systemUptime
         let peak = others && browserAlive ? browserPeaks.values.filter { uptime - $0.1 <= 1 }.map(\.0).max() ?? 0 : 0
-        let value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,transportAlive:transportAlive,restoreReady:readyForBrowser,browserReturnPCMAt:freshestReturn,managedBrowser:managedBrowser,fallbackRequested:fallbackRequested,fallbackReason:fallbackReason,browserLostUptime:browserLostUptime,browserLevel:peak,levelTimestamp:browserPeaks.values.map(\.1).max() ?? 0)
+        var value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,transportAlive:transportAlive,restoreReady:readyForBrowser,browserReturnPCMAt:freshestReturn,managedBrowser:managedBrowser,fallbackRequested:fallbackRequested,fallbackReason:fallbackReason,browserLostUptime:browserLostUptime,browserLevel:peak,levelTimestamp:browserPeaks.values.map(\.1).max() ?? 0)
+        value.recordPending = audioClosed && phase == .saving
         snapshotLock.lock(); cached = value; snapshotLock.unlock()
         guard force || now - lastPublished >= 250_000_000 else { return }
         lastPublished = now
@@ -547,7 +551,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         if let reason { requestEnd(reason,atMs:atMs) }
         try await operation {
             guard self.phase != .saved else { return }
-            if !self.audioClosed { try self.closeAudio(problem:problem,reason:reason,atMs:atMs) }
+            if !self.audioClosed { try self.closeAudio(problem:problem,reason:reason,atMs:atMs); self.publish() }
             if let persist, self.recording.finalPublished {
                 do { try persist(self.recording.manifest,self.recording.directory) }
                 catch { self.publish(); throw error }
@@ -557,7 +561,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         }
     }
     /// Audio is closed and the final session written; only the portable record may be pending.
-    public var recordPending: Bool { sync { audioClosed && phase == .saving } }
+    public var recordPending: Bool { snapshot.recordPending }
     @_spi(Testing) public func setCheckpointObserver(_ observer: ((RecordingCheckpointPhase) throws -> Void)?) {
         sync { recording.checkpointObserver = observer }
     }

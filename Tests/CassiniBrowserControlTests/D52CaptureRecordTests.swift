@@ -82,6 +82,30 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(broker.activeCaptures.contains { $0 === owner })
         XCTAssertNotNil(try record(owner))
     }
+    /// #104 delta review: a pending-record scan never holds the broker lock while a capture's
+    /// I/O queue is busy, so Stop (expectResume) and Quit (closeAdmission) stay responsive while
+    /// the metadata write is stalled.
+    func testARetryScanNeverBlocksBrokerControlWhilePersistenceStalls() async throws {
+        let persist = Persist(); persist.hold = DispatchSemaphore(value:0); persist.entered = expectation(description:"record write stalled")
+        let (root,broker,owner) = try native(persist); defer { try? FileManager.default.removeItem(at:root) }
+        let finishing = Task { try await broker.finish(owner,reason:.user) }
+        await fulfillment(of:[persist.entered!],timeout:5)
+        XCTAssertTrue(owner.snapshot.recordPending,"the cached snapshot says the record is pending")
+        let scanning = Task { await broker.retryPendingRecords() }
+        let responsive = expectation(description:"broker control calls return")
+        DispatchQueue.global().async {
+            broker.expectResume(owner,callGeneration:nil)
+            _ = broker.retainedCaptureIDs
+            broker.closeAdmission()
+            responsive.fulfill()
+        }
+        await fulfillment(of:[responsive],timeout:2)
+        persist.hold?.signal()
+        try await finishing.value
+        await scanning.value
+        XCTAssertEqual(owner.snapshot.phase,.saved); XCTAssertFalse(owner.snapshot.recordPending)
+        XCTAssertNotNil(try record(owner))
+    }
     /// A final session that reached disk although finalization failed (here the final
     /// checkpoint fails after publishing) still gets its portable record; the error is reported.
     func testADurablyInterruptedSessionStillWritesItsRecord() async throws {

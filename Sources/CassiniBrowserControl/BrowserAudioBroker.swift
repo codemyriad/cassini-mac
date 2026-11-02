@@ -171,8 +171,10 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     /// Retries the portable record of captures whose audio is saved but whose record write
     /// failed; after the attempt limit the capture is saved without it.
     public func retryPendingRecords() async {
-        let pending = lock.withLock { captures.values.filter { $0.recordPending } }
-        for capture in pending { try? await finish(capture) }
+        // Copy the references under the lock; the pending state is read from each capture's
+        // cached snapshot after releasing it, so a stalled disk never holds the broker lock.
+        let owned = lock.withLock { Array(captures.values) }
+        for capture in owned where capture.snapshot.recordPending { try? await finish(capture) }
     }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
