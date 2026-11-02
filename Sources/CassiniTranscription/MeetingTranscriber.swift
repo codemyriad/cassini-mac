@@ -87,10 +87,12 @@ public enum MeetingTranscriber {
                 }
             }
             // D52 M1: one source becomes one speaker only while its spans are disjoint.
+            let lengths = Dictionary(meeting.audioTracks.map { ($0.url,($0.frameCount,$0.sampleRate)) },uniquingKeysWith:{ first,_ in first })
             let lanes = SourceSpanLanes.assign(sources.compactMap { url, id, kind, offset, sourceTrackID, end in
                 let base = TranscriptSpeaker.fromTrack(id:id,kind:kind,sourceTrackID:sourceTrackID,received:received,me:me,others:others).id
                 guard base.hasPrefix("track-"), !received else { return nil }
-                return .init(id:id,base:base,startMs:offset,endMs:offset == nil ? nil : end)
+                let length = lengths[url]
+                return .init(id:id,base:base,startMs:offset,endMs:offset == nil ? nil : end,frames:length?.0,sampleRate:length?.1)
             })
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)

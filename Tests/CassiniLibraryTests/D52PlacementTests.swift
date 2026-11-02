@@ -15,6 +15,17 @@ struct D52PlacementTests {
         #expect(lanes([("a",base,0,1000),("b",base,1000,2000),("c",base,2000,3000)]) == ["a":base,"b":base,"c":base])
         #expect(lanes([("a",base,0,2000),("b",base,1000,3000),("c",base,2000,3000)]) == ["a":base,"b":base+":overlap:1","c":base])
         #expect(lanes([("a",base,0,1000+1.0/48),("b",base,1000,2000)]) == ["a":base,"b":base+":overlap:1"])
+        // Exact sample timing: 16.036 ms + 48003 samples at 48 kHz ends at exactly 1016.0985 ms,
+        // although the floating-point sum is 1016.0985000000001. Adjacent spans share one lane;
+        // one more sample still overlaps.
+        let start = 16.036, end = start + 48003.0*1000/48000
+        #expect(end > 1016.0985)
+        let adjacent = SourceSpanLanes.assign([.init(id:"a",base:base,startMs:start,endMs:end,frames:48003,sampleRate:48000),
+                                               .init(id:"b",base:base,startMs:1016.0985,endMs:2000,frames:47_043,sampleRate:48000)])
+        #expect(adjacent == ["a":base,"b":base])
+        let overlapping = SourceSpanLanes.assign([.init(id:"a",base:base,startMs:start,endMs:end+1.0/48,frames:48004,sampleRate:48000),
+                                                  .init(id:"b",base:base,startMs:1016.0985,endMs:2000,frames:47_043,sampleRate:48000)])
+        #expect(overlapping == ["a":base,"b":base+":overlap:1"])
         #expect(lanes([("a",base,0,1000),("b",base,nil,nil),("c",base,nil,nil)]) == ["a":base,"b":base+":overlap:1","c":base+":overlap:2"])
         #expect(lanes([("a",base,0,1000),("b",base,0,1000),("x",base+":overlap:1",0,1000)]) == ["a":base,"b":base+":overlap:2","x":base+":overlap:1"])
     }

@@ -8,7 +8,26 @@ public enum SourceSpanLanes {
     public struct Span: Sendable {
         public let id: String, base: String
         public let startMs: Double?, endMs: Double?
-        public init(id: String, base: String, startMs: Double?, endMs: Double?) { self.id = id; self.base = base; self.startMs = startMs; self.endMs = endMs }
+        /// The span's length in samples, when known: its end is then exactly
+        /// start + frames/rate, never a rounded floating-point sum.
+        public let frames: UInt64?, sampleRate: Int?
+        public init(id: String, base: String, startMs: Double?, endMs: Double?, frames: UInt64? = nil, sampleRate: Int? = nil) {
+            self.id = id; self.base = base; self.startMs = startMs; self.endMs = endMs; self.frames = frames; self.sampleRate = sampleRate
+        }
+        /// Half-open extents are compared exactly: the decimal start as written (its shortest
+        /// round-trip form) plus whole samples, so 16.036 ms + 48003 samples at 48 kHz ends at
+        /// 1016.0985, adjacent to a span starting there.
+        func ends(atOrBefore other: Double) -> Bool {
+            guard let startMs, let endMs else { return false }
+            let next = Self.decimal(other)
+            if let frames, let sampleRate, sampleRate > 0 {
+                return Decimal(frames) * 1000 <= (next - Self.decimal(startMs)) * Decimal(sampleRate)
+            }
+            return Self.decimal(endMs) <= next
+        }
+        static func decimal(_ value: Double) -> Decimal {
+            Decimal(string:String(describing:value),locale:Locale(identifier:"en_US_POSIX")) ?? Decimal(value)
+        }
     }
     /// Lane zero keeps the base id; further lanes are `base:overlap:n` (n from 1),
     /// skipping any id already used by an ordinary base. Unknown extents always
@@ -22,17 +41,17 @@ public enum SourceSpanLanes {
                 ($0.startMs!,$0.endMs!) != ($1.startMs!,$1.endMs!) ? ($0.startMs!,$0.endMs!) < ($1.startMs!,$1.endMs!) : bytes($0.id).lexicographicallyPrecedes(bytes($1.id))
             }
             let unknown = members.filter { $0.startMs == nil || $0.endMs == nil }.sorted { bytes($0.id).lexicographicallyPrecedes(bytes($1.id)) }
-            var lanes: [(end: Double?, id: String)] = [], next = 1
+            var lanes: [(end: Span?, id: String)] = [], next = 1
             func newLane() -> String {
                 if lanes.isEmpty { return base }
                 while taken.contains(base+":overlap:\(next)") { next += 1 }
                 let id = base+":overlap:\(next)"; taken.insert(id); next += 1; return id
             }
             for span in known {
-                if let lane = lanes.firstIndex(where:{ $0.end.map { $0 <= span.startMs! } == true }) {
-                    lanes[lane].end = span.endMs; result[span.id] = lanes[lane].id
+                if let lane = lanes.firstIndex(where:{ $0.end?.ends(atOrBefore:span.startMs!) == true }) {
+                    lanes[lane].end = span; result[span.id] = lanes[lane].id
                 } else {
-                    let id = newLane(); lanes.append((span.endMs,id)); result[span.id] = id
+                    let id = newLane(); lanes.append((span,id)); result[span.id] = id
                 }
             }
             for span in unknown { let id = newLane(); lanes.append((nil,id)); result[span.id] = id }
