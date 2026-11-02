@@ -22,6 +22,9 @@ struct RecordingDetailsSheet: View {
     @State private var store = LibraryStore.shared
     @State private var coordinator = RecordingDetailsCoordinator.shared
     @State private var report: RecordingDetailsReport?
+    @State private var contentHeight: CGFloat = 0
+    /// The report's height bound, leaving room for the title, Done and the sheet's frame.
+    static var maxBodyHeight: CGFloat { min(560,max(200,(NSScreen.main?.visibleFrame.height ?? 800) - 280)) }
     private func text(_ line: RecordingDetailsReport.Line) -> String { line.render(language:UXText.language,locale:UXText.locale) }
     private var meeting: LibraryMeeting? { store.meetings.first { $0.libraryKey == coordinator.key } }
     var body: some View {
@@ -31,32 +34,40 @@ struct RecordingDetailsSheet: View {
                 if let subtitle = report?.subtitle { Text(text(subtitle)).foregroundStyle(LibraryTheme.dim) }
                 if report?.updates == true { Text(UXText.text("details.updates")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim) }
             }
-            VStack(alignment:.leading,spacing:8) {
-                Text(UXText.text("details.sources.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
-                if let report, !report.sources.isEmpty {
-                    ForEach(Array(report.sources.enumerated()),id:\.offset) { index,row in
-                        VStack(alignment:.leading,spacing:2) {
-                            Text(text(row.line)).foregroundStyle(row.problem ? Color.orange : Color.primary)
-                                .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-source-\(index)")
-                            ForEach(Array(row.gapLines.enumerated()),id:\.offset) { gap,line in
-                                Text(text(line)).font(.system(size:11.5)).foregroundStyle(.orange)
-                                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
+            // Many sources must never push How it ended or Done off screen: the
+            // report scrolls within a bounded height, sized to its content when it fits.
+            ScrollView(.vertical) {
+                VStack(alignment:.leading,spacing:16) {
+                    VStack(alignment:.leading,spacing:8) {
+                        Text(UXText.text("details.sources.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
+                        if let report, !report.sources.isEmpty {
+                            ForEach(Array(report.sources.enumerated()),id:\.offset) { index,row in
+                                VStack(alignment:.leading,spacing:2) {
+                                    Text(text(row.line)).foregroundStyle(row.problem ? Color.orange : Color.primary)
+                                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-source-\(index)")
+                                    ForEach(Array(row.gapLines.enumerated()),id:\.offset) { gap,line in
+                                        Text(text(line)).font(.system(size:11.5)).foregroundStyle(.orange)
+                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
+                                    }
+                                }
                             }
+                        } else {
+                            Text(UXText.text("details.sources.empty")).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-details-sources-empty")
+                        }
+                        ForEach(Array((report?.notes ?? []).enumerated()),id:\.offset) { _,note in
+                            Text(text(note)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
                         }
                     }
-                } else {
-                    Text(UXText.text("details.sources.empty")).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-details-sources-empty")
-                }
-                ForEach(Array((report?.notes ?? []).enumerated()),id:\.offset) { _,note in
-                    Text(text(note)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
-                }
-            }
-            VStack(alignment:.leading,spacing:6) {
-                Text(UXText.text("details.end.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
-                if let report {
-                    Text(text(report.ended)).foregroundStyle(report.endKnown ? Color.primary : LibraryTheme.dim).accessibilityIdentifier("recording-details-end")
-                }
-            }
+                    VStack(alignment:.leading,spacing:6) {
+                        Text(UXText.text("details.end.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
+                        if let report {
+                            Text(text(report.ended)).foregroundStyle(report.endKnown ? Color.primary : LibraryTheme.dim).accessibilityIdentifier("recording-details-end")
+                        }
+                    }
+                }.frame(maxWidth:.infinity,alignment:.leading)
+                    .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            }.frame(height:min(max(contentHeight,1),Self.maxBodyHeight)).scrollBounceBehavior(.basedOnSize)
+                .accessibilityIdentifier("recording-details-body")
             HStack {
                 Spacer()
                 Button(UXText.text("common.done")) { coordinator.close() }.keyboardShortcut(.defaultAction).accessibilityIdentifier("recording-details-close")

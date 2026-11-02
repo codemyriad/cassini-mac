@@ -40,6 +40,16 @@ enum MeetingRenameFixture {
                 let sidecar = meeting.appendingPathComponent("transcript.json")
                 if FileManager.default.fileExists(atPath:sidecar.path) { try FileManager.default.removeItem(at:sidecar) }
             }
+            if CommandLine.arguments.contains("--fixture-library-many-sources") {
+                // A large call for Recording details: more source rows than the sheet can show at once.
+                let metadata = root.appendingPathComponent("Recording-a0000000-0000-4000-8000-000000000001/meeting.json")
+                guard var value = try JSONSerialization.jsonObject(with:Data(contentsOf:metadata)) as? [String:Any] else { return nil }
+                let sources: [[String:Any]] = (1...40).map {
+                    ["sourceTrackId":"guest-\($0)","kind":"remote","label":"Guest \($0)","captureOutcome":"captured","audioMs":60000 * $0,"trackIds":[String]()]
+                }
+                value["recordingDetails"] = ["captureRecord":["version":1,"sources":sources],"end":["reason":"callEnded","atMs":2_400_000]]
+                try JSONSerialization.data(withJSONObject:value,options:[.sortedKeys]).write(to:metadata,options:.atomic)
+            }
             return root
         } catch { return nil }
     }()

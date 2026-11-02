@@ -114,6 +114,43 @@ final class LibraryBoards: XCTestCase {
         let closed = NSPredicate { _,_ in !sheet.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:10),.completed)
     }
+    /// codex #105: a call with many sources scrolls inside the sheet; How it ended and
+    /// Done stay reachable and Done never leaves the sheet.
+    @MainActor func testRecordingDetailsScrollsManySources() throws {
+        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","--fixture-library-many-sources","-CassiniRenameID",UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
+        let read = window.buttons["preview-read-transcript"]
+        XCTAssertTrue(read.waitForExistence(timeout:10),app.debugDescription); read.click()
+        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription); more.click()
+        let item = window.menuItems["recording-details"]
+        XCTAssertTrue(item.waitForExistence(timeout:5),app.debugDescription); item.click()
+        let sheet = window.sheets.firstMatch
+        let last = sheet.staticTexts["recording-details-source-39"], end = sheet.staticTexts["recording-details-end"]
+        XCTAssertTrue(last.waitForExistence(timeout:10) && end.waitForExistence(timeout:10),app.debugDescription)
+        let body = sheet.descendants(matching:.any)["recording-details-body"], done = sheet.buttons["recording-details-close"]
+        XCTAssertTrue(body.exists,app.debugDescription)
+        let screen = NSScreen.screens.first { $0.frame.contains(CGPoint(x:window.frame.midX,y:window.frame.midY)) } ?? NSScreen.main!
+        XCTAssertLessThanOrEqual(sheet.frame.height,screen.visibleFrame.height,"The sheet fits the screen")
+        XCTAssertTrue(sheet.frame.contains(done.frame) && done.isHittable,"Done stays inside the sheet")
+        XCTAssertGreaterThan(end.frame.minY,body.frame.maxY,"Forty sources need scrolling to reach How it ended")
+        capture(window,name:"recording-details-many")
+        let reached = NSPredicate { _,_ in body.frame.contains(end.frame) && body.frame.contains(last.frame) }
+        var delta: CGFloat = -400
+        for _ in 0..<20 where !reached.evaluate(with:nil) {
+            let before = end.frame.minY
+            body.scroll(byDeltaX:0,deltaY:delta)
+            if end.frame.minY >= before { delta = -delta } // Scroll direction follows the system setting.
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:reached,object:nil)],timeout:10),.completed,"Scrolling reaches the last source and How it ended")
+        XCTAssertTrue(sheet.frame.contains(done.frame) && done.isHittable,"Done is still inside the sheet after scrolling")
+        done.click()
+        let closed = NSPredicate { _,_ in !sheet.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:closed,object:nil)],timeout:10),.completed)
+    }
     @MainActor func testMeetingTrashAndSearchKeyboardGuard() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
