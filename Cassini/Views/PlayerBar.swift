@@ -28,12 +28,12 @@ struct PlayerBar: View {
                 Button {
                     session.seek(toMs: player.currentMs - PlayerController.skipMs)
                 } label: {
-                    Image(systemName: "gobackward.15")
+                    Image(systemName: "gobackward.10")
                         .font(.system(size: 20))
                         .frame(width: 36, height: 36)
                 }
-                .help("Back 15 seconds")
-                .accessibilityLabel("Back 15 seconds")
+                .help(UXText.text("player.back10"))
+                .accessibilityLabel(UXText.text("player.back10"))
 
                 Button {
                     player.toggle()
@@ -45,18 +45,18 @@ struct PlayerBar: View {
                         .background(Color.accentColor, in: Circle())
                         .contentShape(Circle())
                 }
-                .help(player.isPlaying ? "Pause" : "Play")
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                .help(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
+                .accessibilityLabel(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
 
                 Button {
                     session.seek(toMs: player.currentMs + PlayerController.skipMs)
                 } label: {
-                    Image(systemName: "goforward.15")
+                    Image(systemName: "goforward.10")
                         .font(.system(size: 20))
                         .frame(width: 36, height: 36)
                 }
-                .help("Forward 15 seconds")
-                .accessibilityLabel("Forward 15 seconds")
+                .help(UXText.text("player.forward10"))
+                .accessibilityLabel(UXText.text("player.forward10"))
             }
             .buttonStyle(.borderless)
 
@@ -73,7 +73,7 @@ struct PlayerBar: View {
                 in: 0...Double(max(player.durationMs, 1))
             )
             .controlSize(.small)
-            .accessibilityLabel("Playback position")
+            .accessibilityLabel(UXText.text("player.position"))
 
             Text("-" + formatClock(max(0, player.durationMs - player.currentMs)))
                 .font(.caption.monospacedDigit())
@@ -89,10 +89,10 @@ struct PlayerBar: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .help("Playback speed")
-            .accessibilityLabel("Playback speed \(speedLabel)")
+            .help(UXText.text("player.speed.a11y",["rate":speedLabel]))
+            .accessibilityLabel(UXText.text("player.speed.a11y",["rate":speedLabel]))
 
-            Toggle("Follow along", isOn: $session.follow)
+            Toggle(UXText.text("mac.legacy.followAlong"), isOn: $session.follow)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .disabled(session.timeline == nil)

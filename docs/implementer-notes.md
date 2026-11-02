@@ -48,7 +48,7 @@ inspector can be collapsed.
 | Toolbar | Sidebar toggle; title + subtitle (date · speaker count · duration); Transcript / Summary segmented control; search field; Share; inspector toggle | Unified toolbar. Subtitle comes from the manifest. |
 | Transcript | One block per speaker turn: color dot, name, clickable timestamp, then the words | Reading column max 720 pt, body 15 pt, line height 1.75. Overlapping short interjections (e.g. "Yeah.") show as an inline chip in the other speaker's turn. |
 | Summary | Overview paragraph, action items with checkboxes, topics with timestamps that jump to the transcript | The spec does not define summary storage yet. Hide the tab when there is none. |
-| Player bar | Back 15 s, Play/Pause, Forward 15 s, elapsed, scrubber, remaining, speed (1×, 1.25×, 1.5×, 2×, 0.75×), Follow along switch | Pinned to the bottom of the content column. |
+| Player bar | Back 10 s, Play/Pause, Forward 10 s (D55), elapsed, scrubber, remaining, speed (1×, 1.25×, 1.5×, 2×, 0.75×), Follow along switch | Pinned to the bottom of the content column. |
 | Inspector (260 pt) | Integrity badge; Recording (duration, date, format, sample rate); Transcript (schema, speakers, timing); Show in Finder, Export… | Mirrors Finder's Get Info. |
 
 ## Word highlighting and sync
@@ -97,7 +97,7 @@ create a view per word.
 | Action | Mouse | Keyboard (proposed) |
 |---|---|---|
 | Play / pause | Play button | Space |
-| Skip back / forward 15 s | 15 s buttons | ← / → |
+| Skip back / forward 10 s | 10 s buttons (D55) | ← / → |
 | Seek to a word | Click the word | Return on a focused word |
 | Seek to a turn | Click its timestamp | — |
 | Change speed | Click the speed button to cycle | ⌘↑ / ⌘↓ |

@@ -35,8 +35,8 @@ struct DocumentView: View {
             ToolbarItem(placement: .principal) {
                 if session.hasSummary {
                     Picker("View", selection: $session.tab) {
-                        Text("Transcript").tag(SessionModel.Tab.transcript)
-                        Text("Summary").tag(SessionModel.Tab.summary)
+                        Text(UXText.text("library.preview.transcriptHeading")).tag(SessionModel.Tab.transcript)
+                        Text(UXText.text("mac.legacy.summary")).tag(SessionModel.Tab.summary)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
@@ -46,12 +46,12 @@ struct DocumentView: View {
                 Button {
                     session.showInspector.toggle()
                 } label: {
-                    Label("Inspector", systemImage: "info.circle")
+                    Label(UXText.text("mac.legacy.toggleInfo"), systemImage: "info.circle")
                 }
-                .help("Show or hide the file inspector")
+                .help(UXText.text("mac.legacy.toggleInfo"))
             }
         }
-        .searchable(text: $session.searchText, placement: .toolbar, prompt: "Search")
+        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text(UXText.text("search.title")))
         .searchFocused($searchFocused)
         .onChange(of: session.focusSearchRequest) { searchFocused = true }
         .focusedSceneValue(\.session, session)
@@ -82,7 +82,7 @@ struct ContentColumn: View {
                                 Button {
                                     session.jumpToCurrent()
                                 } label: {
-                                    Label("Jump to current", systemImage: "arrow.down.to.line")
+                                    Label(UXText.text("mac.legacy.jumpToCurrent"), systemImage: "arrow.down.to.line")
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
@@ -112,13 +112,13 @@ struct SearchStatusBar: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Previous", systemImage: "chevron.up") { session.findPrevious() }
+            Button(UXText.text("mac.legacy.previousMatch"), systemImage: "chevron.up") { session.findPrevious() }
                 .labelStyle(.iconOnly)
                 .disabled(session.matchCount == 0)
-            Button("Next", systemImage: "chevron.down") { session.findNext() }
+            Button(UXText.text("mac.legacy.nextMatch"), systemImage: "chevron.down") { session.findNext() }
                 .labelStyle(.iconOnly)
                 .disabled(session.matchCount == 0)
-            Button("Done") { session.searchText = "" }
+            Button(UXText.text("common.done")) { session.searchText = "" }
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
