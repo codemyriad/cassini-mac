@@ -185,6 +185,79 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(capture.snapshot.phase,.recording)
         }
     }
+    /// #103 delta review 1: when control disappears before the take-over, the collection's
+    /// D33 branch runs (multiStream false). A pending stand-in never steps it, so no pageGone
+    /// ends the native recording however long control stays away.
+    func testAControlLossBeforeTakeOverNeverEndsTheStandIn() async throws {
+        try await run { fixture in
+            let (capture,id) = try standIn(fixture)
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            XCTAssertEqual(try fixture.client().request(resume(id))["resumed"]?.bool,true)
+            var policy = BrowserCallPolicy(), lifecycle = BrowserCallLifecycle(), legacySteps = 0
+            let gone = BrowserCallPolicy.Observation(page:nil,rowPresent:false,sourceCount:nil,controlAlive:false)
+            for second in stride(from:0.0,through:300,by:0.25) {
+                let pending = BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:capture.snapshot.manifest.events ?? [])
+                let action = BrowserCallPolicy.decide(pending:pending,multiStream:false,policy:&policy,now:second,gone,
+                                                      source:"system",reason:"missing",others:true,restoreReady:false) {
+                    legacySteps += 1
+                    return lifecycle.step(now:second,page:nil,sourceCount:0,transportAlive:false,usingSystem:true,others:true,restoreReady:false)
+                }
+                XCTAssertNil(action,"at \(second) s")
+            }
+            XCTAssertEqual(legacySteps,0,"the D33 lifecycle never runs for a pending stand-in")
+            XCTAssertEqual(capture.snapshot.phase,.recording)
+            // Unprotected, the same D33 lifecycle ends the recording as pageGone.
+            var unprotected = BrowserCallLifecycle(), ended: BrowserCallLifecycle.Action?
+            for second in stride(from:0.0,through:300,by:0.25) {
+                let step = unprotected.step(now:second,page:nil,sourceCount:0,transportAlive:false,usingSystem:true,others:true,restoreReady:false)
+                if case .stop? = step { ended = step; break }
+            }
+            XCTAssertEqual(ended,.stop(.pageGone))
+        }
+    }
+    /// #103 delta review 2: an accepted resume whose call shows no sources past the 30 s grace
+    /// must still take over once sources and PCM return: the recording's policy is not stepped
+    /// (so never stopped) before take-over, and it works normally afterwards.
+    func testAnExpiredGraceBeforeTakeOverStillCommitsCallConnected() async throws {
+        try await run { fixture in
+            let (capture,id) = try standIn(fixture)
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            let client = try fixture.client()
+            XCTAssertEqual(try client.request(resume(id))["resumed"]?.bool,true)
+            var policy = BrowserCallPolicy()
+            func poll(_ second: Double, count: Int) -> BrowserCallLifecycle.Action? {
+                let pending = BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:capture.snapshot.manifest.events ?? [])
+                let committed = CaptureSourceState(events:capture.snapshot.manifest.events ?? [],atMs:.infinity)
+                return BrowserCallPolicy.decide(pending:pending,multiStream:true,policy:&policy,now:second,
+                    .init(page:.present,sourceCount:count,heard:true),source:committed.source,reason:committed.reason,others:true,
+                    restoreReady:capture.snapshot.restoreReady) { XCTFail("no legacy lifecycle under multi-stream"); return nil }
+            }
+            XCTAssertNil(poll(0,count:1))
+            for second in stride(from:1.0,through:45,by:0.25) { XCTAssertNil(poll(second,count:0),"no stop before take-over at \(second) s") }
+            // Sources and PCM return on the resumed transport.
+            XCTAssertEqual(try client.request(["type":"track","id":"r1","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
+            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":46000,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
+            XCTAssertTrue(capture.snapshot.restoreReady)
+            XCTAssertEqual(poll(46,count:1),.restore)
+            try await capture.restoreBrowser(atMs:46100)
+            XCTAssertEqual(capture.snapshot.manifest.events?.last { $0.type == "othersSource" }?.reason,"callConnected")
+            // Now a browser recording: its own policy runs, starting fresh.
+            XCTAssertNil(poll(47,count:1))
+            XCTAssertNil(poll(48,count:0))
+            XCTAssertEqual(poll(78,count:0),.stop(.callEnded),"the call's own 30 s grace applies after take-over")
+            // Unprotected, stepping the same policy through the wait leaves it stopped for good.
+            var consumed = BrowserCallPolicy()
+            _ = consumed.step(now:0,.init(page:.present,sourceCount:1,heard:true),source:"system",reason:"missing")
+            var terminal: BrowserCallPolicy.Action?
+            for second in stride(from:1.0,through:45,by:0.25) {
+                let step = consumed.step(now:second,.init(page:.present,sourceCount:0,heard:true),source:"system",reason:"missing")
+                if case .stop? = step { terminal = step; break }
+            }
+            XCTAssertEqual(terminal,.stop(.callEnded))
+            XCTAssertNil(consumed.step(now:46,.init(page:.present,sourceCount:1,heard:true),source:"system",reason:"missing"),"no callConnected after a terminal stop")
+            _ = try client.request(["type":"stop","captureId":id])
+        }
+    }
     func testSharedResumeSeamOwnership() throws {
         let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("browser-protocol/conformance/control/resume-capture-vectors.json")

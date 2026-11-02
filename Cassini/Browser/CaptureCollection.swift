@@ -459,7 +459,8 @@ private final class CaptureFiles: @unchecked Sendable {
                 let initial = value.owner.snapshot
                 if value.modernLifecycle == nil && initial.browserAlive && initial.transportAlive { continue }
                 if value.modernLifecycle == false {
-                    if captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
+                    // A stand-in whose take-over is pending is a plain native recording.
+                    if !pending, captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
                         lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true {
                         stop(id,reason:peer != nil && count == 0 ? .callEnded : .pageGone)
                     }
@@ -497,32 +498,22 @@ private final class CaptureFiles: @unchecked Sendable {
                     value.owner.requestEnd(reason,atMs:max(0,now-value.originUptime)*1000)
                     stop(id,reason:reason); continue
                 }
-                let action: BrowserCallLifecycle.Action?
-                if multiStream {
-                    // D52 M3: unknown inventory is not zero; the 30 s grace arms only after
-                    // remote audio was heard; admitted browser PCM (never the microphone)
-                    // keeps a call alive while control is absent.
-                    let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
-                    let observation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
-                        sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
-                        controlAlive:peer != nil,pcmLive:fresh,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
-                    let decision = captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready)
-                    // Until the call has taken over, a stand-in is a plain native recording:
-                    // a missing page never stops or re-routes it.
-                    let joined = !pending
-                    switch decision {
-                    case .fallback? where joined: action = .fallback
-                    case .restore?: action = .restore
-                    case .stop(let reason)? where joined: action = .stop(reason)
-                    // D49: the resumed browser PCM commits callConnected through the restore checkpoint.
-                    case .callConnected?: action = ready ? .restore : nil
-                    default: action = nil
-                    }
-                } else {
-                    action = captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
+                // D52 M3: unknown inventory is not zero; the 30 s grace arms only after
+                // remote audio was heard; admitted browser PCM (never the microphone)
+                // keeps a call alive while control is absent. Until the call has taken over, a
+                // stand-in is a plain native recording: nothing but the take-over applies.
+                let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
+                let callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
+                    sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
+                    controlAlive:peer != nil,pcmLive:fresh,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                var policy = captures[id]?.callPolicy ?? BrowserCallPolicy()
+                let action = BrowserCallPolicy.decide(pending:pending,multiStream:multiStream,policy:&policy,now:now,callObservation,
+                    source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
+                    captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
                         transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
                         restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
                 }
+                captures[id]?.callPolicy = policy
                 if case .stop(let reason) = action, let end = CaptureEndReason(rawValue:reason.rawValue) {
                     value.owner.requestEnd(end,atMs:max(0,now-value.originUptime)*1000)
                     stop(id,reason:end); continue
@@ -542,7 +533,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // That deferred loss began when the policy first saw the page missing.
                 let lossStamp = multiStream && !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
-                let returned = multiStream ? action == .restore : observedPage == .present && (count ?? 0) > 0 && ready && source.others
+                let returned = multiStream || pending ? action == .restore : observedPage == .present && (count ?? 0) > 0 && ready && source.others
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
                 let atMs = max(0,now-value.originUptime)*1000
