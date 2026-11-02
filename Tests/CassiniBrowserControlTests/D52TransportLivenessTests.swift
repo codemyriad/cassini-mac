@@ -36,7 +36,7 @@ final class D52TransportLivenessTests: XCTestCase {
         let file = try JSONParser.parse(Data(contentsOf:url))
         XCTAssertEqual(file["constants"]?["PCM_STALE_AFTER"]?.int,Int(AudioTransportWatchdog.staleAfter))
         let cases = try XCTUnwrap(file["cases"]?.array)
-        XCTAssertEqual(cases.count,11)
+        XCTAssertEqual(cases.count,16)
         for vector in cases {
             let name = try XCTUnwrap(vector["name"]?.string), frames = try XCTUnwrap(vector["frames"]?.array)
             func closed(by now: Int) -> Bool {
@@ -47,6 +47,11 @@ final class D52TransportLivenessTests: XCTestCase {
                     let kind: AudioTransportWatchdog.Frame
                     switch frame["frame"]?.string {
                     case "control": continue   // control-connection frames never reach the audio peer
+                    case "documentChanged":
+                        // D57: the recording's status, as BrowserAudioBroker.documentChanged feeds it.
+                        let page = frame["pageState"]?.string.flatMap(BrowserCallLifecycle.Page.init(rawValue:))
+                        if !watchdog.document(page:page,generation:frame["documentGeneration"]?.string,at:UInt64(at)) { return true }
+                        continue
                     case "track": kind = .track(id)
                     case "audio": kind = .audio(id)
                     case "trackEnd": kind = .trackEnd(id)
@@ -90,6 +95,32 @@ final class D52TransportLivenessTests: XCTestCase {
             XCTAssertEqual(owner.snapshot.phase,.recording)
             let last = owner.snapshot.manifest.events?.last { $0.type == "othersSource" }
             XCTAssertEqual(last?.reason,"lost")
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+
+    /// D57 through the real host and broker: a navigating status retires the gone document's
+    /// spans and those declared while it departs; the next document's span arms again.
+    func testAGoneDocumentsSpansNeverCloseTheTransport() async throws {
+        let clock = ManualClock(), fixture = try AudioFixture(clock:clock.now)
+        do {
+            let client = try fixture.client()
+            _ = try client.request(start("doc"))
+            ack(try client.request(track("a"))); ack(try client.request(audio("a",0)))
+            fixture.broker.documentChanged(captureID:"doc",page:.present,documentGeneration:"doc-1")
+            fixture.broker.documentChanged(captureID:"other",page:.navigating,documentGeneration:"doc-1")
+            fixture.broker.documentChanged(captureID:"doc",page:.navigating,documentGeneration:"doc-1")
+            ack(try client.request(track("late"))); ack(try client.request(audio("late",0)))
+            clock.advance(300_000); fixture.broker.closeStaleTransports()
+            // Still open: a status after the deadline only counts when the watchdog is armed.
+            fixture.broker.documentChanged(captureID:"doc",page:.present,documentGeneration:"doc-2")
+            ack(try client.request(track("b"))); ack(try client.request(audio("b",0)))
+            clock.advance(44_999); fixture.broker.closeStaleTransports()
+            ack(try client.request(audio("b",1,offsetMs:100)))
+            clock.advance(45_000)
+            // The next document's status, arriving at the deadline, is too late: it closes.
+            fixture.broker.documentChanged(captureID:"doc",page:.present,documentGeneration:"doc-2")
+            XCTAssertThrowsError(try client.read(),"the stale transport is closed")
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
     }

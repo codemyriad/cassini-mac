@@ -33,6 +33,8 @@ public struct BrowserCaptureStatus: Equatable, Sendable {
     /// D52: the call generation this capture belongs to, and sources still failing.
     public var callGeneration: String? = nil
     public var failedSources: [String] = []
+    /// D57: the session's document, as this status reports it (it feeds the stale watchdog).
+    public var documentGeneration: String? = nil
 }
 public struct BrowserControlPeerSnapshot: Sendable {
     public let id: UUID
@@ -800,6 +802,7 @@ public struct BrowserControlRegistry: Sendable {
                          pageState:try page(value["pageState"],enabled:pageState))
             // Optional D52 fields; an older extension omits them.
             status.callGeneration = try generation(value["callGeneration"])
+            status.documentGeneration = try generation(value["documentGeneration"])
             if let raw = value["failedSources"], !raw.isNull {
                 guard let list = raw.array, list.count <= 4096 else { throw BrowserControlStateError.malformed }
                 status.failedSources = try list.map { try identity($0) }

@@ -8,6 +8,11 @@ public protocol BrowserAudioHandler: Sendable {
     func connected(_ connection: BrowserPipeConnection)
     func received(_ data: Data, from connection: BrowserPipeConnection)
     func disconnected(_ peer: BrowserPeer)
+    /// D57: a control status reported this capture's page state and documentGeneration.
+    func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?)
+}
+public extension BrowserAudioHandler {
+    func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?) {}
 }
 public struct BrowserAudioStart: Sendable {
     public let captureID: String
@@ -63,6 +68,13 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         let now = clock()
         let stale = lock.withLock { peers.values.filter { $0.isStale(at:now) } }
         for peer in stale { peer.closeStale() }
+    }
+    /// D57: the recording's control status, fed as it arrives. A transport whose status
+    /// arrives after its PCM_STALE_AFTER deadline closes through the EOF path.
+    public func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?) {
+        let now = clock()
+        let matching = lock.withLock { peers.values.filter { $0.watches(captureID) } }
+        for peer in matching where !peer.document(page:page,generation:documentGeneration,at:now) { peer.closeStale() }
     }
     public var activeCaptures: [OwnedBrowserCapture] {
         lock.lock(); defer { lock.unlock() }; return Array(captures.values)
@@ -269,7 +281,14 @@ private final class AudioPeer: @unchecked Sendable {
     init(connection: BrowserPipeConnection, broker: BrowserAudioBroker, clock: @escaping @Sendable () -> UInt64) {
         self.connection = connection; self.broker = broker; self.clock = clock
     }
+    /// The capture this transport carries, readable from the control queue.
+    private var watched: Data?
     func isStale(at now: UInt64) -> Bool { liveness.withLock { watchdog.isStale(at:now) } }
+    func watches(_ id: String) -> Bool { liveness.withLock { watched == Data(id.utf8) } }
+    func document(page: BrowserCallLifecycle.Page?, generation: String?, at now: UInt64) -> Bool {
+        liveness.withLock { watchdog.document(page:page,generation:generation,at:now) }
+    }
+    private func watch(_ id: String) { liveness.withLock { watched = Data(id.utf8) } }
     func closeStale() { connection.close() }
     private func string(_ json: JSON, _ key: String, optional: Bool = false, code: String = "source") throws -> String? {
         guard let value = json[key], !value.isNull else {
@@ -337,7 +356,7 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
                 let capture = try broker.resume(captureID:id,timelineOriginMs:origin,callGeneration:generation,peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id; resumed = true
+                owner = capture; captureID = id; resumed = true; watch(id)
                 var granted = ["resume-capture-v1"]
                 if features.contains("source-outcomes-v1") { capture.enableSourceOutcomes(); sourceOutcomes = capture.sourceOutcomesEnabled }
                 if sourceOutcomes { granted.insert("source-outcomes-v1",at:0) }
@@ -365,7 +384,7 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
                 let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id; timelineOriginMs = origin
+                owner = capture; captureID = id; timelineOriginMs = origin; watch(id)
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
                 if features.contains("source-outcomes-v1") {
                     capture.enableSourceOutcomes(); sourceOutcomes = true

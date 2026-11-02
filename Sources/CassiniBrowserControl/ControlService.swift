@@ -127,6 +127,15 @@ public final class BrowserControlService: @unchecked Sendable {
             if message["type"]?.string == "hello" {
                 heartbeats[connection.peer.id]?.hello(capabilities:message["capabilities"]?.array?.compactMap(\.string) ?? [],at:clock())
             } else { heartbeats[connection.peer.id]?.inbound(message["type"]?.string,at:clock()) }
+            // D57: each status (alone or in a result) confirms its sessions' documents to the
+            // stale watchdog as it arrives, not on the policy's poll.
+            if message["type"]?.string == "status" || (message["type"]?.string == "result" && message["status"].map { !$0.isNull } == true),
+               let audio, let peer = registry.snapshots.first(where:{ $0.id == connection.peer.id }) {
+                for session in peer.captures + peer.interrupted {
+                    guard let id = session.captureID else { continue }
+                    audio.documentChanged(captureID:id,page:session.pageState,documentGeneration:session.documentGeneration)
+                }
+            }
             if message["type"]?.string == "result", let id = message["requestId"]?.string,
                let (request,_) = deadlines[id], request.key.peer == connection.peer.id,
                let outcome = registry.outcomes.last, outcome.requestID == id {

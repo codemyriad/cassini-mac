@@ -10,6 +10,25 @@ private final class TestClock: @unchecked Sendable {
     func advance(_ ms: UInt64) { lock.withLock { value += ms } }
 }
 
+private struct Fed: Equatable { let id: String; let page: BrowserCallLifecycle.Page?; let document: String? }
+private final class DocumentRecorder: BrowserAudioHandler, @unchecked Sendable {
+    private let lock = NSLock(); private var fed: [Fed] = []; private var remaining = 0
+    var done: XCTestExpectation?
+    var calls: [Fed] { lock.withLock { fed } }
+    func expect(_ count: Int, _ test: XCTestCase) { lock.withLock { remaining = count; done = test.expectation(description:"documents fed") } }
+    var retainedCaptureIDs: [String] { [] }
+    func connected(_ connection: BrowserPipeConnection) { connection.close() }
+    func received(_ data: Data, from connection: BrowserPipeConnection) {}
+    func disconnected(_ peer: BrowserPeer) {}
+    func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?) {
+        let finished: XCTestExpectation? = lock.withLock {
+            fed.append(.init(id:captureID,page:page,document:documentGeneration)); remaining -= 1
+            return remaining == 0 ? done : nil
+        }
+        finished?.fulfill()
+    }
+}
+
 /// D52.4 R72 / P11 heartbeat-v1: the shared timing vectors through the Mac
 /// heartbeat, and a ping/pong over the real control pipes.
 final class D52HeartbeatTests: XCTestCase {
@@ -93,6 +112,25 @@ final class D52HeartbeatTests: XCTestCase {
         clock.advance(1); service.tickHeartbeats()
         wait(for:[gone],timeout:3)
         XCTAssertThrowsError(try receive(client,seconds:1),"the app closed the lost control connection")
+    }
+
+    /// D57: every status confirms each session's document to the audio side as it arrives.
+    func testEachStatusFeedsItsSessionsDocumentToTheAudioWatchdog() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let audio = DocumentRecorder(), connected = expectation(description:"status received")
+        connected.assertForOverFulfill = false
+        let service = BrowserControlService(changed:{ peers in if peers.contains(where:{ $0.reconciled }) { connected.fulfill() } },
+                                            completed:{ _,_ in },audio:audio)
+        try service.start(root:root); defer { service.stop() }
+        let client = try connect(root,capabilities:["independent-sessions-v1","page-state-v1","multi-stream-v1"])
+        wait(for:[connected],timeout:3)
+        let session: [String:Any] = ["recording":true,"tabId":2,"captureId":"cap-1","path":NSNull(),"message":"Recording","tracks":1,
+                                     "pageState":"navigating","documentGeneration":"doc-1"]
+        let status: [String:Any] = ["type":"status","recording":true,"tabId":2,"path":NSNull(),"message":"Recording","sessions":[session]]
+        audio.expect(2,self)
+        try send(status,client); try send(status,client)
+        wait(for:[audio.done!],timeout:3)
+        XCTAssertEqual(audio.calls,[Fed(id:"cap-1",page:.navigating,document:"doc-1"),Fed(id:"cap-1",page:.navigating,document:"doc-1")])
     }
 
     func testALegacyHelloIsNeverPingedOrTimedOut() throws {
