@@ -108,19 +108,18 @@ struct R65CodemyriadNamespaceTests {
         #expect(x["namePrefix"]?.string == "2026-10-30--18.02-" && x["namePrefixSource"]?.string == "recorded")
     }
 
-    /// A file carrying another writer's namespace (GNOME schema 1, or a future schema)
-    /// round-trips through Mac import and re-export byte-for-byte in that namespace.
-    @Test(arguments:[1,2]) func aForeignNamespaceRoundTripsUnchanged(schema: Int) throws {
-        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+    /// Another writer's namespace (GNOME schema 1, or a future schema) in a real Cassini file,
+    /// imported into a Mac Library.
+    private func foreignFile(_ root: URL, schema: Int) throws -> (namespace: JSON, meeting: LibraryMeeting) {
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
-        // A real Cassini file first (the fixture is plain Opus), then another writer's namespace in it.
+        // A real Cassini file first (the fixture is plain Opus), then the namespace in it.
         let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed"))
         let seed = try MeetingFileExporter.cassini(plain,assets:nil,temporaryRoot:root)
         let bytes = try Data(contentsOf:seed.url)
         let manifest = try #require(CassiniReader.read(bytes).manifest?.raw)
         let foreign = try JSONParser.parse(Data("""
         {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":7,\
-        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0}],\
+        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1}],\
         "transcript":{"status":"none","reference":null},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
         "passthrough":{"later":9007199254740993},"automaticTitle":"Weekly sync","tracks":[{"id":"t","spans":[{"file":"track.wav","sampleRate":48000,"frames":10,"startOffsetMs":12.5}],"futureTrackMember":true}],"unknownTop":[1,2]}
         """.utf8))
@@ -128,12 +127,63 @@ struct R65CodemyriadNamespaceTests {
         let input = root.appendingPathComponent("gnome.opus")
         _ = try OpusStreamFile.rewrite(bytes,tags:tags,to:input)
         let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
-        // A Mac edit to the received meeting still leaves the foreign namespace as it was.
-        try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction { $0["title"] = "Renamed on Mac" }
+        return (foreign,imported)
+    }
+    private func reexport(_ root: URL) throws -> JSON {
         let meeting = try #require(LibraryScanner(root:root.appendingPathComponent("Library")).scan().meetings.first)
         let exported = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
-        let result = try #require(CassiniReader.read(contentsOf:exported.url).manifest?.raw["x"]?["codemyriad.io"])
-        #expect(try result.encoded() == foreign.encoded())
+        return try #require(CassiniReader.read(contentsOf:exported.url).manifest?.raw["x"]?["codemyriad.io"])
+    }
+    /// Nothing changed on Mac: the namespace round-trips byte-for-byte, any schema.
+    @Test(arguments:[1,2]) func anUnchangedForeignNamespaceRoundTripsByteForByte(schema: Int) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,_) = try foreignFile(root,schema:schema)
+        #expect(try reexport(root).encoded() == foreign.encoded())
+    }
+    /// D55.1: a rename and a speaker name set on Mac go into a schema-1 namespace in place,
+    /// with a revision bump; every other member stays verbatim.
+    @Test func macEditsGoIntoASchemaOneNamespaceAndNothingElseChanges() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1)
+        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+            $0["speakers"] = [["id":"spk-1","name":"Dana","provenance":"user","colourIndex":1]]
+        }
+        let result = try reexport(root)
+        #expect(result["meeting"]?["title"]?.string == "Renamed on Mac" && result["meeting"]?["titleSource"]?.string == "user")
+        #expect(result["revision"] == .number("8"))
+        let speakers = try #require(result["meeting"]?["speakers"]?.array)
+        #expect(speakers[1]["name"]?.string == "Dana" && speakers[1]["provenance"]?.string == "user")
+        #expect(speakers[0] == foreign["meeting"]?["speakers"]?.array?[0],"an untouched speaker keeps unknown members")
+        // Putting the three changed members back gives the original bytes.
+        let restored = try result.setting("revision",to:foreign["revision"]).setting("meeting",to:result["meeting"]!
+            .setting("title",to:.null).setting("titleSource",to:.string("meeting-window")).setting("speakers",to:foreign["meeting"]!["speakers"]))
+        #expect(try restored.encoded() == foreign.encoded())
+    }
+    /// A schema this app does not know stays unchanged even after an edit.
+    @Test func aFutureSchemaIsNeverRewritten() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:2)
+        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        #expect(try reexport(root).encoded() == foreign.encoded())
+    }
+    /// D55.1: the namePrefix is chosen on the first export, saved, and never recomputed.
+    @Test func theNamePrefixIsSavedOnFirstExportAndKept() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let imported = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Library"))
+        #expect(try raw(imported.folder.appendingPathComponent("meeting.json"))["namePrefix"] == nil)
+        let first = try MeetingFileExporter.cassini(imported,assets:nil,temporaryRoot:root,timeZone:try #require(TimeZone(identifier:"Pacific/Kiritimati")))
+        let saved = try raw(imported.folder.appendingPathComponent("meeting.json"))
+        let prefix = try #require(saved["namePrefix"]?.string)
+        #expect(LibraryNames.isPrefix(prefix) && saved["namePrefixSource"]?.string != nil)
+        let firstX = try CassiniReader.read(Data(contentsOf:first.url)).manifest?.raw["x"]?["codemyriad.io"]
+        #expect(firstX?["namePrefix"]?.string == prefix)
+        let meeting = try #require(LibraryScanner(root:root.appendingPathComponent("Library")).scan().meetings.first)
+        let again = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root,timeZone:try #require(TimeZone(identifier:"Pacific/Pago_Pago")))
+        let againX = try CassiniReader.read(Data(contentsOf:again.url)).manifest?.raw["x"]?["codemyriad.io"]
+        #expect(againX?["namePrefix"]?.string == prefix,"never recomputed")
+        #expect(try raw(imported.folder.appendingPathComponent("meeting.json"))["namePrefix"]?.string == prefix)
     }
     /// A received file without our namespace gets one from Mac's meeting.json: origin
     /// Received, a date-tag namePrefix, the original title as automaticTitle, no tracks.

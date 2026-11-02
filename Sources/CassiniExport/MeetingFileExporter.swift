@@ -72,6 +72,7 @@ public enum MeetingFileExporter {
         struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
         let body = try encoder.encode(Body(language:language,items:items))
+        try CodemyriadNamespace.persistNamePrefix(meeting,dateTag:dateTag,now:Date(),zone:timeZone)
         let ours = try CodemyriadNamespace.make(meeting,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
         let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice,codemyriad:ours)
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:items.count,shouldCancel:shouldCancel)
@@ -146,7 +147,10 @@ public enum MeetingFileExporter {
         }
         // R65 (D55): our own namespace. A file that already carries one (another app or
         // schema) keeps it unchanged: Mac never downgrades or rewrites it.
-        if extensions[CodemyriadNamespace.key] == nil, let codemyriad {
+        if let foreign = extensions[CodemyriadNamespace.key] {
+            // Another writer's copy (D55.1): the user's changes on Mac go into it, the rest stays verbatim.
+            extensions = try extensions.setting(CodemyriadNamespace.key,to:CodemyriadNamespace.merged(foreign,with:meeting))
+        } else if let codemyriad {
             extensions = try extensions.setting(CodemyriadNamespace.key,to:codemyriad)
         }
         if extensions.object?.isEmpty != true { root = try root.setting("x",to:extensions) }
