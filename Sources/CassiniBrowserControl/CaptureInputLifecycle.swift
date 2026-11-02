@@ -191,7 +191,7 @@ private final class SourceChangeToken: @unchecked Sendable {
     /// A side's open attempt during a selection. A failed turn-on (not a closed recording, a
     /// cancelled source change or a stale request) is refused instead of failing the selection.
     private func turnOn(_ side: CaptureSide, turningOn: Bool, into refused: RefusedTurnOns,
-                        _ make: () async throws -> Input) async throws -> Input? {
+                        _ make: @MainActor () async throws -> Input) async throws -> Input? {
         do { return try await make() }
         catch {
             guard turningOn, !closed, Self.isOpenFailure(error) else { throw error }
