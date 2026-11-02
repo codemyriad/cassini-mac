@@ -105,6 +105,9 @@ public struct BrowserCallPolicy: Sendable {
         /// lost the browser source. A delayed poll still honours their deadlines.
         public var pageObservedAt: TimeInterval?
         public var lostAt: TimeInterval?
+        /// D57 (R78.1): the extension's status still lists a session for this tab. The app asks
+        /// to resume only once it no longer does.
+        public var sessionListed = false
         public init(page: BrowserCallLifecycle.Page?, rowPresent: Bool = true, sourceCount: Int?, sourceCountKnown: Bool = true,
                     heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false, transportAlive: Bool = true,
                     callGeneration: String? = nil, controlConnection: String = "",
@@ -235,7 +238,7 @@ public struct BrowserCallPolicy: Sendable {
                 }
             }
             // D52.5: ask once per loss and control connection; never on a timer or later tick.
-            if resumeCapture, !o.transportAlive, source == "system", reason == "lost", others,
+            if resumeCapture, !o.transportAlive, source == "system", reason == "lost", others, !o.sessionListed,
                o.callGeneration == callGeneration, heard, askedOn != o.controlConnection {
                 askedOn = o.controlConnection
                 return actions + [.askResume]

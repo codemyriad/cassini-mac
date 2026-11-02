@@ -119,4 +119,16 @@ final class D52CallPolicyTests: XCTestCase {
         XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:false,navigation:false,fallback:false))
         XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.navigating,count:nil,multiStream:true,navigation:true,fallback:false))
     }
+    /// D57 (R78.1): the resume ask waits until the status no longer lists a session for the tab,
+    /// and waiting does not use up the once-per-loss-and-connection ask.
+    func testTheResumeAskWaitsForTheTabSessionToLeaveTheStatus() {
+        var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
+        var row = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true,transportAlive:false,callGeneration:"call-A",controlConnection:"c1")
+        row.sessionListed = true
+        XCTAssertFalse(policy.steps(now:1,row,source:"system",reason:"lost").contains(.askResume))
+        XCTAssertFalse(policy.steps(now:2,row,source:"system",reason:"lost").contains(.askResume))
+        row.sessionListed = false
+        XCTAssertTrue(policy.steps(now:3,row,source:"system",reason:"lost").contains(.askResume))
+        XCTAssertFalse(policy.steps(now:4,row,source:"system",reason:"lost").contains(.askResume),"still once per loss and connection")
+    }
 }

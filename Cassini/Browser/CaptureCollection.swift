@@ -549,10 +549,12 @@ private final class CaptureFiles: @unchecked Sendable {
                 // keeps a call alive while control is absent. Until the call has taken over, a
                 // stand-in is a plain native recording: nothing but the take-over applies.
                 let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
-                let callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
+                var callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
                     sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
                     controlAlive:peer != nil,pcmLive:fresh,transportAlive:source.transportAlive,
                     callGeneration:meeting?.callGeneration,controlConnection:peer?.id.uuidString ?? "",pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                // D57 (R78.1): ask to resume only once the status no longer lists a session for this tab.
+                callObservation.sessionListed = (peer?.captures ?? []).contains { $0.key.tabID == value.key?.tabID } || (peer?.interrupted ?? []).contains { $0.key.tabID == value.key?.tabID }
                 var policy = captures[id]?.callPolicy ?? BrowserCallPolicy()
                 let action = BrowserCallPolicy.decide(pending:pending,multiStream:multiStream,policy:&policy,now:now,callObservation,
                     source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
