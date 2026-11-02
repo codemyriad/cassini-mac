@@ -6,6 +6,13 @@ import CassiniKit
 /// App-owned metadata only. Capture session.json and audio remain producer-owned.
 /// Serial transactions preserve fields and reject unsupported/invalid metadata.
 public final class MeetingMetadataWriter: @unchecked Sendable {
+    /// The meeting.json a folder implies before its first metadata write.
+    public static func defaultDocument(id: UUID) -> [String: Any] {
+        ["version": 1, "revision": 0, "id": id.uuidString.lowercased(), "title": NSNull(),
+         "titleSource": "meeting-window", "notes": [], "speakers": [],
+         "transcript": ["status": "none", "reference": NSNull()], "etaMinutes": NSNull(),
+         "error": NSNull(), "quoteOverride": NSNull(), "received": NSNull()]
+    }
     private let lock = NSLock()
     public let directory: URL
     public let id: UUID
@@ -71,10 +78,7 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
             document["revision"] = metadata.revision + 1
         } else {
             guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            document = ["version": 1, "revision": 0, "id": id.uuidString.lowercased(), "title": NSNull(),
-                "titleSource": "meeting-window", "notes": [], "speakers": [],
-                "transcript": ["status": "none", "reference": NSNull()], "etaMinutes": NSNull(),
-                "error": NSNull(), "quoteOverride": NSNull(), "received": NSNull()]
+            document = Self.defaultDocument(id: id)
         }
         try edit(&document)
         let edited = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted])

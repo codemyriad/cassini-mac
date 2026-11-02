@@ -59,7 +59,7 @@ public enum LibraryNames {
             return .init(namePrefix:value,utcOffsetMinutes:minutes,source:"import-time")
         }
     }
-    static func parseUTC(_ value: String) throws -> Date {
+    public static func parseUTC(_ value: String) throws -> Date {
         let pattern = #"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]{1,6})?Z$"#
         guard let match = try NSRegularExpression(pattern:pattern).firstMatch(in:value,range:NSRange(value.startIndex...,in:value)) else { throw NameError.invalidStart }
         func group(_ i: Int) -> String? { Range(match.range(at:i),in:value).map { String(value[$0]) } }
