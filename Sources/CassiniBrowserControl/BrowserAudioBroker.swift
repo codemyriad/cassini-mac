@@ -138,11 +138,18 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
     }
     /// D58 #10: the outcome of a resume ask. Only a browser ok:false answer records; its result
-    /// code, if any, is the message (R82 1b). A timeout, a closed connection or a local failure
-    /// records nothing, and a late, duplicate or unknown answer records nothing either.
+    /// code, if any, is the message (R82 1b). A closed connection or a local failure records
+    /// nothing, and a late, duplicate or unknown answer records nothing either. A timeout is the
+    /// app no longer waiting (protocol 08ad6f6 `forget`): the ask is dropped, so its late native
+    /// refusal records nothing; a closed connection's ask stays answerable by its own refusal.
     public func resumeAnswered(_ outcome: BrowserControlOutcome) {
-        guard outcome.resume, !outcome.ok, outcome.failure == nil else { return }
+        guard outcome.resume, !outcome.ok else { return }
+        if outcome.failure == "timeout" { forgetAsk(Data(outcome.requestID.utf8)); return }
+        guard outcome.failure == nil else { return }
         refuseAsk(Data(outcome.requestID.utf8),message:outcome.code)
+    }
+    private func forgetAsk(_ id: Data) {
+        lock.withLock { for key in Array(standIns.keys) { standIns[key]?.asks.removeAll { $0.id == id } } }
     }
     /// Unanswered resume asks of a stand-in, oldest first (tests).
     func pendingResumeAsks(_ capture: OwnedBrowserCapture) -> [String] {
@@ -366,7 +373,7 @@ private final class AudioPeer: @unchecked Sendable {
             packetType = kind
             let frameID = json["id"]?.string ?? ""
             let frame: AudioTransportWatchdog.Frame = switch kind {
-            case "track": .track(frameID)
+            case "track": .track(frameID,generation:json["documentGeneration"]?.string)
             case "audio": .audio(frameID)
             case "trackEnd": .trackEnd(frameID)
             case "stop": .stop
@@ -469,8 +476,10 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let owner else { throw BrowserProtocolError("state","No active recording.") }
                 switch type {
                 case "track":
+                    // D61: clock facts copied as received; documentGeneration only feeds the watchdog.
                     try owner.browserTrack(id:string(json,"id")!,label:string(json,"label",optional:true) ?? string(json,"kind")!,kind:string(json,"kind")!,sampleRate:integer(json["sampleRate"]),channels:integer(json["channels"]),
-                                           sourceTrackId:sourceOutcomes || json["sourceTrackId"]?.isNull == false ? string(json,"sourceTrackId",optional:true) : nil)
+                                           sourceTrackId:sourceOutcomes || json["sourceTrackId"]?.isNull == false ? string(json,"sourceTrackId",optional:true) : nil,
+                                           clock:ClockFacts.parse(json))
                 case "trackEnd":
                     let id = try string(json,"id")!, reason = try string(json,"reason")!
                     let dropped = try integer(json["droppedFrames"])

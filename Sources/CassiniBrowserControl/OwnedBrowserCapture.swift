@@ -36,6 +36,8 @@ public struct OwnedCaptureSnapshot: Sendable {
 public final class OwnedBrowserCapture: @unchecked Sendable {
     private struct BrowserSource {
         let id: String, label: String, kind: String
+        /// D61: the declaration's clock facts, repeated on every span of this source.
+        var clock: ClockFacts? = nil
         /// D52 M1: the stable wire sourceTrackId, or the wire id from older extensions.
         let key: String
         let rate: Int, channels: Int
@@ -135,7 +137,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         lastPublished = now
         notifications.async { [changed] in changed(value) }
     }
-    public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil) throws {
+    public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, clock: ClockFacts? = nil) throws {
         try sync {
             guard phase == .recording, transportAlive, browserAlive || managedBrowser else { throw BrowserProtocolError("state","No active browser capture.") }
             guard sourceTrackId == nil || CaptureLedger.validIdentity(sourceTrackId) else { throw BrowserProtocolError("source","Invalid source identity.") }
@@ -164,8 +166,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
             let span = UUID().uuidString.lowercased(), live = others && browserAlive
-            try commitBound([(span,key,live)],starting:[.init(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)])
-            browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
+            var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)
+            start.clock = clock
+            try commitBound([(span,key,live)],starting:[start])
+            browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
             publish()
         }
     }
@@ -192,7 +196,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if managedBrowser, browserAlive, others, source.span == nil,
                normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > resumeAt {
                 let span = UUID().uuidString.lowercased()
-                try commitBound([(span,source.key,true)],starting:[.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser")])
+                var start = RecordingSource(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser")
+                start.clock = source.clock
+                try commitBound([(span,source.key,true)],starting:[start])
                 source.span = span; source.current = true
                 browserSources[Data(id.utf8)] = source
             }
