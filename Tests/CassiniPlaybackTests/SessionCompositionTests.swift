@@ -123,6 +123,29 @@ import CassiniLibrary
         for _ in 0..<frames { u16(5000) }
         try data.write(to: url); return url
     }
+    /// D52/D49: the stand-in and the browser overlap physically for 2 s, but each
+    /// owns a half-open range, so playback never doubles the others.
+    @Test func ownershipMasksTheD49SeamInPlayback() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Playback-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let system = try wave(root, "system", rate: 48000, frames: 48000*7, value: 4000)
+        let browser = try wave(root, "browser", rate: 48000, frames: 48000*5, value: 8000)
+        let ownership = try #require(OthersOwnership(events: [
+            .init(atMs: 0, type: "selection", reason: "start", me: true, others: true),
+            .init(atMs: 0, type: "othersSource", source: "system", reason: "missing"),
+            .init(atMs: 6000, type: "othersSource", source: "browser", reason: "callConnected")]))
+        let timeline = try await SessionComposition.make(tracks: [
+            .init(url: system, startOffsetMs: 0, frameCount: UInt64(48000*7), sourceKind: "system", sampleRate: 48000),
+            .init(url: browser, startOffsetMs: 5000, frameCount: UInt64(48000*5), sourceKind: "remote", sampleRate: 48000)], ownership: ownership)
+        func level(_ at: Double) throws -> Float {
+            let samples = try read(timeline.asset, start: at, duration: 0.1)
+            return samples.reduce(0, +) / Float(max(1, samples.count))
+        }
+        #expect(abs(try level(5.4) - 4000/32768) < 0.01, "Before the seam only the stand-in plays")
+        #expect(abs(try level(6.4) - 8000/32768) < 0.01, "After the seam only the browser plays")
+        #expect(abs(timeline.durationMs - 10000) < 1)
+    }
     private func wave(_ root: URL, _ name: String, rate: Int, frames: Int, value: Int16) throws -> URL {
         let url = root.appendingPathComponent(name + ".wav")
         let format = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: Double(rate), channels: 1, interleaved: true))

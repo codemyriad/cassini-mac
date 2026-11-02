@@ -28,7 +28,7 @@ private final class PreparationLifetime: @unchecked Sendable {
     public private(set) var positionMs = 0.0
     public var rate: Float = 1 { didSet { transport?.setRate(rate) } }
     @ObservationIgnored public var onFailure: ((Error) -> Void)?
-    @ObservationIgnored private let build: @Sendable ([LibraryAudioTrack]) async throws -> SessionTimeline
+    @ObservationIgnored private let build: @Sendable ([LibraryAudioTrack], OthersOwnership?) async throws -> SessionTimeline
     @ObservationIgnored private let makeTransport: (SessionTimeline) -> any SessionTransport
     @ObservationIgnored private let lifetime = PreparationLifetime()
     @ObservationIgnored private var transport: (any SessionTransport)?
@@ -45,11 +45,11 @@ private final class PreparationLifetime: @unchecked Sendable {
     var preparation: Task<Void, Never>? { lifetime.task }
 
     public init() {
-        build = { try await SessionComposition.make(tracks: $0) }
+        build = { try await SessionComposition.make(tracks: $0, ownership: $1) }
         makeTransport = { AVSessionTransport($0) }
     }
     init(build: @escaping @Sendable ([LibraryAudioTrack]) async throws -> SessionTimeline, makeTransport: @escaping (SessionTimeline) -> any SessionTransport) {
-        self.build = build; self.makeTransport = makeTransport
+        self.build = { tracks, _ in try await build(tracks) }; self.makeTransport = makeTransport
     }
     public static func stopAll() { active?.stop() }
     public func reconcile(_ meeting: LibraryMeeting?, offline: Bool) {
@@ -86,7 +86,7 @@ private final class PreparationLifetime: @unchecked Sendable {
         let current = generation, builder = build
         lifetime.task = Task { [weak self] in
             do {
-                let result = try await builder(meeting.audioTracks)
+                let result = try await builder(meeting.audioTracks, OthersOwnership(events: meeting.captureEvents))
                 try Task.checkCancellation()
                 guard let self, current == self.generation else { return }
                 let transport = self.makeTransport(result)
