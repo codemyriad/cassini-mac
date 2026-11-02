@@ -6,7 +6,7 @@ import CassiniRecording
 /// Preparation is bounded independently of RecordingSink's active write queue.
 final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
     private struct Format { let id: String, label: String, kind: String; let rate: Int, channels: Int }
-    private struct Chunk { let id: String; let pcm: Data; let offset: Double; var gapKind = "input"; var padding: (frames: UInt64, channels: Int, rate: Double)? = nil }
+    private struct Chunk { let id: String; let pcm: Data; let offset: Double; var gapKind = "input"; var padding: (frames: UInt64, channels: Int, rate: Double, kind: String)? = nil }
     private let lock = NSLock(), problemLock = NSLock()
     private var target: (any RecordingSinkWriter)?
     private var formats: [Format] = [], chunks: [Chunk] = []
@@ -42,11 +42,11 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
             }
         }
     }
-    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws {
         try lock.withLock {
             guard !discarded else { return }
-            if let target { try target.padNative(id:id,frames:frames,channels:channels,rate:rate,offsetMs:offsetMs) }
-            else { chunks.append(.init(id:id,pcm:Data(),offset:offsetMs,padding:(frames,channels,rate))) }
+            if let target { try target.padNative(id:id,frames:frames,channels:channels,rate:rate,offsetMs:offsetMs,kind:kind) }
+            else { chunks.append(.init(id:id,pcm:Data(),offset:offsetMs,padding:(frames,channels,rate,kind))) }
         }
     }
     func activate(_ writer: any RecordingSinkWriter) throws {
@@ -57,7 +57,7 @@ final class StagedNativeWriter: RecordingSinkWriter, @unchecked Sendable {
             defer { formats = []; chunks = []; bytes = 0 }
             for value in formats { try writer.addTrack(id:value.id,label:value.label,kind:value.kind,sampleRate:value.rate,channels:value.channels) }
             for value in chunks {
-                if let padding = value.padding { try writer.padNative(id:value.id,frames:padding.frames,channels:padding.channels,rate:padding.rate,offsetMs:value.offset) }
+                if let padding = value.padding { try writer.padNative(id:value.id,frames:padding.frames,channels:padding.channels,rate:padding.rate,offsetMs:value.offset,kind:padding.kind) }
                 else { try writer.appendNative(id:value.id,pcm:value.pcm,offsetMs:value.offset,gapKind:value.gapKind) }
             }
         }

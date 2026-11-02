@@ -298,8 +298,9 @@ public final class RecordingSession {
         try append(id: id, pcm: pcm, offsetMs: offsetMs, native: true, gapKind: gapKind == "writer" ? "writer" : "input")
     }
 
-    /// Pad `frames` of the native sink's own lost audio from `offsetMs` as one `writer` range.
-    public func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
+    /// Pad `frames` from `offsetMs` as one range: `writer` over the native sink's own
+    /// lost audio (the default), or `input` over a host-time gap, which counts as a gap.
+    public func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String = "writer") throws {
         guard frames > 0 else { return }
         guard !finished, let writer = writers[id], let i = manifest.tracks.firstIndex(where: { $0.id == id }),
               offsetMs.isFinite, (0...86_400_000).contains(offsetMs), frames <= UInt64(manifest.tracks[i].sampleRate) * 86_400 else { throw RecordingError.invalid("Invalid audio padding.") }
@@ -308,7 +309,9 @@ public final class RecordingSession {
         let target = Int64(((offsetMs - track.startOffsetMs!) * Double(track.sampleRate) / 1000).rounded()) + Int64(frames)
         let delta = target - Int64(writer.frames)
         guard delta > 0 else { return }
-        recordGap(index:i,frames:UInt64(delta),kind:"writer",framesBefore:writer.frames)
+        // An input gap right after a selection boundary is still that selection's prefix.
+        let range = kind == "input" ? (prefixPending.contains(id) ? "prefix" : "input") : "writer"
+        recordGap(index:i,frames:UInt64(delta),kind:range,framesBefore:writer.frames)
         prefixPending.remove(id)
         var left = Int(delta)
         while left > 0 { let count = min(left,1_000_000); try writer.silence(frames:count); left -= count }

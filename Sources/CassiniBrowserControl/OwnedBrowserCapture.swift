@@ -517,10 +517,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         if side == .me { return meResumeAt }
         return recording.manifest.source == "macos" && systemReason == "missing" ? resumeAt : nil
     }
-    fileprivate func nativePadding(id: String, frames: UInt64, offsetMs: Double) throws {
+    fileprivate func nativePadding(id: String, frames: UInt64, offsetMs: Double, kind: String) throws {
         try sync {
             guard phase == .recording, let span = nativeSpans[id], span.registered, span.side == .me ? me : others else { return }
-            try recording.padNative(id:id,frames:frames,channels:span.channels,rate:Double(span.rate),offsetMs:offsetMs); publish(force:false)
+            try recording.padNative(id:id,frames:frames,channels:span.channels,rate:Double(span.rate),offsetMs:offsetMs,kind:kind); publish(force:false)
         }
     }
     fileprivate func reportNativeLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
@@ -666,8 +666,8 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws {
         guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs,gapKind:gapKind)
     }
-    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
-        guard let span = spans[id] else { return }; try owner.nativePadding(id:span,frames:frames,offsetMs:offsetMs)
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws {
+        guard let span = spans[id] else { return }; try owner.nativePadding(id:span,frames:frames,offsetMs:offsetMs,kind:kind)
     }
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
         guard let span = spans[id] else { return }
