@@ -32,6 +32,9 @@ struct LiveCapture {
     var callPolicy = BrowserCallPolicy()
     /// D52.1 R67: this native stand-in already asked one call to join (never retried).
     var resumeAttempted = false
+    /// D52.5: the call this recording belongs to. After its audio transport closed, the
+    /// recording finds that call by (tabId, callGeneration) on any control peer.
+    var callGeneration: String?
     var modernLifecycle: Bool?
     var changingSource = false
     fileprivate var sourceObservation: BrowserSourceObservation?
@@ -436,8 +439,39 @@ private final class CaptureFiles: @unchecked Sendable {
             broker.expectResume(owner,callGeneration:generation)
         }
     }
+    /// D52.5: the recording's call (same tab and call generation) on any reconciled control
+    /// peer, past or present. Only a recording whose audio transport closed is re-keyed.
+    private func lostCallKey(_ value: LiveCapture) -> BrowserMeetingKey? {
+        guard value.snapshot.manifest.source == "chromium", let key = value.key, let generation = value.callGeneration,
+              !value.owner.snapshot.transportAlive else { return nil }
+        return peers.filter(\.reconciled).flatMap(\.meetings).first { $0.key.tabID == key.tabID && $0.callGeneration == generation }?.key
+    }
+    /// D52.4/D52.5: the policy asked once (per loss and control connection) to resume this
+    /// recording onto its system/lost fallback through resume-capture-v1.
+    private func askResume(_ value: LiveCapture, _ meeting: BrowserMeetingKey) {
+        guard let identity = broker.standInIdentity(value.owner) else { return }
+        let owner = value.owner, broker = broker
+        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { generation in
+            broker.expectResume(owner,callGeneration:generation)
+        }
+    }
+    /// D52.5: calls with a recording on a lost transport are resumed, never auto-Started afresh.
+    private func publishLostCalls() {
+        let lost = Set(captures.values.compactMap { value -> BrowserControlRegistry.LostCall? in
+            let source = value.owner.snapshot
+            guard source.manifest.source == "chromium", let key = value.key, value.savingSinceMs == nil, source.phase == .recording,
+                  !source.transportAlive, CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity).reason == "lost" else { return nil }
+            return .init(tabID:key.tabID,callGeneration:value.callGeneration)
+        })
+        guard lost != publishedLostCalls else { return }
+        publishedLostCalls = lost; service.setLostCalls(lost)
+    }
+    @ObservationIgnored private var publishedLostCalls: Set<BrowserControlRegistry.LostCall> = []
     private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        defer { publishLostCalls() }
         for id in Array(captures.keys) {
+            guard let current = captures[id] else { continue }
+            if let rebound = lostCallKey(current), rebound != current.key { captures[id]?.key = rebound }
             guard let value = captures[id] else { continue }
             offerStandIn(id,value)
             let status = value.input.status()
@@ -465,6 +499,10 @@ private final class CaptureFiles: @unchecked Sendable {
                 let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
                 let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
                 let meeting = peer?.meetings.first { $0.key == value.key }
+                if let generation = status?.callGeneration, value.callGeneration == nil {
+                    captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation
+                }
+                if let peer { captures[id]?.callPolicy.resumeCapture = peer.supportsResume }
                 let pages: [(BrowserCallLifecycle.Page,TimeInterval?)] = [
                     status?.pageState.map { ($0,status?.pageStateAt) },
                     meeting?.pageState.map { ($0,meeting?.pageStateAt) }
@@ -501,8 +539,11 @@ private final class CaptureFiles: @unchecked Sendable {
                     let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
                     let observation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
                         sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
-                        controlAlive:peer != nil,pcmLive:fresh)
-                    let decision = captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready)
+                        controlAlive:peer != nil,pcmLive:fresh,transportAlive:source.transportAlive,
+                        callGeneration:meeting?.callGeneration,controlConnection:peer?.id.uuidString ?? "")
+                    let decisions = captures[id]?.callPolicy.steps(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) ?? []
+                    if decisions.contains(.askResume), let key = meeting?.key { askResume(value,key) }
+                    let decision = decisions.first { $0 != .askResume }
                     // Until the call has taken over, a stand-in is a plain native recording:
                     // a missing page never stops or re-routes it.
                     let joined = !standIn || source.manifest.events?.contains { $0.reason == "callConnected" } == true

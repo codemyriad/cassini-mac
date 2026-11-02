@@ -11,6 +11,8 @@ public final class BrowserControlService: @unchecked Sendable {
     private var timer: DispatchSourceTimer?
     private var registry = BrowserControlRegistry()
     private var connections: [UUID:BrowserPipeConnection] = [:]
+    private var heartbeats: [UUID:ControlHeartbeat] = [:]
+    private let clock: @Sendable () -> UInt64
     private var deadlines: [String:(BrowserControlRequest,UInt64)] = [:]
     private var automatic: Set<String> = []
     private var autoRecord = false, microphone = true
@@ -20,8 +22,10 @@ public final class BrowserControlService: @unchecked Sendable {
     private let canStart: @Sendable () -> Bool
     public init(changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void,
                 completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil,
-                canStart: @escaping @Sendable () -> Bool = { true }) {
-        self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; queue.setSpecific(key:key,value:1)
+                canStart: @escaping @Sendable () -> Bool = { true },
+                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 }) {
+        self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock
+        queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {
         try sync {
@@ -75,6 +79,10 @@ public final class BrowserControlService: @unchecked Sendable {
             catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
+    /// D52.5: calls whose recording is on system/lost; they are resumed, never auto-Started.
+    public func setLostCalls(_ calls: Set<BrowserControlRegistry.LostCall>) {
+        queue.async { [self] in registry.setLostCalls(calls); reconcile() }
+    }
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }
@@ -107,7 +115,7 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     private func connect(_ connection: BrowserPipeConnection) {
         guard server != nil, connection.peer.role == .control else { connection.close(); return }
-        do { try registry.connect(connection.peer); connections[connection.peer.id] = connection; publish() }
+        do { try registry.connect(connection.peer); connections[connection.peer.id] = connection; heartbeats[connection.peer.id] = .init(); publish() }
         catch { connection.close() }
     }
     private func receive(_ data: Data, from connection: BrowserPipeConnection) {
@@ -115,6 +123,10 @@ public final class BrowserControlService: @unchecked Sendable {
         do {
             let message = try JSONParser.parse(data)
             try registry.receive(data,from:connection.peer.id)
+            // heartbeat-v1: every inbound frame (pong included) refreshes liveness.
+            if message["type"]?.string == "hello" {
+                heartbeats[connection.peer.id]?.hello(capabilities:message["capabilities"]?.array?.compactMap(\.string) ?? [],at:clock())
+            } else { heartbeats[connection.peer.id]?.inbound(message["type"]?.string,at:clock()) }
             if message["type"]?.string == "result", let id = message["requestId"]?.string,
                let (request,_) = deadlines[id], request.key.peer == connection.peer.id,
                let outcome = registry.outcomes.last, outcome.requestID == id {
@@ -143,6 +155,7 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     private func disconnect(_ id: UUID) {
         guard connections.removeValue(forKey:id) != nil else { return }
+        heartbeats.removeValue(forKey:id)
         let requests = deadlines.values.map(\.0).filter { $0.key.peer == id }
         registry.disconnect(id)
         for request in requests {
@@ -152,7 +165,30 @@ public final class BrowserControlService: @unchecked Sendable {
         }
         publish()
     }
+    /// Runs the heartbeat now, as the 1 s timer does (tests drive it with an injected clock).
+    func tickHeartbeats() { sync { beat() } }
+    /// The latest inbound frame time across control connections (tests wait on it).
+    func lastHeartbeatInbound() -> UInt64? { sync { heartbeats.values.map(\.lastInboundAt).max() } }
+    private func beat() {
+        let now = clock()
+        for (id,var heartbeat) in heartbeats {
+            let event = heartbeat.tick(at:now)
+            heartbeats[id] = heartbeat
+            switch event {
+            case .ping(let sequence)?:
+                // A ping that cannot be queued means the peer stopped reading: close it.
+                guard let data = try? JSON.object([("type",.string("ping")),("seq",.number(String(sequence)))]).encoded(maximumBytes:1024),
+                      (try? connections[id]?.send(data)) != nil else { connections[id]?.close(); disconnect(id); continue }
+            case .lost?:
+                // No inbound frame for 25 s: control is lost, exactly as for EOF. The close
+                // never waits behind a stuck write; recordings keep running.
+                connections[id]?.close(); disconnect(id)
+            case nil: break
+            }
+        }
+    }
     private func expire() {
+        beat()
         registry.expireRememberedStops()
         let now = DispatchTime.now().uptimeNanoseconds
         let peers = Set(deadlines.values.filter { $0.1 <= now }.map { $0.0.key.peer })

@@ -47,6 +47,19 @@ class ControlTests(unittest.TestCase):
                 self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[case['meeting']])))
                 self.assertIs(type(case['expect']['automatic']),bool)
                 self.assertIs(type(case['expect']['manual']),bool)
+                # D52.5: optional app-side recordings, matched to the row by tabId plus
+                # callGeneration across every control peer, and the optional resume
+                # expectation (absent means false).
+                self.assertIs(type(case['expect'].get('resume',False)),bool)
+                self.assertLessEqual(set(case['expect']),{'automatic','manual','resume'})
+                for recording in case.get('recordings',[]):
+                    self.assertLessEqual({'captureId','tabId','callGeneration','othersSource'},set(recording))
+                    self.assertLessEqual(set(recording),{'captureId','tabId','callGeneration','othersSource','heardSeen','controlPeer'})
+                    self.assertIs(type(recording.get('heardSeen',False)),bool)
+                    self.assertIn(recording.get('controlPeer','current'),['current','earlier'])
+                    self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[dict(case['meeting'],tabId=recording['tabId'],callGeneration=recording['callGeneration'])])))
+                    self.assertEqual(recording['othersSource'],dict(source='system',reason='lost'))
+                if case.get('recordings'): self.assertIn('callGeneration',case['meeting'])
 
 
     def test_d33_page_state_and_opt_in_are_additive_and_typed(self):
@@ -89,7 +102,8 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(len(json.loads((ROOT / 'conformance/vectors.json').read_text())), 88)
         # D52.2 Q7 added host-derived gapFrames/state to the two legacy gap vectors.
         self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), 'd79a75fcf3608ab652f11fc89d5426c9476737bc9f5f22bbb6260b397b0f35e1')
-        self.assertEqual(hashlib.sha256((ROOT / 'conformance/run.py').read_bytes()).hexdigest(), '94087b8076f6a7f135fcd8b13c8fea6fd4fa08ccba5c0da94350e2b064756c62')
+        # The runner gained per-case private Libraries (test Library isolation).
+        self.assertEqual(hashlib.sha256((ROOT / 'conformance/run.py').read_bytes()).hexdigest(), 'e1c01b919bcfb465e511058d285171f9ff1095f9193b8ca4684cc40236a26cb1')
 
 if __name__ == '__main__':
     unittest.main()

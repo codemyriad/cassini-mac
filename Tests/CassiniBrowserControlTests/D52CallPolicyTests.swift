@@ -15,25 +15,29 @@ final class D52CallPolicyTests: XCTestCase {
         XCTAssertEqual(file["constants"]?["TAB_CLOSED_GRACE"]?.double,BrowserCallPolicy.tabClosedGrace*1000)
         XCTAssertEqual(file["constants"]?["BROWSER_RETURN_GRACE"]?.double,BrowserCallPolicy.browserReturnGrace*1000)
         let cases = try XCTUnwrap(file["cases"]?.array)
-        XCTAssertEqual(cases.count,10)
+        XCTAssertEqual(cases.count,26)
         for vector in cases {
             let name = vector["name"]!.string!
-            var policy = BrowserCallPolicy()
+            var policy = BrowserCallPolicy(resumeCapture:vector["resumeCapture"]?.bool ?? false,callGeneration:vector["callGeneration"]?.string)
             var source = vector["source"]?.string ?? "browser", reason = vector["sourceReason"]?.string ?? "start"
             for step in vector["steps"]!.array! {
                 let page: BrowserCallLifecycle.Page? = step["pageState"]?.string.map { BrowserCallLifecycle.Page(rawValue:$0) } ?? .present
                 let observation = BrowserCallPolicy.Observation(page:page,rowPresent:step["rowPresent"]?.bool ?? true,sourceCount:step["sourceCount"]?.int,
                     sourceCountKnown:step["sourceCountKnown"]?.bool ?? (step["sourceCount"]?.int != nil),heard:step["heard"]?.bool ?? false,
-                    controlAlive:step["controlAlive"]?.bool ?? true,pcmLive:step["pcmLive"]?.bool ?? false)
+                    controlAlive:step["controlAlive"]?.bool ?? true,pcmLive:step["pcmLive"]?.bool ?? false,
+                    transportAlive:step["transportAlive"]?.bool ?? true,callGeneration:step["callGeneration"]?.string,
+                    controlConnection:String(step["controlConnection"]?.int ?? 0))
+                // resumeRefused changes nothing: no retry until a new controlConnection.
                 let at = step["atMs"]!.double!
-                let action = policy.step(now:at/1000,observation,source:source,reason:reason)
-                let actual: [String]
-                switch action {
-                case nil: actual = []
-                case .fallback?: actual = ["fallback"]; source = "system"; reason = "lost"
-                case .restore?: actual = ["restore"]; source = "browser"; reason = "restored"
-                case .callConnected?: actual = ["switch:browser:callConnected"]; source = "browser"; reason = "callConnected"
-                case .stop(let why)?: actual = ["stop:"+why.rawValue]
+                var actual: [String] = []
+                for action in policy.steps(now:at/1000,observation,source:source,reason:reason) {
+                    switch action {
+                    case .fallback: actual.append("fallback"); source = "system"; reason = "lost"
+                    case .restore: actual.append("restore"); source = "browser"; reason = "restored"
+                    case .callConnected: actual.append("switch:browser:callConnected"); source = "browser"; reason = "callConnected"
+                    case .askResume: actual.append("askResume")
+                    case .stop(let why): actual.append("stop:"+why.rawValue)
+                    }
                 }
                 XCTAssertEqual(actual,step["expect"]!.array!.compactMap(\.string),"\(name) at \(at)")
             }

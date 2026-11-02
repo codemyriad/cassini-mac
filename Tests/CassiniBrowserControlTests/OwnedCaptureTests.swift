@@ -226,8 +226,9 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         try system.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:1000)
         XCTAssertFalse(capture.snapshot.needsSystem)
         try mic.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:1000)
-        // Late browser packets cannot restore it or duplicate computer sound.
-        try capture.browserAudio(id:"remote",sequence:1,offsetMs:1000,pcm:Data(repeating:0x77,count:16000))
+        // Late browser packets cannot restore it or duplicate computer sound. The closed
+        // transport's sources are gone (D52.4): a resumed transport declares fresh spans.
+        XCTAssertThrowsError(try capture.browserAudio(id:"remote",sequence:1,offsetMs:1000,pcm:Data(repeating:0x77,count:16000)))
         XCTAssertThrowsError(try capture.browserTrack(id:"new",label:"New",kind:"remote",sampleRate:8000,channels:1))
         try mic.finish(problem:nil); try system.finish(problem:nil); try await capture.finish()
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)

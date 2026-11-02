@@ -81,7 +81,8 @@ public struct BrowserCallLifecycle: Sendable {
 /// browser PCM (never the native microphone) is evidence while control is absent.
 /// The caller supplies the committed others source; actions are requests only.
 public struct BrowserCallPolicy: Sendable {
-    public enum Action: Equatable, Sendable { case fallback, restore, callConnected, stop(BrowserCallLifecycle.StopReason) }
+    /// `askResume` (D52.5): send one resume-capture-v1 Start for this recording.
+    public enum Action: Equatable, Sendable { case fallback, restore, callConnected, askResume, stop(BrowserCallLifecycle.StopReason) }
     public struct Observation: Sendable {
         /// nil: no page report (unknown).
         public var page: BrowserCallLifecycle.Page?
@@ -92,55 +93,95 @@ public struct BrowserCallPolicy: Sendable {
         public var controlAlive = true
         /// Admitted browser PCM is flowing on the owned transport.
         public var pcmLive = false
+        /// D52.4: false once the recording's audio transport closed (EOF, error or the
+        /// PCM_STALE_AFTER watchdog). It is not missing-page evidence by itself.
+        public var transportAlive = true
+        /// D52.5: the row's call generation, and the control connection it arrived on
+        /// (it changes only with a new hello).
+        public var callGeneration: String?
+        public var controlConnection: String = ""
         public init(page: BrowserCallLifecycle.Page?, rowPresent: Bool = true, sourceCount: Int?, sourceCountKnown: Bool = true,
-                    heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false) {
+                    heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false, transportAlive: Bool = true,
+                    callGeneration: String? = nil, controlConnection: String = "") {
             self.page = page; self.rowPresent = rowPresent; self.sourceCount = sourceCount; self.sourceCountKnown = sourceCountKnown
-            self.heard = heard; self.controlAlive = controlAlive; self.pcmLive = pcmLive
+            self.heard = heard; self.controlAlive = controlAlive; self.pcmLive = pcmLive; self.transportAlive = transportAlive
+            self.callGeneration = callGeneration; self.controlConnection = controlConnection
         }
     }
     public static let othersGoneGrace: TimeInterval = 30
     public static let tabClosedGrace: TimeInterval = 2
     public static let browserReturnGrace: TimeInterval = 120
     public static let fallbackGrace: TimeInterval = 2
-    private var heard = false, stopped = false
+    /// D52.5: the peer negotiated resume-capture-v1, and the recording's call generation.
+    /// heard latches only on rows of that generation (any generation while it is nil).
+    public var resumeCapture: Bool
+    public var callGeneration: String?
+    private var heard: Bool, stopped = false
     private var ended: TimeInterval?, closed: TimeInterval?, missing: TimeInterval?
     private var previous: TimeInterval?
-    public init() {}
+    /// The control connection this loss's resume was asked on (nil: not asked yet).
+    private var askedOn: String?
+    public init(resumeCapture: Bool = false, callGeneration: String? = nil, heard: Bool = false) {
+        self.resumeCapture = resumeCapture; self.callGeneration = callGeneration; self.heard = heard
+    }
 
-    /// `source`/`reason`: the committed othersSource state. `others`: The others is on.
+    /// The first action of `steps`, for callers that never ask to resume.
     public mutating func step(now: TimeInterval, _ o: Observation, source: String?, reason: String?, others: Bool = true, restoreReady: Bool = true) -> Action? {
-        guard !stopped, now.isFinite, now >= 0, previous.map({ now >= $0 }) ?? true else { return nil }
+        steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady).first
+    }
+    /// `source`/`reason`: the committed othersSource state. `others`: The others is on.
+    /// A step can return a fallback and the resume ask together (D52.5).
+    public mutating func steps(now: TimeInterval, _ o: Observation, source: String?, reason: String?, others: Bool = true, restoreReady: Bool = true) -> [Action] {
+        guard !stopped, now.isFinite, now >= 0, previous.map({ now >= $0 }) ?? true else { return [] }
         previous = now
         let known = o.rowPresent && o.sourceCountKnown && o.sourceCount != nil
-        heard = heard || o.heard
+        // D52.5: another call's heard never arms this recording's restore, grace or resume ask.
+        heard = heard || (o.heard && (callGeneration == nil || callGeneration == o.callGeneration))
+        // A committed browser source ends any loss (and its ask) however it came back.
+        if source != "system" { askedOn = nil }
         if o.page == .closed, closed == nil { closed = now }
         if let closed {
-            guard now - closed >= Self.tabClosedGrace else { return nil }
-            stopped = true; return .stop(.tabClosed)
+            guard now - closed >= Self.tabClosedGrace else { return [] }
+            stopped = true; return [.stop(.tabClosed)]
         }
-        if !o.controlAlive && o.pcmLive { missing = nil; ended = nil; return nil }
-        if let missing, now - missing >= Self.browserReturnGrace { stopped = true; return .stop(.pageGone) }
+        if !o.controlAlive && o.pcmLive && o.transportAlive { missing = nil; ended = nil; return [] }
+        if let missing, now - missing >= Self.browserReturnGrace { stopped = true; return [.stop(.pageGone)] }
+        // D52.4 Q3: a closed audio transport falls back at once, whatever the page state
+        // or count. The rest of this step sees the fallback as committed.
+        var actions: [Action] = [], source = source, reason = reason
+        if !o.transportAlive, source != "system", others { actions = [.fallback]; source = "system"; reason = "lost"; askedOn = nil }
         if o.page == .present, o.controlAlive, known, (o.sourceCount ?? 0) > 0 {
+            // A visibly ongoing call stays on fallback without a pageGone deadline;
+            // restoring needs a live audio transport.
             missing = nil; ended = nil
-            guard source == "system", heard, others else { return nil }
-            // D49 takes over only the initial stand-in; restore only undoes a
-            // fallback. An explicit system choice is never switched (D52.3b).
-            switch reason {
-            case "missing": return .callConnected
-            case "lost": return restoreReady ? .restore : nil
-            default: return nil
+            if o.transportAlive, actions.isEmpty, source == "system", heard, others {
+                // D49 takes over only the initial stand-in; restore only undoes a
+                // fallback. An explicit system choice is never switched (D52.3b).
+                switch reason {
+                case "missing": askedOn = nil; return [.callConnected]
+                case "lost": if restoreReady { askedOn = nil; return [.restore] }; return []
+                default: return []
+                }
             }
+            // D52.5: ask once per loss and control connection; never on a timer or later tick.
+            if resumeCapture, !o.transportAlive, source == "system", reason == "lost", others,
+               o.callGeneration == callGeneration, heard, askedOn != o.controlConnection {
+                askedOn = o.controlConnection
+                return actions + [.askResume]
+            }
+            return actions
         }
         if o.page != .present || !o.controlAlive || missing != nil {
             ended = nil
             if missing == nil { missing = now }
-            return now - missing! >= Self.fallbackGrace && source != "system" && others ? .fallback : nil
+            if actions.isEmpty, now - missing! >= Self.fallbackGrace, source != "system", others { askedOn = nil; return [.fallback] }
+            return actions
         }
-        guard known else { ended = nil; return nil }
+        guard known else { ended = nil; return actions }
         if heard {
             if ended == nil { ended = now }
-            if now - ended! >= Self.othersGoneGrace { stopped = true; return .stop(.callEnded) }
+            if now - ended! >= Self.othersGoneGrace { stopped = true; return actions + [.stop(.callEnded)] }
         }
-        return nil
+        return actions
     }
 }

@@ -36,10 +36,29 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private let make: @Sendable (String,Bool) throws -> OwnedBrowserCapture
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
+    /// D52.4 PCM_STALE_AFTER, 45 s per D52.5: the extension's longest source retry (30 s)
+    /// plus its 10 s acknowledgement limit, with margin, and below the 60 s span cut.
+    public static let pcmStaleAfter = AudioTransportWatchdog.staleAfter
+    fileprivate let clock: @Sendable () -> UInt64
+    private var watchdog: DispatchSourceTimer?
     public init(make: @escaping @Sendable (String,Bool) throws -> OwnedBrowserCapture,
                 created: @escaping @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void,
-                stopNative: @escaping BrowserNativeStop) {
-        self.make = make; self.created = created; self.stopNative = stopNative
+                stopNative: @escaping BrowserNativeStop,
+                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 }) {
+        self.make = make; self.created = created; self.stopNative = stopNative; self.clock = clock
+        let timer = DispatchSource.makeTimerSource(queue:.global(qos:.utility))
+        timer.schedule(deadline:.now() + 1,repeating:1)
+        timer.setEventHandler { [weak self] in self?.closeStaleTransports() }
+        timer.resume(); watchdog = timer
+    }
+    deinit { watchdog?.cancel() }
+    /// Re-evaluated every second: closes each audio transport whose open, PCM-delivering
+    /// span has had no frame for PCM_STALE_AFTER. Closing takes the ordinary EOF path, so
+    /// the recording keeps running and falls back to computer sound (D52.4 Q3).
+    public func closeStaleTransports() {
+        let now = clock()
+        let stale = lock.withLock { peers.values.filter { $0.isStale(at:now) } }
+        for peer in stale { peer.closeStale() }
     }
     public var activeCaptures: [OwnedBrowserCapture] {
         lock.lock(); defer { lock.unlock() }; return Array(captures.values)
@@ -92,6 +111,18 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         lock.withLock { standIns[identity]?.expected = nil }
         return capture
     }
+    /// D52.4: once its audio transport closed, a browser recording is a resume target under
+    /// its own capture identity and origin (attachResumedBrowser admits only system/lost).
+    /// Its identity stays taken: a fresh Start reusing it is still refused.
+    fileprivate func transportLost(_ capture: OwnedBrowserCapture, captureID: String, timelineOriginMs: Int, peer: UUID) {
+        lock.withLock {
+            let id = capture.snapshot.manifest.id, identity = Data(captureID.utf8)
+            guard captures[id] === capture, identities[id] == identity, standIns[identity] == nil,
+                  (0...253402300799000).contains(timelineOriginMs) else { return }
+            standIns[identity] = .init(capture:id,origin:timelineOriginMs,expected:nil)
+            if reservations[identity] == peer { reservations.removeValue(forKey:identity) }
+        }
+    }
     /// A failed or ended resumed transport releases its claim; the stand-in keeps recording.
     fileprivate func releaseResume(captureID: String, peer: UUID) {
         lock.withLock { let identity = Data(captureID.utf8); if reservations[identity] == peer, standIns[identity] != nil { reservations.removeValue(forKey:identity) } }
@@ -101,7 +132,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         guard connection.peer.role == .audio else { connection.close(); return }
         lock.lock(); defer { lock.unlock() }
         guard peers.count < 100, peers[connection.peer.id] == nil else { connection.close(); return }
-        peers[connection.peer.id] = AudioPeer(connection:connection,broker:self)
+        peers[connection.peer.id] = AudioPeer(connection:connection,broker:self,clock:clock)
     }
     public func received(_ data: Data, from connection: BrowserPipeConnection) {
         lock.lock(); let peer = peers[connection.peer.id]; lock.unlock()
@@ -116,7 +147,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     fileprivate func begin(_ info: BrowserAudioStart, title: String, peer: UUID) throws -> OwnedBrowserCapture {
         let identity = Data(info.captureID.utf8)
         lock.lock()
-        guard !admissionClosed, reservations[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
+        guard !admissionClosed, reservations[identity] == nil, standIns[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
         reservations[identity] = peer; creating.enter(); lock.unlock()
         defer { creating.leave() }
         let capture: OwnedBrowserCapture
@@ -199,7 +230,16 @@ private final class AudioPeer: @unchecked Sendable {
     private var sourceOutcomes = false
     private var captureID: String?
     private var resumed = false
-    init(connection: BrowserPipeConnection, broker: BrowserAudioBroker) { self.connection = connection; self.broker = broker }
+    private var timelineOriginMs: Int?
+    /// PCM_STALE_AFTER for this transport (D52.5: every frame on it counts).
+    private let liveness = NSLock()
+    private let clock: @Sendable () -> UInt64
+    private var watchdog = AudioTransportWatchdog()
+    init(connection: BrowserPipeConnection, broker: BrowserAudioBroker, clock: @escaping @Sendable () -> UInt64) {
+        self.connection = connection; self.broker = broker; self.clock = clock
+    }
+    func isStale(at now: UInt64) -> Bool { liveness.withLock { watchdog.isStale(at:now) } }
+    func closeStale() { connection.close() }
     private func string(_ json: JSON, _ key: String, optional: Bool = false, code: String = "source") throws -> String? {
         guard let value = json[key], !value.isNull else {
             if optional { return nil }; throw BrowserProtocolError(code,"Missing source information.")
@@ -217,6 +257,16 @@ private final class AudioPeer: @unchecked Sendable {
             do { json = try JSONParser.parse(data) } catch { throw BrowserProtocolError("framing","Invalid JSON message.") }
             guard let kind = json["type"]?.string, json.object != nil else { throw BrowserProtocolError("framing","Expected a message object.") }
             packetType = kind
+            let frameID = json["id"]?.string ?? ""
+            let frame: AudioTransportWatchdog.Frame = switch kind {
+            case "track": .track(frameID)
+            case "audio": .audio(frameID)
+            case "trackEnd": .trackEnd(frameID)
+            case "stop": .stop
+            default: .other
+            }
+            // A frame at or after the PCM_STALE_AFTER deadline is too late: close instead.
+            guard liveness.withLock({ watchdog.receive(frame,at:clock()) }) else { closeStale(); return }
             guard ["start","resume","track","audio","stop"].contains(kind) || (sourceOutcomes && ["trackEnd","sources"].contains(kind)) else { throw BrowserProtocolError("version","Unknown browser message type.") }
             // Finalized by a browser Stop, or natively first (the app's own Stop). While saving,
             // a Stop still joins the save so its reply follows the durable metadata.
@@ -284,7 +334,7 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
                 let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id
+                owner = capture; captureID = id; timelineOriginMs = origin
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
                 if features.contains("source-outcomes-v1") {
                     capture.enableSourceOutcomes(); sourceOutcomes = true
@@ -400,6 +450,10 @@ private final class AudioPeer: @unchecked Sendable {
         guard !completed, let owner else { return }
         // A resumed transport's EOF keeps the native recording and its fallback (D33).
         try? owner.browserLost(atMs:lossTime)
+        // D52.4: the call may later resume this recording onto its system/lost fallback.
+        if !resumed, let captureID, let timelineOriginMs {
+            broker?.transportLost(owner,captureID:captureID,timelineOriginMs:timelineOriginMs,peer:connection.peer.id)
+        }
     }
 }
 /// A negotiated command refusal that leaves the capture and connection running.

@@ -56,12 +56,13 @@ final class NativeAudioClient: @unchecked Sendable {
 final class AudioFixture {
     let root: URL, ipc: URL, broker: BrowserAudioBroker, service: BrowserControlService
     var clients: [NativeAudioClient] = []
-    init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil) throws {
+    init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil,
+         clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 }) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniBrokerTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         ipc = root.appendingPathComponent("ipc")
         let library = root.appendingPathComponent("Library"), inputs = NativeFixtureInputs()
-        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) })
+        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock)
         service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)
         try service.start(root:ipc)
     }
