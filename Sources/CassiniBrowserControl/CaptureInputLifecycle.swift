@@ -137,6 +137,9 @@ private final class SourceChangeToken: @unchecked Sendable {
                 }
                 if refusedNow.sides[.me] != nil { me = before.me }
                 if refusedNow.sides[.others] != nil { others = before.others }
+                // A selection never ends with nothing: when a refusal would leave no side, the
+                // previous selection stands whole and only the refusal is recorded.
+                if !me && !others { me = before.me; others = before.others }
                 guard !self.closed else { throw BrowserIPCError.closed }
                 if !refusedNow.sides.isEmpty, prepared.isEmpty, me == before.me, others == before.others {
                     for (side,reason) in refusedNow.ordered { await self.refuse(side,reason,atMs:atMs) }
