@@ -68,7 +68,8 @@ enum CodemyriadNamespace {
     /// D55.1: the namePrefix is chosen once, on the first export, and saved into meeting.json,
     /// so later exports keep the same name. An existing one is never recomputed.
     static func persistNamePrefix(_ meeting: LibraryMeeting, dateTag: String?, now: Date, zone: TimeZone) throws {
-        guard !meeting.metadataReadOnly else { return }
+        // Metadata this app cannot validate is never rewritten; the export still goes ahead.
+        guard !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) else { return }
         let stored = (try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json"))).flatMap { try? JSONParser.parse($0) }
         if let kept = stored?["namePrefix"]?.string, LibraryNames.isPrefix(kept) { return }
         let raw = stored ?? (try? JSONParser.parse(JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id)))) ?? .object([])
@@ -106,6 +107,9 @@ enum CodemyriadNamespace {
                 for key in ["name","provenance","nameCleared"] {
                     if let value = mine[key], entry[key] != value, let next = try? entry.setting(key,to:value) { entry = next; edited = true }
                 }
+                // Saving a name removes an earlier clear (nameCleared goes only with unnamed).
+                if mine["nameCleared"] == nil, mine["name"]?.string != nil, entry["nameCleared"] != nil,
+                   let next = try? entry.setting("nameCleared",to:nil) { entry = next; edited = true }
                 speakers[index] = entry
             }
             if edited { set("speakers",.array(speakers)) }

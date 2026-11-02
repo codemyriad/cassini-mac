@@ -72,7 +72,8 @@ public enum MeetingFileExporter {
         struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
         let body = try encoder.encode(Body(language:language,items:items))
-        try CodemyriadNamespace.persistNamePrefix(meeting,dateTag:dateTag,now:Date(),zone:timeZone)
+        // D55.1: saving the chosen namePrefix never blocks the export itself.
+        try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:dateTag,now:Date(),zone:timeZone)
         let ours = try CodemyriadNamespace.make(meeting,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
         let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice,codemyriad:ours)
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:items.count,shouldCancel:shouldCancel)

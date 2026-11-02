@@ -110,7 +110,7 @@ struct R65CodemyriadNamespaceTests {
 
     /// Another writer's namespace (GNOME schema 1, or a future schema) in a real Cassini file,
     /// imported into a Mac Library.
-    private func foreignFile(_ root: URL, schema: Int) throws -> (namespace: JSON, meeting: LibraryMeeting) {
+    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false) throws -> (namespace: JSON, meeting: LibraryMeeting) {
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         // A real Cassini file first (the fixture is plain Opus), then the namespace in it.
         let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed"))
@@ -119,7 +119,7 @@ struct R65CodemyriadNamespaceTests {
         let manifest = try #require(CassiniReader.read(bytes).manifest?.raw)
         let foreign = try JSONParser.parse(Data("""
         {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":7,\
-        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1}],\
+        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}],\
         "transcript":{"status":"none","reference":null},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
         "passthrough":{"later":9007199254740993},"automaticTitle":"Weekly sync","tracks":[{"id":"t","spans":[{"file":"track.wav","sampleRate":48000,"frames":10,"startOffsetMs":12.5}],"futureTrackMember":true}],"unknownTop":[1,2]}
         """.utf8))
@@ -159,6 +159,30 @@ struct R65CodemyriadNamespaceTests {
         let restored = try result.setting("revision",to:foreign["revision"]).setting("meeting",to:result["meeting"]!
             .setting("title",to:.null).setting("titleSource",to:.string("meeting-window")).setting("speakers",to:foreign["meeting"]!["speakers"]))
         #expect(try restored.encoded() == foreign.encoded())
+    }
+    /// Naming on Mac a speaker another writer had cleared removes the clear (it goes only with unnamed).
+    @Test func namingAClearedSpeakerRemovesTheClear() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1,cleared:true)
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+            $0["speakers"] = [["id":"spk-1","name":"Dana","provenance":"user","colourIndex":1]]
+        }
+        let speaker = try #require(reexport(root)["meeting"]?["speakers"]?.array?[1])
+        #expect(speaker["name"]?.string == "Dana" && speaker["provenance"]?.string == "user" && speaker["nameCleared"] == nil)
+    }
+    /// Metadata this app cannot validate is never rewritten, and the namespace is still built.
+    @Test func invalidMetadataIsLeftAloneAndDoesNotBlockTheNamespace() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (session,_) = try recording(root)
+        let url = session.directory.appendingPathComponent("meeting.json")
+        var stored = try #require(try JSONSerialization.jsonObject(with:Data(contentsOf:url)) as? [String:Any])
+        stored["title"] = ""; stored["titleSource"] = "user"   // breaks the metadata rules
+        let bytes = try JSONSerialization.data(withJSONObject:stored); try bytes.write(to:url)
+        let meeting = try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(meeting.issues.contains(.invalidMetadata))
+        try CodemyriadNamespace.persistNamePrefix(meeting,dateTag:nil,now:Date(),zone:.current)
+        #expect(try Data(contentsOf:url) == bytes,"never rewritten")
+        #expect(try CodemyriadNamespace.make(meeting,dateTag:nil,originalTitle:nil,now:Date(),zone:.current) != nil)
     }
     /// A schema this app does not know stays unchanged even after an edit.
     @Test func aFutureSchemaIsNeverRewritten() throws {
