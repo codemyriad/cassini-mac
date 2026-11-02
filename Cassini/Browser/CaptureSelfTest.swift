@@ -489,9 +489,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.select(returningID,me:true,others:false)
             try await modern.page("navigating",active:false)
             try await wait { !returning.owner.snapshot.browserAlive }
-            try await modern.returnedSource(atMs:Int((loss+4.2-returning.originUptime)*1000))
+            // The return follows the second navigation's real stamp even on a slow runner, and
+            // the select below starts only after the positive inventory has arrived: a later
+            // count change would otherwise cancel its source change mid-authorization.
+            try await modern.returnedSource(atMs:Int((max(loss+4.2,ProcessInfo.processInfo.systemUptime)-returning.originUptime)*1000))
             try await modern.page("present",active:true)
-            try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }
+            try await wait {
+                let meeting = collection.peers.first { $0.id == returning.key?.peer }?.meetings.first
+                return meeting?.pageState == .present && meeting?.sourceCount == 1
+            }
             collection.pollLifetimeForTesting(at:loss+4.1)
             try require(!returning.owner.snapshot.others && !returning.owner.snapshot.usingSystem,"The others stays off after return")
             report["d33OthersOffStaysOff"] = true

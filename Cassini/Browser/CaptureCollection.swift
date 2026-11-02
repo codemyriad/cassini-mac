@@ -496,10 +496,14 @@ private final class CaptureFiles: @unchecked Sendable {
                 // A present/zero report can cancel the queued navigation-loss
                 // task before it reaches the owner. Commit the still-observed
                 // source loss before attempting fallback, even after present.
-                // Under D52 a present page with zero sources is a possible rejoin, not loss.
-                let lost = source.browserAlive && (observedPage != .present || (!multiStream && count == 0)) || navigation
-                if navigation { captures[id]?.lastNavigationAt = page?.1 }
+                // Under D52 a present page with zero sources is a possible rejoin, not loss,
+                // until the policy asks to fall back while the source is still alive.
                 let fallback = action == .fallback && !value.input.failedSides.contains(.others)
+                let lost = BrowserCallPolicy.commitsLoss(browserAlive:source.browserAlive,page:observedPage,count:count,multiStream:multiStream,
+                                                         navigation:navigation,fallback:fallback)
+                // That deferred loss began when the policy first saw the page missing.
+                let lossStamp = multiStream && !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1
+                if navigation { captures[id]?.lastNavigationAt = page?.1 }
                 let returned = multiStream ? action == .restore : observedPage == .present && (count ?? 0) > 0 && ready && source.others
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
@@ -511,7 +515,7 @@ private final class CaptureFiles: @unchecked Sendable {
                             #if DEBUG
                             if CaptureFixture.enabled { await CaptureFixture.beforeBrowserLoss?() }
                             #endif
-                            let lossAt = max(0,(page?.1 ?? now)-value.originUptime)*1000
+                            let lossAt = max(0,(lossStamp ?? now)-value.originUptime)*1000
                             try await value.input.observeBrowserLoss(atMs:lossAt,transportAlive:source.transportAlive,revision:revision)
                         }
                         if fallback { try await value.input.fallback(revision:revision) }

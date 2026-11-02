@@ -14,6 +14,24 @@ import CassiniRecording
         while !condition(), ProcessInfo.processInfo.systemUptime < deadline { try await Task.sleep(for:.milliseconds(25)) }
         if !condition() { throw NSError(domain:"BrowserReturnSelfTest",code:1,userInfo:[NSLocalizedDescriptionKey:message]) }
     }
+    /// The owner, policy inputs and call row at the failure, so an intermittent CI failure says
+    /// which gate held (no paths, URLs or device identities).
+    private static func diagnostics(_ collection: CaptureCollection) -> String {
+        guard let capture = collection.captures.values.first else { return "no capture\n" }
+        let source = capture.owner.snapshot
+        let meeting = collection.peers.flatMap(\.meetings).first { $0.key == capture.key }
+        let status = collection.peers.flatMap { $0.captures + $0.interrupted }.first { $0.key == capture.key }
+        let events = (source.manifest.events ?? []).suffix(12).map { "\($0.type)/\($0.source ?? "-")/\($0.reason ?? "-")@\(Int($0.atMs ?? -1))" }
+        let tracks = source.manifest.tracks.map { "\($0.kind):\($0.frames)\($0.ended == true ? ":ended" : "")" }
+        return "state: browserAlive=\(source.browserAlive) transportAlive=\(source.transportAlive) usingSystem=\(source.usingSystem) " +
+            "restoreReady=\(source.restoreReady) returnPCMAt=\(source.browserReturnPCMAt.map { String(Int($0)) } ?? "nil") others=\(source.others) " +
+            "fallbackReason=\(source.fallbackReason ?? "nil") lostUptime=\(source.browserLostUptime.map { String(format:"%.2f",$0) } ?? "nil") " +
+            "now=\(String(format:"%.2f",ProcessInfo.processInfo.systemUptime))\n" +
+            "row: page=\(meeting?.pageState?.rawValue ?? "nil")@\(meeting?.pageStateAt.map { String(format:"%.2f",$0) } ?? "nil") count=\(meeting.map { String($0.sourceCount) } ?? "nil") " +
+            "known=\(meeting.map { String($0.sourceCountKnown) } ?? "nil") heard=\(meeting.map { String($0.heard) } ?? "nil") " +
+            "status=\(status?.pageState?.rawValue ?? "nil")@\(status?.pageStateAt.map { String(format:"%.2f",$0) } ?? "nil")\n" +
+            "events: \(events.joined(separator:" "))\ntracks: \(tracks.joined(separator:" "))\n"
+    }
     static func run() async {
         guard CaptureFixture.enabled,
               ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
@@ -55,7 +73,7 @@ import CassiniRecording
             if let root = RecordingFixture.root { try? FileManager.default.removeItem(at:root.deletingLastPathComponent()) }
             exit(0)
         } catch {
-            try? FileHandle.standardError.write(contentsOf:Data(("Browser return proof failed: \(error)\n").utf8))
+            try? FileHandle.standardError.write(contentsOf:Data(("Browser return proof failed: \(error)\n" + diagnostics(collection)).utf8))
             CompanionSetup.shared.stop(); await collection.shutdown(); exit(1)
         }
     }

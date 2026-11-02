@@ -113,6 +113,18 @@ public struct BrowserCallPolicy: Sendable {
     private var previous: TimeInterval?, observedLoss: TimeInterval?
     public init() {}
 
+    /// When the current browser loss began (the producer's stamp when known), while one is pending.
+    public var missingSince: TimeInterval? { missing }
+    /// Whether a poll commits the browser source loss before any fallback. A legacy peer's
+    /// present page with zero sources is a loss. Under D52 it is a possible rejoin, but once the
+    /// policy asks to fall back while the source is still alive, the loss is committed first:
+    /// a navigation loss cancelled by the next page report would otherwise leave the fallback
+    /// a no-op (the system input starts only after a committed loss).
+    public static func commitsLoss(browserAlive: Bool, page: BrowserCallLifecycle.Page?, count: Int?, multiStream: Bool,
+                                   navigation: Bool, fallback: Bool) -> Bool {
+        navigation || browserAlive && (page != .present || (!multiStream && count == 0) || (multiStream && fallback))
+    }
+
     /// D52 M6: a capture belongs to the call it started in. Once the tab's row names another
     /// call generation, the session ends as callEnded instead of absorbing the new call.
     /// An unknown generation on either side is no evidence of a change.

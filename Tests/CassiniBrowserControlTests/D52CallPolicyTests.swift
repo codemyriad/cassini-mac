@@ -93,4 +93,26 @@ final class D52CallPolicyTests: XCTestCase {
         // Byte equality, like every other identity: canonically equal spellings are different calls.
         XCTAssertEqual(BrowserCallPolicy.endForCallChange(started:"caf\u{E9}",current:"cafe\u{301}"),.callEnded)
     }
+    /// Reload under multi-stream: the navigation loss task can be cancelled by the next
+    /// present/zero report before it commits. The policy still falls back two seconds after the
+    /// navigating stamp, and that fallback must commit the loss first, at that stamp; otherwise
+    /// the source stays alive and the fallback starts no computer sound (CI: "Navigation did
+    /// not start computer-sound fallback").
+    func testAFallbackAfterACancelledNavigationLossCommitsTheLoss() {
+        var policy = BrowserCallPolicy()
+        XCTAssertNil(policy.step(now:10,.init(page:.present,sourceCount:1,heard:true),source:"browser",reason:"start"))
+        XCTAssertNil(policy.step(now:20,.init(page:.navigating,sourceCount:nil,sourceCountKnown:false,pageObservedAt:19.9),source:"browser",reason:"start"))
+        // The new document is present with no sources yet; the queued loss never reached the owner.
+        let rejoining = BrowserCallPolicy.Observation(page:.present,sourceCount:0,pageObservedAt:20.1)
+        XCTAssertNil(policy.step(now:20.25,rejoining,source:"browser",reason:"start"))
+        XCTAssertFalse(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:true,navigation:false,fallback:false),
+                       "a present page with zero sources alone is a possible rejoin")
+        XCTAssertEqual(policy.step(now:21.9,rejoining,source:"browser",reason:"start"),.fallback)
+        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:true,navigation:false,fallback:true))
+        XCTAssertEqual(policy.missingSince,19.9,"the loss is committed at the navigating stamp")
+        // Once committed (browserAlive false) the fallback alone proceeds; a legacy peer keeps D33.
+        XCTAssertFalse(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.present,count:0,multiStream:true,navigation:false,fallback:true))
+        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:false,navigation:false,fallback:false))
+        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.navigating,count:nil,multiStream:true,navigation:true,fallback:false))
+    }
 }
