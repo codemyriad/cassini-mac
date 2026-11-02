@@ -84,7 +84,7 @@ public struct LibraryScanner: Sendable {
     private static func identityOrdered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
         a.id == b.id ? a.libraryKey < b.libraryKey : a.id.uuidString < b.id.uuidString
     }
-    private func json<Value: Decodable>(_ type: Value.Type, at url: URL, limit: Int = 1_048_576,
+    private func json<Value: Decodable>(_ type: Value.Type, at url: URL, limit: Int,
                                        seen: inout Set<URL>) throws -> Value {
         seen.insert(url)
         return try cache.read(url) { try decodeJSON(type, data: regularData($0, limit: limit)) }
@@ -97,7 +97,7 @@ public struct LibraryScanner: Sendable {
         do {
             let url = try safeFile("meeting.json", in: folder); seen.insert(url)
             if try pathInfo(url) != nil {
-                metadata = try cache.read(url) { try AppMetadata.parse(regularData($0, limit: 1_048_576)) }
+                metadata = try cache.read(url) { try AppMetadata.parse(regularData($0, limit: MeetingMetadataLimit.bytes)) }
                 try metadata?.validate(id: id, received: received)
             }
         } catch MetadataError.unsupportedVersion {

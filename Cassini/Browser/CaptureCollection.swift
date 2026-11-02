@@ -352,7 +352,7 @@ private final class CaptureFiles: @unchecked Sendable {
               snapshot.manifest.tracks.allSatisfy({ $0.frames == 0 }),
               let names = try? fm.contentsOfDirectory(atPath:folder.path),
               Set(names).isSubset(of:Set(["session.json","meeting.json"] + snapshot.manifest.tracks.map(\.file))),
-              let data = try? Data(contentsOf:folder.appendingPathComponent("meeting.json")), data.count <= 1_048_576,
+              let data = try? Data(contentsOf:folder.appendingPathComponent("meeting.json")), data.count <= MeetingMetadataLimit.bytes,
               let metadata = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
               (metadata["notes"] as? [Any])?.isEmpty == true, metadata["titleSource"] as? String == "meeting-window",
               snapshot.manifest.tracks.allSatisfy({ (try? fm.attributesOfItem(atPath:folder.appendingPathComponent($0.file).path)[.size] as? NSNumber)?.intValue == 44 }) else { return false }

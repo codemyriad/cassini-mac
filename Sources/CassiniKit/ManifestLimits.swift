@@ -7,3 +7,10 @@
 public enum SessionManifestLimit {
     public static let bytes = 16 << 20
 }
+
+/// The largest meeting.json any Cassini writer produces or reader accepts. D52.2
+/// mirrors every gap range into `recordingDetails.captureRecord`, so the record for
+/// the session worst case must fit beside the app's own metadata.
+public enum MeetingMetadataLimit {
+    public static let bytes = 16 << 20
+}

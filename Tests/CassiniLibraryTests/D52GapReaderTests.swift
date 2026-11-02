@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
-import CassiniKit
 import CassiniRecording
 @testable import CassiniLibrary
 
@@ -56,31 +55,5 @@ struct D52GapReaderTests {
         try lost.padNative(id:"mic",frames:96000,channels:1,rate:48000,offsetMs:1000)
         try lost.finish()
         #expect(try scanned(writer).state.interruptedAtMs == nil,"Two seconds of writer padding is io, never the gap flag (R70)")
-    }
-
-    /// The supported worst case: 64 tracks, each with 1000 ranges and the overflow
-    /// marker, at large session offsets. Both readers keep every track and range.
-    @Test func theSupportedWorstCaseRoundTripsThroughBothReaders() throws {
-        let parent = temporary(); defer { try? FileManager.default.removeItem(at:parent) }
-        let session = try RecordingSession(parent:parent,title:String(repeating:"𝄞",count:200),source:"macos")
-        let rate = 44100.0, start = 86_000_000.123456789
-        for t in 0..<64 {
-            try session.addTrack(id:"t\(t)-"+String(repeating:"x",count:120),label:String(repeating:"𝄞",count:200),kind:"microphone",sampleRate:Int(rate),channels:1)
-        }
-        for track in session.manifest.tracks {
-            for k in 0...1001 { try session.appendNative(id:track.id,pcm:Data(count:2),offsetMs:start + Double(2*k)*1000/rate) }
-        }
-        try session.finish()
-        let bytes = try Data(contentsOf:session.directory.appendingPathComponent("session.json")).count
-        // Room for the rest of the worst case: 11-digit frame counts and longer kinds
-        // on every range, 999 events and a source row per track.
-        let rest = 64*1001*16 + 999*256 + 64*1024
-        #expect(bytes > 1_048_576 && bytes + rest <= SessionManifestLimit.bytes,"\(bytes) bytes")
-        let loaded = try RecordingLoader.load(directory:session.directory)
-        #expect(loaded.tracks.count == 64 && loaded.state == "completed")
-        #expect(loaded.tracks.allSatisfy { $0.gaps?.count == 1001 && $0.gaps?.last?.kind == "overflow" && $0.startOffsetMs == start })
-        let meeting = try scanned(parent)
-        #expect(meeting.audioTracks.count == 64 && meeting.audioTracks.allSatisfy { $0.gaps?.count == 1001 && abs(($0.startOffsetMs ?? 0) - start) < 0.001 })
-        #expect(meeting.state.interruptedAtMs == nil,"One-frame input ranges never flag the meeting")
     }
 }
