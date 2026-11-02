@@ -32,13 +32,17 @@ public enum MeetingFileExporter {
               FileManager.default.createFile(atPath:artifact.url.path,contents:data,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.tooLarge }
         return artifact
     }
+    /// `timeZone`: the Library device's zone, used only when names.py must choose a
+    /// namePrefix from a capture start without a recorded offset or from the import time.
     public static func cassini(_ meeting: LibraryMeeting, assets: OpusAssets?,
                                temporaryRoot: URL = FileManager.default.temporaryDirectory,
+                               timeZone: TimeZone = .current,
                                shouldCancel: () -> Bool = { false }) throws -> ExportArtifact {
         guard meeting.state.lifecycle == .saved else { throw MeetingExportError.invalidSource }
         let artifact = try stage(in:temporaryRoot,filename:"meeting.opus")
         let directory = artifact.url.deletingLastPathComponent()
         let audio: Data, digest: AudioDigest, original: CassiniFile?, choice: AudioEncodeChoice?
+        var dateTag: String?, originalTitle: String?
         if meeting.state.origin == .received {
             guard meeting.audioFiles.count == 1, let url = meeting.audioFiles.first else { throw MeetingExportError.invalidSource }
             try regular(url)
@@ -47,6 +51,10 @@ public enum MeetingFileExporter {
             let file = try CassiniReader.read(audio)
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
+            if original != nil {
+                dateTag = file.tags?["DATE"]
+                originalTitle = [file.manifest?.meeting.title,file.tags?["TITLE"]].compactMap { $0 }.first { !$0.isEmpty }
+            }
         } else {
             let inputs = try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
             guard let assets else { throw MeetingExportError.invalidAssets }
@@ -64,7 +72,8 @@ public enum MeetingFileExporter {
         struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
         let body = try encoder.encode(Body(language:language,items:items))
-        let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice)
+        let ours = try CodemyriadNamespace.make(meeting,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
+        let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice,codemyriad:ours)
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:items.count,shouldCancel:shouldCancel)
         _ = try OpusStreamFile.rewrite(audio,tags:tags,to:artifact.url,shouldCancel:shouldCancel)
         let verified = try CassiniReader.read(contentsOf:artifact.url)
@@ -100,7 +109,7 @@ public enum MeetingFileExporter {
         if !pending.isEmpty { try emit([Float](repeating:0,count:960 - pending.count)) }
         try writer.finish(sampleCount:Int(frames))
     }
-    private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?) throws -> JSON {
+    private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?, codemyriad: JSON? = nil) throws -> JSON {
         guard let title = meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
@@ -128,10 +137,17 @@ public enum MeetingFileExporter {
         if meeting.state.origin == .own, meeting.audioTracks.contains(where:{ $0.frameCount != 0 && $0.startOffsetMs == nil }) {
             owned = try owned.setting("recovery",to:.object([("offsetsAssumedZero",.bool(true))]))
         }
-        let notes: JSON? = meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) })
+        // D13, Q13: meeting.json's own note objects in order, unknown members kept; absent means [].
+        let notes: JSON? = meeting.notes.isEmpty ? nil : CodemyriadNamespace.rawNotes(meeting)
+            ?? .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) })
         if notes != nil || owned.object != nil {
             owned = try owned.setting("notes",to:notes)
             extensions = try extensions.setting("gocassini.com",to:owned.object?.isEmpty == true ? nil : owned)
+        }
+        // R65 (D55): our own namespace. A file that already carries one (another app or
+        // schema) keeps it unchanged: Mac never downgrades or rewrites it.
+        if extensions[CodemyriadNamespace.key] == nil, let codemyriad {
+            extensions = try extensions.setting(CodemyriadNamespace.key,to:codemyriad)
         }
         if extensions.object?.isEmpty != true { root = try root.setting("x",to:extensions) }
         return root
