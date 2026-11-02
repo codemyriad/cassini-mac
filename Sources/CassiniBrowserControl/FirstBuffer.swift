@@ -49,8 +49,8 @@ final class FirstBufferWriter: RecordingSinkWriter {
     func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws {
         try base.appendNative(id:id,pcm:pcm,offsetMs:offsetMs,gapKind:gapKind); signal.fire()
     }
-    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double) throws {
-        try base.padNative(id:id,frames:frames,channels:channels,rate:rate,offsetMs:offsetMs)
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws {
+        try base.padNative(id:id,frames:frames,channels:channels,rate:rate,offsetMs:offsetMs,kind:kind)
     }
     func finish(problem: String?) throws { try base.finish(problem:problem) }
     func finish(problem: String?, kind: String?) throws { try base.finish(problem:problem,kind:kind) }
