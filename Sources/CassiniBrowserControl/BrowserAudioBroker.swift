@@ -173,9 +173,18 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     public func retryPendingRecords() async {
         // Copy the references under the lock; the pending state is read from each capture's
         // cached snapshot after releasing it, so a stalled disk never holds the broker lock.
-        let owned = lock.withLock { Array(captures.values) }
-        for capture in owned where capture.snapshot.recordPending { try? await finish(capture) }
+        let (owned,observe) = lock.withLock { (Array(captures.values),retryScanObserver) }
+        for capture in owned where capture.snapshot.recordPending {
+            // Test observation point: the pending state was read and the lock released;
+            // finalization has not been awaited yet.
+            observe?(capture)
+            try? await finish(capture)
+        }
     }
+    private var retryScanObserver: (@Sendable (OwnedBrowserCapture) -> Void)?
+    /// Tests only: called by `retryPendingRecords` after it read a capture's pending state
+    /// and released the broker lock, before it awaits that capture's finalization.
+    func observeRetryScan(_ observer: (@Sendable (OwnedBrowserCapture) -> Void)?) { lock.withLock { retryScanObserver = observer } }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
     @discardableResult public func finishAll(problem: String? = nil, reason: CaptureEndReason? = nil) async -> [OwnedCaptureSnapshot] {

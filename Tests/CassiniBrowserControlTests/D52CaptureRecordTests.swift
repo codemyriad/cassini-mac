@@ -91,7 +91,12 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
         let finishing = Task { try await broker.finish(owner,reason:.user) }
         await fulfillment(of:[persist.entered!],timeout:5)
         XCTAssertTrue(owner.snapshot.recordPending,"the cached snapshot says the record is pending")
+        // The scan has read the pending state and released the broker lock, while the record
+        // write is still stalled: only then are the control calls checked.
+        let scanned = expectation(description:"scan read pending and released the lock")
+        broker.observeRetryScan { capture in if capture === owner { scanned.fulfill() } }
         let scanning = Task { await broker.retryPendingRecords() }
+        await fulfillment(of:[scanned],timeout:5)
         let responsive = expectation(description:"broker control calls return")
         DispatchQueue.global().async {
             broker.expectResume(owner,callGeneration:nil)
