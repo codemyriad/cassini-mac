@@ -263,6 +263,17 @@ public struct LibraryScanner: Sendable {
                     rows.count <= 1001 && rows.allSatisfy({ $0.atMs.isFinite && $0.atMs >= 0 && !$0.kind.isEmpty }) ? rows.map { .init(atMs:$0.atMs,durationMs:$0.durationMs,frames:$0.frames,kind:$0.kind) } : nil
                 }
             }
+            /// D52.2 Q4: with ranges, only a range of at least 1 s that is not a selection
+            /// prefix, writer loss (R70, io) or the overflow marker flags the meeting.
+            /// Without ranges (missing, null or malformed), any counted gap still does.
+            var flagsGap: Bool {
+                guard let gaps else { return (gapFrames ?? 0) > 0 }
+                return gaps.contains { gap in
+                    guard !["prefix","writer","overflow"].contains(gap.kind) else { return false }
+                    if let frames = gap.frames, let rate = sampleRate, rate > 0 { return frames >= UInt64(rate) }
+                    return (gap.durationMs ?? 0) >= 1000
+                }
+            }
         }
         static func parse(_ data: Data) throws -> Self {
             let raw = try JSONParser.parse(data)
@@ -279,13 +290,13 @@ public struct LibraryScanner: Sendable {
         var result = Capture()
         do {
             let session = try safeFile("session.json", in: folder); seen.insert(session)
-            let manifest = try cache.read(session) { try Manifest.parse(regularData($0, limit: 1_048_576)) }
+            let manifest = try cache.read(session) { try Manifest.parse(regularData($0, limit: SessionManifestLimit.bytes)) }
             if manifest.version > 1 { result.issues.append(.unsupportedVersion) }
             guard manifest.version == 1, manifest.id == id, manifest.tracks.count <= 64,
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
             result.source = manifest.source; result.events = manifest.events; result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
             result.unfinalized = manifest.state == "recording"; result.finalized = manifest.state != "recording"
-            result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains { ($0.gapFrames ?? 0) > 0 }
+            result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains(where:\.flagsGap)
             var ends: [Int64] = []
             for track in manifest.tracks {
                 do {
