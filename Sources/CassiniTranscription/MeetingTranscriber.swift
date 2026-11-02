@@ -89,6 +89,8 @@ public enum MeetingTranscriber {
                 let kept: [Range<Int>]
                 /// D52.4 R71 activity inside `kept`, measured while planning.
                 let active: [Bool]; let activeSeconds: Double
+                /// D56/D57: under 32 non-zero native 32 ms frames: never decoded or recognized.
+                var silent = false
             }
             var tracks: [Track] = []
             let sources: [(URL, String, String, Double?, String?, Double?, [TrackPresence.Gap]?)]
@@ -121,6 +123,15 @@ public enum MeetingTranscriber {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
+                // D56/D57 (GNOME R76): each session.json track entry is judged on its own native
+                // samples. A silent one is left out of recognition and its fallback; it stays in
+                // the meeting and the mixdown, and captureOutcome is unchanged.
+                if !received, Self.isSilent(wav:url) {
+                    silentTracks.append(id)
+                    var track = Track(url: url, sampleCount: 0, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: [], id: id, kept: [], active: [], activeSeconds: 0)
+                    track.silent = true; tracks.append(track)
+                    continue
+                }
                 let audio = try SegmentedAudio(url: url, detector: detector)
                 var segments = audio.segments
                 var kept = audio.sampleCount > 0 ? [0..<audio.sampleCount] : []
@@ -149,7 +160,6 @@ public enum MeetingTranscriber {
                 // D56 (R75, gocassini's rule): a track with fewer than 32 non-zero 32 ms frames
                 // (under 1 s of sound) is left out of recognition and its fallback. It stays in
                 // the mixdown; captureOutcome is unchanged, since zeros are received audio.
-                if try Self.isSilent(audio) { silentTracks.append(id); segments = []; kept = [] }
                 // D52.4 R71: activity inside this track's present, owned time (never the mix).
                 var meter = RecognitionFallback.ActivityMeter(), cursor = 0
                 for range in kept {
@@ -249,6 +259,7 @@ public enum MeetingTranscriber {
                 for word in words { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
             }
             for (index, track) in tracks.enumerated() {
+                if track.silent { progress.finish(track:index); continue }
                 // D52 M15: one track's scratch at a time; the same deterministic decode as planning.
                 let audio = try SegmentedAudio(url: track.url)
                 guard audio.sampleCount == track.sampleCount else { throw TranscriptionFailure.audioFormat }
@@ -300,21 +311,46 @@ public enum MeetingTranscriber {
             try publish(status: "done")
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
     }
-    /// D56 (R75): a 32 ms frame (512 samples at 16 kHz) is non-zero if any sample is != 0,
-    /// DC included; a track is silent with fewer than 32 such frames. Stops at the 32nd.
-    static let silentFrame = 512, silentFrameLimit = 32
-    static func isSilent(_ audio: SegmentedAudio) throws -> Bool {
-        var found = 0, at = 0
-        while at < audio.sampleCount {
-            let end = min(audio.sampleCount,at + silentFrame * 469)  // SegmentedAudio reads at most 240512 samples at once
-            let block = try audio.samples(.init(startSample:at,endSample:end,reason:"silence"))
-            for start in stride(from:0,to:block.count,by:silentFrame) where block[start..<min(block.count,start + silentFrame)].contains(where:{ $0 != 0 }) {
-                found += 1
-                if found >= silentFrameLimit { return false }
+    /// D56/D57 (GNOME R76): a track is silent with fewer than 32 non-zero frames. Frames are
+    /// floor(rate × 32 / 1000) native samples, non-overlapping from the file's first sample, and a
+    /// trailing partial frame never counts; a frame is non-zero if any sample on any channel is
+    /// != 0 (DC counts). Reads the WAV directly and stops at the 32nd frame. A file this reader
+    /// does not understand is never called silent.
+    static let silentFrameLimit = 32
+    static func isSilent(wav url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom:url) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount:12), header.count == 12,
+              header.prefix(4) == Data("RIFF".utf8), header[8..<12] == Data("WAVE".utf8) else { return false }
+        func u32(_ d: Data, _ at: Int) -> Int { Int(d[d.startIndex+at]) | Int(d[d.startIndex+at+1]) << 8 | Int(d[d.startIndex+at+2]) << 16 | Int(d[d.startIndex+at+3]) << 24 }
+        func u16(_ d: Data, _ at: Int) -> Int { Int(d[d.startIndex+at]) | Int(d[d.startIndex+at+1]) << 8 }
+        var channels = 0, rate = 0, bits = 0, offset: UInt64 = 12
+        while let chunk = try? { try handle.seek(toOffset:offset); return try handle.read(upToCount:8) }(), chunk.count == 8 {
+            let size = u32(chunk,4), body = offset + 8
+            if chunk.prefix(4) == Data("fmt ".utf8) {
+                guard size >= 16, let fmt = try? handle.read(upToCount:16), fmt.count == 16, u16(fmt,0) == 1 || u16(fmt,0) == 0xFFFE else { return false }
+                channels = u16(fmt,2); rate = u32(fmt,4); bits = u16(fmt,14)
+            } else if chunk.prefix(4) == Data("data".utf8) {
+                guard channels > 0, rate > 0, bits == 16 else { return false }
+                let frameBytes = rate * 32 / 1000 * channels * 2
+                guard frameBytes > 0 else { return false }
+                var remaining = size / frameBytes, found = 0
+                while remaining > 0 {
+                    let count = min(remaining,256)
+                    guard let block = try? handle.read(upToCount:count * frameBytes), block.count == count * frameBytes else { return found < silentFrameLimit }
+                    let nonZero = block.withUnsafeBytes { raw -> Int in
+                        let samples = raw.bindMemory(to:Int16.self), per = frameBytes / 2
+                        return (0..<count).filter { f in samples[(f*per)..<((f+1)*per)].contains { $0 != 0 } }.count
+                    }
+                    found += nonZero
+                    if found >= silentFrameLimit { return false }
+                    remaining -= count
+                }
+                return true
             }
-            at = end
+            offset = body + UInt64(size) + UInt64(size & 1)
         }
-        return true
+        return false
     }
     private static func atomicTranscript(_ data: Data, directory: URL) throws {
         let temp = directory.appendingPathComponent(".transcript-" + UUID().uuidString + ".tmp")

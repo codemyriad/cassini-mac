@@ -10,29 +10,47 @@ import CassiniWhistle
 /// D56 (R75): a track with fewer than 32 non-zero 32 ms frames is left out of recognition,
 /// stays in the mixdown, and is listed in writingDown.silentTracks.
 final class D56SilentTracksTranscriptionMeetingTests: XCTestCase {
-    private func wave(_ url: URL, _ samples: [Int16]) throws {
+    private func wave(_ url: URL, _ samples: [Int16], rate: Int = 16000, channels: Int = 1) throws {
         var data = Data()
         func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
         func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
         data.append(contentsOf: Array("RIFF".utf8)); u32(UInt32(36 + samples.count*2)); data.append(contentsOf: Array("WAVEfmt ".utf8)); u32(16)
-        u16(1); u16(1); u32(16000); u32(32000); u16(2); u16(16)
+        u16(1); u16(UInt16(channels)); u32(UInt32(rate)); u32(UInt32(rate * channels * 2)); u16(UInt16(channels * 2)); u16(16)
         data.append(contentsOf: Array("data".utf8)); u32(UInt32(samples.count*2))
         for s in samples { u16(UInt16(bitPattern: s)) }
         try data.write(to: url)
     }
-    /// `frames` 32 ms frames each holding one non-zero sample, in 60 s of 16 kHz audio.
-    private func sparse(_ frames: Int) -> [Int16] {
-        var samples = [Int16](repeating: 0, count: 16000 * 60)
-        for f in 0..<frames { samples[f * 1024 + 7] = 1 }
+    /// `frames` native 32 ms frames each holding one non-zero sample, in `seconds` of audio.
+    private func sparse(_ frames: Int, rate: Int = 16000, seconds: Int = 60) -> [Int16] {
+        let frame = rate * 32 / 1000
+        var samples = [Int16](repeating: 0, count: rate * seconds)
+        for f in 0..<frames { samples[f * 2 * frame + 7] = 1 }
         return samples
     }
-    func testTheOneSecondNonZeroRule() throws {
+    /// D57 (GNOME R76): native, non-overlapping floor(rate × 32 / 1000)-sample frames from the
+    /// file's start, partial tail dropped, any channel != 0 (DC counts), fewer than 32 is silent.
+    func testGnomeSilentTrackGeometry() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D56Silent-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); defer { try? FileManager.default.removeItem(at: root) }
-        for (name, samples, silent) in [("zero", [Int16](repeating: 0, count: 16000 * 60), true), ("thirty-one", sparse(31), true),
-                                        ("thirty-two", sparse(32), false), ("dc", [Int16](repeating: 3, count: 16000 * 2), false)] {
-            let url = root.appendingPathComponent(name + ".wav"); try wave(url, samples)
-            XCTAssertEqual(try MeetingTranscriber.isSilent(SegmentedAudio(url: url)), silent, name)
+        // 32 frames of sound, but the last one only in the trailing partial frame.
+        var tail = sparse(31, seconds: 10); tail += [Int16](repeating: 0, count: 100); tail[tail.count - 3] = 9
+        // Stereo: the left channel is all zeros, the right channel has 32 frames of sound.
+        var stereo = [Int16](repeating: 0, count: 16000 * 10 * 2)
+        for f in 0..<32 { stereo[(f * 2 * 512 + 5) * 2 + 1] = 4 }
+        let cases: [(String, [Int16], Int, Int, Bool)] = [
+            ("zero", [Int16](repeating: 0, count: 16000 * 60), 16000, 1, true),
+            ("thirty-one", sparse(31), 16000, 1, true),
+            ("thirty-two", sparse(32), 16000, 1, false),
+            ("dc", [Int16](repeating: 3, count: 16000 * 2), 16000, 1, false),
+            ("partial-tail-never-counts", tail, 16000, 1, true),
+            ("any-channel", stereo, 16000, 2, false),
+            ("48k-frame-1536", sparse(32, rate: 48000, seconds: 5), 48000, 1, false),
+            ("48k-thirty-one", sparse(31, rate: 48000, seconds: 5), 48000, 1, true),
+            ("44k1-frame-1411", sparse(32, rate: 44100, seconds: 5), 44100, 1, false),
+        ]
+        for (name, samples, rate, channels, silent) in cases {
+            let url = root.appendingPathComponent(name + ".wav"); try wave(url, samples, rate: rate, channels: channels)
+            XCTAssertEqual(MeetingTranscriber.isSilent(wav: url), silent, name)
         }
     }
     private func runModel(_ samples: [Float]) -> WhistleTranscript {
