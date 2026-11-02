@@ -436,7 +436,15 @@ private final class CaptureFiles: @unchecked Sendable {
             broker.expectResume(owner,callGeneration:generation)
         }
     }
+    private var lastRecordRetry: TimeInterval = 0
     private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        // D52.1 R65: a capture whose portable record could not be written stays saving (and
+        // move-protected); retry it every 5 s until the broker saves it.
+        if now - lastRecordRetry >= 5 {
+            lastRecordRetry = now
+            let broker = broker
+            Task { await broker.retryPendingRecords() }
+        }
         for id in Array(captures.keys) {
             guard let value = captures[id] else { continue }
             offerStandIn(id,value)
