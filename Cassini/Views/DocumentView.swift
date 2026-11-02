@@ -142,20 +142,9 @@ struct NoTranscriptView: View {
     let session: SessionModel
 
     var body: some View {
+        // The published mac.legacy message is the headline (D50 follow-up); no English duplicate.
         ContentUnavailableView {
-            Label(headline, systemImage: icon)
-        } description: {
-            Text(session.transcriptProblem ?? "")
-        }
-    }
-
-    private var headline: String {
-        switch session.file?.state {
-        case .plainAudio?: return "No transcript in this file"
-        case .invalidCassiniMetadata?: return "Transcript unreadable"
-        case .unknownCassiniFormat?: return "Newer Cassini format"
-        case nil: return "Can’t read this file"
-        default: return "Transcript unavailable"
+            Label(session.transcriptProblem ?? UXText.text("mac.legacy.transcriptUnreadable"), systemImage: icon)
         }
     }
 

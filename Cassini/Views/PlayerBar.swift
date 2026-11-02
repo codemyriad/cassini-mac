@@ -105,8 +105,8 @@ struct PlayerBar: View {
         .disabled(player.playbackError != nil)
     }
 
+    /// format.playbackRate with the rate written for the region (D50.3), as on the meeting page.
     private var speedLabel: String {
-        let s = player.speed
-        return (s == s.rounded() ? String(Int(s)) : String(s)) + "×"
+        UXText.text("format.playbackRate",["rate":Double(player.speed).formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])
     }
 }
