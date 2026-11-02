@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import XCTest
 import Foundation
+import CassiniWhistle
 @testable import CassiniTranscription
 
 /// D52.4 R71 (M13): the literal cases of GNOME tests/test_recognition_fallback.py
@@ -50,6 +51,40 @@ final class RecognitionFallbackTests: XCTestCase {
         var clicks = (0..<(40*rate)).map { _ in Float(gaussian() * 0.001) }
         for start in stride(from:0,to:40*rate,by:1024) { for i in start..<start+80 { clicks[i] = 0.5 } }
         XCTAssertLessThan(meter(clicks).activeSeconds(),F.minActiveSeconds,"isolated clicks are not speech")
+    }
+    /// codex #108: silence is advanced without allocating it, exactly as feeding zeros.
+    func testFeedingSilenceMatchesFeedingZerosFromAnyTail() {
+        for lead in [0,1,300,511,512,700] {
+            for count in [0,1,211,511,512,513,5000] {
+                var zeros = F.ActivityMeter(), fast = F.ActivityMeter()
+                let before = speech(2).prefix(lead).map { $0 }, after = speech(4)
+                zeros.feed(before); fast.feed(before)
+                zeros.feed([Float](repeating:0,count:count)); fast.feedSilence(count)
+                zeros.feed(after); fast.feed(after)
+                XCTAssertEqual(fast.codes,zeros.codes,"lead \(lead), silence \(count)"); XCTAssertEqual(fast.samples,zeros.samples)
+            }
+        }
+    }
+    func testALongExcludedPrefixThenRetainedAudio() {
+        // Four hours is a whole number of frames, so the audio after it frames as on its own.
+        let hours = 4 * 3600 * rate, audio = speech(40)
+        XCTAssertEqual(hours % F.frame,0)
+        var m = F.ActivityMeter(); m.feedSilence(hours); m.feed(audio)
+        XCTAssertEqual(m.samples,hours + audio.count); XCTAssertEqual(m.codes.count,(hours + audio.count) / F.frame)
+        let alone = meter(audio)
+        XCTAssertEqual(m.thresholdDB().threshold,alone.thresholdDB().threshold,"Silent frames never set the floor")
+        XCTAssertEqual(m.active().suffix(alone.codes.count),alone.active()[...]); XCTAssertEqual(m.activeSeconds(),alone.activeSeconds())
+    }
+    /// codex #108 (G11): a word starting past its audio, or crossing its end, keeps its text with
+    /// both times clamped to that audio; it is never dropped.
+    func testWordsPastOrAcrossTheEndAreClampedNotDropped() throws {
+        typealias W = WhistleTranscript.Word
+        let words = [W(word:"inside",start:1,end:2,probability:1), W(word:"cross",start:14.95,end:15.5,probability:1),
+                     W(word:"past",start:15.1,end:15.2,probability:1), W(word:"far",start:40,end:41,probability:1)]
+        let out = try MeetingTranscriber.clamped(words,startMs:60000,lengthMs:15000)
+        XCTAssertEqual(out,[word("inside",61000,62000),word("cross",74950,75000),word("past",75000,75000),word("far",75000,75000)])
+        XCTAssertThrowsError(try MeetingTranscriber.clamped([W(word:"x",start:2,end:1,probability:1)],startMs:0,lengthMs:15000))
+        XCTAssertThrowsError(try MeetingTranscriber.clamped([W(word:"x",start:.nan,end:1,probability:1)],startMs:0,lengthMs:15000))
     }
     func testWindowBounds() {
         XCTAssertEqual(F.windowBounds(0),[]); XCTAssertEqual(F.windowBounds(100),[0..<100])

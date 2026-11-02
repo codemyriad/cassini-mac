@@ -33,14 +33,16 @@ final class D52FallbackTranscriptionMeetingTests: XCTestCase {
         }
         return .init(text:words.map(\.word).joined(separator:" "),language:"en",words:words)
     }
-    private func meeting(_ samples: [Float]) throws -> (URL,RecordingSession) {
+    /// `excludedSeconds` of writer padding first: absent from presence, so it is never kept.
+    private func meeting(_ samples: [Float], excludedSeconds: Int = 0) throws -> (URL,RecordingSession) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Fallback-"+UUID().uuidString)
         let session = try RecordingSession(parent:root,title:"Fallback",source:"chromium")
         try session.transition(starting:[.init(id:"one",label:"Guest",kind:"remote",sampleRate:rate,channels:1,sourceTrackId:"guest")])
+        if excludedSeconds > 0 { try session.padNative(id:"one",frames:UInt64(excludedSeconds*rate),channels:1,rate:Double(rate),offsetMs:0) }
         let pcm = samples.map { Int16(max(-1,min(1,$0)) * 32767) }
         for start in stride(from:0,to:pcm.count,by:80000) {
             let chunk = Array(pcm[start..<min(pcm.count,start+80000)])
-            try session.appendNative(id:"one",pcm:chunk.withUnsafeBytes { Data($0) },offsetMs:Double(start)/16)
+            try session.appendNative(id:"one",pcm:chunk.withUnsafeBytes { Data($0) },offsetMs:Double(excludedSeconds*1000) + Double(start)/16)
         }
         try session.finish()
         return (root,session)
@@ -75,6 +77,17 @@ final class D52FallbackTranscriptionMeetingTests: XCTestCase {
             XCTAssertEqual(starts,starts.sorted()); XCTAssertEqual(Set(starts).count,20)
             XCTAssertTrue(written.transcriptItems.allSatisfy { ($0.startMs / 1000) % 2 == 0 })
         }
+    }
+    /// codex #108: an excluded prefix is metered as silence without allocating it, and the
+    /// retained audio after it is written down exactly as without the prefix.
+    func testAnExcludedPrefixThenRetainedAudioMetersTheSame() throws {
+        let detector = try detector()
+        let (root,session) = try meeting(bursts(40),excludedSeconds:60); defer { try? FileManager.default.removeItem(at:root) }
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:runModel)
+        let track = try XCTUnwrap((try fallback(session)?["tracks"] as? [[String:Any]])?.first)
+        XCTAssertEqual(track["activeSeconds"] as? Double,16.64); XCTAssertEqual(track["fallbackWords"] as? Int,20)
+        let written = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertTrue(written.transcriptItems.allSatisfy { $0.startMs >= 60000 },"Nothing is written down over the excluded prefix")
     }
     func testAShortActiveTrackStreamsWithoutTheFallback() throws {
         let detector = try detector()

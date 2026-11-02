@@ -45,6 +45,17 @@ public enum MeetingTranscriber {
     }
     /// One worker owns a meeting lock through both segmentation and recognition.
     /// Capture-owned session/audio files are only opened for reading.
+    /// G11: one recognized range's word times, relative to its audio, clamped to that audio.
+    /// A word starting past the end, or crossing it, keeps its text and ends at the end; it is
+    /// never dropped. Non-finite, negative or reversed times are a recognizer failure.
+    static func clamped(_ words: [WhistleTranscript.Word], startMs: Int64, lengthMs: Int64) throws -> [RecognitionFallback.Word] {
+        try words.map { word in
+            guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }
+            let a = Int64((min(word.start,1e9) * 1000).rounded(.toNearestOrEven)), b = Int64((min(word.end,1e9) * 1000).rounded(.toNearestOrEven))
+            let from = min(a,lengthMs)
+            return .init(text:word.word,startMs:startMs + from,endMs:startMs + min(max(b,from),lengthMs))
+        }
+    }
     public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system) throws {
         try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,uiLanguage:uiLanguage,recognize:engine.transcribe)
     }
@@ -205,13 +216,7 @@ public enum MeetingTranscriber {
                 let result = try recognize(samples)
                 if ["auto","und",""].contains(language) { language = result.language }
                 let start = track.offset + Int64(segment.startSample * 1000 / 16000), length = Int64(samples.count) * 1000 / 16000
-                var out: [RecognitionFallback.Word] = []
-                for word in result.words ?? [] {
-                    guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }
-                    let a = Int64((word.start * 1000).rounded(.toNearestOrEven)), b = Int64((word.end * 1000).rounded(.toNearestOrEven))
-                    guard a <= length else { continue }
-                    out.append(.init(text:word.word,startMs:start + a,endMs:start + min(b,length)))
-                }
+                let out = try Self.clamped(result.words ?? [],startMs:start,lengthMs:length)
                 let speech = Double(samples.count) / 16000
                 processed += speech; remaining = max(0,remaining - speech); elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
                 return out
@@ -223,7 +228,7 @@ public enum MeetingTranscriber {
                 // D52.4 R71: activity inside this track's present, owned time (never the mix).
                 var meter = RecognitionFallback.ActivityMeter(), cursor = 0
                 for range in track.kept {
-                    if range.lowerBound > cursor { meter.feed([Float](repeating:0,count:range.lowerBound - cursor)) }
+                    if range.lowerBound > cursor { meter.feedSilence(range.lowerBound - cursor) }
                     var at = range.lowerBound
                     while at < range.upperBound {
                         let end = min(range.upperBound,at + 240000)

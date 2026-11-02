@@ -47,6 +47,20 @@ public enum RecognitionFallback {
                 codes.append(level <= 0 ? silent : UInt8(min(120,max(0,(120 + 20*log10(level)).rounded(.toNearestOrEven)))))
             }
         }
+        /// Exactly `feed` of `count` zeros, without allocating them: a gap or an unowned span
+        /// can last hours. Only the frame completing a partial tail is built (at most 511 zeros).
+        public mutating func feedSilence(_ count: Int) {
+            guard count > 0 else { return }
+            var left = count
+            if !tail.isEmpty {
+                let fill = min(left,frame - tail.count)
+                feed([Float](repeating:0,count:fill)); left -= fill
+                if left == 0 { return }
+            }
+            samples += left
+            codes.append(contentsOf:repeatElement(silent,count:left / frame))
+            tail = [Float](repeating:0,count:left % frame)
+        }
         /// max(-50 dBFS, floor + 12 dB); the floor is the 10th percentile of audible frames.
         public func thresholdDB() -> (floor: Double?, threshold: Double) {
             let levels = codes.filter { $0 != silent && Int($0) - 120 > -90 }.sorted()
