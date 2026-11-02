@@ -18504,6 +18504,180 @@
      "text": "Não é possível ler este ficheiro"
     }
    }
+  },
+  {
+   "id": "mac.legacy.followAlong",
+   "en": "Follow along",
+   "platforms": [
+    "mac"
+   ],
+   "role": "toggle",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer player bar: when on, the transcript scrolls with playback.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Segui la riproduzione"
+    },
+    "fr": {
+     "text": "Suivre la lecture"
+    },
+    "es": {
+     "text": "Seguir la reproducción"
+    },
+    "pt-BR": {
+     "text": "Acompanhar a reprodução"
+    },
+    "pt-PT": {
+     "text": "Acompanhar a reprodução"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.summary",
+   "en": "Summary",
+   "platforms": [
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer: heading or tab for the file's summary.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Riassunto"
+    },
+    "fr": {
+     "text": "Résumé"
+    },
+    "es": {
+     "text": "Resumen"
+    },
+    "pt-BR": {
+     "text": "Resumo"
+    },
+    "pt-PT": {
+     "text": "Resumo"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.jumpToCurrent",
+   "en": "Jump to current",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer: scrolls the transcript back to the words being played.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Vai al punto attuale"
+    },
+    "fr": {
+     "text": "Aller à la position actuelle"
+    },
+    "es": {
+     "text": "Ir a la posición actual"
+    },
+    "pt-BR": {
+     "text": "Ir para a posição atual"
+    },
+    "pt-PT": {
+     "text": "Ir para a posição atual"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.previousMatch",
+   "en": "Previous match",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer in-file search: icon-only button.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Risultato precedente"
+    },
+    "fr": {
+     "text": "Résultat précédent"
+    },
+    "es": {
+     "text": "Resultado anterior"
+    },
+    "pt-BR": {
+     "text": "Resultado anterior"
+    },
+    "pt-PT": {
+     "text": "Resultado anterior"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.nextMatch",
+   "en": "Next match",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer in-file search: icon-only button.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Risultato successivo"
+    },
+    "fr": {
+     "text": "Résultat suivant"
+    },
+    "es": {
+     "text": "Resultado siguiente"
+    },
+    "pt-BR": {
+     "text": "Próximo resultado"
+    },
+    "pt-PT": {
+     "text": "Resultado seguinte"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.toggleInfo",
+   "en": "Show or hide the file information",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer: icon-only button that toggles the Inspector.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Mostra o nascondi le informazioni sul file"
+    },
+    "fr": {
+     "text": "Afficher ou masquer les informations du fichier"
+    },
+    "es": {
+     "text": "Mostrar u ocultar la información del archivo"
+    },
+    "pt-BR": {
+     "text": "Mostrar ou ocultar as informações do arquivo"
+    },
+    "pt-PT": {
+     "text": "Mostrar ou ocultar as informações do ficheiro"
+    }
+   }
   }
  ]
 }
