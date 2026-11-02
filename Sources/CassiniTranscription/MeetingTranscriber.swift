@@ -116,6 +116,7 @@ public enum MeetingTranscriber {
             })
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
+            var silentTracks: [String] = []
             for (url, id, kind, offset, sourceTrackID, _, gaps) in sources {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
@@ -145,6 +146,10 @@ public enum MeetingTranscriber {
                         }
                     }
                 }
+                // D56 (R75, gocassini's rule): a track with fewer than 32 non-zero 32 ms frames
+                // (under 1 s of sound) is left out of recognition and its fallback. It stays in
+                // the mixdown; captureOutcome is unchanged, since zeros are received audio.
+                if try Self.isSilent(audio) { silentTracks.append(id); segments = []; kept = [] }
                 // D52.4 R71: activity inside this track's present, owned time (never the mix).
                 var meter = RecognitionFallback.ActivityMeter(), cursor = 0
                 for range in kept {
@@ -221,6 +226,8 @@ public enum MeetingTranscriber {
                             writing["recognitionFallback"] = ["method":"vadFreeWindows","windowMs":RecognitionFallback.window*1000/RecognitionFallback.rate,
                                 "overlapMs":RecognitionFallback.overlap*1000/RecognitionFallback.rate,"tracks":fallbackDecisions]
                         }
+                        // D56: the tracks this attempt left out as silent; replaced each attempt, omitted when empty.
+                        if silentTracks.isEmpty { writing.removeValue(forKey:"silentTracks") } else { writing["silentTracks"] = silentTracks }
                         details["writingDown"] = writing
                         metadata["recordingDetails"] = details
                     }
@@ -292,6 +299,22 @@ public enum MeetingTranscriber {
             }
             try publish(status: "done")
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
+    }
+    /// D56 (R75): a 32 ms frame (512 samples at 16 kHz) is non-zero if any sample is != 0,
+    /// DC included; a track is silent with fewer than 32 such frames. Stops at the 32nd.
+    static let silentFrame = 512, silentFrameLimit = 32
+    static func isSilent(_ audio: SegmentedAudio) throws -> Bool {
+        var found = 0, at = 0
+        while at < audio.sampleCount {
+            let end = min(audio.sampleCount,at + silentFrame * 469)  // SegmentedAudio reads at most 240512 samples at once
+            let block = try audio.samples(.init(startSample:at,endSample:end,reason:"silence"))
+            for start in stride(from:0,to:block.count,by:silentFrame) where block[start..<min(block.count,start + silentFrame)].contains(where:{ $0 != 0 }) {
+                found += 1
+                if found >= silentFrameLimit { return false }
+            }
+            at = end
+        }
+        return true
     }
     private static func atomicTranscript(_ data: Data, directory: URL) throws {
         let temp = directory.appendingPathComponent(".transcript-" + UUID().uuidString + ".tmp")
