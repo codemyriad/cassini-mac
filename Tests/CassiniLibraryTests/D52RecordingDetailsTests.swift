@@ -95,6 +95,30 @@ struct D52RecordingDetailsTests {
         #expect(recordEvents.values["reason"] == .catalog("details.end.callEnded"),"Without a session the record's events are used")
         let unknown = report(nil); #expect(unknown.ended.id == "details.unknown" && !unknown.endKnown)
     }
+    /// codex #105: a finite, nonnegative end time past the format bound used to trap
+    /// converting to Int64 when details opened. It now falls back to the stored end or unknown.
+    @Test func oversizedEndTimesFallBackInsteadOfTrapping() {
+        func ends(_ at: String) -> String { "[{\"atMs\":\(at),\"type\":\"end\",\"reason\":\"user\"}]" }
+        for at in ["1e20","9223372036854775808","9007199254740991","86460001"] {
+            let unknown = report(session([],events:ends(at)))
+            #expect(unknown.ended.id == "details.unknown" && !unknown.endKnown,"Session end at \(at): unknown")
+            let stored = report(session([],events:ends(at)),end:json("{\"reason\":\"disk\",\"atMs\":120000}")).ended
+            #expect(stored.values["reason"] == .catalog("details.end.disk") && stored.values["time"] == .position(120000),"Session end at \(at): the stored end")
+            let record = report(nil,record:json("{\"version\":1,\"sources\":[],\"events\":\(ends(at))}")).ended
+            #expect(record.id == "details.unknown","Record end at \(at): unknown")
+            let storedOnly = report(nil,end:json("{\"reason\":\"appQuit\",\"atMs\":\(at)}"))
+            #expect(storedOnly.ended.label == .catalog("details.end.appQuit") && storedOnly.ended.values["time"] == nil && storedOnly.endKnown,
+                    "Stored end at \(at): the reason without a time")
+        }
+        let bound = report(session([],events:ends("86460000"))).ended
+        #expect(bound.id == "details.end.at" && bound.values["time"] == .position(86_460_000),"The format bound itself is a valid end")
+    }
+    @Test func oversizedCounterSumsAreUnknown() {
+        let ids = (0..<10).map { "t\($0)" }
+        let tracks = "[" + ids.map { "{\"id\":\"\($0)\",\"sampleRate\":8000,\"gapFrames\":9007199254740991}" }.joined(separator:",") + "]"
+        let row = report(session([source(tracks:ids)],tracks:tracks)).sources[0]
+        #expect(row.gapLines.isEmpty,"A padding sum past the safe bound is unknown, not a trap")
+    }
     @Test func headerOverlapAndNativeEmptyState() {
         let live = report(json("{\"tracks\":[]}"),.recording)
         #expect(live.subtitle?.id == "details.liveSubtitle" && live.updates)

@@ -116,6 +116,8 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     static let kinds: Set<String> = ["microphone","system","application","local","remote","media","tab"]
     static let outcomes: Set<String> = ["captured","neverAudio","lowAudio","failed"]
     static let safe: Double = 9_007_199_254_740_991
+    /// The capture format bound for a time within a recording (24 h + 1 min).
+    static let endBound: Double = 86_460_000
     static func identity(_ value: JSON?) -> String? {
         guard let text = value?.string, !text.isEmpty, text.utf8.count <= 200 else { return nil }; return text
     }
@@ -184,7 +186,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             }
             total += frames * 1000 / Double(rate)
         }
-        return total
+        return total <= safe ? total : nil
     }
 
     // MARK: How it ended
@@ -195,12 +197,13 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         case .saving: return (.init("details.end.saving"),true)
         case .saved: break
         }
+        // An end time past the format bound is not a valid end: fall back to the stored end, then unknown.
         if let last = CaptureEvent.read(events).last, last.type == "end", let reason = last.reason, let at = last.atMs,
-           CaptureEndReason(rawValue:reason) != nil {
+           at.isFinite, (0...endBound).contains(at), CaptureEndReason(rawValue:reason) != nil {
             return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(Int64(at.rounded(.down)))]),true)
         }
         if let end = input.storedEnd, let reason = end["reason"]?.string, CaptureEndReason(rawValue:reason) != nil {
-            if case .number(let literal)? = end["atMs"], let at = Double(literal), at.rounded() == at, (0...safe).contains(at), !literal.contains(".") {
+            if case .number(let literal)? = end["atMs"], let at = Double(literal), at.rounded() == at, (0...endBound).contains(at), !literal.contains(".") {
                 return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(Int64(at))]),true)
             }
             return (.init(text:.catalog("details.end."+reason)),true)
