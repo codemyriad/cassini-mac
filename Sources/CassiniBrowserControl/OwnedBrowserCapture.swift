@@ -100,12 +100,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         // before its first buffer cannot take it (it is released if Me is turned off).
         if microphone { reservedNative.insert(.me) }
         browserAlive = browser; transportAlive = browser; self.managedBrowser = managedBrowser && browser
-        // D52.3b/D49: a Record with no call starts the others as a system-sound
-        // stand-in (system/missing), which a later call may take over once.
+        // D52.3b/D49: a Record with no call records the others as a system-sound
+        // stand-in (system/missing), which a later call may take over once. Like any
+        // source, it is published only when its first system PCM is admitted (D33):
+        // until then the others are none/start, never a claim of system audio.
         systemReason = browser ? "lost" : "missing"
         queue = DispatchQueue(label:"io.codemyriad.cassini.capture." + recording.manifest.id.uuidString)
         notifications = DispatchQueue(label:"io.codemyriad.cassini.capture-notify." + recording.manifest.id.uuidString)
-        try recording.transition(events:[browser ? .init(atMs:0,type:"othersSource",source:"browser",reason:"start") : .init(atMs:0,type:"othersSource",source:"system",reason:"missing"),
+        try recording.transition(events:[.init(atMs:0,type:"othersSource",source:browser ? "browser" : "none",reason:"start"),
             .init(atMs:0,type:"selection",reason:"start",me:microphone,others:true)])
         cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,transportAlive:browser,restoreReady:false,browserReturnPCMAt:nil,managedBrowser:managedBrowser && browser,fallbackRequested:false,fallbackReason:nil,browserLostUptime:nil,browserLevel:0,levelTimestamp:0)
         queue.setSpecific(key:key,value:1)

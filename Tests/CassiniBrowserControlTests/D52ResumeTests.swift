@@ -17,6 +17,11 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
     }
     private func standIn(_ fixture: AudioFixture, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void = { _ in }) throws -> (OwnedBrowserCapture,String) {
         let capture = try OwnedBrowserCapture(parent:fixture.root.appendingPathComponent("Library"),title:"Stand-in",microphone:true,browser:false,changed:changed)
+        // The stand-in exists once computer sound actually arrives (D33): its first buffer
+        // publishes system/missing.
+        let system = capture.nativeWriter(side:.others)
+        try system.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+        try system.appendNative(id:"output",pcm:Data(repeating:0,count:1600),offsetMs:0)
         try fixture.broker.ownNative(capture,timelineOriginMs:origin)
         let identity = try XCTUnwrap(fixture.broker.standInIdentity(capture))
         XCTAssertEqual(identity.timelineOriginMs,origin)
@@ -34,7 +39,7 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
     func testAcceptedResumeJoinsTheStandInAndCommitsCallConnected() async throws {
         try await run { fixture in
             let (capture,id) = try standIn(fixture)
-            XCTAssertEqual(capture.snapshot.manifest.events?.first { $0.type == "othersSource" }?.reason,"missing")
+            XCTAssertEqual(capture.snapshot.manifest.events?.last { $0.type == "othersSource" }?.reason,"missing")
             fixture.broker.expectResume(capture,callGeneration:"call-A")
             let client = try fixture.client()
             let started = try client.request(resume(id))
