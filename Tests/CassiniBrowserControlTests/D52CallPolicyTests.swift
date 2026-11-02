@@ -51,4 +51,46 @@ final class D52CallPolicyTests: XCTestCase {
         XCTAssertNil(chosen.step(now:0,present,source:"system",reason:"user"))
         XCTAssertNil(chosen.step(now:1,present,source:"system",reason:"start"))
     }
+    /// Producer stamps, not the poll's clock, start the closed, fallback and return deadlines.
+    func testProducerStampsDriveDeadlinesForADelayedPoll() {
+        var closed = BrowserCallPolicy()
+        XCTAssertEqual(closed.step(now:10,.init(page:.closed,sourceCount:1,pageObservedAt:7),source:"browser",reason:"start"),.stop(.tabClosed))
+        // A stamp from the future or a non-finite one falls back to the poll's clock.
+        var future = BrowserCallPolicy()
+        XCTAssertNil(future.step(now:10,.init(page:.closed,sourceCount:1,pageObservedAt:50),source:"browser",reason:"start"))
+        XCTAssertEqual(future.step(now:12,.init(page:.closed,sourceCount:1,pageObservedAt:50),source:"browser",reason:"start"),.stop(.tabClosed))
+        var navigating = BrowserCallPolicy()
+        XCTAssertEqual(navigating.step(now:10,.init(page:.navigating,sourceCount:nil,sourceCountKnown:false,pageObservedAt:7),
+                                       source:"browser",reason:"start"),.fallback)
+        // A page that returns after BROWSER_RETURN_GRACE, first seen late, is gone; it is not restored.
+        var late = BrowserCallPolicy()
+        let back = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true,lostAt:10)
+        XCTAssertEqual(late.step(now:131,back,source:"system",reason:"lost"),.stop(.pageGone))
+        var lostOnce = BrowserCallPolicy()
+        let missing = BrowserCallPolicy.Observation(page:nil,rowPresent:false,sourceCount:nil,controlAlive:false,lostAt:10)
+        XCTAssertEqual(lostOnce.step(now:12,missing,source:"browser",reason:"start"),.fallback)
+    }
+    /// A present page acknowledges each loss once: the retained stamp never restarts its deadline.
+    func testARetainedLossStampIsAcknowledgedOnce() {
+        var policy = BrowserCallPolicy()
+        let back = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true,lostAt:10)
+        XCTAssertEqual(policy.step(now:11,back,source:"system",reason:"lost",restoreReady:false),nil)
+        XCTAssertNil(policy.step(now:200,back,source:"system",reason:"lost",restoreReady:false))
+        XCTAssertEqual(policy.step(now:201,back,source:"system",reason:"lost"),.restore)
+        // A new loss starts its own deadline.
+        let again = BrowserCallPolicy.Observation(page:nil,rowPresent:false,sourceCount:nil,controlAlive:false,lostAt:300)
+        XCTAssertNil(policy.step(now:301,again,source:"browser",reason:"restored"))
+        XCTAssertEqual(policy.step(now:302,again,source:"browser",reason:"restored"),.fallback)
+        XCTAssertEqual(policy.step(now:420,again,source:"system",reason:"lost"),.stop(.pageGone))
+    }
+    /// D52 M6: a new call generation in the tab ends the session as callEnded.
+    func testACallGenerationChangeEndsTheSessionAsCallEnded() {
+        XCTAssertEqual(BrowserCallPolicy.endForCallChange(started:"call-A",current:"call-B"),.callEnded)
+        XCTAssertEqual(BrowserCallLifecycle.StopReason.callEnded.rawValue,"callEnded")
+        XCTAssertNil(BrowserCallPolicy.endForCallChange(started:"call-A",current:"call-A"))
+        XCTAssertNil(BrowserCallPolicy.endForCallChange(started:"call-A",current:nil))
+        XCTAssertNil(BrowserCallPolicy.endForCallChange(started:nil,current:"call-B"))
+        // Byte equality, like every other identity: canonically equal spellings are different calls.
+        XCTAssertEqual(BrowserCallPolicy.endForCallChange(started:"caf\u{E9}",current:"cafe\u{301}"),.callEnded)
+    }
 }

@@ -92,10 +92,16 @@ public struct BrowserCallPolicy: Sendable {
         public var controlAlive = true
         /// Admitted browser PCM is flowing on the owned transport.
         public var pcmLive = false
+        /// Producer stamps (uptime): when the page state was observed, and when the owner
+        /// lost the browser source. A delayed poll still honours their deadlines.
+        public var pageObservedAt: TimeInterval?
+        public var lostAt: TimeInterval?
         public init(page: BrowserCallLifecycle.Page?, rowPresent: Bool = true, sourceCount: Int?, sourceCountKnown: Bool = true,
-                    heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false) {
+                    heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false,
+                    pageObservedAt: TimeInterval? = nil, lostAt: TimeInterval? = nil) {
             self.page = page; self.rowPresent = rowPresent; self.sourceCount = sourceCount; self.sourceCountKnown = sourceCountKnown
             self.heard = heard; self.controlAlive = controlAlive; self.pcmLive = pcmLive
+            self.pageObservedAt = pageObservedAt; self.lostAt = lostAt
         }
     }
     public static let othersGoneGrace: TimeInterval = 30
@@ -104,8 +110,16 @@ public struct BrowserCallPolicy: Sendable {
     public static let fallbackGrace: TimeInterval = 2
     private var heard = false, stopped = false
     private var ended: TimeInterval?, closed: TimeInterval?, missing: TimeInterval?
-    private var previous: TimeInterval?
+    private var previous: TimeInterval?, observedLoss: TimeInterval?
     public init() {}
+
+    /// D52 M6: a capture belongs to the call it started in. Once the tab's row names another
+    /// call generation, the session ends as callEnded instead of absorbing the new call.
+    /// An unknown generation on either side is no evidence of a change.
+    public static func endForCallChange(started: String?, current: String?) -> BrowserCallLifecycle.StopReason? {
+        guard let started, let current, Data(started.utf8) != Data(current.utf8) else { return nil }
+        return .callEnded
+    }
 
     /// `source`/`reason`: the committed othersSource state. `others`: The others is on.
     public mutating func step(now: TimeInterval, _ o: Observation, source: String?, reason: String?, others: Bool = true, restoreReady: Bool = true) -> Action? {
@@ -113,12 +127,21 @@ public struct BrowserCallPolicy: Sendable {
         previous = now
         let known = o.rowPresent && o.sourceCountKnown && o.sourceCount != nil
         heard = heard || o.heard
-        if o.page == .closed, closed == nil { closed = now }
+        func stamp(_ value: TimeInterval?) -> TimeInterval? {
+            guard let value, value.isFinite, value >= 0, value <= now else { return nil }; return value
+        }
+        if o.page == .closed, closed == nil { closed = stamp(o.pageObservedAt) ?? now }
         if let closed {
             guard now - closed >= Self.tabClosedGrace else { return nil }
             stopped = true; return .stop(.tabClosed)
         }
+        // Each producer loss is seeded once, so a present page that acknowledged it
+        // cannot restart its deadline while the owner retains the stamp.
+        if let loss = stamp(o.lostAt), loss != observedLoss { observedLoss = loss; missing = min(missing ?? loss,loss) }
+        if missing == nil, o.page == .navigating, let at = stamp(o.pageObservedAt) { missing = at }
         if !o.controlAlive && o.pcmLive { missing = nil; ended = nil; return nil }
+        // This precedes positive-source recovery: a page that returns after the deadline,
+        // first seen by a delayed poll, stops as pageGone.
         if let missing, now - missing >= Self.browserReturnGrace { stopped = true; return .stop(.pageGone) }
         if o.page == .present, o.controlAlive, known, (o.sourceCount ?? 0) > 0 {
             missing = nil; ended = nil

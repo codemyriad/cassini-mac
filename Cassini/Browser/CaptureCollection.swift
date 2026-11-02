@@ -461,9 +461,10 @@ private final class CaptureFiles: @unchecked Sendable {
                 let multiStream = peer?.supportsMultiStream == true
                 // D52 M6: a capture belongs to the call it started in. When the tab's
                 // call generation moves on, this session ends instead of absorbing B.
-                if multiStream, let started = status?.callGeneration, let current = meeting?.callGeneration, started != current {
-                    value.owner.requestEnd(.callEnded,atMs:max(0,now-value.originUptime)*1000)
-                    stop(id,reason:.callEnded); continue
+                if multiStream, let ended = BrowserCallPolicy.endForCallChange(started:status?.callGeneration,current:meeting?.callGeneration),
+                   let reason = CaptureEndReason(rawValue:ended.rawValue) {
+                    value.owner.requestEnd(reason,atMs:max(0,now-value.originUptime)*1000)
+                    stop(id,reason:reason); continue
                 }
                 let action: BrowserCallLifecycle.Action?
                 if multiStream {
@@ -473,7 +474,7 @@ private final class CaptureFiles: @unchecked Sendable {
                     let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
                     let observation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
                         sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
-                        controlAlive:peer != nil,pcmLive:fresh)
+                        controlAlive:peer != nil,pcmLive:fresh,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
                     switch captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
                     case .fallback?: action = .fallback
                     case .restore?: action = .restore

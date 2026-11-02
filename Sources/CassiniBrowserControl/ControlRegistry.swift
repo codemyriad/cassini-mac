@@ -375,7 +375,7 @@ public struct BrowserControlRegistry: Sendable {
                 }
                 return meeting
             }
-            let previous = Dictionary(uniqueKeysWithValues:peer.meetings.map { ($0.key.tabID,$0.url) })
+            let previous = Dictionary(uniqueKeysWithValues:peer.meetings.map { ($0.key.tabID,($0.url,$0.callGeneration)) })
             let incomingTabs = Set(meetings.map { $0.key.tabID })
             for tab in previous.keys where !incomingTabs.contains(tab) { peer.absentSince[tab] = clock() }
             peer.absentSince = peer.absentSince.filter { clock()-$0.value < UserStoppedCalls.retention }
@@ -385,12 +385,17 @@ public struct BrowserControlRegistry: Sendable {
             }
             identifyLineage(&peer, tabs:incomingTabs)
             for meeting in meetings {
-                if let old = previous[meeting.key.tabID], Data(old.utf8) != Data(meeting.url.utf8) {
+                let old = previous[meeting.key.tabID]
+                // D52 M6: a new call generation in the same tab is a new call, even at the same URL.
+                let callChanged = old.flatMap { $0.1 }.map { was in meeting.callGeneration.map { Data($0.utf8) != Data(was.utf8) } ?? false } ?? false
+                if let old, Data(old.0.utf8) != Data(meeting.url.utf8) || callChanged {
                     peer.autoAttempted.remove(meeting.key.tabID)
                     peer.requestedStops.remove(meeting.key.tabID)
                 }
                 if let identity = call(meeting,peer:peer) {
                     if newestOwner(peer,tab:meeting.key.tabID) {
+                        // The user stopped the previous call, not this one.
+                        if callChanged { stoppedCalls.forget(identity) }
                         let fence = replacementFence(peer)
                         stoppedCalls.update(identity,absentSince:peer.absentSince[meeting.key.tabID],mayRemove:mayRemoveStops(peer),now:clock(),retiredBy:fence.map { _ in .init(connection:peer.peer.id,lineage:peer.lineage ?? peer.peer.id) },maximumReplacementOrder:fence ?? 0)
                     }
@@ -623,7 +628,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false,
                                 callGeneration: String? = nil, captureID: String? = nil) throws -> BrowserControlRequest {
-        guard (0...9007199254740991).contains(key.tabID) else { throw BrowserControlStateError.malformed }
+        guard (0...9007199254740991).contains(key.tabID), captureID.map(validIdentity) ?? true else { throw BrowserControlStateError.malformed }
         let id = UUID().uuidString.lowercased()
         var fields: [(String,JSON)] = [("type",.string("command")),("requestId",.string(id)),("action",.string(action.rawValue)),("tabId",.number(String(key.tabID)))]
         if independent { fields.append(("independent",.bool(true))) }
@@ -715,6 +720,11 @@ public struct BrowserControlRegistry: Sendable {
     private static func string(_ value: JSON?, maximum: Int) throws -> String {
         guard let string = value?.string, string.unicodeScalars.count <= maximum else { throw BrowserControlStateError.malformed }; return string
     }
+    /// A capture or source identity: 1 to 200 UTF-8 bytes, like CaptureLedger.validIdentity.
+    private static func identity(_ value: JSON?) throws -> String {
+        guard let text = value?.string, validIdentity(text) else { throw BrowserControlStateError.malformed }; return text
+    }
+    static func validIdentity(_ text: String) -> Bool { !text.isEmpty && text.utf8.count <= 200 }
     private static func optionalString(_ value: JSON?, maximum: Int) throws -> String? {
         guard let value, !value.isNull else { return nil }; return try string(value,maximum:maximum)
     }
@@ -740,8 +750,7 @@ public struct BrowserControlRegistry: Sendable {
         return try entries.compactMap { value -> BrowserCaptureStatus? in
             guard value["tabId"] != nil, value["path"] != nil, let recording = value["recording"]?.bool else { throw BrowserControlStateError.malformed }
             let stopping = try value["stopping"].map { item -> Bool in guard let flag = item.bool else { throw BrowserControlStateError.malformed }; return flag } ?? false
-            let capture = try optionalString(value["captureId"],maximum:200)
-            guard capture?.isEmpty != true else { throw BrowserControlStateError.malformed }
+            let capture = try value["captureId"].flatMap { $0.isNull ? nil : try identity($0) }
             _ = try string(value["message"],maximum:2000)
             let path = try optionalString(value["path"],maximum:4096)
             let tracks = try value["tracks"].map { try integer($0) } ?? 0
@@ -757,8 +766,8 @@ public struct BrowserControlRegistry: Sendable {
             status.callGeneration = try generation(value["callGeneration"])
             if let raw = value["failedSources"], !raw.isNull {
                 guard let list = raw.array, list.count <= 4096 else { throw BrowserControlStateError.malformed }
-                status.failedSources = try list.map { try string($0,maximum:200) }
-                guard Set(status.failedSources).count == status.failedSources.count, !status.failedSources.contains("") else { throw BrowserControlStateError.malformed }
+                status.failedSources = try list.map { try identity($0) }
+                guard Set(status.failedSources).count == status.failedSources.count else { throw BrowserControlStateError.malformed }
             }
             return status
         }
