@@ -81,4 +81,29 @@ final class D55PlacementTranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(written.transcriptItems.first?.startMs,Int64(local) * 1000 / 16000,"placed at 0")
         XCTAssertEqual(try writingDown(session)["offsetsAssumedZero"] as? Bool,true)
     }
+    /// D57: a silent track is not placed, so its unknown offset assumes nothing.
+    func testASilentTrackWithAnUnknownOffsetDoesNotFlag() throws {
+        let detector = try detector()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D57Silent-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Silent unknown",source:"chromium")
+        try session.transition(starting:[.init(id:"guest",label:"Guest",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"guest"),
+                                         .init(id:"quiet",label:"Quiet",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"quiet")])
+        let speech = try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens"))).dropFirst(44).prefix(160000)
+        for start in stride(from:0,to:speech.count,by:80000) {
+            try session.appendNative(id:"guest",pcm:Data(speech[speech.startIndex+start..<speech.startIndex+min(speech.count,start+80000)]),offsetMs:Double(start/2)/16)
+        }
+        try session.appendNative(id:"quiet",pcm:Data(count:64000),offsetMs:0)
+        try session.finish()
+        let url = session.directory.appendingPathComponent("session.json")
+        var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:url)) as? [String:Any])
+        var tracks = try XCTUnwrap(manifest["tracks"] as? [[String:Any]])
+        let quiet = try XCTUnwrap(tracks.firstIndex { $0["id"] as? String == "quiet" })
+        tracks[quiet].removeValue(forKey:"startOffsetMs"); manifest["tracks"] = tracks
+        try JSONSerialization.data(withJSONObject:manifest).write(to:url)
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:runModel)
+        let writing = try writingDown(session)
+        XCTAssertEqual(writing["silentTracks"] as? [String],["quiet"])
+        XCTAssertNil(writing["offsetsAssumedZero"],"a silent track is never placed")
+    }
 }
