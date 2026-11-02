@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import CassiniKit
+import CassiniLibrary
 import Observation
 import SwiftUI
 
@@ -60,7 +61,7 @@ final class SessionModel {
         readError = document.readError
         fileURL = url
         manifest = document.file?.manifest
-        let title = manifest?.meeting.title ?? url?.deletingPathExtension().lastPathComponent ?? "Recording"
+        let title = manifest?.meeting.title ?? url?.deletingPathExtension().lastPathComponent ?? UXText.text("library.untitled")
         if let url {
             player = PlayerController(url: url, durationMs: manifest?.meeting.durationMs ?? 0, title: title, fileAccessLease: fileAccessLease)
         } else {
@@ -75,14 +76,14 @@ final class SessionModel {
     // MARK: Derived display
 
     var title: String {
-        manifest?.meeting.title ?? fileURL?.deletingPathExtension().lastPathComponent ?? "Recording"
+        manifest?.meeting.title ?? fileURL?.deletingPathExtension().lastPathComponent ?? UXText.text("library.untitled")
     }
 
     var subtitle: String {
         var parts: [String] = []
         if let date = recordingDateText { parts.append(date) }
         if let m = manifest {
-            parts.append(m.speakers.count == 1 ? "1 speaker" : "\(m.speakers.count) speakers")
+            parts.append(UXText.text("mac.quicklook.speakerCount",["n":String(m.speakers.count)]))
         }
         if let d = player?.durationMs, d > 0 { parts.append(formatClock(d)) }
         return parts.joined(separator: " · ")
@@ -91,13 +92,12 @@ final class SessionModel {
     /// The recording date for display. `recordedAtLocal` is a label and is never shifted to a zone.
     var recordingDateText: String? {
         guard let m = manifest else { return nil }
+        // D50.3: date words in the UI language; the local label is never shifted to a zone.
         if let local = m.meeting.recordedAtLocal, let date = SessionModel.localLabelDate(local) {
-            var style = SessionModel.dateStyle
-            style.timeZone = TimeZone(identifier: "UTC")!
-            return date.formatted(style)
+            return LibraryFormat(timeZone:TimeZone(identifier:"UTC")!,locale:UXText.locale,language:UXText.language).absoluteDate(date)
         }
         if let date = SessionModel.parseRFC3339(m.meeting.createdAtUtc) {
-            return date.formatted(SessionModel.dateStyle)
+            return LibraryFormat(locale:UXText.locale,language:UXText.language).absoluteDate(date)
         }
         return nil
     }
@@ -136,7 +136,7 @@ final class SessionModel {
     }
 
     func label(for speakerId: String) -> String {
-        speakers.first { $0.id == speakerId }?.label ?? "Unknown speaker"
+        speakers.first { $0.id == speakerId }?.label ?? UXText.text("common.speaker.unnamed",["n":String(speakers.count + 1)])
     }
 
     // MARK: Transcript
@@ -148,21 +148,21 @@ final class SessionModel {
         lookupHint = [:]
         lastWords = [:]
         guard let file else {
-            transcriptProblem = readError.map { "This file could not be read: \($0)" } ?? "This file could not be read."
+            transcriptProblem = UXText.text("mac.legacy.unreadable")
             return
         }
         switch file.state {
         case .plainAudio:
-            transcriptProblem = "No transcript in this file."
+            transcriptProblem = UXText.text("mac.legacy.noTranscript")
             return
         case .unknownCassiniFormat, .invalidCassiniMetadata:
-            transcriptProblem = file.stateReason ?? "No transcript in this file."
+            transcriptProblem = UXText.text("mac.legacy.transcriptUnreadable")
             return
         default:
             break
         }
         guard let id = selectedTranscriptId, let entry = file.transcripts.first(where: { $0.entry.id == id }) else {
-            transcriptProblem = "No transcript in this file."
+            transcriptProblem = UXText.text("mac.legacy.noTranscript")
             return
         }
         switch entry.load {
@@ -170,11 +170,12 @@ final class SessionModel {
             var known = Set(speakers.map(\.id))
             for w in t.items where !known.contains(w.speaker) {
                 known.insert(w.speaker)
-                speakers.append(Speaker(id: w.speaker, label: "Unknown speaker"))
+                // D53.3: an unnamed speaker written in the UI language.
+                speakers.append(Speaker(id: w.speaker, label: UXText.text("common.speaker.unnamed",["n":String(speakers.count + 1)])))
             }
             timeline = Timeline(t.items)
         case .unavailable(let f):
-            transcriptProblem = "The transcript could not be loaded: \(f.message)."
+            transcriptProblem = UXText.text("mac.legacy.transcriptUnreadable")
         }
     }
 
