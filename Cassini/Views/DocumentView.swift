@@ -128,10 +128,12 @@ struct SearchStatusBar: View {
 
     private var matchText: String {
         let q = session.searchText.trimmingCharacters(in: .whitespaces)
+        // D55.1: numbers follow the region (D50.3), words the UI language.
         switch session.matchCount {
-        case 0: return "No matches for “\(q)”"
-        case 1: return "1 match for “\(q)”"
-        default: return "\(session.matchIndex) of \(session.matchCount) matches for “\(q)”"
+        case 0: return UXText.text("mac.legacy.match.none",["query":q])
+        case 1: return UXText.text("mac.legacy.match.one",["query":q])
+        default: return UXText.text("mac.legacy.match.position",["query":q,
+            "index":session.matchIndex.formatted(.number.locale(UXText.locale)),"count":session.matchCount.formatted(.number.locale(UXText.locale))])
         }
     }
 }
