@@ -3,7 +3,8 @@
 `scripts/release.py` builds a universal Release app, signs it during the build,
 verifies every executable, notarizes/staples the app, creates an APFS/LZFSE DMG
 with an Applications link, signs/notarizes/staples the DMG, and writes its signed
-Sparkle appcast and SHA256SUMS. It does not publish, launch, install or update apps.
+Sparkle appcast and SHA256SUMS. It does not publish, launch, install or update apps;
+`scripts/publish-release.py` publishes a finished release (below).
 The default feed is `https://cassini.talk/download/mac/appcast.xml` (D34.1).
 Updates stay disabled in normal/CI builds; the signed release build enables them.
 Sparkle's standard UI owns update permissions/preferences.
@@ -55,26 +56,38 @@ Both DMGs are checked against the public Ed25519 key. Required
 `Cassini talk.app` before notarization; developer build paths keep `Cassini.app`.
 No versioned artifact or existing staging directory is overwritten.
 
-**Nothing uploads.** Upload access is still pending; private notarization metadata
-and the signing identity are available only on the authorized release Mac.
-Once notarization and clean-VM QA have passed and access is supplied, publish in
-this order:
+**Publishing (D34.1).** `scripts/publish-release.py` runs `publication.json` with rclone
+into the Mac-owned prefix `download/mac/` of the cassini.talk bucket, and nothing else:
+it only runs `rclone copyto` to keys under that prefix, never `sync`, delete or move, and
+never touches the site's `index.html` or `404.html`. Credentials stay in
+`~/.config/cassini-talk/r2.env` (see the coordination repo's CASSINI-TALK-PUBLISHING.md);
+the script sources them inside `sh -c` and never prints them.
 
-1. Upload `Cassini-talk-<version>.dmg` to `/download/mac/`; never overwrite it.
-2. Verify the actual HTTPS download before changing the latest copy or feed:
+A dry run is the default and changes nothing:
 
-   ```sh
-   python3 scripts/verify-release-download.py build/release-2
-   ```
+```sh
+python3 scripts/publish-release.py build/release-2
+```
 
-   This makes a read-only HTTPS GET, checks the complete length and SHA-256,
-   and verifies Ed25519 with the public app key. It rejects HTTP downgrades,
-   truncated/extra/changed bytes and invalid signatures. It uses no signing
-   secret or keychain, and launches no app.
-3. Upload `Cassini-talk.dmg` as a copy of that same verified DMG.
-4. If supplied, upload `notes/<version>.html` before the feed references it.
-5. Upload `appcast.xml` **last**. Do not offer an update until its immutable
-   download has passed step2. Stop on any failed step; the scripts have no uploader.
+An upload is public at once. Run it only after notarization and clean-VM QA have passed
+on this exact DMG and the coordinator has confirmed the release:
+
+```sh
+python3 scripts/publish-release.py build/release-2 --publish 0.1.0 --clean-vm-qa-passed
+```
+
+It checks every file against `SHA256SUMS` and the release's base URL, then:
+
+1. Uploads `Cassini-talk-<version>.dmg` with `--immutable`: an existing versioned file is
+   never replaced.
+2. Verifies the actual HTTPS download (`verify-release-download.py`: complete length,
+   SHA-256 and Ed25519 with the public app key) before changing the latest copy or feed.
+3. Uploads `Cassini-talk.dmg`, a copy of that same verified DMG.
+4. Uploads `notes/<version>.html` (immutable) before the feed references it.
+5. Uploads `appcast.xml` **last**.
+
+It stops at the first failed step. The CDN can serve the previous latest copy or appcast
+for up to 5 minutes.
 
 Run `python3 scripts/fetch-sparkle.py` and `python3 scripts/test-release.py` for
 pure-file/XML/privacy and real upstream sign/verify/tamper checks. The tools and
@@ -87,6 +100,6 @@ check the actual quarantined DMG in a disposable VM: `spctl -a -vvv`,
 `xcrun stapler validate`, first launch (standard download prompt only), native
 messaging from `/Applications`, and an N→N+1 Sparkle update including active
 recording/quit safety. D39 bundled-companion setup replaces the old store-listing
-release hold. The public site upload and user README are coordinator-owned.
+release hold. The site pages outside `download/mac/` and the user README are coordinator-owned.
 
 Versioned release-note sources are in `Distribution/release-notes/`. Pass the file matching the version being built. They describe that release’s changes and include local styling for both Sparkle and a browser; the exact final HTML is signed separately before the appcast is signed.
