@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
+import CassiniKit
 
 /// Reads cross-platform manifests and salvages ordinary PCM WAVs without modifying files.
 public enum RecordingLoader {
     public static func decode(_ data: Data) throws -> RecordingManifest {
-        guard data.count <= 1_048_576 else { throw RecordingError.invalid("Recording metadata is too large.") }
+        guard data.count <= SessionManifestLimit.bytes else { throw RecordingError.invalid("Recording metadata is too large.") }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let value = try decoder.singleValueContainer().decode(String.self)
@@ -22,9 +23,9 @@ public enum RecordingLoader {
     public static func load(directory: URL) throws -> RecordingManifest {
         var result: RecordingManifest
         do {
-            let input = try regular(directory.appendingPathComponent("session.json"),maximum:1_048_576)
+            let input = try regular(directory.appendingPathComponent("session.json"),maximum:UInt64(SessionManifestLimit.bytes))
             defer { try? input.close() }
-            result = try decode(input.read(upToCount:1_048_577) ?? Data())
+            result = try decode(input.read(upToCount:SessionManifestLimit.bytes + 1) ?? Data())
             guard result.version == 1, result.tracks.count <= 64 else { throw RecordingError.invalid("Unsupported recording format.") }
             if directory.lastPathComponent.hasPrefix("Recording-"), let id = UUID(uuidString:String(directory.lastPathComponent.dropFirst(10))), id != result.id {
                 throw RecordingError.invalid("Recording identity differs from its folder.")

@@ -80,9 +80,9 @@ public struct RecordingDetailsReport: Equatable, Sendable {
                       let data = try? handle.read(upToCount:limit + 1), data.count <= limit else { return nil }
                 return try? JSONParser.parse(data)
             }
-            let meeting = read("meeting.json",limit:1_048_576)
+            let meeting = read("meeting.json",limit:MeetingMetadataLimit.bytes)
             let details = meeting?["recordingDetails"]
-            return .init(lifecycle:lifecycle,title:title,session:read("session.json",limit:8_388_608),captureRecord:details?["captureRecord"],
+            return .init(lifecycle:lifecycle,title:title,session:read("session.json",limit:SessionManifestLimit.bytes),captureRecord:details?["captureRecord"],
                          storedEnd:details?["end"],sourceSpansSeparated:details?["writingDown"]?["sourceSpansSeparated"]?.bool == true,transcriptDone:transcriptDone)
         }
     }

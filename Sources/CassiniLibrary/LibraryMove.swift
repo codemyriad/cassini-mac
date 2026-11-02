@@ -108,8 +108,8 @@ public enum LibraryMove {
             guard name.hasPrefix("Recording-") else { continue }
             do {
                 let (fd,key) = try openRegular(root.appendingPathComponent(name + "/session.json")); defer { close(fd) }
-                guard key.size <= 1_048_576 else { throw POSIXError(.EINVAL) }
-                let bytes = try regularData(fd,limit:1_048_576)
+                guard key.size <= SessionManifestLimit.bytes else { throw POSIXError(.EINVAL) }
+                let bytes = try regularData(fd,limit:SessionManifestLimit.bytes)
                 let value = try JSONParser.parse(bytes)
                 if !["completed","interrupted"].contains(value["state"]?.string ?? "") { result.insert(name) }
             } catch { result.insert(name) }

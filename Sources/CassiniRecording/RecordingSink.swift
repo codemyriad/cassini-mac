@@ -6,6 +6,11 @@ import Foundation
 public protocol RecordingSinkWriter: AnyObject {
     func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws
+    /// D52.2: the kind of any padding before this chunk (`input` or `writer`).
+    func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws
+    /// D52.2/D52.4 R70: pad `frames` in place from `offsetMs`, never as received audio:
+    /// `writer` over the sink's own lost frames, `input` over a host-time gap.
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws
     func finish(problem: String?) throws
     func finish(problem: String?, kind: String?) throws
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64)
@@ -15,6 +20,16 @@ public protocol RecordingSinkWriter: AnyObject {
 extension RecordingSinkWriter {
     public func finish(problem: String?, kind: String?) throws { try finish(problem: problem) }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {}
+    public func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws { try appendNative(id:id,pcm:pcm,offsetMs:offsetMs) }
+    /// Writers without range support keep the earlier in-place zeros.
+    public func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws {
+        var frame: UInt64 = 0
+        while frame < frames {
+            let count = min(UInt64(8192),frames-frame)
+            try appendNative(id:id,pcm:Data(repeating:0,count:Int(count)*channels*2),offsetMs:offsetMs + Double(frame)/rate*1000)
+            frame += count
+        }
+    }
 }
 
 extension RecordingSession: RecordingSinkWriter {
@@ -99,6 +114,14 @@ public final class RecordingSink: @unchecked Sendable {
     private var levels: [String: Float] = [:]
     private var sourceFrames: [String: UInt64] = [:]
     private var sources: [String: Source] = [:]
+    /// Unwritten timeline since each source's last admitted write, in order: a host-time
+    /// gap is `input`, a dropped buffer is `writer`. Each is padded with its own kind.
+    private struct Hole { let kind: String; var frames: UInt64 }
+    private var holes: [String: [Hole]] = [:]
+    private func hole(_ id: String, _ kind: String, _ frames: UInt64) {
+        if holes[id]?.last?.kind == kind { holes[id]![holes[id]!.count - 1].frames += frames }
+        else { holes[id, default: []].append(.init(kind:kind,frames:frames)) }
+    }
     private var warnings: Set<String> = []
     private let writer: any RecordingSinkWriter
     private let origin: UInt64
@@ -146,6 +169,7 @@ public final class RecordingSink: @unchecked Sendable {
             if gap > 0 {
                 source.timeline.insertGap(frames: gap)
                 source.gapFrames += gap
+                hole(id,"input",gap)
                 source.meter = .init(); source.lastCompletePeak = nil; levels.removeValue(forKey:id)
                 warnings.insert("\(label): a host-time gap was preserved as counted silence.")
             }
@@ -159,11 +183,16 @@ public final class RecordingSink: @unchecked Sendable {
         sourceFrames[id] = source.timeline.frames
         guard source.pendingFrames + frames <= UInt64(rate * capacitySeconds) else {
             source.droppedFrames += frames
+            hole(id,"writer",frames)
             sources[id] = source
             lock.unlock()
             return
         }
         source.pendingFrames += frames
+        // Before a track exists its start is this chunk, so earlier holes are not padding.
+        let pending = source.registered ? holes.removeValue(forKey:id) ?? [] : []
+        if !source.registered { holes.removeValue(forKey:id) }
+        let holeStart = source.submittedEnd, timelineStart = source.timeline.startOffsetMs
         source.submittedEnd = source.timeline.frames
         let register = !source.registered
         source.registered = true
@@ -192,7 +221,12 @@ public final class RecordingSink: @unchecked Sendable {
                 if register {
                     try writer.addTrack(id: id, label: label, kind: kind, sampleRate: Int(rate), channels: outputChannels)
                 }
-                try writer.appendNative(id: id, pcm: pcm, offsetMs: offset)
+                var frame = holeStart
+                for hole in pending {
+                    try writer.padNative(id:id,frames:hole.frames,channels:outputChannels,rate:rate,offsetMs:timelineStart + Double(frame)/rate*1000,kind:hole.kind)
+                    frame += hole.frames
+                }
+                try writer.appendNative(id: id, pcm: pcm, offsetMs: offset, gapKind: "input")
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()
@@ -204,10 +238,11 @@ public final class RecordingSink: @unchecked Sendable {
     /// Pause a live source without finalizing its file. A rejected source
     /// transaction can restart its driver on this same sample timeline.
     public func pause() throws {
-        lock.lock(); accepting = false; let snapshot = sources; lock.unlock()
-        try queue.sync { try padTail(snapshot) }
+        lock.lock(); accepting = false; let snapshot = sources, tail = holes; lock.unlock()
+        try queue.sync { try padTail(snapshot,tail) }
         lock.lock()
-        for (id,value) in snapshot { sources[id]?.submittedEnd = value.timeline.frames }
+        // The padded tail is written: a later write must not pad or label it again.
+        for (id,value) in snapshot { sources[id]?.submittedEnd = value.timeline.frames; holes.removeValue(forKey:id) }
         lock.unlock()
     }
     public func resume() throws {
@@ -215,14 +250,18 @@ public final class RecordingSink: @unchecked Sendable {
         guard !finished, !failed else { throw RecordingError.invalid(failureMessage ?? "The input cannot resume.") }
         accepting = true
     }
-    private func padTail(_ snapshot: [String:Source]) throws {
+    private func padTail(_ snapshot: [String:Source], _ tail: [String:[Hole]]) throws {
         for (id,source) in snapshot where source.registered && source.submittedEnd < source.timeline.frames {
             var frame = source.submittedEnd
-            while frame < source.timeline.frames {
-                let count = min(UInt64(8192),source.timeline.frames-frame)
-                try writer.appendNative(id:id,pcm:Data(repeating:0,count:Int(count)*source.outputChannels*2),
-                    offsetMs:source.timeline.startOffsetMs + Double(frame)/source.rate*1000)
-                frame += count
+            // Each unwritten hole keeps its kind: a lost tail is writer padding
+            // (D52.4 R70), a host-time gap is input; neither is received audio.
+            for hole in tail[id] ?? [] where frame < source.timeline.frames {
+                let frames = min(hole.frames,source.timeline.frames - frame)
+                try writer.padNative(id:id,frames:frames,channels:source.outputChannels,rate:source.rate,offsetMs:source.timeline.startOffsetMs + Double(frame)/source.rate*1000,kind:hole.kind)
+                frame += frames
+            }
+            if frame < source.timeline.frames {
+                try writer.padNative(id:id,frames:source.timeline.frames-frame,channels:source.outputChannels,rate:source.rate,offsetMs:source.timeline.startOffsetMs + Double(frame)/source.rate*1000,kind:"writer")
             }
         }
     }
@@ -260,13 +299,13 @@ public final class RecordingSink: @unchecked Sendable {
         guard !finished else { lock.unlock(); return }
         accepting = false
         finished = true
-        let snapshot = sources
+        let snapshot = sources, tail = holes
         lock.unlock()
         try queue.sync {
             // A drop at the tail has no following chunk to create its gap. Preserve it here.
             var paddingFailure: Error?
             do {
-            try padTail(snapshot)
+            try padTail(snapshot,tail)
             } catch { paddingFailure = error }
             let lost = snapshot.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
             let gaps = snapshot.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }

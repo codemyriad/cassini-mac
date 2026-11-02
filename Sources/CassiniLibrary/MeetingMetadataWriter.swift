@@ -55,8 +55,8 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
         if input >= 0 {
             defer { Darwin.close(input) }
             var info = stat()
-            guard fstat(input, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= 1_048_576 else { throw MetadataError.invalid }
-            let data = try regularData(input, limit: 1_048_576)
+            guard fstat(input, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= MeetingMetadataLimit.bytes else { throw MetadataError.invalid }
+            let data = try regularData(input, limit: MeetingMetadataLimit.bytes)
             let metadata = try AppMetadata.parse(data)
             try metadata.validate(id: id, received: directory.lastPathComponent.hasPrefix("Received-"))
             if createOnly { return }
@@ -80,8 +80,8 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
         let edited = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted])
         // D47/D56: everything the edit did not change is written back verbatim, including
         // members this app does not know (speakers[].voiceSource…) and their number literals.
-        let data = try original.map { try Self.preserving($0, edited: JSONParser.parse(edited)).encoded(maximumBytes: 1_048_576) } ?? edited
-        guard data.count <= 1_048_576 else { throw POSIXError(.EFBIG) }
+        let data = try original.map { try Self.preserving($0, edited: JSONParser.parse(edited)).encoded(maximumBytes: MeetingMetadataLimit.bytes) } ?? edited
+        guard data.count <= MeetingMetadataLimit.bytes else { throw POSIXError(.EFBIG) }
         let metadata = try AppMetadata.parse(data)
         try metadata.validate(id: id, received: directory.lastPathComponent.hasPrefix("Received-"))
         let temporary = ".meeting-\(UUID().uuidString).tmp"

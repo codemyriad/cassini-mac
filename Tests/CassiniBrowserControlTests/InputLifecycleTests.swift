@@ -662,7 +662,12 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
         XCTAssertEqual(tracks.count,2); XCTAssertNotEqual(tracks[0].id,tracks[1].id)
-        XCTAssertEqual(tracks.map(\.frames),[800,800])
+        XCTAssertEqual(tracks[0].frames,800)
+        // D52.2: the reselected mic span starts at its 200 ms boundary; the wait for
+        // its first buffer is a prefix (absence), never a gap.
+        let reselected = owner.snapshot.manifest.events?.last { $0.type == "selection" && $0.me == true }?.atMs
+        XCTAssertEqual(tracks[1].startOffsetMs,reselected); XCTAssertEqual(tracks[1].gaps?.map(\.kind),["prefix"])
+        XCTAssertEqual(tracks[1].frames - (tracks[1].gaps?.first?.frames ?? 0),800); XCTAssertNil(tracks[1].gapFrames)
         XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "remote" }?.frames,800)
     }
     @MainActor func testDeniedMeSelectionLeavesTheWorkingSelectionAndBrowserUntouched() async throws {
