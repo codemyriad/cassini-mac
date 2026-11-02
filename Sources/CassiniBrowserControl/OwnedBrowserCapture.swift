@@ -391,7 +391,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 browserSources[id] = source
             }
             browserReturnAt = eventTime(atMs)
-            browserAlive = false; fallbackReason = "lost"; browserLostUptime = lost; publish()
+            // A committed browser loss, also of a call that took over the D49 stand-in, falls
+            // back as system/lost: the stand-in's "missing" belongs to the time before the call.
+            browserAlive = false; fallbackReason = "lost"; systemReason = "lost"; browserLostUptime = lost; publish()
         }
     }
     public func manageBrowserLifecycle(_ enabled: Bool) async throws {

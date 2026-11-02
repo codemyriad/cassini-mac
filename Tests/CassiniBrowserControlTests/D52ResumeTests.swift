@@ -111,6 +111,80 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(try fixture.client().request(resume(id))["resumed"]?.bool,true,"A later resume may join again")
         }
     }
+    /// #103 review 1: once the call has taken over, the recording is a browser recording: a
+    /// later navigation with the transport still open is a browser loss and falls back to
+    /// computer sound. Before take-over the stand-in stays a plain native recording.
+    func testATakenOverStandInFallsBackToSystemSoundOnNavigation() async throws {
+        try await run { fixture in
+            let (capture,id) = try standIn(fixture)
+            XCTAssertTrue(BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:capture.snapshot.manifest.events ?? []))
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            let client = try fixture.client()
+            XCTAssertEqual(try client.request(resume(id))["resumed"]?.bool,true)
+            XCTAssertEqual(try client.request(["type":"track","id":"r1","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
+            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
+            try await capture.restoreBrowser(atMs:6000)
+            let events = capture.snapshot.manifest.events ?? []
+            XCTAssertFalse(BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:events),"take-over committed")
+            // The resumed page navigates; its transport stays connected.
+            XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.navigating,count:nil,multiStream:true,navigation:true,fallback:false))
+            try capture.browserLost(atMs:7000,transportAlive:true)
+            XCTAssertFalse(capture.snapshot.browserAlive); XCTAssertTrue(capture.snapshot.transportAlive)
+            try await capture.requestSystemFallback()
+            let system = capture.nativeWriter(side:.others)
+            try system.addTrack(id:"fallback",label:"Others",kind:"system",sampleRate:8000,channels:1)
+            try system.appendNative(id:"fallback",pcm:Data(repeating:2,count:1600),offsetMs:7100)
+            let last = capture.snapshot.manifest.events?.last { $0.type == "othersSource" }
+            XCTAssertEqual(last?.source,"system"); XCTAssertEqual(last?.reason,"lost")
+            XCTAssertEqual(capture.snapshot.phase,.recording)
+            _ = try client.request(["type":"stop","captureId":id])
+        }
+    }
+    /// #103 review 3: while a resume is pending, the stand-in is not yet the call's
+    /// recording, so a call change never ends it; a refused resume leaves it recording.
+    func testACallChangeDuringAPendingResumeKeepsTheNativeRecording() async throws {
+        try await run { fixture in
+            let (capture,id) = try standIn(fixture)
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            // The tab moves on to call B before the resume commits; the app re-arms for B.
+            XCTAssertEqual(BrowserCallPolicy.endForCallChange(started:"call-A",current:"call-B"),.callEnded)
+            XCTAssertTrue(BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:capture.snapshot.manifest.events ?? []),
+                          "call-change termination does not apply before take-over")
+            fixture.broker.expectResume(capture,callGeneration:"call-B")
+            XCTAssertEqual(try fixture.client().request(resume(id,generation:"call-A"))["code"]?.string,"state")
+            XCTAssertEqual(capture.snapshot.phase,.recording)
+            XCTAssertEqual(capture.snapshot.manifest.events?.last { $0.type == "othersSource" }?.reason,"missing")
+            XCTAssertNil(capture.snapshot.manifest.events?.last { $0.type == "end" })
+            XCTAssertEqual(folders(fixture),1)
+        }
+    }
+    /// #103 review 2: an active stand-in's identity is retained, so after a browser restart the
+    /// recovered call's interrupted capture marks its tab attempted and auto-record never
+    /// starts a second recording of it.
+    func testAResumedStandInStaysRetainedAcrossABrowserRestart() async throws {
+        try await run { fixture in
+            let (capture,id) = try standIn(fixture)
+            XCTAssertTrue(fixture.broker.retainedCaptureIDs.contains(id))
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            XCTAssertEqual(try fixture.client().request(resume(id))["resumed"]?.bool,true)
+            func recovered(retaining ids: [String]) throws -> [BrowserControlRequest] {
+                var registry = BrowserControlRegistry(instanceAlive:{ _ in true })
+                registry.setRetainedCaptureIDs(ids)
+                let peer = UUID()
+                try registry.connect(.init(id:peer,role:.control,browser:"Chrome",browserInstance:.init(pid:4242,startSeconds:7)))
+                func send(_ value: [String:Any]) throws { try registry.receive(JSONSerialization.data(withJSONObject:value),from:peer) }
+                try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","page-state-v1","multi-stream-v1","resume-capture-v1"]])
+                try send(["type":"meetings","meetings":[["tabId":2,"title":"Call","url":"https://meet.example/a","sourceCount":1,"heard":true,
+                                                           "pageState":"present","callGeneration":"call-A"]]])
+                let session: [String:Any] = ["recording":false,"tabId":2,"captureId":id,"path":NSNull(),"message":"Interrupted","tracks":1]
+                try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[],"interrupted":[session]])
+                return registry.automaticStarts(microphone:true)
+            }
+            XCTAssertTrue(try recovered(retaining:fixture.broker.retainedCaptureIDs).isEmpty,"the recovered call is already being recorded")
+            XCTAssertEqual(try recovered(retaining:[]).count,1,"without the stand-in identity the call would be recorded twice")
+            XCTAssertEqual(capture.snapshot.phase,.recording)
+        }
+    }
     func testSharedResumeSeamOwnership() throws {
         let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("browser-protocol/conformance/control/resume-capture-vectors.json")

@@ -446,8 +446,11 @@ private final class CaptureFiles: @unchecked Sendable {
                 captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
             }
             if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
-            // A native stand-in joins this path once it asked a call to resume it.
+            // A native stand-in joins this path once it asked a call to resume it; until the
+            // take-over commits it is a plain native recording.
             let standIn = value.snapshot.manifest.source == "macos" && value.key != nil
+            let pending = BrowserCallPolicy.standInPending(source:value.snapshot.manifest.source,keyed:value.key != nil,
+                                                           events:value.owner.snapshot.manifest.events ?? [])
             if value.snapshot.manifest.source == "chromium" || standIn, value.savingSinceMs == nil {
                 let peer = peers.first { $0.id == value.key?.peer && $0.reconciled }
                 let count = peer?.meetings.first { $0.key == value.key }?.sourceCount
@@ -489,7 +492,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 let multiStream = peer?.supportsMultiStream == true
                 // D52 M6: a capture belongs to the call it started in. When the tab's
                 // call generation moves on, this session ends instead of absorbing B.
-                if multiStream, let ended = BrowserCallPolicy.endForCallChange(started:status?.callGeneration,current:meeting?.callGeneration),
+                if multiStream, !pending, let ended = BrowserCallPolicy.endForCallChange(started:status?.callGeneration,current:meeting?.callGeneration),
                    let reason = CaptureEndReason(rawValue:ended.rawValue) {
                     value.owner.requestEnd(reason,atMs:max(0,now-value.originUptime)*1000)
                     stop(id,reason:reason); continue
@@ -506,7 +509,7 @@ private final class CaptureFiles: @unchecked Sendable {
                     let decision = captures[id]?.callPolicy.step(now:now,observation,source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready)
                     // Until the call has taken over, a stand-in is a plain native recording:
                     // a missing page never stops or re-routes it.
-                    let joined = !standIn || source.manifest.events?.contains { $0.reason == "callConnected" } == true
+                    let joined = !pending
                     switch decision {
                     case .fallback? where joined: action = .fallback
                     case .restore?: action = .restore
@@ -531,9 +534,10 @@ private final class CaptureFiles: @unchecked Sendable {
                 // source loss before attempting fallback, even after present.
                 // Under D52 a present page with zero sources is a possible rejoin, not loss,
                 // until the policy asks to fall back while the source is still alive.
-                // A stand-in is a plain native recording until the call takes over.
+                // A stand-in is a plain native recording until the call takes over; after that a
+                // navigation loses the browser like any other (and falls back to system sound).
                 let fallback = action == .fallback && !value.input.failedSides.contains(.others)
-                let lost = !standIn && BrowserCallPolicy.commitsLoss(browserAlive:source.browserAlive,page:observedPage,count:count,multiStream:multiStream,
+                let lost = !pending && BrowserCallPolicy.commitsLoss(browserAlive:source.browserAlive,page:observedPage,count:count,multiStream:multiStream,
                                                          navigation:navigation,fallback:fallback)
                 // That deferred loss began when the policy first saw the page missing.
                 let lossStamp = multiStream && !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1

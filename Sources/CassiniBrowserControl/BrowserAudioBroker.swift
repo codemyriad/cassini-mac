@@ -44,8 +44,11 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     public var activeCaptures: [OwnedBrowserCapture] {
         lock.lock(); defer { lock.unlock() }; return Array(captures.values)
     }
+    /// Every capture identity this app still owns: browser captures and active native
+    /// stand-ins (a resumed stand-in keeps its identity, so after a browser restart the
+    /// registry knows the recovered call is already being recorded).
     public var retainedCaptureIDs: [String] {
-        lock.withLock { identities.values.compactMap { String(data:$0,encoding:.utf8) } }
+        lock.withLock { (Array(identities.values) + Array(standIns.keys)).compactMap { String(data:$0,encoding:.utf8) } }
     }
     /// Native standalone capture shares the same finalization owner without a
     /// browser reservation. No browser-provided path can enter this API.
