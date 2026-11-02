@@ -39,7 +39,7 @@ private enum Golden {
     @Test func goldenBytesAndCounts() throws {
         let hashes = ["format-vectors": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
                       "states-vectors": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
-                      "meeting.schema": "fa316da3862c7da2d9448dcadb44f7f8176f688ca294438ff630a4d0194026c3"]
+                      "meeting.schema": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e"]
         for (name, expected) in hashes {
             #expect(SHA256.hash(data: try Golden.data(name)).map { String(format: "%02x", $0) }.joined() == expected)
         }

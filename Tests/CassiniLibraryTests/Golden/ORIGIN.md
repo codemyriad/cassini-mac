@@ -9,3 +9,5 @@ S-3a (D7): main Library plus one case per R1–R9, pending the coordinator's fix
 
 D16: meeting.schema.json and LIBRARY.md re-synced verbatim for optional transcript.model.
 Schema SHA256 aed7704a3f6916d156f122cb60dd31c2cffe4a5701fcaebae691dd14dd5be03c.
+
+D58/R81: meeting.schema.json re-synced verbatim from coordination ux-draft 3cb3ec2 (D56 voiceSource, silentTracks, lowDisk, D55 offsetsAssumedZero, captureRecord with documentation-only refusals); the core Schema resource copy is identical. Schema SHA256 b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e.
