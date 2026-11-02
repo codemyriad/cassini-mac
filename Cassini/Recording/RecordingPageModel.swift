@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import CassiniKit
 import CassiniLibrary
 import CassiniRecording
 import CassiniWhistle
@@ -87,7 +88,7 @@ private actor RecordingEdits {
         let revision = sourceGeneration, folder = meeting.folder
         voiceTask = Task { [weak self] in
             let count = await Task.detached {
-                guard let data = try? WhistleIO.readRegular(folder.appendingPathComponent("session.json"),maximum:1_048_576),
+                guard let data = try? WhistleIO.readRegular(folder.appendingPathComponent("session.json"),maximum:SessionManifestLimit.bytes),
                       let manifest = try? RecordingLoader.decode(data) else { return 0 }
                 return manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count
             }.value

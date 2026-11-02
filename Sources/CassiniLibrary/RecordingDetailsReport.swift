@@ -82,7 +82,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             }
             let meeting = read("meeting.json",limit:1_048_576)
             let details = meeting?["recordingDetails"]
-            return .init(lifecycle:lifecycle,title:title,session:read("session.json",limit:8_388_608),captureRecord:details?["captureRecord"],
+            return .init(lifecycle:lifecycle,title:title,session:read("session.json",limit:SessionManifestLimit.bytes),captureRecord:details?["captureRecord"],
                          storedEnd:details?["end"],sourceSpansSeparated:details?["writingDown"]?["sourceSpansSeparated"]?.bool == true,transcriptDone:transcriptDone)
         }
     }
