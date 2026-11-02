@@ -36,10 +36,14 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private let make: @Sendable (String,Bool) throws -> OwnedBrowserCapture
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
+    private let persistRecord: @Sendable (RecordingManifest,URL) throws -> Void
+    private var recordAttempts: [UUID:Int] = [:]
+    static let recordAttemptLimit = 5
     public init(make: @escaping @Sendable (String,Bool) throws -> OwnedBrowserCapture,
                 created: @escaping @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void,
-                stopNative: @escaping BrowserNativeStop) {
-        self.make = make; self.created = created; self.stopNative = stopNative
+                stopNative: @escaping BrowserNativeStop,
+                persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) }) {
+        self.make = make; self.created = created; self.stopNative = stopNative; self.persistRecord = persistRecord
     }
     public var activeCaptures: [OwnedBrowserCapture] {
         lock.lock(); defer { lock.unlock() }; return Array(captures.values)
@@ -144,18 +148,31 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
             DispatchQueue.global().async { [stopNative] in stopNative(capture) { barrier.complete($0) } }
             DispatchQueue.global().asyncAfter(deadline:.now() + 30) { barrier.complete("Native inputs did not finish stopping; the recording may be incomplete.") }
         }
-        defer {
-            lock.withLock {
-                let id = capture.snapshot.manifest.id
-                captures.removeValue(forKey:id)
-                if let identity = identities.removeValue(forKey:id) { reservations.removeValue(forKey:identity) }
-                for (identity,standIn) in standIns where standIn.capture == id { standIns.removeValue(forKey:identity); reservations.removeValue(forKey:identity) }
-            }
+        let id = capture.snapshot.manifest.id
+        let attempts = lock.withLock { recordAttempts[id, default:0] }
+        // D52.1 R65: the portable record is written before the capture is saved. A failed write
+        // keeps it saving and owned (retryPendingRecords) for a bounded number of attempts.
+        let persist = attempts < Self.recordAttemptLimit ? persistRecord : nil
+        do {
+            try await capture.finish(problem:problem ?? nativeProblem,reason:reason,atMs:atMs,persist:persist)
+        } catch where capture.recordPending {
+            lock.withLock { recordAttempts[id] = attempts + 1 }
+            throw error
+        } catch { release(id); throw error }
+        release(id)
+    }
+    private func release(_ id: UUID) {
+        lock.withLock {
+            captures.removeValue(forKey:id); recordAttempts.removeValue(forKey:id)
+            if let identity = identities.removeValue(forKey:id) { reservations.removeValue(forKey:identity) }
+            for (identity,standIn) in standIns where standIn.capture == id { standIns.removeValue(forKey:identity); reservations.removeValue(forKey:identity) }
         }
-        try await capture.finish(problem:problem ?? nativeProblem,reason:reason,atMs:atMs)
-        // D52.1 R65: outside the capture queue; a failed metadata write keeps the PCM and is reported.
-        let saved = capture.snapshot
-        try CaptureRecordWriter.write(saved.manifest,directory:saved.directory)
+    }
+    /// Retries the portable record of captures whose audio is saved but whose record write
+    /// failed; after the attempt limit the capture is saved without it.
+    public func retryPendingRecords() async {
+        let pending = lock.withLock { captures.values.filter { $0.recordPending } }
+        for capture in pending { try? await finish(capture) }
     }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.

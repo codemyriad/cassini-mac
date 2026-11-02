@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CassiniKit
-import CassiniRecording
+@_spi(Testing) import CassiniRecording
 
 public enum CaptureSide: Hashable, Sendable { case me, others }
 public enum OwnedCapturePhase: Sendable { case recording, saving, saved }
@@ -78,6 +78,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var resumeAt: Double = 0
     private var meResumeAt: Double = 0
     private var nativeProblem: String?
+    /// The audio and final session are closed (once); a close failure is kept for every finish.
+    private var audioClosed = false, closeError: Error?
     private var nativeProblemKind: String?
     /// D52 source-outcomes-v1, enabled only when this connection negotiated it.
     private var ledger: CaptureLedger?
@@ -534,30 +536,50 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             endIntent = (reason,atMs ?? max(0,ProcessInfo.processInfo.systemUptime-timelineOrigin)*1000); return true
         }
     }
-    public func finish(problem: String? = nil, reason: CaptureEndReason? = nil, atMs: Double? = nil) async throws {
+    /// Closes the audio and writes the final session, then publishes `.saved`. `persist`
+    /// (D52.1 R65, the portable capture record) runs after any final session that reached disk,
+    /// also an interrupted one, and before `.saved`: the capture keeps its saving state, and so
+    /// the Library's move protection, until both writes finish. If `persist` throws the capture
+    /// stays saving with its audio closed; a later `finish` retries only `persist`.
+    public func finish(problem: String? = nil, reason: CaptureEndReason? = nil, atMs: Double? = nil,
+                       persist: (@Sendable (RecordingManifest,URL) throws -> Void)? = nil) async throws {
         if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
         if let reason { requestEnd(reason,atMs:atMs) }
         try await operation {
             guard self.phase != .saved else { return }
-            self.phase = .saving; self.publish()
-            // The broker can echo the input drain's already recorded diagnostic.
-            // Preserve its classification; a different external failure is capture.
-            let kind = self.nativeProblemKind == "io" || problem == nil || problem == self.nativeProblem ? self.nativeProblemKind : nil
-            let intent = self.endLock.withLock { self.endIntent }
-            var finalProblem = problem ?? self.nativeProblem, finalKind = kind
-            if let ledger = self.ledger {
-                let result = ledger.result(self.recording.manifest)
-                self.recording.setCaptureOutcome(result.outcome,tracks:result.tracks)
-                // A person whose source failed is never silently missing.
-                if result.incomplete {
-                    finalProblem = finalProblem ?? "Some announced audio was not fully captured."
-                    if finalKind != "io" { finalKind = ledger.ioFailed ? "io" : "capture" }
-                }
+            if !self.audioClosed { try self.closeAudio(problem:problem,reason:reason,atMs:atMs) }
+            if let persist, self.recording.finalPublished {
+                do { try persist(self.recording.manifest,self.recording.directory) }
+                catch { self.publish(); throw error }
             }
-            do { try self.recording.finish(problem:finalProblem,kind:finalKind,reason:intent?.0 ?? reason,atMs:intent?.1 ?? atMs) }
-            catch { self.phase = .saved; self.publish(); throw error }
             self.phase = .saved; self.publish()
+            if let closeError = self.closeError { throw closeError }
         }
+    }
+    /// Audio is closed and the final session written; only the portable record may be pending.
+    public var recordPending: Bool { sync { audioClosed && phase == .saving } }
+    @_spi(Testing) public func setCheckpointObserver(_ observer: ((RecordingCheckpointPhase) throws -> Void)?) {
+        sync { recording.checkpointObserver = observer }
+    }
+    private func closeAudio(problem: String?, reason: CaptureEndReason?, atMs: Double?) throws {
+        self.phase = .saving; self.publish()
+        // The broker can echo the input drain's already recorded diagnostic.
+        // Preserve its classification; a different external failure is capture.
+        let kind = self.nativeProblemKind == "io" || problem == nil || problem == self.nativeProblem ? self.nativeProblemKind : nil
+        let intent = self.endLock.withLock { self.endIntent }
+        var finalProblem = problem ?? self.nativeProblem, finalKind = kind
+        if let ledger = self.ledger {
+            let result = ledger.result(self.recording.manifest)
+            self.recording.setCaptureOutcome(result.outcome,tracks:result.tracks)
+            // A person whose source failed is never silently missing.
+            if result.incomplete {
+                finalProblem = finalProblem ?? "Some announced audio was not fully captured."
+                if finalKind != "io" { finalKind = ledger.ioFailed ? "io" : "capture" }
+            }
+        }
+        do { try self.recording.finish(problem:finalProblem,kind:finalKind,reason:intent?.0 ?? reason,atMs:intent?.1 ?? atMs) }
+        catch { self.closeError = error }
+        self.audioClosed = true
     }
     // Once the metadata rename succeeds, source state must follow it even if
     // directory sync/retiring-file close fails. Preserve the diagnostic for Stop.

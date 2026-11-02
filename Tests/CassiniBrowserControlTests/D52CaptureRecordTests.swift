@@ -3,8 +3,8 @@ import XCTest
 import Foundation
 import CassiniKit
 import CassiniLibrary
-import CassiniRecording
-@testable import CassiniBrowserControl
+@_spi(Testing) import CassiniRecording
+@_spi(Testing) @testable import CassiniBrowserControl
 
 /// D52.1 R65/R69: recordingDetails.captureRecord v1 in meeting.json.
 final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
@@ -36,6 +36,85 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(try meeting(folder)["revision"] as? Int,revision)
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
+    }
+    // MARK: #104 review: the record is written before the capture is saved, and failures stay retryable
+
+    private final class Persist: @unchecked Sendable {
+        let lock = NSLock(); var calls = 0; var failures = 0; var hold: DispatchSemaphore?; var entered: XCTestExpectation?
+        func run(_ manifest: RecordingManifest, _ directory: URL) throws {
+            let (hold,entered,fail): (DispatchSemaphore?,XCTestExpectation?,Bool) = lock.withLock {
+                calls += 1; let fail = failures > 0; if fail { failures -= 1 }; return (self.hold,self.entered,fail)
+            }
+            entered?.fulfill(); hold?.wait()
+            if fail { throw CocoaError(.fileWriteOutOfSpace) }
+            try CaptureRecordWriter.write(manifest,directory:directory)
+        }
+    }
+    private func native(_ persist: Persist) throws -> (URL,BrowserAudioBroker,OwnedBrowserCapture) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniRecord-"+UUID().uuidString)
+        let broker = BrowserAudioBroker(make:{ _,_ in throw BrowserIPCError.unavailable },created:{ _,_ in },stopNative:{ _,reply in reply(nil) },
+                                        persistRecord:{ try persist.run($0,$1) })
+        let owner = try OwnedBrowserCapture(parent:root,title:"Native",microphone:true,browser:false)
+        let writer = owner.nativeWriter(side:.me)
+        try writer.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
+        try writer.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:0)
+        try broker.ownNative(owner)
+        return (root,broker,owner)
+    }
+    private func record(_ owner: OwnedBrowserCapture) throws -> [String:Any]? {
+        let folder = owner.snapshot.directory
+        guard FileManager.default.fileExists(atPath:folder.appendingPathComponent("meeting.json").path) else { return nil }
+        return (try meeting(folder)["recordingDetails"] as? [String:Any])?["captureRecord"] as? [String:Any]
+    }
+    /// The capture stays saving (so the Library keeps its move protection) and owned while the
+    /// metadata write is paused; it is saved only after the record is written.
+    func testTheCaptureStaysSavingUntilItsRecordIsWritten() async throws {
+        let persist = Persist(); persist.hold = DispatchSemaphore(value:0); persist.entered = expectation(description:"record write started")
+        let (root,broker,owner) = try native(persist); defer { try? FileManager.default.removeItem(at:root) }
+        let finishing = Task { try await broker.finish(owner,reason:.user) }
+        await fulfillment(of:[persist.entered!],timeout:5)
+        XCTAssertEqual(owner.snapshot.phase,.saving)
+        XCTAssertTrue(broker.activeCaptures.contains { $0 === owner })
+        XCTAssertNil(try record(owner))
+        persist.hold?.signal()
+        try await finishing.value
+        XCTAssertEqual(owner.snapshot.phase,.saved)
+        XCTAssertFalse(broker.activeCaptures.contains { $0 === owner })
+        XCTAssertNotNil(try record(owner))
+    }
+    /// A final session that reached disk although finalization failed (here the final
+    /// checkpoint fails after publishing) still gets its portable record; the error is reported.
+    func testADurablyInterruptedSessionStillWritesItsRecord() async throws {
+        let persist = Persist()
+        let (root,broker,owner) = try native(persist); defer { try? FileManager.default.removeItem(at:root) }
+        owner.setCheckpointObserver { phase in if phase == .metadataPublished { throw CocoaError(.fileWriteUnknown) } }
+        do { try await broker.finish(owner,reason:.user); XCTFail("the close failure is reported") } catch {}
+        XCTAssertEqual(owner.snapshot.phase,.saved)
+        XCTAssertEqual(persist.calls,1)
+        let stored = try XCTUnwrap(try record(owner))
+        XCTAssertEqual((stored["tracks"] as? [[String:Any]])?.count,1)
+        XCTAssertEqual(try RecordingLoader.load(directory:owner.snapshot.directory).state,"completed","the published final session")
+    }
+    /// A failed record write keeps the capture saving and owned; a retry writes the record once
+    /// and then saves it. After the attempt limit the capture is saved without the record.
+    func testAFailedRecordWriteIsRetriedThenGivenUp() async throws {
+        let persist = Persist(); persist.failures = 1
+        let (root,broker,owner) = try native(persist); defer { try? FileManager.default.removeItem(at:root) }
+        do { try await broker.finish(owner,reason:.user); XCTFail("the record failure is reported") } catch {}
+        XCTAssertEqual(owner.snapshot.phase,.saving); XCTAssertTrue(owner.recordPending)
+        XCTAssertTrue(broker.activeCaptures.contains { $0 === owner })
+        await broker.retryPendingRecords()
+        XCTAssertEqual(owner.snapshot.phase,.saved); XCTAssertNotNil(try record(owner)); XCTAssertEqual(persist.calls,2)
+        XCTAssertFalse(broker.activeCaptures.contains { $0 === owner })
+
+        let failing = Persist(); failing.failures = 1000
+        let (other,broker2,owner2) = try native(failing); defer { try? FileManager.default.removeItem(at:other) }
+        do { try await broker2.finish(owner2,reason:.user) } catch {}
+        for _ in 0..<10 where owner2.snapshot.phase != .saved { await broker2.retryPendingRecords() }
+        XCTAssertEqual(owner2.snapshot.phase,.saved,"saved without the record after the attempt limit")
+        XCTAssertEqual(failing.calls,BrowserAudioBroker.recordAttemptLimit)
+        XCTAssertNil(try record(owner2))
+        XCTAssertFalse(broker2.activeCaptures.contains { $0 === owner2 })
     }
     func testMergeKeepsUnknownFieldsReplacesExpectationAndNeverDowngrades() {
         let stored: [String:Any] = ["version":1,"future":true,

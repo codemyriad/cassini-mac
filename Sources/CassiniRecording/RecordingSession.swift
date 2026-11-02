@@ -154,6 +154,8 @@ public final class RecordingSession {
     public private(set) var manifest: RecordingManifest
     private var writers: [String: WAVWriter] = [:]
     private var finished = false
+    /// A final session (completed, or interrupted after a close or write failure) reached disk.
+    public private(set) var finalPublished = false
     private var lastCheckpoint = Date.distantPast
     private var metadataRevision: UInt64 = 0
     /// Build-only process-crash probes observe persistence boundaries. This is
@@ -358,6 +360,7 @@ public final class RecordingSession {
         let stopReason: CaptureEndReason = failure != nil || kind == "io" ? .error : reason ?? (problem?.isEmpty == false && kind != "gap" ? .error : .user)
         manifest.events = (manifest.events ?? []) + [.init(atMs:boundary,type:"end",reason:stopReason.rawValue)]
         let revision = metadataRevision
+        defer { finalPublished = metadataRevision != revision }
         do { try checkpoint() }
         catch {
             // If no final metadata was published, try one durable error
