@@ -9,9 +9,31 @@ struct MeetingView: View {
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
     private var shares: [String: Int] { model.shares }
+    /// M11: paragraphs only; an aside is shown inside its host.
+    private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
+    private func name(_ speaker: String) -> String { meeting.speakers.first { $0.id == speaker }?.displayName ?? "" }
+    private func asides(_ turn: MeetingPresentation.Turn) -> [MeetingTranscriptText.Aside] {
+        turn.asides.compactMap { aside in
+            model.turns.indices.contains(aside.turn) ? .init(after:aside.after,name:name(model.turns[aside.turn].speaker),items:model.turns[aside.turn].items) : nil
+        }
+    }
+    /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
+    private func over(_ turn: MeetingPresentation.Turn) -> String? {
+        turn.over.isEmpty ? nil : UXText.text("meeting.turn.over",["names":turn.over.map(name).joined(separator:", ")])
+    }
+    /// The turn's words in reading order with each aside's text where its chip sits.
+    private func spoken(_ turn: MeetingPresentation.Turn) -> String {
+        let chips = asides(turn)
+        var parts: [String] = []
+        for (index,item) in turn.items.enumerated() {
+            parts.append(item.text)
+            for chip in chips where chip.after == index { parts.append(chip.label) }
+        }
+        return parts.joined(separator:" ")
+    }
     private var currentTurn: Int? {
-        model.turns.last { turn in
-            turn.items.contains { $0.startMs <= model.positionMs && model.positionMs < $0.endMs }
+        visibleTurns.last { turn in
+            (turn.items + asides(turn).flatMap(\.items)).contains { $0.startMs <= model.positionMs && model.positionMs < $0.endMs }
         }?.id
     }
     private func colour(_ index: Int) -> Color {
@@ -49,7 +71,7 @@ struct MeetingView: View {
                         }
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
                         if showsCompanionSuggestion { companionCard }
-                        ForEach(model.turns) { turn in
+                        ForEach(visibleTurns) { turn in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 5) {
@@ -58,12 +80,17 @@ struct MeetingView: View {
                                         if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
                                     }.fixedSize()
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
+                                    if let over = over(turn) {
+                                        Text(over).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                                            .help(UXText.text("meeting.turn.over.tooltip"))
+                                    }
                                 }.frame(width: 120, alignment: .leading)
-                                MeetingTranscriptText(items:turn.items,positionMs:model.positionMs,seek:model.seek)
+                                MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek)
                                     .frame(maxWidth:.infinity,alignment:.leading)
                             }.id(turn.id)
                                 .accessibilityElement(children:.ignore)
-                                .accessibilityLabel([meeting.speakers.first(where:{ $0.id == turn.speaker })?.displayName ?? "",LibraryFormat.position(turn.startMs),turn.items.map(\.text).joined(separator:" ")].joined(separator:", "))
+                                .accessibilityLabel(([name(turn.speaker),LibraryFormat.position(turn.startMs)] + [over(turn)].compactMap { $0 } + [spoken(turn)]).joined(separator:", "))
+                                .accessibilityHint(turn.over.isEmpty ? "" : UXText.text("meeting.turn.over.tooltip"))
                                 .accessibilityIdentifier("meeting-turn-" + String(turn.id))
                                 .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
                         }
