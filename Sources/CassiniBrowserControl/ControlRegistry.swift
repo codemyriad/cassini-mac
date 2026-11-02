@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CassiniKit
+import CassiniRecording
 
 public struct BrowserMeetingKey: Hashable, Sendable {
     public let peer: UUID
@@ -62,6 +63,27 @@ public struct BrowserControlOutcome: Equatable, Sendable {
     public let action: BrowserControlAction
     public let ok: Bool
     public let error: String?
+    /// D58: the ok:false result's `code`, kept only when it is a whole-string token.
+    public var code: String? = nil
+    /// D58: why a Start got no answer or was refused locally (startFailed detail: timeout,
+    /// disconnected, busy, noSources, limit, notReady). nil for an answered result.
+    public var failure: String? = nil
+    /// The refusal a refused Start records for the attempt: startRejected when the browser
+    /// answered ok:false, startFailed (banner only) when it never answered or was refused here.
+    public func startRefusal(atMs: Double = 0) -> CaptureRefusal? {
+        guard action == .start, !ok else { return nil }
+        if let failure { return CaptureRefusal(atMs:atMs,side:"browser",code:CaptureRefusal.startFailed,detail:failure) }
+        return CaptureRefusal.startRejected(atMs:atMs,code:code,error:error)
+    }
+    /// The startFailed detail for a Start this app refused before sending it.
+    public static func localFailure(_ error: Error) -> String {
+        switch error as? BrowserControlStateError {
+        case .busy?: return "busy"
+        case .noSources?: return "noSources"
+        case .limit?: return "limit"
+        default: return "notReady"
+        }
+    }
 }
 public enum BrowserControlStateError: Error { case unavailable, notReconciled, incompatible, noSources, busy, malformed, limit }
 
@@ -344,7 +366,7 @@ public struct BrowserControlRegistry: Sendable {
         }
         pruneDisconnectedLineages()
         for pending in peer.pending.values {
-            appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil))
+            appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil,failure:"disconnected"))
         }
     }
     public mutating func receive(_ bytes: Data, from id: UUID) throws {
@@ -508,7 +530,8 @@ public struct BrowserControlRegistry: Sendable {
                     if before != peer.captures.count + peer.interrupted.count { peer.statusRevision &+= 1 }
                 }
             }
-            appendOutcome(.init(requestID:requestID,key:pending.request.key,action:pending.request.action,ok:ok,error:error))
+            let code = ok ? nil : json["code"]?.string.flatMap { CaptureRefusal.isToken($0) ? $0 : nil }
+            appendOutcome(.init(requestID:requestID,key:pending.request.key,action:pending.request.action,ok:ok,error:error,code:code))
         default: return // Forward-compatible messages are not management actions.
         }
         peers[id] = peer
@@ -658,7 +681,7 @@ public struct BrowserControlRegistry: Sendable {
         guard var peer = peers[request.key.peer], peer.pending.removeValue(forKey:request.id) != nil else { return }
         peers[request.key.peer] = peer
         if request.action == .start { unboundStarts.removeValue(forKey:request.id) }
-        appendOutcome(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil))
+        appendOutcome(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:"timeout"))
     }
     private mutating func appendOutcome(_ outcome: BrowserControlOutcome) {
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }

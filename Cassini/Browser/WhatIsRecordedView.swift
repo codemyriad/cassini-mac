@@ -13,6 +13,7 @@ struct WhatIsRecordedView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var working = false
     @State private var permissionSide: CaptureSide?
+    @State private var permissionRefusal: String?
     @State private var failedChoice: CaptureChoice?
     private var choice: CaptureChoice { model.me && model.others ? .both : model.me ? .me : .others }
     var body: some View {
@@ -61,7 +62,7 @@ struct WhatIsRecordedView: View {
                     Button(UXText.text("common.tryAgain")) { apply(failedChoice) }.disabled(working)
                 }.foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-choice-failed")
             }
-            if let permissionSide { CapturePermissionNotice(side:permissionSide) }
+            if let permissionSide { CapturePermissionNotice(side:permissionSide,refusal:permissionRefusal) }
             HStack { Spacer(); Button(UXText.text("common.done")) { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction).disabled(working) }
         }.font(.system(size:13)).padding(26).frame(width:480)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("whatIsRecorded.title"))
@@ -73,10 +74,13 @@ struct WhatIsRecordedView: View {
         Task {
             defer { working = false }
             do {
-                try await CaptureCollection.shared.select(model.meeting.id,me:choice != .others,others:choice != .me)
-                permissionSide = nil; failedChoice = nil
+                let refused = try await CaptureCollection.shared.select(model.meeting.id,me:choice != .others,others:choice != .me)
+                // D58: a refused turn-on keeps the old choice; Try again is a new attempt.
+                if let side = refused[.others] != nil ? CaptureSide.others : refused[.me] != nil ? CaptureSide.me : nil {
+                    failedChoice = choice; permissionSide = side; permissionRefusal = refused[side]
+                } else { permissionSide = nil; permissionRefusal = nil; failedChoice = nil }
             } catch {
-                failedChoice = choice
+                failedChoice = choice; permissionRefusal = nil
                 permissionSide = choice != .others && !CaptureSettings.microphoneAllowed ? .me : nil
             }
         }

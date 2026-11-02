@@ -475,6 +475,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         }
     }
     public func nativeWriter(side: CaptureSide) -> any RecordingSinkWriter { NativeSpanWriter(owner:self,side:side) }
+    /// D58: a side that never opened. It writes no event or track and never changes
+    /// state, problem, othersSource or the outcome; it is checkpointed on its own.
+    public func refuse(_ refusal: CaptureRefusal) throws {
+        try sync {
+            guard phase == .recording else { return }
+            try recording.refuse(refusal); publish()
+        }
+    }
     public func systemUnavailable(atMs: Double) async throws {
         try await operation {
             guard self.phase == .recording, self.others, !self.browserAlive else { return }

@@ -72,7 +72,7 @@ public final class BrowserControlService: @unchecked Sendable {
                 refreshLostCalls()
                 send([try registry.start(key,microphone:microphone)]); publish()
             }
-            catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
+            catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil,failure:BrowserControlOutcome.localFailure(error)),false) }
         }
     }
     /// D52.1 R67: ask the extension to join a native stand-in. `armed` receives the
@@ -88,7 +88,7 @@ public final class BrowserControlService: @unchecked Sendable {
                 let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,expectedGeneration:expectedGeneration)
                 armed(generation); send([request]); publish()
             }
-            catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
+            catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil,failure:BrowserControlOutcome.localFailure(error)),false) }
         }
     }
     /// D52.5: an ownership change that may release a call (a recording saving or retired) is
@@ -183,7 +183,7 @@ public final class BrowserControlService: @unchecked Sendable {
             } catch { connections[request.key.peer]?.close(); disconnect(request.key.peer) }
         }
     }
-    private func disconnect(_ id: UUID) {
+    private func disconnect(_ id: UUID, failure: String = "disconnected") {
         guard connections.removeValue(forKey:id) != nil else { return }
         heartbeats.removeValue(forKey:id)
         let requests = deadlines.values.map(\.0).filter { $0.key.peer == id }
@@ -191,7 +191,7 @@ public final class BrowserControlService: @unchecked Sendable {
         for request in requests {
             deadlines.removeValue(forKey:request.id)
             let wasAutomatic = automatic.remove(request.id) != nil
-            completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil),wasAutomatic)
+            completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:failure),wasAutomatic)
         }
         publish()
     }
@@ -224,7 +224,7 @@ public final class BrowserControlService: @unchecked Sendable {
         let peers = Set(deadlines.values.filter { $0.1 <= now }.map { $0.0.key.peer })
         // An unacknowledged Start may already be recording. Reconnect reconciles
         // fresh status; it never resends that command or stops its audio host.
-        for id in peers { connections[id]?.close(); disconnect(id) }
+        for id in peers { connections[id]?.close(); disconnect(id,failure:"timeout") }
         reconcile()
     }
     private func publish() { changed(registry.snapshots) }

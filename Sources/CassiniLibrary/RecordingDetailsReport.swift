@@ -43,8 +43,11 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     public let subtitle: Line?
     /// "Updates while recording", only while recording.
     public let updates: Bool
-    /// Empty means the details.sources.empty state.
+    /// Empty, with no refusal lines, means the details.sources.empty state.
     public let sources: [SourceRow]
+    /// D58: one line per distinct refused side and code, after the source rows.
+    public let refusals: [Line]
+    public var sourcesEmpty: Bool { sources.isEmpty && refusals.isEmpty }
     public let notes: [Line]
     public let ended: Line
     public let endKnown: Bool
@@ -54,7 +57,8 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.failed",
         "details.sources.notSelected","details.sources.gap","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
-        "details.end.saving","details.end.at","recording.sourceProblem"] + CaptureEndReason.allCases.map { "details.end."+$0.rawValue }
+        "details.end.saving","details.end.at","recording.sourceProblem","details.source.microphone","details.source.system","details.source.browser"]
+        + CaptureEndReason.allCases.map { "details.end."+$0.rawValue } + refusedCodes.sorted().map { "details.sources.refused."+$0 }
 
     public struct Inputs: Sendable {
         public var lifecycle: Lifecycle
@@ -103,6 +107,8 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             rows = sources.map { Self.row($0,tracks:tracks,final:final) }
         }
         sources = rows
+        // The session's list while it exists, else the captureRecord's verbatim copy.
+        refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
         notes = input.sourceSpansSeparated && input.transcriptDone ? [.init("details.sources.overlap")] : []
         (ended,endKnown) = Self.end(input,events:input.session?["events"] ?? record?["events"])
     }
@@ -187,6 +193,62 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             total += frames * 1000 / Double(rate)
         }
         return total <= safe ? total : nil
+    }
+
+    // MARK: Refusals (D58)
+
+    static let refusedCodes: Set<String> = ["permissionDenied","deviceUnavailable","startRejected"]
+    static let refusalSources = ["me":"details.source.microphone","others":"details.source.system","browser":"details.source.browser"]
+    static func token(_ value: JSON?) -> String? {
+        guard let text = value?.string else { return nil }
+        let scalars = text.unicodeScalars
+        guard (1...32).contains(scalars.count), scalars.allSatisfy({ ("A"..."Z").contains($0) || ("a"..."z").contains($0) }) else { return nil }
+        return text
+    }
+    /// Lenient: a value that is not a list is ignored as a whole; an entry the session schema's
+    /// item rejects is skipped (patterns on the whole string; null detail or message is absent;
+    /// a message of at most 200 code points).
+    static func wellFormed(_ stored: JSON?) -> [JSON] {
+        guard let list = stored?.array else { return [] }
+        return list.filter { entry in
+            guard entry.object != nil, case .number(let literal)? = entry["atMs"], let at = Double(literal), at.isFinite,
+                  (0...86_460_000).contains(at), token(entry["side"]) != nil, token(entry["code"]) != nil else { return false }
+            if let detail = entry["detail"], !detail.isNull, token(detail) == nil { return false }
+            if let message = entry["message"], !message.isNull {
+                guard let text = message.string, text.unicodeScalars.count <= 200 else { return false }
+            }
+            return true
+        }
+    }
+    /// Copy details: every well-formed entry, in stored order, exactly as stored (no merging,
+    /// re-cut or normalization).
+    public static func refusalCopy(_ stored: JSON?) -> [JSON] { wellFormed(stored) }
+    /// One line per distinct shown line, in first-occurrence order: refused.<code> for the three
+    /// known codes, details.sources.failed for any other (a stored startFailed included). An
+    /// unknown side is not shown; detail, message and unknown members never change the lines.
+    public static func refusalLines(_ stored: JSON?) -> [Line] { refusalLinesAndRoles(stored).lines }
+    static func refusalLinesAndRoles(_ stored: JSON?) -> (lines: [Line], roles: Set<String>) {
+        var lines: [Line] = [], roles: Set<String> = []
+        for entry in wellFormed(stored) {
+            let side = entry["side"]!.string!, code = entry["code"]!.string!
+            guard let source = refusalSources[side] else { continue }
+            // A browser refusal is The others' audio too.
+            roles.insert(side == "browser" ? "others" : side)
+            let line = Line(refusedCodes.contains(code) ? "details.sources.refused."+code : "details.sources.failed",["source":.catalog(source)])
+            if !lines.contains(line) { lines.append(line) }
+        }
+        return (lines,roles)
+    }
+    /// The Audio sources lines after the source rows: refusal lines, notSelected for each listed
+    /// side without a refusal line for its role, and the empty state only when nothing else shows.
+    public static func sourceLines(stored: JSON?, notSelected: [String], hasRows: Bool) -> [Line] {
+        let (refused,roles) = refusalLinesAndRoles(stored)
+        var lines = refused
+        for side in notSelected where !roles.contains(side) {
+            if let source = refusalSources[side] { lines.append(.init("details.sources.notSelected",["source":.catalog(source)])) }
+        }
+        if !hasRows && lines.isEmpty { lines.append(.init("details.sources.empty")) }
+        return lines
     }
 
     // MARK: How it ended
