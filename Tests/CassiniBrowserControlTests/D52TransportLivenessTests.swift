@@ -36,7 +36,7 @@ final class D52TransportLivenessTests: XCTestCase {
         let file = try JSONParser.parse(Data(contentsOf:url))
         XCTAssertEqual(file["constants"]?["PCM_STALE_AFTER"]?.int,Int(AudioTransportWatchdog.staleAfter))
         let cases = try XCTUnwrap(file["cases"]?.array)
-        XCTAssertEqual(cases.count,10)
+        XCTAssertEqual(cases.count,11)
         for vector in cases {
             let name = try XCTUnwrap(vector["name"]?.string), frames = try XCTUnwrap(vector["frames"]?.array)
             func closed(by now: Int) -> Bool {
