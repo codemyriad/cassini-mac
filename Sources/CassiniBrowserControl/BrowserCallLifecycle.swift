@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CassiniKit
 
 /// Per-session D33 decisions. The device owner supplies the actual selected
 /// source; an attempted fallback/restoration never commits source state here.
@@ -113,6 +114,38 @@ public struct BrowserCallPolicy: Sendable {
     private var previous: TimeInterval?, observedLoss: TimeInterval?
     public init() {}
 
+    /// D49: a native stand-in that asked a call to resume it stays a plain native recording
+    /// until the take-over commits (othersSource callConnected). While it is pending, browser
+    /// loss, fallback, policy stops and call-change termination do not apply to it; once the
+    /// call has taken over, it is handled like any browser recording.
+    public static func standInPending(source: String, keyed: Bool, events: [CaptureEvent]) -> Bool {
+        source == "macos" && keyed && !events.contains { $0.type == "othersSource" && $0.reason == "callConnected" }
+    }
+    /// One poll's source action for a browser recording or a stand-in (D49, D52 M3, D33).
+    /// While a stand-in's take-over is pending only the take-over applies: neither the
+    /// recording's policy nor its legacy lifecycle is stepped, so no grace, return deadline or
+    /// terminal state is consumed before the call joins (a control loss cannot end it as
+    /// pageGone, and an expired grace cannot block callConnected). The take-over is judged by
+    /// a fresh policy seeing this observation. `legacy` steps the D33 lifecycle.
+    public static func decide(pending: Bool, multiStream: Bool, policy: inout BrowserCallPolicy, now: TimeInterval, _ o: Observation,
+                              source: String?, reason: String?, others: Bool, restoreReady: Bool,
+                              legacy: () -> BrowserCallLifecycle.Action?) -> BrowserCallLifecycle.Action? {
+        if pending {
+            guard multiStream else { return nil }
+            var fresh = BrowserCallPolicy()
+            let joins = fresh.step(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady) == .callConnected
+            return joins && restoreReady ? .restore : nil
+        }
+        guard multiStream else { return legacy() }
+        switch policy.step(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady) {
+        case .fallback?: return .fallback
+        case .restore?: return .restore
+        case .stop(let reason)?: return .stop(reason)
+        // D49: the resumed browser PCM commits callConnected through the restore checkpoint.
+        case .callConnected?: return restoreReady ? .restore : nil
+        case nil: return nil
+        }
+    }
     /// When the current browser loss began (the producer's stamp when known), while one is pending.
     public var missingSince: TimeInterval? { missing }
     /// Whether a poll commits the browser source loss before any fallback. A legacy peer's
