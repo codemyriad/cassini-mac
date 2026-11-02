@@ -104,7 +104,11 @@ public enum MeetingTranscriber {
                 let factor = processed > 0 ? elapsed / processed : initialETA
                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
                 try writer.transaction { metadata in
-                    metadata["transcript"] = ["status":status, "reference":reference, "model":model]
+                    // D47/D56: edit the stored transcript object, so members this app does
+                    // not know survive; the reference is this attempt's own sidecar.
+                    var transcript = metadata["transcript"] as? [String:Any] ?? [:]
+                    transcript["status"] = status; transcript["reference"] = reference; transcript["model"] = model
+                    metadata["transcript"] = transcript
                     metadata["etaMinutes"] = status == "running" ? eta : NSNull()
                     metadata["error"] = NSNull()
                     var speakers = metadata["speakers"] as? [[String:Any]] ?? []

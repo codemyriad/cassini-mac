@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
+import CassiniKit
 
 /// App-owned metadata only. Capture session.json and audio remain producer-owned.
 /// Serial transactions preserve fields and reject unsupported/invalid metadata.
@@ -18,6 +19,23 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
     public func transaction(_ edit: (inout [String: Any]) throws -> Void) throws {
         try perform(createOnly: false, edit)
     }
+    /// The edited document, keeping the original's member order and the original text of
+    /// every value the edit left equal (so 0.1 stays 0.1, -0 stays -0, 1e300 stays 1e300).
+    static func preserving(_ original: JSON, edited: JSON) -> JSON {
+        switch (original, edited) {
+        case (.object(let old), .object(let new)):
+            var result: [(String, JSON)] = []
+            for (key, value) in old { if let replacement = new.first(where: { $0.0 == key })?.1 { result.append((key, preserving(value, edited: replacement))) } }
+            for (key, value) in new where !old.contains(where: { $0.0 == key }) { result.append((key, value)) }
+            return .object(result)
+        case (.array(let old), .array(let new)):
+            return .array(new.indices.map { $0 < old.count ? preserving(old[$0], edited: new[$0]) : new[$0] })
+        case (.number(let old), .number(let new)):
+            return Decimal(string: old) == Decimal(string: new) || Double(old) == Double(new) ? original : edited
+        default:
+            return original == edited ? original : edited
+        }
+    }
     private func perform(createOnly: Bool, _ edit: (inout [String: Any]) throws -> Void) throws {
         lock.lock(); defer { lock.unlock() }
         let fd = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -29,6 +47,7 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
         defer { flock(fd, LOCK_UN) }
         let input = openat(fd, "meeting.json", O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         var document: [String: Any]
+        var original: JSON?
         if input >= 0 {
             defer { Darwin.close(input) }
             var info = stat()
@@ -39,6 +58,7 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
             if createOnly { return }
             guard metadata.revision < AppMetadata.safe else { throw MetadataError.invalid }
             document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            original = try JSONParser.parse(data)
             document["revision"] = metadata.revision + 1
         } else {
             guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -48,7 +68,10 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
                 "error": NSNull(), "quoteOverride": NSNull(), "received": NSNull()]
         }
         try edit(&document)
-        let data = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted])
+        let edited = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted])
+        // D47/D56: everything the edit did not change is written back verbatim, including
+        // members this app does not know (speakers[].voiceSource…) and their number literals.
+        let data = try original.map { try Self.preserving($0, edited: JSONParser.parse(edited)).encoded(maximumBytes: 1_048_576) } ?? edited
         guard data.count <= 1_048_576 else { throw POSIXError(.EFBIG) }
         let metadata = try AppMetadata.parse(data)
         try metadata.validate(id: id, received: directory.lastPathComponent.hasPrefix("Received-"))
