@@ -148,6 +148,14 @@ public struct CallOwnership: Sendable, Equatable {
         let visible = peer.map { peer in listed || peer.meetings.contains { $0.key == value.key } } ?? false
         return .init(key:value.key,rebound:rebound,multiStream:multiStream,end:end,sessionListed:listed,callVisible:visible)
     }
+    /// The page evidence a poll acts on: a closed report wins, else the latest. While the bound
+    /// call is not visible (neither its row nor an active session remains), a `present` report
+    /// can only be history, such as an interrupted session's last state kept across a worker
+    /// restart, and is ignored: it must not keep a recording alive after its call.
+    public static func page(_ reports: [(BrowserCallLifecycle.Page,TimeInterval?)], callVisible: Bool) -> (BrowserCallLifecycle.Page,TimeInterval?)? {
+        let usable = callVisible ? reports : reports.filter { $0.0 != .present }
+        return usable.first { $0.0 == .closed } ?? usable.max { ($0.1 ?? 0) < ($1.1 ?? 0) }
+    }
     /// D57 (R78.1): the extension still lists an active session (starting, recording or
     /// stopping) for the tab. Interrupted history from a worker restart is not a session.
     public static func sessionListed(tabID: Int?, peer: BrowserControlPeerSnapshot?) -> Bool {

@@ -545,7 +545,8 @@ private final class CaptureFiles: @unchecked Sendable {
                     status?.pageState.map { ($0,status?.pageStateAt) },
                     meeting?.pageState.map { ($0,meeting?.pageStateAt) }
                 ].compactMap { $0 }
-                let page = pages.first { $0.0 == .closed } ?? pages.max { ($0.1 ?? 0) < ($1.1 ?? 0) }
+                // Historical `present` (interrupted history) never counts once the call is gone.
+                let page = CallOwnership.page(pages,callVisible:follow.callVisible)
                 let source = value.owner.snapshot
                 // Fresh PCM on the original owned transport is stronger than
                 // a brief gap in management discovery. It never overrides an

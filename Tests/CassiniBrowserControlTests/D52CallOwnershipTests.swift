@@ -328,9 +328,11 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
     }
-    /// Round 4, second major: transport loss, a resume that never joins, then the meeting row
-    /// disappears with no session left. The call is no longer visible, so the D52 grace runs
-    /// and the recording stops as pageGone; it used to be taken as present (control connected)
+    /// Round 4, second major, and round 5: transport loss, a resume that never joins, then the
+    /// meeting row disappears with no active session left. The extension keeps the session as
+    /// interrupted history whose last pageState is "present". The call is no longer visible, so
+    /// that history counts for nothing, the D52 grace runs and the recording stops as pageGone
+    /// at 120 s. It used to be taken as present (control connected, or the historical page)
     /// with unknown inventory, and recorded on until stopped by hand.
     func testALostRecordingStopsWhenItsMeetingRowDisappears() async throws {
         let ownership = CallOwnershipStore(), log = PeerLog()
@@ -358,7 +360,12 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                 let follow = ownership.follow(id,captureID:"gone",peers:log.peers)
                 let current = log.peers.first { $0.id == follow.key?.peer && $0.reconciled }
                 let row = current?.meetings.first { $0.key == follow.key }
-                let page: BrowserCallLifecycle.Page? = legacyPresent ? (current == nil ? nil : .present) : (follow.callVisible ? .present : nil)
+                // As the app does: the session's report (interrupted history included) and the row's.
+                let status = ((current?.captures ?? []) + (current?.interrupted ?? [])).first { $0.captureID == "gone" }
+                let reports = [status?.pageState.map { ($0,status?.pageStateAt) },row?.pageState.map { ($0,row?.pageStateAt) }].compactMap { $0 }
+                let page: BrowserCallLifecycle.Page? = legacyPresent
+                    ? (reports.max { ($0.1 ?? 0) < ($1.1 ?? 0) }?.0 ?? (current == nil ? nil : .present))
+                    : (CallOwnership.page(reports,callVisible:follow.callVisible)?.0 ?? (follow.callVisible ? .present : nil))
                 var o = BrowserCallPolicy.Observation(page:page,rowPresent:row != nil,sourceCount:row?.sourceCount,sourceCountKnown:row?.sourceCountKnown ?? false,
                                                       heard:row?.heard ?? false,controlAlive:current != nil,transportAlive:owner.snapshot.transportAlive,
                                                       callGeneration:row?.callGeneration,controlConnection:current?.id.uuidString ?? "")
@@ -367,9 +374,13 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                 return BrowserCallPolicy.decide(pending:false,multiStream:follow.multiStream,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
                                                 others:true,restoreReady:false,legacy:{ nil },onAskResume:{ asked += 1 })
             }
-            // The extension drops the session; the one resume ask goes out and never joins.
-            let dropped = log.next("the session left the status") { $0.contains { $0.id == peer && $0.captures.isEmpty } }
-            try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[]],control)
+            // The extension keeps the session only as interrupted history, last seen present; the
+            // one resume ask goes out and never joins.
+            let dropped = log.next("the session is only interrupted history, last present") { peers in
+                peers.contains { $0.id == peer && $0.captures.isEmpty && $0.interrupted.contains { $0.captureID == "gone" && $0.pageState == .present } }
+            }
+            try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[],
+                      "interrupted":[session((2,"gone","call-A"),recording:false,pageState:"present")]],control)
             await fulfillment(of:[dropped],timeout:5)
             XCTAssertNil(poll(100)); XCTAssertEqual(asked,1)
             // The last source leaves and the extension removes the meeting row.
@@ -381,7 +392,8 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
             XCTAssertNil(poll(101))
             XCTAssertNil(poll(220),"within the grace")
             XCTAssertEqual(poll(221),.stop(.pageGone),"bounded: 120 s after the call left")
-            // What the old observation did: present while control is connected, forever.
+            // What the old observation did: the historical present (or control being connected)
+            // kept the page present, forever.
             swap(&policy,&legacy)
             XCTAssertNil(poll(101,legacyPresent:true)); XCTAssertNil(poll(1000,legacyPresent:true))
         } catch { await fixture.finish(); throw error }
@@ -534,8 +546,10 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
     private func meeting(_ tab: Int, _ generation: String) -> [String:Any] {
         ["tabId":tab,"title":"Call","url":"https://meet.example/\(tab)","sourceCount":1,"heard":true,"callGeneration":generation]
     }
-    private func session(_ row: (Int,String,String), recording: Bool) -> [String:Any] {
-        ["tabId":row.0,"captureId":row.1,"recording":recording,"path":NSNull(),"message":recording ? "Recording" : "Interrupted","callGeneration":row.2]
+    private func session(_ row: (Int,String,String), recording: Bool, pageState: String? = nil) -> [String:Any] {
+        var value: [String:Any] = ["tabId":row.0,"captureId":row.1,"recording":recording,"path":NSNull(),"message":recording ? "Recording" : "Interrupted","callGeneration":row.2]
+        if let pageState { value["pageState"] = pageState }
+        return value
     }
     private func connect(_ fixture: AudioFixture, capabilities: [String] = ["independent-sessions-v1","multi-stream-v1"], meetings: [(Int,String)],
                          sessions: [(Int,String,String)], interrupted: [(Int,String,String)] = []) throws -> PipeEndpoint {
