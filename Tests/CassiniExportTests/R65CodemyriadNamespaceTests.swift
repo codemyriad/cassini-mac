@@ -681,6 +681,24 @@ struct R65CodemyriadNamespaceTests {
         let mine = try libraryExport(shapedAgain,provenanced) { try self.writeDown($0,status:"done") }
         #expect(mine.manifest?.raw["provenance"] == nil)
     }
+    /// #122 r2: a speaker renamed on Mac in a namespaced file Mac never wrote down: the
+    /// manifest label and the namespace name agree, and the transcript payload is unchanged.
+    @Test func aRenamedSpeakerAgreesInManifestAndNamespace() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let namespace = try JSONParser.parse(Data(#"{"schema":1,"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-09-01--00.00-","revision":7,"meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk_a","name":"Ada","provenance":"source","colourIndex":0},{"id":"spk_b","name":"Ben","provenance":"source","colourIndex":1}],"transcript":{"status":"done","reference":null}},"automaticTitle":"Conformance vector 001"}"#.utf8))
+        let shaped = try rewritten(vector("016-two-transcripts"),in:root,manifest:{ try $0.setting("x",to:.object([("codemyriad.io",namespace)])) })
+        let input = try CassiniReader.read(contentsOf:shaped)
+        let file = try libraryExport(shaped,root) { meeting in
+            try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+                $0["speakers"] = [["id":"spk_a","name":"Alice","provenance":"user","colourIndex":0]]
+            }
+        }
+        let x = try #require(file.manifest?.raw["x"]?["codemyriad.io"])
+        #expect(x["meeting"]?["speakers"]?.array?.first?["name"]?.string == "Alice" && x["revision"] == .number("8"))
+        #expect(file.manifest?.raw["speakers"]?.array?.first { $0["id"]?.string == "spk_a" }?["label"]?.string == "Alice")
+        #expect(file.manifest?.raw["speakers"]?.array?.first { $0["id"]?.string == "spk_b" }?["label"]?.string == "Ben")
+        #expect(payloadTags(file) == payloadTags(input),"the transcript payloads are the original's")
+    }
     /// #116 r4: our own namespace never describes two contents at one revision: words that
     /// become unreadable (damaged) take a new revision, and so do the same words restored;
     /// an unchanged re-export keeps it.

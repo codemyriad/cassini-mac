@@ -190,7 +190,9 @@ public enum MeetingFileExporter {
         // from outside the Library (nothing of it can change on Mac), stay unchanged.
         let originalNotes = extensions["gocassini.com"]?["notes"]
         let foreign = extensions[CodemyriadNamespace.key]
-        var notes: JSON?, namespace: JSON?, mergedCopy = false, stored: JSON?, own = false
+        // `stored` is meeting.json as this attempt read it (checked against the snapshot), for
+        // every path: the notes, our own namespace, the untitled title and the speaker names.
+        var notes: JSON?, namespace: JSON?, mergedCopy = false, own = false
         // D65: a namespace schema this app doesn't know is refused, never shipped next to
         // content its revision doesn't describe (also for a file opened from outside).
         if let foreign { _ = try CodemyriadNamespace.validated(foreign) }
@@ -201,7 +203,6 @@ public enum MeetingFileExporter {
                                                         body:transcripts.digest,bodyMatchesOriginal:carriedOnly,damaged:damaged)
             notes = merged.notes; namespace = merged.namespace; mergedCopy = true
         } else {
-            stored = try CodemyriadNamespace.current(meeting)
             let local = CodemyriadNamespace.localNotes(stored)
                 ?? (meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) }))
             notes = CodemyriadNamespace.exportNotes(local:local,original:originalNotes).notes
