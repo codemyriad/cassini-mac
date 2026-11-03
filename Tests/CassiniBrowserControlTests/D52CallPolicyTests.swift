@@ -137,15 +137,14 @@ final class D52CallPolicyTests: XCTestCase {
         // The new document is present with no sources yet; the queued loss never reached the owner.
         let rejoining = BrowserCallPolicy.Observation(page:.present,sourceCount:0,pageObservedAt:20.1)
         XCTAssertNil(policy.step(now:20.25,rejoining,source:"browser",reason:"start"))
-        XCTAssertFalse(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:true,navigation:false,fallback:false),
+        XCTAssertFalse(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,navigation:false,fallback:false),
                        "a present page with zero sources alone is a possible rejoin")
         XCTAssertEqual(policy.step(now:21.9,rejoining,source:"browser",reason:"start"),.fallback)
-        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:true,navigation:false,fallback:true))
+        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,navigation:false,fallback:true))
         XCTAssertEqual(policy.missingSince,19.9,"the loss is committed at the navigating stamp")
-        // Once committed (browserAlive false) the fallback alone proceeds; a legacy peer keeps D33.
-        XCTAssertFalse(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.present,count:0,multiStream:true,navigation:false,fallback:true))
-        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.present,count:0,multiStream:false,navigation:false,fallback:false))
-        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.navigating,count:nil,multiStream:true,navigation:true,fallback:false))
+        // Once committed (browserAlive false) the fallback alone proceeds.
+        XCTAssertFalse(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.present,navigation:false,fallback:true))
+        XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:false,page:.navigating,navigation:true,fallback:false))
     }
     /// D57 (R78.1): the resume ask waits until the status no longer lists a session for the tab,
     /// and waiting does not use up the once-per-loss-and-connection ask.

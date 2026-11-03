@@ -73,4 +73,51 @@ final class D61ClockFactsBrokerTests: XCTestCase {
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
     }
+    /// #132 codex round 2: a declared source that stays silent until another source triggers the
+    /// restore has no returning span, so its first packet opens one lazily (browserAudio). That
+    /// span carries its own clock facts too.
+    func testASilentSourceKeepsItsClockFactsOnItsLazySpanAfterRestore() async throws {
+        let fixture = try AudioFixture()
+        do {
+            let origin = 1793500000000
+            let capture = try OwnedBrowserCapture(parent:fixture.root.appendingPathComponent("Library"),title:"Stand-in",microphone:true,browser:false,changed:{ _ in })
+            let system = capture.nativeWriter(side:.others)
+            try system.addTrack(id:"output",label:"Others",kind:"system",sampleRate:8000,channels:1)
+            try system.appendNative(id:"output",pcm:Data(repeating:0,count:1600),offsetMs:0)
+            try fixture.broker.ownNative(capture,timelineOriginMs:origin)
+            let id = try XCTUnwrap(fixture.broker.standInIdentity(capture)).captureID
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            let client = try fixture.client()
+            XCTAssertEqual(try client.request(["type":"resume","version":1,"independent":true,"captureId":id,"timelineOriginMs":origin,"callGeneration":"call-A",
+                                               "features":["source-outcomes-v1","resume-capture-v1"]])["type"]?.string,"started")
+            XCTAssertEqual(try client.request(["type":"track","id":"r1","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest",
+                                               "clockMethod":"roundTrip","clockUncertaintyMs":12,"clockClampMs":3])["type"]?.string,"ack")
+            XCTAssertEqual(try client.request(["type":"track","id":"r2","kind":"remote","label":"Host","sampleRate":8000,"channels":1,"sourceTrackId":"host",
+                                               "clockMethod":"roundTrip","clockUncertaintyMs":20,"clockClampMs":5])["type"]?.string,"ack")
+            // Only r1 speaks before the restore, so only r1 returns with it.
+            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
+            try await capture.restoreBrowser(atMs:6000)
+            func hosts() throws -> [[String:Any]] {
+                let session = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:capture.snapshot.directory.appendingPathComponent("session.json"))) as? [String:Any])
+                return ((session["tracks"] as? [[String:Any]]) ?? []).filter { $0["sourceTrackId"] as? String == "host" }
+            }
+            func heard(_ rows: [[String:Any]]) -> [[String:Any]] { rows.filter { ($0["receivedFrames"] as? Int ?? 0) > 0 } }
+            // Its declaration's row never had audio; the restore opened no span for it.
+            XCTAssertEqual(heard(try hosts()).count,0,"the silent source has no span from the restore")
+            XCTAssertFalse(try hosts().contains { $0["ended"] as? Bool != true },"no open span for the silent source")
+            XCTAssertEqual(try client.request(["type":"audio","id":"r2","sequence":0,"offsetMs":6500,"pcm":Data(repeating:1,count:1600).base64EncodedString()])["type"]?.string,"ack")
+            XCTAssertEqual(try client.request(["type":"stop","captureId":id])["type"]?.string,"stopped")
+            let spans = try hosts()
+            XCTAssertEqual(heard(spans).count,1,"its first packet opened the lazy span")
+            for span in spans {
+                XCTAssertEqual(span["clockMethod"] as? String,"roundTrip"); XCTAssertEqual(span["clockUncertaintyMs"] as? Int,20); XCTAssertEqual(span["clockClampMs"] as? Int,5)
+            }
+            let meeting = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:capture.snapshot.directory.appendingPathComponent("meeting.json"))) as? [String:Any])
+            let record = (((meeting["recordingDetails"] as? [String:Any])?["captureRecord"] as? [String:Any])?["tracks"] as? [[String:Any]] ?? [])
+                .filter { $0["sourceTrackId"] as? String == "host" }
+            XCTAssertEqual(record.count,spans.count)
+            for span in record { XCTAssertEqual(span["clockUncertaintyMs"] as? Int,20); XCTAssertEqual(span["clockClampMs"] as? Int,5) }
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
 }

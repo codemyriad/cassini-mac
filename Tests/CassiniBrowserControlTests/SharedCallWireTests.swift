@@ -15,7 +15,9 @@ final class SharedCallWireTests: XCTestCase {
     private func send(_ packet: [String:Any], to state: inout BrowserControlRegistry, peer: UUID) throws {
         try state.receive(JSONSerialization.data(withJSONObject:packet),from:peer)
     }
-    func testLiteralWireVectorsThroughTheProductionRegistryAndPolicy() throws {
+    /// The wire corpus's evidence through the production registry. Its D33 policy expectations
+    /// are for pre-multi-stream peers, which the app no longer supports (D51).
+    func testLiteralWireVectorsThroughTheProductionRegistry() throws {
         let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let file = root.appendingPathComponent("browser-protocol/conformance/control/call-lifecycle-wire-vectors.json")
         let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
@@ -23,7 +25,7 @@ final class SharedCallWireTests: XCTestCase {
         XCTAssertEqual(cases.count,4)
         for sample in cases {
             let clock = Clock(), id = UUID(), tab = try XCTUnwrap(sample["tabId"] as? Int)
-            var registry = BrowserControlRegistry(clock:{ clock.now }), policy = BrowserCallLifecycle(), system = false
+            var registry = BrowserControlRegistry(clock:{ clock.now })
             try registry.connect(.init(id:id,role:.control,browser:"Wire fixture",browserInstance:.init(pid:4321,startSeconds:100)))
             try send(try XCTUnwrap(vectors["hello"] as? [String:Any]),to:&registry,peer:id)
             // Bind the existing capture to its original call, as production
@@ -39,25 +41,10 @@ final class SharedCallWireTests: XCTestCase {
                 XCTAssertEqual(peer.captures.first { $0.key.tabID == tab }?.captureID,"reload-capture","Wire evidence cannot erase the owned recording identity")
                 let expected = try XCTUnwrap(step["expectEvidence"] as? [String:Any])
                 let label = "\(sample["name"] ?? "?") at \(time)"
-                // This is the production reader's cache, never expected values
-                // or a second JSON-to-evidence parser feeding the policy.
+                // This is the production reader's cache, never expected values.
                 XCTAssertEqual(meeting?.pageState?.rawValue,expected["pageState"] as? String,label)
                 XCTAssertEqual(meeting?.sourceCount ?? 0,expected["sourceCount"] as? Int,label)
                 XCTAssertEqual(meeting?.heard ?? false,expected["heard"] as? Bool,label)
-                let action = policy.step(now:time,page:meeting?.pageState,sourceCount:meeting?.sourceCount ?? 0,
-                                         usingSystem:system,others:true,pageObservedAt:meeting?.pageStateAt)
-                var actions: [String] = []
-                if let action {
-                    switch action {
-                    case .fallback: actions = ["fallback"]; system = true
-                    case .restore: actions = ["restore"]; system = false
-                    case .stop(let reason): actions = ["stop:"+reason.rawValue]
-                    }
-                }
-                XCTAssertEqual(actions,try XCTUnwrap(step["expect"] as? [String]),label)
-                let timers = try XCTUnwrap(step["expectTimers"] as? [String:Any])
-                XCTAssertEqual(policy.pendingTimers.missing.map { Int(($0*1000).rounded()) },timers["missingAtMs"] as? Int,label)
-                XCTAssertEqual(policy.pendingTimers.ended.map { Int(($0*1000).rounded()) },timers["endedAtMs"] as? Int,label)
             }
             try send(["type":"meetings","meetings":[["tabId":tab,"title":"Changed URL","url":"https://wire.example/replacement","sourceCount":1,"heard":true,"pageState":"present"]]],to:&registry,peer:id)
             let request = try XCTUnwrap(registry.stop(.init(peer:id,tabID:tab),captureID:"reload-capture"),"The original recording must still receive Stop after navigation")

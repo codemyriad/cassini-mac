@@ -26,16 +26,16 @@ struct LiveCapture {
     var lastMicSound: TimeInterval = ProcessInfo.processInfo.systemUptime
     var diskMinutes: Int?
     var fallbackAnnounced = false
-    var lifetime = BrowserCallLifetime()
-    var callLifecycle = BrowserCallLifecycle()
-    /// D52 M3: used instead of `callLifecycle` when the peer advertises multi-stream-v1.
+    /// D52 M3: every browser recording follows its call by this policy (0.2.12+ only, D51).
     var callPolicy = BrowserCallPolicy()
     /// D52.1 R67: this native stand-in already asked one call to join (never retried).
     var resumeAttempted = false
     /// D52.5: the call this recording belongs to. After its audio transport closed, the
     /// recording finds that call by (tabId, callGeneration) on any control peer.
     var callGeneration: String?
-    var modernLifecycle: Bool?
+    /// Its control peer has been seen. Until then a live browser capture is not judged:
+    /// a native Start can precede the control status that binds it to its peer.
+    var peerKnown = false
     var changingSource = false
     fileprivate var sourceObservation: BrowserSourceObservation?
     var lastNavigationAt: TimeInterval?
@@ -305,14 +305,13 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { try? await self.broker.finish(value.owner) }
         })
         let meetingKey = key(for:info.captureID)
-        let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
-        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
+        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,
+                             peerKnown:peers.contains { $0.id == meetingKey?.peer })
         // The call this recording belongs to, as the Start named it (the broker recorded it first).
         if let generation = info.callGeneration ?? ownership.snapshot.binding(id)?.callGeneration {
             captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation
         }
         feedOwnership(id)
-        if let modern { try? await owner.manageBrowserLifecycle(modern) }
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
         CaptureActivityStore.shared.set(id,activity[id])
         diskWatch.start(folders:{ [weak self] in
@@ -399,10 +398,7 @@ private final class CaptureFiles: @unchecked Sendable {
             if let value = captures[id] {
                 let key = key(for:value.captureID) ?? value.key; captures[id]?.key = key
                 if let key { microphones[key] = value.owner.snapshot.me }
-                if value.modernLifecycle == nil, let peer = peers.first(where:{ $0.id == key?.peer }) {
-                    captures[id]?.modernLifecycle = peer.supportsPageState
-                    Task { try? await value.owner.manageBrowserLifecycle(peer.supportsPageState); try? await value.input.update() }
-                }
+                if !value.peerKnown, peers.contains(where:{ $0.id == key?.peer }) { captures[id]?.peerKnown = true }
             }
         }
         announce()
@@ -557,15 +553,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // Native Start can precede the control status that binds this
                 // capture to its peer. Absence during that handshake is not loss.
                 let initial = value.owner.snapshot
-                if value.modernLifecycle == nil && initial.browserAlive && initial.transportAlive { continue }
-                if value.modernLifecycle == false {
-                    // A stand-in whose take-over is pending is a plain native recording.
-                    if !pending, captures[id]?.lifetime.shouldStop(now:now,browserAlive:value.snapshot.browserAlive,
-                        lostAt:value.snapshot.browserLostUptime,reachable:peer != nil,sourceCount:count) == true {
-                        stop(id,reason:peer != nil && count == 0 ? .callEnded : .pageGone)
-                    }
-                    continue
-                }
+                if !value.peerKnown && initial.browserAlive && initial.transportAlive { continue }
                 let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
                 let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
                 let meeting = peer?.meetings.first { $0.key == value.key }
@@ -592,12 +580,10 @@ private final class CaptureFiles: @unchecked Sendable {
                 }
                 let returnFloor = page?.1.map { max(0,$0-value.originUptime)*1000 }
                 let ready = source.restoreReady && source.browserReturnPCMAt.map { $0 >= (returnFloor ?? 0) } == true
-                // Kept across a control gap: a missing peer is not a legacy one.
-                let multiStream = follow.multiStream
                 // D52 M6: a capture belongs to the call it started in. When the tab's
                 // call generation moves on (seen from any of its browser's peers), this
                 // session ends instead of absorbing B.
-                if multiStream, !pending, let ended = follow.end,
+                if !pending, let ended = follow.end,
                    let reason = CaptureEndReason(rawValue:ended.rawValue) {
                     value.owner.requestEnd(reason,atMs:max(0,now-value.originUptime)*1000)
                     stop(id,reason:reason); continue
@@ -616,12 +602,8 @@ private final class CaptureFiles: @unchecked Sendable {
                 // D57 (R78.1): ask to resume only once the status no longer lists a session for this tab.
                 callObservation.sessionListed = follow.sessionListed
                 var policy = captures[id]?.callPolicy ?? BrowserCallPolicy()
-                let action = BrowserCallPolicy.decide(pending:pending,multiStream:multiStream,policy:&policy,now:now,callObservation,
+                let action = BrowserCallPolicy.decide(pending:pending,policy:&policy,now:now,callObservation,
                     source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
-                    captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
-                        transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
-                        restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
-                } onAskResume: {
                     // D52.5: the policy asked once (per loss and control connection) to resume;
                     // decide sends it only once the fallback has committed system/lost.
                     if let key = meeting?.key { askResume(value,key) }
@@ -641,12 +623,11 @@ private final class CaptureFiles: @unchecked Sendable {
                 // A stand-in is a plain native recording until the call takes over; after that a
                 // navigation loses the browser like any other (and falls back to system sound).
                 let fallback = action == .fallback && !value.input.failedSides.contains(.others)
-                let lost = !pending && BrowserCallPolicy.commitsLoss(browserAlive:source.browserAlive,page:observedPage,count:count,multiStream:multiStream,
-                                                         navigation:navigation,fallback:fallback)
+                let lost = !pending && BrowserCallPolicy.commitsLoss(browserAlive:source.browserAlive,page:observedPage,navigation:navigation,fallback:fallback)
                 // That deferred loss began when the policy first saw the page missing.
-                let lossStamp = multiStream && !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1
+                let lossStamp = !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
-                let returned = multiStream || pending ? action == .restore : observedPage == .present && (count ?? 0) > 0 && ready && source.others
+                let returned = action == .restore
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
                 let atMs = max(0,now-value.originUptime)*1000
