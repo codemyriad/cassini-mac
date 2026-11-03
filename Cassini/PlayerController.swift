@@ -16,7 +16,8 @@ final class PlayerController {
     static let speeds: [Double] = [0.75, 1, 1.25, 1.5, 2]
     /// The order the speed button cycles through, as in the design.
     static let cycleOrder: [Double] = [1, 1.25, 1.5, 2, 0.75]
-    static let skipMs = 15_000
+    /// HARMONY 6 / D55: skips are 10 seconds.
+    static let skipMs = 10_000
 
     private(set) var isPlaying = false
     /// Playback position in ms, refreshed on every display refresh while playing.
