@@ -6,7 +6,12 @@ import Darwin
 import CassiniLibrary
 import CassiniOpus
 
-public enum MeetingExportError: Error { case invalidSource, invalidAssets, encoding(String), tooLarge }
+public enum MeetingExportError: Error {
+    case invalidSource, invalidAssets, encoding(String), tooLarge
+    /// The meeting's Library folder cannot be written, so the export's revision cannot be
+    /// saved: the export fails rather than risk reusing a revision (#116, Coordinator).
+    case libraryFolderNotWritable
+}
 public struct OpusAssets {
     public static let sourceSHA256 = "6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1"
     let library: URL

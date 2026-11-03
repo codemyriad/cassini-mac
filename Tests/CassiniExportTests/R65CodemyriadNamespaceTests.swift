@@ -200,6 +200,25 @@ struct R65CodemyriadNamespaceTests {
         let result = try reexport(root)
         #expect(result["revision"] == .number("8") && result["meeting"] == foreign["meeting"])
     }
+    /// A change whose revision cannot be saved fails the export with its own error: the
+    /// folder is app-owned, so an unwritable one is a fault (Coordinator, #116).
+    @Test func anUnwritableFolderFailsTheExportWhenARevisionMustBeSaved() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1)
+        let folder = meeting.folder.path
+        // Unchanged: nothing to save, so a read-only folder still exports byte-for-byte.
+        try FileManager.default.setAttributes([.posixPermissions:0o555],ofItemAtPath:folder)
+        defer { try? FileManager.default.setAttributes([.posixPermissions:0o755],ofItemAtPath:folder) }
+        #expect(try reexport(root).encoded() == foreign.encoded())
+        try FileManager.default.setAttributes([.posixPermissions:0o755],ofItemAtPath:folder)
+        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        try FileManager.default.setAttributes([.posixPermissions:0o555],ofItemAtPath:folder)
+        #expect { _ = try reexport(root) } throws:{ error in
+            if case MeetingExportError.libraryFolderNotWritable = error { return true }; return false
+        }
+        try FileManager.default.setAttributes([.posixPermissions:0o755],ofItemAtPath:folder)
+        #expect(try reexport(root)["revision"] == .number("8"),"no revision was used by the failed export")
+    }
     /// Notes the import normalised (an unknown member dropped, an invalid note skipped) are
     /// not a Mac edit: the unchanged file still comes back byte-for-byte at its revision.
     @Test func importNormalisedNotesAreNotAnEdit() throws {

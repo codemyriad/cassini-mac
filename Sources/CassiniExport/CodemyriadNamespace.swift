@@ -124,12 +124,18 @@ enum CodemyriadNamespace {
             return (result.namespace,result.notes)
         }
         var result: (namespace: JSON, notes: JSON?)?
-        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction(skippingUnchanged:true) { document in
-            // Under the folder lock: meeting.json as it is now, number literals intact.
-            let raw = (try? Data(contentsOf:url)).flatMap { try? JSONParser.parse($0) }
-            let decided = try decide(raw,saved:baseline(raw?[baselineMember]))
-            if let save = decided.save { document[baselineMember] = save }
-            result = (decided.namespace,decided.notes)
+        do {
+            try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction(skippingUnchanged:true) { document in
+                // Under the folder lock: meeting.json as it is now, number literals intact.
+                let raw = (try? Data(contentsOf:url)).flatMap { try? JSONParser.parse($0) }
+                let decided = try decide(raw,saved:baseline(raw?[baselineMember]))
+                if let save = decided.save { document[baselineMember] = save }
+                result = (decided.namespace,decided.notes)
+            }
+        } catch let error as POSIXError where [.EACCES,.EPERM,.EROFS].contains(error.code) {
+            // Library folders are app-owned: an unwritable one is a fault, never an export
+            // without its saved revision (that could reuse a revision for other content).
+            throw MeetingExportError.libraryFolderNotWritable
         }
         return result
     }
