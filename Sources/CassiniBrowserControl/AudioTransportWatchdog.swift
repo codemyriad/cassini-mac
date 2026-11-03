@@ -21,6 +21,10 @@ public struct AudioTransportWatchdog: Sendable {
     /// D61: open spans that carry a documentGeneration (bytes, compared for equality only),
     /// and the generations seen leave. None ever leaves the set.
     private var documents: [String:Data] = [:], departed: Set<Data> = []
+    /// Every track id declared on this transport, ended ones included. Track ids are unique
+    /// for the session, so a repeated `track` is activity but changes no span (open or ended)
+    /// and keeps its first generation.
+    private var seen: Set<String> = []
     public init() {}
     /// Spans without a generation follow D57's declaration order; one with a generation is
     /// dormant exactly while that generation has departed, checked at every evaluation.
@@ -61,8 +65,13 @@ public struct AudioTransportWatchdog: Sendable {
         if isStale(at:now) { return false }
         last = now; return true
     }
-    /// The span transition of a frame the host accepted. A refused frame changes no span.
+    /// The span transition of a frame the host accepted. A refused frame changes no span, and
+    /// neither does a repeated track id (unique for the session, protocol 032e98f): it keeps
+    /// its first span, open or ended, and its first generation.
     public mutating func apply(_ frame: Frame) {
+        if case .track(let id,_) = frame {
+            guard seen.insert(id).inserted else { return }
+        }
         switch frame {
         // A generation that is not 1 to 200 UTF-8 bytes counts as absent.
         case .track(let id, let generation?) where (1...200).contains(generation.utf8.count): documents[id] = Data(generation.utf8)

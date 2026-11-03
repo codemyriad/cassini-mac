@@ -13,23 +13,31 @@ final class D61ClockFactsTests: XCTestCase {
         return try XCTUnwrap((root["tracks"] as? [[String:Any]])?.first { $0["id"] as? String == id })
     }
 
-    /// conformance/vectors.json `track-clock-and-document-fields` through the legacy host.
-    func testTheSharedVectorCopiesTheFactsAndNeverTheGeneration() throws {
+    /// The three D61 clock vectors in conformance/vectors.json, through the legacy host:
+    /// the facts copied as received, invalid ones omitted one by one (9.0 and 1e3 are not
+    /// integer facts), never cross-checked, and documentGeneration never written.
+    func testTheSharedVectorsCopyTheFactsAndNeverTheGeneration() throws {
         let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("browser-protocol/conformance/vectors.json")
-        let vector = try XCTUnwrap(try JSONParser.parse(Data(contentsOf:url)).array?.first { $0["name"]?.string == "track-clock-and-document-fields" })
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D61-"+UUID().uuidString); defer { try? FileManager.default.removeItem(at:root) }
-        let host = BrowserRecordingHost { title in try RecordingSession(parent:root,title:title,source:"chromium") }
-        let replies = try vector["requests"]!.array!.map { try host.receive(Data($0.string!.utf8))["type"] }
-        XCTAssertEqual(replies,vector["expect"]!.array!.map { $0["type"]?.string })
-        let directory = try XCTUnwrap(host.session).directory
-        XCTAssertEqual(try RecordingLoader.load(directory:directory).state,vector["state"]?.string)
-        for (id,want) in vector["tracks"]!.object! {
-            let stored = try track(directory,id)
-            XCTAssertEqual(stored["clockMethod"] as? String,want["clockMethod"]?.string)
-            XCTAssertEqual(stored["clockUncertaintyMs"] as? Int,want["clockUncertaintyMs"]?.int)
-            XCTAssertEqual(stored["clockClampMs"] as? Int,want["clockClampMs"]?.int)
-            XCTAssertNil(stored["documentGeneration"],"documentGeneration is a liveness hint, never written")
+        let all = try XCTUnwrap(try JSONParser.parse(Data(contentsOf:url)).array)
+        let names = ["track-clock-and-document-fields","track-invalid-clock-facts-are-omitted","track-clock-facts-are-not-cross-checked"]
+        for name in names {
+            let vector = try XCTUnwrap(all.first { $0["name"]?.string == name },name)
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D61-"+UUID().uuidString); defer { try? FileManager.default.removeItem(at:root) }
+            let host = BrowserRecordingHost { title in try RecordingSession(parent:root,title:title,source:"chromium") }
+            let replies = try vector["requests"]!.array!.map { try host.receive(Data($0.string!.utf8))["type"] }
+            XCTAssertEqual(replies,vector["expect"]!.array!.map { $0["type"]?.string },name)
+            let directory = try XCTUnwrap(host.session).directory
+            XCTAssertEqual(try RecordingLoader.load(directory:directory).state,vector["state"]?.string,name)
+            let tracks = try XCTUnwrap(vector["tracks"]?.object,name)
+            XCTAssertFalse(tracks.isEmpty,name)
+            for (id,want) in tracks {
+                let stored = try track(directory,id)
+                XCTAssertEqual(stored["clockMethod"] as? String,want["clockMethod"]?.string,"\(name) \(id)")
+                XCTAssertEqual(stored["clockUncertaintyMs"] as? Int,want["clockUncertaintyMs"]?.int,"\(name) \(id)")
+                XCTAssertEqual(stored["clockClampMs"] as? Int,want["clockClampMs"]?.int,"\(name) \(id)")
+                XCTAssertNil(stored["documentGeneration"],"documentGeneration is a liveness hint, never written")
+            }
         }
     }
     /// Each fact stands on its own: an invalid one is omitted, the valid ones are kept.
