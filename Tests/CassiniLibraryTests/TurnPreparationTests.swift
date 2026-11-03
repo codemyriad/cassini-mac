@@ -13,11 +13,12 @@ import XCTest
     private final class Gated: @unchecked Sendable {
         let lock = NSLock(); var started: [Int] = []; var sawCancel: [Int] = []
         var onStart: (@Sendable (Int) -> Void)?
+        var onCancel: (@Sendable (Int) -> Void)?
         let release = DispatchSemaphore(value:0)
         func prepare(_ items: [LibraryTranscriptItem]) throws -> [MeetingPresentation.Turn] {
             lock.withLock { started.append(items.count) }; onStart?(items.count)
             release.wait()
-            if Task.isCancelled { lock.withLock { sawCancel.append(items.count) }; throw CancellationError() }
+            if Task.isCancelled { lock.withLock { sawCancel.append(items.count) }; onCancel?(items.count); throw CancellationError() }
             return try MeetingPresentation.turns(items,cancellable:true)
         }
     }
@@ -25,7 +26,12 @@ import XCTest
     func testALongTranscriptPreparesOffTheMainActor() async {
         let delivered = expectation(description:"turns delivered")
         var turns: [MeetingPresentation.Turn] = []
-        let preparation = TurnPreparation { turns = $0; delivered.fulfill() }
+        final class Thread_: @unchecked Sendable { let lock = NSLock(); var onMain: Bool? }
+        let ran = Thread_()
+        let preparation = TurnPreparation(prepare:{ items in
+            ran.lock.withLock { ran.onMain = Thread.isMainThread }
+            return try MeetingPresentation.turns(items,cancellable:true)
+        }) { turns = $0; delivered.fulfill() }
         preparation.request(alternating(10_000))
         XCTAssertTrue(turns.isEmpty && preparation.preparing,"request returns before preparing")
         // The main actor keeps running while the preparation works.
@@ -33,10 +39,13 @@ import XCTest
         Task { @MainActor in mainProgress.fulfill() }
         await fulfillment(of:[mainProgress,delivered],timeout:10)
         XCTAssertEqual(turns.count,10_000); XCTAssertFalse(preparation.preparing)
+        XCTAssertEqual(ran.lock.withLock { ran.onMain },false,"prepared off the main thread")
     }
     func testANewerRequestCancelsTheRunningOneWhichNeverDelivers() async {
         let gated = Gated(), firstStarted = expectation(description:"first started"), secondStarted = expectation(description:"second started")
+        let cancelSeen = expectation(description:"superseded preparation saw its cancellation")
         gated.onStart = { count in if count == 3 { firstStarted.fulfill() } else { secondStarted.fulfill() } }
+        gated.onCancel = { count in if count == 3 { cancelSeen.fulfill() } }
         let delivered = expectation(description:"newer delivered")
         var deliveries: [Int] = []
         let preparation = TurnPreparation(prepare:{ try gated.prepare($0) }) { deliveries.append($0.count); delivered.fulfill() }
@@ -45,7 +54,7 @@ import XCTest
         preparation.request(alternating(5))
         await fulfillment(of:[secondStarted],timeout:5)
         gated.release.signal(); gated.release.signal()
-        await fulfillment(of:[delivered],timeout:5)
+        await fulfillment(of:[delivered,cancelSeen],timeout:5)
         XCTAssertEqual(deliveries,[5],"only the newer request delivers")
         XCTAssertEqual(gated.lock.withLock { gated.sawCancel },[3],"the superseded preparation saw its cancellation")
     }

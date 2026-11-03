@@ -99,9 +99,20 @@ import Observation
     private func prepareTurns() {
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
         if frozen { turns = MeetingPresentation.turns(meeting.transcriptItems); return }
-        if preparation == nil { preparation = TurnPreparation { [weak self] in self?.turns = $0 } }
+        if preparation == nil {
+            #if DEBUG
+            if let prepare = Self.preparerForSelfTest {
+                preparation = TurnPreparation(prepare:prepare) { [weak self] in self?.turns = $0 }
+            }
+            #endif
+            if preparation == nil { preparation = TurnPreparation { [weak self] in self?.turns = $0 } }
+        }
         preparation?.request(meeting.transcriptItems)
     }
+    #if DEBUG
+    /// MeetingPreparationSelfTest: a gated preparer, so the proof controls when work proceeds.
+    static var preparerForSelfTest: TurnPreparation.Prepare?
+    #endif
     /// After a Library update: a preparation an outage cancelled starts again.
     func resumePreparation() { preparation?.resume() }
     // Received audio uses the same asynchronous composition/transport as a

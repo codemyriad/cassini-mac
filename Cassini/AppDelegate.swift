@@ -92,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--meeting-preparation-self-test") {
+            Task { @MainActor in await MeetingPreparationSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--search-self-test") {
             Task { @MainActor in await SearchSelfTest.run() }; return
         }
