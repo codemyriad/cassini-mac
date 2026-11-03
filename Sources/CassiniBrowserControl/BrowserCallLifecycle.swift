@@ -144,6 +144,26 @@ public struct BrowserCallPolicy: Sendable {
     public static func standInPending(source: String, keyed: Bool, events: [CaptureEvent]) -> Bool {
         source == "macos" && keyed && !events.contains { $0.type == "othersSource" && $0.reason == "callConnected" }
     }
+    /// D52.5: the recording is a browser call's own: a Chromium capture, or a D49 stand-in
+    /// whose take-over committed (callConnected). A stand-in still pending is native.
+    public static func followsCall(source: String, keyed: Bool, events: [CaptureEvent]) -> Bool {
+        source == "chromium" || source == "macos" && keyed && !standInPending(source:source,keyed:keyed,events:events)
+    }
+    /// D52.5: the call (tab, generation) a recording holds while its audio transport is closed
+    /// and it is on system/lost. That call is resumed, never Started afresh.
+    public static func lostCall(source: String, key: BrowserMeetingKey?, callGeneration: String?, recording: Bool,
+                                transportAlive: Bool, events: [CaptureEvent]) -> BrowserControlRegistry.LostCall? {
+        guard let key, recording, !transportAlive, followsCall(source:source,keyed:true,events:events),
+              CaptureSourceState(events:events,atMs:.infinity).reason == "lost" else { return nil }
+        return .init(tabID:key.tabID,callGeneration:callGeneration)
+    }
+    /// D52.5: the recording's call (same tab and call generation) among the meetings of every
+    /// reconciled control peer, past or present. Only a recording whose transport closed follows it.
+    public static func lostCallMeeting(source: String, key: BrowserMeetingKey?, callGeneration: String?, transportAlive: Bool,
+                                       events: [CaptureEvent], meetings: [BrowserMeeting]) -> BrowserMeetingKey? {
+        guard let key, let callGeneration, !transportAlive, followsCall(source:source,keyed:true,events:events) else { return nil }
+        return meetings.first { $0.key.tabID == key.tabID && $0.callGeneration == callGeneration }?.key
+    }
     /// One poll's source action for a browser recording or a stand-in (D49, D52 M3, D33).
     /// While a stand-in's take-over is pending only the take-over applies: neither the
     /// recording's policy nor its legacy lifecycle is stepped, so no grace, return deadline or

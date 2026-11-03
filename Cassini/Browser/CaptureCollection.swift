@@ -435,17 +435,27 @@ private final class CaptureFiles: @unchecked Sendable {
         guard calls.count == 1, let call = calls.first else { return }
         captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
         let owner = value.owner, broker = broker
-        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { generation in
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation in
             broker.expectResume(owner,callGeneration:generation)
+            // The generation the resume was sent with (nil: refused). After the take-over this
+            // recording is that call's, so it follows and suppresses exactly that call (D52.5).
+            guard let generation else { return }
+            Task { @MainActor in self?.bindStandIn(id,callGeneration:generation) }
         }
+    }
+    private func bindStandIn(_ id: UUID, callGeneration: String) {
+        guard captures[id]?.callGeneration == nil else { return }
+        captures[id]?.callGeneration = callGeneration; captures[id]?.callPolicy.callGeneration = callGeneration
     }
     private var lastRecordRetry: TimeInterval = 0
     /// D52.5: the recording's call (same tab and call generation) on any reconciled control
     /// peer, past or present. Only a recording whose audio transport closed is re-keyed.
+    /// A D49 stand-in whose take-over committed follows its call like a Chromium capture.
     private func lostCallKey(_ value: LiveCapture) -> BrowserMeetingKey? {
-        guard value.snapshot.manifest.source == "chromium", let key = value.key, let generation = value.callGeneration,
-              !value.owner.snapshot.transportAlive else { return nil }
-        return peers.filter(\.reconciled).flatMap(\.meetings).first { $0.key.tabID == key.tabID && $0.callGeneration == generation }?.key
+        let source = value.owner.snapshot
+        return BrowserCallPolicy.lostCallMeeting(source:source.manifest.source,key:value.key,callGeneration:value.callGeneration,
+                                                 transportAlive:source.transportAlive,events:source.manifest.events ?? [],
+                                                 meetings:peers.filter(\.reconciled).flatMap(\.meetings))
     }
     /// D52.4/D52.5: the policy asked once (per loss and control connection) to resume this
     /// recording onto its system/lost fallback through resume-capture-v1.
@@ -460,9 +470,9 @@ private final class CaptureFiles: @unchecked Sendable {
     private func publishLostCalls() {
         let lost = Set(captures.values.compactMap { value -> BrowserControlRegistry.LostCall? in
             let source = value.owner.snapshot
-            guard source.manifest.source == "chromium", let key = value.key, value.savingSinceMs == nil, source.phase == .recording,
-                  !source.transportAlive, CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity).reason == "lost" else { return nil }
-            return .init(tabID:key.tabID,callGeneration:value.callGeneration)
+            return BrowserCallPolicy.lostCall(source:source.manifest.source,key:value.key,callGeneration:value.callGeneration,
+                                              recording:value.savingSinceMs == nil && source.phase == .recording,
+                                              transportAlive:source.transportAlive,events:source.manifest.events ?? [])
         })
         guard lost != publishedLostCalls else { return }
         publishedLostCalls = lost; service.setLostCalls(lost)
