@@ -8,6 +8,12 @@ name: CI
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
+# D66 mac-P1-1: a newer push to a pull request cancels that PR's older run. Push, nightly and
+# manual runs get a group per commit and are never cancelled, so every main commit keeps the
+# push run the release gate needs (D20, release.yml).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   changes:
     runs-on: ubuntu-latest
