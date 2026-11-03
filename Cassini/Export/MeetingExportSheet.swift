@@ -50,15 +50,17 @@ struct MeetingExportSheet: View {
                     .accessibilityIdentifier("export-choose-folder")
                     .disabled(coordinator.working)
             }.padding(14).background(LibraryTheme.chip.opacity(0.65),in:RoundedRectangle(cornerRadius:7))
-            if coordinator.folderNotWritable {
+            if let failure = coordinator.failure {
                 HStack(alignment:.firstTextBaseline,spacing:10) {
                     Image(systemName:"exclamationmark.triangle.fill").accessibilityHidden(true)
-                    Text(UXText.text("export.failed.folderNotWritable")).fixedSize(horizontal:false,vertical:true)
+                    Text(UXText.text(failure.line)).fixedSize(horizontal:false,vertical:true)
                         .frame(maxWidth:.infinity,alignment:.leading)
-                    Button(UXText.text("common.tryAgain")) { coordinator.perform() }.disabled(coordinator.working)
-                        .accessibilityIdentifier("export-try-again")
+                    if failure.retries {
+                        Button(UXText.text("common.tryAgain")) { coordinator.perform() }.disabled(coordinator.working)
+                            .accessibilityIdentifier("export-try-again")
+                    }
                 }.padding(12).foregroundStyle(LibraryTheme.amber).background(LibraryTheme.amberTint,in:RoundedRectangle(cornerRadius:7))
-                    .accessibilityElement(children:.contain).accessibilityIdentifier("export-folder-not-writable")
+                    .accessibilityElement(children:.contain).accessibilityIdentifier("export-failed")
             }
             HStack(spacing:10) {
                 Spacer()

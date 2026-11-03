@@ -160,16 +160,20 @@ public enum MeetingFileExporter {
         // from outside the Library (nothing of it can change on Mac), stay unchanged.
         let originalNotes = extensions["gocassini.com"]?["notes"]
         let foreign = extensions[CodemyriadNamespace.key]
-        var notes: JSON?, namespace: JSON?, mergedCopy = false
+        var notes: JSON?, namespace: JSON?, mergedCopy = false, stored: JSON?
+        // D65: a namespace schema this app doesn't know is refused, never shipped next to
+        // content its revision doesn't describe (also for a file opened from outside).
+        if let foreign, foreign["schema"] != .number("1") { throw MeetingExportError.newerFormat }
         if !LibraryScanner.isMeetingFolder(meeting.folder) {
             notes = originalNotes
-        } else if let foreign, let merged = try CodemyriadNamespace.merged(foreign,with:meeting,originalNotes:originalNotes,importedTranscript:importedTranscript,
-                                                                           body:SHA256.hash(data:body).map { String(format:"%02x",$0) }.joined(),
-                                                                           bodyMatchesOriginal:bodyMatches(words:words,language:language,original:file),
-                                                                           damaged:meeting.state.transcript == .damaged) {
+        } else if let foreign {
+            let merged = try CodemyriadNamespace.merged(foreign,with:meeting,originalNotes:originalNotes,importedTranscript:importedTranscript,
+                                                        body:SHA256.hash(data:body).map { String(format:"%02x",$0) }.joined(),
+                                                        bodyMatchesOriginal:bodyMatches(words:words,language:language,original:file),
+                                                        damaged:meeting.state.transcript == .damaged)
             notes = merged.notes; namespace = merged.namespace; mergedCopy = true
         } else {
-            let stored = try CodemyriadNamespace.current(meeting)
+            stored = try CodemyriadNamespace.current(meeting)
             let local = CodemyriadNamespace.localNotes(stored)
                 ?? (meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) }))
             notes = CodemyriadNamespace.exportNotes(local:local,original:originalNotes).notes
@@ -177,7 +181,8 @@ public enum MeetingFileExporter {
                 // A namePrefix that could not be saved would be chosen again by each export, so
                 // one revision could carry different names (Coordinator, #116: an unwritable
                 // folder fails the export). Metadata Mac may not rewrite is exempt.
-                if !(stored["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false),
+                // The same for the untitled fallback saved at the first export (D65, Q6b).
+                if !(stored["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false) || (meeting.titleIsUntitled && CodemyriadNamespace.untitled(stored) == nil),
                    !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) { throw MeetingExportError.libraryFolderNotWritable }
                 namespace = try CodemyriadNamespace.make(meeting,stored:stored,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
                     .map { try CodemyriadNamespace.marking($0,damaged:meeting.state.transcript == .damaged) }
@@ -187,7 +192,10 @@ public enum MeetingFileExporter {
         // writer's copy, the one its namespace implies, so a cleared title matches it.
         let implied = mergedCopy ? [namespace?["meeting"]?["title"]?.string,namespace?["automaticTitle"]?.string]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty } : nil
-        guard let title = implied ?? meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
+        // D65 (Q6b): without a title, the untitled fallback in the language of the first export,
+        // so a later language change never changes the title under the same revision.
+        let untitled = meeting.titleIsUntitled ? CodemyriadNamespace.untitled(stored) : nil
+        guard let title = implied ?? untitled ?? meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
             ("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])

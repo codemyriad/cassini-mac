@@ -166,7 +166,8 @@ public struct LibraryScanner: Sendable {
             }
         }
         meeting.state.audioAvailable = !meeting.audioFiles.isEmpty
-        meeting.title = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? LibraryLocalization.shared.text("library.untitled")
+        let titled = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        meeting.title = titled ?? LibraryLocalization.shared.text("library.untitled"); meeting.titleIsUntitled = titled == nil
 
         var words: [LibraryTranscriptItem] = []
         var readable = false

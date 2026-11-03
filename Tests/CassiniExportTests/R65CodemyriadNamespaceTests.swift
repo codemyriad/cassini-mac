@@ -138,9 +138,9 @@ struct R65CodemyriadNamespaceTests {
         return try CassiniReader.read(contentsOf:exported.url)
     }
     /// Nothing changed on Mac: the namespace round-trips byte-for-byte, any schema.
-    @Test(arguments:[1,2]) func anUnchangedForeignNamespaceRoundTripsByteForByte(schema: Int) throws {
+    @Test func anUnchangedForeignNamespaceRoundTripsByteForByte() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let (foreign,_) = try foreignFile(root,schema:schema)
+        let (foreign,_) = try foreignFile(root,schema:1)
         #expect(try reexport(root).encoded() == foreign.encoded())
     }
     /// D55.1: a rename and a speaker name set on Mac go into a schema-1 namespace in place,
@@ -490,13 +490,63 @@ struct R65CodemyriadNamespaceTests {
         #expect(after.state.transcript == .done && after.transcriptItems.map(\.text) == ["Hello"])
         #expect(try raw(session.directory.appendingPathComponent("meeting.json"))["namePrefix"]?.string != nil)
     }
-    /// A revision at or past the shared ceiling (2^53-1), even Int.max, is never advanced:
-    /// the original namespace is kept and the export goes ahead.
-    @Test(arguments:["9007199254740991","9223372036854775807"]) func aRevisionAtTheCeilingIsKept(revision: String) throws {
+    /// D65: at the shared ceiling (2^53-1) an unchanged file still goes out unchanged, but a
+    /// change, which would need a higher revision, is refused; past it (even Int.max) the
+    /// namespace is refused outright.
+    @Test func aRevisionThatCannotAdvanceIsRefused() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let (foreign,meeting) = try foreignFile(root,schema:1,revision:revision)
-        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        let (foreign,meeting) = try foreignFile(root,schema:1,revision:"9007199254740991")
         #expect(try reexport(root).encoded() == foreign.encoded())
+        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        #expect(refused(root))
+        let beyond = try self.root(); defer { try? FileManager.default.removeItem(at:beyond) }
+        _ = try foreignFile(beyond,schema:1,revision:"9223372036854775807")
+        #expect(refused(beyond))
+    }
+    /// D65 (Q6b): a recording without a title saves the untitled fallback, in the language of
+    /// its first export, and keeps it: a later export in another language changes nothing.
+    @Test func theUntitledFallbackIsSavedOnFirstExportAndKept() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"",source:"macos")
+        try session.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:16000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:1,count:32000),offsetMs:0)
+        try session.finish()
+        var meeting = try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(meeting.titleIsUntitled)
+        try CodemyriadNamespace.persistNamePrefix(meeting,dateTag:nil,now:Date(),zone:.current)
+        let url = session.directory.appendingPathComponent("meeting.json")
+        let first = try raw(url)
+        #expect(CodemyriadNamespace.untitled(first) == meeting.title && first["title"] == .null)
+        // The app's language changes: the saved fallback stays.
+        meeting.title = "Senza titolo"
+        try CodemyriadNamespace.persistNamePrefix(meeting,dateTag:nil,now:Date(),zone:.current)
+        #expect(CodemyriadNamespace.untitled(try raw(url)) == CodemyriadNamespace.untitled(first))
+        // Never exported, and the namespace's own title stays null.
+        let x = try #require(try CodemyriadNamespace.make(meeting,stored:raw(url),dateTag:nil,originalTitle:nil,now:Date(),zone:.current))
+        #expect(x["meeting"]?["title"] == .null && x["passthrough"]?[CodemyriadNamespace.baselineMember] == nil)
+    }
+    /// The same through the real Opus export (assets supplied by the export CI job): TITLE and
+    /// the manifest title are the saved fallback, not the current language's.
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func anExportedUntitledRecordingKeepsItsFirstTitle() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"",source:"macos")
+        try session.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:16000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:1,count:32000),offsetMs:0)
+        try session.finish()
+        // As if the first export ran in Italian.
+        try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction {
+            $0[CodemyriadNamespace.baselineMember] = ["untitledTitle":"Senza titolo"]
+        }
+        let path = try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"])
+        let directory = URL(fileURLWithPath:path)
+        let hashes = try JSONDecoder().decode([String:String].self,from:Data(contentsOf:directory.appendingPathComponent("unsigned-sha256.json")))
+        let assets = try OpusAssets.builtForTests(directory:directory,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
+        let meeting = try #require(LibraryScanner(root:root).scan().meetings.first)
+        let exported = try MeetingFileExporter.cassini(meeting,assets:assets,temporaryRoot:root)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.manifest?.meeting.title == "Senza titolo" && file.tags?["TITLE"] == "Senza titolo")
+        #expect(file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["title"] == .null)
     }
     /// A plain Opus file's DATE and TITLE tags name and title its first export (#116 review).
     @Test func aTaggedPlainOpusFileKeepsItsDateAndTitle() throws {
@@ -541,12 +591,21 @@ struct R65CodemyriadNamespaceTests {
         #expect(try Data(contentsOf:url) == bytes,"never rewritten")
         #expect(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting) ?? .null,dateTag:nil,originalTitle:nil,now:Date(),zone:.current) != nil)
     }
-    /// A schema this app does not know stays unchanged even after an edit.
-    @Test func aFutureSchemaIsNeverRewritten() throws {
+    private func refused(_ root: URL) -> Bool {
+        do { _ = try reexportFile(root); return false } catch MeetingExportError.newerFormat { return true } catch { return false }
+    }
+    /// D65: a namespace schema this app doesn't know is refused (newerFormat), changed or not:
+    /// its revision can't be known to describe what Mac would write.
+    @Test func aFutureSchemaIsRefused() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let (foreign,meeting) = try foreignFile(root,schema:2)
+        let (_,meeting) = try foreignFile(root,schema:2)
+        #expect(refused(root))
         try MeetingRename.apply("Renamed on Mac",to:meeting)
-        #expect(try reexport(root).encoded() == foreign.encoded())
+        #expect(refused(root))
+        // Also opened from outside the Library.
+        let input = root.appendingPathComponent("gnome.opus")
+        let external = MeetingPresentation.external(try CassiniReader.read(contentsOf:input),url:input)
+        #expect(throws:MeetingExportError.newerFormat) { _ = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root) }
     }
     /// D55.1: the namePrefix is chosen on the first export, saved, and never recomputed.
     @Test func theNamePrefixIsSavedOnFirstExportAndKept() throws {

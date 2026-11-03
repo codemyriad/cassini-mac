@@ -21,9 +21,15 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     private(set) var meeting: LibraryMeeting?
     private(set) var estimatedBytes: Int64?
     private(set) var working = false
-    /// #116: the last export was refused because the meeting's Library folder can't be written
-    /// (its revision could not be saved). Shown in the dialog with Try again, never the raw error.
-    private(set) var folderNotWritable = false
+    /// D65: why the last export was refused, shown in the dialog as an amber line (never the
+    /// raw error): an unwritable Library folder (with Try again), or another writer's newer
+    /// format that this version can't advance (no Try again: only an update helps).
+    enum Failure: Equatable {
+        case folderNotWritable, newerFormat
+        var line: String { self == .folderNotWritable ? "export.failed.folderNotWritable" : "export.failed.newerFormat" }
+        var retries: Bool { self == .folderNotWritable }
+    }
+    private(set) var failure: Failure?
     private(set) var directory: URL = {
         let home = getpwuid(getuid()).map { URL(fileURLWithPath:String(cString:$0.pointee.pw_dir)) } ?? FileManager.default.homeDirectoryForCurrentUser
         return home.appendingPathComponent("Documents")
@@ -43,7 +49,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     func show(_ meeting: LibraryMeeting) {
         guard !closing, !isBusy, Self.canExport(meeting) else { return }
         self.meeting = meeting; kind = meeting.audioFiles.isEmpty ? .markdown : .cassini
-        selectedFile = nil; receipt = nil; folderNotWritable = false
+        selectedFile = nil; receipt = nil; failure = nil
         estimatedBytes = nil; showing = true; estimateTask?.cancel()
         estimateTask = Task {
             let bytes = try? await Task.detached { try MeetingFileExporter.estimatedBytes(meeting) }.value
@@ -128,7 +134,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         }
     }
     private func start(_ meeting: LibraryMeeting, kind: MeetingExportKind, file: FileAccessLease) {
-        guard task == nil, !closing else { return }; working = true; folderNotWritable = false
+        guard task == nil, !closing else { return }; working = true; failure = nil
         task = Task {
             do {
                 let fallbackTitle = UXText.text("library.untitled")
@@ -147,10 +153,10 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
                 try await withTaskCancellationHandler(operation:{ try await work.value },onCancel:{ work.cancel() })
                 showing = false
                 receipt = Receipt(url:file.url,title:meeting.title ?? fallbackTitle,access:file)
-            } catch is CancellationError {} catch MeetingExportError.libraryFolderNotWritable {
+            } catch is CancellationError {} catch let error as MeetingExportError where [.libraryFolderNotWritable,.newerFormat].contains(error) {
                 // Back in the dialog (an export started from the save panel hid it), same file.
                 if !closing {
-                    folderNotWritable = true
+                    failure = error == .newerFormat ? .newerFormat : .folderNotWritable
                     if !showing { resumeSheet(parent:NSApp.keyWindow?.sheetParent ?? NSApp.mainWindow) }
                 }
             } catch { if !closing { NSApp.presentError(error) } }

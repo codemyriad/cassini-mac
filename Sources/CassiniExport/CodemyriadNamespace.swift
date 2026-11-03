@@ -17,7 +17,8 @@ enum CodemyriadNamespace {
     static let linkMembers: Set<String> = ["id","revision","notes","namePrefix","namePrefixSource","published"]
     /// Mac-local meeting.json member, never exported: for a received file carrying another
     /// writer's schema-1 namespace, the revision Mac last gave that namespace and a digest of
-    /// what it wrote then (`{"revision": n, "sha256": hex}`). See `merged`.
+    /// what it wrote then (`revision`, `sha256`; see `merged`); for a meeting without a title,
+    /// the untitled fallback in the language of its first export (`untitledTitle`, D65, Q6b).
     static let baselineMember = "codemyriadExport"
 
     /// #116 r3: the meeting changed while this export read it (meeting.json's revision moved
@@ -84,22 +85,33 @@ enum CodemyriadNamespace {
         }
         return try LibraryNames.prefix(start)
     }
+    /// The untitled fallback saved at the first export (nil when none was saved).
+    static func untitled(_ stored: JSON?) -> String? {
+        stored?[baselineMember]?["untitledTitle"]?.string.flatMap { $0.isEmpty ? nil : $0 }
+    }
     /// D55.1: the namePrefix is chosen once, on the first export, and saved into meeting.json,
-    /// so later exports keep the same name. An existing one is never recomputed.
+    /// so later exports keep the same name. An existing one is never recomputed. D65 (Q6b): a
+    /// meeting without a title saves its untitled fallback, in the language of that export, too.
     static func persistNamePrefix(_ meeting: LibraryMeeting, dateTag: String?, now: Date, zone: TimeZone) throws {
         // Metadata this app cannot validate is never rewritten; the export still goes ahead.
         guard !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) else { return }
         let stored = (try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json"))).flatMap { try? JSONParser.parse($0) }
-        if let kept = stored?["namePrefix"]?.string, LibraryNames.isPrefix(kept) { return }
+        let keptPrefix = stored?["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false
+        let needsUntitled = meeting.titleIsUntitled && untitled(stored) == nil
+        if keptPrefix && !needsUntitled { return }
         let raw = stored ?? (try? JSONParser.parse(JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id)))) ?? .object([])
-        let chosen = try choosePrefix(raw:raw,session:raw["received"]?.object != nil ? nil : session(meeting),dateTag:dateTag,now:now,zone:zone)
+        let chosen = keptPrefix ? nil : try choosePrefix(raw:raw,session:raw["received"]?.object != nil ? nil : session(meeting),dateTag:dateTag,now:now,zone:zone)
         try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
             // A folder without meeting.json whose transcript.json the Library reads as done
             // (R2.3/R3) keeps those words: the created meeting.json references them.
             if stored == nil, meeting.state.transcript == .done {
                 $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
             }
-            $0["namePrefix"] = chosen.namePrefix; $0["namePrefixSource"] = chosen.source
+            if let chosen { $0["namePrefix"] = chosen.namePrefix; $0["namePrefixSource"] = chosen.source }
+            if needsUntitled {
+                var baseline = $0[baselineMember] as? [String:Any] ?? [:]
+                baseline["untitledTitle"] = meeting.title; $0[baselineMember] = baseline
+            }
         }
     }
     /// D55.1: Mac is a writer of this namespace too. In a schema-1 copy from another writer,
@@ -120,11 +132,14 @@ enum CodemyriadNamespace {
     /// meeting.json must still be at `meeting.metadataRevision` (else `MetadataChanged`).
     /// `bodyMatchesOriginal`: the file carries the original's words unchanged (else that is a
     /// change too); `damaged`: the export read the words as damaged (the namespace says so).
+    /// D65: a namespace this app can't advance safely (unknown schema, malformed, a revision
+    /// outside 0...2^53-1, or one at the ceiling that a change would have to pass) is refused
+    /// with `newerFormat`.
     static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?,
                        importedTranscript: [String:Any]? = nil, body: String = "", bodyMatchesOriginal: Bool = true,
-                       damaged: Bool = false) throws -> (namespace: JSON, notes: JSON?)? {
+                       damaged: Bool = false) throws -> (namespace: JSON, notes: JSON?) {
         guard original["schema"] == .number("1"), original["meeting"]?.object != nil,
-              let base = original["revision"]?.int, (0..<maxRevision).contains(base) else { return nil }
+              let base = original["revision"]?.int, (0...maxRevision).contains(base) else { throw MeetingExportError.newerFormat }
         let url = meeting.folder.appendingPathComponent("meeting.json")
         /// The decision for meeting.json `raw` and the saved baseline; `save` is the new baseline.
         func decide(_ raw: JSON?, saved: (revision: Int, sha256: String)?) throws -> (namespace: JSON, notes: JSON?, save: [String:Any]?) {
@@ -136,7 +151,7 @@ enum CodemyriadNamespace {
             let digest = try Self.digest(copy,notes:notes,body:body)
             if let saved, saved.sha256 == digest { return (try original.setting("meeting",to:copy).setting("revision",to:.number(String(saved.revision))),notes,nil) }
             let last = max(base,saved?.revision ?? base)
-            guard last < maxRevision else { return (original,notes,nil) }
+            guard last < maxRevision else { throw MeetingExportError.newerFormat }
             return (try original.setting("meeting",to:copy).setting("revision",to:.number(String(last + 1))),notes,["revision":last + 1,"sha256":digest])
         }
         func baseline(_ value: JSON?) -> (revision: Int, sha256: String)? {
@@ -150,13 +165,17 @@ enum CodemyriadNamespace {
             let result = try decide(raw,saved:baseline(raw?[baselineMember]))
             return (result.namespace,result.notes)
         }
-        var result: (namespace: JSON, notes: JSON?)?
+        var result: (namespace: JSON, notes: JSON?) = (original,nil)
         do {
             try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction(skippingUnchanged:true) { document in
                 // Under the folder lock: meeting.json as it is now, number literals intact.
                 let raw = (try? Data(contentsOf:url)).flatMap { try? JSONParser.parse($0) }
                 let decided = try decide(raw,saved:baseline(raw?[baselineMember]))
-                if let save = decided.save { document[baselineMember] = save }
+                if let save = decided.save {
+                    // Other Mac-local facts (untitledTitle) stay.
+                    var baseline = document[baselineMember] as? [String:Any] ?? [:]
+                    baseline.merge(save) { $1 }; document[baselineMember] = baseline
+                }
                 result = (decided.namespace,decided.notes)
             }
         } catch let error as POSIXError where [.EACCES,.EPERM,.EROFS].contains(error.code) {

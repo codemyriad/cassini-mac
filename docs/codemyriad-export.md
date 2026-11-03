@@ -79,3 +79,24 @@ that differs from the original file's counts as a change.
   the Library reads as done) creates meeting.json referencing those words.
 - A namePrefix that could not be saved fails the export with
   `libraryFolderNotWritable`, as a revision that could not be saved does.
+
+## Refusals and the untitled fallback (D65)
+
+- Another writer's namespace with a schema this app does not know, a malformed
+  one, or a revision outside 0…2^53-1 refuses the export (`newerFormat`, shown as
+  `export.failed.newerFormat`, no Try again), even with nothing changed on Mac. So
+  does a schema-1 namespace at 2^53-1 when a change would need a higher revision;
+  an unchanged one still goes out unchanged. A file opened from outside the
+  Library is refused the same way.
+- A meeting without a title (a recording with no meeting-window or user title)
+  saves the catalog's `library.untitled` in the language of its first export, in
+  meeting.json's Mac-local `codemyriadExport.untitledTitle`. Later exports use it
+  for the manifest title and TITLE, so a language change never changes the title
+  under the same revision. `x….meeting.title` stays null.
+
+## Known limits
+
+- The revision baseline lives in the meeting folder's meeting.json. Trashing a
+  received meeting and importing the same file again starts from the file's own
+  revision, so a revision Mac exported before can be reused for other content.
+  Accepted (D65, D51): there is no Library-wide record.
