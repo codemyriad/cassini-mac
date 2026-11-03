@@ -10,13 +10,17 @@ import CassiniWhistle
 /// D56 (R75): a track with fewer than 32 non-zero 32 ms frames is left out of recognition,
 /// stays in the mixdown, and is listed in writingDown.silentTracks.
 final class D56SilentTracksTranscriptionMeetingTests: XCTestCase {
-    private func wave(_ url: URL, _ samples: [Int16], rate: Int = 16000, channels: Int = 1) throws {
+    /// `declared` writes a stale data size, as a recovered checkpoint header can have;
+    /// `list` puts a LIST chunk before data, so the file is not a canonical Cassini WAV.
+    private func wave(_ url: URL, _ samples: [Int16], rate: Int = 16000, channels: Int = 1, declared: Int? = nil, list: Bool = false) throws {
         var data = Data()
         func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
         func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
-        data.append(contentsOf: Array("RIFF".utf8)); u32(UInt32(36 + samples.count*2)); data.append(contentsOf: Array("WAVEfmt ".utf8)); u32(16)
+        let size = declared ?? samples.count*2
+        data.append(contentsOf: Array("RIFF".utf8)); u32(UInt32(36 + size + (list ? 12 : 0))); data.append(contentsOf: Array("WAVEfmt ".utf8)); u32(16)
         u16(1); u16(UInt16(channels)); u32(UInt32(rate)); u32(UInt32(rate * channels * 2)); u16(UInt16(channels * 2)); u16(16)
-        data.append(contentsOf: Array("data".utf8)); u32(UInt32(samples.count*2))
+        if list { data.append(contentsOf: Array("LIST".utf8)); u32(4); data.append(contentsOf: Array("INFO".utf8)) }
+        data.append(contentsOf: Array("data".utf8)); u32(UInt32(size))
         for s in samples { u16(UInt16(bitPattern: s)) }
         try data.write(to: url)
     }
@@ -50,6 +54,29 @@ final class D56SilentTracksTranscriptionMeetingTests: XCTestCase {
         ]
         for (name, samples, rate, channels, silent) in cases {
             let url = root.appendingPathComponent(name + ".wav"); try wave(url, samples, rate: rate, channels: channels)
+            XCTAssertEqual(MeetingTranscriber.isSilent(wav: url), silent, name)
+        }
+    }
+    /// #111 review: a Cassini WAV is judged on its physical complete frames, as the decoder and
+    /// the Library scanner read it, never on a recovered track's stale checkpoint header.
+    func testSilenceUsesPhysicalFramesNotTheDeclaredSize() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D56Physical-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); defer { try? FileManager.default.removeItem(at: root) }
+        // 100 frames is fewer than one 256-frame read: the whole file arrives as one short read.
+        let short = { (frames: Int) -> [Int16] in var s = [Int16](repeating: 0, count: 100 * 512); for f in 0..<frames { s[f * 512 + 11] = 5 }; return s }
+        let cases: [(String, [Int16], Int?, Bool, Bool)] = [
+            ("stale-zero-header-speech-beyond", sparse(32), 0, false, false),
+            ("stale-small-header-speech-beyond", sparse(32), 512 * 2 * 4, false, false),
+            ("stale-zero-header-still-silent", sparse(31), 0, false, true),
+            ("oversized-header-short-read-speech", short(32), 1 << 30, false, false),
+            ("oversized-header-short-read-silent", short(31), 1 << 30, false, true),
+            ("exact-short-file", short(32), nil, false, false),
+            // Not a Cassini layout: the declared size bounds it, and a short read still counts frames.
+            ("list-chunk-oversized-short-read", short(32), 1 << 30, true, false),
+            ("list-chunk-declared-bound", sparse(32), 512 * 2 * 40, true, true),
+        ]
+        for (name, samples, declared, list, silent) in cases {
+            let url = root.appendingPathComponent(name + ".wav"); try wave(url, samples, declared: declared, list: list)
             XCTAssertEqual(MeetingTranscriber.isSilent(wav: url), silent, name)
         }
     }
@@ -96,5 +123,36 @@ final class D56SilentTracksTranscriptionMeetingTests: XCTestCase {
         let fallback = (writing["recognitionFallback"] as? [String:Any])?["tracks"] as? [[String:Any]] ?? []
         XCTAssertFalse(fallback.contains { ["zeros","blip"].contains($0["trackId"] as? String ?? "") })
         XCTAssertEqual(written.audioTracks.count,3,"they stay in the meeting and its mixdown")
+    }
+    /// #111 review: a recovered speech track whose checkpoint header still declares no data is
+    /// transcribed from its physical frames, not skipped as silent and published with no words.
+    func testRecoveredTrackWithStaleZeroHeaderIsTranscribed() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline VAD supplied by pipeline CI") }
+        let detector = try SpeechDetector(assets:(try? VADAssets.forWorker(arguments:["--assets",assets])) ?? VADAssets.pinned(directory:URL(fileURLWithPath:assets)))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D56StaleHeader-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = try RecordingSession(parent:root,title:"Recovered track",source:"chromium")
+        try session.transition(starting:[.init(id:"speech",label:"Guest",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"guest"),
+                                         .init(id:"zeros",label:"Quiet",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"quiet")])
+        let speech = Data(try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens"))).dropFirst(44).prefix(160000))
+        for (id,pcm) in [("speech",speech),("zeros",Data(count:160000))] {
+            for start in stride(from:0,to:pcm.count,by:80000) {
+                try session.appendNative(id:id,pcm:pcm.subdata(in:start..<min(pcm.count,start + 80000)),offsetMs:Double(start / 2) / 16)
+            }
+        }
+        try session.finish()
+        // The checkpoint header of an interrupted recording: RIFF and data sizes still at zero.
+        let file = try XCTUnwrap(session.manifest.tracks.first { $0.id == "speech" }?.file)
+        let url = session.directory.appendingPathComponent(file)
+        let handle = try FileHandle(forUpdating:url)
+        try handle.seek(toOffset:4); try handle.write(contentsOf:Data([36,0,0,0]))
+        try handle.seek(toOffset:40); try handle.write(contentsOf:Data([0,0,0,0])); try handle.close()
+        XCTAssertFalse(MeetingTranscriber.isSilent(wav:url),"physical frames decide, not the stale header")
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:runModel)
+        let written = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(Set(written.transcriptItems.map(\.speaker)),["track-guest"],"the recovered speech is written down")
+        let stored = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as? [String:Any]
+        let writing = ((stored?["recordingDetails"] as? [String:Any])?["writingDown"] as? [String:Any]) ?? [:]
+        XCTAssertEqual(writing["silentTracks"] as? [String],["zeros"])
     }
 }

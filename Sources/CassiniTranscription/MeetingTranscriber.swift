@@ -316,6 +316,11 @@ public enum MeetingTranscriber {
     /// trailing partial frame never counts; a frame is non-zero if any sample on any channel is
     /// != 0 (DC counts). Reads the WAV directly and stops at the 32nd frame. A file this reader
     /// does not understand is never called silent.
+    ///
+    /// Like the decoder and the Library scanner, a Cassini WAV (the canonical 44-byte header)
+    /// is judged on its physical complete frames: a recovered track's checkpoint header can
+    /// declare fewer bytes than were written, or more than exist. Other layouts keep their
+    /// declared size, bounded by what is on disk.
     static let silentFrameLimit = 32
     static func isSilent(wav url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom:url) else { return false }
@@ -324,27 +329,31 @@ public enum MeetingTranscriber {
               header.prefix(4) == Data("RIFF".utf8), header[8..<12] == Data("WAVE".utf8) else { return false }
         func u32(_ d: Data, _ at: Int) -> Int { Int(d[d.startIndex+at]) | Int(d[d.startIndex+at+1]) << 8 | Int(d[d.startIndex+at+2]) << 16 | Int(d[d.startIndex+at+3]) << 24 }
         func u16(_ d: Data, _ at: Int) -> Int { Int(d[d.startIndex+at]) | Int(d[d.startIndex+at+1]) << 8 }
-        var channels = 0, rate = 0, bits = 0, offset: UInt64 = 12
+        var channels = 0, rate = 0, bits = 0, fmtSize = 0, offset: UInt64 = 12
         while let chunk = try? { try handle.seek(toOffset:offset); return try handle.read(upToCount:8) }(), chunk.count == 8 {
             let size = u32(chunk,4), body = offset + 8
             if chunk.prefix(4) == Data("fmt ".utf8) {
                 guard size >= 16, let fmt = try? handle.read(upToCount:16), fmt.count == 16, u16(fmt,0) == 1 || u16(fmt,0) == 0xFFFE else { return false }
-                channels = u16(fmt,2); rate = u32(fmt,4); bits = u16(fmt,14)
+                channels = u16(fmt,2); rate = u32(fmt,4); bits = u16(fmt,14); fmtSize = size
             } else if chunk.prefix(4) == Data("data".utf8) {
                 guard channels > 0, rate > 0, bits == 16 else { return false }
                 let frameBytes = rate * 32 / 1000 * channels * 2
                 guard frameBytes > 0 else { return false }
-                var remaining = size / frameBytes, found = 0
-                while remaining > 0 {
-                    let count = min(remaining,256)
-                    guard let block = try? handle.read(upToCount:count * frameBytes), block.count == count * frameBytes else { return found < silentFrameLimit }
-                    let nonZero = block.withUnsafeBytes { raw -> Int in
+                // nil: read to the end of the file, as the decoder does for a Cassini WAV.
+                var remaining: Int? = fmtSize == 16 && body == 44 ? nil : size / frameBytes
+                var found = 0
+                while remaining.map({ $0 > 0 }) ?? true {
+                    let count = min(remaining ?? 256,256)
+                    guard let block = try? handle.read(upToCount:count * frameBytes) else { break }
+                    // A short read still holds complete frames; only a trailing partial frame is dropped.
+                    let complete = block.count / frameBytes
+                    found += block.withUnsafeBytes { raw -> Int in
                         let samples = raw.bindMemory(to:Int16.self), per = frameBytes / 2
-                        return (0..<count).filter { f in samples[(f*per)..<((f+1)*per)].contains { $0 != 0 } }.count
+                        return (0..<complete).filter { f in samples[(f*per)..<((f+1)*per)].contains { $0 != 0 } }.count
                     }
-                    found += nonZero
                     if found >= silentFrameLimit { return false }
-                    remaining -= count
+                    if complete < count { break }
+                    remaining = remaining.map { $0 - count }
                 }
                 return true
             }
