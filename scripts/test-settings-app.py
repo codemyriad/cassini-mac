@@ -28,6 +28,22 @@ resume[resume.index('--settings-self-test')]='--settings-resume-moves-self-test'
 resume[resume.index('-CassiniTranscriptionFixture')+1]='NO'
 continued=subprocess.run(resume,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),capture_output=True,text=True,timeout=60)
 args.output.with_suffix('.resume-stderr.txt').write_text(continued.stderr)
+def diagnose():
+    """D66 mac-P0-3: the resume cleanup fails now and then with EPERM on the destination. On a
+    failure, record what holds it: its remaining entries with flags, ACLs and attributes, any
+    sandbox denial around it, and every Cassini process still alive with its open files there."""
+    tmp=Path.home()/'Library/Containers/io.codemyriad.cassini/Data/tmp'
+    targets=sorted(str(p) for p in tmp.glob('CassiniSettingsDestination-'+key.upper())) or sorted(str(p) for p in tmp.glob('CassiniSettingsDestination-*'))
+    def run(command):
+        try: r=subprocess.run(command,capture_output=True,text=True,timeout=60); return f'$ {" ".join(command)}\n{r.stdout}{r.stderr}'
+        except Exception as error: return f'$ {" ".join(command)}\n{error}'
+    parts=[run(['ls','-laeO@R',*targets]) if targets else 'no destination left',
+           run(['log','show','--last','5m','--style','compact','--predicate','eventMessage CONTAINS[c] "deny" AND (eventMessage CONTAINS "CassiniSettings" OR eventMessage CONTAINS "Cassini")']),
+           run(['ps','-axo','pid,ppid,etime,command'])]
+    parts+= [run(['lsof','+D',t]) for t in targets]
+    text='\n\n'.join(parts); args.output.with_suffix('.resume-diagnostics.txt').write_text(text); return text
+if continued.returncode!=0 and 'Move resume proof failed' in continued.stderr:
+    print(diagnose())
 assert continued.returncode==0,(continued.returncode,continued.stdout,continued.stderr)
 resumed=json.loads(continued.stdout)
 assert resumed['liveFolderMovedAfterStop'] is True and resumed['pendingMovesResumedAfterRelaunch'] is True and resumed['audioDevicesOpened'] is False

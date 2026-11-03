@@ -225,9 +225,10 @@ import CassiniKit
             try await wait { !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.location.pendingMoves.isEmpty }
             for name in names { try check(FileManager.default.fileExists(atPath:destination.appendingPathComponent(name + "/session.json").path),"idle folder moved after relaunch") }
             try check(LibraryLocationModel.shared.location.previousPaths.isEmpty,"old readers retired after all moves finish")
-            // D66 mac-P0-3: let the move coordinator finish shutting down before the folders go,
-            // as the first proof does (removing them under a finishing move gave EPERM 513).
-            LibraryMoveCoordinator.shared.beginShutdown(); await LibraryMoveCoordinator.shared.waitForShutdown(); LibraryStore.shared.stop()
+            // D66 mac-P0-3: an intermittent EPERM here is not explained yet (the moves are done:
+            // `busy` is false above). removeReporting and test-settings-app.py record what holds
+            // the folder on the next failure.
+            LibraryMoveCoordinator.shared.beginShutdown(); LibraryStore.shared.stop()
             for url in [original,destination,config.deletingLastPathComponent()] { try removeReporting(url) }
             let report = ["liveFolderMovedAfterStop":true,"pendingMovesResumedAfterRelaunch":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
