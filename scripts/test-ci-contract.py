@@ -107,6 +107,28 @@ class Transport(unittest.TestCase):
         with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'changed')
         with self.assertRaisesRegex(ValueError, 'digest'): products.unpack('swiftpm',self.output)
 
+    def test_an_incomplete_download_is_retryable_and_a_mismatch_is_not(self):
+        products.pack('swiftpm', self.output)
+        with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'truncated')
+        with self.assertRaises(products.TransferError): products.unpack('swiftpm',self.output)
+        (self.output/'swiftpm.tar.gz').unlink()
+        with self.assertRaises(products.TransferError): products.unpack('swiftpm',self.output)
+        products.pack('swiftpm', self.output)
+        with patch.object(products, 'identity', return_value={**self.identity,'commit':'b'*40}):
+            with self.assertRaises(ValueError) as caught: products.unpack('swiftpm',self.output)
+        self.assertNotIsInstance(caught.exception, products.TransferError)
+
+    def test_the_cli_exits_75_only_for_an_incomplete_download(self):
+        products.pack('swiftpm', self.output)
+        with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'truncated')
+        with patch.object(products.sys,'argv',['ci-products.py','unpack','swiftpm',str(self.output)]), patch('sys.stderr',io.StringIO()):
+            with self.assertRaises(SystemExit) as caught: products.main()
+        self.assertEqual(caught.exception.code, products.TRANSFER_EXIT)
+        products.pack('swiftpm', self.output)
+        with patch.object(products.sys,'argv',['ci-products.py','unpack','swiftpm',str(self.output)]), \
+             patch.object(products, 'identity', return_value={**self.identity,'arch':'x86_64'}):
+            with self.assertRaisesRegex(ValueError,'do not match'): products.main()
+
     def test_traversal_and_external_links_are_rejected(self):
         for name, link in [('../outside', None), ('.build/link','../../outside'),('.build/link','/tmp/outside')]:
             with self.subTest(name=name,link=link):
@@ -133,6 +155,51 @@ class Concurrency(unittest.TestCase):
         self.assertIn("format('run-{0}', github.run_id)", group.group(1), 'non-PR runs need a unique group, not the commit')
         self.assertNotIn('github.sha', group.group(1))
         self.assertEqual(group.group(2).strip(), "${{ github.event_name == 'pull_request' }}")
+class ProductDownloads(unittest.TestCase):
+    """D66 mac-P0-4: the products action downloads strictly and retries an incomplete product
+    once; its shell steps run here with a stub python3 standing in for ci-products.py."""
+    ACTION = (ROOT/'.github/actions/ci-products/action.yml').read_text()
+    KINDS = ['swiftpm','assets','parakeet','debug','release']
+
+    def script(self, marker):
+        lines = self.ACTION.split('\n')
+        start = next(i for i,line in enumerate(lines) if marker in line)
+        run = next(i for i in range(start,len(lines)) if lines[i].strip() == 'run: |')
+        body = []
+        for line in lines[run+1:]:
+            if line.strip() and not line.startswith(' '*8): break
+            body.append(line[8:])
+        return '\n'.join(body)
+
+    def run_step(self, marker, statuses, env):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder); stub = folder/'python3'
+            stub.write_text('#!/bin/sh\n' + ''.join(f'[ "$3" = {kind} ] && exit {code}\n' for kind,code in statuses.items()) + 'exit 0\n')
+            stub.chmod(0o755); output = folder/'output'; output.write_text('')
+            result = subprocess.run(['bash','-e','-c',self.script(marker)],cwd=folder,capture_output=True,text=True,
+                                    env={**os.environ,'PATH':f'{folder}:{os.environ["PATH"]}','GITHUB_OUTPUT':str(output),**env})
+            return result, output.read_text()
+
+    def test_downloads_are_strict_and_each_retried_at_most_once(self):
+        self.assertNotIn('continue-on-error', self.ACTION)
+        for kind in self.KINDS:
+            with self.subTest(kind=kind):
+                self.assertEqual(self.ACTION.count(f"if: inputs.{kind} == 'true'"), 2)
+                self.assertEqual(self.ACTION.count(f"contains(steps.verify.outputs.retry, ' {kind} ')"), 1)
+
+    def test_only_an_incomplete_product_is_downloaded_again_with_a_warning(self):
+        env = {f'RESTORE_{kind.upper()}':'true' for kind in self.KINDS}
+        result, output = self.run_step('- id: verify', {'debug':75}, env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('retry= debug ', output); self.assertIn('::warning::CI product debug', result.stdout)
+        result, _ = self.run_step('- id: verify', {'debug':1}, env)
+        self.assertNotEqual(result.returncode, 0, 'any other mismatch fails at once')
+
+    def test_a_second_incomplete_download_fails_the_job(self):
+        result, _ = self.run_step("- if: steps.verify.outputs.retry != ' '", {'debug':75}, {'RETRY':' debug '})
+        self.assertNotEqual(result.returncode, 0)
+        result, _ = self.run_step("- if: steps.verify.outputs.retry != ' '", {}, {'RETRY':' debug '})
+        self.assertEqual(result.returncode, 0)
 
 
 class ParakeetCoverage(unittest.TestCase):
