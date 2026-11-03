@@ -41,6 +41,7 @@ jobs:
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -118,6 +119,7 @@ jobs:
   app:
     name: Build Cassini.app
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products

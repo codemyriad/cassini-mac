@@ -30,6 +30,7 @@ jobs:
     needs: main-ci
     name: Build and publish Cassini.app
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - name: Select Xcode
