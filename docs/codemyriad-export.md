@@ -55,3 +55,27 @@ trimmed, a blank one skipped, as the import does).
 
 The Library v2 file name (`LibraryNames.fileName`) is ported and vector-checked
 here, but Mac's Library and export file names are not changed by R65.
+
+## One read per export (#116 review r3)
+
+Each export attempt reads the meeting folder again (`LibraryScanner.meeting(at:)`)
+and takes the words, speakers, title, notes and namespace from that one read.
+Every change to the words bumps meeting.json's revision, and the namespace checks
+that revision (under the folder lock for another writer's copy); if it moved, the
+export reads again. The words' digest is part of the revision baseline, and a body
+that differs from the original file's counts as a change.
+
+- Notes: while Mac's notes equal what the import kept, the original note objects
+  go out verbatim, unknown members included.
+- The manifest `speakers` list only the speakers of the exported words (none while
+  a Write down is still running).
+- Words the export reads as damaged are written as `transcript.status: damaged`
+  in the namespace, never as done.
+- For another writer's copy, the manifest title and TITLE are the title its
+  namespace implies (`meeting.title`, then `automaticTitle`).
+- Our own namespace is written only from a real meeting.json. A file opened from
+  outside the Library keeps any namespace and notes it has, and gets none made up.
+- The first export of a folder without meeting.json (legacy, with a transcript.json
+  the Library reads as done) creates meeting.json referencing those words.
+- A namePrefix that could not be saved fails the export with
+  `libraryFolderNotWritable`, as a revision that could not be saved does.

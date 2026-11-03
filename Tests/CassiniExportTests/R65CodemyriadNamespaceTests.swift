@@ -54,7 +54,7 @@ struct R65CodemyriadNamespaceTests {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let (session,meeting) = try recording(root)
         let rome = try #require(TimeZone(identifier:"Europe/Rome"))
-        let x = try #require(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting),dateTag:nil,originalTitle:nil,now:Date(),zone:rome))
+        let x = try #require(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting) ?? .null,dateTag:nil,originalTitle:nil,now:Date(),zone:rome))
         let stored = try raw(session.directory.appendingPathComponent("meeting.json"))
         let manifest = try raw(session.directory.appendingPathComponent("session.json"))
         #expect(x["schema"] == .number("1") && x["origin"]?.string == "Recording")
@@ -104,13 +104,13 @@ struct R65CodemyriadNamespaceTests {
         let (session,_) = try recording(root)
         try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { $0["namePrefix"] = "2026-10-30--18.02-"; $0["namePrefixSource"] = "recorded" }
         let meeting = try #require(LibraryScanner(root:root).scan().meetings.first)
-        let x = try #require(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting),dateTag:nil,originalTitle:nil,now:Date(),zone:.current))
+        let x = try #require(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting) ?? .null,dateTag:nil,originalTitle:nil,now:Date(),zone:.current))
         #expect(x["namePrefix"]?.string == "2026-10-30--18.02-" && x["namePrefixSource"]?.string == "recorded")
     }
 
     /// Another writer's namespace (GNOME schema 1, or a future schema) in a real Cassini file,
     /// imported into a Mac Library.
-    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil, words: String = #"{"items":[]}"#, wordCount: Int = 0, moreSpeakers: String = "") throws -> (namespace: JSON, meeting: LibraryMeeting) {
+    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil, words: String = #"{"items":[]}"#, wordCount: Int = 0, moreSpeakers: String = "", title: String = "null", titleSource: String = "meeting-window") throws -> (namespace: JSON, meeting: LibraryMeeting) {
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         // A real Cassini file first (the fixture is plain Opus), then the namespace in it.
         let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed"))
@@ -119,7 +119,7 @@ struct R65CodemyriadNamespaceTests {
         let manifest = try #require(CassiniReader.read(bytes).manifest?.raw)
         let foreign = try JSONParser.parse(Data("""
         {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":\(revision),\
-        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}\(moreSpeakers)],\
+        "meeting":{"version":1,"title":\(title),"titleSource":"\(titleSource)","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}\(moreSpeakers)],\
         "transcript":{"status":"none","reference":null,"futureTranscriptMember":{"a":1}},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
         "passthrough":{"later":9007199254740993},"automaticTitle":"Weekly sync","tracks":[{"id":"t","spans":[{"file":"track.wav","sampleRate":48000,"frames":10,"startOffsetMs":12.5}],"futureTrackMember":true}],"unknownTop":[1,2]}
         """.utf8))
@@ -418,6 +418,78 @@ struct R65CodemyriadNamespaceTests {
         let x = try #require(file.manifest?.raw["x"]?["codemyriad.io"])
         #expect(x["meeting"]?["transcript"]?["status"]?.string == "done" && x["revision"] == stored["revision"])
     }
+    /// Export-path review: while the words aren't exported (a Write down still running), the
+    /// manifest lists none of their speakers either.
+    @Test func noSpeakersAreListedWithoutExportedWords() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1)
+        try writeDown(meeting,status:"running",eta:2)
+        let file = try reexportFile(root)
+        #expect(file.defaultTranscript?.load.transcript?.items.isEmpty == true)
+        #expect(file.manifest?.raw["speakers"]?.array?.isEmpty == true)
+    }
+    /// Export-path review: words the Library could read but no longer can are exported as
+    /// damaged, never as done, and that takes a new revision.
+    @Test func unreadableWordsAreExportedAsDamaged() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1)
+        try writeDown(meeting,status:"done")
+        #expect(try reexport(root)["revision"] == .number("8"))
+        try FileManager.default.removeItem(at:meeting.folder.appendingPathComponent("transcript.json"))
+        let file = try reexportFile(root)
+        let x = try #require(file.manifest?.raw["x"]?["codemyriad.io"])
+        #expect(file.defaultTranscript?.load.transcript?.items.isEmpty == true)
+        #expect(x["meeting"]?["transcript"]?["status"]?.string == "damaged" && x["revision"] == .number("9"))
+    }
+    /// Export-path review: a title cleared on Mac shows, in the manifest and TITLE, what the
+    /// namespace implies (meeting.title, then automaticTitle), not the original manifest title.
+    @Test func aClearedTitleMatchesTheNamespace() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1,title:#""Design review""#,titleSource:"user")
+        let scanned = try #require(LibraryScanner(root:root.appendingPathComponent("Library")).meeting(at:meeting.folder))
+        try MeetingRename.apply("  ",to:scanned)
+        let file = try reexportFile(root)
+        let x = try #require(file.manifest?.raw["x"]?["codemyriad.io"])
+        #expect(x["meeting"]?["title"] == .null && x["automaticTitle"]?.string == "Weekly sync")
+        #expect(file.manifest?.meeting.title == "Weekly sync" && file.tags?["TITLE"] == "Weekly sync")
+    }
+    /// Export-path review: a file opened from outside the Library has nothing Mac can change:
+    /// another writer's namespace and notes go out unchanged, and Mac makes none up.
+    @Test func anExternalFileKeepsItsNamespaceAndNotesAndGetsNoneMadeUp() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let notes = #"[{"atMs":1500,"text":"hi","id":"n-1"}]"#
+        let (foreign,_) = try foreignFile(root,schema:1,notes:notes)
+        let input = root.appendingPathComponent("gnome.opus")
+        let external = MeetingPresentation.external(try CassiniReader.read(contentsOf:input),url:input)
+        let artifact = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root)
+        let file = try CassiniReader.read(contentsOf:artifact.url)
+        #expect(try file.manifest?.raw["x"]?["codemyriad.io"]?.encoded() == foreign.encoded())
+        let parsedNotes = try JSONParser.parse(Data(notes.utf8))
+        #expect(file.manifest?.raw["x"]?["gocassini.com"]?["notes"] == parsedNotes)
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let plain = MeetingPresentation.external(try CassiniReader.read(contentsOf:fixture),url:fixture)
+        let plainArtifact = try MeetingFileExporter.cassini(plain,assets:nil,temporaryRoot:root)
+        let exported = try CassiniReader.read(contentsOf:plainArtifact.url)
+        #expect(exported.state == .ok && exported.manifest?.raw["x"]?["codemyriad.io"] == nil)
+    }
+    /// Export-path review: a recording folder with transcript.json and no meeting.json (the
+    /// Library reads it as done) keeps its words when the first export creates meeting.json.
+    @Test func theFirstExportOfALegacyFolderKeepsItsWords() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Legacy",source:"macos")
+        try session.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:16000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:1,count:32000),offsetMs:0)
+        try session.finish()
+        try? FileManager.default.removeItem(at:session.directory.appendingPathComponent("meeting.json"))
+        try Data(#"{"language":"en","items":[{"speaker":"mic","startMs":0,"endMs":400,"text":"Hello"}]}"#.utf8)
+            .write(to:session.directory.appendingPathComponent("transcript.json"))
+        let before = try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(before.state.transcript == .done && before.transcriptItems.count == 1)
+        try CodemyriadNamespace.persistNamePrefix(before,dateTag:nil,now:Date(),zone:.current)
+        let after = try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(after.state.transcript == .done && after.transcriptItems.map(\.text) == ["Hello"])
+        #expect(try raw(session.directory.appendingPathComponent("meeting.json"))["namePrefix"]?.string != nil)
+    }
     /// A revision at or past the shared ceiling (2^53-1), even Int.max, is never advanced:
     /// the original namespace is kept and the export goes ahead.
     @Test(arguments:["9007199254740991","9223372036854775807"]) func aRevisionAtTheCeilingIsKept(revision: String) throws {
@@ -467,7 +539,7 @@ struct R65CodemyriadNamespaceTests {
         #expect(meeting.issues.contains(.invalidMetadata))
         try CodemyriadNamespace.persistNamePrefix(meeting,dateTag:nil,now:Date(),zone:.current)
         #expect(try Data(contentsOf:url) == bytes,"never rewritten")
-        #expect(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting),dateTag:nil,originalTitle:nil,now:Date(),zone:.current) != nil)
+        #expect(try CodemyriadNamespace.make(meeting,stored:CodemyriadNamespace.current(meeting) ?? .null,dateTag:nil,originalTitle:nil,now:Date(),zone:.current) != nil)
     }
     /// A schema this app does not know stays unchanged even after an edit.
     @Test func aFutureSchemaIsNeverRewritten() throws {

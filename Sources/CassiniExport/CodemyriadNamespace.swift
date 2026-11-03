@@ -37,11 +37,9 @@ enum CodemyriadNamespace {
     }
     /// nil when the folder has no readable meeting.json with an id and a revision. `stored`:
     /// meeting.json as read for this export (`current`).
-    static func make(_ meeting: LibraryMeeting, stored: JSON?, dateTag: String?, originalTitle: String?, now: Date, zone: TimeZone) throws -> JSON? {
-        // Before its first metadata write a folder has no meeting.json: it implies the default one.
-        let fallback = (try? JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id),options:[.sortedKeys]))
-            .flatMap { try? JSONParser.parse($0) }
-        guard let raw = stored ?? fallback, let members = raw.object,
+    /// Only from a real meeting.json: an implied default one has no revision of its own.
+    static func make(_ meeting: LibraryMeeting, stored raw: JSON, dateTag: String?, originalTitle: String?, now: Date, zone: TimeZone) throws -> JSON? {
+        guard let members = raw.object,
               let sessionID = raw["id"]?.string, let revision = raw["revision"], revision.int != nil else { return nil }
         let received = raw["received"]?.object != nil
         var inMeeting: [(String,JSON)] = [], passthrough: [(String,JSON)] = []
@@ -96,6 +94,11 @@ enum CodemyriadNamespace {
         let raw = stored ?? (try? JSONParser.parse(JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id)))) ?? .object([])
         let chosen = try choosePrefix(raw:raw,session:raw["received"]?.object != nil ? nil : session(meeting),dateTag:dateTag,now:now,zone:zone)
         try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+            // A folder without meeting.json whose transcript.json the Library reads as done
+            // (R2.3/R3) keeps those words: the created meeting.json references them.
+            if stored == nil, meeting.state.transcript == .done {
+                $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+            }
             $0["namePrefix"] = chosen.namePrefix; $0["namePrefixSource"] = chosen.source
         }
     }
@@ -115,17 +118,21 @@ enum CodemyriadNamespace {
     /// (`LibraryImport.importedTranscript`); Mac's transcription state counts only once it differs.
     /// `body`: a digest of the words this file carries, so other words never share a revision.
     /// meeting.json must still be at `meeting.metadataRevision` (else `MetadataChanged`).
+    /// `bodyMatchesOriginal`: the file carries the original's words unchanged (else that is a
+    /// change too); `damaged`: the export read the words as damaged (the namespace says so).
     static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?,
-                       importedTranscript: [String:Any]? = nil, body: String = "") throws -> (namespace: JSON, notes: JSON?)? {
+                       importedTranscript: [String:Any]? = nil, body: String = "", bodyMatchesOriginal: Bool = true,
+                       damaged: Bool = false) throws -> (namespace: JSON, notes: JSON?)? {
         guard original["schema"] == .number("1"), original["meeting"]?.object != nil,
               let base = original["revision"]?.int, (0..<maxRevision).contains(base) else { return nil }
         let url = meeting.folder.appendingPathComponent("meeting.json")
         /// The decision for meeting.json `raw` and the saved baseline; `save` is the new baseline.
         func decide(_ raw: JSON?, saved: (revision: Int, sha256: String)?) throws -> (namespace: JSON, notes: JSON?, save: [String:Any]?) {
             guard unchanged(raw,since:meeting) else { throw MetadataChanged() }
-            let (copy,changed) = edits(original["meeting"]!,raw:raw,importedTranscript:importedTranscript ?? ["status":"none","reference":NSNull()])
+            var (copy,changed) = edits(original["meeting"]!,raw:raw,importedTranscript:importedTranscript ?? ["status":"none","reference":NSNull()])
+            if damaged, let marked = try? marking(.object([("meeting",copy)]),damaged:true)["meeting"], marked != copy { copy = marked; changed = true }
             let (notes,notesChanged) = exportNotes(local:localNotes(raw),original:originalNotes)
-            if !changed, !notesChanged, saved == nil { return (original,notes,nil) }
+            if !changed, !notesChanged, bodyMatchesOriginal, saved == nil { return (original,notes,nil) }
             let digest = try Self.digest(copy,notes:notes,body:body)
             if let saved, saved.sha256 == digest { return (try original.setting("meeting",to:copy).setting("revision",to:.number(String(saved.revision))),notes,nil) }
             let last = max(base,saved?.revision ?? base)
@@ -254,6 +261,14 @@ enum CodemyriadNamespace {
         data.append(0)
         data.append(Data(body.utf8))
         return SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined()
+    }
+    /// A namespace whose words the export read as damaged says so, whatever status is stored:
+    /// the file can't carry words that weren't readable (Q14: the file's words are the truth).
+    static func marking(_ namespace: JSON, damaged: Bool) throws -> JSON {
+        guard damaged, let meeting = namespace["meeting"], var transcript = meeting["transcript"], transcript.object != nil,
+              transcript["status"]?.string != "damaged" else { return namespace }
+        transcript = try transcript.setting("status",to:.string("damaged"))
+        return try namespace.setting("meeting",to:meeting.setting("transcript",to:transcript))
     }
     /// meeting.json notes verbatim (nil when absent or empty).
     static func localNotes(_ raw: JSON?) -> JSON? {
