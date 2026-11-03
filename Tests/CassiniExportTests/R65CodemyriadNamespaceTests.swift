@@ -570,6 +570,117 @@ struct R65CodemyriadNamespaceTests {
             #expect(exported.tags?[name] != nil && exported.tags?[name] == input.tags?[name],"\(name) carried")
         }
     }
+    /// A copy of `source` with its manifest and tags changed, the manifest chunk set rebuilt.
+    private func rewritten(_ source: URL, in root: URL, manifest change: (JSON) throws -> JSON,
+                           comments edit: ([CassiniKit.Comment]) -> [CassiniKit.Comment] = { $0 }) throws -> URL {
+        let data = try Data(contentsOf:source), file = try CassiniReader.read(data)
+        let raw = try change(#require(file.manifest?.raw)).encoded(), compressed = try PortableMeetingTags.gzip(raw)
+        let base64 = compressed.base64EncodedString().replacingOccurrences(of:"+",with:"-").replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"=",with:"")
+        let bytes = Array(base64.utf8)
+        let chunks = stride(from:0,to:bytes.count,by:4096).map { String(decoding:bytes[$0..<min($0 + 4096,bytes.count)],as:UTF8.self) }
+        var comments = edit(file.tags?.comments ?? []).filter { !PortableMeetingTags.isChunk($0.name,of:"CASSINI_PAYLOAD_") }
+        for (suffix,value) in [("MIME","application/vnd.cassini.portable-meeting+json"),("ENCODING",CassiniReader.encoding),("CHUNK_COUNT",String(chunks.count)),
+                               ("SHA256",SHA256Hex(raw)),("RAW_BYTES",String(raw.count)),("GZIP_BYTES",String(compressed.count))] {
+            comments.append(.init(name:"CASSINI_PAYLOAD_" + suffix,value:value))
+        }
+        for (index,chunk) in chunks.enumerated() { comments.append(.init(name:"CASSINI_PAYLOAD_" + String(format:"%03d",index),value:chunk)) }
+        let output = root.appendingPathComponent("Shaped-\(UUID().uuidString).opus")
+        _ = try OpusStreamFile.rewrite(data,tags:PortableMeetingTags.packet(comments:comments),to:output)
+        #expect(try CassiniReader.read(contentsOf:output).state == .ok)
+        return output
+    }
+    private func libraryExport(_ url: URL, _ root: URL, before: ((LibraryMeeting) throws -> Void)? = nil) throws -> CassiniFile {
+        let meeting = try LibraryImport.copy(url,into:root.appendingPathComponent("Library"))
+        try before?(meeting)
+        return try reexportFile(root)
+    }
+    /// #122 follow-up review: display transcripts (readableTranscripts) keep their payloads, and a
+    /// withdrawn one's missing tags stay missing (vector 026).
+    @Test func displayTranscriptsKeepTheirPayloads() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let input = try CassiniReader.read(contentsOf:vector("026-display-and-withdrawn-cleanup"))
+        let file = try libraryExport(vector("026-display-and-withdrawn-cleanup"),root)
+        #expect(file.manifest?.raw["readableTranscripts"] == input.manifest?.raw["readableTranscripts"])
+        #expect(payloadTags(file) == payloadTags(input) && payloadTags(file).contains { $0.hasPrefix("CASSINI_TX_DISPLAY_PAYLOAD_") })
+    }
+    /// Payload tags are matched exactly: a prefix outside CASSINI_TX_ and a prefix that begins
+    /// another one are each carried once; an entry this app can't read (no payloadRef) stays.
+    @Test func oddPayloadShapesAreCarriedExactlyOnce() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let shaped = try rewritten(vector("016-two-transcripts"),in:root,manifest:{ manifest in
+            var entries = manifest["transcripts"]!.array!
+            entries[0] = try entries[0].setting("payloadRef",to:entries[0]["payloadRef"]!.setting("prefix",to:.string("X_WORDS_PAYLOAD_")))
+            entries[1] = try entries[1].setting("payloadRef",to:entries[1]["payloadRef"]!.setting("prefix",to:.string("X_WORDS_PAYLOAD_2_PAYLOAD_")))
+            entries.append(.object([("id",.string("vtt")),("format",.string("text/vtt"))]))
+            return try manifest.setting("transcripts",to:.array(entries))
+        },comments:{ comments in comments.map { comment in
+            var renamed = comment
+            renamed.name = renamed.name.replacingOccurrences(of:"CASSINI_TX_RAW_ASR_PAYLOAD_",with:"X_WORDS_PAYLOAD_")
+                .replacingOccurrences(of:"CASSINI_TX_SECOND_PASS_PAYLOAD_",with:"X_WORDS_PAYLOAD_2_PAYLOAD_")
+            if renamed.name == "CASSINI_TRANSCRIPT_IDS" { renamed.value = "raw-asr,second-pass,vtt" }
+            return renamed
+        } })
+        let input = try CassiniReader.read(contentsOf:shaped)
+        #expect(input.transcripts.filter { $0.load.transcript != nil }.count == 2)
+        let file = try libraryExport(shaped,root)
+        let names = (file.tags?.comments ?? []).map(\.name)
+        #expect(names.count == Set(names.map { $0.uppercased() }).count,"no tag written twice")
+        #expect(file.manifest?.raw["transcripts"] == input.manifest?.raw["transcripts"])
+        #expect(file.transcripts.filter { $0.load.transcript != nil }.count == 2)
+    }
+    /// A Write down still queued, running or failed adds no words: the originals go out as they
+    /// are, the original default included.
+    @Test func anUnfinishedWriteDownChangesNoTranscript() throws {
+        for status in ["running","failed"] {
+            let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+            let input = try CassiniReader.read(contentsOf:vector("016-two-transcripts"))
+            let file = try libraryExport(vector("016-two-transcripts"),root) { meeting in
+                try self.writeDown(meeting,status:"running",eta:1)
+                if status == "failed" { try self.setStatus(meeting,"failed") }
+            }
+            #expect(file.manifest?.raw["transcripts"] == input.manifest?.raw["transcripts"],"\(status)")
+            #expect(payloadTags(file) == payloadTags(input),"\(status)")
+        }
+    }
+    /// A trusted plain Opus file's own tags go out with the export.
+    @Test func aPlainOpusFileKeepsItsTags() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let input = try CassiniReader.read(contentsOf:vector("002-plain-audio"))
+        let file = try libraryExport(vector("002-plain-audio"),root)
+        for name in ["ARTIST","DATE","DESCRIPTION","ENCODER"] where input.tags?[name] != nil {
+            #expect(file.tags?[name] == input.tags?[name],"\(name)")
+        }
+        #expect(input.tags?["ARTIST"] != nil || input.tags?["DATE"] != nil)
+    }
+    /// Speakers: carried words keep the original list (nothing appended); after a Write down the
+    /// user's name for an original speaker still labels it, Mac's speakers follow, the ids tag
+    /// is sorted, and the original provenance (about the old default's words) is gone.
+    @Test func speakersAudioAndProvenanceFollowWhatTheFileCarries() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let shaped = try rewritten(vector("016-two-transcripts"),in:root,manifest:{ manifest in
+            try manifest.setting("speakers",to:.array([])).setting("audio",to:manifest["audio"]!.setting("bitrateBps",to:.number("32000")))
+                .setting("provenance",to:.object([("wordTimings",.object([("endsBoundedByAudio",.bool(true))]))]))
+        },comments:{ $0.map { var c = $0; if c.name == "CASSINI_SPEAKER_COUNT" { c.value = "0" }; return c } })
+        let carried = try libraryExport(shaped,root)
+        #expect(carried.manifest?.raw["speakers"] == .array([]),"no speaker appended to carried words")
+        #expect(carried.manifest?.raw["audio"]?["bitrateBps"] == .number("32000"))
+        #expect(carried.manifest?.raw["provenance"] != nil)
+        let named = try self.root(); defer { try? FileManager.default.removeItem(at:named) }
+        let written = try libraryExport(vector("016-two-transcripts"),named) { meeting in
+            try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+                $0["speakers"] = [["id":"spk_a","name":"Alice","provenance":"user","colourIndex":0]]
+            }
+            try self.writeDown(meeting,status:"done")
+        }
+        let speakers = try #require(written.manifest?.raw["speakers"]?.array)
+        #expect(speakers.first { $0["id"]?.string == "spk_a" }?["label"]?.string == "Alice")
+        #expect(speakers.contains { $0["id"]?.string == "track-original" })
+        #expect(written.tags?["CASSINI_TRANSCRIPT_IDS"] == "raw-asr,script,second-pass")
+        let provenanced = try self.root(); defer { try? FileManager.default.removeItem(at:provenanced) }
+        let shapedAgain = try rewritten(vector("016-two-transcripts"),in:provenanced,manifest:{ try $0.setting("provenance",to:.object([("wordTimings",.object([("endsBoundedByAudio",.bool(true))]))])) })
+        let mine = try libraryExport(shapedAgain,provenanced) { try self.writeDown($0,status:"done") }
+        #expect(mine.manifest?.raw["provenance"] == nil)
+    }
     /// #116 r4: our own namespace never describes two contents at one revision: words that
     /// become unreadable (damaged) take a new revision, and so do the same words restored;
     /// an unchanged re-export keeps it.

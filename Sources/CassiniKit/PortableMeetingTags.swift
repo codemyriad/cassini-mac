@@ -9,6 +9,8 @@ public struct PortableTranscripts: Sendable {
     public let entries: [JSON]
     let comments: [Comment]
     public let digest: String
+    /// The original's payload tags carried here (upper-cased names), never carried twice.
+    let carriedNames: Set<String>
 }
 
 /// One canonical word-timed body, with standard Cassini v1 chunk descriptors, and any
@@ -25,22 +27,28 @@ public enum PortableMeetingTags {
     /// With neither, the empty body (a file always lists a transcript).
     public static func transcripts(own: (body: Data, language: String, wordCount: Int)?, carried: CassiniFile?,
                                    shouldCancel: () -> Bool = { false }) throws -> PortableTranscripts {
-        var entries: [JSON] = [], comments: [Comment] = []
-        var ids = Set<String>()
-        for entry in carried?.manifest?.raw["transcripts"]?.array ?? [] {
-            guard let id = entry["id"]?.string, let prefix = entry["payloadRef"]?["prefix"]?.string, !prefix.isEmpty else { continue }
-            let folded = prefix.uppercased()
-            comments += (carried?.tags?.comments ?? []).filter { $0.name.uppercased().hasPrefix(folded) }
-            entries.append(own == nil ? entry : try entry.setting("default",to:.bool(false)))
-            ids.insert(id)
-        }
+        let originals = carried?.manifest?.raw["transcripts"]?.array ?? []
+        // Display transcripts (readableTranscripts) stay in the manifest as they are; their
+        // payloads are carried with the others.
+        let readable = carried?.manifest?.raw["readableTranscripts"]?.array ?? []
+        let prefixes = (originals + readable).compactMap { $0["payloadRef"]?["prefix"]?.string }.filter { !$0.isEmpty }
+        // Exactly each declared chunk set's tags (never a longer prefix's), in file order.
+        var comments = (carried?.tags?.comments ?? []).filter { comment in prefixes.contains { isChunk(comment.name,of:$0) } }
+        let carriedNames = Set(comments.map { $0.name.uppercased() })
+        // Every entry is carried, also one this app can't read (no payloadRef, another format).
+        var entries = try originals.map { own == nil ? $0 : try $0.setting("default",to:.bool(false)) }
+        let ids = Set((originals + readable).compactMap { $0["id"]?.string })
         if own != nil || entries.isEmpty {
             let (body,language,wordCount) = own ?? (Data(#"{"items":[],"language":"und"}"#.utf8),"und",0)
             let parsed = try ManifestParser.words(JSONParser.parse(body))
             guard parsed.items.count == wordCount else { throw PayloadError.json("word count mismatch") }
             // Never a carried id or payload prefix.
             var id = "script", index = 1
-            while ids.contains(id) || comments.contains(where:{ $0.name.uppercased().hasPrefix(prefix(id)) }) { index += 1; id = "script-\(index)" }
+            func taken(_ id: String) -> Bool {
+                let mine = prefix(id)
+                return ids.contains(id) || prefixes.contains { $0.uppercased() == mine } || (carried?.tags?.comments ?? []).contains { isChunk($0.name,of:mine) }
+            }
+            while taken(id) { index += 1; id = "script-\(index)" }
             let (reference,payload) = try chunkSet(body,prefix:prefix(id),mime:"application/vnd.cassini.transcript-words+json",shouldCancel:shouldCancel)
             comments = payload + comments
             entries.insert(.object([("id",.string(id)),("default",.bool(true)),("format",.string(CassiniReader.wordsFormat)),
@@ -49,7 +57,15 @@ public enum PortableMeetingTags {
         var digest = SHA256()
         digest.update(data:try JSON.array(entries).encoded())
         for comment in comments { digest.update(data:Data((comment.name + "=" + comment.value + "\n").utf8)) }
-        return .init(entries:entries,comments:comments,digest:digest.finalize().map { String(format:"%02x",$0) }.joined())
+        return .init(entries:entries,comments:comments,digest:digest.finalize().map { String(format:"%02x",$0) }.joined(),carriedNames:carriedNames)
+    }
+    static let descriptorSuffixes: Set<String> = ["MIME","ENCODING","CHUNK_COUNT","SHA256","RAW_BYTES","GZIP_BYTES"]
+    /// One chunk set's tag: its prefix and a descriptor suffix or a chunk number (CassiniReader).
+    static func isChunk(_ name: String, of prefix: String) -> Bool {
+        let name = name.uppercased(), prefix = prefix.uppercased()
+        guard name.hasPrefix(prefix) else { return false }
+        let rest = name.dropFirst(prefix.count)
+        return descriptorSuffixes.contains(String(rest)) || (rest.count >= 3 && rest.allSatisfy { $0.isASCII && $0.isNumber })
     }
     private static func prefix(_ id: String) -> String {
         "CASSINI_TX_" + id.uppercased().map { $0.isLetter || $0.isNumber ? String($0) : "_" }.joined() + "_PAYLOAD_"
@@ -74,11 +90,13 @@ public enum PortableMeetingTags {
         "CASSINI_AUDIO_SAMPLE_RATE","CASSINI_AUDIO_CHANNELS","CASSINI_AUDIO_SAMPLE_COUNT","CASSINI_AUDIO_DURATION_MS","CASSINI_AUDIO_MATCH_POLICY",
         "CASSINI_AUDIO_OPUS_SHA256","CASSINI_MEETING_ID","CASSINI_CREATED_AT","CASSINI_SPEAKER_COUNT","TITLE"]
     /// An original file's tags this app neither writes nor rebuilds (DATE, DESCRIPTION, ENCODER,
-    /// unknown CASSINI_ facts), in file order; payload chunk sets are carried with their transcripts.
-    public static func carriedTags(_ file: CassiniFile) -> [Comment] {
+    /// ARTIST, unknown CASSINI_ facts), in file order. The manifest's chunk set is rewritten, the
+    /// transcripts' are carried with them (`transcripts`), and a withdrawn transcript's leftover
+    /// CASSINI_TX_ tags are dropped.
+    public static func carriedTags(_ file: CassiniFile, besides transcripts: PortableTranscripts) -> [Comment] {
         (file.tags?.comments ?? []).filter { comment in
             let name = comment.name.uppercased()
-            return !written.contains(name) && !name.hasPrefix("CASSINI_PAYLOAD_") && !name.hasPrefix("CASSINI_TX_")
+            return !written.contains(name) && !isChunk(name,of:"CASSINI_PAYLOAD_") && !transcripts.carriedNames.contains(name) && !name.hasPrefix("CASSINI_TX_")
         }
     }
     public static func make(manifest: JSON, transcripts: PortableTranscripts, carriedTags: [Comment] = [],
@@ -87,7 +105,8 @@ public enum PortableMeetingTags {
         let root = try manifest.setting("transcripts",to:.array(transcripts.entries))
         let model = try ManifestParser.parse(root,formatMajor:1)
         comments += try chunkSet(root.encoded(),prefix:"CASSINI_PAYLOAD_",mime:"application/vnd.cassini.portable-meeting+json",shouldCancel:shouldCancel).1
-        let ids = model.transcripts.map(\.id).joined(separator:",")
+        // SPEC: the tag lists the ids sorted (the manifest keeps producer order).
+        let ids = model.transcripts.map(\.id).sorted().joined(separator:",")
         let scalarTags: [(String,String)] = [
             ("CASSINI_FORMAT","org.cassini.portable-meeting/1"),("CASSINI_PROFILE","ogg-opus"),
             ("CASSINI_PAYLOAD_SCHEMA","https://format.gocassini.com/schema/cassini-portable-meeting-manifest-v1.schema.json"),

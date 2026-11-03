@@ -116,11 +116,18 @@ that differs from the original file's counts as a change.
 
 ## Carried, never rebuilt (#122 review, MAPPING §6)
 
-A received file's transcripts go out byte for byte (manifest entries and payload
-tags) while Mac hasn't written it down, so item facts Mac doesn't model
-(`lowConfidenceSpeaker`, `attributionGapDb`) and every other transcript survive.
-Once Mac writes it down, Mac's words become the default transcript and every
-original transcript stays beside them, unchanged and no longer default. The file's
-other top-level manifest members, the meeting's and speakers' unknown members, and
-its tags Mac doesn't write (DATE, DESCRIPTION, ENCODER, unknown `CASSINI_` facts) are
-carried too. Mac's own facts (title, speaker labels, audio) still win.
+A received file's transcripts go out byte for byte: every manifest entry, also one
+this app can't read, and exactly each declared chunk set's tags. Display
+transcripts (`readableTranscripts`) keep their payloads, and a withdrawn
+transcript's leftover `CASSINI_TX_` tags are dropped. Only once Mac's own Write
+down has finished do Mac's words become the default transcript; the originals stay
+beside them, unchanged and no longer default, and the original `provenance` (about
+the old default's words) is dropped. While a Write down is queued, running or
+failed, nothing in the file's transcripts changes.
+
+The file's other top-level members, the meeting's and audio's unknown members, its
+speaker entries (with the user's names from meeting.json; Mac's speakers follow
+only with Mac's own words), and its tags Mac doesn't write (DATE, ARTIST,
+DESCRIPTION, ENCODER, unknown `CASSINI_` facts, also from a plain Opus file) are
+carried too. `CASSINI_TRANSCRIPT_IDS` lists the ids sorted. `createdAtUtc` is
+still the export time until the D65 follow-up.

@@ -50,6 +50,8 @@ public enum MeetingFileExporter {
         let directory = artifact.url.deletingLastPathComponent()
         let audio: Data, digest: AudioDigest, original: CassiniFile?, choice: AudioEncodeChoice?
         var dateTag: String?, originalTitle: String?, importedTranscript: [String:Any]?
+        // A trusted original's own tags (DATE, ARTIST, …): a Cassini file's, or a plain Opus file's.
+        var tagSource: CassiniFile?
         if meeting.state.origin == .received {
             guard meeting.audioFiles.count == 1, let url = meeting.audioFiles.first else { throw MeetingExportError.invalidSource }
             try regular(url)
@@ -58,6 +60,7 @@ public enum MeetingFileExporter {
             let file = try CassiniReader.read(audio)
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
+            tagSource = [.ok,.plainAudio].contains(file.state) ? file : nil
             importedTranscript = LibraryImport.importedTranscript(file)
             // #116 r4: a trusted file opened from outside the Library that carries our namespace
             // goes out byte-for-byte (nothing of it can change on Mac, and a rebuild could drop
@@ -119,11 +122,17 @@ public enum MeetingFileExporter {
                 // written it down; Mac's own words, once it has, become the default and every
                 // original transcript stays beside them, unchanged. Nothing Mac doesn't model
                 // (an item's attribution facts, a second transcript) is rebuilt or dropped.
-                let mine = try original == nil || CodemyriadNamespace.transcribedOnMac(CodemyriadNamespace.current(current),importedTranscript:importedTranscript)
+                // Mac's words join the file only once its own Write down finished; while it is
+                // queued, running or failed, Mac has no words and the originals go out as they are.
+                let stored = try CodemyriadNamespace.current(current)
+                let writtenOnMac = original != nil && CodemyriadNamespace.transcribedOnMac(stored,importedTranscript:importedTranscript)
+                let mine = original == nil || (writtenOnMac && complete)
                 let set = try PortableMeetingTags.transcripts(own:mine ? (body,language,words.count) : nil,carried:original,shouldCancel:shouldCancel)
                 let manifest = try self.manifest(current,digest:digest,original:original,choice:choice,dateTag:dateTag,originalTitle:originalTitle,
-                                                 timeZone:timeZone,importedTranscript:importedTranscript,transcripts:set,carriedOnly:!mine,words:words)
-                tags = try PortableMeetingTags.make(manifest:manifest,transcripts:set,carriedTags:original.map(PortableMeetingTags.carriedTags) ?? [],shouldCancel:shouldCancel)
+                                                 timeZone:timeZone,importedTranscript:importedTranscript,transcripts:set,carriedOnly:!mine,
+                                                 damaged:(original == nil || writtenOnMac) && current.state.transcript == .damaged,stored:stored,words:words)
+                tags = try PortableMeetingTags.make(manifest:manifest,transcripts:set,
+                                                    carriedTags:tagSource.map { PortableMeetingTags.carriedTags($0,besides:set) } ?? [],shouldCancel:shouldCancel)
                 items = mine ? words : []; carried = set.entries.count; break
             } catch is CodemyriadNamespace.MetadataChanged {
                 attempt += 1
@@ -167,10 +176,9 @@ public enum MeetingFileExporter {
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
                                  importedTranscript: [String:Any]?, transcripts: PortableTranscripts, carriedOnly: Bool,
-                                 words: [LibraryTranscriptItem]) throws -> JSON {
-        // Words Mac read as damaged are marked so only when they are Mac's own: carried
-        // originals go out as they came, whatever Mac could read of them.
-        let damaged = !carriedOnly && meeting.state.transcript == .damaged
+                                 damaged: Bool, stored: JSON?, words: [LibraryTranscriptItem]) throws -> JSON {
+        // `damaged`: Mac's own words (a recording's, or a received file's Write down) were read as
+        // damaged; a received file's originals go out as they came, whatever Mac read of them.
         let original = file?.manifest
         var extensions = original?.raw["x"] ?? .object([])
         var owned = extensions["gocassini.com"] ?? .object([])
@@ -245,13 +253,23 @@ public enum MeetingFileExporter {
         // and the speakers of Mac's own words follow.
         if let theirs = original?.raw["speakers"]?.array {
             var merged = theirs
+            // A name the user gave on Mac (meeting.json), and Mac's label for a speaker of
+            // Mac's own words, replace the original label; nothing else changes.
+            let named = Dictionary((stored?["speakers"]?.array ?? []).compactMap { entry -> (String,String)? in
+                guard entry["provenance"]?.string == "user", let id = entry["id"]?.string, let name = entry["name"]?.string else { return nil }
+                return (id,name)
+            },uniquingKeysWith:{ first,_ in first })
             for (index,entry) in merged.enumerated() {
-                guard let id = entry["id"]?.string, let mine = meeting.speakers.first(where:{ $0.id == id }),
-                      entry["label"]?.string != mine.displayName else { continue }
-                merged[index] = try entry.setting("label",to:.string(mine.displayName))
+                guard let id = entry["id"]?.string else { continue }
+                let label = named[id] ?? (carriedOnly ? nil : projected.first { $0.id == id }?.displayName)
+                guard let label, entry["label"]?.string != label else { continue }
+                merged[index] = try entry.setting("label",to:.string(label))
             }
-            let listed = Set(theirs.compactMap { $0["id"]?.string })
-            merged += projected.filter { !listed.contains($0.id) }.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) }
+            // The speakers of Mac's own words follow; carried words keep the original list.
+            if !carriedOnly {
+                let listed = Set(theirs.compactMap { $0["id"]?.string })
+                merged += projected.filter { !listed.contains($0.id) }.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) }
+            }
             speakers = .array(merged)
         }
         // The original meeting's members Mac doesn't write stay (Mac's own facts win).
@@ -262,8 +280,16 @@ public enum MeetingFileExporter {
             ("meeting",info),("audio",audio),("integrity",integrity),("speakers",speakers)])
         // ... and so do its top-level members Mac doesn't write (provenance, attachments, any
         // member a later format adds). The transcripts are carried separately, payloads and all.
-        for (name,value) in original?.raw.object ?? [] where root[name] == nil && !["transcripts","x","audioEncode"].contains(name) {
+        // Provenance describes the default transcript's words: once Mac's words are the default,
+        // the original's no longer applies.
+        for (name,value) in original?.raw.object ?? [] where root[name] == nil && !["transcripts","x","audioEncode"].contains(name) && (carriedOnly || name != "provenance") {
             root = try root.setting(name,to:value)
+        }
+        // The same audio: its members Mac doesn't write stay beside the measured facts.
+        if let theirs = original?.raw["audio"]?.object {
+            var merged = root["audio"]!
+            for (name,value) in theirs where merged[name] == nil { merged = try merged.setting(name,to:value) }
+            root = try root.setting("audio",to:merged)
         }
         if let choice { root = try root.setting("audioEncode",to:JSONParser.parse(JSONEncoder().encode(choice))) }
         else if let recorded = original?.raw["audioEncode"] { root = try root.setting("audioEncode",to:recorded) }
