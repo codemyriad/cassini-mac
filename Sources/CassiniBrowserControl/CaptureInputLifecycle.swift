@@ -288,7 +288,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         guard !closed else { throw BrowserIPCError.closed }
         let generation = UUID(), stage = StagedNativeWriter(), signal = FirstBufferSignal()
         let report = report(side,generation:generation,stage:stage)
-        let sink = RecordingSink(session:FirstBufferWriter(stage,signal:signal),originHostTime:origin,onFailure:report)
+        let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report,onAdmitted:{ signal.fire() })
         let value = Input(generation:generation,driver:driver,sink:sink,stage:stage)
         do {
             try driver.start(sink:sink,failure:report)
@@ -306,7 +306,8 @@ private final class SourceChangeToken: @unchecked Sendable {
     private func discard(_ value: Input) async {
         value.driver.stop(); value.stage?.discard()
         let sink = value.sink
-        try? await Task.detached { try sink.finish(problem:nil) }.value
+        // Never committed: its failure, if any, is the refusal's, not the recording's.
+        try? await Task.detached { try sink.finishUnopened() }.value
     }
     private func report(_ side: CaptureSide, generation: UUID, stage: StagedNativeWriter? = nil) -> @Sendable (String) -> Void {
         { [weak self] message in
@@ -417,7 +418,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         let report: @Sendable (String) -> Void = { [weak self] message in
             Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
         }
-        let sink = RecordingSink(session:FirstBufferWriter(capture.nativeWriter(side:side),signal:signal),originHostTime:origin,onFailure:report)
+        let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,onFailure:report,onAdmitted:{ signal.fire() })
         do { try driver.start(sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }
         catch {
             driver.stop()
@@ -442,7 +443,7 @@ private final class SourceChangeToken: @unchecked Sendable {
             guard let atMs, !self.openedSides.contains(side) else { return }
             try? await self.enqueue {
                 guard !self.closed, self.inputs[side]?.generation == generation, !signal.hasFired else { return }
-                try? await self.end(side)
+                try? await self.end(side,unopened:true)
                 self.failedSides.insert(side)
                 await self.refuse(side,.noSample,atMs:atMs)
             }
@@ -454,7 +455,7 @@ private final class SourceChangeToken: @unchecked Sendable {
             // D58 (#120 review): a start side that fails before its first buffer never opened.
             // It is refused and closed without a problem, and the recording is not failed.
             if let atMs = input.refusingAt, let signal = input.firstBuffer, !signal.hasFired, !self.openedSides.contains(side) {
-                try? await self.end(side)
+                try? await self.end(side,unopened:true)
                 self.failedSides.insert(side)
                 // The driver's text can be localized copy: the refusal carries none (D58).
                 await self.refuse(side,.init(code:CaptureRefusal.deviceUnavailable),atMs:atMs)
@@ -465,12 +466,14 @@ private final class SourceChangeToken: @unchecked Sendable {
             self.failure(message)
         }
     }
-    private func end(_ side: CaptureSide, problem: String? = nil) async throws {
+    /// `unopened`: a refused side that never admitted a buffer; its sink's own failure stays out
+    /// of the recording (D58).
+    private func end(_ side: CaptureSide, problem: String? = nil, unopened: Bool = false) async throws {
         failedSides.remove(side)
         guard let input = inputs.removeValue(forKey:side) else { return }
         if !input.paused { input.driver.stop() }
         let sink = input.sink
-        try await Task.detached(priority:.userInitiated) { try sink.finish(problem:problem) }.value
+        try await Task.detached(priority:.userInitiated) { unopened ? try sink.finishUnopened() : try sink.finish(problem:problem) }.value
     }
     private func enqueue(_ operation: @escaping @MainActor () async throws -> Void) async throws {
         let previous = tail

@@ -127,14 +127,19 @@ public final class RecordingSink: @unchecked Sendable {
     private let origin: UInt64
     private let capacitySeconds: Double
     private let onFailure: @Sendable (String) -> Void
+    /// D58: called once, when the first valid buffer is admitted (queued for the writer), before
+    /// any disk write: a slow Library disk never makes a working input look unopened.
+    private let onAdmitted: (@Sendable () -> Void)?
+    private var admitted = false
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
-                onFailure: @escaping @Sendable (String) -> Void) {
+                onFailure: @escaping @Sendable (String) -> Void, onAdmitted: (@Sendable () -> Void)? = nil) {
         writer = session
         origin = originHostTime
         self.capacitySeconds = max(0.01, min(60, capacitySeconds))
         self.onFailure = onFailure
+        self.onAdmitted = onAdmitted
     }
 
     public func receive(_ buffer: AVAudioPCMBuffer, hostTime: UInt64, id: String, label: String, kind: String) {
@@ -181,11 +186,14 @@ public final class RecordingSink: @unchecked Sendable {
         let offset = source.timeline.advance(frames: frames)
         if abs(hostOffset - offset) >= 250 { warnings.insert("\(label): device time differs from the sample timeline; sample continuity was preserved.") }
         sourceFrames[id] = source.timeline.frames
+        let first = !admitted
+        admitted = true
         guard source.pendingFrames + frames <= UInt64(rate * capacitySeconds) else {
             source.droppedFrames += frames
             hole(id,"writer",frames)
             sources[id] = source
             lock.unlock()
+            if first { onAdmitted?() }
             return
         }
         source.pendingFrames += frames
@@ -230,6 +238,7 @@ public final class RecordingSink: @unchecked Sendable {
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()
+        if first { onAdmitted?() }
     }
 
     // Drain before activating a prepared input; never called from the audio callback.
@@ -294,7 +303,12 @@ public final class RecordingSink: @unchecked Sendable {
     }
 
 
-    public func finish(problem: String?) throws {
+    public func finish(problem: String?) throws { try finish(problem:problem,keepingFailure:true) }
+    /// D58: drains an input that never opened (refused). Its own failure (an unsupported first
+    /// buffer, a driver that failed before admitting one) is a refusal, not a recording problem,
+    /// so it never reaches the writer, the owner, or the other side's recording.
+    public func finishUnopened() throws { try finish(problem:nil,keepingFailure:false) }
+    private func finish(problem: String?, keepingFailure: Bool) throws {
         lock.lock()
         guard !finished else { lock.unlock(); return }
         accepting = false
@@ -312,7 +326,7 @@ public final class RecordingSink: @unchecked Sendable {
             let gapNote = gaps > 0 ? "Recording saved with \(Int(gaps.rounded())) ms of host-time gap; the timeline contains silence." : nil
             for (id, source) in snapshot { writer.reportLoss(id: id, droppedFrames: source.droppedFrames, gapFrames: source.gapFrames) }
             let loss = lost > 0 ? "Recording saved with \(Int(lost.rounded())) ms of audio lost during a disk stall; the gaps contain silence." : nil
-            lock.lock(); let recordedFailure = failureMessage; lock.unlock()
+            lock.lock(); let recordedFailure = keepingFailure ? failureMessage : nil; lock.unlock()
             let issue = [problem ?? recordedFailure, loss, gapNote, paddingFailure?.localizedDescription].compactMap { $0 }.joined(separator: " ")
             try writer.finish(problem: issue.isEmpty ? nil : issue, kind: lost > 0 || paddingFailure != nil ? "io" : (gaps > 0 ? "gap" : nil))
             if let paddingFailure { throw paddingFailure }
