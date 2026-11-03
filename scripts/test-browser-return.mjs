@@ -93,6 +93,36 @@ try {
  });
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
+ // D66 mac-P0-1: the one still-active flake is "Same Chromium transport did not restore after
+ // navigation". Diagnostics only (no retry, the bounds unchanged): every native connect and
+ // disconnect (with lastError) the extension makes, its worker's errors, and every service
+ // worker start or close, so the next failure shows why Chromium did not re-attach.
+ const workerEvents = [{at:Date.now(),event:'worker',url:worker.url()}];
+ context.on('serviceworker',started => {workerEvents.push({at:Date.now(),event:'worker-started',url:started.url()}); instrument(started);});
+ const instrument = async target => {
+  target.on('close',() => workerEvents.push({at:Date.now(),event:'worker-closed',url:target.url()}));
+  await target.evaluate(() => {
+   if (globalThis.__cassiniNative) return;
+   const log = globalThis.__cassiniNative = [];
+   const note = entry => { if (log.length < 2000) log.push({at:Date.now(),...entry}); };
+   const connect = chrome.runtime.connectNative.bind(chrome.runtime);
+   chrome.runtime.connectNative = name => {
+    const port = connect(name); note({event:'connect',name});
+    port.onDisconnect.addListener(() => note({event:'disconnect',name,error:chrome.runtime.lastError?.message ?? null}));
+    port.onMessage.addListener(message => note({event:'message',name,type:message?.type ?? typeof message}));
+    return port;
+   };
+   self.addEventListener('error',event => note({event:'error',message:String(event.message)}));
+   self.addEventListener('unhandledrejection',event => note({event:'rejection',message:String(event.reason)}));
+  }).catch(error => workerEvents.push({at:Date.now(),event:'instrument-failed',message:String(error)}));
+ };
+ await instrument(worker);
+ const extensionDiagnostics = async () => {
+  const native = await Promise.all(context.serviceWorkers().map(target => target.evaluate(() => globalThis.__cassiniNative ?? null).catch(error => String(error))));
+  const value = {workers:workerEvents,native};
+  await writeFile(output+'.extension.json',JSON.stringify(value,null,1)+'\n').catch(() => {});
+  stderr += 'Extension diagnostics: '+JSON.stringify(value)+'\n';
+ };
  const page = await context.newPage();
  page.on('pageerror',error => {stderr+='Page error: '+error.message+'\n';});
  await page.goto(url);
@@ -113,10 +143,12 @@ try {
  // keeps its call silent until the app has fallen back to computer sound.
  returning = true;
  await page.reload();
- await wait(() => phases.has('fallback'),'App did not start fallback after the old document unloaded');
+ try { await wait(() => phases.has('fallback'),'App did not start fallback after the old document unloaded'); }
+ catch (error) { await extensionDiagnostics(); throw error; }
  release();
  await connected(page);
- await wait(() => phases.has('restored'),'App did not restore real browser PCM');
+ try { await wait(() => phases.has('restored'),'App did not restore real browser PCM'); }
+ catch (error) { await extensionDiagnostics(); throw error; }
  assert.equal(phases.get('recording').id,phases.get('fallback').id);
  assert.equal(phases.get('recording').id,phases.get('restored').id);
  await page.close();
