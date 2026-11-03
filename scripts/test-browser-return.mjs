@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
 import {mkdir, mkdtemp, readFile, writeFile, stat, rm} from 'node:fs/promises';
+import {attachNativeLog} from './extension-native-log.mjs';
 import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
@@ -95,33 +96,15 @@ try {
  assert.equal(new URL(worker.url()).host,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
  // D66 mac-P0-1: the one still-active flake is "Same Chromium transport did not restore after
  // navigation". Diagnostics only (no retry, the bounds unchanged): every native connect and
- // disconnect (with lastError) the extension makes, its worker's errors, and every service
- // worker start or close, so the next failure shows why Chromium did not re-attach.
- const workerEvents = [{at:Date.now(),event:'worker',url:worker.url()}];
- context.on('serviceworker',started => {workerEvents.push({at:Date.now(),event:'worker-started',url:started.url()}); instrument(started);});
- const instrument = async target => {
-  target.on('close',() => workerEvents.push({at:Date.now(),event:'worker-closed',url:target.url()}));
-  await target.evaluate(() => {
-   if (globalThis.__cassiniNative) return;
-   const log = globalThis.__cassiniNative = [];
-   const note = entry => { if (log.length < 2000) log.push({at:Date.now(),...entry}); };
-   const connect = chrome.runtime.connectNative.bind(chrome.runtime);
-   chrome.runtime.connectNative = name => {
-    const port = connect(name); note({event:'connect',name});
-    port.onDisconnect.addListener(() => note({event:'disconnect',name,error:chrome.runtime.lastError?.message ?? null}));
-    port.onMessage.addListener(message => note({event:'message',name,type:message?.type ?? typeof message}));
-    return port;
-   };
-   self.addEventListener('error',event => note({event:'error',message:String(event.message)}));
-   self.addEventListener('unhandledrejection',event => note({event:'rejection',message:String(event.reason)}));
-  }).catch(error => workerEvents.push({at:Date.now(),event:'instrument-failed',message:String(error)}));
- };
- await instrument(worker);
+ // disconnect (with lastError) the extension makes, its worker errors, and every service
+ // worker start or close, collected in Node so they survive the worker closing.
+ const nativeLog = attachNativeLog(context);
+ await nativeLog.ready;
  const extensionDiagnostics = async () => {
-  const native = await Promise.all(context.serviceWorkers().map(target => target.evaluate(() => globalThis.__cassiniNative ?? null).catch(error => String(error))));
-  const value = {workers:workerEvents,native};
-  await writeFile(output+'.extension.json',JSON.stringify(value,null,1)+'\n').catch(() => {});
-  stderr += 'Extension diagnostics: '+JSON.stringify(value)+'\n';
+  const text = JSON.stringify({events:nativeLog.events});
+  console.error('Extension diagnostics: '+text);
+  stderr += 'Extension diagnostics: '+text+'\n';
+  await writeFile(output+'.extension.json',JSON.stringify({events:nativeLog.events},null,1)+'\n').catch(() => {});
  };
  const page = await context.newPage();
  page.on('pageerror',error => {stderr+='Page error: '+error.message+'\n';});
