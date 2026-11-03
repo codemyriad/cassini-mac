@@ -47,9 +47,6 @@ public enum LibraryImport {
         }
         if shouldCancel() { throw CancellationError() }
         let trusted = [.ok,.plainAudio].contains(file.state)
-        let selected = trusted ? file.defaultTranscript : nil
-        let timed = file.transcripts.filter { $0.entry.format == "cassini.words.v1" }
-        let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
         let importedNotes = Self.importedNotes(trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"] : nil)
         let title = [trusted ? file.manifest?.meeting.title : nil,trusted ? file.tags?["TITLE"] : nil,source.deletingPathExtension().lastPathComponent]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
@@ -61,14 +58,7 @@ public enum LibraryImport {
             metadata["received"] = received
             metadata["notes"] = importedNotes
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
-            if emptyTimed {
-                // D12: a valid empty word-timed body is ready to write down.
-                metadata["transcript"] = ["status":"none","reference":NSNull()]
-            } else if selected?.load.transcript != nil {
-                metadata["transcript"] = ["status":"done","reference":["kind":"embedded","file":"original.opus","transcriptId":selected!.entry.id]]
-            } else if !trusted || selected != nil {
-                metadata["transcript"] = ["status":"damaged","reference":NSNull()]
-            }
+            if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
         }
         guard let meeting = try scanner.scan().meetings.first(where: { $0.id == id }) else { throw POSIXError(.EINVAL) }
         committed = true; return meeting
@@ -81,5 +71,19 @@ public enum LibraryImport {
                   let text = note["text"]?.string, text.unicodeScalars.count <= 100000 else { return nil }
             return ["atMs":time,"text":text]
         }
+    }
+    /// The transcript state import stores for `file`; nil keeps the default (none, no reference).
+    public static func importedTranscript(_ file: CassiniFile) -> [String:Any]? {
+        let trusted = [.ok,.plainAudio].contains(file.state)
+        let selected = trusted ? file.defaultTranscript : nil
+        let timed = file.transcripts.filter { $0.entry.format == "cassini.words.v1" }
+        if trusted && !timed.isEmpty && timed.allSatisfy({ $0.load.transcript?.items.isEmpty == true }) {
+            // D12: a valid empty word-timed body is ready to write down.
+            return ["status":"none","reference":NSNull()]
+        }
+        if let selected, selected.load.transcript != nil {
+            return ["status":"done","reference":["kind":"embedded","file":"original.opus","transcriptId":selected.entry.id]]
+        }
+        return !trusted || selected != nil ? ["status":"damaged","reference":NSNull()] : nil
     }
 }

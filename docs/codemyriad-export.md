@@ -28,8 +28,13 @@ meeting.json; this is only the file's copy, written by `CodemyriadNamespace`.
 A file that already carries `x["codemyriad.io"]` from another writer keeps it
 through import and re-export. With nothing changed on Mac, or with a schema this
 app does not know, it comes back byte-for-byte. In a schema-1 copy, Mac's changes
-(title and titleSource, speaker names) replace those members in place (D55.1),
-and every other member stays verbatim.
+replace those members in place (D55.1), and every other member stays verbatim:
+- title and titleSource, and the speaker names the user set or cleared;
+- a Write down on Mac: transcript `status`, `reference` and `model` (with
+  `etaMinutes` and `error`) once they differ from what the import stored; the
+  speakers it added, appended whole; its `label` for a speaker id both writers use
+  (a received file's `track-original`); and its `recordingDetails.writingDown`
+  facts, with the other writer's unknown facts kept.
 
 Its `revision` follows MAPPING Q9 (higher wins). A notes change counts too, since
 a rebuild takes notes from `x["gocassini.com"]`. Notes as the import kept them

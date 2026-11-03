@@ -110,7 +110,7 @@ struct R65CodemyriadNamespaceTests {
 
     /// Another writer's namespace (GNOME schema 1, or a future schema) in a real Cassini file,
     /// imported into a Mac Library.
-    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil) throws -> (namespace: JSON, meeting: LibraryMeeting) {
+    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil, words: String = #"{"items":[]}"#, wordCount: Int = 0, moreSpeakers: String = "") throws -> (namespace: JSON, meeting: LibraryMeeting) {
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         // A real Cassini file first (the fixture is plain Opus), then the namespace in it.
         let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed"))
@@ -119,13 +119,13 @@ struct R65CodemyriadNamespaceTests {
         let manifest = try #require(CassiniReader.read(bytes).manifest?.raw)
         let foreign = try JSONParser.parse(Data("""
         {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":\(revision),\
-        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}],\
-        "transcript":{"status":"none","reference":null},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
+        "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}\(moreSpeakers)],\
+        "transcript":{"status":"none","reference":null,"futureTranscriptMember":{"a":1}},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
         "passthrough":{"later":9007199254740993},"automaticTitle":"Weekly sync","tracks":[{"id":"t","spans":[{"file":"track.wav","sampleRate":48000,"frames":10,"startOffsetMs":12.5}],"futureTrackMember":true}],"unknownTop":[1,2]}
         """.utf8))
         var x: [(String,JSON)] = [("codemyriad.io",foreign)]
         if let notes { x.append(("gocassini.com",.object([("notes",try JSONParser.parse(Data(notes.utf8)))]))) }
-        let tags = try PortableMeetingTags.make(manifest:manifest.setting("x",to:.object(x)),transcript:Data("{\"items\":[]}".utf8),wordCount:0)
+        let tags = try PortableMeetingTags.make(manifest:manifest.setting("x",to:.object(x)),transcript:Data(words.utf8),wordCount:wordCount)
         let input = root.appendingPathComponent("gnome.opus")
         _ = try OpusStreamFile.rewrite(bytes,tags:tags,to:input)
         let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
@@ -218,6 +218,116 @@ struct R65CodemyriadNamespaceTests {
         }
         try FileManager.default.setAttributes([.posixPermissions:0o755],ofItemAtPath:folder)
         #expect(try reexport(root)["revision"] == .number("8"),"no revision was used by the failed export")
+    }
+    /// What MeetingTranscriber writes to a received meeting's meeting.json (its publish and
+    /// setStatus); the Export tests do not link the transcriber, whose recognition needs models.
+    private func writeDown(_ meeting: LibraryMeeting, status: String, eta: Int? = nil, label: String = "Speaker 1") throws {
+        let reference: [String:Any] = ["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+        try Data(#"{"language":"en","items":[{"speaker":"track-original","startMs":0,"endMs":400,"text":"Hello"}]}"#.utf8)
+            .write(to:meeting.folder.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { metadata in
+            var transcript = metadata["transcript"] as? [String:Any] ?? [:]
+            transcript["status"] = status; transcript["reference"] = reference; transcript["model"] = "parakeet-tdt-0.6b-v3"
+            metadata["transcript"] = transcript
+            metadata["etaMinutes"] = eta.map { $0 as Any } ?? NSNull(); metadata["error"] = NSNull()
+            var speakers = metadata["speakers"] as? [[String:Any]] ?? []
+            if !speakers.contains(where:{ $0["id"] as? String == "track-original" }) {
+                speakers.append(["id":"track-original","name":NSNull(),"provenance":"unnamed","colourIndex":speakers.count])
+            }
+            speakers[0]["label"] = label
+            metadata["speakers"] = speakers
+            if status == "done" {
+                metadata["recordingDetails"] = ["writingDown":["wallDurationMs":1200,"resumed":false,"speechSegments":1,
+                                                               "speakerSeparation":["status":"skipped","reason":"unavailable"]]]
+            }
+        }
+    }
+    private func setStatus(_ meeting: LibraryMeeting, _ status: String) throws {
+        // MeetingTranscriber.setStatus.
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { metadata in
+            var transcript = metadata["transcript"] as! [String:Any]
+            if status == "queued", (transcript["status"] as? String) == "failed" { transcript["reference"] = NSNull() }
+            transcript["status"] = status; metadata["transcript"] = transcript
+            metadata["etaMinutes"] = NSNull()
+            metadata["error"] = status == "failed" ? ["id":"transcribe-failed","action":"Try again"] : NSNull()
+        }
+    }
+    /// #116 r2: import a schema-1 file with no transcript, Write down on Mac, export. The
+    /// namespace carries Mac's transcription state, the speaker it added and its writingDown
+    /// facts, keeps the other writer's unknown members, and takes a new revision.
+    @Test func aWriteDownOnMacGoesIntoTheNamespace() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1)
+        #expect(try reexport(root).encoded() == foreign.encoded(),"imported, nothing written down yet")
+        try writeDown(meeting,status:"done")
+        let scanned = try #require(LibraryScanner(root:root.appendingPathComponent("Library")).scan().meetings.first)
+        let exported = try MeetingFileExporter.cassini(scanned,assets:nil,temporaryRoot:root)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.defaultTranscript?.load.transcript?.items.count == 1)
+        let x = try #require(file.manifest?.raw["x"]?["codemyriad.io"])
+        #expect(x["revision"] == .number("8"))
+        let transcript = try #require(x["meeting"]?["transcript"])
+        #expect(transcript["status"]?.string == "done" && transcript["model"]?.string == "parakeet-tdt-0.6b-v3")
+        #expect(transcript["reference"]?["kind"]?.string == "sidecar")
+        #expect(transcript["futureTranscriptMember"] == foreign["meeting"]?["transcript"]?["futureTranscriptMember"],"unknown member kept")
+        #expect(x["meeting"]?["etaMinutes"] == .null && x["meeting"]?["error"] == .null)
+        let speakers = try #require(x["meeting"]?["speakers"]?.array)
+        try #require(speakers.compactMap { $0["id"]?.string } == ["spk-me","spk-1","track-original"],"Mac's new speaker appended")
+        #expect(speakers[0] == foreign["meeting"]?["speakers"]?.array?[0],"an existing speaker keeps its unknown members")
+        #expect(speakers[2]["label"]?.string == "Speaker 1" && speakers[2]["provenance"]?.string == "unnamed")
+        let writing = try #require(x["meeting"]?["recordingDetails"]?["writingDown"])
+        #expect(writing["x"] == .number("1"),"the other writer's unknown fact stays")
+        #expect(writing["speechSegments"] == .number("1") && writing["speakerSeparation"]?["status"]?.string == "skipped")
+        #expect(try reexport(root)["revision"] == .number("8"),"unchanged re-export")
+    }
+    /// A speaker id both writers use (track-original): Mac's Write down label replaces the
+    /// other writer's, and the entry's other members stay.
+    @Test func aSharedSpeakerIdTakesMacsLabel() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1,moreSpeakers:#",{"id":"track-original","name":null,"provenance":"unnamed","colourIndex":2,"label":"Parlante 1","futureX":1}"#)
+        try writeDown(meeting,status:"done")
+        let speakers = try #require(reexport(root)["meeting"]?["speakers"]?.array)
+        try #require(speakers.count == 3)
+        #expect(speakers[2]["label"]?.string == "Speaker 1" && speakers[2]["futureX"] == .number("1") && speakers[2]["colourIndex"] == .number("2"))
+    }
+    /// Every Mac transcription state reaches the namespace with its own revision: failed with
+    /// its error, a retry (queued, reference cleared), running with its estimate, then done.
+    @Test func transcriptionStatesFollowTheLifecycle() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1)
+        try writeDown(meeting,status:"running",eta:3)
+        var x = try reexport(root)
+        #expect(x["revision"] == .number("8") && x["meeting"]?["transcript"]?["status"]?.string == "running" && x["meeting"]?["etaMinutes"] == .number("3"))
+        try setStatus(meeting,"failed")
+        x = try reexport(root)
+        #expect(x["revision"] == .number("9") && x["meeting"]?["transcript"]?["status"]?.string == "failed")
+        #expect(x["meeting"]?["error"]?["id"]?.string == "transcribe-failed")
+        try setStatus(meeting,"queued")
+        x = try reexport(root)
+        #expect(x["revision"] == .number("10") && x["meeting"]?["transcript"]?["reference"] == .null && x["meeting"]?["error"] == .null)
+        try writeDown(meeting,status:"done")
+        x = try reexport(root)
+        #expect(x["revision"] == .number("11") && x["meeting"]?["transcript"]?["status"]?.string == "done" && x["meeting"]?["etaMinutes"] == .null)
+    }
+    /// A namespace whose meeting has no transcript member still gains Mac's transcription.
+    @Test func aMissingTranscriptMemberGainsMacsState() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1)
+        try writeDown(meeting,status:"done")
+        // The same file, its namespace without meeting.transcript: build it directly.
+        let stripped = try foreign.setting("meeting",to:foreign["meeting"]!.setting("transcript",to:nil))
+        let merged = try #require(try CodemyriadNamespace.merged(stripped,with:meeting,originalNotes:nil))
+        #expect(merged.namespace["meeting"]?["transcript"]?["status"]?.string == "done")
+        #expect(merged.namespace["revision"] != stripped["revision"])
+    }
+    /// A file that arrives transcribed keeps its namespace: the embedded reference import
+    /// stores is not a Mac transcription.
+    @Test func anImportedTranscriptIsNotAMacChange() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1,words:#"{"language":"en","items":[{"speaker":"spk-me","startMs":0,"endMs":400,"text":"Hello"}]}"#,wordCount:1)
+        let stored = try raw(meeting.folder.appendingPathComponent("meeting.json"))
+        #expect(stored["transcript"]?["status"]?.string == "done" && stored["transcript"]?["reference"]?["kind"]?.string == "embedded")
+        #expect(try reexport(root).encoded() == foreign.encoded())
     }
     /// Notes the import normalised (an unknown member dropped, an invalid note skipped) are
     /// not a Mac edit: the unchanged file still comes back byte-for-byte at its revision.

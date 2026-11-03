@@ -95,14 +95,17 @@ enum CodemyriadNamespace {
     /// export with the same content reuses it, and an unchanged meeting keeps the original.
     /// The content is read, and the baseline compared and advanced, under the folder lock, so
     /// a revision never names two contents. Returns the notes to write with it.
-    static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?) throws -> (namespace: JSON, notes: JSON?)? {
+    /// `importedTranscript`: the transcript state import stored for this file
+    /// (`LibraryImport.importedTranscript`); Mac's transcription state counts only once it differs.
+    static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?,
+                       importedTranscript: [String:Any]? = nil) throws -> (namespace: JSON, notes: JSON?)? {
         guard original["schema"] == .number("1"), original["meeting"]?.object != nil,
               let base = original["revision"]?.int, (0..<maxRevision).contains(base) else { return nil }
         let imported = NSArray(array:LibraryImport.importedNotes(originalNotes))
         let url = meeting.folder.appendingPathComponent("meeting.json")
         /// The decision for meeting.json `raw` and the saved baseline; `save` is the new baseline.
         func decide(_ raw: JSON?, saved: (revision: Int, sha256: String)?) throws -> (namespace: JSON, notes: JSON?, save: [String:Any]?) {
-            let (copy,changed) = edits(original["meeting"]!,raw:raw)
+            let (copy,changed) = edits(original["meeting"]!,raw:raw,importedTranscript:importedTranscript ?? ["status":"none","reference":NSNull()])
             let notes = raw?["notes"].flatMap { $0.array?.isEmpty == false ? $0 : nil }
             let notesChanged = !noteValue(notes).isEqual(to:imported as! [Any])
             if !changed, !notesChanged, saved == nil { return (original,notes,nil) }
@@ -140,8 +143,12 @@ enum CodemyriadNamespace {
         return result
     }
     static let maxRevision = 9007199254740991
-    /// The user's Mac edits (title, speaker names) applied to another writer's meeting copy.
-    private static func edits(_ original: JSON, raw: JSON?) -> (copy: JSON, changed: Bool) {
+    /// What Mac changed, applied to another writer's meeting copy; unknown members stay:
+    /// - the user's title and speaker names;
+    /// - a Write down on Mac (#116 r2): its transcription state (status, reference, model, with
+    ///   etaMinutes and error) once it differs from what import stored, the speakers it added
+    ///   (whole entries, appended in Mac's order), and its writingDown facts.
+    private static func edits(_ original: JSON, raw: JSON?, importedTranscript: [String:Any]) -> (copy: JSON, changed: Bool) {
         var copy = original, changed = false
         guard let raw else { return (copy,false) }
         func set(_ key: String, _ value: JSON) {
@@ -155,8 +162,36 @@ enum CodemyriadNamespace {
         } else if raw["titleSource"]?.string == "meeting-window", raw["title"] == .null, copy["title"] != .null {
             set("title",.null); set("titleSource",.string("meeting-window"))
         }
-        // Speaker names the user set or cleared on Mac, matched by the original speaker id.
-        if var speakers = copy["speakers"]?.array {
+        // Transcription state Mac produced (the words travel in the file's own transcript).
+        // A missing or null transcript (not schema-valid, but seen) gains Mac's state too.
+        let theirs = copy["transcript"].map { $0 == .null ? JSON.object([]) : $0 } ?? .object([])
+        if let mine = raw["transcript"], mine.object != nil, theirs.object != nil {
+            let keys = ["status","reference","model"]
+            let stored = foundation(.object(keys.compactMap { key in mine[key].map { (key,$0) } }))
+            if !(stored?.isEqual(importedTranscript) ?? false) {
+                var transcript = theirs
+                for key in keys where transcript[key] != mine[key] {
+                    if let next = try? transcript.setting(key,to:mine[key]) { transcript = next }
+                }
+                set("transcript",transcript)
+                for key in ["etaMinutes","error"] { if let value = raw[key] { set(key,value) } }
+            }
+        }
+        // The writingDown facts of Mac's own Write down (import never stores recordingDetails):
+        // Mac's known facts replace the other writer's attempt; its unknown facts stay.
+        if let mine = raw["recordingDetails"]?["writingDown"], mine.object != nil,
+           copy["recordingDetails"].map({ $0.object != nil || $0 == .null }) ?? true {
+            let details = copy["recordingDetails"].flatMap { $0.object != nil ? $0 : nil } ?? .object([])
+            var writing = details["writingDown"].flatMap { $0.object != nil ? $0 : nil } ?? .object([])
+            for key in ["wallDurationMs","resumed","speechSegments","speakerSeparation","sourceSpansSeparated","recognitionFallback"] where writing[key] != mine[key] {
+                if let next = try? writing.setting(key,to:mine[key]) { writing = next }
+            }
+            if let next = try? details.setting("writingDown",to:writing) { set("recordingDetails",next) }
+        }
+        // Speaker names the user set or cleared on Mac, matched by the original speaker id, and
+        // the speakers Mac's Write down added.
+        if copy["speakers"] == nil || copy["speakers"]?.array != nil {
+            var speakers = copy["speakers"]?.array ?? []
             var edited = false
             for mine in raw["speakers"]?.array ?? [] where mine["provenance"]?.string == "user" || mine["nameCleared"] == .bool(true) {
                 guard let id = mine["id"]?.string, let index = speakers.firstIndex(where:{ $0["id"]?.string == id }) else { continue }
@@ -169,9 +204,25 @@ enum CodemyriadNamespace {
                    let next = try? entry.setting("nameCleared",to:nil) { entry = next; edited = true }
                 speakers[index] = entry
             }
+            // A speaker id both writers use (a received file's track-original, D11): the label
+            // Mac's Write down produced its words with replaces the other writer's (D48).
+            for mine in raw["speakers"]?.array ?? [] {
+                guard let id = mine["id"]?.string, let label = mine["label"], label.string != nil,
+                      let index = speakers.firstIndex(where:{ $0["id"]?.string == id }), speakers[index]["label"] != label,
+                      let next = try? speakers[index].setting("label",to:label) else { continue }
+                speakers[index] = next; edited = true
+            }
+            let known = Set(speakers.compactMap { $0["id"]?.string })
+            for mine in raw["speakers"]?.array ?? [] {
+                guard let id = mine["id"]?.string, !known.contains(id) else { continue }
+                speakers.append(mine); edited = true
+            }
             if edited { set("speakers",.array(speakers)) }
         }
         return (copy,changed)
+    }
+    private static func foundation(_ value: JSON) -> NSDictionary? {
+        (try? value.encoded()).flatMap { try? JSONSerialization.jsonObject(with:$0) as? NSDictionary }
     }
     /// Notes as a Foundation value, so equal notes compare equal whatever their number spelling.
     private static func noteValue(_ notes: JSON?) -> NSArray {

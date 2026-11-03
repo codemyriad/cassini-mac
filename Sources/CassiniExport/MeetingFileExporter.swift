@@ -42,7 +42,7 @@ public enum MeetingFileExporter {
         let artifact = try stage(in:temporaryRoot,filename:"meeting.opus")
         let directory = artifact.url.deletingLastPathComponent()
         let audio: Data, digest: AudioDigest, original: CassiniFile?, choice: AudioEncodeChoice?
-        var dateTag: String?, originalTitle: String?
+        var dateTag: String?, originalTitle: String?, importedTranscript: [String:Any]?
         if meeting.state.origin == .received {
             guard meeting.audioFiles.count == 1, let url = meeting.audioFiles.first else { throw MeetingExportError.invalidSource }
             try regular(url)
@@ -51,6 +51,7 @@ public enum MeetingFileExporter {
             let file = try CassiniReader.read(audio)
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
+            importedTranscript = LibraryImport.importedTranscript(file)
             // A plain Opus file (no manifest) is trusted on import too: its DATE and TITLE count.
             if file.state == .ok || file.state == .plainAudio {
                 dateTag = file.tags?["DATE"]
@@ -78,7 +79,7 @@ public enum MeetingFileExporter {
         // D55.1: saving the chosen namePrefix never blocks the export itself.
         try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:dateTag,now:Date(),zone:timeZone)
         let ours = try CodemyriadNamespace.make(meeting,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
-        let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice,codemyriad:ours)
+        let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice,codemyriad:ours,importedTranscript:importedTranscript)
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:items.count,shouldCancel:shouldCancel)
         _ = try OpusStreamFile.rewrite(audio,tags:tags,to:artifact.url,shouldCancel:shouldCancel)
         let verified = try CassiniReader.read(contentsOf:artifact.url)
@@ -114,7 +115,7 @@ public enum MeetingFileExporter {
         if !pending.isEmpty { try emit([Float](repeating:0,count:960 - pending.count)) }
         try writer.finish(sampleCount:Int(frames))
     }
-    private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?, codemyriad: JSON? = nil) throws -> JSON {
+    private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?, codemyriad: JSON? = nil, importedTranscript: [String:Any]? = nil) throws -> JSON {
         guard let title = meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
@@ -149,7 +150,7 @@ public enum MeetingFileExporter {
         // stays verbatim. Its revision is decided with the notes read under the folder lock, and
         // those are the notes this file carries.
         let foreign = extensions[CodemyriadNamespace.key]
-        let merged = try foreign.flatMap { try CodemyriadNamespace.merged($0,with:meeting,originalNotes:extensions["gocassini.com"]?["notes"]) }
+        let merged = try foreign.flatMap { try CodemyriadNamespace.merged($0,with:meeting,originalNotes:extensions["gocassini.com"]?["notes"],importedTranscript:importedTranscript) }
         if let merged { notes = merged.notes }
         if notes != nil || owned.object != nil {
             owned = try owned.setting("notes",to:notes)
