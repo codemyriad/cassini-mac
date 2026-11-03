@@ -84,6 +84,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
     var sequence = 0
     var meetingURL = "https://meeting.example/2"
     var pageState = "present", sourceID = "remote"
+    /// false: the page's new document has not counted its sources yet (0.2.12 sends the row
+    /// with sourceCountKnown false after a navigation).
+    var countKnown = true
     /// The probe's call (D52): each profile is its own call, since a lost recording holds its
     /// call by tab and generation and every profile uses tab 2.
     let callGeneration: String
@@ -95,14 +98,14 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     /// Extension 0.2.12's capabilities (D51), without heartbeat-v1 (the probe stays silent for
     /// longer than the app's heartbeat allows) and resume-capture-v1 (no stage answers a resume).
-    static let capabilities = ["independent-sessions-v1","page-state-v1","multi-stream-v1"]
+    static let capabilities = ["independent-sessions-v1","call-evidence-v1","page-state-v1","multi-stream-v1"]
     func ready(active: Bool = true, interrupted: Bool = false) async throws {
         try await control.send(["type":"hello","version":1,"capabilities":Self.capabilities])
         try await control.send(status(interrupted:interrupted))
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        let entry: [String:Any] = ["tabId":2,"title":title,"url":meetingURL,"sourceCount":active ? 1 : 0,"sourceCountKnown":true,"heard":active,
+        let entry: [String:Any] = ["tabId":2,"title":title,"url":meetingURL,"sourceCount":active ? 1 : 0,"sourceCountKnown":countKnown,"heard":active,
                                    "pageState":pageState,"callGeneration":callGeneration]
         try await control.send(["type":"meetings","meetings":active || audio != nil ? [entry] : []])
     }
@@ -472,9 +475,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.record(); _ = try await modern.performNext()
             try await wait { collection.captures.count == 1 && collection.captures.values.first?.peerKnown == true }
             let returning = try collection.captures.values.first.unwrap(), returningID = returning.snapshot.manifest.id
-            // PR23's literal rapid-return wire order: no fresh inventory lies
-            // between the two statuses. The old document's positive count must
-            // not turn the following zero inventory into a two-second hangup.
+            // A rapid reload as 0.2.12 reports it: each page state comes with the new document's
+            // row, whose count is not known yet, so the old document's positive count can never
+            // read as a visibly ongoing call that clears the loss. Present with zero sources then
+            // keeps the loss (D52 reload-present-zero-retains-return-grace) and falls back.
             let originalCaptureID = try modern.captureID.unwrap()
             // Hold the first native loss until the returning status cancels
             // its source revision. This was otherwise a scheduler-dependent
@@ -485,13 +489,16 @@ final class CaptureProbeProcess: @unchecked Sendable {
                 CaptureFixture.beforeBrowserLoss = nil
                 await withCheckedContinuation { heldLoss = $0 }
             }
+            modern.countKnown = false
             for page in ["navigating","present"] {
                 modern.pageState = page
                 var advisory = modern.status(); advisory.removeValue(forKey:"sessions"); advisory["pageState"] = page
                 try await modern.control.send(advisory)
+                try await modern.meetings(false)
                 if page == "navigating" { try await wait { heldLoss != nil } }
             }
             modern.meetingURL = "https://meeting.example/reloaded-call"
+            modern.countKnown = true
             try await modern.meetings(false)
             try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.sourceCount == 0 && collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.url == modern.meetingURL }
             heldLoss?.resume(); heldLoss = nil
@@ -563,6 +570,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await waiting.page("present",active:true)
             try await wait { permissionCapture.owner.snapshot.browserAlive }
             try require(CaptureFixture.systemPermission != nil,"Return cannot require a reply to the OS prompt")
+            try await wait { permissionCapture.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" }).map { $0.source == "browser" && $0.reason == "restored" } == true }
             try require(CaptureFixture.systemStarts == previousSystemStarts,"Cancelled permission cannot start system input")
             try require(CaptureFixture.microphoneStarts == previousMicStarts,"Return leaves the original microphone running")
             let permissionCompletions = CaptureFixture.systemAuthorizationCompletions
