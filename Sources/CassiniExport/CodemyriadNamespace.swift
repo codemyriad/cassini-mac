@@ -138,8 +138,7 @@ enum CodemyriadNamespace {
     static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?,
                        importedTranscript: [String:Any]? = nil, body: String = "", bodyMatchesOriginal: Bool = true,
                        damaged: Bool = false) throws -> (namespace: JSON, notes: JSON?) {
-        guard original["schema"] == .number("1"), original["meeting"]?.object != nil,
-              let base = original["revision"]?.int, (0...maxRevision).contains(base) else { throw MeetingExportError.newerFormat }
+        let base = try validated(original)
         let url = meeting.folder.appendingPathComponent("meeting.json")
         /// The decision for meeting.json `raw` and the saved baseline; `save` is the new baseline.
         func decide(_ raw: JSON?, saved: (revision: Int, sha256: String)?) throws -> (namespace: JSON, notes: JSON?, save: [String:Any]?) {
@@ -186,6 +185,44 @@ enum CodemyriadNamespace {
         return result
     }
     static let maxRevision = 9007199254740991
+    /// D65: another writer's namespace this app can carry: schema 1, a meeting object and a
+    /// revision in 0...2^53-1 (returned). Anything else is refused as `newerFormat`, in or out
+    /// of the Library, before anything is decided from it.
+    static func validated(_ namespace: JSON) throws -> Int {
+        guard namespace["schema"] == .number("1"), namespace["meeting"]?.object != nil,
+              let revision = namespace["revision"]?.int, (0...maxRevision).contains(revision) else { throw MeetingExportError.newerFormat }
+        return revision
+    }
+    /// #116 r4: the revision of our own namespace (meeting.json's), for an export whose content
+    /// digest is `digest`. Content can change at one meeting.json revision (words that became
+    /// unreadable, a body restored), so the last exported digest is kept with the revision it
+    /// went out at (`codemyriadExport.own`); other content at that revision first advances
+    /// meeting.json's revision under the folder lock. The same content keeps its revision.
+    static func ownRevision(_ meeting: LibraryMeeting, digest: String) throws -> Int {
+        let url = meeting.folder.appendingPathComponent("meeting.json")
+        func read() throws -> (raw: JSON?, revision: Int) {
+            let raw = (try? Data(contentsOf:url)).flatMap { try? JSONParser.parse($0) }
+            guard unchanged(raw,since:meeting), let revision = raw?["revision"]?.int else { throw MetadataChanged() }
+            return (raw,revision)
+        }
+        // Metadata Mac may not rewrite can't change on Mac either: its revision stands.
+        if meeting.metadataReadOnly || meeting.issues.contains(.invalidMetadata) { return try read().revision }
+        var result = 0
+        do {
+            try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction(skippingUnchanged:true) { document in
+                let current = try read().revision
+                var baseline = document[baselineMember] as? [String:Any] ?? [:]
+                let own = baseline["own"] as? [String:Any]
+                if (own?["revision"] as? NSNumber)?.intValue == current, own?["sha256"] as? String == digest { result = current; return }
+                guard current < maxRevision else { throw MeetingExportError.newerFormat }
+                // This write advances meeting.json to current + 1, the revision this content takes.
+                baseline["own"] = ["revision":current + 1,"sha256":digest]; document[baselineMember] = baseline; result = current + 1
+            }
+        } catch let error as POSIXError where [.EACCES,.EPERM,.EROFS].contains(error.code) {
+            throw MeetingExportError.libraryFolderNotWritable
+        }
+        return result
+    }
     /// What Mac changed, applied to another writer's meeting copy; unknown members stay:
     /// - the user's title and speaker names;
     /// - a Write down on Mac (#116 r2): its transcription state (status, reference, model, with

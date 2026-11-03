@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CryptoKit
 import Testing
-import CassiniKit
+@testable import CassiniKit
 import CassiniLibrary
 import CassiniRecording
 @testable import CassiniExport
@@ -503,6 +504,98 @@ struct R65CodemyriadNamespaceTests {
         _ = try foreignFile(beyond,schema:1,revision:"9223372036854775807")
         #expect(refused(beyond))
     }
+    /// #116 r4: our own namespace never describes two contents at one revision: words that
+    /// become unreadable (damaged) take a new revision, and so do the same words restored;
+    /// an unchanged re-export keeps it.
+    @Test func ourOwnNamespaceAdvancesWhenItsContentChangesAtOneRevision() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let meeting = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Library"))
+        try writeDown(meeting,status:"done")
+        func export() throws -> (file: CassiniFile, revision: JSON?) {
+            let file = try reexportFile(root)
+            return (file,file.manifest?.raw["x"]?["codemyriad.io"]?["revision"])
+        }
+        let done = try export()
+        #expect(done.file.defaultTranscript?.load.transcript?.items.count == 1)
+        #expect(try export().revision == done.revision,"unchanged re-export")
+        let sidecar = meeting.folder.appendingPathComponent("transcript.json")
+        let words = try Data(contentsOf:sidecar)
+        try FileManager.default.removeItem(at:sidecar)
+        let damaged = try export()
+        #expect(damaged.file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["transcript"]?["status"]?.string == "damaged")
+        #expect(damaged.revision != done.revision && damaged.revision?.int ?? 0 > done.revision?.int ?? 0)
+        try words.write(to:sidecar)
+        let restored = try export()
+        #expect(restored.file.defaultTranscript?.load.transcript?.items.count == 1)
+        #expect(restored.revision?.int ?? 0 > damaged.revision?.int ?? 0)
+        // meeting.json carries every revision it exported.
+        #expect(try raw(meeting.folder.appendingPathComponent("meeting.json"))["revision"] == restored.revision)
+    }
+    /// A trusted file opened from outside the Library with our namespace in `namespace`,
+    /// built from conformance vector 016 (two transcripts) when `twoTranscripts`.
+    private func externalFile(_ root: URL, namespace: String, twoTranscripts: Bool = false) throws -> URL {
+        let url: URL
+        if twoTranscripts {
+            url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("CassiniKitTests/Conformance/opus/016-two-transcripts.opus")
+        } else {
+            url = try foreignFileURL(root)
+        }
+        let data = try Data(contentsOf:url)
+        let file = try CassiniReader.read(data)
+        var manifest = try #require(file.manifest?.raw)
+        manifest = try manifest.setting("x",to:.object([("codemyriad.io",JSONParser.parse(Data(namespace.utf8)))]))
+        // Replace only the manifest chunk set; every transcript keeps its own tags.
+        let raw = try manifest.encoded(), compressed = try PortableMeetingTags.gzip(raw)
+        let base64 = compressed.base64EncodedString().replacingOccurrences(of:"+",with:"-").replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"=",with:"")
+        let bytes = Array(base64.utf8)
+        let chunks = stride(from:0,to:bytes.count,by:4096).map { String(decoding:bytes[$0..<min($0 + 4096,bytes.count)],as:UTF8.self) }
+        // Only the manifest chunk set (its descriptors and numbered chunks), not CASSINI_PAYLOAD_SCHEMA.
+        let chunkSet = Set(["MIME","ENCODING","CHUNK_COUNT","SHA256","RAW_BYTES","GZIP_BYTES"])
+        var comments = (file.tags?.comments ?? []).filter { comment in
+            let name = comment.name.uppercased()
+            guard name.hasPrefix("CASSINI_PAYLOAD_") else { return true }
+            let suffix = String(name.dropFirst("CASSINI_PAYLOAD_".count))
+            return !(chunkSet.contains(suffix) || suffix.allSatisfy(\.isNumber))
+        }
+        let sha = SHA256Hex(raw)
+        for (suffix,value) in [("MIME","application/vnd.cassini.portable-meeting+json"),("ENCODING",CassiniReader.encoding),("CHUNK_COUNT",String(chunks.count)),
+                               ("SHA256",sha),("RAW_BYTES",String(raw.count)),("GZIP_BYTES",String(compressed.count))] {
+            comments.append(.init(name:"CASSINI_PAYLOAD_" + suffix,value:value))
+        }
+        for (index,chunk) in chunks.enumerated() { comments.append(.init(name:"CASSINI_PAYLOAD_" + String(format:"%03d",index),value:chunk)) }
+        let output = root.appendingPathComponent("External-\(UUID().uuidString).opus")
+        _ = try OpusStreamFile.rewrite(data,tags:PortableMeetingTags.packet(comments:comments),to:output)
+        return output
+    }
+    private func foreignFileURL(_ root: URL) throws -> URL {
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed-\(UUID().uuidString)"))
+        let seed = try MeetingFileExporter.cassini(plain,assets:nil,temporaryRoot:root)
+        let url = root.appendingPathComponent("seed-\(UUID().uuidString).opus")
+        try FileManager.default.copyItem(at:seed.url,to:url)
+        return url
+    }
+    private let validNamespace = #"{"schema":1,"sessionId":"s","origin":"Recording","namePrefix":"2026-10-30--18.02-","revision":REV,"meeting":{"version":1,"title":null}}"#
+    /// #116 r4: an external file's namespace is checked before anything else (D65): a malformed
+    /// or out-of-range revision is refused like an unknown schema.
+    @Test(arguments:["-1","1.5","\"7\"","9007199254740992"]) func anExternalFileWithAnInvalidRevisionIsRefused(revision: String) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let url = try externalFile(root,namespace:validNamespace.replacingOccurrences(of:"REV",with:revision))
+        let external = MeetingPresentation.external(try CassiniReader.read(contentsOf:url),url:url)
+        #expect(throws:MeetingExportError.newerFormat) { _ = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root) }
+    }
+    /// #116 r4: a valid one, even at the ceiling and with two transcripts, goes out
+    /// byte-for-byte: no transcript is dropped under its revision.
+    @Test(arguments:[false,true]) func anExternalFileWithOurNamespaceGoesOutByteForByte(twoTranscripts: Bool) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let url = try externalFile(root,namespace:validNamespace.replacingOccurrences(of:"REV",with:"9007199254740991"),twoTranscripts:twoTranscripts)
+        let input = try CassiniReader.read(contentsOf:url)
+        #expect(input.state == .ok && input.transcripts.count == (twoTranscripts ? 2 : 1))
+        let artifact = try MeetingFileExporter.cassini(MeetingPresentation.external(input,url:url),assets:nil,temporaryRoot:root)
+        #expect(try Data(contentsOf:artifact.url) == Data(contentsOf:url))
+    }
     /// D65 (Q6b): a recording without a title saves the untitled fallback, in the language of
     /// its first export, and keeps it: a later export in another language changes nothing.
     @Test func theUntitledFallbackIsSavedOnFirstExportAndKept() throws {
@@ -643,4 +736,8 @@ struct R65CodemyriadNamespaceTests {
         #expect(["date-tag","import-time"].contains(x["namePrefixSource"]?.string ?? ""))
         #expect(x["automaticTitle"]?.string == [file.manifest?.meeting.title,file.tags?["TITLE"]].compactMap { $0 }.first { !$0.isEmpty })
     }
+}
+private func SHA256Hex(_ data: Data) -> String {
+    var hasher = CryptoKit.SHA256(); hasher.update(data:data)
+    return hasher.finalize().map { String(format:"%02x",$0) }.joined()
 }

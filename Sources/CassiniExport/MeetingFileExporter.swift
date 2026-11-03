@@ -59,6 +59,17 @@ public enum MeetingFileExporter {
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
             importedTranscript = LibraryImport.importedTranscript(file)
+            // #116 r4: a trusted file opened from outside the Library that carries our namespace
+            // goes out byte-for-byte (nothing of it can change on Mac, and a rebuild could drop
+            // its other transcripts under the same revision), once its namespace is one this app
+            // can carry (D65).
+            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
+                _ = try CodemyriadNamespace.validated(namespace)
+                guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
+                let copied = try CassiniReader.read(contentsOf:artifact.url)
+                guard copied.state == .ok, try copied.audioDigest?.get() == actual else { throw MeetingExportError.invalidSource }
+                return artifact
+            }
             // A plain Opus file (no manifest) is trusted on import too: its DATE and TITLE count.
             if file.state == .ok || file.state == .plainAudio {
                 dateTag = file.tags?["DATE"]
@@ -160,10 +171,10 @@ public enum MeetingFileExporter {
         // from outside the Library (nothing of it can change on Mac), stay unchanged.
         let originalNotes = extensions["gocassini.com"]?["notes"]
         let foreign = extensions[CodemyriadNamespace.key]
-        var notes: JSON?, namespace: JSON?, mergedCopy = false, stored: JSON?
+        var notes: JSON?, namespace: JSON?, mergedCopy = false, stored: JSON?, own = false
         // D65: a namespace schema this app doesn't know is refused, never shipped next to
         // content its revision doesn't describe (also for a file opened from outside).
-        if let foreign, foreign["schema"] != .number("1") { throw MeetingExportError.newerFormat }
+        if let foreign { _ = try CodemyriadNamespace.validated(foreign) }
         if !LibraryScanner.isMeetingFolder(meeting.folder) {
             notes = originalNotes
         } else if let foreign {
@@ -186,6 +197,7 @@ public enum MeetingFileExporter {
                    !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) { throw MeetingExportError.libraryFolderNotWritable }
                 namespace = try CodemyriadNamespace.make(meeting,stored:stored,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
                     .map { try CodemyriadNamespace.marking($0,damaged:meeting.state.transcript == .damaged) }
+                own = namespace != nil
             }
         }
         // The displayed title (MAPPING: meeting.title, then automaticTitle): for another
@@ -228,6 +240,16 @@ public enum MeetingFileExporter {
         }
         if let namespace { extensions = try extensions.setting(CodemyriadNamespace.key,to:namespace) }
         if extensions.object?.isEmpty != true { root = try root.setting("x",to:extensions) }
+        if own, var namespace {
+            // #116 r4: the revision this content takes. The digest covers everything the file
+            // carries except the export stamp and the revision itself.
+            var content = try root.setting("meeting",to:root["meeting"]!.setting("createdAtUtc",to:nil))
+            content = try content.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace.setting("revision",to:nil)))
+            var data = try content.encoded(); data.append(0); data.append(body)
+            let revision = try CodemyriadNamespace.ownRevision(meeting,digest:SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined())
+            namespace = try namespace.setting("revision",to:.number(String(revision)))
+            root = try root.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace))
+        }
         return root
     }
     /// The exported words are the original file's: its only transcript, same words and language.

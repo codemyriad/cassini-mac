@@ -100,3 +100,14 @@ that differs from the original file's counts as a change.
   received meeting and importing the same file again starts from the file's own
   revision, so a revision Mac exported before can be reused for other content.
   Accepted (D65, D51): there is no Library-wide record.
+
+## Edge revisions (#116 review r4)
+
+- Our own namespace keeps the digest of its last export with the revision it went
+  out at (Mac-local `codemyriadExport.own`). Other content at the same meeting.json
+  revision (words that became unreadable, or were restored) first advances
+  meeting.json's revision under the folder lock; the same content keeps it.
+- Another writer's namespace is validated before anything else, in or out of the
+  Library: schema 1, a meeting object, a revision in 0…2^53-1, or `newerFormat`.
+- A trusted file opened from outside the Library that carries our namespace is
+  exported byte-for-byte, so none of its transcripts is dropped under its revision.

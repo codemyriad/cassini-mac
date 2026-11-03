@@ -58,7 +58,7 @@ public enum PortableMeetingTags {
         }
         return data
     }
-    private static func gzip(_ input: Data, shouldCancel: () -> Bool) throws -> Data {
+    static func gzip(_ input: Data, shouldCancel: () -> Bool = { false }) throws -> Data {
         var stream = z_stream()
         guard deflateInit2_(&stream,Z_DEFAULT_COMPRESSION,Z_DEFLATED,16 + MAX_WBITS,8,Z_DEFAULT_STRATEGY,ZLIB_VERSION,Int32(MemoryLayout<z_stream>.size)) == Z_OK else { throw PayloadError.gzip("encoder initialization") }
         defer { deflateEnd(&stream) }
