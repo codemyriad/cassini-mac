@@ -16,9 +16,10 @@ window edges and exact PNG dimensions are asserted. The same XCUITest capture
 includes the native toolbar and attached sheet; Return/Esc role tests still run.
 The regular W1-M3 job keeps its existing 960×640 default.
 
-Two independent macos-15 jobs repeat the mode selection and UI tests, to check
-that the result is reproducible on fresh hosts rather than relying on one saved
-display state. There is no Screen Recording consent request, TCC change, private
+A second, independent macos-15 job used to repeat the mode selection and UI
+tests, to check that the result is reproducible on fresh hosts rather than
+relying on one saved display state. After 488 consecutive passes that question
+is answered, and one capture job remains (D66 mac-P1-4). There is no Screen Recording consent request, TCC change, private
 window subclass or bitmap compositing in this approach. Local work is compile-only.
 
 Time box: this working session. If no suitable mode exists, the coordinator's next
