@@ -328,9 +328,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case 49:  // Space
             player.toggle()
         case 123:  // ←
-            session.seek(toMs: player.currentMs - 15_000)
+            session.seek(toMs: player.currentMs - PlayerController.skipMs)
         case 124:  // →
-            session.seek(toMs: player.currentMs + 15_000)
+            session.seek(toMs: player.currentMs + PlayerController.skipMs)
         default:
             return event
         }

@@ -32,6 +32,9 @@ struct LiveCapture {
     var callPolicy = BrowserCallPolicy()
     /// D52.1 R67: this native stand-in already asked one call to join (never retried).
     var resumeAttempted = false
+    /// D52.5: the call this recording belongs to. After its audio transport closed, the
+    /// recording finds that call by (tabId, callGeneration) on any control peer.
+    var callGeneration: String?
     var modernLifecycle: Bool?
     var changingSource = false
     fileprivate var sourceObservation: BrowserSourceObservation?
@@ -109,6 +112,9 @@ private final class CaptureFiles: @unchecked Sendable {
     private var preparingFiles = 0
     @ObservationIgnored var onAutomaticStart: ((UUID) -> Void)?
     @ObservationIgnored var onFallback: ((UUID) -> Void)?
+    /// D52.5: the only lost-call state. This collection feeds each recording's binding; the
+    /// broker feeds transport loss and resume; the service reads it before admitting a Start.
+    @ObservationIgnored private let ownership = CallOwnershipStore()
     @ObservationIgnored private lazy var files = CaptureFiles(file:LibraryLaunchContext.locationFile,root:RecordingFixture.root ?? LibraryLocation.standardRoot)
     @ObservationIgnored private lazy var broker = BrowserAudioBroker(make:{ [weak self,files] title,mic in
         try files.create(title:title,microphone:mic) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
@@ -117,12 +123,12 @@ private final class CaptureFiles: @unchecked Sendable {
             guard let self, let value = self.captures[owner.snapshot.manifest.id] else { reply(nil); return }
             do { try await value.input.stop(); reply(nil) } catch { reply(error.localizedDescription) }
         }
-    })
+    },ownership:ownership)
     @ObservationIgnored private lazy var service = BrowserControlService(changed:{ [weak self] peers in
         DispatchQueue.main.async { self?.replacePeers(peers) }
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
-    },audio:broker,canStart:{ [files] in files.canStart() })
+    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership)
     var connected: Bool { peers.contains { $0.reconciled } }
     var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.meetings.contains { $0.sourceCount > 0 } } }
     var isRecording: Bool { captures.values.contains { $0.snapshot.phase == .recording && $0.savingSinceMs == nil } }
@@ -208,6 +214,8 @@ private final class CaptureFiles: @unchecked Sendable {
         activity[id] = .saving
         if CaptureActivityStore.shared.snapshot()[id] != .preparing { CaptureActivityStore.shared.set(id,.saving) }
         if let key = value.key { service.stopMeeting(key,captureID:value.captureID,userInitiated:false,reason:reason) }
+        // The release follows the Stop memory and the Stop on the control queue (see feedOwnership).
+        feedOwnership(id)
         let task = Task { [weak self] in
             // Native inputs stop at the user's request, independently of a
             // delayed page flush. Broker finalization reuses this same drain.
@@ -284,6 +292,11 @@ private final class CaptureFiles: @unchecked Sendable {
         let meetingKey = key(for:info.captureID)
         let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
         captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
+        // The call this recording belongs to, as the Start named it (the broker recorded it first).
+        if let generation = info.callGeneration ?? ownership.snapshot.binding(id)?.callGeneration {
+            captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation
+        }
+        feedOwnership(id)
         if let modern { try? await owner.manageBrowserLifecycle(modern) }
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
         CaptureActivityStore.shared.set(id,activity[id])
@@ -338,7 +351,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
             let id = snapshot.manifest.id
-            captures.removeValue(forKey:id); announced.remove(id)
+            captures.removeValue(forKey:id); announced.remove(id); feedOwnership(id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)
             LibraryStore.shared.refresh(affected:snapshot.directory)
@@ -424,20 +437,64 @@ private final class CaptureFiles: @unchecked Sendable {
         let state = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
         guard state.source == "system", state.reason == "missing",
               let identity = broker.standInIdentity(value.owner) else { return }
-        let busy = Set(captures.values.compactMap(\.key))
+        let busy = Set(captures.values.compactMap(\.key)), held = ownership.snapshot
         let calls = peers.filter { $0.reconciled && $0.supportsResume && $0.supportsMultiStream }.flatMap { peer in
             peer.meetings.filter { meeting in meeting.sourceCount > 0 && meeting.heard && meeting.callGeneration != nil && !busy.contains(meeting.key)
+                && !held.holds(meeting:meeting)
                 && !peer.captures.contains { $0.key == meeting.key } }
         }
         guard calls.count == 1, let call = calls.first else { return }
         captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
         let owner = value.owner, broker = broker
-        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { generation in
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation in
+            broker.expectResume(owner,callGeneration:generation)
+            // The generation the resume was sent with (nil: refused). After the take-over this
+            // recording is that call's, so it follows and suppresses exactly that call (D52.5).
+            guard let generation else { return }
+            Task { @MainActor in self?.bindStandIn(id,callGeneration:generation) }
+        }
+    }
+    private func bindStandIn(_ id: UUID, callGeneration: String) {
+        guard captures[id]?.callGeneration == nil else { return }
+        captures[id]?.callGeneration = callGeneration; captures[id]?.callPolicy.callGeneration = callGeneration; feedOwnership(id)
+    }
+    private var lastRecordRetry: TimeInterval = 0
+    /// D52.5: the recording's call (same tab and call generation) on any reconciled control
+    /// peer, past or present. Only a recording whose audio transport closed is re-keyed.
+    /// D52.5: feed this recording's call binding (or its removal) to the shared ownership. A
+    /// D49 stand-in whose take-over committed follows its call like a Chromium capture.
+    /// A hold is taken at once (it only suppresses Starts); a release (saving, retired) goes
+    /// through the control queue, after the user's Stop memory that `stop` queued first.
+    private func feedOwnership(_ id: UUID) {
+        let current = ownership.snapshot.binding(id)
+        guard let value = captures[id] else {
+            if current != nil { service.updateOwnership { $0.remove(id) } }
+            return
+        }
+        let source = value.owner.snapshot
+        let binding = CallOwnership.Binding(key:value.key,callGeneration:value.callGeneration,
+            follows:BrowserCallPolicy.followsCall(source:source.manifest.source,keyed:value.key != nil,events:source.manifest.events ?? []),
+            recording:value.savingSinceMs == nil && source.phase == .recording)
+        guard binding != current else { return }
+        if current?.recording == true && !binding.recording { service.updateOwnership { $0.bind(id,binding) } }
+        else { ownership.update { $0.bind(id,binding) } }
+    }
+    /// D52.4/D52.5: the policy asked once (per loss and control connection) to resume this
+    /// recording onto its system/lost fallback through resume-capture-v1.
+    private func askResume(_ value: LiveCapture, _ meeting: BrowserMeetingKey) {
+        guard let identity = broker.standInIdentity(value.owner) else { return }
+        let owner = value.owner, broker = broker
+        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:value.callGeneration) { generation in
             broker.expectResume(owner,callGeneration:generation)
         }
     }
-    private var lastRecordRetry: TimeInterval = 0
+    /// D52.5: feed every recording's binding. The service reads the held calls itself, on its
+    /// queue, whenever it admits a Start; a release re-admits through `updateOwnership`.
+    private func publishOwnership() {
+        for id in captures.keys { feedOwnership(id) }
+    }
     private func poll(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        defer { publishOwnership() }
         // D52.1 R65: a capture whose portable record could not be written stays saving (and
         // move-protected); retry it every 5 s until the broker saves it.
         if now - lastRecordRetry >= 5 {
@@ -446,6 +503,12 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { await broker.retryPendingRecords() }
         }
         for id in Array(captures.keys) {
+            guard let current = captures[id] else { continue }
+            // Every lost-call decision for this poll comes from the shared ownership, fed first
+            // with what this collection knows now (a key replacePeers just learned included).
+            feedOwnership(id)
+            let follow = ownership.follow(id,captureID:current.captureID,peers:peers)
+            if follow.rebound, let key = follow.key { captures[id]?.key = key; feedOwnership(id) }
             guard let value = captures[id] else { continue }
             offerStandIn(id,value)
             let status = value.input.status()
@@ -477,11 +540,13 @@ private final class CaptureFiles: @unchecked Sendable {
                 let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
                 let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
                 let meeting = peer?.meetings.first { $0.key == value.key }
+                if let peer { captures[id]?.callPolicy.resumeCapture = peer.supportsResume }
                 let pages: [(BrowserCallLifecycle.Page,TimeInterval?)] = [
                     status?.pageState.map { ($0,status?.pageStateAt) },
                     meeting?.pageState.map { ($0,meeting?.pageStateAt) }
                 ].compactMap { $0 }
-                let page = pages.first { $0.0 == .closed } ?? pages.max { ($0.1 ?? 0) < ($1.1 ?? 0) }
+                // Historical `present` (interrupted history) never counts once the call is gone.
+                let page = CallOwnership.page(pages,callVisible:follow.callVisible)
                 let source = value.owner.snapshot
                 // Fresh PCM on the original owned transport is stronger than
                 // a brief gap in management discovery. It never overrides an
@@ -498,10 +563,12 @@ private final class CaptureFiles: @unchecked Sendable {
                 }
                 let returnFloor = page?.1.map { max(0,$0-value.originUptime)*1000 }
                 let ready = source.restoreReady && source.browserReturnPCMAt.map { $0 >= (returnFloor ?? 0) } == true
-                let multiStream = peer?.supportsMultiStream == true
+                // Kept across a control gap: a missing peer is not a legacy one.
+                let multiStream = follow.multiStream
                 // D52 M6: a capture belongs to the call it started in. When the tab's
-                // call generation moves on, this session ends instead of absorbing B.
-                if multiStream, !pending, let ended = BrowserCallPolicy.endForCallChange(started:status?.callGeneration,current:meeting?.callGeneration),
+                // call generation moves on (seen from any of its browser's peers), this
+                // session ends instead of absorbing B.
+                if multiStream, !pending, let ended = follow.end,
                    let reason = CaptureEndReason(rawValue:ended.rawValue) {
                     value.owner.requestEnd(reason,atMs:max(0,now-value.originUptime)*1000)
                     stop(id,reason:reason); continue
@@ -511,15 +578,24 @@ private final class CaptureFiles: @unchecked Sendable {
                 // keeps a call alive while control is absent. Until the call has taken over, a
                 // stand-in is a plain native recording: nothing but the take-over applies.
                 let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
-                let callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
+                // No page report: present only while the bound call is still reported. A row that
+                // vanished with no session left is missing evidence (bounded by the D52 grace).
+                var callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (follow.callVisible ? .present : nil),rowPresent:meeting != nil,
                     sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
-                    controlAlive:peer != nil,pcmLive:fresh,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                    controlAlive:peer != nil,pcmLive:fresh,transportAlive:source.transportAlive,
+                    callGeneration:meeting?.callGeneration,controlConnection:peer?.id.uuidString ?? "",pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                // D57 (R78.1): ask to resume only once the status no longer lists a session for this tab.
+                callObservation.sessionListed = follow.sessionListed
                 var policy = captures[id]?.callPolicy ?? BrowserCallPolicy()
                 let action = BrowserCallPolicy.decide(pending:pending,multiStream:multiStream,policy:&policy,now:now,callObservation,
                     source:committed.source,reason:committed.reason,others:source.others,restoreReady:ready) {
                     captures[id]?.callLifecycle.step(now:now,page:observedPage,sourceCount:count ?? (fresh ? 1 : 0),
                         transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
                         restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
+                } onAskResume: {
+                    // D52.5: the policy asked once (per loss and control connection) to resume;
+                    // decide sends it only once the fallback has committed system/lost.
+                    if let key = meeting?.key { askResume(value,key) }
                 }
                 captures[id]?.callPolicy = policy
                 if case .stop(let reason) = action, let end = CaptureEndReason(rawValue:reason.rawValue) {

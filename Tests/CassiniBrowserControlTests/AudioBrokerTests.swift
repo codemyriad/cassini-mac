@@ -53,16 +53,32 @@ final class NativeAudioClient: @unchecked Sendable {
     }
     deinit { end() }
 }
+/// E1: hands out expectations fulfilled by the broker's next audio-transport close, after it
+/// applied the loss. Register one before causing the close, then await it.
+final class TransportClosures: @unchecked Sendable {
+    private let lock = NSLock(); private var waiting: [XCTestExpectation] = []
+    func next(_ description: String) -> XCTestExpectation {
+        let value = XCTestExpectation(description:description)
+        lock.withLock { waiting.append(value) }; return value
+    }
+    func fire() { for value in lock.withLock({ () -> [XCTestExpectation] in defer { waiting = [] }; return waiting }) { value.fulfill() } }
+}
 final class AudioFixture {
     let root: URL, ipc: URL, broker: BrowserAudioBroker, service: BrowserControlService
+    let closures = TransportClosures()
     var clients: [NativeAudioClient] = []
-    init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil) throws {
+    init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil,
+         clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
+         ownership: CallOwnershipStore? = nil, changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void = { _ in },
+         created: @escaping @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void = { _,_ in }) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniBrokerTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         ipc = root.appendingPathComponent("ipc")
         let library = root.appendingPathComponent("Library"), inputs = NativeFixtureInputs()
-        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) })
-        service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)
+        let closures = closures
+        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in created(owner,info); inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
+                                    transportClosed:{ closures.fire() },ownership:ownership)
+        service = BrowserControlService(changed:changed,completed:{ _,_ in },audio:broker,ownership:ownership)
         try service.start(root:ipc)
     }
     func client() throws -> NativeAudioClient { let value = try NativeAudioClient(root:ipc); clients.append(value); return value }
