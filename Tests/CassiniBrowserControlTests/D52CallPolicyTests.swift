@@ -97,6 +97,34 @@ final class D52CallPolicyTests: XCTestCase {
         // Byte equality, like every other identity: canonically equal spellings are different calls.
         XCTAssertEqual(BrowserCallPolicy.endForCallChange(started:"caf\u{E9}",current:"cafe\u{301}"),.callEnded)
     }
+    /// The call returns while its fallback is still waiting on the OS permission prompt: the
+    /// committed source is none/lost, not system/lost. The return cancels that fallback, so
+    /// restoring must not wait for the prompt (or for heard), or the Others would record nothing.
+    func testAReturnRestoresAFallbackThatHasNotCommittedYet() {
+        func reloaded(heard: Bool = true) -> BrowserCallPolicy {
+            var policy = BrowserCallPolicy()
+            XCTAssertNil(policy.step(now:0,.init(page:.present,sourceCount:1,heard:heard),source:"browser",reason:"start"))
+            XCTAssertNil(policy.step(now:10,.init(page:.navigating,sourceCount:nil,sourceCountKnown:false,pageObservedAt:10),source:"browser",reason:"start"))
+            XCTAssertEqual(policy.step(now:12,.init(page:.navigating,sourceCount:nil,sourceCountKnown:false),source:"browser",reason:"start"),.fallback)
+            return policy
+        }
+        let back = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true)
+        var policy = reloaded()
+        XCTAssertNil(policy.step(now:13,back,source:"none",reason:"lost",restoreReady:false),"waits for the returning PCM")
+        XCTAssertEqual(policy.step(now:13.5,back,source:"none",reason:"lost"),.restore)
+        var off = reloaded()
+        XCTAssertNil(off.step(now:13,back,source:"none",reason:"lost",others:false),"Others off stays off")
+        var unheard = reloaded(heard:false)
+        XCTAssertEqual(unheard.step(now:13,.init(page:.present,sourceCount:1),source:"none",reason:"lost"),.restore,
+                       "the cancelled fallback leaves nothing to record, heard or not")
+        var system = reloaded(heard:false)
+        XCTAssertNil(system.step(now:13,.init(page:.present,sourceCount:1),source:"system",reason:"lost"),"a committed fallback still waits for heard")
+        var dead = reloaded()
+        XCTAssertEqual(dead.step(now:13,.init(page:.present,sourceCount:1,heard:true,transportAlive:false),source:"none",reason:"lost"),.fallback,
+                       "a closed transport cannot restore; the fallback is asked again")
+        var stopped = reloaded()
+        XCTAssertNil(stopped.step(now:13,back,source:"none",reason:"stopped"),"only a loss is undone")
+    }
     /// Reload under multi-stream: the navigation loss task can be cancelled by the next
     /// present/zero report before it commits. The policy still falls back two seconds after the
     /// navigating stamp, and that fallback must commit the loss first, at that stamp; otherwise
