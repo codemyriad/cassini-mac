@@ -24,32 +24,83 @@ runs:
     - id: arch
       shell: bash
       run: echo "name=$(uname -m)" >> "$GITHUB_OUTPUT"
+    # D66 mac-P0-4 (rule 2): one capped, logged retry around the artifact service. A failed
+    # download or an archive digest mismatch (a truncated download) clears the products and
+    # downloads them once more; the revision, architecture, Xcode, pin and digest checks are the
+    # same both times, and a second failure fails the job.
     - uses: actions/download-artifact@v5
       if: inputs.swiftpm == 'true'
+      continue-on-error: true
       with:
         name: ci-swiftpm-${{ steps.arch.outputs.name }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.assets == 'true'
+      continue-on-error: true
       with:
         name: ci-assets
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true'
+      continue-on-error: true
       with:
         name: ci-parakeet
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.debug == 'true'
+      continue-on-error: true
       with:
         name: ci-debug
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.release == 'true'
+      continue-on-error: true
       with:
         name: ci-release
         path: build/ci-products
-    - shell: bash
+    - id: verify
+      shell: bash
+      env:
+        RESTORE_SWIFTPM: ${{ inputs.swiftpm }}
+        RESTORE_ASSETS: ${{ inputs.assets }}
+        RESTORE_PARAKEET: ${{ inputs.parakeet }}
+        RESTORE_DEBUG: ${{ inputs.debug }}
+        RESTORE_RELEASE: ${{ inputs.release }}
+      run: |
+        for kind in swiftpm assets parakeet debug release; do
+          flag="RESTORE_$(echo "$kind" | tr '[:lower:]' '[:upper:]')"
+          if [ "${!flag}" = true ] && ! python3 scripts/ci-products.py unpack "$kind" build/ci-products; then
+            echo "::warning::CI products ($kind) failed to download or verify; downloading them once more"
+            rm -rf build/ci-products; echo "retry=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+        done
+    - uses: actions/download-artifact@v5
+      if: inputs.swiftpm == 'true' && steps.verify.outputs.retry == 'true'
+      with:
+        name: ci-swiftpm-${{ steps.arch.outputs.name }}
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.assets == 'true' && steps.verify.outputs.retry == 'true'
+      with:
+        name: ci-assets
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.parakeet == 'true' && steps.verify.outputs.retry == 'true'
+      with:
+        name: ci-parakeet
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.debug == 'true' && steps.verify.outputs.retry == 'true'
+      with:
+        name: ci-debug
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.release == 'true' && steps.verify.outputs.retry == 'true'
+      with:
+        name: ci-release
+        path: build/ci-products
+    - if: steps.verify.outputs.retry == 'true'
+      shell: bash
       env:
         RESTORE_SWIFTPM: ${{ inputs.swiftpm }}
         RESTORE_ASSETS: ${{ inputs.assets }}

@@ -88,8 +88,10 @@ jobs:
         node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
         echo "Real tabCapture is a manual check (node BrowserExtension/tests/tab-capture.mjs): hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: failure()
       with:
+        retention-days: 14
         name: recording-failure-${{ github.sha }}
         path: |
           BrowserExtension/tests/artifacts
@@ -117,8 +119,10 @@ jobs:
         python3 scripts/run-native-ci.py --mode sink-only --app build/Build/Products/Debug/Cassini.app \
           --artifacts "$RUNNER_TEMP/native-artifacts"
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: native-recording-${{ github.sha }}
         path: ${{ runner.temp }}/native-artifacts
     needs:

@@ -68,8 +68,10 @@ jobs:
         if: ${{ !cancelled() && steps.browser_background.outcome == 'success' }}
         run: node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
       - uses: actions/upload-artifact@v5
+        continue-on-error: true
         if: always()
         with:
+          retention-days: 14
           name: browser-setup-${{ matrix.runner }}
           path: |
             build/browser-setup-report.json
