@@ -132,9 +132,13 @@ private final class CaptureFiles: @unchecked Sendable {
         DispatchQueue.main.async { self?.replacePeers(peers) }
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
-    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership)
-    var connected: Bool { peers.contains { $0.reconciled } }
-    var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.meetings.contains { $0.sourceCount > 0 } } }
+    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true)
+    /// D51: only a companion that speaks multi-stream-v1 (extension 0.2.12+) records browser calls.
+    /// An older one is never asked to start: its calls record like a meeting without the companion
+    /// (microphone and computer sound), and the companion state says it needs an update.
+    var connected: Bool { peers.contains { $0.reconciled && $0.supportsMultiStream } }
+    var needsUpdate: Bool { !connected && peers.contains { $0.reconciled && !$0.supportsMultiStream } }
+    var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.supportsMultiStream && $0.meetings.contains { $0.sourceCount > 0 } } }
     var isRecording: Bool { captures.values.contains { $0.snapshot.phase == .recording && $0.savingSinceMs == nil } }
     var isSaving: Bool { captures.values.contains { $0.snapshot.phase == .saving || $0.savingSinceMs != nil } || !stopping.isEmpty || !settling.isEmpty }
     var first: LiveCapture? { captures.values.filter { $0.snapshot.phase == .recording && $0.savingSinceMs == nil }.min { $0.originUptime < $1.originUptime } }
@@ -390,7 +394,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func replacePeers(_ peers: [BrowserControlPeerSnapshot]) {
         self.peers = peers
-        if peers.contains(where:{ $0.reconciled }) { CompanionSetup.shared.didConnect() }
+        if connected { CompanionSetup.shared.didConnect() }
         let meetings = Set(peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.map(\.key))
         failedMeetings = failedMeetings.filter { meetings.contains($0.key) }
         microphones = microphones.filter { meetings.contains($0.key) }

@@ -169,6 +169,26 @@ final class ControlRegistryTests: XCTestCase {
             XCTAssertThrowsError(try send(["type":"meetings","meetings":[["tabId":2,"title":"Pre-join","url":"https://meet.example/2","sourceCount":1,"heard":invalid]]],&state))
         }
     }
+    /// D51 (Mac): with requireMultiStream an older companion is never asked to start a capture,
+    /// manually, for all meetings or automatically; a 0.2.12 hello still starts.
+    func testAnAppRequiringMultiStreamStartsNothingOnAnOlderCompanion() throws {
+        var state = BrowserControlRegistry(); state.requireMultiStream = true
+        try ready(&state)
+        XCTAssertThrowsError(try state.start(.init(peer:peer,tabID:2),microphone:true)) {
+            XCTAssertEqual($0 as? BrowserControlStateError,.incompatible)
+        }
+        XCTAssertTrue(state.startAll(microphone:true).isEmpty)
+        XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty)
+        var current = BrowserControlRegistry(); current.requireMultiStream = true
+        try current.connect(.init(id:peer,role:.control,browser:"Chrome"))
+        try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","page-state-v1","multi-stream-v1"]],&current)
+        try meetings([2],&current); try send(status([]),&current)
+        XCTAssertEqual(current.startAll(microphone:true).count,1)
+        // The protocol's default still starts an older companion (the shared auto-start vectors).
+        var protocolDefault = BrowserControlRegistry()
+        try ready(&protocolDefault)
+        XCTAssertEqual(protocolDefault.startAll(microphone:true).count,1)
+    }
     func evidenceHello(_ state: inout BrowserControlRegistry) throws {
         try state.connect(.init(id:peer,role:.control,browser:"Chrome"))
         try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","call-evidence-v1"]],&state)

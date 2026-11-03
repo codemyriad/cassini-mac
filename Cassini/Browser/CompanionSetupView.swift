@@ -71,7 +71,7 @@ import CassiniLibrary
     private(set) var hasConnected = RecordingPreferences.defaults.bool(forKey:"CassiniCompanionHasConnected")
     var noBrowser: Bool { background.state == .failed(.noBrowser) || discovered && suggestedBrowser == nil }
     var canAdd: Bool { discovered && suggestedBrowser != nil && !noBrowser }
-    var showLibraryState: Bool { !noBrowser && (CaptureCollection.shared.connected || hasConnected && discovered) }
+    var showLibraryState: Bool { !noBrowser && (CaptureCollection.shared.connected || CaptureCollection.shared.needsUpdate || hasConnected && discovered) }
     var working: Bool { background.state == .settingUp }
     var failed: Bool { if case .failed = background.state { !noBrowser } else { false } }
     func didConnect() {
@@ -108,7 +108,8 @@ import CassiniLibrary
     func stop() { background.stop(); localBackground.stop() }
     var stateLine: String {
         if noBrowser { return UXText.text("browser.state.needsBrowser") }
-        let names = Set(CaptureCollection.shared.peers.filter(\.reconciled).compactMap(\.browser))
+        if CaptureCollection.shared.needsUpdate { return UXText.text("browser.state.needsUpdate") }
+        let names = Set(CaptureCollection.shared.peers.filter { $0.reconciled && $0.supportsMultiStream }.compactMap(\.browser))
         if CaptureCollection.shared.connected {
             return names.count == 1 ? UXText.text("browser.state.connected",["browser":names.first!]) : UXText.text("browser.state.connectedGeneric")
         }
