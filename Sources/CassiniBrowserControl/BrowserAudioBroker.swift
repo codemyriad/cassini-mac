@@ -42,6 +42,9 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
     private let persistRecord: @Sendable (RecordingManifest,URL) throws -> Void
+    /// Observes each audio transport's end after the broker has applied it (the owner's loss
+    /// and the stand-in identity), so a caller can wait on it instead of polling.
+    fileprivate let transportClosed: @Sendable () -> Void
     private var recordAttempts: [UUID:Int] = [:]
     static let recordAttemptLimit = 5
     /// D52.4 PCM_STALE_AFTER, 45 s per D52.5: the extension's longest source retry (30 s)
@@ -53,8 +56,10 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
                 created: @escaping @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void,
                 stopNative: @escaping BrowserNativeStop,
                 persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) },
-                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 }) {
+                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
+                transportClosed: @escaping @Sendable () -> Void = {}) {
         self.make = make; self.created = created; self.stopNative = stopNative; self.persistRecord = persistRecord; self.clock = clock
+        self.transportClosed = transportClosed
         let timer = DispatchSource.makeTimerSource(queue:.global(qos:.utility))
         timer.schedule(deadline:.now() + 1,repeating:1)
         timer.setEventHandler { [weak self] in self?.closeStaleTransports() }
@@ -497,6 +502,7 @@ private final class AudioPeer: @unchecked Sendable {
         max(0,(ProcessInfo.processInfo.systemUptime - (originUptime ?? ProcessInfo.processInfo.systemUptime))*1000)
     }
     func disconnected() {
+        defer { broker?.transportClosed() }
         if resumed, let captureID { broker?.releaseResume(captureID:captureID,peer:connection.peer.id) }
         guard !completed, let owner else { return }
         // A resumed transport's EOF keeps the native recording and its fallback (D33).

@@ -20,11 +20,15 @@ public final class BrowserControlService: @unchecked Sendable {
     private let audio: (any BrowserAudioHandler)?
     private let completed: @Sendable (BrowserControlOutcome,Bool) -> Void
     private let canStart: @Sendable () -> Bool
+    /// Observes each control frame's type after the service has applied it (heartbeat
+    /// liveness included), so a caller can wait on receipt instead of polling.
+    private let received: @Sendable (String?) -> Void
     public init(changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void,
                 completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil,
                 canStart: @escaping @Sendable () -> Bool = { true },
-                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 }) {
-        self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock
+                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
+                received: @escaping @Sendable (String?) -> Void = { _ in }) {
+        self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock; self.received = received
         queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {
@@ -144,6 +148,7 @@ public final class BrowserControlService: @unchecked Sendable {
                 completed(outcome,wasAutomatic)
             }
             reconcile()
+            received(message["type"]?.string)
         } catch { connection.close(); disconnect(connection.peer.id) }
     }
     private func reconcile() {

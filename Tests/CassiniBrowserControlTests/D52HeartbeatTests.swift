@@ -86,9 +86,10 @@ final class D52HeartbeatTests: XCTestCase {
         let clock = TestClock()
         let connected = expectation(description:"status received"), gone = expectation(description:"control lost")
         connected.assertForOverFulfill = false; gone.assertForOverFulfill = false
+        let pong = expectation(description:"pong received")
         let service = BrowserControlService(changed:{ peers in
             if peers.contains(where:{ $0.reconciled }) { connected.fulfill() } else if peers.isEmpty { gone.fulfill() }
-        },completed:{ _,_ in },clock:clock.now)
+        },completed:{ _,_ in },clock:clock.now,received:{ if $0 == "pong" { pong.fulfill() } })
         try service.start(root:root); defer { service.stop() }
         let client = try connect(root,capabilities:["multi-stream-v1","heartbeat-v1"])
         wait(for:[connected],timeout:3)
@@ -98,11 +99,8 @@ final class D52HeartbeatTests: XCTestCase {
         XCTAssertEqual(ping["type"]?.string,"ping"); XCTAssertEqual(ping["seq"]?.int,0)
         try send(["type":"pong","seq":0],client)
         // Wait until the service has taken the pong, so the clock never moves under it.
-        let deadline = Date().addingTimeInterval(3)
-        while service.lastHeartbeatInbound() != clock.now() {
-            guard Date() < deadline else { return XCTFail("the pong was never received") }
-            Thread.sleep(forTimeInterval:0.005)
-        }
+        wait(for:[pong],timeout:3)
+        XCTAssertEqual(service.lastHeartbeatInbound(),clock.now())
         clock.advance(10_000); service.tickHeartbeats()
         XCTAssertEqual(try receive(client)["seq"]?.int,1)
         // Nothing more from the extension: control is lost exactly 25 s after the pong.

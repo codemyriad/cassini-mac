@@ -84,14 +84,12 @@ final class D52TransportLivenessTests: XCTestCase {
             ack(try client.request(audio("a",1,offsetMs:100)))
             clock.advance(44_999); fixture.broker.closeStaleTransports()
             XCTAssertTrue(owner.snapshot.transportAlive)
+            let closed = fixture.closures.next("the stale transport closed through EOF")
             clock.advance(1); fixture.broker.closeStaleTransports()
             // With no request pending, the host simply ends the closed transport.
             XCTAssertThrowsError(try client.read(),"the stale transport is closed")
-            let deadline = Date().addingTimeInterval(5)
-            while owner.snapshot.transportAlive {
-                guard Date() < deadline else { return XCTFail("the transport never closed") }
-                try await Task.sleep(nanoseconds:10_000_000)
-            }
+            await fulfillment(of:[closed],timeout:5)
+            XCTAssertFalse(owner.snapshot.transportAlive)
             XCTAssertEqual(owner.snapshot.phase,.recording)
             let last = owner.snapshot.manifest.events?.last { $0.type == "othersSource" }
             XCTAssertEqual(last?.reason,"lost")
