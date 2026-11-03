@@ -53,25 +53,29 @@ public final class SegmentedAudio {
     private let directory: URL
     private let scratch: SpeechScratch
     private let stream: FileHandle
-    public init(url: URL, detector: SpeechDetector) throws {
+    /// D52 M15: the recognition pass re-decodes a track without VAD, reusing the
+    /// segments planned earlier, so only one track's scratch exists at a time.
+    public convenience init(url: URL) throws { try self.init(url:url,detector:nil) }
+    public convenience init(url: URL, detector: SpeechDetector) throws { try self.init(url:url,detector:Optional(detector)) }
+    private init(url: URL, detector: SpeechDetector?) throws {
         scratch = try SpeechScratch(); directory = scratch.directory
         let audio = directory.appendingPathComponent("mono.f32")
         guard FileManager.default.createFile(atPath: audio.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw TranscriptionFailure.audioFormat }
         stream = try FileHandle(forUpdating: audio)
         do {
-            detector.reset()
+            detector?.reset()
             var resampler: MeetingResampler?, gate = SpeechGate()
             func write(_ pcm: [Float]) throws {
                 sampleCount += pcm.count
                 try pcm.withUnsafeBytes { try stream.write(contentsOf: $0) }
-                segments += try gate.feed(pcm, probability: detector.probability)
+                if let detector { segments += try gate.feed(pcm, probability: detector.probability) }
             }
             try MeetingAudioDecoder.decode(url) { pcm, rate in
                 if resampler == nil { resampler = try MeetingResampler(rate: rate) }
                 try write(resampler!.feed(pcm))
             }
             if resampler != nil { try write(resampler!.feed([], final: true)) }
-            segments += gate.flush(); detector.reset()
+            if let detector { segments += gate.flush(); detector.reset() }
         } catch { try? stream.close(); throw error }
     }
     deinit { try? stream.close() }

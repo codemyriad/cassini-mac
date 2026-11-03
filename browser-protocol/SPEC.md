@@ -213,6 +213,75 @@ off/on fixtures, with hand-written reader expectations and a sparse silent-WAV
 generator. Their byte/timeline checks do not prove transactional crash durability
 or hardware capture; each host must test its real writer checkpoint boundary.
 
+**Refusals (D58, R79).** The optional top-level `refusals` array records sides that were
+requested but never opened, at start or at a later turn-on. A side has *opened* when its
+first buffer is admitted, with a 3 s bound from the open attempt (on macOS, when its
+`begin()` returns). Before that, any failure (a state change, a bus error, no sample within
+3 s, a refused or unanswered browser Start) is a refusal; after it, nothing is. These keep
+their existing records and are never refusals: a mid-call failure (P10 `captureOutcome
+failed`, track problemKind `capture`/`io`), gaps, writer or disk loss, a user Stop, an
+unselected source, a Start the user cancelled or Stop all, the D49 stand-in, a plain native
+Record, and setup or connection states (`temporary`, `noBrowser`, `unwritable`, `unsafe`,
+`buildMissing`, a hello version mismatch, a missing optional capability).
+
+Each entry is `{atMs, side, code, detail?, message?}`:
+- `atMs`: milliseconds on the session timeline, 0 to 86460000 as for `gaps.atMs`. A start
+  refusal uses 0, also when it happened before the folder existed. A refused turn-on, and a
+  refused resume in an existing folder (`startRejected`/`resumeRefused`, D58 #10), use their
+  real, possibly fractional, time.
+- `side`, `code` and `detail` are open strings matching `^[A-Za-z]{1,32}$`. Implementers MUST
+  apply the pattern to the whole string. JSON Schema patterns are ECMA-262, where `$` does
+  not match before a final newline, but Python `re.match`/`re.search` (and so Python
+  jsonschema) and ICU/NSRegularExpression do: use `re.fullmatch` in Python and `wholeMatch`,
+  or a pattern ending in `\z`, in Swift, so `"busy\n"` is rejected. Known sides: `me`,
+  `others`, `browser`. Writers use only four codes: `permissionDenied` (me, others; the OS
+  reports the permission denied at that moment, never inferred from silence),
+  `deviceUnavailable` (me, others; any other open failure), `startRejected` (browser: Start
+  returned `ok:false`) and `startFailed` (browser: no answer, or refused locally; banner only).
+  Known details: for startRejected `busy`, `limit`, `noSources`, `gone`, `notWebPage`,
+  `pageUnreachable`, `invalid`, `resumeRefused`, `workletBlocked`, `audioBlocked`; for
+  startFailed `timeout`, `disconnected`, `busy`, `gone`, `notReady`, `limit`, `noSources`.
+  A pattern-valid control result `code` (SPEC-CONTROL, "Result codes") is copied into
+  `detail` as is, known or not; any other value is dropped. A result without `code` still
+  records `startRejected`, without `detail`.
+- `message`: optional raw text from whoever refused (the extension's `error`, a GStreamer
+  error's domain, code and debug string, an OS status such as
+  `AudioHardwareCreateProcessTap: -50`), never catalog copy, cut to its first 200 Unicode
+  code points (not bytes, UTF-16 units or graphemes). An empty text is omitted, as is the
+  message for a TCC denial.
+
+The list is in the order things happened, with at most 16 entries: when it is full, each
+newer refusal replaces the 16th entry, so the list keeps the first 15 plus the latest. It is
+omitted when empty. Checkpoint each entry atomically with any event or track change it
+explains. A refused side gets no track. The start `selection` and `othersSource` record what
+was requested, not what opened: a system side refused at start still has `othersSource`
+system/start and stays selected. A refused turn-on writes no `selection` event and leaves the
+selection unchanged.
+
+Writers MUST NOT let refusals change `state`, `problem`, `problemKind`, the `end` reason,
+`othersSource` or `captureOutcome`; these follow their existing rules from what did record,
+so completed still implies a null problem. A GNOME fallback keeps writing `othersSource`
+system/missing; its `browser` refusal at atMs 0 is what tells it apart from a plain native
+Record. A `startRejected` with detail `busy` never falls back. If every requested side is
+refused nothing records: no folder is published (a folder whose title or notes the user
+already typed is kept), and the refusals are shown only in the start banner.
+
+Readers are lenient: a `refusals` value that is not a list is ignored as a whole, a
+malformed entry is skipped, and unknown members are preserved. An entry is malformed exactly
+when the schema's item rejects it with the patterns applied to the whole string: not an
+object; `atMs` missing, not a number or out of range; `side` or `code` missing or not
+matching; `detail` or `message` present, not null and invalid (a null one means absent).
+Details prints one line per distinct line, in first-occurrence order, so repeated entries
+show once. An unknown code, and a stored `startFailed`, show `details.sources.failed` for
+that side; an unknown side is not shown and an unknown detail is ignored. A refusal line
+replaces `details.sources.notSelected` for its role; a `browser` refusal counts for The
+others, so it also hides `notSelected` for `others`. `details.sources.empty` is printed only
+when no other Audio sources line is shown at all (no source rows, no refusal lines, no
+`notSelected` lines). Copy details keeps every well-formed entry, in stored order, exactly as
+stored: no merging, no re-cut and no Unicode normalization, counting code points throughout. `recordingDetails.captureRecord.refusals` in
+meeting.json is a verbatim copy. Session version stays 1. Shared cases, oracle and reader
+lines: `conformance/refusals/`.
+
 ## Browser compatibility of this snapshot
 
 The native messaging/offscreen/tab-capture baseline remains Chrome 116. getContexts is used
@@ -390,7 +459,8 @@ Source ownership is half-open at each othersSource.atMs. Outgoing source audio
 is masked at the boundary before recognition, mixing and export. This is not a
 transcript display rule. `callConnected` moves an enabled others side from the
 initial system/missing stand-in to browser tracks (D49). Existing lost/restored
-semantics stay intact. See conformance/multistream/ownership.json.
+semantics stay intact: a resume-capture-v1 attach onto a system/lost fallback
+(its audio transport closed, D52.4) writes browser/restored. See conformance/multistream/ownership.json.
 
 The 64-span limit counts accepted declarations plus declarations currently in
 flight across every frame. The worker reserves a slot synchronously before
@@ -466,3 +536,54 @@ error fences its span before later chunks are forwarded. Late ACKs/errors from
 that span cannot mark its replacement healthy or stop another source. The live
 root keeps its ordinary retry schedule; capture-wide and manifest/directory
 failures retain their existing fatal policy.
+
+
+## Audio transport liveness (D52.4, app side)
+
+The extension already closes a PCM port whose packet is not acknowledged within
+10 seconds. These app-side rules let the app notice a frozen browser or audio
+relay that keeps the transport open but silent. Times are monotonic.
+
+- `PCM_FRESH = 2 s`: `pcmLive` means admitted browser/remote PCM arrived on the
+  recording's audio transport within the last 2 seconds. The native microphone
+  is never that evidence. Both apps use this window.
+- `PCM_STALE_AFTER = 45 s` (SHOULD): close a recording's audio transport after
+  45 seconds without any packet on it. The watchdog is armed only while that
+  transport has an open remote span (declared, not yet ended by trackEnd or
+  stop) that has already delivered PCM. It is re-evaluated, not sticky: before
+  the first remote PCM, and after the last such span ends, nothing can go stale.
+  Every frame received on that audio transport counts toward this deadline:
+  PCM (`audio`), `track`, `sources` and `trackEnd` alike (D52.5); frames on
+  the control connection do not. The comparison is normative: an app that
+  runs this watchdog MUST treat the transport as stale exactly when it is
+  armed and `now - lastAudioTransportFrame >= 45 s` (so 44.999 s after the
+  last frame it is still open and at 45.000 s it is closed), never earlier,
+  and SHOULD close it within one policy tick. A frame arriving at or after
+  that deadline is too late. A span whose document is gone does not arm this
+  watchdog (D57): when the recording tab's status reports pageState
+  `navigating`, every open span is retired, and so is any span declared before
+  the tab is next reported `present` or with a new documentGeneration; when the
+  documentGeneration changes without navigating, the spans declared up to the
+  last status that still reported the old generation are retired; a retired
+  span's PCM is still recorded but never re-arms it, and a span declared after
+  those points, even before its own documentGeneration is reported, stays
+  armed (`documentChanged` frames). The first documentGeneration reported for
+  the recording, with no earlier one to compare, counts as new: it closes an
+  open departing window (unless it arrives with pageState `navigating`) and
+  retires nothing. The app applies these rules in its own receipt order across
+  the control connection and the audio transport: a status and an audio frame
+  are ordered by when the app received them, never by extension timestamps or
+  by reordering one socket against the other; the vectors' frame order is that
+  receipt order. Literal cases with an independent oracle:
+  `conformance/multistream/stale-watchdog.json` (`stale_watchdog.py`).
+  Closing uses the app's existing EOF path, so
+  the recording keeps running and falls back to computer sound with
+  `othersSource` reason lost (SPEC-CONTROL.md, D52.4 Q3). Rationale (D52.5
+  amendment): the extension's source retry backs off 1, 5, 15 and 30 seconds
+  and the app cannot see that retry state. 30 + the extension's 10-second
+  acknowledgement limit is 40 s, and with the `>=` comparison a 40 s deadline
+  left no margin, so a healthy retry could lose the race; 45 s adds a 5-second
+  margin and stays below the 60-second span cut.
+- `WRITE_DEADLINE = 10 s` (SHOULD): bound every socket/pipe write to the browser,
+  on both the audio and control connections, to 10 seconds. A peer that stops
+  reading is closed, and the close must not wait behind the stuck write.
