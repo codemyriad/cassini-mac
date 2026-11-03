@@ -298,12 +298,10 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             let capture = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string })
             XCTAssertEqual(try first.request(["type":"track","id":"a","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
             XCTAssertEqual(try first.request(["type":"audio","id":"a","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:1600).base64EncodedString()])["type"]?.string,"ack")
+            let closed = fixture.closures.next("the transport loss was observed")
             first.end()
-            let deadline = Date().addingTimeInterval(5)
-            while capture.snapshot.transportAlive || fixture.broker.standInIdentity(capture) == nil {
-                guard Date() < deadline else { return XCTFail("the transport loss was never observed") }
-                try await Task.sleep(nanoseconds:10_000_000)
-            }
+            await fulfillment(of:[closed],timeout:5)
+            XCTAssertFalse(capture.snapshot.transportAlive); XCTAssertNotNil(fixture.broker.standInIdentity(capture))
             // The identity stays taken: a fresh Start reusing it creates nothing.
             XCTAssertEqual(try fixture.client().request(["type":"start","version":1,"independent":true,"captureId":"lost-call","timelineOriginMs":origin,
                                                           "microphone":false,"title":"Again"])["type"]?.string,"error")
@@ -331,6 +329,130 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(seam?.source,"browser"); XCTAssertEqual(seam?.reason,"restored")
             XCTAssertEqual(folders(fixture),1,"No new folder")
             XCTAssertEqual(try client.request(["type":"stop","captureId":"lost-call"])["type"]?.string,"stopped")
+        }
+    }
+
+    /// #113 review: the policy asks in the step that falls back (shared D52.5 vectors), but the
+    /// host joins only a committed system/lost fallback. `decide` holds the ask while the
+    /// fallback is still starting and sends it once, on the first poll that sees system/lost.
+    func testDecideHoldsTheResumeAskUntilTheFallbackCommits() {
+        var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
+        var asked: [String] = []
+        func poll(_ now: TimeInterval, transport: Bool, _ source: String, _ reason: String?, connection: String = "c1", listed: Bool = false,
+                  count: Int = 1, row: Bool = true) -> BrowserCallLifecycle.Action? {
+            var o = BrowserCallPolicy.Observation(page:.present,rowPresent:row,sourceCount:row ? count : nil,heard:row,transportAlive:transport,
+                                                  callGeneration:row ? "call-A" : nil,controlConnection:connection)
+            o.sessionListed = listed
+            return BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:source,reason:reason,others:true,restoreReady:false,
+                                            legacy:{ nil },onAskResume:{ asked.append(connection) })
+        }
+        XCTAssertNil(poll(0,transport:true,"browser","start"))
+        XCTAssertEqual(poll(1,transport:false,"browser","start"),.fallback)
+        XCTAssertEqual(asked,[],"the ask that comes with the fallback waits for it to commit")
+        XCTAssertEqual(poll(2,transport:false,"none","lost"),.fallback)
+        XCTAssertEqual(poll(5,transport:false,"none","lost"),.fallback)
+        XCTAssertEqual(asked,[],"never while the fallback is still none/lost")
+        XCTAssertNil(poll(6,transport:false,"system","lost"))
+        XCTAssertEqual(asked,["c1"],"sent once the fallback's first PCM committed system/lost")
+        XCTAssertNil(poll(7,transport:false,"system","lost"))
+        XCTAssertEqual(asked,["c1"],"once per loss and connection")
+
+        // A new control connection before the commit: the ask goes to that one, once.
+        policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true); asked = []
+        _ = poll(0,transport:true,"browser","start")
+        XCTAssertEqual(poll(1,transport:false,"browser","start",connection:"c1"),.fallback)
+        XCTAssertEqual(poll(2,transport:false,"none","lost",connection:"c2"),.fallback)
+        XCTAssertNil(poll(3,transport:false,"system","lost",connection:"c2"))
+        XCTAssertEqual(asked,["c2"])
+
+        // A passing condition on the commit poll (the session listed for a moment, a zero count,
+        // the row missing) delays the ask, never loses it: the policy has already marked the
+        // connection asked and would not ask it again.
+        for (name,listed,count,row) in [("listed",true,1,true),("zero count",false,0,true),("missing row",false,1,false)] {
+            policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true); asked = []
+            _ = poll(0,transport:true,"browser","start")
+            XCTAssertEqual(poll(1,transport:false,"browser","start"),.fallback,name)
+            XCTAssertNil(poll(2,transport:false,"system","lost",listed:listed,count:count,row:row),name)
+            XCTAssertEqual(asked,[],"\(name): not sent while it does not apply")
+            XCTAssertNil(poll(3,transport:false,"system","lost"),name)
+            XCTAssertEqual(asked,["c1"],"\(name): sent once it applies again")
+            XCTAssertNil(poll(4,transport:false,"system","lost"),name)
+            XCTAssertEqual(asked,["c1"],"\(name): once")
+        }
+        // A transport that returns ends the hold: nothing is sent for the old loss.
+        policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true); asked = []
+        _ = poll(0,transport:true,"browser","start")
+        XCTAssertEqual(poll(1,transport:false,"browser","start"),.fallback)
+        _ = poll(2,transport:true,"system","lost")
+        _ = poll(3,transport:true,"system","lost")
+        XCTAssertEqual(asked,[])
+    }
+
+    /// #113 review: when the fallback never commits and the call then empties for 30 s, the
+    /// policy returns the fallback and callEnded together. Stop wins: the policy has stopped,
+    /// so a dropped Stop would never come back and the recording would run on by hand.
+    func testAStopWinsOverTheFallbackItArrivesWith() {
+        var policy = BrowserCallPolicy(heard:true), stepped = BrowserCallPolicy(heard:true)
+        func poll(_ now: TimeInterval, count: Int) -> (BrowserCallLifecycle.Action?,BrowserCallPolicy.Action?) {
+            let o = BrowserCallPolicy.Observation(page:.present,sourceCount:count,heard:true,transportAlive:false)
+            // The system fallback failed: the committed source stays none/lost.
+            let decided = BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:"none",reason:"lost",others:true,restoreReady:false,legacy:{ nil })
+            return (decided,stepped.step(now:now,o,source:"none",reason:"lost"))
+        }
+        XCTAssertEqual(poll(0,count:1).0,.fallback,"the ongoing call clears the missing timer")
+        XCTAssertEqual(poll(1,count:0).0,.fallback)
+        XCTAssertEqual(poll(30.5,count:0).0,.fallback)
+        let ended = poll(31,count:0)
+        XCTAssertEqual(ended.0,.stop(.callEnded)); XCTAssertEqual(ended.1,.stop(.callEnded))
+        XCTAssertNil(poll(32,count:0).0,"the policy has stopped")
+    }
+
+    /// #113 review, through the real host and broker: the transport closes, control reports the
+    /// tab's session gone, and the system fallback is held starting. No resume is sent while
+    /// the recording is none/lost (the host would refuse it); once the fallback's first PCM
+    /// commits system/lost, the one ask is sent and the resume joins the recording.
+    func testAHeldFallbackKeepsTheResumeAskUntilItsFirstPCM() async throws {
+        try await run { fixture in
+            let origin = Int(Date().timeIntervalSince1970*1000)
+            let first = try fixture.client()
+            let started = try first.request(["type":"start","version":1,"independent":true,"captureId":"held-call","timelineOriginMs":origin,"microphone":false,
+                                             "title":"Call","features":["source-outcomes-v1"],"callGeneration":"call-A","documentGeneration":1])
+            let capture = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string })
+            XCTAssertEqual(try first.request(["type":"track","id":"a","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
+            XCTAssertEqual(try first.request(["type":"audio","id":"a","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:1600).base64EncodedString()])["type"]?.string,"ack")
+            let closed = fixture.closures.next("the transport loss was observed")
+            first.end()
+            await fulfillment(of:[closed],timeout:5)
+            var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
+            var replies: [String?] = []
+            func poll(_ now: TimeInterval) throws -> BrowserCallLifecycle.Action? {
+                let snapshot = capture.snapshot
+                let committed = CaptureSourceState(events:snapshot.manifest.events ?? [],atMs:.infinity)
+                // Control reports the call ongoing and the tab's session gone (sessionListed false).
+                let o = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true,transportAlive:snapshot.transportAlive,
+                                                      callGeneration:"call-A",controlConnection:"c1")
+                return BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
+                                                others:snapshot.others,restoreReady:snapshot.restoreReady,legacy:{ nil },onAskResume:{
+                    // As the app does: expect the answer, and the extension resumes on this ask.
+                    fixture.broker.expectResume(capture,callGeneration:"call-A")
+                    replies.append((try? fixture.client().request(self.resume("held-call",origin:origin)))?["type"]?.string)
+                })
+            }
+            XCTAssertEqual(try poll(1),.fallback)
+            try await capture.requestSystemFallback()
+            XCTAssertEqual(capture.snapshot.manifest.events?.last { $0.type == "othersSource" }?.source,"none","the fallback is still starting")
+            XCTAssertEqual(try poll(2),.fallback)
+            XCTAssertEqual(replies,[],"no resume is sent while the recording is none/lost")
+            // The fallback's first PCM commits system/lost.
+            let stage = StagedNativeWriter()
+            try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            try await capture.activateNative(stage,side:.others,allowed:{ true })
+            XCTAssertEqual(capture.snapshot.manifest.events?.last { $0.type == "othersSource" }?.source,"system")
+            XCTAssertNil(try poll(3))
+            XCTAssertEqual(replies,["started"],"the one ask is sent after the commit and the resume joins")
+            XCTAssertNil(try poll(4)); XCTAssertEqual(replies.count,1)
+            XCTAssertEqual(folders(fixture),1,"No new folder")
         }
     }
 }

@@ -131,6 +131,8 @@ public struct BrowserCallPolicy: Sendable {
     private var previous: TimeInterval?, observedLoss: TimeInterval?
     /// The control connection this loss's resume was asked on (nil: not asked yet).
     private var askedOn: String?
+    /// The control connection of a resume ask that `decide` holds until the fallback commits.
+    private var heldAsk: String?
     public init(resumeCapture: Bool = false, callGeneration: String? = nil, heard: Bool = false) {
         self.resumeCapture = resumeCapture; self.callGeneration = callGeneration; self.heard = heard
     }
@@ -160,8 +162,22 @@ public struct BrowserCallPolicy: Sendable {
         guard multiStream else { return legacy() }
         // D52.5: a step can ask to resume as well as act; the ask goes to `onAskResume`.
         let actions = policy.steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady)
-        if actions.contains(.askResume) { onAskResume() }
-        switch actions.first(where:{ $0 != .askResume }) {
+        // The policy asks in the step that falls back (shared vectors), but the host can only
+        // join a committed system/lost fallback, which commits with the fallback's first
+        // admitted PCM. A resume sent while the fallback is still starting (none/lost) is
+        // refused and spends the connection's only attempt, so the ask is held here and sent
+        // on the first poll that sees system/lost, while it still applies to that connection.
+        // `steps` has marked the connection asked, so a held ask is never dropped for a passing
+        // condition (a zero count, a missing row, a listed session): it waits for a poll on
+        // which the policy's own ask conditions hold again. Only a new connection, a live
+        // transport, Others off or a Stop end it.
+        if actions.contains(.askResume) { policy.heldAsk = o.controlConnection }
+        if let held = policy.heldAsk {
+            let stopped = actions.contains { if case .stop = $0 { return true }; return false }
+            if held != o.controlConnection || o.transportAlive || !others || stopped { policy.heldAsk = nil }
+            else if source == "system", reason == "lost", policy.mayAsk(o,others:others) { policy.heldAsk = nil; onAskResume() }
+        }
+        switch primary(actions) {
         case .fallback?: return .fallback
         case .restore?: return .restore
         case .stop(let reason)?: return .stop(reason)
@@ -169,6 +185,13 @@ public struct BrowserCallPolicy: Sendable {
         case .callConnected?: return restoreReady ? .restore : nil
         case .askResume?, nil: return nil
         }
+    }
+    /// D52.5: the conditions under which an observation can carry the resume ask, apart from
+    /// the committed source and the once-per-connection latch. Shared by `steps` and `decide`.
+    func mayAsk(_ o: Observation, others: Bool) -> Bool {
+        let known = o.rowPresent && o.sourceCountKnown && o.sourceCount != nil
+        return resumeCapture && o.page == .present && o.controlAlive && known && (o.sourceCount ?? 0) > 0 && !o.transportAlive &&
+            others && !o.sessionListed && o.callGeneration == callGeneration && heard
     }
     /// When the current browser loss began (the producer's stamp when known), while one is pending.
     public var missingSince: TimeInterval? { missing }
@@ -190,9 +213,16 @@ public struct BrowserCallPolicy: Sendable {
         return .callEnded
     }
 
-    /// The first action of `steps`, for callers that never ask to resume.
+    /// The action a step's caller applies. A terminal Stop wins over a fallback returned
+    /// with it: `steps` has already stopped the policy, so a dropped Stop would never recur
+    /// and the recording would run on until stopped by hand. Otherwise the first action that
+    /// is not the resume ask.
+    public static func primary(_ actions: [Action]) -> Action? {
+        actions.first { if case .stop = $0 { return true }; return false } ?? actions.first { $0 != .askResume }
+    }
+    /// The primary action of `steps`, for callers that never ask to resume.
     public mutating func step(now: TimeInterval, _ o: Observation, source: String?, reason: String?, others: Bool = true, restoreReady: Bool = true) -> Action? {
-        steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady).first
+        Self.primary(steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady))
     }
     /// `source`/`reason`: the committed othersSource state. `others`: The others is on.
     /// A step can return a fallback and the resume ask together (D52.5).
@@ -238,8 +268,7 @@ public struct BrowserCallPolicy: Sendable {
                 }
             }
             // D52.5: ask once per loss and control connection; never on a timer or later tick.
-            if resumeCapture, !o.transportAlive, source == "system", reason == "lost", others, !o.sessionListed,
-               o.callGeneration == callGeneration, heard, askedOn != o.controlConnection {
+            if source == "system", reason == "lost", mayAsk(o,others:others), askedOn != o.controlConnection {
                 askedOn = o.controlConnection
                 return actions + [.askResume]
             }

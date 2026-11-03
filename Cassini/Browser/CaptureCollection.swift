@@ -562,7 +562,8 @@ private final class CaptureFiles: @unchecked Sendable {
                         transportAlive:source.transportAlive,usingSystem:source.usingSystem,others:source.others,
                         restoreReady:ready,pageObservedAt:page?.1,lostAt:source.browserLostUptime)
                 } onAskResume: {
-                    // D52.5: the policy asked once (per loss and control connection) to resume.
+                    // D52.5: the policy asked once (per loss and control connection) to resume;
+                    // decide sends it only once the fallback has committed system/lost.
                     if let key = meeting?.key { askResume(value,key) }
                 }
                 captures[id]?.callPolicy = policy
