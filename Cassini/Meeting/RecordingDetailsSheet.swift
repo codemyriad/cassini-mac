@@ -40,7 +40,7 @@ struct RecordingDetailsSheet: View {
                 VStack(alignment:.leading,spacing:16) {
                     VStack(alignment:.leading,spacing:8) {
                         Text(UXText.text("details.sources.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
-                        if let report, !report.sources.isEmpty {
+                        if let report, !report.sourcesEmpty {
                             ForEach(Array(report.sources.enumerated()),id:\.offset) { index,row in
                                 VStack(alignment:.leading,spacing:2) {
                                     Text(text(row.line)).foregroundStyle(row.problem ? Color.orange : Color.primary)
@@ -50,6 +50,11 @@ struct RecordingDetailsSheet: View {
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
                                     }
                                 }
+                            }
+                            // D58: sides that were requested but never opened, after the rows.
+                            ForEach(Array(report.refusals.enumerated()),id:\.offset) { index,line in
+                                Text(text(line)).foregroundStyle(Color.orange)
+                                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-refusal-\(index)")
                             }
                         } else {
                             Text(UXText.text("details.sources.empty")).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-details-sources-empty")

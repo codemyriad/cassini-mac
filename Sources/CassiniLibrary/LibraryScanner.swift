@@ -62,6 +62,16 @@ public struct LibraryScanner: Sendable {
         cache.prune(keeping: Set(snapshot.files.values.flatMap { $0 }))
         return .init(meetings: snapshot.meetings.values.sorted(by: Self.ordered), issues: snapshot.issues.values.flatMap { $0 })
     }
+    /// A Library meeting folder name (Recording-<uuid> or Received-<uuid>).
+    public static func isMeetingFolder(_ folder: URL) -> Bool { identity(folder.lastPathComponent) != nil }
+    /// One meeting folder, read as `scan` reads it (meeting.json first, then its words), with
+    /// the meeting.json revision that read saw. nil when it is not a readable meeting folder.
+    public func meeting(at folder: URL, now: Date = Date()) -> LibraryMeeting? {
+        guard let (id, received) = Self.identity(folder.lastPathComponent),
+              let info = try? pathInfo(folder), info.st_mode & S_IFMT == S_IFDIR else { return nil }
+        var seen = Set<URL>()
+        return read(folder: folder, id: id, received: received, activity: activity.snapshot()[id], now: now, seen: &seen)
+    }
     public func scanInBackground(affected: URL? = nil, now: Date = Date()) async throws -> LibraryScan {
         try await Task.detached(priority: .userInitiated) { try scan(affected: affected, now: now) }.value
     }
@@ -104,6 +114,7 @@ public struct LibraryScanner: Sendable {
             meeting.metadataReadOnly = true; meeting.issues.append(.unsupportedVersion)
         } catch { metadata = nil; meeting.issues.append(.invalidMetadata) }
         guard !received || metadata != nil else { return nil } // R1.4: import not committed.
+        meeting.metadataRevision = metadata?.revision
         meeting.notes = metadata?.notes ?? []
         if let value = metadata?.received {
             meeting.received = .init(originalName:value.originalName,originalFolderName:value.originalFolderName,sha256:value.sha256,importedAtMs:value.importedAtMs)
@@ -155,7 +166,8 @@ public struct LibraryScanner: Sendable {
             }
         }
         meeting.state.audioAvailable = !meeting.audioFiles.isEmpty
-        meeting.title = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? LibraryLocalization.shared.text("library.untitled")
+        let titled = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        meeting.title = titled ?? LibraryLocalization.shared.text("library.untitled"); meeting.titleIsUntitled = titled == nil
 
         var words: [LibraryTranscriptItem] = []
         var readable = false

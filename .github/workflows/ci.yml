@@ -8,6 +8,12 @@ name: CI
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
+# D66 mac-P1-1: a newer push to a pull request cancels that PR's older run. Every push, nightly
+# and manual run has a group of its own (its run id), so none is ever cancelled or replaced while
+# pending, and every main commit keeps the push run the release gate needs (D20, release.yml).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -31,6 +37,7 @@ jobs:
         EVENT_NAME: ${{ github.event_name }}
       run: |
         python3 scripts/test-ci-contract.py
+        python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
   build:
     needs: [changes]
@@ -41,6 +48,7 @@ jobs:
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -121,6 +129,7 @@ jobs:
   app:
     name: Build Cassini.app
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products

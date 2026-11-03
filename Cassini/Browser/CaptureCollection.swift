@@ -92,6 +92,10 @@ private final class CaptureFiles: @unchecked Sendable {
     private(set) var recordFailed = false
     private(set) var diskStopped = false
     private(set) var failedMeetings: [BrowserMeetingKey:String] = [:]
+    /// D58: the refusals of the current Record attempt when nothing opened (banner only), and
+    /// each failed meeting's browser refusal, for the banner captions.
+    private(set) var attemptRefusals: [CaptureRefusal] = []
+    private(set) var meetingRefusals: [BrowserMeetingKey:CaptureRefusal] = [:]
     @ObservationIgnored private var manualIssued = false
     @ObservationIgnored private var manualPending: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var manualCompleted: Set<BrowserMeetingKey> = []
@@ -157,7 +161,7 @@ private final class CaptureFiles: @unchecked Sendable {
         guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else { throw BrowserIPCError.unavailable }
         requestingRecord = true
         SessionPlaybackController.stopAll(); PlayerController.pauseActive()
-        recordFailed = false
+        recordFailed = false; attemptRefusals = []; meetingRefusals = [:]
         diskStopped = false; RecordingDiskWatch.clear()
         failedMeetings = [:]; manualIssued = false; manualPending = []; manualCompleted = []; manualSucceeded = []; attemptHasAudio = false
         recordGeneration += 1
@@ -257,12 +261,17 @@ private final class CaptureFiles: @unchecked Sendable {
         diskWatch.stop()
         service.stop(); available = false; started = false
     }
-    func select(_ id: UUID, me: Bool, others: Bool) async throws {
-        guard let value = captures[id] else { return }
+    /// Returns the sides whose turn-on was refused (D58), with their codes; their selection
+    /// is unchanged and each attempt adds its own refusal to the recording.
+    @discardableResult
+    func select(_ id: UUID, me: Bool, others: Bool) async throws -> [CaptureSide:String] {
+        guard let value = captures[id] else { return [:] }
         let resumingMe = me && (!value.snapshot.me || value.input.failedSides.contains(.me))
-        try await value.input.select(me:me,others:others,atMs:Double(value.elapsedMs))
-        if let key = value.key { microphones[key] = me }
-        if resumingMe { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
+        let refused = try await value.input.select(me:me,others:others,atMs:Double(value.elapsedMs))
+        let selectedMe = refused[.me] == nil ? me : value.snapshot.me
+        if let key = value.key { microphones[key] = selectedMe }
+        if resumingMe, refused[.me] == nil { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
+        return refused
     }
     func setLibraryMoveBlocked(_ blocked: Bool) {
         files.setMoving(blocked)
@@ -288,6 +297,12 @@ private final class CaptureFiles: @unchecked Sendable {
                 let source = value.owner.snapshot
                 if !source.browserAlive && !value.input.hasRunningInputs && !(source.managedBrowser && source.others) { self.stop(id,reason:.error) }
             }
+        },refused:{ [weak self] _,_ in
+            // D58: a native Record where every requested side was refused records nothing:
+            // it is finished and its blank folder discarded, and the banner shows the refusals.
+            guard let self, let value = self.captures[id], value.owner.snapshot.manifest.source == "macos",
+                  !value.input.hasRunningInputs, value.input.openedSides.isEmpty else { return }
+            Task { try? await self.broker.finish(value.owner) }
         })
         let meetingKey = key(for:info.captureID)
         let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
@@ -342,7 +357,10 @@ private final class CaptureFiles: @unchecked Sendable {
                     let removed = await Task.detached { Self.discardBlank(snapshot) }.value
                     guard let self else { return }
                     self.retire(snapshot)
-                    if removed && !self.isRecording && !self.attemptHasAudio { self.recordFailed = true }
+                    if removed && !self.isRecording && !self.attemptHasAudio {
+                        self.recordFailed = true
+                        for refusal in snapshot.manifest.refusals ?? [] { self.attemptRefusals = CaptureRefusal.appending(refusal,to:self.attemptRefusals) }
+                    }
                     self.settling.removeValue(forKey:id)
                 }
                 return
@@ -394,9 +412,20 @@ private final class CaptureFiles: @unchecked Sendable {
         peers.flatMap { $0.captures + $0.interrupted }.first { $0.captureID.map { Data($0.utf8) == Data(captureID.utf8) } == true }?.key
     }
     private func completed(_ outcome: BrowserControlOutcome, automatic: Bool) {
+        // D58 #10: a resume ask's answer belongs to the recording it asked to join. A refusal
+        // the browser answered is recorded there, in Details only; a timeout, a closed
+        // connection or a local failure records nothing. Never a failed meeting or a banner.
+        if outcome.resume { broker.resumeAnswered(outcome); return }
         if outcome.action == .start {
-            if outcome.ok { failedMeetings.removeValue(forKey:outcome.key) }
-            else { failedMeetings[outcome.key] = peers.flatMap(\.meetings).first { $0.key == outcome.key }?.title ?? UXText.text("library.untitled") }
+            if outcome.ok { failedMeetings.removeValue(forKey:outcome.key); meetingRefusals.removeValue(forKey:outcome.key) }
+            else {
+                failedMeetings[outcome.key] = peers.flatMap(\.meetings).first { $0.key == outcome.key }?.title ?? UXText.text("library.untitled")
+                // D58 noFallback: a refused browser Start opens nothing and never falls back.
+                if let refusal = outcome.startRefusal() {
+                    meetingRefusals[outcome.key] = refusal
+                    attemptRefusals = CaptureRefusal.appending(refusal,to:attemptRefusals)
+                }
+            }
             if !automatic {
                 if !manualIssued || manualPending.contains(outcome.key) {
                     manualCompleted.insert(outcome.key); manualPending.remove(outcome.key)
@@ -414,7 +443,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func retry(_ key: BrowserMeetingKey) {
         guard !shuttingDown,!starting,failedMeetings[key] != nil else { return }
-        recordFailed = false
+        recordFailed = false; attemptRefusals = []; meetingRefusals.removeValue(forKey:key)
         requestingRecord = true; manualIssued = true
         manualPending = [key]; manualCompleted = []; manualSucceeded = []
         attemptHasAudio = isRecording
@@ -445,9 +474,9 @@ private final class CaptureFiles: @unchecked Sendable {
         }
         guard calls.count == 1, let call = calls.first else { return }
         captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
-        let owner = value.owner, broker = broker
-        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation in
-            broker.expectResume(owner,callGeneration:generation)
+        let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation,request in
+            broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
             // The generation the resume was sent with (nil: refused). After the take-over this
             // recording is that call's, so it follows and suppresses exactly that call (D52.5).
             guard let generation else { return }
@@ -483,9 +512,9 @@ private final class CaptureFiles: @unchecked Sendable {
     /// recording onto its system/lost fallback through resume-capture-v1.
     private func askResume(_ value: LiveCapture, _ meeting: BrowserMeetingKey) {
         guard let identity = broker.standInIdentity(value.owner) else { return }
-        let owner = value.owner, broker = broker
-        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:value.callGeneration) { generation in
-            broker.expectResume(owner,callGeneration:generation)
+        let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
+        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:value.callGeneration) { generation,request in
+            broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
         }
     }
     /// D52.5: feed every recording's binding. The service reads the held calls itself, on its
