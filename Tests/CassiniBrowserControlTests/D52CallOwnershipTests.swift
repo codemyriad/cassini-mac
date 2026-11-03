@@ -33,6 +33,24 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
         state.remove(id)
         XCTAssertNil(state.binding(id)); XCTAssertFalse(state.isLost(id))
     }
+    /// A call recorded at Start is held by its generation before its tab is known; the tab is
+    /// whichever row reports it. D51: a recording without a generation holds nothing.
+    func testACallRecordedAtStartIsHeldByItsGeneration() {
+        var state = CallOwnership(); let id = UUID(), p = UUID()
+        state.started(id,callGeneration:"call-A")
+        state.transportLost(id)
+        let row = BrowserMeeting(key:.init(peer:p,tabID:4),title:"Call",url:"u",sourceCount:1,heard:true,callGeneration:"call-A")
+        XCTAssertEqual(state.lostCalls(among:[row]),[.init(tabID:4,callGeneration:"call-A")])
+        XCTAssertTrue(state.holds(meeting:row))
+        XCTAssertEqual(state.call(of:id,among:[row]),row.key)
+        // The app's later binding without a generation keeps the recorded one.
+        state.bind(id,.init(key:nil,callGeneration:nil,follows:true,recording:true))
+        XCTAssertEqual(state.binding(id)?.callGeneration,"call-A")
+        var legacy = CallOwnership(); let other = UUID()
+        legacy.bind(other,.init(key:.init(peer:p,tabID:4),callGeneration:nil,follows:true,recording:true))
+        legacy.transportLost(other)
+        XCTAssertEqual(legacy.lostCalls,[],"no generation, no hold (only 0.2.12+ is supported)")
+    }
     func testOnlyAStandInWhoseTakeOverCommittedHoldsItsCall() {
         let adopted = [CaptureEvent(atMs:0,type:"othersSource",source:"system",reason:"missing"),
                        CaptureEvent(atMs:1000,type:"othersSource",source:"browser",reason:"callConnected")]
@@ -229,6 +247,48 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
             let first = try receive(new)
             XCTAssertEqual(first["action"]?.string,"start")
             XCTAssertEqual(first["tabId"]?.int,3,"the lost call is never Started again: \(first)")
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+
+    /// #113 gap: the audio side closes before any status listed the session. The broker
+    /// recorded the call at Start, so the recording holds it with no feed from the app at all
+    /// (held behind a barrier here), and the reconnect Starts only the other call.
+    func testARecordingLostBeforeAnyStatusStillHoldsItsCall() async throws {
+        let ownership = CallOwnershipStore(), log = PeerLog()
+        let app = DispatchQueue(label:"held main actor"), barrier = DispatchSemaphore(value:0)
+        app.async { barrier.wait() }
+        defer { barrier.signal() }
+        let fixture = try AudioFixture(ownership:ownership,changed:{ peers in log.changed(peers); app.async {} })
+        do {
+            fixture.service.setAutoRecord(true,microphone:false)
+            var old: PipeEndpoint? = try connect(fixture,meetings:[(2,"call-A")],sessions:[])
+            // Auto-record Starts the call; the extension opens the audio side with that call.
+            let command = try receive(try XCTUnwrap(old))
+            XCTAssertEqual(command["action"]?.string,"start"); XCTAssertEqual(command["tabId"]?.int,2)
+            let generation = try XCTUnwrap(command["callGeneration"]?.string)
+            let peer = try XCTUnwrap(log.peers.first { $0.reconciled }).id
+            let audio = try fixture.client()
+            let started = try audio.request(["type":"start","version":1,"independent":true,"captureId":"early","timelineOriginMs":Int(Date().timeIntervalSince1970*1000),
+                                             "microphone":false,"title":"Call","features":["source-outcomes-v1"],"callGeneration":generation,"documentGeneration":"doc-1"])
+            let owner = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string },"\(started)")
+            let id = owner.snapshot.manifest.id
+            XCTAssertEqual(ownership.snapshot.binding(id)?.callGeneration,generation,"recorded at Start")
+            XCTAssertNil(ownership.snapshot.binding(id)?.key,"no status has named its tab")
+            // The worker restarts before any status listed the session.
+            let closed = fixture.closures.next("the transport closed"), gone = log.next("the old control peer is gone") { !$0.contains { $0.id == peer } }
+            audio.end(); old = nil
+            await fulfillment(of:[closed,gone],timeout:5)
+            XCTAssertNil(old)
+            let new = try connect(fixture,meetings:[(2,generation),(3,"call-C")],sessions:[])
+            let first = try receive(new)
+            XCTAssertEqual(first["action"]?.string,"start")
+            XCTAssertEqual(first["tabId"]?.int,3,"no second recording of the call: \(first)")
+            // The recording follows its call to the new peer by its generation alone.
+            let reported = log.next("the new peer reports the call") { $0.contains { $0.reconciled && $0.id != peer && $0.meetings.contains { $0.key.tabID == 2 } } }
+            await fulfillment(of:[reported],timeout:5)
+            let follow = ownership.follow(id,captureID:"early",peers:log.peers)
+            XCTAssertTrue(follow.rebound); XCTAssertEqual(follow.key?.tabID,2); XCTAssertNotEqual(follow.key?.peer,peer)
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
     }

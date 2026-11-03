@@ -292,6 +292,10 @@ private final class CaptureFiles: @unchecked Sendable {
         let meetingKey = key(for:info.captureID)
         let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
         captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
+        // The call this recording belongs to, as the broker recorded it at Start.
+        if let generation = ownership.snapshot.binding(id)?.callGeneration {
+            captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation
+        }
         feedOwnership(id)
         if let modern { try? await owner.manageBrowserLifecycle(modern) }
         activity[id] = snapshot.manifest.tracks.contains { $0.frames > 0 } ? .recording : .preparing
@@ -536,9 +540,6 @@ private final class CaptureFiles: @unchecked Sendable {
                 let reported = (peer?.captures ?? []) + (peer?.interrupted ?? [])
                 let status = reported.first { $0.captureID.map { Data($0.utf8) == Data(value.captureID.utf8) } == true }
                 let meeting = peer?.meetings.first { $0.key == value.key }
-                if let generation = status?.callGeneration, value.callGeneration == nil {
-                    captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation; feedOwnership(id)
-                }
                 if let peer { captures[id]?.callPolicy.resumeCapture = peer.supportsResume }
                 let pages: [(BrowserCallLifecycle.Page,TimeInterval?)] = [
                     status?.pageState.map { ($0,status?.pageStateAt) },

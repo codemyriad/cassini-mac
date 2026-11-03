@@ -55,6 +55,13 @@ public struct CallOwnership: Sendable, Equatable {
         if value.callGeneration == nil { value.callGeneration = bindings[id]?.callGeneration }
         bindings[id] = value
     }
+    /// The broker, as it accepts a browser Start: the recording belongs to this call from its
+    /// first moment, before any status could tell the app its tab. The generation is the
+    /// call's identity (browser-made, unguessable); its tab is the row reporting it.
+    public mutating func started(_ id: UUID, callGeneration: String) {
+        guard bindings[id] == nil else { return }
+        bindings[id] = .init(key:nil,callGeneration:callGeneration,follows:true,recording:true)
+    }
     /// The recording ended or was saved; it holds no call.
     public mutating func remove(_ id: UUID) { bindings.removeValue(forKey:id); lost.remove(id); known.removeValue(forKey:id) }
     /// The broker: this recording's audio transport closed (EOF or a loss Stop). The
@@ -65,21 +72,30 @@ public struct CallOwnership: Sendable, Equatable {
 
     public func binding(_ id: UUID) -> Binding? { bindings[id] }
     public func isLost(_ id: UUID) -> Bool { lost.contains(id) && holds(id) != nil }
-    /// A bound, still recording recording that follows its call.
+    /// A still recording recording that follows a known call (its generation; D51: every
+    /// supported extension names one). Its tab may not be known yet.
     private func holds(_ id: UUID) -> Binding? {
-        guard let value = bindings[id], value.follows, value.recording, value.key != nil else { return nil }
+        guard let value = bindings[id], value.follows, value.recording, value.callGeneration != nil else { return nil }
         return value
     }
     /// The calls (tab, generation) held by a recording whose transport closed. Each is resumed,
-    /// never Started afresh, by auto-record or Record all, on any control peer.
-    public var lostCalls: Set<BrowserControlRegistry.LostCall> {
-        Set(lost.compactMap { id in holds(id).map { .init(tabID:$0.key!.tabID,callGeneration:$0.callGeneration) } })
+    /// never Started afresh, by auto-record or Record all, on any control peer. A held call
+    /// whose tab the recording never learned is found by its generation among `meetings`.
+    public func lostCalls(among meetings: [BrowserMeeting] = []) -> Set<BrowserControlRegistry.LostCall> {
+        var calls = Set<BrowserControlRegistry.LostCall>()
+        for id in lost {
+            guard let value = holds(id), let generation = value.callGeneration else { continue }
+            if let key = value.key { calls.insert(.init(tabID:key.tabID,callGeneration:generation)) }
+            for row in meetings where row.callGeneration == generation { calls.insert(.init(tabID:row.key.tabID,callGeneration:generation)) }
+        }
+        return calls
     }
-    /// The recording's call (same tab and generation) among the meetings of every reconciled
-    /// control peer, past or present. Only a lost recording follows its call to another peer.
+    public var lostCalls: Set<BrowserControlRegistry.LostCall> { lostCalls() }
+    /// The recording's call (its generation, in its tab when known) among the meetings of every
+    /// reconciled control peer, past or present. Only a lost recording follows its call.
     public func call(of id: UUID, among meetings: [BrowserMeeting]) -> BrowserMeetingKey? {
-        guard isLost(id), let value = bindings[id], let key = value.key, let generation = value.callGeneration else { return nil }
-        return meetings.first { $0.key.tabID == key.tabID && $0.callGeneration == generation }?.key
+        guard isLost(id), let value = bindings[id], let generation = value.callGeneration else { return nil }
+        return meetings.first { $0.callGeneration == generation && (value.key == nil || $0.key.tabID == value.key!.tabID) }?.key
     }
     /// D52 M6: the recording ends as callEnded once its tab's row names another call. It is
     /// judged against the generation the recording learned, so it still applies after the
@@ -90,7 +106,7 @@ public struct CallOwnership: Sendable, Equatable {
     /// A lost recording holds this call: no other recording (a fresh Start or a D49 stand-in)
     /// may take it; only this recording's own resume.
     public func holds(meeting: BrowserMeeting) -> Bool {
-        lostCalls.contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration))
+        lostCalls(among:[meeting]).contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration))
     }
     /// Every per-poll lost-call decision for a recording, from the reconciled control peers:
     /// - a lost recording follows its call (same tab and generation) to whichever peer reports it;
@@ -103,9 +119,8 @@ public struct CallOwnership: Sendable, Equatable {
         guard var value = bindings[id] else { return .init(key:nil,multiStream:false,end:nil,sessionListed:false) }
         let reconciled = peers.filter(\.reconciled)
         var rebound = false
-        if isLost(id), let key = value.key, let generation = value.callGeneration,
-           let row = reconciled.flatMap(\.meetings).first(where:{ $0.key.tabID == key.tabID && $0.callGeneration == generation }), row.key != key {
-            value.key = row.key; bindings[id] = value; rebound = true
+        if isLost(id), let key = call(of:id,among:reconciled.flatMap(\.meetings)), key != value.key {
+            value.key = key; bindings[id] = value; rebound = true
         }
         let peer = reconciled.first { $0.id == value.key?.peer }
         if let peer { known[id] = .init(multiStream:peer.supportsMultiStream,instance:peer.browserInstance ?? known[id]?.instance) }
@@ -141,6 +156,7 @@ public final class CallOwnershipStore: @unchecked Sendable {
     public func update(_ body: (inout CallOwnership) -> Void) { lock.withLock { body(&state) } }
     public var snapshot: CallOwnership { lock.withLock { state } }
     public var lostCalls: Set<BrowserControlRegistry.LostCall> { lock.withLock { state.lostCalls } }
+    public func lostCalls(among meetings: [BrowserMeeting]) -> Set<BrowserControlRegistry.LostCall> { lock.withLock { state.lostCalls(among:meetings) } }
     public func follow(_ id: UUID, captureID: String?, peers: [BrowserControlPeerSnapshot]) -> CallOwnership.Follow {
         lock.withLock { state.follow(id,captureID:captureID,peers:peers) }
     }

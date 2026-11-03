@@ -99,7 +99,9 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     /// D52.5: calls whose recording waits to resume are never Started afresh. They are read
     /// from the shared ownership at admission time, never from a later main-actor publication.
-    private func refreshLostCalls() { if let ownership { registry.setLostCalls(ownership.lostCalls) } }
+    private func refreshLostCalls() {
+        if let ownership { registry.setLostCalls(ownership.lostCalls(among:registry.snapshots.flatMap(\.meetings))) }
+    }
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }
