@@ -35,8 +35,8 @@ struct DocumentView: View {
             ToolbarItem(placement: .principal) {
                 if session.hasSummary {
                     Picker("View", selection: $session.tab) {
-                        Text("Transcript").tag(SessionModel.Tab.transcript)
-                        Text("Summary").tag(SessionModel.Tab.summary)
+                        Text(UXText.text("library.preview.transcriptHeading")).tag(SessionModel.Tab.transcript)
+                        Text(UXText.text("mac.legacy.summary")).tag(SessionModel.Tab.summary)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
@@ -46,12 +46,12 @@ struct DocumentView: View {
                 Button {
                     session.showInspector.toggle()
                 } label: {
-                    Label("Inspector", systemImage: "info.circle")
+                    Label(UXText.text("mac.legacy.toggleInfo"), systemImage: "info.circle")
                 }
-                .help("Show or hide the file inspector")
+                .help(UXText.text("mac.legacy.toggleInfo"))
             }
         }
-        .searchable(text: $session.searchText, placement: .toolbar, prompt: "Search")
+        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text(UXText.text("search.title")))
         .searchFocused($searchFocused)
         .onChange(of: session.focusSearchRequest) { searchFocused = true }
         .focusedSceneValue(\.session, session)
@@ -82,7 +82,7 @@ struct ContentColumn: View {
                                 Button {
                                     session.jumpToCurrent()
                                 } label: {
-                                    Label("Jump to current", systemImage: "arrow.down.to.line")
+                                    Label(UXText.text("mac.legacy.jumpToCurrent"), systemImage: "arrow.down.to.line")
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
@@ -112,13 +112,13 @@ struct SearchStatusBar: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Previous", systemImage: "chevron.up") { session.findPrevious() }
+            Button(UXText.text("mac.legacy.previousMatch"), systemImage: "chevron.up") { session.findPrevious() }
                 .labelStyle(.iconOnly)
                 .disabled(session.matchCount == 0)
-            Button("Next", systemImage: "chevron.down") { session.findNext() }
+            Button(UXText.text("mac.legacy.nextMatch"), systemImage: "chevron.down") { session.findNext() }
                 .labelStyle(.iconOnly)
                 .disabled(session.matchCount == 0)
-            Button("Done") { session.searchText = "" }
+            Button(UXText.text("common.done")) { session.searchText = "" }
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
@@ -128,10 +128,12 @@ struct SearchStatusBar: View {
 
     private var matchText: String {
         let q = session.searchText.trimmingCharacters(in: .whitespaces)
+        // D55.1: numbers follow the region (D50.3), words the UI language.
         switch session.matchCount {
-        case 0: return "No matches for “\(q)”"
-        case 1: return "1 match for “\(q)”"
-        default: return "\(session.matchIndex) of \(session.matchCount) matches for “\(q)”"
+        case 0: return UXText.text("mac.legacy.match.none",["query":q])
+        case 1: return UXText.text("mac.legacy.match.one",["query":q])
+        default: return UXText.text("mac.legacy.match.position",["query":q,
+            "index":session.matchIndex.formatted(.number.locale(UXText.locale)),"count":session.matchCount.formatted(.number.locale(UXText.locale))])
         }
     }
 }
@@ -140,20 +142,9 @@ struct NoTranscriptView: View {
     let session: SessionModel
 
     var body: some View {
+        // The published mac.legacy message is the headline (D50 follow-up); no English duplicate.
         ContentUnavailableView {
-            Label(headline, systemImage: icon)
-        } description: {
-            Text(session.transcriptProblem ?? "")
-        }
-    }
-
-    private var headline: String {
-        switch session.file?.state {
-        case .plainAudio?: return "No transcript in this file"
-        case .invalidCassiniMetadata?: return "Transcript unreadable"
-        case .unknownCassiniFormat?: return "Newer Cassini format"
-        case nil: return "Can’t read this file"
-        default: return "Transcript unavailable"
+            Label(session.transcriptProblem ?? UXText.text("mac.legacy.transcriptUnreadable"), systemImage: icon)
         }
     }
 

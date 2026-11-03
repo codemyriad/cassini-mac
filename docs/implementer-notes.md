@@ -48,7 +48,7 @@ inspector can be collapsed.
 | Toolbar | Sidebar toggle; title + subtitle (date · speaker count · duration); Transcript / Summary segmented control; search field; Share; inspector toggle | Unified toolbar. Subtitle comes from the manifest. |
 | Transcript | One block per speaker turn: color dot, name, clickable timestamp, then the words | Reading column max 720 pt, body 15 pt, line height 1.75. Overlapping short interjections (e.g. "Yeah.") show as an inline chip in the other speaker's turn. |
 | Summary | Overview paragraph, action items with checkboxes, topics with timestamps that jump to the transcript | The spec does not define summary storage yet. Hide the tab when there is none. |
-| Player bar | Back 15 s, Play/Pause, Forward 15 s, elapsed, scrubber, remaining, speed (1×, 1.25×, 1.5×, 2×, 0.75×), Follow along switch | Pinned to the bottom of the content column. |
+| Player bar | Back 10 s, Play/Pause, Forward 10 s (D55), elapsed, scrubber, remaining, speed (1×, 1.25×, 1.5×, 2×, 0.75×), Follow along switch | Pinned to the bottom of the content column. |
 | Inspector (260 pt) | Integrity badge; Recording (duration, date, format, sample rate); Transcript (schema, speakers, timing); Show in Finder, Export… | Mirrors Finder's Get Info. |
 
 ## Word highlighting and sync
@@ -97,7 +97,7 @@ create a view per word.
 | Action | Mouse | Keyboard (proposed) |
 |---|---|---|
 | Play / pause | Play button | Space |
-| Skip back / forward 15 s | 15 s buttons | ← / → |
+| Skip back / forward 10 s | 10 s buttons (D55) | ← / → |
 | Seek to a word | Click the word | Return on a focused word |
 | Seek to a turn | Click its timestamp | — |
 | Change speed | Click the speed button to cycle | ⌘↑ / ⌘↓ |
@@ -130,3 +130,12 @@ Build Cassini as a document-based app (`DocumentGroup`), read-only for v1, that 
 - [ ] Which minimum macOS version? (v1 targets macOS 15.)
 - [ ] Should a library window list all meetings, or should Cassini stay a pure document app?
 - [ ] What should export produce: plain text, SRT/VTT subtitles, or Markdown with timestamps? (v1 offers all four.)
+
+## Heavy local runs share one host lock (D66, iOS #27)
+
+drmeyers runs the Mac, iOS and other agents' builds side by side. Every heavy local run
+(xcodebuild build, test or UI tests, big `swift test` suites, the Whistle or Parakeet benches)
+goes through `scripts/heavy.sh <command>`. It waits on `~/.cassini-heavy.lock` (`/usr/bin/lockf
+-k`, the same flock the iOS scripts use), writes a holder line naming the run, and sets
+`CASSINI_HEAVY_LOCK_HELD=1` so iOS scripts called inside don't wait for it again. Wait on the
+lock, never on a `pgrep` loop: a loop whose own command line contains the pattern matches itself.

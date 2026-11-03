@@ -35,7 +35,7 @@ jobs:
       env:
         CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
         CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
-      run: swift test --skip-build --filter 'ExportGoldenTests|MeetingExportTests|ExportDestinationTests|PortableWriterTests|OpusTests|LibraryImport'
+      run: swift test --skip-build --filter 'ExportGoldenTests|MeetingExportTests|ExportDestinationTests|PortableWriterTests|OpusTests|LibraryImport|R65CodemyriadNamespaceTests'
     - uses: actions/checkout@v5
       with:
         repository: codemyriad/cassini-format

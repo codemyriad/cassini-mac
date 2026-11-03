@@ -35,7 +35,13 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private var reservations: [Data:UUID] = [:]
     private var identities: [UUID:Data] = [:]
     /// D52.1 R67: native stand-ins a selected call may resume, by capture identity.
-    private struct StandIn { let capture: UUID; let origin: Int; var expected: String? }
+    /// D58 #10 (protocol #37): an unanswered resume ask, by its control requestId and the
+    /// session time it was asked at. The first answer (its own refused result, or the native
+    /// refusal carrying its id) records it once; an attach or a Stop forgets it silently.
+    private struct ResumeAsk { let id: Data; let atMs: Double }
+    private struct StandIn { let capture: UUID; let origin: Int; var expected: String?; var asks: [ResumeAsk] = [] }
+    /// GNOME keeps 8 as well: the oldest unanswered ask past it is forgotten and records nothing.
+    static let resumeAskLimit = 8
     private var standIns: [Data:StandIn] = [:]
     private let finalization = CaptureFinalization()
     private let creating = DispatchGroup()
@@ -118,12 +124,47 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
     }
     /// Arm exactly one resume for the call generation the app selected; nil disarms
-    /// it (Stop, call change). A resume that was not armed is refused.
-    public func expectResume(_ capture: OwnedBrowserCapture, callGeneration: String?) {
+    /// it (Stop, call change) and forgets its unanswered asks. A resume that was not
+    /// armed is refused. `ask` is the resume command's requestId and session time.
+    public func expectResume(_ capture: OwnedBrowserCapture, callGeneration: String?, ask: (requestID: String, atMs: Double)? = nil) {
         lock.withLock {
             guard let key = standIns.first(where:{ $0.value.capture == capture.snapshot.manifest.id })?.key else { return }
             standIns[key]?.expected = callGeneration
+            if callGeneration == nil { standIns[key]?.asks = [] }
+            else if let ask {
+                standIns[key]?.asks.append(.init(id:Data(ask.requestID.utf8),atMs:ask.atMs))
+                if let count = standIns[key]?.asks.count, count > Self.resumeAskLimit { standIns[key]?.asks.removeFirst(count - Self.resumeAskLimit) }
+            }
         }
+    }
+    /// D58 #10: the outcome of a resume ask. Only a browser ok:false answer records; its result
+    /// code, if any, is the message (R82 1b). A timeout, a closed connection or a local failure
+    /// records nothing, and a late, duplicate or unknown answer records nothing either.
+    public func resumeAnswered(_ outcome: BrowserControlOutcome) {
+        guard outcome.resume, !outcome.ok, outcome.failure == nil else { return }
+        refuseAsk(Data(outcome.requestID.utf8),message:outcome.code)
+    }
+    /// Unanswered resume asks of a stand-in, oldest first (tests).
+    func pendingResumeAsks(_ capture: OwnedBrowserCapture) -> [String] {
+        lock.withLock {
+            standIns.values.first { $0.capture == capture.snapshot.manifest.id }?.asks.compactMap { String(data:$0.id,encoding:.utf8) } ?? []
+        }
+    }
+    /// Records `startRejected/resumeRefused` at the ask's own time, in the recording it asked to
+    /// join, once. The refusal is written after the broker lock is released, on the recording's
+    /// own queue: a slow Library disk never blocks the caller (the main actor, #120 review).
+    fileprivate func refuseAsk(_ id: Data, message: String?) {
+        let target: (OwnedBrowserCapture,Double)? = lock.withLock {
+            for (key,var standIn) in standIns {
+                guard let index = standIn.asks.firstIndex(where:{ $0.id == id }) else { continue }
+                let ask = standIn.asks.remove(at:index); standIns[key] = standIn
+                return captures[standIn.capture].map { ($0,ask.atMs) }
+            }
+            return nil
+        }
+        guard let (capture,atMs) = target,
+              let entry = CaptureRefusal(atMs:atMs,side:"browser",code:CaptureRefusal.startRejected,detail:"resumeRefused",message:message) else { return }
+        capture.refuseLater(entry)
     }
     fileprivate func resume(captureID: String, timelineOriginMs: Int, callGeneration: String, peer: UUID) throws -> OwnedBrowserCapture {
         let identity = Data(captureID.utf8)
@@ -137,7 +178,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         do { try capture.attachResumedBrowser() }
         catch { lock.withLock { if reservations[identity] == peer { reservations.removeValue(forKey:identity) } }; throw error }
         ownership?.update { $0.transportResumed(capture.snapshot.manifest.id) }
-        lock.withLock { standIns[identity]?.expected = nil }
+        lock.withLock { standIns[identity]?.expected = nil; standIns[identity]?.asks = [] } // The attach answers every ask.
         return capture
     }
     /// D52.4: once its audio transport closed, a browser recording is a resume target under
@@ -354,31 +395,44 @@ private final class AudioPeer: @unchecked Sendable {
             let type = kind
             var response: JSON = .object([("type",.string("ack"))])
             if type == "resume" {
-                // D52.1 R67: join the exact active native stand-in. Every check precedes
-                // any change; a refusal closes only this transport and creates nothing.
-                guard owner == nil else { throw BrowserProtocolError("state","Recording has already started.") }
-                guard try integer(json["version"],code:"version") == 1 else { throw BrowserProtocolError("version","Unsupported protocol version.") }
-                guard json["independent"]?.bool == true else { throw BrowserProtocolError("source","Independent capture is required.") }
-                let id = try string(json,"captureId")!, generation = try string(json,"callGeneration")!
-                guard !id.isEmpty, id.utf8.count <= 128, !generation.isEmpty, generation.unicodeScalars.count <= 200 else { throw BrowserProtocolError("source","Invalid capture identity.") }
-                let origin = try integer(json["timelineOriginMs"])
-                guard origin <= 253402300799000 else { throw BrowserProtocolError("source","Invalid capture origin.") }
-                guard let list = json["features"]?.array, list.count <= 8 else { throw BrowserProtocolError("version","Invalid recording features.") }
-                var features: [String] = []
-                for item in list {
-                    guard let feature = item.string, feature.unicodeScalars.count <= 64, !features.contains(feature) else { throw BrowserProtocolError("version","Invalid recording features.") }
-                    features.append(feature)
+                // Protocol #37: the resume command's requestId. A refusal is booked only on the
+                // unanswered ask it names; one outside the control requestId domain is refused.
+                var ask: Data?
+                if let value = json["requestId"] {
+                    if let number = value.int, (0...9007199254740991).contains(number) {}  // Mac asks use string ids.
+                    else if let text = value.string, !text.isEmpty, text.unicodeScalars.count <= 128 { ask = Data(text.utf8) }
+                    else { throw BrowserProtocolError("source","Invalid resume request.") }
                 }
-                guard features.contains("resume-capture-v1") else { throw BrowserProtocolError("version","Resume requires resume-capture-v1.") }
-                guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
-                let capture = try broker.resume(captureID:id,timelineOriginMs:origin,callGeneration:generation,peer:connection.peer.id)
-                originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id; resumed = true; watch(id)
-                var granted = ["resume-capture-v1"]
-                if features.contains("source-outcomes-v1") { capture.enableSourceOutcomes(); sourceOutcomes = capture.sourceOutcomesEnabled }
-                if sourceOutcomes { granted.insert("source-outcomes-v1",at:0) }
-                response = .object([("type",.string("started")),("path",.string(capture.snapshot.directory.path)),("features",.array(granted.map { .string($0) })),
-                                    ("resumed",.bool(true)),("captureId",.string(id)),("timelineOriginMs",.number(String(origin))),("callGeneration",.string(generation))])
+                do {
+                    // D52.1 R67: join the exact active native stand-in. Every check precedes
+                    // any change; a refusal closes only this transport and creates nothing.
+                    guard owner == nil else { throw BrowserProtocolError("state","Recording has already started.") }
+                    guard try integer(json["version"],code:"version") == 1 else { throw BrowserProtocolError("version","Unsupported protocol version.") }
+                    guard json["independent"]?.bool == true else { throw BrowserProtocolError("source","Independent capture is required.") }
+                    let id = try string(json,"captureId")!, generation = try string(json,"callGeneration")!
+                    guard !id.isEmpty, id.utf8.count <= 128, !generation.isEmpty, generation.unicodeScalars.count <= 200 else { throw BrowserProtocolError("source","Invalid capture identity.") }
+                    let origin = try integer(json["timelineOriginMs"])
+                    guard origin <= 253402300799000 else { throw BrowserProtocolError("source","Invalid capture origin.") }
+                    guard let list = json["features"]?.array, list.count <= 8 else { throw BrowserProtocolError("version","Invalid recording features.") }
+                    var features: [String] = []
+                    for item in list {
+                        guard let feature = item.string, feature.unicodeScalars.count <= 64, !features.contains(feature) else { throw BrowserProtocolError("version","Invalid recording features.") }
+                        features.append(feature)
+                    }
+                    guard features.contains("resume-capture-v1") else { throw BrowserProtocolError("version","Resume requires resume-capture-v1.") }
+                    guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
+                    let capture = try broker.resume(captureID:id,timelineOriginMs:origin,callGeneration:generation,peer:connection.peer.id)
+                    originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
+                    owner = capture; captureID = id; resumed = true; watch(id)
+                    var granted = ["resume-capture-v1"]
+                    if features.contains("source-outcomes-v1") { capture.enableSourceOutcomes(); sourceOutcomes = capture.sourceOutcomesEnabled }
+                    if sourceOutcomes { granted.insert("source-outcomes-v1",at:0) }
+                    response = .object([("type",.string("started")),("path",.string(capture.snapshot.directory.path)),("features",.array(granted.map { .string($0) })),
+                                        ("resumed",.bool(true)),("captureId",.string(id)),("timelineOriginMs",.number(String(origin))),("callGeneration",.string(generation))])
+                } catch {
+                    if let ask { broker?.refuseAsk(ask,message:(error as? BrowserProtocolError)?.message ?? error.localizedDescription) }
+                    throw error
+                }
             } else if type == "start" {
                 guard owner == nil else { throw BrowserProtocolError("state","Recording has already started.") }
                 if let version = json["version"], !version.isNull, try integer(version,code:"version") != 1 { throw BrowserProtocolError("version","Unsupported protocol version.") }

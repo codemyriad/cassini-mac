@@ -16,7 +16,9 @@ public struct RecordingManifest: Codable, Sendable {
     public var events: [CaptureEvent]? = nil
     /// D52 capture record: every announced source, including ones that never opened a WAV.
     public var captureOutcome: SessionCaptureOutcome? = nil
-    enum CodingKeys: String, CodingKey { case version, id, createdAt, title, source, state, problem, tracks, problemKind, events, captureOutcome }
+    /// D58: sides requested but never opened; absent when empty.
+    public var refusals: [CaptureRefusal]? = nil
+    enum CodingKeys: String, CodingKey { case version, id, createdAt, title, source, state, problem, tracks, problemKind, events, captureOutcome, refusals }
 }
 
 /// D52 per-source outcome. neverAudio: no admitted frames; lowAudio: under 1000 ms;
@@ -102,6 +104,7 @@ extension RecordingManifest {
         events = try? c.decodeIfPresent([CaptureEvent].self,forKey:.events)
         if (events?.count ?? 0) > 1000 { events = nil }
         captureOutcome = (try? c.decodeIfPresent(SessionCaptureOutcome.self,forKey:.captureOutcome)) ?? nil
+        refusals = ((try? c.decode([CaptureRefusal.Lossy].self,forKey:.refusals)) ?? []).compactMap(\.value).nilIfEmpty
     }
 }
 extension RecordingTrack {
@@ -451,6 +454,15 @@ public final class RecordingSession {
             throw error
         }
         if let failure { throw failure }
+    }
+
+    /// D58: one refusal, checkpointed on its own (a refused side writes no event or track).
+    public func refuse(_ refusal: CaptureRefusal) throws {
+        guard !finished else { throw RecordingError.invalid("Recording is already finished.") }
+        let before = manifest, revision = metadataRevision
+        manifest.refusals = CaptureRefusal.appending(refusal,to:manifest.refusals ?? [])
+        do { try checkpoint() }
+        catch { if metadataRevision == revision { manifest = before }; throw error }
     }
 
     public static func cleanLabel(_ value: String) -> String {

@@ -303,11 +303,14 @@ final class CaptureProbeProcess: @unchecked Sendable {
             stage = "reject unavailable replacement input"
             let beforeChoice = first.owner.snapshot.manifest
             CaptureFixture.microphoneStartsAllowed = false
-            var rejectedChoice = false
-            do { try await collection.select(first.snapshot.manifest.id,me:true,others:false) }
-            catch { rejectedChoice = true }
+            // D58 (M16): a refused turn-on does not fail the selection. It returns the side's
+            // code, keeps the previous selection and is recorded once, at the ask time.
+            let refusalsBefore = first.owner.snapshot.manifest.refusals?.count ?? 0
+            let refusedChoice = try await collection.select(first.snapshot.manifest.id,me:true,others:false)
             CaptureFixture.microphoneStartsAllowed = true
-            try require(rejectedChoice && !first.owner.snapshot.me && first.owner.snapshot.others,"Failed microphone keeps Others selected")
+            try require(refusedChoice[.me] != nil && refusedChoice[.others] == nil && !first.owner.snapshot.me && first.owner.snapshot.others,"Failed microphone keeps Others selected")
+            let refusals = first.owner.snapshot.manifest.refusals ?? []
+            try require(refusals.count == refusalsBefore + 1 && refusals.last?.side == "me" && refusals.last?.code == refusedChoice[.me],"Refused microphone is recorded once as a me refusal")
             try require(first.owner.snapshot.manifest.events?.count == beforeChoice.events?.count && first.owner.snapshot.manifest.tracks.count == beforeChoice.tracks.count,"Rejected selection publishes no events or tracks")
             let remoteTrack = try first.owner.snapshot.manifest.tracks.first { $0.kind == "remote" }.unwrap()
             let remoteURL = first.owner.snapshot.directory.appendingPathComponent(remoteTrack.file)
@@ -630,6 +633,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             CaptureFixture.systemBuffersAllowed = false
             let beforeMicStarts = CaptureFixture.microphoneStarts
             try await collection.record()
+            // record() can return before the start has written its othersSource event (D66
+            // mac-P0-2, E1): wait for that event, then read state once. Not `!starting`: with the
+            // microphone denied and system buffers held back, the start stays `.preparing` until
+            // the first frames arrive, which this stage releases only after its checks.
+            try await wait {
+                collection.captures.values.first?.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source == "none"
+            }
             let pending = try collection.captures.values.first.unwrap()
             let pendingMeeting = try LibraryScanner(root:root).scan().meetings.first { $0.id == pending.snapshot.manifest.id }.unwrap()
             let pendingEditor = RecordingPageModel.editor(for:pendingMeeting)

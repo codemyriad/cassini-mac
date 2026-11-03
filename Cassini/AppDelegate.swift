@@ -92,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--meeting-preparation-self-test") {
+            Task { @MainActor in await MeetingPreparationSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--search-self-test") {
             Task { @MainActor in await SearchSelfTest.run() }; return
         }
@@ -328,9 +331,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case 49:  // Space
             player.toggle()
         case 123:  // ←
-            session.seek(toMs: player.currentMs - 15_000)
+            session.seek(toMs: player.currentMs - PlayerController.skipMs)
         case 124:  // →
-            session.seek(toMs: player.currentMs + 15_000)
+            session.seek(toMs: player.currentMs + PlayerController.skipMs)
         default:
             return event
         }

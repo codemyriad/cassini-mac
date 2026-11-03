@@ -8,10 +8,19 @@ struct AudioProcess: Identifiable, Hashable {
     let name: String
 }
 
+/// The Core Audio call behind each catalog operation, for raw refusal text (D58).
+private let audioCalls = ["audio.operation.list":"AudioObjectGetPropertyDataSize","audio.operation.read":"AudioObjectGetPropertyData",
+    "audio.operation.tap":"AudioHardwareCreateProcessTap","audio.operation.format":"AudioObjectGetPropertyData",
+    "audio.operation.monitor":"AudioObjectAddPropertyListenerBlock","audio.operation.device":"AudioHardwareCreateAggregateDevice",
+    "audio.operation.callback":"AudioDeviceCreateIOProcIDWithBlock","audio.operation.start":"AudioDeviceStart"]
+
+/// `operation` is a catalog id (audio.operation.*), or fixed self-test text.
 func audioCheck(_ status: OSStatus, _ operation: String) throws {
     guard status == noErr else {
         throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [
-            NSLocalizedDescriptionKey: UXText.mac("audio.failed",["operation":operation,"status":status.formatted(.number.grouping(.never))])
+            NSLocalizedDescriptionKey: UXText.mac("audio.failed",["operation":operation.hasPrefix("audio.operation.") ? UXText.mac(operation) : operation,"status":status.formatted(.number.grouping(.never))]),
+            // D58: the raw OS text a refusal records, never catalog copy.
+            CaptureOpenRefusal.rawTextKey: (audioCalls[operation] ?? "CoreAudio") + ": " + String(status)
         ])
     }
 }
@@ -28,9 +37,9 @@ final class AudioProcessTap {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        try audioCheck(AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size), UXText.mac("audio.operation.list"))
+        try audioCheck(AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size), "audio.operation.list")
         var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        try audioCheck(AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids), UXText.mac("audio.operation.read"))
+        try audioCheck(AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids), "audio.operation.read")
         return ids.compactMap { id in
             var pid: pid_t = 0
             var pidSize = UInt32(MemoryLayout<pid_t>.size)
@@ -66,12 +75,12 @@ final class AudioProcessTap {
             description.name = "Cassini Recording"
             description.isPrivate = true
             description.muteBehavior = .unmuted
-            try audioCheck(AudioHardwareCreateProcessTap(description, &tap), UXText.mac("audio.operation.tap"))
+            try audioCheck(AudioHardwareCreateProcessTap(description, &tap), "audio.operation.tap")
             var asbd = AudioStreamBasicDescription()
             var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
             var address = AudioObjectPropertyAddress(mSelector: kAudioTapPropertyFormat,
                                                     mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-            try audioCheck(AudioObjectGetPropertyData(tap, &address, 0, nil, &size, &asbd), UXText.mac("audio.operation.format"))
+            try audioCheck(AudioObjectGetPropertyData(tap, &address, 0, nil, &size, &asbd), "audio.operation.format")
             guard let format = AVAudioFormat(streamDescription: &asbd), format.commonFormat == .pcmFormatFloat32,
                   (1...2).contains(format.channelCount) else {
                 throw NSError(domain: "Cassini", code: 1, userInfo: [NSLocalizedDescriptionKey: UXText.mac("audio.unsupported")])
@@ -93,7 +102,7 @@ final class AudioProcessTap {
                     onFormatChange()
                 }
             }
-            try audioCheck(AudioObjectAddPropertyListenerBlock(tap, &address, queue, listener), UXText.mac("audio.operation.monitor"))
+            try audioCheck(AudioObjectAddPropertyListenerBlock(tap, &address, queue, listener), "audio.operation.monitor")
             formatListener = listener
             let aggregate: [String: Any] = [
                 kAudioAggregateDeviceNameKey: "Cassini Recording",
@@ -103,7 +112,7 @@ final class AudioProcessTap {
                 kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: description.uuid.uuidString,
                                                   kAudioSubTapDriftCompensationKey: true]]
             ]
-            try audioCheck(AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &device), UXText.mac("audio.operation.device"))
+            try audioCheck(AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &device), "audio.operation.device")
             var observedNonzero = false // accessed only by the serial tap callback
             try audioCheck(AudioDeviceCreateIOProcIDWithBlock(&callback, device, queue) { _, input, time, _, _ in
                 guard input.pointee.mNumberBuffers > 0, asbd.mBytesPerFrame > 0 else { return }
@@ -112,8 +121,8 @@ final class AudioProcessTap {
                 if !observedNonzero, let attempt { observedNonzero = knowledge.receive(buffer,attempt:attempt) }
                 let stamp = time.pointee
                 receive(buffer, stamp.mFlags.contains(.hostTimeValid) ? stamp.mHostTime : 0)
-            }, UXText.mac("audio.operation.callback"))
-            try audioCheck(AudioDeviceStart(device, callback), UXText.mac("audio.operation.start"))
+            }, "audio.operation.callback")
+            try audioCheck(AudioDeviceStart(device, callback), "audio.operation.start")
             return format
         } catch {
             stop()

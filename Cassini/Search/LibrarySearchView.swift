@@ -64,7 +64,7 @@ struct LibrarySearchView: View {
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
     private func context(_ hit: SearchHit, meeting: LibraryMeeting) -> some View {
-        let turns = MeetingPresentation.turns(meeting.transcriptItems)
+        // The index prepared these turns off the main actor (#118 review).
         return ScrollView {
             VStack(alignment:.leading,spacing:22) {
                 VStack(alignment:.leading,spacing:6) {
@@ -74,7 +74,7 @@ struct LibrarySearchView: View {
                     }
                 }
                 VStack(alignment:.leading,spacing:18) {
-                    ForEach(Array(turns.enumerated()).filter { abs($0.offset - hit.turn) <= 1 },id:\.offset) { index,turn in
+                    ForEach(hit.context,id:\.index) { index,turn in
                         HStack(alignment:.top,spacing:16) {
                             VStack(alignment:.leading,spacing:4) {
                                 HStack(spacing:5) {
