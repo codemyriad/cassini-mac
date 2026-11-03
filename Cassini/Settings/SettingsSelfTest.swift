@@ -225,11 +225,31 @@ import CassiniKit
             try await wait { !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.location.pendingMoves.isEmpty }
             for name in names { try check(FileManager.default.fileExists(atPath:destination.appendingPathComponent(name + "/session.json").path),"idle folder moved after relaunch") }
             try check(LibraryLocationModel.shared.location.previousPaths.isEmpty,"old readers retired after all moves finish")
+            // D66 mac-P0-3: an intermittent EPERM here is not explained yet (the moves are done:
+            // `busy` is false above). removeReporting and test-settings-app.py record what holds
+            // the folder on the next failure.
             LibraryMoveCoordinator.shared.beginShutdown(); LibraryStore.shared.stop()
-            for url in [original,destination,config.deletingLastPathComponent()] { try FileManager.default.removeItem(at:url) }
+            for url in [original,destination,config.deletingLastPathComponent()] { try removeReporting(url) }
             let report = ["liveFolderMovedAfterStop":true,"pendingMovesResumedAfterRelaunch":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch { FileHandle.standardError.write(Data("Move resume proof failed: \(error)\n".utf8)); exit(1) }
+    }
+    /// Strict cleanup: a folder that still can't be removed after shutdown means something
+    /// wrote into the Library after Quit, so its remaining entries (POSIX mode and flags) go to
+    /// stderr before the proof fails.
+    private static func removeReporting(_ url: URL) throws {
+        do { try FileManager.default.removeItem(at:url) }
+        catch {
+            var lines = ["Cleanup could not remove \(url.path): \(error)"]
+            let entries = FileManager.default.enumerator(at:url,includingPropertiesForKeys:nil)?.compactMap { $0 as? URL } ?? []
+            for entry in [url] + entries.prefix(200) {
+                var info = stat()
+                guard lstat(entry.path,&info) == 0 else { lines.append("  \(entry.path): lstat errno \(errno)"); continue }
+                lines.append("  \(entry.path) mode \(String(info.st_mode,radix:8)) flags 0x\(String(info.st_flags,radix:16)) uid \(info.st_uid)")
+            }
+            FileHandle.standardError.write(Data((lines.joined(separator:"\n") + "\n").utf8))
+            throw error
+        }
     }
     private static func require<T>(_ value: T?) throws -> T { guard let value else { throw Failure.check("missing value") }; return value }
     private static func wait(_ condition: () -> Bool) async throws {

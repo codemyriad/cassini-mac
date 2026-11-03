@@ -127,14 +127,21 @@ public final class RecordingSink: @unchecked Sendable {
     private let origin: UInt64
     private let capacitySeconds: Double
     private let onFailure: @Sendable (String) -> Void
+    /// D58: asked once, at the first valid buffer, before it is queued for the writer (so before
+    /// any disk write: a slow Library disk never makes a working input look unopened). False
+    /// means the input's opening bound already passed: that buffer and every later one are
+    /// refused, so an expired input records nothing (#120 r3).
+    private let admit: (@Sendable () -> Bool)?
+    private var admitted = false
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
-                onFailure: @escaping @Sendable (String) -> Void) {
+                onFailure: @escaping @Sendable (String) -> Void, admit: (@Sendable () -> Bool)? = nil) {
         writer = session
         origin = originHostTime
         self.capacitySeconds = max(0.01, min(60, capacitySeconds))
         self.onFailure = onFailure
+        self.admit = admit
     }
 
     public func receive(_ buffer: AVAudioPCMBuffer, hostTime: UInt64, id: String, label: String, kind: String) {
@@ -144,6 +151,11 @@ public final class RecordingSink: @unchecked Sendable {
               let input = buffer.floatChannelData, (1...64).contains(buffer.format.channelCount),
               buffer.format.sampleRate.isFinite, buffer.format.sampleRate.rounded() == buffer.format.sampleRate, (8_000...192_000).contains(buffer.format.sampleRate) else {
             lock.unlock(); fail("The audio source changed to an unsupported format. The recorded audio was preserved."); return
+        }
+        if !admitted {
+            // The signal's own lock decides; nothing here calls back into this sink.
+            guard admit?() ?? true else { accepting = false; lock.unlock(); return }
+            admitted = true
         }
         let rate = buffer.format.sampleRate
         let inputChannels = buffer.format.channelCount
@@ -294,7 +306,15 @@ public final class RecordingSink: @unchecked Sendable {
     }
 
 
-    public func finish(problem: String?) throws {
+    public func finish(problem: String?) throws { try finish(problem:problem,keepingFailure:true) }
+    /// D58: drains an input that never opened (refused). Its own failure (an unsupported first
+    /// buffer, a driver that failed before admitting one) is a refusal, not a recording problem,
+    /// so it never reaches the writer, the owner, or the other side's recording.
+    public func finishUnopened() throws { try finish(problem:nil,keepingFailure:false) }
+    /// The input failed (its own failure, e.g. an unsupported buffer), whether or not its
+    /// failure callback has been handled yet.
+    public var hasFailed: Bool { lock.withLock { failed } }
+    private func finish(problem: String?, keepingFailure: Bool) throws {
         lock.lock()
         guard !finished else { lock.unlock(); return }
         accepting = false
@@ -312,7 +332,7 @@ public final class RecordingSink: @unchecked Sendable {
             let gapNote = gaps > 0 ? "Recording saved with \(Int(gaps.rounded())) ms of host-time gap; the timeline contains silence." : nil
             for (id, source) in snapshot { writer.reportLoss(id: id, droppedFrames: source.droppedFrames, gapFrames: source.gapFrames) }
             let loss = lost > 0 ? "Recording saved with \(Int(lost.rounded())) ms of audio lost during a disk stall; the gaps contain silence." : nil
-            lock.lock(); let recordedFailure = failureMessage; lock.unlock()
+            lock.lock(); let recordedFailure = keepingFailure ? failureMessage : nil; lock.unlock()
             let issue = [problem ?? recordedFailure, loss, gapNote, paddingFailure?.localizedDescription].compactMap { $0 }.joined(separator: " ")
             try writer.finish(problem: issue.isEmpty ? nil : issue, kind: lost > 0 || paddingFailure != nil ? "io" : (gaps > 0 ? "gap" : nil))
             if let paddingFailure { throw paddingFailure }

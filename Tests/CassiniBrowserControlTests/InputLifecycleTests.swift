@@ -21,7 +21,7 @@ import CassiniKit
     init(_ kind: String, origin: UInt64) { self.kind = kind; self.origin = origin }
     func authorize() async throws {
         authorized += 1
-        if denied { throw CocoaError(.fileReadNoPermission) }
+        if denied { throw CaptureOpenRefusal.denied }   // As MeetingNativeInputs does.
         if holdPermission { try await withCheckedThrowingContinuation { permission = $0 } }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
@@ -479,7 +479,11 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.select(me:true,others:false,atMs:100)
         let before = owner.snapshot.manifest
         system.failingStart = true
-        do { try await inputs.select(me:false,others:true,atMs:200); XCTFail("System input must fail") } catch {}
+        // D58: the refused Others turn-on would leave nothing selected, so Me stays as it was.
+        let refused = try await inputs.select(me:false,others:true,atMs:200)
+        XCTAssertEqual(refused,[.others:"deviceUnavailable"])
+        XCTAssertEqual(owner.snapshot.manifest.refusals?.map { [$0.side,$0.code] },[["others","deviceUnavailable"]])
+        XCTAssertEqual(owner.snapshot.manifest.refusals?.first?.atMs,200)
         XCTAssertTrue(owner.snapshot.me); XCTAssertFalse(owner.snapshot.others)
         XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
         XCTAssertEqual(mic.stops,0)
@@ -520,7 +524,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try owner.browserTrack(id:"r",label:"Other",kind:"remote",sampleRate:8000,channels:1)
         try owner.browserAudio(id:"r",sequence:0,offsetMs:0,pcm:Data(repeating:1,count:1600))
         let before = owner.snapshot.manifest
-        do { try await inputs.select(me:true,others:false,atMs:100); XCTFail("Generated device start must fail") } catch {}
+        // D58: refused at 100, and the browser choice stands (the change would leave nothing).
+        let refused = try await inputs.select(me:true,others:false,atMs:100)
+        XCTAssertEqual(refused,[.me:"deviceUnavailable"])
+        XCTAssertEqual(owner.snapshot.manifest.refusals?.map(\.atMs),[100])
         XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
         XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
         XCTAssertEqual(owner.snapshot.manifest.tracks.count,before.tracks.count)
@@ -553,7 +560,8 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
         mic.denied = true
-        do { try await inputs.start(); XCTFail("Denied microphone must fail") } catch {}
+        try await inputs.start()   // D58: refused, not failed.
+        XCTAssertEqual(owner.snapshot.manifest.refusals?.map { [$0.side,$0.code] },[["me","permissionDenied"]])
         XCTAssertEqual(system.starts,1)
         mic.denied = false
         try await inputs.retry(.me)
@@ -596,7 +604,9 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         mic.denied = true
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
-        do { try await inputs.start(); XCTFail("Mic permission must fail") } catch {}
+        // D58: a denied side is a refusal, not a failed start.
+        try await inputs.start()
+        XCTAssertEqual(owner.snapshot.manifest.refusals?.map { [$0.side,$0.code] },[["me","permissionDenied"]])
         try owner.browserLost(atMs:0)
         try await inputs.update(); try await inputs.update()
         XCTAssertEqual(mic.authorized,1); XCTAssertEqual(system.starts,1)
@@ -678,7 +688,9 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         mic.denied = true
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
-        do { try await inputs.select(me:true,others:false,atMs:0); XCTFail("Denied permission must fail") } catch {}
+        // D58: refused, and the working selection stands (the change would leave nothing).
+        let refused = try await inputs.select(me:true,others:false,atMs:0)
+        XCTAssertEqual(refused,[.me:"permissionDenied"])
         XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others); XCTAssertTrue(owner.snapshot.browserAlive)
         XCTAssertEqual(owner.snapshot.manifest.events?.count,2); XCTAssertEqual(mic.starts,0)
         try await inputs.stop(); try await owner.finish()

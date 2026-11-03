@@ -122,6 +122,19 @@ class Transport(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Unsafe'): products.unpack('swiftpm',self.output)
 
 
+class Concurrency(unittest.TestCase):
+    """D66 mac-P1-1: only a pull request's own newer run cancels it; every other run (push,
+    nightly, manual) has a group of its own, so GitHub never cancels or replaces it while pending."""
+    def test_only_pull_requests_share_a_cancellable_group(self):
+        body = (ROOT/'.github/workflows/ci.yml').read_text()
+        group = re.search(r'^concurrency:\n  group: (.+)\n  cancel-in-progress: (.+)$', body, re.M)
+        self.assertIsNotNone(group)
+        self.assertIn("github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)", group.group(1))
+        self.assertIn("format('run-{0}', github.run_id)", group.group(1), 'non-PR runs need a unique group, not the commit')
+        self.assertNotIn('github.sha', group.group(1))
+        self.assertEqual(group.group(2).strip(), "${{ github.event_name == 'pull_request' }}")
+
+
 class ParakeetCoverage(unittest.TestCase):
     def test_runtime_and_service_changes_recheck_all_app_consumers(self):
         for name in ['Parakeet/model-manifest.json','ModelDownloads/Service.swift']:

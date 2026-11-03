@@ -17,10 +17,12 @@ jobs:
     name: Downloader (${{ matrix.runner }})
     needs: [build]
     if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
+    # D66 mac-P1-2: Intel only. The kit job already runs these same ModelDownloaderTests on
+    # the same arm64 products, so an arm64 copy here was a duplicate macOS job.
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-15-intel]
+        runner: [macos-15-intel]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
@@ -28,11 +30,8 @@ jobs:
       - uses: ./.github/actions/ci-products
         with:
           swiftpm: 'true'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Verify static decoder and notice pins offline
-        run: python3 scripts/verify-model-vendor.py
+      # D66 mac-P1-3: no setup-python before swift test (with it, the fixture server's
+      # interpreter made the suite take 15x longer); the vendor pin check runs on Ubuntu (ci.yml).
       - name: Local HTTP fault fixtures only
         run: |
           set -o pipefail
