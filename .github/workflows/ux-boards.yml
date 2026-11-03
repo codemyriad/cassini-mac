@@ -13,7 +13,7 @@ jobs:
     uses: ./.github/workflows/ci-build.yml
   boards:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
