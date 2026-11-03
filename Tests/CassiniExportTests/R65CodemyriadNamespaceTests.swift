@@ -110,7 +110,7 @@ struct R65CodemyriadNamespaceTests {
 
     /// Another writer's namespace (GNOME schema 1, or a future schema) in a real Cassini file,
     /// imported into a Mac Library.
-    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false) throws -> (namespace: JSON, meeting: LibraryMeeting) {
+    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil) throws -> (namespace: JSON, meeting: LibraryMeeting) {
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         // A real Cassini file first (the fixture is plain Opus), then the namespace in it.
         let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed"))
@@ -118,12 +118,14 @@ struct R65CodemyriadNamespaceTests {
         let bytes = try Data(contentsOf:seed.url)
         let manifest = try #require(CassiniReader.read(bytes).manifest?.raw)
         let foreign = try JSONParser.parse(Data("""
-        {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":7,\
+        {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":\(revision),\
         "meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}],\
         "transcript":{"status":"none","reference":null},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
         "passthrough":{"later":9007199254740993},"automaticTitle":"Weekly sync","tracks":[{"id":"t","spans":[{"file":"track.wav","sampleRate":48000,"frames":10,"startOffsetMs":12.5}],"futureTrackMember":true}],"unknownTop":[1,2]}
         """.utf8))
-        let tags = try PortableMeetingTags.make(manifest:manifest.setting("x",to:.object([("codemyriad.io",foreign)])),transcript:Data("{\"items\":[]}".utf8),wordCount:0)
+        var x: [(String,JSON)] = [("codemyriad.io",foreign)]
+        if let notes { x.append(("gocassini.com",.object([("notes",try JSONParser.parse(Data(notes.utf8)))]))) }
+        let tags = try PortableMeetingTags.make(manifest:manifest.setting("x",to:.object(x)),transcript:Data("{\"items\":[]}".utf8),wordCount:0)
         let input = root.appendingPathComponent("gnome.opus")
         _ = try OpusStreamFile.rewrite(bytes,tags:tags,to:input)
         let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
@@ -159,6 +161,84 @@ struct R65CodemyriadNamespaceTests {
         let restored = try result.setting("revision",to:foreign["revision"]).setting("meeting",to:result["meeting"]!
             .setting("title",to:.null).setting("titleSource",to:.string("meeting-window")).setting("speakers",to:foreign["meeting"]!["speakers"]))
         #expect(try restored.encoded() == foreign.encoded())
+    }
+    /// #116 review: each exported change takes a new revision above the last one Mac
+    /// exported (not only above the imported original), notes included; an unchanged
+    /// re-export keeps it, and a revision never names two different contents.
+    @Test func successiveEditsTakeNewRevisionsAndUnchangedReexportsKeepThem() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1)
+        try MeetingRename.apply("First rename",to:meeting)
+        let first = try reexport(root)
+        #expect(first["revision"] == .number("8") && first["meeting"]?["title"]?.string == "First rename")
+        #expect(try reexport(root).encoded() == first.encoded(),"an unchanged re-export is the same namespace")
+        try MeetingRename.apply("Second rename",to:meeting)
+        let second = try reexport(root)
+        #expect(second["revision"] == .number("9") && second["meeting"]?["title"]?.string == "Second rename")
+        // Notes live in x["gocassini.com"], but a rebuild reads them, so a notes-only edit is a change.
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { $0["notes"] = [["atMs":1500,"text":"Decision"]] }
+        let noted = try reexport(root)
+        #expect(noted["revision"] == .number("10") && noted["meeting"] == second["meeting"])
+        #expect(try reexport(root)["revision"] == .number("10"))
+        // Going back to the original content is newer than every export before it.
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+            $0["notes"] = [Any](); $0["title"] = NSNull(); $0["titleSource"] = "meeting-window"
+        }
+        let reverted = try reexport(root)
+        #expect(reverted["revision"] == .number("11"))
+        #expect(try reverted.setting("revision",to:.number("7")).encoded() == foreign.encoded())
+        // Mac-local bookkeeping: saved in meeting.json, never in any exported member.
+        let stored = try raw(meeting.folder.appendingPathComponent("meeting.json"))
+        #expect(stored[CodemyriadNamespace.baselineMember]?["revision"] == .number("11"))
+        #expect(try !String(decoding:reverted.encoded(),as:UTF8.self).contains(CodemyriadNamespace.baselineMember))
+    }
+    /// A notes-only edit of a freshly imported file is a change too (it kept revision 7 before).
+    @Test func aNotesOnlyEditAdvancesTheRevision() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1)
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { $0["notes"] = [["atMs":200,"text":"Note"]] }
+        let result = try reexport(root)
+        #expect(result["revision"] == .number("8") && result["meeting"] == foreign["meeting"])
+    }
+    /// Notes the import normalised (an unknown member dropped, an invalid note skipped) are
+    /// not a Mac edit: the unchanged file still comes back byte-for-byte at its revision.
+    @Test func importNormalisedNotesAreNotAnEdit() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1,notes:#"[{"atMs":1500,"text":"hi","id":"n-1"},{"atMs":-4,"text":"bad"}]"#)
+        let stored = try raw(meeting.folder.appendingPathComponent("meeting.json"))
+        #expect(stored["notes"]?.array?.count == 1,"the import kept the valid note only")
+        #expect(try reexport(root).encoded() == foreign.encoded())
+        #expect(try raw(meeting.folder.appendingPathComponent("meeting.json"))[CodemyriadNamespace.baselineMember] == nil)
+        // A real notes edit after that is a change.
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { $0["notes"] = [["atMs":1500,"text":"hi, edited"]] }
+        #expect(try reexport(root)["revision"] == .number("8"))
+    }
+    /// A revision at or past the shared ceiling (2^53-1), even Int.max, is never advanced:
+    /// the original namespace is kept and the export goes ahead.
+    @Test(arguments:["9007199254740991","9223372036854775807"]) func aRevisionAtTheCeilingIsKept(revision: String) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (foreign,meeting) = try foreignFile(root,schema:1,revision:revision)
+        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        #expect(try reexport(root).encoded() == foreign.encoded())
+    }
+    /// A plain Opus file's DATE and TITLE tags name and title its first export (#116 review).
+    @Test func aTaggedPlainOpusFileKeepsItsDateAndTitle() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        // A plain OpusTags packet: vendor, then two comments (little-endian lengths).
+        var tags = Data("OpusTags".utf8)
+        func number(_ value: Int) { var little = UInt32(value).littleEndian; withUnsafeBytes(of:&little) { tags.append(contentsOf:$0) } }
+        func text(_ value: String) { number(value.utf8.count); tags.append(Data(value.utf8)) }
+        text("other encoder"); number(2); text("DATE=2026-03-04T09:15:00+01:00"); text("TITLE=  Board review \n")
+        let input = root.appendingPathComponent("tagged.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:fixture),tags:tags,to:input)
+        #expect(try CassiniReader.read(contentsOf:input).state == .plainAudio)
+        let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        let exported = try MeetingFileExporter.cassini(imported,assets:nil,temporaryRoot:root,timeZone:try #require(TimeZone(identifier:"Pacific/Kiritimati")))
+        let x = try #require(CassiniReader.read(contentsOf:exported.url).manifest?.raw["x"]?["codemyriad.io"])
+        #expect(x["namePrefix"]?.string == "2026-03-04--09.15-" && x["namePrefixSource"]?.string == "date-tag")
+        #expect(x["automaticTitle"]?.string == "Board review")
+        #expect(try raw(imported.folder.appendingPathComponent("meeting.json"))["namePrefix"]?.string == "2026-03-04--09.15-")
     }
     /// Naming on Mac a speaker another writer had cleared removes the clear (it goes only with unnamed).
     @Test func namingAClearedSpeakerRemovesTheClear() throws {

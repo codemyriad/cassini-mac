@@ -25,10 +25,28 @@ meeting.json; this is only the file's copy, written by `CodemyriadNamespace`.
   order, unknown members kept. The offsets-assumed-zero marker stays only in
   `x["gocassini.com"].recovery` (D19).
 
-A file that already carries `x["codemyriad.io"]` (another app's copy, or a schema
-this app does not know) keeps it unchanged through import and re-export: Mac never
-downgrades or rewrites it, and a Mac edit of such a received meeting shows only in
-the manifest projection (title, speaker labels) and notes.
+A file that already carries `x["codemyriad.io"]` from another writer keeps it
+through import and re-export. With nothing changed on Mac, or with a schema this
+app does not know, it comes back byte-for-byte. In a schema-1 copy, Mac's changes
+(title and titleSource, speaker names) replace those members in place (D55.1),
+and every other member stays verbatim.
+
+Its `revision` follows MAPPING Q9 (higher wins). A notes change counts too, since
+a rebuild takes notes from `x["gocassini.com"]`. Notes as the import kept them
+(`LibraryImport.importedNotes`: atMs and text of each valid note) do not count. Each export whose content (the
+namespace's `meeting` plus the notes) differs from the last one Mac exported takes
+the next revision above both the original and that last export. An unchanged
+re-export keeps it. Mac keeps that baseline in its own meeting.json, as
+`codemyriadExport: {"revision": n, "sha256": hex}`. The content is read, and the
+baseline compared and advanced, under the folder lock before the file is written,
+so a revision never names two contents. It is never exported, not even in
+`passthrough`. Metadata Mac does not rewrite (an unsupported version or invalid
+metadata) cannot change on Mac either, so it is decided without saving. A revision
+at or past 2^53-1 is never advanced: the original namespace is kept.
+
+A plain Opus file (no manifest) is trusted like a Cassini file for its DATE and
+TITLE tags: they choose the namePrefix (`date-tag`) and `automaticTitle` (TITLE
+trimmed, a blank one skipped, as the import does).
 
 The Library v2 file name (`LibraryNames.fileName`) is ported and vector-checked
 here, but Mac's Library and export file names are not changed by R65.

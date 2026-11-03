@@ -51,9 +51,12 @@ public enum MeetingFileExporter {
             let file = try CassiniReader.read(audio)
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
-            if original != nil {
+            // A plain Opus file (no manifest) is trusted on import too: its DATE and TITLE count.
+            if file.state == .ok || file.state == .plainAudio {
                 dateTag = file.tags?["DATE"]
-                originalTitle = [file.manifest?.meeting.title,file.tags?["TITLE"]].compactMap { $0 }.first { !$0.isEmpty }
+                // Trimmed, blank skipped, as LibraryImport chooses the title.
+                originalTitle = [file.manifest?.meeting.title,file.tags?["TITLE"]]
+                    .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
             }
         } else {
             let inputs = try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
@@ -140,18 +143,23 @@ public enum MeetingFileExporter {
             owned = try owned.setting("recovery",to:.object([("offsetsAssumedZero",.bool(true))]))
         }
         // D13, Q13: meeting.json's own note objects in order, unknown members kept; absent means [].
-        let notes: JSON? = meeting.notes.isEmpty ? nil : CodemyriadNamespace.rawNotes(meeting)
+        var notes: JSON? = meeting.notes.isEmpty ? nil : CodemyriadNamespace.rawNotes(meeting)
             ?? .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) })
+        // Another writer's schema-1 copy (D55.1): the user's changes on Mac go into it, the rest
+        // stays verbatim. Its revision is decided with the notes read under the folder lock, and
+        // those are the notes this file carries.
+        let foreign = extensions[CodemyriadNamespace.key]
+        let merged = try foreign.flatMap { try CodemyriadNamespace.merged($0,with:meeting,originalNotes:extensions["gocassini.com"]?["notes"]) }
+        if let merged { notes = merged.notes }
         if notes != nil || owned.object != nil {
             owned = try owned.setting("notes",to:notes)
             extensions = try extensions.setting("gocassini.com",to:owned.object?.isEmpty == true ? nil : owned)
         }
-        // R65 (D55): our own namespace. A file that already carries one (another app or
-        // schema) keeps it unchanged: Mac never downgrades or rewrites it.
-        if let foreign = extensions[CodemyriadNamespace.key] {
-            // Another writer's copy (D55.1): the user's changes on Mac go into it, the rest stays verbatim.
-            extensions = try extensions.setting(CodemyriadNamespace.key,to:CodemyriadNamespace.merged(foreign,with:meeting))
-        } else if let codemyriad {
+        // R65 (D55): our own namespace. Another writer's copy that `merged` declines (an unknown
+        // schema or unusable revision) stays unchanged: Mac never downgrades or rewrites it.
+        if let merged {
+            extensions = try extensions.setting(CodemyriadNamespace.key,to:merged.namespace)
+        } else if foreign == nil, let codemyriad {
             extensions = try extensions.setting(CodemyriadNamespace.key,to:codemyriad)
         }
         if extensions.object?.isEmpty != true { root = try root.setting("x",to:extensions) }

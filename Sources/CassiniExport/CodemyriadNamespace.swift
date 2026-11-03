@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CryptoKit
 import CassiniKit
 import CassiniLibrary
 
@@ -14,6 +15,10 @@ enum CodemyriadNamespace {
     /// link, notes and published) go to `passthrough`.
     static let meetingMembers = ["version","title","titleSource","speakers","speakerMerges","transcript","etaMinutes","error","quoteOverride","received","recordingDetails"]
     static let linkMembers: Set<String> = ["id","revision","notes","namePrefix","namePrefixSource","published"]
+    /// Mac-local meeting.json member, never exported: for a received file carrying another
+    /// writer's schema-1 namespace, the revision Mac last gave that namespace and a digest of
+    /// what it wrote then (`{"revision": n, "sha256": hex}`). See `merged`.
+    static let baselineMember = "codemyriadExport"
 
     /// nil when the folder has no readable meeting.json with an id and a revision.
     static func make(_ meeting: LibraryMeeting, dateTag: String?, originalTitle: String?, now: Date, zone: TimeZone) throws -> JSON? {
@@ -24,7 +29,7 @@ enum CodemyriadNamespace {
               let sessionID = raw["id"]?.string, let revision = raw["revision"], revision.int != nil else { return nil }
         let received = raw["received"]?.object != nil
         var inMeeting: [(String,JSON)] = [], passthrough: [(String,JSON)] = []
-        for (name,value) in members where !linkMembers.contains(name) {
+        for (name,value) in members where !linkMembers.contains(name) && name != baselineMember {
             if meetingMembers.contains(name) { inMeeting.append((name,value)) } else { passthrough.append((name,value)) }
         }
         let session = received ? nil : Self.session(meeting)
@@ -80,13 +85,59 @@ enum CodemyriadNamespace {
     }
     /// D55.1: Mac is a writer of this namespace too. In a schema-1 copy from another writer,
     /// the user's changes on Mac (title and titleSource, speaker names) replace those members
-    /// in place and bump its revision; everything else stays verbatim. With no change, or an
-    /// unknown schema, the original comes back unchanged (byte-for-byte).
-    static func merged(_ original: JSON, with meeting: LibraryMeeting) -> JSON {
-        guard original["schema"] == .number("1"), var copy = original["meeting"], copy.object != nil,
-              let data = try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json")),
-              let raw = try? JSONParser.parse(data) else { return original }
-        var changed = false
+    /// in place, everything else stays verbatim. nil for an unknown schema or an unusable
+    /// revision: the caller keeps the original unchanged (byte-for-byte).
+    ///
+    /// Revision (MAPPING Q9, higher wins): a notes change counts too, since a rebuild takes
+    /// notes from x["gocassini.com"]; notes as the import kept them (`LibraryImport.importedNotes`)
+    /// are no change. Each export whose content (meeting copy and notes) differs from the last
+    /// one Mac exported takes the next revision above both the original and that baseline; an
+    /// export with the same content reuses it, and an unchanged meeting keeps the original.
+    /// The content is read, and the baseline compared and advanced, under the folder lock, so
+    /// a revision never names two contents. Returns the notes to write with it.
+    static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?) throws -> (namespace: JSON, notes: JSON?)? {
+        guard original["schema"] == .number("1"), original["meeting"]?.object != nil,
+              let base = original["revision"]?.int, (0..<maxRevision).contains(base) else { return nil }
+        let imported = NSArray(array:LibraryImport.importedNotes(originalNotes))
+        let url = meeting.folder.appendingPathComponent("meeting.json")
+        /// The decision for meeting.json `raw` and the saved baseline; `save` is the new baseline.
+        func decide(_ raw: JSON?, saved: (revision: Int, sha256: String)?) throws -> (namespace: JSON, notes: JSON?, save: [String:Any]?) {
+            let (copy,changed) = edits(original["meeting"]!,raw:raw)
+            let notes = raw?["notes"].flatMap { $0.array?.isEmpty == false ? $0 : nil }
+            let notesChanged = !noteValue(notes).isEqual(to:imported as! [Any])
+            if !changed, !notesChanged, saved == nil { return (original,notes,nil) }
+            let digest = try Self.digest(copy,notes:notes)
+            if let saved, saved.sha256 == digest { return (try original.setting("meeting",to:copy).setting("revision",to:.number(String(saved.revision))),notes,nil) }
+            let last = max(base,saved?.revision ?? base)
+            guard last < maxRevision else { return (original,notes,nil) }
+            return (try original.setting("meeting",to:copy).setting("revision",to:.number(String(last + 1))),notes,["revision":last + 1,"sha256":digest])
+        }
+        func baseline(_ value: JSON?) -> (revision: Int, sha256: String)? {
+            guard let revision = value?["revision"]?.int, (0...maxRevision).contains(revision), let sha = value?["sha256"]?.string else { return nil }
+            return (revision,sha)
+        }
+        // Metadata this app must not rewrite: nothing can change it on Mac either, so the
+        // decision is stable without saving.
+        if meeting.metadataReadOnly || meeting.issues.contains(.invalidMetadata) {
+            let raw = (try? Data(contentsOf:url)).flatMap { try? JSONParser.parse($0) }
+            let result = try decide(raw,saved:baseline(raw?[baselineMember]))
+            return (result.namespace,result.notes)
+        }
+        var result: (namespace: JSON, notes: JSON?)?
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction(skippingUnchanged:true) { document in
+            // Under the folder lock: meeting.json as it is now, number literals intact.
+            let raw = (try? Data(contentsOf:url)).flatMap { try? JSONParser.parse($0) }
+            let decided = try decide(raw,saved:baseline(raw?[baselineMember]))
+            if let save = decided.save { document[baselineMember] = save }
+            result = (decided.namespace,decided.notes)
+        }
+        return result
+    }
+    static let maxRevision = 9007199254740991
+    /// The user's Mac edits (title, speaker names) applied to another writer's meeting copy.
+    private static func edits(_ original: JSON, raw: JSON?) -> (copy: JSON, changed: Bool) {
+        var copy = original, changed = false
+        guard let raw else { return (copy,false) }
         func set(_ key: String, _ value: JSON) {
             guard copy[key] != value, let next = try? copy.setting(key,to:value) else { return }
             copy = next; changed = true
@@ -114,9 +165,19 @@ enum CodemyriadNamespace {
             }
             if edited { set("speakers",.array(speakers)) }
         }
-        guard changed, let revision = original["revision"]?.int, revision < 9007199254740991,
-              let result = try? original.setting("meeting",to:copy).setting("revision",to:.number(String(revision + 1))) else { return original }
-        return result
+        return (copy,changed)
+    }
+    /// Notes as a Foundation value, so equal notes compare equal whatever their number spelling.
+    private static func noteValue(_ notes: JSON?) -> NSArray {
+        guard let notes, notes.array?.isEmpty == false, let data = try? notes.encoded(),
+              let value = try? JSONSerialization.jsonObject(with:data) as? NSArray else { return [] }
+        return value
+    }
+    private static func digest(_ copy: JSON, notes: JSON?) throws -> String {
+        var data = try copy.encoded()
+        data.append(0)
+        data.append(try JSONSerialization.data(withJSONObject:noteValue(notes),options:[.sortedKeys]))
+        return SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined()
     }
     /// meeting.json notes verbatim (nil when unreadable or empty).
     static func rawNotes(_ meeting: LibraryMeeting) -> JSON? {

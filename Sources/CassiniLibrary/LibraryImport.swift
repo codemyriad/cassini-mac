@@ -50,11 +50,7 @@ public enum LibraryImport {
         let selected = trusted ? file.defaultTranscript : nil
         let timed = file.transcripts.filter { $0.entry.format == "cassini.words.v1" }
         let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
-        let importedNotes: [[String:Any]] = (trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"]?.array : nil)?.compactMap { note in
-            guard let time = note["atMs"]?.int, time >= 0, time <= AppMetadata.safe,
-                  let text = note["text"]?.string, text.unicodeScalars.count <= 100000 else { return nil }
-            return ["atMs":time,"text":text]
-        } ?? []
+        let importedNotes = Self.importedNotes(trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"] : nil)
         let title = [trusted ? file.manifest?.meeting.title : nil,trusted ? file.tags?["TITLE"] : nil,source.deletingPathExtension().lastPathComponent]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
         if shouldCancel() { throw CancellationError() }
@@ -76,5 +72,14 @@ public enum LibraryImport {
         }
         guard let meeting = try scanner.scan().meetings.first(where: { $0.id == id }) else { throw POSIXError(.EINVAL) }
         committed = true; return meeting
+    }
+    /// The notes import keeps from a file's x["gocassini.com"].notes: each valid note's atMs
+    /// and text, in order; invalid notes and other members are dropped.
+    public static func importedNotes(_ notes: JSON?) -> [[String:Any]] {
+        (notes?.array ?? []).compactMap { note in
+            guard let time = note["atMs"]?.int, time >= 0, time <= AppMetadata.safe,
+                  let text = note["text"]?.string, text.unicodeScalars.count <= 100000 else { return nil }
+            return ["atMs":time,"text":text]
+        }
     }
 }
