@@ -54,11 +54,13 @@ import Observation
     }
     func update(_ meetings: [LibraryMeeting], offline: Bool) {
         guard let detail, detail.fileURL == nil else { return }
-        guard !offline, let meeting = meetings.first(where: { $0.libraryKey == detail.meeting.libraryKey }) else { detail.close(); return }
+        // An outage only stops playback: the page stays, and so does its transcript (#118 r2).
+        guard !offline, let meeting = meetings.first(where: { $0.libraryKey == detail.meeting.libraryKey }) else { detail.suspend(); return }
         if meeting.audioFiles != detail.meeting.audioFiles {
             detail.close(); self.detail = MeetingDetailModel(meeting: meeting); return
         }
         detail.meeting = meeting
+        detail.resumePreparation()
         detail.reconcile(offline:offline)
     }
     func captureBeganSaving(at folder: URL) {
@@ -79,7 +81,7 @@ import Observation
     private(set) var turns: [MeetingPresentation.Turn] = []
     /// #118 review: turns are prepared off the main actor; a newer transcript, or closing the
     /// page, cancels a preparation still running, so its result never lands.
-    @ObservationIgnored private var preparing: Task<Void,Never>?
+    @ObservationIgnored private var preparation: TurnPreparation?
     private(set) var shares: [String: Int] = [:]
     let fileURL: URL?
     let audio = SessionPlayback()
@@ -95,17 +97,13 @@ import Observation
         prepareTurns()
     }
     private func prepareTurns() {
-        preparing?.cancel()
-        let items = meeting.transcriptItems
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
-        if frozen { turns = MeetingPresentation.turns(items); return }
-        let work = Task.detached(priority:.userInitiated) { try MeetingPresentation.turns(items,cancellable:true) }
-        preparing = Task { [weak self] in
-            let prepared = await withTaskCancellationHandler { try? await work.value } onCancel: { work.cancel() }
-            guard !Task.isCancelled, let prepared, let self, self.meeting.transcriptItems == items else { return }
-            self.turns = prepared
-        }
+        if frozen { turns = MeetingPresentation.turns(meeting.transcriptItems); return }
+        if preparation == nil { preparation = TurnPreparation { [weak self] in self?.turns = $0 } }
+        preparation?.request(meeting.transcriptItems)
     }
+    /// After a Library update: a preparation an outage cancelled starts again.
+    func resumePreparation() { preparation?.resume() }
     // Received audio uses the same asynchronous composition/transport as a
     // recorded meeting. Opening a page performs no synchronous demux or engine
     // setup on the UI thread. This private transport input changes no metadata.
@@ -141,5 +139,7 @@ import Observation
         audio.rate = rates[((rates.firstIndex(of: audio.rate) ?? 0) + 1) % rates.count]
     }
     func reconcile(offline: Bool) { audio.reconcile(playbackMeeting,offline:offline) }
-    func close() { preparing?.cancel(); preparing = nil; audio.stop() }
+    /// A Library outage: playback stops and any preparation pauses, to resume on recovery.
+    func suspend() { preparation?.cancel(); audio.stop() }
+    func close() { preparation?.cancel(); preparation = nil; audio.stop() }
 }
