@@ -134,7 +134,11 @@ meeting's own (D65): a received Cassini file keeps its manifest's, any other
 received file takes its trusted DATE tag, else its import time, and a Mac
 recording takes its recording start, also written as its DATE tag
 (`YYYY-MM-DDTHH:MM:SS±HH:MM`, seconds floored). Only a recording whose start is
-lost falls back to the export time.
+lost falls back to the export time. A DATE tag counts only under the shared rules
+(`LibraryNames`): an unknown (`-00:00`) or out-of-range offset dates nothing, and
+the tag is kept as it was. The creation time and DATE count in the revision on
+both namespace paths, so an export from before D65 is re-exported at a higher
+revision (only the export-time fallback stays out of the comparison).
 
 ## Speaker labels and read-only Libraries (#122 r3, #116 CI)
 
