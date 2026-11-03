@@ -475,6 +475,23 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         }
     }
     public func nativeWriter(side: CaptureSide) -> any RecordingSinkWriter { NativeSpanWriter(owner:self,side:side) }
+    /// D58: a side that never opened. It writes no event or track and never changes
+    /// state, problem, othersSource or the outcome; it is checkpointed on its own.
+    public func refuse(_ refusal: CaptureRefusal) throws {
+        try sync {
+            guard phase == .recording else { return }
+            try recording.refuse(refusal); publish()
+        }
+    }
+    /// `refuse`, enqueued on this recording's own queue: the caller (the main actor answering a
+    /// resume) never waits for the checkpoint it writes to every track and session.json.
+    public func refuseLater(_ refusal: CaptureRefusal) {
+        queue.async { [self] in try? refuse(refusal) }
+    }
+    /// Returns once everything enqueued on this recording's queue before it has run (tests).
+    func settled() async { await withCheckedContinuation { done in queue.async { done.resume() } } }
+    /// Runs `body` on this recording's queue, in order with its writes (tests: a stalled disk).
+    func enqueue(_ body: @escaping @Sendable () -> Void) { queue.async(execute:body) }
     public func systemUnavailable(atMs: Double) async throws {
         try await operation {
             guard self.phase == .recording, self.others, !self.browserAlive else { return }
