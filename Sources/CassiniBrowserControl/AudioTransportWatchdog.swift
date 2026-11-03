@@ -35,9 +35,19 @@ public struct AudioTransportWatchdog: Sendable {
         return true
     }
     /// Records a frame; false when it arrived too late (the transport was already stale).
+    /// A frame and its accepted span transition together, as the shared vectors model them.
     public mutating func receive(_ frame: Frame, at now: UInt64) -> Bool {
+        guard activity(at:now) else { return false }
+        apply(frame); return true
+    }
+    /// Any frame on the transport is activity, accepted or refused; false when it arrived too
+    /// late (the transport was already stale).
+    public mutating func activity(at now: UInt64) -> Bool {
         if isStale(at:now) { return false }
-        last = now
+        last = now; return true
+    }
+    /// The span transition of a frame the host accepted. A refused frame changes no span.
+    public mutating func apply(_ frame: Frame) {
         switch frame {
         case .track(let id): declared.append(id); if !departing { open.insert(id) }
         case .audio(let id): if open.contains(id) { delivered.insert(id) }
@@ -45,6 +55,8 @@ public struct AudioTransportWatchdog: Sendable {
         case .stop: open.removeAll()
         case .other: break
         }
-        return true
     }
+    /// A span the host retired on a terminal refusal: the owner closed it and the extension
+    /// fences its later packets, so it never arms the watchdog again.
+    public mutating func retire(_ id: String) { open.remove(id); delivered.remove(id) }
 }

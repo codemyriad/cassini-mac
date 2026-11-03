@@ -295,6 +295,7 @@ private final class AudioPeer: @unchecked Sendable {
     }
     private func watch(_ id: String) { liveness.withLock { watched = Data(id.utf8) } }
     func closeStale() { connection.close() }
+    private func accepted(_ frame: AudioTransportWatchdog.Frame) { liveness.withLock { watchdog.apply(frame) } }
     private func string(_ json: JSON, _ key: String, optional: Bool = false, code: String = "source") throws -> String? {
         guard let value = json[key], !value.isNull else {
             if optional { return nil }; throw BrowserProtocolError(code,"Missing source information.")
@@ -307,6 +308,9 @@ private final class AudioPeer: @unchecked Sendable {
     func receive(_ data: Data) {
         guard !failed else { return }
         var packetType: String?, json: JSON = .null
+        // Set once the host accepted the frame: a later failure (writing the reply) is the
+        // connection's, never a refusal of the source that sent it.
+        var acceptedFrame = false
         do {
             guard !data.isEmpty, data.count <= FrameIO.maximum else { throw BrowserProtocolError("framing","Invalid native frame size.") }
             do { json = try JSONParser.parse(data) } catch { throw BrowserProtocolError("framing","Invalid JSON message.") }
@@ -320,8 +324,9 @@ private final class AudioPeer: @unchecked Sendable {
             case "stop": .stop
             default: .other
             }
-            // A frame at or after the PCM_STALE_AFTER deadline is too late: close instead.
-            guard liveness.withLock({ watchdog.receive(frame,at:clock()) }) else { closeStale(); return }
+            // Every frame is activity; a frame at or after the PCM_STALE_AFTER deadline is too
+            // late: close instead. Its span transition applies only once the host accepts it.
+            guard liveness.withLock({ watchdog.activity(at:clock()) }) else { closeStale(); return }
             guard ["start","resume","track","audio","stop"].contains(kind) || (sourceOutcomes && ["trackEnd","sources"].contains(kind)) else { throw BrowserProtocolError("version","Unknown browser message type.") }
             // Finalized by a browser Stop, or natively first (the app's own Stop). While saving,
             // a Stop still joins the save so its reply follows the durable metadata.
@@ -335,7 +340,7 @@ private final class AudioPeer: @unchecked Sendable {
                 let summary: [CaptureLedger.Discovered]
                 do { summary = try discovered(json["discoveredSources"],required:false) } catch { throw ScopedRefusal("source",error.localizedDescription) }
                 guard summary.isEmpty else { throw ScopedRefusal("state","Capture already saved.") }
-                completed = true
+                completed = true; accepted(frame); acceptedFrame = true
                 try connection.send(JSON.object([("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]).encoded(maximumBytes:FrameIO.maximum)); return
             }
             guard !completed else { throw BrowserProtocolError("state","Recording is already stopped.") }
@@ -426,7 +431,15 @@ private final class AudioPeer: @unchecked Sendable {
                     guard reason == nil || reason == "lost" else { throw BrowserProtocolError("source","Invalid failure reason.") }
                     let terminal = try string(json,"reason",optional:true)
                     guard terminal == nil || terminal.flatMap(CaptureEndReason.init(rawValue:)) != nil else { throw BrowserProtocolError("source","Invalid recording end reason.") }
-                    if reason == "lost" { try owner.browserLost(atMs:lossTime) }
+                    // A valid Stop ends every span now: the save below may take longer than
+                    // PCM_STALE_AFTER and must not let the watchdog close the pipe under it.
+                    accepted(frame)
+                    if reason == "lost" {
+                        try owner.browserLost(atMs:lossTime)
+                        // The recording runs on in its fallback. Like an EOF, this loss makes it a
+                        // resume target now: the app may ask before the extension closes the pipe.
+                        registerLoss()
+                    }
                     else if let broker {
                         let stopAt = lossTime, endReason = terminal.flatMap(CaptureEndReason.init(rawValue:)) ?? .user
                         owner.requestEnd(endReason,atMs:stopAt)
@@ -446,9 +459,10 @@ private final class AudioPeer: @unchecked Sendable {
                 default: throw BrowserProtocolError("version","Unknown browser message type.")
                 }
             }
+            accepted(frame); acceptedFrame = true
             try connection.send(response.encoded(maximumBytes:FrameIO.maximum))
         } catch {
-            if sourceOutcomes, let refusal = scoped(error,type:packetType,json:json),
+            if !acceptedFrame, sourceOutcomes, let refusal = scoped(error,type:packetType,json:json),
                let bytes = try? refusal.encoded(maximumBytes:FrameIO.maximum) {
                 do { try connection.send(bytes); return } catch {}
             }
@@ -479,6 +493,8 @@ private final class AudioPeer: @unchecked Sendable {
         // they are, and so does any refused re-declaration of an id that is still live.
         if error is KeptSourceRefusal || (type == "track" && owner.isLive(id)) { return reply("source",id:id) }
         let retired = owner.refuseSource(id:id,code:code)
+        // The owner closed this span for good; it never arms the stale watchdog again.
+        if owner.isRetired(id) { liveness.withLock { watchdog.retire(id) } }
         return reply("source",id:id,retired:retired && code == "state")
     }
     private func discovered(_ value: JSON?, required: Bool) throws -> [CaptureLedger.Discovered] {
@@ -507,10 +523,15 @@ private final class AudioPeer: @unchecked Sendable {
         guard !completed, let owner else { return }
         // A resumed transport's EOF keeps the native recording and its fallback (D33).
         try? owner.browserLost(atMs:lossTime)
-        // D52.4: the call may later resume this recording onto its system/lost fallback.
-        if !resumed, let captureID, let timelineOriginMs {
-            broker?.transportLost(owner,captureID:captureID,timelineOriginMs:timelineOriginMs,peer:connection.peer.id)
-        }
+        registerLoss()
+    }
+    /// D52.4: after an EOF or a loss Stop the call may resume this recording onto its system/lost
+    /// fallback. A fresh capture becomes a resume target under its own identity; a resumed
+    /// transport releases its claim so the stand-in can be resumed again. Idempotent.
+    private func registerLoss() {
+        guard let owner, let captureID else { return }
+        if resumed { broker?.releaseResume(captureID:captureID,peer:connection.peer.id) }
+        else if let timelineOriginMs { broker?.transportLost(owner,captureID:captureID,timelineOriginMs:timelineOriginMs,peer:connection.peer.id) }
     }
 }
 /// A negotiated command refusal that leaves the capture and connection running.

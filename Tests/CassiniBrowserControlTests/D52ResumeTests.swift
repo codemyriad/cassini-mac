@@ -455,6 +455,47 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(folders(fixture),1,"No new folder")
         }
     }
+
+    /// #113 review r2: a negotiated Stop with failureReason "lost" keeps the recording on its
+    /// fallback and makes it a resume target at once, as an EOF does, also before the
+    /// extension closes the pipe: loss Stop, fallback, resume, browser/restored.
+    func testALossStopMakesTheRecordingAResumeTarget() async throws {
+        try await run { fixture in
+            let origin = Int(Date().timeIntervalSince1970*1000)
+            let first = try fixture.client()
+            let started = try first.request(["type":"start","version":1,"independent":true,"captureId":"stop-lost","timelineOriginMs":origin,"microphone":false,
+                                             "title":"Call","features":["source-outcomes-v1"],"callGeneration":"call-A","documentGeneration":1])
+            let capture = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string })
+            XCTAssertEqual(try first.request(["type":"track","id":"a","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
+            XCTAssertEqual(try first.request(["type":"audio","id":"a","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:1600).base64EncodedString()])["type"]?.string,"ack")
+            XCTAssertEqual(try first.request(["type":"stop","captureId":"stop-lost","failureReason":"lost"])["type"]?.string,"stopped")
+            XCTAssertEqual(capture.snapshot.phase,.recording,"a loss Stop keeps recording")
+            XCTAssertFalse(capture.snapshot.transportAlive)
+            XCTAssertNotNil(fixture.broker.standInIdentity(capture),"a resume target before the pipe closes")
+            try await capture.requestSystemFallback()
+            let stage = StagedNativeWriter()
+            try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            try await capture.activateNative(stage,side:.others,allowed:{ true })
+            XCTAssertEqual(capture.snapshot.manifest.events?.last { $0.type == "othersSource" }?.reason,"lost")
+            fixture.broker.expectResume(capture,callGeneration:"call-A")
+            let client = try fixture.client()
+            let resumed = try client.request(resume("stop-lost",origin:origin))
+            XCTAssertEqual(resumed["resumed"]?.bool,true,"\(resumed)"); XCTAssertEqual(resumed["path"]?.string,capture.snapshot.directory.path)
+            // The old pipe closing now changes nothing.
+            let closed = fixture.closures.next("the stopped transport closed")
+            first.end()
+            await fulfillment(of:[closed],timeout:5)
+            XCTAssertEqual(try client.request(["type":"track","id":"r1","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
+            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":5000,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
+            XCTAssertTrue(capture.snapshot.restoreReady)
+            try await capture.restoreBrowser(atMs:6000)
+            let seam = capture.snapshot.manifest.events?.last { $0.type == "othersSource" }
+            XCTAssertEqual(seam?.source,"browser"); XCTAssertEqual(seam?.reason,"restored")
+            XCTAssertEqual(folders(fixture),1,"No new folder")
+            XCTAssertEqual(try client.request(["type":"stop","captureId":"stop-lost"])["type"]?.string,"stopped")
+        }
+    }
 }
 
 private final class Flag: @unchecked Sendable {
