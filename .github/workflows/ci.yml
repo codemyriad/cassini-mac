@@ -48,7 +48,9 @@ jobs:
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
-    timeout-minutes: 20
+    # About 2.5x its p95 (9.2 min) with the folded Library, native-sink and packaging steps; a
+    # hang can't hold a shared macOS slot for 6 hours (D66 mac-P0-5, #130 review).
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -111,6 +113,7 @@ jobs:
     # D66 mac-P1-4: three single-purpose macOS jobs (UX Library model, Native recording sink,
     # Build Cassini.app) folded into this one, with their exact environments and products.
     - name: Golden vectors and read-only Library tests (UTC, C locale)
+      timeout-minutes: 5
       env:
         TZ: UTC
         LANG: C
@@ -124,8 +127,11 @@ jobs:
       with:
         retention-days: 14
         name: ux-library-test-results
-        path: ux-library-tests.log
+        path: |
+          ux-library-tests.log
+          ux-library-vector-results
     - name: Native recording sink (generated 440/880 Hz stereo through the production sink and WAV writer)
+      timeout-minutes: 5
       run: |
         python3 scripts/run-native-ci.py --mode sink-only --app build/Build/Products/Debug/Cassini.app \
           --artifacts "$RUNNER_TEMP/native-artifacts"
@@ -137,6 +143,7 @@ jobs:
         name: native-recording-${{ github.sha }}
         path: ${{ runner.temp }}/native-artifacts
     - name: Package Cassini.app
+      timeout-minutes: 3
       run: python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
     - uses: actions/upload-artifact@v5
       with:
