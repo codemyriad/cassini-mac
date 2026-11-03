@@ -124,6 +124,8 @@ public struct LibraryMeeting: Sendable {
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
     public var metadataReadOnly: Bool = false
+    /// The meeting.json revision this read saw (nil without readable metadata).
+    public var metadataRevision: Int64? = nil
     public var received: LibraryReceivedInfo? = nil
     public var transcriptItems: [LibraryTranscriptItem] = []
     public var transcriptLanguage: String? = nil

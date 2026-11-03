@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Darwin
+import CryptoKit
 import CassiniKit
 import CassiniLibrary
 
@@ -38,6 +39,12 @@ public enum MeetingFileExporter {
                                temporaryRoot: URL = FileManager.default.temporaryDirectory,
                                timeZone: TimeZone = .current,
                                shouldCancel: () -> Bool = { false }) throws -> ExportArtifact {
+        try cassini(meeting,assets:assets,temporaryRoot:temporaryRoot,timeZone:timeZone,shouldCancel:shouldCancel,afterRead:nil)
+    }
+    /// `afterRead` (tests): runs after each attempt has read the meeting, before its
+    /// metadata is checked, with the attempt number.
+    static func cassini(_ meeting: LibraryMeeting, assets: OpusAssets?, temporaryRoot: URL, timeZone: TimeZone,
+                        shouldCancel: () -> Bool, afterRead: ((Int) throws -> Void)?) throws -> ExportArtifact {
         guard meeting.state.lifecycle == .saved else { throw MeetingExportError.invalidSource }
         let artifact = try stage(in:temporaryRoot,filename:"meeting.opus")
         let directory = artifact.url.deletingLastPathComponent()
@@ -69,18 +76,39 @@ public enum MeetingFileExporter {
             digest = try OpusAudioDigest.compute(audio); original = nil; choice = selected
         }
         if shouldCancel() { throw CancellationError() }
-        let complete = meeting.state.transcript == .done
-        let items = complete ? meeting.transcriptItems : []
-        // D53.2: body and descriptor carry the run's language, or "und" when unknown.
-        let language = TranscriptLanguage.written(complete ? (meeting.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language) : nil)
-        struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
-        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
-        let body = try encoder.encode(Body(language:language,items:items))
         // D55.1: saving the chosen namePrefix never blocks the export itself.
         try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:dateTag,now:Date(),zone:timeZone)
-        let ours = try CodemyriadNamespace.make(meeting,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
-        let manifest = try self.manifest(meeting,digest:digest,original:original?.manifest,choice:choice,codemyriad:ours,importedTranscript:importedTranscript)
-        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:items.count,shouldCancel:shouldCancel)
+        // #116 r3: the words, speakers, title, notes and namespace all come from one read of
+        // the meeting, never the caller's snapshot (Export may have opened before a Write down
+        // finished). Every change to the words bumps meeting.json's revision, and the namespace
+        // checks that revision (under the folder lock for another writer's copy): if it moved
+        // since this read, the meeting is read again.
+        var attempt = 0
+        let tags: Data, items: [LibraryTranscriptItem]
+        while true {
+            if shouldCancel() { throw CancellationError() }
+            // An external file (opened, not in the Library) has no metadata to read again.
+            let reread = LibraryScanner.isMeetingFolder(meeting.folder)
+                ? LibraryScanner(root:meeting.folder.deletingLastPathComponent()).meeting(at:meeting.folder) : meeting
+            guard let current = reread, current.state.lifecycle == .saved else { throw MeetingExportError.invalidSource }
+            let complete = current.state.transcript == .done
+            let words = complete ? current.transcriptItems : []
+            // D53.2: body and descriptor carry the run's language, or "und" when unknown.
+            let language = TranscriptLanguage.written(complete ? (current.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language) : nil)
+            struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys,.withoutEscapingSlashes]
+            let body = try encoder.encode(Body(language:language,items:words))
+            do {
+                try afterRead?(attempt)
+                let manifest = try self.manifest(current,digest:digest,original:original,choice:choice,dateTag:dateTag,originalTitle:originalTitle,
+                                                 timeZone:timeZone,importedTranscript:importedTranscript,body:body)
+                tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:words.count,shouldCancel:shouldCancel)
+                items = words; break
+            } catch is CodemyriadNamespace.MetadataChanged {
+                attempt += 1
+                guard attempt < 8 else { throw MeetingExportError.invalidSource }
+            }
+        }
         _ = try OpusStreamFile.rewrite(audio,tags:tags,to:artifact.url,shouldCancel:shouldCancel)
         let verified = try CassiniReader.read(contentsOf:artifact.url)
         guard verified.state == .ok, try verified.audioDigest?.get() == digest,
@@ -115,7 +143,10 @@ public enum MeetingFileExporter {
         if !pending.isEmpty { try emit([Float](repeating:0,count:960 - pending.count)) }
         try writer.finish(sampleCount:Int(frames))
     }
-    private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original: Manifest?, choice: AudioEncodeChoice?, codemyriad: JSON? = nil, importedTranscript: [String:Any]? = nil) throws -> JSON {
+    private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
+                                 dateTag: String?, originalTitle: String?, timeZone: TimeZone,
+                                 importedTranscript: [String:Any]?, body: Data) throws -> JSON {
+        let original = file?.manifest
         guard let title = meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
@@ -143,26 +174,31 @@ public enum MeetingFileExporter {
         if meeting.state.origin == .own, meeting.audioTracks.contains(where:{ $0.frameCount != 0 && $0.startOffsetMs == nil }) {
             owned = try owned.setting("recovery",to:.object([("offsetsAssumedZero",.bool(true))]))
         }
-        // D13, Q13: meeting.json's own note objects in order, unknown members kept; absent means [].
-        var notes: JSON? = meeting.notes.isEmpty ? nil : CodemyriadNamespace.rawNotes(meeting)
-            ?? .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) })
-        // Another writer's schema-1 copy (D55.1): the user's changes on Mac go into it, the rest
-        // stays verbatim. Its revision is decided with the notes read under the folder lock, and
-        // those are the notes this file carries.
+        // D13, Q13: note objects in order, unknown members kept; absent means []. Another
+        // writer's schema-1 copy (D55.1) takes the user's changes on Mac, with its revision and
+        // the notes decided together under the folder lock; any other file gets our own copy
+        // (`make`), from the same read of meeting.json. A copy `merged` declines (an unknown
+        // schema or unusable revision) stays unchanged: Mac never downgrades or rewrites it.
+        let originalNotes = extensions["gocassini.com"]?["notes"]
         let foreign = extensions[CodemyriadNamespace.key]
-        let merged = try foreign.flatMap { try CodemyriadNamespace.merged($0,with:meeting,originalNotes:extensions["gocassini.com"]?["notes"],importedTranscript:importedTranscript) }
-        if let merged { notes = merged.notes }
+        var notes: JSON?, namespace: JSON?
+        if let foreign, let merged = try CodemyriadNamespace.merged(foreign,with:meeting,originalNotes:originalNotes,importedTranscript:importedTranscript,
+                                                                    body:SHA256.hash(data:body).map { String(format:"%02x",$0) }.joined()) {
+            notes = merged.notes; namespace = merged.namespace
+        } else {
+            let stored = try CodemyriadNamespace.current(meeting)
+            let local = CodemyriadNamespace.localNotes(stored)
+                ?? (meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) }))
+            notes = CodemyriadNamespace.exportNotes(local:local,original:originalNotes).notes
+            if foreign == nil {
+                namespace = try CodemyriadNamespace.make(meeting,stored:stored,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
+            }
+        }
         if notes != nil || owned.object != nil {
             owned = try owned.setting("notes",to:notes)
             extensions = try extensions.setting("gocassini.com",to:owned.object?.isEmpty == true ? nil : owned)
         }
-        // R65 (D55): our own namespace. Another writer's copy that `merged` declines (an unknown
-        // schema or unusable revision) stays unchanged: Mac never downgrades or rewrites it.
-        if let merged {
-            extensions = try extensions.setting(CodemyriadNamespace.key,to:merged.namespace)
-        } else if foreign == nil, let codemyriad {
-            extensions = try extensions.setting(CodemyriadNamespace.key,to:codemyriad)
-        }
+        if let namespace { extensions = try extensions.setting(CodemyriadNamespace.key,to:namespace) }
         if extensions.object?.isEmpty != true { root = try root.setting("x",to:extensions) }
         return root
     }

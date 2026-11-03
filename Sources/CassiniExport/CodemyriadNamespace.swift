@@ -20,12 +20,28 @@ enum CodemyriadNamespace {
     /// what it wrote then (`{"revision": n, "sha256": hex}`). See `merged`.
     static let baselineMember = "codemyriadExport"
 
-    /// nil when the folder has no readable meeting.json with an id and a revision.
-    static func make(_ meeting: LibraryMeeting, dateTag: String?, originalTitle: String?, now: Date, zone: TimeZone) throws -> JSON? {
+    /// #116 r3: the meeting changed while this export read it (meeting.json's revision moved
+    /// since the snapshot): the export reads it again.
+    struct MetadataChanged: Error {}
+    /// meeting.json as it is now, checked against the revision the export's snapshot saw.
+    static func current(_ meeting: LibraryMeeting) throws -> JSON? {
+        let raw = (try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json"))).flatMap { try? JSONParser.parse($0) }
+        guard unchanged(raw,since:meeting) else { throw MetadataChanged() }
+        return raw
+    }
+    /// meeting.json is still at the revision the snapshot saw. Metadata the snapshot could not
+    /// validate (or may not rewrite) has no revision there; Mac never writes it, so it counts.
+    static func unchanged(_ raw: JSON?, since meeting: LibraryMeeting) -> Bool {
+        if meeting.metadataRevision == nil, meeting.metadataReadOnly || meeting.issues.contains(.invalidMetadata) { return true }
+        return raw?["revision"]?.int.map(Int64.init) == meeting.metadataRevision
+    }
+    /// nil when the folder has no readable meeting.json with an id and a revision. `stored`:
+    /// meeting.json as read for this export (`current`).
+    static func make(_ meeting: LibraryMeeting, stored: JSON?, dateTag: String?, originalTitle: String?, now: Date, zone: TimeZone) throws -> JSON? {
         // Before its first metadata write a folder has no meeting.json: it implies the default one.
-        let data = (try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json")))
-            ?? (try? JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id),options:[.sortedKeys]))
-        guard let data, let raw = try? JSONParser.parse(data), let members = raw.object,
+        let fallback = (try? JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id),options:[.sortedKeys]))
+            .flatMap { try? JSONParser.parse($0) }
+        guard let raw = stored ?? fallback, let members = raw.object,
               let sessionID = raw["id"]?.string, let revision = raw["revision"], revision.int != nil else { return nil }
         let received = raw["received"]?.object != nil
         var inMeeting: [(String,JSON)] = [], passthrough: [(String,JSON)] = []
@@ -97,19 +113,20 @@ enum CodemyriadNamespace {
     /// a revision never names two contents. Returns the notes to write with it.
     /// `importedTranscript`: the transcript state import stored for this file
     /// (`LibraryImport.importedTranscript`); Mac's transcription state counts only once it differs.
+    /// `body`: a digest of the words this file carries, so other words never share a revision.
+    /// meeting.json must still be at `meeting.metadataRevision` (else `MetadataChanged`).
     static func merged(_ original: JSON, with meeting: LibraryMeeting, originalNotes: JSON?,
-                       importedTranscript: [String:Any]? = nil) throws -> (namespace: JSON, notes: JSON?)? {
+                       importedTranscript: [String:Any]? = nil, body: String = "") throws -> (namespace: JSON, notes: JSON?)? {
         guard original["schema"] == .number("1"), original["meeting"]?.object != nil,
               let base = original["revision"]?.int, (0..<maxRevision).contains(base) else { return nil }
-        let imported = NSArray(array:LibraryImport.importedNotes(originalNotes))
         let url = meeting.folder.appendingPathComponent("meeting.json")
         /// The decision for meeting.json `raw` and the saved baseline; `save` is the new baseline.
         func decide(_ raw: JSON?, saved: (revision: Int, sha256: String)?) throws -> (namespace: JSON, notes: JSON?, save: [String:Any]?) {
+            guard unchanged(raw,since:meeting) else { throw MetadataChanged() }
             let (copy,changed) = edits(original["meeting"]!,raw:raw,importedTranscript:importedTranscript ?? ["status":"none","reference":NSNull()])
-            let notes = raw?["notes"].flatMap { $0.array?.isEmpty == false ? $0 : nil }
-            let notesChanged = !noteValue(notes).isEqual(to:imported as! [Any])
+            let (notes,notesChanged) = exportNotes(local:localNotes(raw),original:originalNotes)
             if !changed, !notesChanged, saved == nil { return (original,notes,nil) }
-            let digest = try Self.digest(copy,notes:notes)
+            let digest = try Self.digest(copy,notes:notes,body:body)
             if let saved, saved.sha256 == digest { return (try original.setting("meeting",to:copy).setting("revision",to:.number(String(saved.revision))),notes,nil) }
             let last = max(base,saved?.revision ?? base)
             guard last < maxRevision else { return (original,notes,nil) }
@@ -230,17 +247,26 @@ enum CodemyriadNamespace {
               let value = try? JSONSerialization.jsonObject(with:data) as? NSArray else { return [] }
         return value
     }
-    private static func digest(_ copy: JSON, notes: JSON?) throws -> String {
+    private static func digest(_ copy: JSON, notes: JSON?, body: String) throws -> String {
         var data = try copy.encoded()
         data.append(0)
         data.append(try JSONSerialization.data(withJSONObject:noteValue(notes),options:[.sortedKeys]))
+        data.append(0)
+        data.append(Data(body.utf8))
         return SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined()
     }
-    /// meeting.json notes verbatim (nil when unreadable or empty).
-    static func rawNotes(_ meeting: LibraryMeeting) -> JSON? {
-        guard let data = try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json")),
-              let notes = (try? JSONParser.parse(data))?["notes"], let list = notes.array, !list.isEmpty else { return nil }
+    /// meeting.json notes verbatim (nil when absent or empty).
+    static func localNotes(_ raw: JSON?) -> JSON? {
+        guard let notes = raw?["notes"], let list = notes.array, !list.isEmpty else { return nil }
         return notes
+    }
+    /// #116 r3 (D13, Q13): the notes an export writes. While Mac's notes still equal what the
+    /// import kept of the original file's notes (`LibraryImport.importedNotes`), the original
+    /// note objects go back verbatim, unknown members included; otherwise Mac's own.
+    static func exportNotes(local: JSON?, original: JSON?) -> (notes: JSON?, changed: Bool) {
+        let imported = NSArray(array:LibraryImport.importedNotes(original))
+        guard noteValue(local).isEqual(to:imported as! [Any]) else { return (local,true) }
+        return (original?.array?.isEmpty == false ? original : nil,false)
     }
     /// One session.json track as a single-span entry, with its D52.4 gap facts (provisional, S-12 §4.3).
     private static func track(_ raw: JSON) -> JSON? {
