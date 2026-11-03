@@ -630,6 +630,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             CaptureFixture.systemBuffersAllowed = false
             let beforeMicStarts = CaptureFixture.microphoneStarts
             try await collection.record()
+            // record() can return before the start has written its othersSource event (D66
+            // mac-P0-2, E1): wait for that event, then read state once. Not `!starting`: with the
+            // microphone denied and system buffers held back, the start stays `.preparing` until
+            // the first frames arrive, which this stage releases only after its checks.
+            try await wait {
+                collection.captures.values.first?.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source == "none"
+            }
             let pending = try collection.captures.values.first.unwrap()
             let pendingMeeting = try LibraryScanner(root:root).scan().meetings.first { $0.id == pending.snapshot.manifest.id }.unwrap()
             let pendingEditor = RecordingPageModel.editor(for:pendingMeeting)

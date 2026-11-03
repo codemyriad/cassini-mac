@@ -130,3 +130,12 @@ Build Cassini as a document-based app (`DocumentGroup`), read-only for v1, that 
 - [ ] Which minimum macOS version? (v1 targets macOS 15.)
 - [ ] Should a library window list all meetings, or should Cassini stay a pure document app?
 - [ ] What should export produce: plain text, SRT/VTT subtitles, or Markdown with timestamps? (v1 offers all four.)
+
+## Heavy local runs share one host lock (D66, iOS #27)
+
+drmeyers runs the Mac, iOS and other agents' builds side by side. Every heavy local run
+(xcodebuild build, test or UI tests, big `swift test` suites, the Whistle or Parakeet benches)
+goes through `scripts/heavy.sh <command>`. It waits on `~/.cassini-heavy.lock` (`/usr/bin/lockf
+-k`, the same flock the iOS scripts use), writes a holder line naming the run, and sets
+`CASSINI_HEAVY_LOCK_HELD=1` so iOS scripts called inside don't wait for it again. Wait on the
+lock, never on a `pgrep` loop: a loop whose own command line contains the pattern matches itself.
