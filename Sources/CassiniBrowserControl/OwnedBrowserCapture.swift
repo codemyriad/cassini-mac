@@ -48,6 +48,13 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         var returning = false
         var lastPacketAt: Double?
         var current = true
+        /// A new span of this source. D61: every span repeats the declaration's clock facts,
+        /// whichever path starts it (a resumed chunk, Others turned back on, a restore).
+        func start(_ span: String, boundaryMs: Double? = nil) -> RecordingSource {
+            var value = RecordingSource(id:span,label:label,kind:kind,sampleRate:rate,channels:channels,sourceTrackId:key,labelSource:"browser",boundaryMs:boundaryMs)
+            value.clock = clock
+            return value
+        }
         /// D52.2 Q3: the latest span that recorded this wire id; producer drops add to it.
         var recorded: String?
     }
@@ -196,8 +203,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if managedBrowser, browserAlive, others, source.span == nil,
                normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > resumeAt {
                 let span = UUID().uuidString.lowercased()
-                var start = RecordingSource(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser")
-                start.clock = source.clock
+                let start = source.start(span)
                 try commitBound([(span,source.key,true)],starting:[start])
                 source.span = span; source.current = true
                 browserSources[Data(id.utf8)] = source
@@ -364,7 +370,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if newOthers && !self.others && browserAvailable {
                 for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where (self.browserAlive && source.current) || source.returning {
                     let span = UUID().uuidString.lowercased(); spans[id] = span
-                    starts.append(.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser",boundaryMs:time))
+                    starts.append(source.start(span,boundaryMs:time))
                 }
             }
             let keptPending = self.nativeSpans.values.filter { !$0.registered && ($0.side == .me ? newMe : newOthers) }.count
@@ -463,7 +469,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             var spans: [Data:String] = [:], starts: [RecordingSource] = []
             for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.returning && (source.lastPacketAt ?? -1) >= (notBeforeMs ?? 0) {
                 let span = UUID().uuidString.lowercased(); spans[id] = span
-                starts.append(.init(id:span,label:source.label,kind:source.kind,sampleRate:source.rate,channels:source.channels,sourceTrackId:source.key,labelSource:"browser"))
+                starts.append(source.start(span))
             }
             let ending = self.nativeSpans.filter { $0.value.side == .others && $0.value.registered }.map(\.key)
             let last = self.recording.manifest.events?.last(where:{ $0.type == "othersSource" })
