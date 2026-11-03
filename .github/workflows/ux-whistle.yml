@@ -1,4 +1,4 @@
-name: Whistle bundling spike
+name: Whistle bundle
 'on':
   workflow_call:
     inputs:
