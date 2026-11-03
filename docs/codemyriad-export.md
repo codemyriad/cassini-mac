@@ -131,3 +131,14 @@ only with Mac's own words), and its tags Mac doesn't write (DATE, ARTIST,
 DESCRIPTION, ENCODER, unknown `CASSINI_` facts, also from a plain Opus file) are
 carried too. `CASSINI_TRANSCRIPT_IDS` lists the ids sorted. `createdAtUtc` is
 still the export time until the D65 follow-up.
+
+## Speaker labels and read-only Libraries (#122 r3, #116 CI)
+
+- The manifest labels a carried speaker as the namespace says: a name the user gave
+  on Mac, or, for a name the user cleared, the catalog's unnamed label numbered by
+  its place in the list. Other speaker members and the other writer's edits
+  (`speakerMerges`, voice links) stay unchanged.
+- A Library that can't be written at all (a screenshot fixture, a read-only volume
+  or copy) is no app-owned folder fault: its exports carry no namespace of ours
+  instead of being refused. Only a writable Library whose meeting folder can't be
+  written refuses (D65). This is probed only after a save failed.

@@ -209,13 +209,15 @@ public enum MeetingFileExporter {
             // Metadata Mac may not rewrite (unsupported or invalid) can't keep the baseline that
             // pins a revision to one content (words read from transcript.json, a namePrefix or
             // untitled title chosen per export), so it gets no namespace of ours (D65).
-            if foreign == nil, let stored, !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) {
-                // A namePrefix that could not be saved would be chosen again by each export, so
-                // one revision could carry different names (Coordinator, #116: an unwritable
-                // folder fails the export). The same for the untitled fallback (D65, Q6b).
-                if !(stored["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false) || (meeting.titleIsUntitled && CodemyriadNamespace.untitled(stored) == nil) {
-                    throw MeetingExportError.libraryFolderNotWritable
-                }
+            // A namePrefix that could not be saved would be chosen again by each export, so one
+            // revision could carry different names: an app-owned folder that can't be written
+            // refuses (D65), and a read-only Library gets no namespace of ours instead. The same
+            // for the untitled fallback (Q6b).
+            let unsaved = stored.map { !($0["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false) || (meeting.titleIsUntitled && CodemyriadNamespace.untitled($0) == nil) } ?? false
+            if unsaved, foreign == nil, !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata), CodemyriadNamespace.libraryWritable(meeting) {
+                throw MeetingExportError.libraryFolderNotWritable
+            }
+            if foreign == nil, !unsaved, let stored, !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) {
                 namespace = try CodemyriadNamespace.make(meeting,stored:stored,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
                     .map { try CodemyriadNamespace.marking($0,damaged:damaged) }
                 own = namespace != nil
@@ -260,9 +262,15 @@ public enum MeetingFileExporter {
                 guard entry["provenance"]?.string == "user", let id = entry["id"]?.string, let name = entry["name"]?.string else { return nil }
                 return (id,name)
             },uniquingKeysWith:{ first,_ in first })
+            // A name the user cleared on Mac (#122 r3): the speaker reads as unnamed, labelled as
+            // the catalog's unnamed speaker numbered by its place in this list, as the namespace says.
+            let cleared = Set((stored?["speakers"]?.array ?? []).compactMap { entry -> String? in
+                entry["nameCleared"] == .bool(true) && entry["name"]?.string == nil ? entry["id"]?.string : nil
+            })
             for (index,entry) in merged.enumerated() {
                 guard let id = entry["id"]?.string else { continue }
-                let label = named[id] ?? (carriedOnly ? nil : projected.first { $0.id == id }?.displayName)
+                let unnamed = cleared.contains(id) ? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(index + 1)]) : nil
+                let label = named[id] ?? unnamed ?? (carriedOnly ? nil : projected.first { $0.id == id }?.displayName)
                 guard let label, entry["label"]?.string != label else { continue }
                 merged[index] = try entry.setting("label",to:.string(label))
             }
@@ -309,9 +317,15 @@ public enum MeetingFileExporter {
             var content = try root.setting("meeting",to:root["meeting"]!.setting("createdAtUtc",to:nil))
             content = try content.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace.setting("revision",to:nil)))
             var data = try content.encoded(); data.append(0); data.append(Data(transcripts.digest.utf8))
-            let revision = try CodemyriadNamespace.ownRevision(meeting,digest:SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined())
-            namespace = try namespace.setting("revision",to:.number(String(revision)))
-            root = try root.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace))
+            do {
+                let revision = try CodemyriadNamespace.ownRevision(meeting,digest:SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined())
+                namespace = try namespace.setting("revision",to:.number(String(revision)))
+                root = try root.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace))
+            } catch MeetingExportError.libraryFolderNotWritable where !CodemyriadNamespace.libraryWritable(meeting) {
+                // A read-only Library: no baseline, so no namespace of ours.
+                let without = try extensions.setting(CodemyriadNamespace.key,to:nil)
+                root = try root.setting("x",to:without.object?.isEmpty == false ? without : nil)
+            }
         }
         return root
     }

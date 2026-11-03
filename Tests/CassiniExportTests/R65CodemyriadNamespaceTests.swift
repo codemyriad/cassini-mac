@@ -699,6 +699,66 @@ struct R65CodemyriadNamespaceTests {
         #expect(file.manifest?.raw["speakers"]?.array?.first { $0["id"]?.string == "spk_b" }?["label"]?.string == "Ben")
         #expect(payloadTags(file) == payloadTags(input),"the transcript payloads are the original's")
     }
+    /// #122 r3: every speaker edit Mac makes (rename, clear, rename after a clear, clear of another
+    /// speaker), in turn, on a file whose namespace also carries edits Mac never makes (merges, a
+    /// voice link): after each export the manifest label is what the namespace says (the name, or
+    /// the unnamed label), the speakers' other members and the other writer's edits are unchanged,
+    /// and the transcript payloads are the originals.
+    @Test func everySpeakerEditAgreesInManifestAndNamespace() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let namespace = try JSONParser.parse(Data(#"{"schema":1,"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-09-01--00.00-","revision":7,"meeting":{"version":1,"title":null,"titleSource":"meeting-window","speakers":[{"id":"spk_a","name":"Ada","provenance":"source","colourIndex":0,"voiceSource":{"ordinal":1}},{"id":"spk_b","name":"Ben","provenance":"source","colourIndex":1}],"speakerMerges":[{"from":"spk_c","into":"spk_b"}],"transcript":{"status":"done","reference":null}},"automaticTitle":"Conformance vector 001"}"#.utf8))
+        let shaped = try rewritten(vector("016-two-transcripts"),in:root,manifest:{ manifest in
+            let speakers = try manifest["speakers"]!.array!.map { try $0.setting("pronouns",to:.string("they")) }
+            return try manifest.setting("speakers",to:.array(speakers)).setting("x",to:.object([("codemyriad.io",namespace)]))
+        })
+        let input = try CassiniReader.read(contentsOf:shaped)
+        let meeting = try LibraryImport.copy(shaped,into:root.appendingPathComponent("Library"))
+        func unnamed(_ position: Int) -> String { LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(position)]) }
+        let named: (String,String) -> [String:Any] = { id,name in ["id":id,"name":name,"provenance":"user","colourIndex":id == "spk_a" ? 0 : 1] }
+        let clear: (String) -> [String:Any] = { id in ["id":id,"name":NSNull(),"provenance":"unnamed","nameCleared":true,"colourIndex":id == "spk_a" ? 0 : 1] }
+        let edits: [(name: String, speakers: [[String:Any]], labels: [String:String])] = [
+            ("rename",[named("spk_a","Alice")],["spk_a":"Alice","spk_b":"Ben"]),
+            ("clear",[clear("spk_a")],["spk_a":unnamed(1),"spk_b":"Ben"]),
+            ("rename after a clear",[named("spk_a","Alma")],["spk_a":"Alma","spk_b":"Ben"]),
+            ("clear another speaker",[named("spk_a","Alma"),clear("spk_b")],["spk_a":"Alma","spk_b":unnamed(2)]),
+        ]
+        var revision = 7
+        for edit in edits {
+            try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { $0["speakers"] = edit.speakers }
+            let file = try reexportFile(root)
+            let x = try #require(file.manifest?.raw["x"]?["codemyriad.io"],"\(edit.name)")
+            let manifest = try #require(file.manifest?.raw["speakers"]?.array,"\(edit.name)")
+            #expect(x["revision"]?.int ?? 0 > revision,"\(edit.name): a new revision"); revision = x["revision"]?.int ?? revision
+            for entry in x["meeting"]?["speakers"]?.array ?? [] {
+                let id = try #require(entry["id"]?.string)
+                let label = manifest.first { $0["id"]?.string == id }?["label"]?.string
+                #expect(label == edit.labels[id],"\(edit.name): \(id) labelled as the namespace says")
+                #expect(label == (entry["name"]?.string ?? label),"\(edit.name): \(id) name and label agree")
+                #expect(entry["nameCleared"] == (edit.labels[id] == unnamed(id == "spk_a" ? 1 : 2) ? .bool(true) : nil),"\(edit.name): \(id) clear recorded")
+            }
+            #expect(manifest.allSatisfy { $0["pronouns"]?.string == "they" },"\(edit.name): unknown speaker members kept")
+            #expect(x["meeting"]?["speakerMerges"] == namespace["meeting"]?["speakerMerges"],"\(edit.name): merges kept")
+            #expect(x["meeting"]?["speakers"]?.array?.first?["voiceSource"] == .object([("ordinal",.number("1"))]),"\(edit.name): voice link kept")
+            #expect(payloadTags(file) == payloadTags(input),"\(edit.name): payloads unchanged")
+        }
+    }
+    /// #116 CI: a read-only Library (a screenshot fixture, a read-only volume) is not an app-owned
+    /// folder fault: its export goes out without a namespace of ours. Only a writable Library whose
+    /// meeting folder can't be written refuses (D65).
+    @Test func aReadOnlyLibraryExportsWithoutOurNamespace() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let library = root.appendingPathComponent("Library")
+        let meeting = try LibraryImport.copy(fixture,into:library)
+        func lock(_ url: URL, _ mode: Int) throws { try FileManager.default.setAttributes([.posixPermissions:mode],ofItemAtPath:url.path) }
+        defer { try? lock(meeting.folder,0o755); try? lock(library,0o755) }
+        try lock(meeting.folder,0o555); try lock(library,0o555)
+        let file = try reexportFile(root)
+        #expect(file.state == .ok && file.manifest?.raw["x"]?["codemyriad.io"] == nil)
+        // A writable Library with an unwritable meeting folder is a fault: refused.
+        try lock(library,0o755)
+        #expect(throws:MeetingExportError.libraryFolderNotWritable) { _ = try reexportFile(root) }
+    }
     /// #116 r4: our own namespace never describes two contents at one revision: words that
     /// become unreadable (damaged) take a new revision, and so do the same words restored;
     /// an unchanged re-export keeps it.

@@ -185,6 +185,17 @@ enum CodemyriadNamespace {
         return result
     }
     static let maxRevision = 9007199254740991
+    /// #116 CI: whether the meeting's Library can be written at all. A read-only Library (a
+    /// screenshot fixture, a read-only volume or copy) has no app-owned folder to fault: its
+    /// exports carry no namespace of ours (no revision that could be reused) rather than being
+    /// refused. Only a writable Library whose meeting folder can't be written refuses (D65).
+    /// Probed only after a save failed: a hidden file created and removed at once.
+    static func libraryWritable(_ meeting: LibraryMeeting) -> Bool {
+        let probe = meeting.folder.deletingLastPathComponent().appendingPathComponent(".cassini-write-probe-" + UUID().uuidString)
+        let fd = open(probe.path,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,0o600)
+        guard fd >= 0 else { return false }
+        close(fd); unlink(probe.path); return true
+    }
     /// D65: another writer's namespace this app can carry: schema 1, a meeting object and a
     /// revision in 0...2^53-1 (returned). Anything else is refused as `newerFormat`, in or out
     /// of the Library, before anything is decided from it.

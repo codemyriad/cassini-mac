@@ -316,7 +316,10 @@ struct MeetingExportTests {
             #expect(file.defaultTranscript?.load.transcript?.items.count == (status == "done" ? 1 : 0))
             #expect(file.manifest?.transcripts.count == 1 && file.manifest?.raw["readableTranscripts"] == nil)
             #expect(file.manifest?.raw["provenance"]?["speechToText"] == nil)
-            #expect(file.manifest?.raw["speakers"]?.array?.first?.keys == ["id","label"])
+            // D65: the speakers listed are those of the exported words, so none while the words
+            // aren't exported (running, failed).
+            #expect(file.manifest?.raw["speakers"]?.array?.first?.keys == (status == "done" ? ["id","label"] : nil))
+            #expect(file.manifest?.raw["speakers"]?.array?.count == (status == "done" ? 1 : 0))
             let markdown = MeetingMarkdown.render(meeting,timeZone:TimeZone(secondsFromGMT:0)!)
             #expect(markdown.contains("Only export when complete") == (status == "done"))
         }
