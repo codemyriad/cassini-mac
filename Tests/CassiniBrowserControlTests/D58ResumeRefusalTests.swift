@@ -10,7 +10,8 @@ import CassiniRecording
 /// own time in the recording it asked to join, once, from whichever answer comes first: its
 /// own ok:false result (the code is the message) or the native refusal carrying its requestId.
 /// A closed connection, a timeout, a native refusal without an id or with an unknown one, and
-/// any late answer record nothing. Each step waits for the previous one's reply (E1).
+/// any late answer record nothing. Each step waits for the previous one's reply (E1), and every
+/// check waits for the recording's queue to run what was enqueued before it.
 final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
     private let origin = 1793500000000
     private let nativeMessage = "The recording cannot be resumed."
@@ -80,6 +81,7 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
                     default: XCTFail("Unknown op in \(name)")
                     }
                 }
+                await capture.settled()   // The refusal is written on the recording's queue.
                 let refusals = capture.snapshot.manifest.refusals ?? []
                 let expected = vector["expect"]?["entries"]?.array ?? []
                 XCTAssertEqual(refusals.count,expected.count,name)
@@ -98,6 +100,27 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
         }
     }
 
+    /// #120 review: answering a refused resume never waits for its checkpoint. With the
+    /// recording's queue stalled (a slow Library disk), resumeAnswered returns at once on the
+    /// main actor, and the refusal is written, once, when the disk catches up.
+    func testARefusedResumeNeverBlocksTheMainActorOnAStalledDisk() async throws {
+        try await run { fixture in
+            let (capture,_) = try standIn(fixture)
+            let id = UUID().uuidString.lowercased()
+            fixture.broker.expectResume(capture,callGeneration:"call-A",ask:(id,1500))
+            let disk = DispatchSemaphore(value:0), stalled = expectation(description:"disk stalled")
+            capture.enqueue { stalled.fulfill(); disk.wait() }
+            await fulfillment(of:[stalled],timeout:5)
+            let answered = expectation(description:"main actor answered"), broker = fixture.broker, outcome = reply(id,code:"resumeRefused")
+            Task { @MainActor in broker.resumeAnswered(outcome); answered.fulfill() }
+            await fulfillment(of:[answered],timeout:5)
+            XCTAssertNil(capture.snapshot.manifest.refusals,"Nothing is written while the disk is stalled")
+            disk.signal()
+            await capture.settled()
+            XCTAssertEqual(capture.snapshot.manifest.refusals?.map(\.detail),["resumeRefused"])
+            XCTAssertEqual(capture.snapshot.manifest.refusals?.first?.atMs,1500)
+        }
+    }
     func testATimeoutOrLocalFailureRecordsNothingAndTheAskStaysAnswerable() async throws {
         try await run { fixture in
             let (capture,captureID) = try standIn(fixture)
@@ -105,12 +128,15 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             fixture.broker.expectResume(capture,callGeneration:"call-A",ask:(id,2500))
             fixture.broker.resumeAnswered(lost(id,"timeout"))
             fixture.broker.resumeAnswered(lost(id,"notReady"))
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals)
             XCTAssertEqual(fixture.broker.pendingResumeAsks(capture),[id])
             // Its own native refusal still records it, once.
             XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-gone",requestID:id))["code"]?.string,"state")
             fixture.broker.resumeAnswered(reply(id,code:"resumeRefused"))
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertEqual(capture.snapshot.manifest.refusals?.map(\.message),[nativeMessage])
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertEqual(capture.snapshot.manifest.refusals?.first?.atMs,2500)
         }
     }
@@ -120,6 +146,7 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             let id = UUID().uuidString.lowercased()
             fixture.broker.expectResume(capture,callGeneration:"call-A",ask:(id,1200))
             fixture.broker.resumeAnswered(reply(id,code:nil,error:"That recording could not be resumed."))
+            await capture.settled()   // The refusal is written on the recording's queue.
             let entry = try XCTUnwrap(capture.snapshot.manifest.refusals?.first)
             XCTAssertEqual(entry.detail,"resumeRefused"); XCTAssertNil(entry.message)
         }
@@ -132,10 +159,12 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             for bad: Any in ["",String(repeating:"a",count:129),-1,9007199254740992,1.5,NSNull(),true,["x"]] {
                 XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-A",requestID:bad))["code"]?.string,"source","\(bad)")
             }
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals); XCTAssertEqual(fixture.broker.pendingResumeAsks(capture),[id])
             // In-domain ids are accepted: an integer (never a Mac ask) and the ask's own string.
             XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-gone",requestID:42))["code"]?.string,"state")
             XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-A",requestID:id))["resumed"]?.bool,true)
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals)
         }
     }
@@ -148,6 +177,7 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-A",requestID:second))["resumed"]?.bool,true)
             XCTAssertEqual(fixture.broker.pendingResumeAsks(capture),[])
             fixture.broker.resumeAnswered(reply(first,code:"resumeRefused"))
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals,"An attached recording records no late refusal")
         }
         try await run { fixture in
@@ -157,6 +187,7 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             fixture.broker.expectResume(capture,callGeneration:nil)   // Stop fences and forgets.
             XCTAssertEqual(fixture.broker.pendingResumeAsks(capture),[])
             fixture.broker.resumeAnswered(reply(id,code:"gone"))
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals)
         }
     }
@@ -167,6 +198,7 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             for (index,id) in ids.enumerated() { fixture.broker.expectResume(capture,callGeneration:"call-A",ask:(id,Double(index))) }
             XCTAssertEqual(fixture.broker.pendingResumeAsks(capture),Array(ids.dropFirst()))
             fixture.broker.resumeAnswered(reply(ids[0],code:"gone"))
+            await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals,"A forgotten ask records nothing")
         }
     }

@@ -28,6 +28,10 @@ private final class SourceChangeToken: @unchecked Sendable {
         let sink: RecordingSink
         var paused = false
         var stage: StagedNativeWriter? = nil
+        /// D58: this generation's first-buffer admission, and the start time it is refused at
+        /// if it never opens (a start side; nil for any other attempt).
+        var firstBuffer: FirstBufferSignal? = nil
+        var refusingAt: Double? = nil
     }
     private let capture: OwnedBrowserCapture
     private let origin: UInt64
@@ -67,12 +71,15 @@ private final class SourceChangeToken: @unchecked Sendable {
             try capture.browserLost(atMs:atMs,transportAlive:transportAlive,allowed:{ token.isValid })
         }.value
     }
-    public private(set) var failedSides: Set<CaptureSide> = []
+    public private(set) var failedSides: Set<CaptureSide> = [] { didSet { observer?() } }
+    /// Called on every change of the side sets below, and after each refusal is delivered
+    /// (tests wait on it instead of polling, E1).
+    var observer: (@MainActor () -> Void)?
     public var hasRunningInputs: Bool { inputs.keys.contains { !failedSides.contains($0) } }
     /// D58: sides that admitted a first buffer at least once in this recording.
-    public private(set) var openedSides: Set<CaptureSide> = []
+    public private(set) var openedSides: Set<CaptureSide> = [] { didSet { observer?() } }
     /// D58: the refusal code of each side refused at start or at its last turn-on attempt.
-    public private(set) var refusedSides: [CaptureSide:String] = [:]
+    public private(set) var refusedSides: [CaptureSide:String] = [:] { didSet { observer?() } }
     /// The 3 s first-buffer bound (D58); tests replace it with an event they control.
     public static let openBound: @Sendable () async -> Void = { try? await Task.sleep(for:.seconds(3)) }
     private let bound: @Sendable () async -> Void
@@ -96,6 +103,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         let capture = capture
         try? await Task.detached { try capture.refuse(entry) }.value
         refused(side,entry)
+        observer?()
     }
     /// A failure to open, not a closed recording, a cancelled source change or a stale request.
     private static func isOpenFailure(_ error: Error) -> Bool {
@@ -410,7 +418,7 @@ private final class SourceChangeToken: @unchecked Sendable {
             Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
         }
         let sink = RecordingSink(session:FirstBufferWriter(capture.nativeWriter(side:side),signal:signal),originHostTime:origin,onFailure:report)
-        do { try driver.start(sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink) }
+        do { try driver.start(sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }
         catch {
             driver.stop()
             // Even a partially-started driver can have admitted callbacks.
@@ -442,7 +450,16 @@ private final class SourceChangeToken: @unchecked Sendable {
     }
     private func failed(_ side: CaptureSide, generation: UUID, message: String) async {
         try? await enqueue {
-            guard !self.closed, self.inputs[side]?.generation == generation else { return }
+            guard !self.closed, let input = self.inputs[side], input.generation == generation else { return }
+            // D58 (#120 review): a start side that fails before its first buffer never opened.
+            // It is refused and closed without a problem, and the recording is not failed.
+            if let atMs = input.refusingAt, let signal = input.firstBuffer, !signal.hasFired, !self.openedSides.contains(side) {
+                try? await self.end(side)
+                self.failedSides.insert(side)
+                // The driver's text can be localized copy: the refusal carries none (D58).
+                await self.refuse(side,.init(code:CaptureRefusal.deviceUnavailable),atMs:atMs)
+                return
+            }
             try? await self.end(side,problem:message)
             self.failedSides.insert(side)
             self.failure(message)

@@ -84,10 +84,15 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         value["detail"] = json["detail"]?.string; value["message"] = json["message"]?.string.map { String($0.unicodeScalars.count) + ":" + $0 }
         return value
     }
-    @MainActor private func waitUntil(_ condition: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(3)
-        while !condition(), Date() < deadline { try await Task.sleep(for:.milliseconds(5)) }
-        guard condition() else { throw BrowserIPCError.timeout }
+    /// Waits for `condition` on the lifecycle's own change events (E1): first-buffer admission,
+    /// failure completion and refusal delivery. The timeout is only a failure bound.
+    @MainActor private func waitUntil(_ inputs: CaptureInputLifecycle, _ condition: @escaping @MainActor () -> Bool) async {
+        if condition() { return }
+        let met = expectation(description:"lifecycle condition")
+        var done = false
+        inputs.observer = { if !done, condition() { done = true; met.fulfill() } }
+        await fulfillment(of:[met],timeout:5)
+        inputs.observer = nil
     }
 
     func testWireCasesBecomeBrowserRefusals() throws {
@@ -201,7 +206,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
             try await inputs.stop(); try await owner.finish()
             return noFolder(refusals)
         }
-        for side in script.drivers.keys where inputs.refusedSides[side] == nil { try await waitUntil { inputs.openedSides.contains(side) } }
+        for side in script.drivers.keys where inputs.refusedSides[side] == nil { await waitUntil(inputs) { inputs.openedSides.contains(side) } }
         var stopAt = 0.0
         for step in steps {
             switch step["op"]?.string {
@@ -211,7 +216,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
             case "fail"?:
                 let side: CaptureSide = step["side"]?.string == "me" ? .me : .others
                 script.drivers[side]?.failure?("input failed")
-                try await waitUntil { inputs.failedSides.contains(side) }
+                await waitUntil(inputs) { inputs.failedSides.contains(side) }
             case "stop"?: stopAt = step["atMs"]!.double!
             default: break
             }
@@ -233,6 +238,33 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
                 "refusals":manifest.refusals.map(refusalList) ?? .null,"banner":.null]
     }
 
+    /// #120 review: a start side whose driver starts, then fails before any PCM (an immediate
+    /// audio configuration change) never opened: it is refused at 0 without a message and closed
+    /// without a problem; the recording is not failed and the other side keeps recording.
+    @MainActor func testAStartSideFailingBeforeItsFirstBufferIsRefusedNotFailed() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniD58-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Failing",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let gate = Gate(), script = Script(origin:origin)
+        script.plans[.others] = [.silent]
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ script.make(.me) },system:{ script.make(.others) },
+            failure:{ message in XCTFail("a refusal is not a failure: \(message)") },
+            refused:{ _,refusal in script.refused.append(refusal) },openBound:{ await gate.wait() })
+        try await inputs.start()
+        await waitUntil(inputs) { inputs.openedSides.contains(.me) }
+        script.drivers[.others]?.failure?("The audio configuration changed.")
+        await waitUntil(inputs) { !script.refused.isEmpty }
+        XCTAssertEqual(script.refused.map(\.side),["others"]); XCTAssertEqual(script.refused.first?.code,"deviceUnavailable")
+        XCTAssertEqual(script.refused.first?.atMs,0); XCTAssertNil(script.refused.first?.message,"driver text can be localized copy")
+        XCTAssertTrue(inputs.failedSides.contains(.others)); XCTAssertTrue(inputs.hasRunningInputs)
+        gate.release()   // The bound passing later records nothing more.
+        try await inputs.stop(); try await owner.finish(reason:.user,atMs:5000)
+        let manifest = owner.snapshot.manifest
+        XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
+        XCTAssertEqual(manifest.refusals?.map(\.code),["deviceUnavailable"])
+        XCTAssertEqual(manifest.tracks.filter { $0.frames > 0 }.map(\.kind),["microphone"])
+    }
     /// D58: a side that admits no buffer within the bound never opened: it is refused at 0 and
     /// closed without a problem, and the other side keeps recording.
     @MainActor func testASilentStartSideIsRefusedWhenTheBoundPasses() async throws {
@@ -246,10 +278,10 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
             system:{ ScriptedInput("system",origin:origin,plan:.silent) },failure:{ _ in XCTFail("a refusal is not a failure") },
             refused:{ _,refusal in script.refused.append(refusal) },openBound:{ await gate.wait() })
         try await inputs.start()
-        try await waitUntil { inputs.openedSides.contains(.me) }
+        await waitUntil(inputs) { inputs.openedSides.contains(.me) }
         XCTAssertNil(inputs.refusedSides[.others])
         gate.release()
-        try await waitUntil { !script.refused.isEmpty }
+        await waitUntil(inputs) { !script.refused.isEmpty }
         XCTAssertEqual(script.refused.map(\.side),["others"]); XCTAssertEqual(script.refused.first?.code,"deviceUnavailable"); XCTAssertEqual(script.refused.first?.atMs,0)
         XCTAssertTrue(inputs.failedSides.contains(.others)); XCTAssertTrue(inputs.hasRunningInputs)
         try await inputs.stop(); try await owner.finish(reason:.user,atMs:5000)

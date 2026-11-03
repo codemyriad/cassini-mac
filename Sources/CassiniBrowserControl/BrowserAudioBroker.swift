@@ -151,7 +151,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
     }
     /// Records `startRejected/resumeRefused` at the ask's own time, in the recording it asked to
-    /// join, once. The refusal is written after the broker lock is released.
+    /// join, once. The refusal is written after the broker lock is released, on the recording's
+    /// own queue: a slow Library disk never blocks the caller (the main actor, #120 review).
     fileprivate func refuseAsk(_ id: Data, message: String?) {
         let target: (OwnedBrowserCapture,Double)? = lock.withLock {
             for (key,var standIn) in standIns {
@@ -163,7 +164,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
         guard let (capture,atMs) = target,
               let entry = CaptureRefusal(atMs:atMs,side:"browser",code:CaptureRefusal.startRejected,detail:"resumeRefused",message:message) else { return }
-        try? capture.refuse(entry)
+        capture.refuseLater(entry)
     }
     fileprivate func resume(captureID: String, timelineOriginMs: Int, callGeneration: String, peer: UUID) throws -> OwnedBrowserCapture {
         let identity = Data(captureID.utf8)
