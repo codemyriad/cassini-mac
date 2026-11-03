@@ -462,7 +462,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let ending = self.nativeSpans.filter { $0.value.side == .others && $0.value.registered }.map(\.key)
             let last = self.recording.manifest.events?.last(where:{ $0.type == "othersSource" })
             // D49: a call taking over the initial stand-in is callConnected; returning from a fallback is restored.
-            let reason = last?.source == "system" ? (last?.reason == "missing" ? "callConnected" : last?.reason == "lost" ? "restored" : "user") : "user"
+            // A return after a browser loss whose fallback never committed (none/lost: not asked
+            // yet, or still starting) is restored too (D52, protocol #44). It invents no system span.
+            let reason = last?.source == "system" ? (last?.reason == "missing" ? "callConnected" : last?.reason == "lost" ? "restored" : "user")
+                : last?.source == "none" && last?.reason == "lost" ? "restored" : "user"
             let bound = spans.compactMap { id,span in self.browserSources[id].map { (span,$0.key,true) } }
             try self.commitBound(bound,starting:starts,ending:ending,events:[.init(atMs:time,type:"othersSource",source:"browser",reason:reason)])
             for id in Array(self.browserSources.keys) {

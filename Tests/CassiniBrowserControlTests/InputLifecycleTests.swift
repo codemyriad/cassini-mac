@@ -88,7 +88,14 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.update()
         XCTAssertEqual(system.starts,0,"A late grant belongs to the cancelled request")
         XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.kind == "system" })
+        // The fallback never committed: none/lost, then browser/restored (protocol #44), which
+        // the saved session reads back as a return, not as a user choice or a dropped event.
+        let sources = { (events: [CaptureEvent]?) in (events ?? []).filter { $0.type == "othersSource" }.map { "\($0.source ?? "")/\($0.reason ?? "")" } }
+        XCTAssertEqual(sources(owner.snapshot.manifest.events).suffix(2),["none/lost","browser/restored"])
         try await inputs.stop(); try await owner.finish()
+        let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+        XCTAssertEqual(sources(saved.events).suffix(2),["none/lost","browser/restored"])
+        XCTAssertEqual(CaptureSourceState(events:saved.events ?? [],atMs:.infinity).reason,"restored")
     }
     @MainActor func testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
@@ -259,7 +266,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
         let manifest = try RecordingLoader.load(directory:owner.snapshot.directory)
         XCTAssertFalse(manifest.tracks.contains { $0.kind == "system" })
-        XCTAssertFalse(manifest.events?.contains { $0.reason == "restored" } ?? true)
+        // The return is a restoration of the lost browser source (none/lost -> browser/restored,
+        // protocol #44), never a system one: no system span exists.
+        XCTAssertEqual(manifest.events?.filter { $0.type == "othersSource" }.suffix(2).map { "\($0.source ?? "")/\($0.reason ?? "")" },
+                       ["none/lost","browser/restored"])
         XCTAssertEqual(manifest.tracks.last { $0.sourceTrackId == "quick" && $0.frames > 0 }?.frames,800)
         XCTAssertEqual(CaptureSourceState(events:manifest.events ?? [],atMs:2000).source,"browser")
     }
