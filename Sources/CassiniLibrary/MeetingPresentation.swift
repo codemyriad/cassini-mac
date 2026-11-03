@@ -67,6 +67,13 @@ public enum MeetingPresentation {
         return out
     }
     public static func turns(_ items: [LibraryTranscriptItem]) -> [Turn] {
+        (try? turns(items,cancellable:false)) ?? []
+    }
+    /// The same, for a caller off the main actor: with `cancellable`, a cancelled task stops
+    /// at the next step with CancellationError (#118 review: long transcripts prepare off the
+    /// main actor, and a superseded preparation never finishes).
+    public static func turns(_ items: [LibraryTranscriptItem], cancellable: Bool) throws -> [Turn] {
+        let check: () throws -> Void = cancellable ? { try Task.checkCancellation() } : {}
         var fragments: [[LibraryTranscriptItem]] = []
         for item in items where !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if fragments.last?.first?.speaker == item.speaker { fragments[fragments.count - 1].append(item) } else { fragments.append([item]) }
@@ -83,6 +90,7 @@ public enum MeetingPresentation {
         let pools = fragments.map(spans)
         var result: [Turn] = [], open: [String:(turn: Int,fragment: Int)] = [:]
         for (position,fragment) in fragments.enumerated() {
+            try check()
             let speaker = fragment[0].speaker, end = fragment.map(\.endMs).max() ?? 0
             var joined = false
             if let previous = open[speaker], let first = pools[position].first, !pools[previous.fragment].isEmpty,
@@ -103,30 +111,65 @@ public enum MeetingPresentation {
                 open[speaker] = (result.count - 1,position)
             } else if !joined { open[speaker] = nil }
         }
-        attachAsides(&result)
-        markOverlap(&result)
+        try attachAsides(&result,check:check)
+        try markOverlap(&result,check:check)
         return result
+    }
+    /// Turn indices by start (ties in turn order): both passes sweep time in this order.
+    private static func byStart(_ turns: [Turn]) -> [Int] {
+        turns.indices.sorted { turns[$0].startMs == turns[$1].startMs ? $0 < $1 : turns[$0].startMs < turns[$1].startMs }
     }
     /// GNOME `_attach_asides`: a turn of at most 2 s of speech by another speaker, starting
     /// within 500 ms after one fragment of a longer host turn and ending within 500 ms before
     /// the host's next fragment, is shown inside the host. Never an aside inside an aside.
-    static func attachAsides(_ turns: inout [Turn]) {
-        var candidates: [(turn: Int, host: Int, after: Int)] = []
+    ///
+    /// #118 review: a sweep in start order. Only a turn with a seam (two or more fragments) can
+    /// host, and only while it is still open (it started before the aside and has not ended
+    /// before it); its seams are found by binary search over its fragment starts.
+    static func attachAsides(_ turns: inout [Turn], check: () throws -> Void = {}) rethrows {
+        // Each eligible host's non-empty fragments, in order, with their first word's start.
+        var seams: [Int:[(fragment: Int, start: Int64)]] = [:]
         for turn in turns {
+            let starts: [(fragment: Int, start: Int64)] = turn.pools.enumerated().compactMap { entry in entry.element.first.map { (entry.offset,$0.start) } }
+            if turn.pools.count > 1, !starts.isEmpty { seams[turn.id] = starts }
+        }
+        /// The number of fragment starts below `value` (or at or below it, when `inclusive`).
+        func count(_ starts: [(fragment: Int, start: Int64)], below value: Int64, inclusive: Bool = false) -> Int {
+            var low = 0, high = starts.count
+            while low < high {
+                let mid = (low + high) / 2
+                if inclusive ? starts[mid].start <= value : starts[mid].start < value { low = mid + 1 } else { high = mid }
+            }
+            return low
+        }
+        var candidates: [(turn: Int, host: Int, after: Int)] = []
+        var open: [Int] = [], pending = byStart(turns).filter { seams[turns[$0].id] != nil }[...]
+        for index in byStart(turns) {
+            try check()
+            let turn = turns[index]
+            // Hosts that started before this turn join; hosts over before it began leave for good.
+            while let next = pending.first, turns[next].startMs < turn.startMs { open.append(next); pending = pending.dropFirst() }
+            open.removeAll { turns[$0].endMs < turn.startMs }
             let spans = union(turn.pools)
             guard !spans.isEmpty, spans.reduce(Int64(0),{ $0 + $1.end - $1.start }) <= asideMaxMs else { continue }
             var best: (score: (Int64,Int64), host: Int, after: Int)?
-            for host in turns where host.speaker != turn.speaker && turn.endMs <= host.endMs {
+            for hostIndex in open.sorted() {
+                let host = turns[hostIndex]
+                guard host.speaker != turn.speaker, turn.endMs <= host.endMs, let starts = seams[host.id] else { continue }
                 let pools = host.pools
-                guard let before = pools.indices.last(where:{ !pools[$0].isEmpty && pools[$0][0].start < turn.startMs }),
-                      before + 1 < pools.count, let left = pools[before].last, let right = pools[before + 1].first else { continue }
-                if pools.filter({ !$0.isEmpty && turn.startMs < $0[0].start && $0[0].start <= turn.endMs }).count > 1 { continue }
+                let earlier = count(starts,below:turn.startMs)
+                guard earlier > 0 else { continue }
+                let before = starts[earlier - 1].fragment
+                guard before + 1 < pools.count, let left = pools[before].last, let right = pools[before + 1].first else { continue }
+                // More than one fragment starting inside the turn: not a single seam.
+                if count(starts,below:turn.endMs,inclusive:true) - count(starts,below:turn.startMs,inclusive:true) > 1 { continue }
                 if turn.startMs - left.end > sideGapMs || right.start - turn.endMs > sideGapMs { continue }
                 let score = (left.end,host.endMs - host.startMs)
                 if best == nil || score > best!.score { best = (score,host.id,host.fragments[before].upperBound - 1) }
             }
             if let best { candidates.append((turn.id,best.host,best.after)) }
         }
+        candidates.sort { $0.turn < $1.turn }
         let asides = Set(candidates.map(\.turn))
         for candidate in candidates where !asides.contains(candidate.host) {
             turns[candidate.turn].host = candidate.host
@@ -134,22 +177,28 @@ public enum MeetingPresentation {
         }
     }
     /// GNOME `_mark_overlap`: actual word overlap of at least 150 ms, not paragraph containment.
-    static func markOverlap(_ turns: inout [Turn]) {
+    /// #118 review: a sweep in start order, comparing a turn only with turns still open.
+    static func markOverlap(_ turns: inout [Turn], check: () throws -> Void = {}) rethrows {
         let pools = turns.map { union($0.pools) }
-        for i in turns.indices {
-            for j in turns.indices where j > i {
-                let left = turns[i], right = turns[j]
+        var open: [Int] = []
+        for j in byStart(turns) {
+            try check()
+            open.removeAll { turns[$0].endMs <= turns[j].startMs }
+            for k in open.sorted() {
+                let (i,l) = k < j ? (k,j) : (j,k)
+                let left = turns[i], right = turns[l]
                 guard left.speaker != right.speaker, max(left.startMs,right.startMs) < min(left.endMs,right.endMs) else { continue }
                 var a = 0, b = 0, overlap: Int64 = 0
-                while a < pools[i].count && b < pools[j].count {
-                    let x = pools[i][a], y = pools[j][b]
+                while a < pools[i].count && b < pools[l].count {
+                    let x = pools[i][a], y = pools[l][b]
                     overlap += max(0,min(x.end,y.end) - max(x.start,y.start))
                     if x.end < y.end { a += 1 } else { b += 1 }
                 }
                 guard overlap >= overlapMinMs else { continue }
                 if !turns[i].over.contains(right.speaker) { turns[i].over.append(right.speaker) }
-                if !turns[j].over.contains(left.speaker) { turns[j].over.append(left.speaker) }
+                if !turns[l].over.contains(left.speaker) { turns[l].over.append(left.speaker) }
             }
+            open.append(j)
         }
     }
     /// The turns shown as paragraphs: every turn not shown inside another.

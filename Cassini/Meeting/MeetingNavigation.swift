@@ -71,12 +71,15 @@ import Observation
     var meeting: LibraryMeeting {
         didSet {
             if meeting.transcriptItems != oldValue.transcriptItems || meeting.speakers.map(\.id) != oldValue.speakers.map(\.id) {
-                turns = MeetingPresentation.turns(meeting.transcriptItems)
+                prepareTurns()
                 shares = MeetingPresentation.shares(meeting)
             }
         }
     }
     private(set) var turns: [MeetingPresentation.Turn] = []
+    /// #118 review: turns are prepared off the main actor; a newer transcript, or closing the
+    /// page, cancels a preparation still running, so its result never lands.
+    @ObservationIgnored private var preparing: Task<Void,Never>?
     private(set) var shares: [String: Int] = [:]
     let fileURL: URL?
     let audio = SessionPlayback()
@@ -87,8 +90,21 @@ import Observation
     init(meeting: LibraryMeeting, fileURL: URL? = nil, lease: AnyObject? = nil, frozen: Bool = false) {
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
         fileAccessLease = lease
-        turns = MeetingPresentation.turns(meeting.transcriptItems); shares = MeetingPresentation.shares(meeting)
+        shares = MeetingPresentation.shares(meeting)
         audio.onFailure = { NSApp.presentError($0) }
+        prepareTurns()
+    }
+    private func prepareTurns() {
+        preparing?.cancel()
+        let items = meeting.transcriptItems
+        // Screenshot and self-test fixtures render a fixed frame: prepared in place.
+        if frozen { turns = MeetingPresentation.turns(items); return }
+        let work = Task.detached(priority:.userInitiated) { try MeetingPresentation.turns(items,cancellable:true) }
+        preparing = Task { [weak self] in
+            let prepared = await withTaskCancellationHandler { try? await work.value } onCancel: { work.cancel() }
+            guard !Task.isCancelled, let prepared, let self, self.meeting.transcriptItems == items else { return }
+            self.turns = prepared
+        }
     }
     // Received audio uses the same asynchronous composition/transport as a
     // recorded meeting. Opening a page performs no synchronous demux or engine
@@ -125,5 +141,5 @@ import Observation
         audio.rate = rates[((rates.firstIndex(of: audio.rate) ?? 0) + 1) % rates.count]
     }
     func reconcile(offline: Bool) { audio.reconcile(playbackMeeting,offline:offline) }
-    func close() { audio.stop() }
+    func close() { preparing?.cancel(); preparing = nil; audio.stop() }
 }
