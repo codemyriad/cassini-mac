@@ -36,6 +36,16 @@ class ResumeTests(unittest.TestCase):
         schema('request').validate(dict(type='start',version=1))
         schema('response').validate(dict(type='started',path='/fresh'))
 
+    def test_spec_example_keeps_navigation_and_the_ask_waits_for_the_tab_release(self):
+        # D57: the documented resume Start keeps the session across a reload,
+        # and the app asks only once the extension released that tab.
+        text = (ROOT/'SPEC-CONTROL.md').read_text()
+        example = next(json.loads(line) for line in text.splitlines() if '"requestId":"join-stand-in"' in line)
+        schema('control-host').validate(example)
+        self.assertIs(example['keepOnNavigation'], True)
+        self.assertIn('resumeCapture', example)
+        self.assertIn("The app asks to resume only after the extension's status no longer reports a session for that tab.", text)
+
     def test_literal_resumed_seam_retains_mic_without_double_recording_the_others(self):
         spec = importlib.util.spec_from_file_location('resume_owner', ROOT/'conformance/multistream/ownership.py')
         owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
@@ -46,6 +56,29 @@ class ResumeTests(unittest.TestCase):
             self.assertEqual([identifier for identifier,windows in actual.items() if identifier != 'microphone'
                               and any(start <= row['atMs'] < end for start,end in windows)],row['others'])
 
+    def test_lost_fallback_is_an_eligible_target_whose_seam_is_restored(self):
+        # D52.4: a system/lost fallback resumes with browser/restored; only the
+        # initial system/missing stand-in resumes with browser/callConnected.
+        spec = importlib.util.spec_from_file_location('resume_owner', ROOT/'conformance/multistream/ownership.py')
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        eligible = {(t['source'],t['reason']):t['seamReason'] for t in VECTORS['targets']['eligible']}
+        self.assertEqual(eligible, {('system','missing'):'callConnected',('system','lost'):'restored'})
+        self.assertFalse({(t['source'],t['reason']) for t in VECTORS['targets']['ineligible']} & set(eligible))
+        for name in ('seam','lostSeam'):
+            with self.subTest(seam=name):
+                seam = copy.deepcopy(VECTORS[name])
+                sources = [e for e in seam['events'] if e['type'] == 'othersSource']
+                before, after = sources[-2], sources[-1]
+                self.assertEqual((after['atMs'],after['source']),(seam['atMs'],'browser'))
+                self.assertEqual(after['reason'],eligible[(before['source'],before['reason'])])
+                actual = {track['id']:owner.windows(seam['events'],track) for track in seam['tracks']}
+                self.assertEqual(actual,seam['expectedWindows'])
+                for row in seam['ownershipAt']:
+                    self.assertEqual([identifier for identifier,windows in actual.items() if identifier != 'microphone'
+                                      and any(start <= row['atMs'] < end for start,end in windows)],row['others'])
+        session = schema('session')
+        self.assertTrue(all(session.is_valid(dict(json.loads((ROOT/'conformance/examples/session.json').read_text()),events=VECTORS[name]['events']))
+                            for name in ('seam','lostSeam')))
 
     def test_native_host_without_the_active_target_refuses_before_creating_a_folder(self):
         target = VECTORS['initial']

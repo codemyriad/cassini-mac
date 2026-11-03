@@ -1,26 +1,26 @@
-tree 7eb3951a6dfba043f749e3e22dfe4a0acde09680
-parent c6f5fc72bfd9e31fc9db32c9f06d802f45baf168
-parent 534ec9bc0ebd217639f82aa64a3672a9dcac7c1b
-author Silvio Tomatis <silviot@gmail.com> 1793552145 +0100
-committer GitHub <noreply@github.com> 1793552145 +0100
+tree 9d56ccf8fd7b7f83c2b45adbae0bd623838b4b7e
+parent 71d9bc465781a943c32bd41159fb2dc0b49ffe19
+parent dc9238213f33088a95d5a548b2be184d8808b7b0
+author Silvio Tomatis <silviot@gmail.com> 1793613898 +0100
+committer GitHub <noreply@github.com> 1793613898 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq528RCRC1aQ7uu5UhlAAASYgQAK1jGw34zFyLfMfru6rA6AO9
- KQPlWL2hpYgW2kHo0eiqkl4KC8TzGJa1pU6LFG3v2vTEgtgVe77gfzSQFYn0b2b2
- ShuXIzkFFAqtdfEheTzt5TfH1ZDnc7Rnq9WBkdLKRMbuyNM6jLtMCq5XmpOWxmTk
- LDb7W1R5HtcTe2uMIsqkC2sVU8MGKyGod5vxWm1OQYr9ueztrSm922uW4dVZb7OH
- VSYjP4gNy407cEvM36y+KbNtx9ilgA8CpsGLvwmB4ebFLPLVkUNtauOe9BQMMcGb
- dVt25luhagG0ANZgu3q7M5oJDYmteR9QNDXsEISOwJ9ctJcphfsXd2hy91trSPJf
- VlQrZRwKEKAnK2I84BrhRZBwUrw7BCpFZy6kTBkeZk/BKm8FCWc54njfv8ZmPDMC
- a1KIxXqbXaVbIfogGfefE1ofmnPC/lft6Kpfb53PP9fiqdVc7al2xpEOLcrA+gbg
- iphMhnVsCaHAR9+3wzq2A5ED++iAWYXRFOX/QFsVJYsUImtWt/gGzp3O7ii7qcb+
- LduBjkTnIeHwJHlHMS+BtzcQzmqMAiTFAdWUdefBrY52MaCgFFe8hzOpG4imQq3p
- nCdP9HGb+Oqolbz6gyqDLLWoWULOb5D7wVD+V8QuxFhN2vZujnqW8KILD5CxvzvP
- CtzI6TX5cbilo7pkOuBC
- =VCxT
+ wsFcBAABCAAQBQJq6GBKCRC1aQ7uu5UhlAAAWmIQACIRFZKEZF2B4sJFLB8KBnOW
+ PfUpyXvuAqxqIPV9QDKOHSYCuLjPidxsYhX7UcDXu2w70HN9ZRa/qy2b3927iwUp
+ JOtQ6d0VFlCeFWrquAfJ2b1JyUCRED0KlEvggsgnNiZUMZdjax5ldy3/EKc0ouxa
+ Uqv3x+y2dNGcmdrv+nGIkbUjww5Be0wSxHgcPjhuyzoQmcHYC5LDsMhN4zjhHfLv
+ MTcf2IBNZZWC7X1ywYzSypHWJayrkrz8iCy6JVkLdwWmSHpEg8OG1Vo8tSEmuTfP
+ e4bH0Vq3WMEdTtoYfzl89JBy3y0+EOnBxdVxyq7WUA0/achMhxWX1fIix8Qj4DEU
+ d5tjpYM5BfpGLg4VjAZssFwQypl/3gM2xzSBOjxFqtxIIBLupF9cCinFJg3WU9An
+ HEFSONb9uxnqDV+f8XQbn5DVBKpiLnRQodadygIBQGYikpP/n6udnS6WVrQZk6BZ
+ phRLvFaHdY69COh/OVvgbYUspGoDtfqIfEkS8zkrppkz9M003x7Oz8rI1GEa6vwQ
+ HRLmIhOAVVJIyeNWCyvy3w0bQYwxft3w/9KSolrwHFpmIESL+QFaZybaa62IXIxe
+ no2TpCcC0D9LY39vu8B4Xq7CyzDQ79Tv7Tj+34Mfo1kynPsE9gKfSTOm2Wcl5Y+F
+ Ztl012FwWrsEWaRO70oz
+ =Nv29
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #29 from codemyriad/feat/gap-ranges
+Merge pull request #36 from codemyriad/chore/refusal-vector-followups
 
-Record gap ranges and define presence for every writer (D52.2, P7)
+Refusal and watchdog vector follow-ups (#35, #34; D58, D57)

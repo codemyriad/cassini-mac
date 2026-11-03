@@ -36,6 +36,23 @@ if arguments.first == "--install-extension" || arguments.first == "--uninstall-e
     }
 }
 
+/// conformance/run.py gives every case a private Library through the test-only
+/// CASSINI_LIBRARY_DIR. A Debug host honours it, so request-derived cases never write
+/// into the user's Library; set but not an existing absolute directory, recording is
+/// refused rather than falling back to the real Library. Release hosts ignore it.
+func testLibrary() throws -> URL? {
+    #if DEBUG
+    guard let path = ProcessInfo.processInfo.environment["CASSINI_LIBRARY_DIR"] else { return nil }
+    var directory: ObjCBool = false
+    guard path.hasPrefix("/"), FileManager.default.fileExists(atPath:path,isDirectory:&directory), directory.boolValue else {
+        throw RecordingError.invalid("CASSINI_LIBRARY_DIR is not an existing absolute directory.")
+    }
+    return URL(fileURLWithPath:path,isDirectory:true)
+    #else
+    return nil
+    #endif
+}
+
 // stdout belongs exclusively to Chrome's length-prefixed protocol.
 var host: BrowserRecordingHost?
 do {
@@ -45,7 +62,8 @@ do {
         ? try? BrowserCompanionConnection(browser:BrowserCompanionConnection.parentBrowserName) : nil
     defer { withExtendedLifetime(connection) {} }
     let recorder = BrowserRecordingHost { title in
-        try LibraryRouting.withLock(exclusive:false) {
+        if let library = try testLibrary() { return try RecordingSession(parent:library,title:title,source:"chromium") }
+        return try LibraryRouting.withLock(exclusive:false) {
             try RecordingSession(parent:LibraryRouting.recordingDestination(),title:title,source:"chromium")
         }
     }; host = recorder

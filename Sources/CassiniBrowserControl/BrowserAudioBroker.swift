@@ -8,13 +8,20 @@ public protocol BrowserAudioHandler: Sendable {
     func connected(_ connection: BrowserPipeConnection)
     func received(_ data: Data, from connection: BrowserPipeConnection)
     func disconnected(_ peer: BrowserPeer)
+    /// D57: a control status reported this capture's page state and documentGeneration.
+    func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?)
+}
+public extension BrowserAudioHandler {
+    func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?) {}
 }
 public struct BrowserAudioStart: Sendable {
     public let captureID: String
     public let timelineOriginMs: Int
     public let microphone: Bool
-    public init(captureID: String, timelineOriginMs: Int, microphone: Bool) {
-        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone
+    /// The call the Start names (D52.5: its identity), recorded before the app hears of it.
+    public let callGeneration: String?
+    public init(captureID: String, timelineOriginMs: Int, microphone: Bool, callGeneration: String? = nil) {
+        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone; self.callGeneration = callGeneration
     }
 }
 public typealias BrowserNativeStop = @Sendable (OwnedBrowserCapture,@escaping @Sendable (String?) -> Void) -> Void
@@ -37,13 +44,46 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
     private let persistRecord: @Sendable (RecordingManifest,URL) throws -> Void
+    /// Observes each audio transport's end after the broker has applied it (the owner's loss
+    /// and the stand-in identity), so a caller can wait on it instead of polling.
+    fileprivate let transportClosed: @Sendable () -> Void
+    /// D52.5: fed synchronously with each transport loss and resume (see CallOwnership).
+    fileprivate let ownership: CallOwnershipStore?
     private var recordAttempts: [UUID:Int] = [:]
     static let recordAttemptLimit = 5
+    /// D52.4 PCM_STALE_AFTER, 45 s per D52.5: the extension's longest source retry (30 s)
+    /// plus its 10 s acknowledgement limit, with margin, and below the 60 s span cut.
+    public static let pcmStaleAfter = AudioTransportWatchdog.staleAfter
+    fileprivate let clock: @Sendable () -> UInt64
+    private var watchdog: DispatchSourceTimer?
     public init(make: @escaping @Sendable (String,Bool) throws -> OwnedBrowserCapture,
                 created: @escaping @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void,
                 stopNative: @escaping BrowserNativeStop,
-                persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) }) {
-        self.make = make; self.created = created; self.stopNative = stopNative; self.persistRecord = persistRecord
+                persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) },
+                clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
+                transportClosed: @escaping @Sendable () -> Void = {}, ownership: CallOwnershipStore? = nil) {
+        self.make = make; self.created = created; self.stopNative = stopNative; self.persistRecord = persistRecord; self.clock = clock
+        self.transportClosed = transportClosed; self.ownership = ownership
+        let timer = DispatchSource.makeTimerSource(queue:.global(qos:.utility))
+        timer.schedule(deadline:.now() + 1,repeating:1)
+        timer.setEventHandler { [weak self] in self?.closeStaleTransports() }
+        timer.resume(); watchdog = timer
+    }
+    deinit { watchdog?.cancel() }
+    /// Re-evaluated every second: closes each audio transport whose open, PCM-delivering
+    /// span has had no frame for PCM_STALE_AFTER. Closing takes the ordinary EOF path, so
+    /// the recording keeps running and falls back to computer sound (D52.4 Q3).
+    public func closeStaleTransports() {
+        let now = clock()
+        let stale = lock.withLock { peers.values.filter { $0.isStale(at:now) } }
+        for peer in stale { peer.closeStale() }
+    }
+    /// D57: the recording's control status, fed as it arrives. A transport whose status
+    /// arrives after its PCM_STALE_AFTER deadline closes through the EOF path.
+    public func documentChanged(captureID: String, page: BrowserCallLifecycle.Page?, documentGeneration: String?) {
+        let now = clock()
+        let matching = lock.withLock { peers.values.filter { $0.watches(captureID) } }
+        for peer in matching where !peer.document(page:page,generation:documentGeneration,at:now) { peer.closeStale() }
     }
     public var activeCaptures: [OwnedBrowserCapture] {
         lock.lock(); defer { lock.unlock() }; return Array(captures.values)
@@ -96,8 +136,21 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
         do { try capture.attachResumedBrowser() }
         catch { lock.withLock { if reservations[identity] == peer { reservations.removeValue(forKey:identity) } }; throw error }
+        ownership?.update { $0.transportResumed(capture.snapshot.manifest.id) }
         lock.withLock { standIns[identity]?.expected = nil }
         return capture
+    }
+    /// D52.4: once its audio transport closed, a browser recording is a resume target under
+    /// its own capture identity and origin (attachResumedBrowser admits only system/lost).
+    /// Its identity stays taken: a fresh Start reusing it is still refused.
+    fileprivate func transportLost(_ capture: OwnedBrowserCapture, captureID: String, timelineOriginMs: Int, peer: UUID) {
+        lock.withLock {
+            let id = capture.snapshot.manifest.id, identity = Data(captureID.utf8)
+            guard captures[id] === capture, identities[id] == identity, standIns[identity] == nil,
+                  (0...253402300799000).contains(timelineOriginMs) else { return }
+            standIns[identity] = .init(capture:id,origin:timelineOriginMs,expected:nil)
+            if reservations[identity] == peer { reservations.removeValue(forKey:identity) }
+        }
     }
     /// A failed or ended resumed transport releases its claim; the stand-in keeps recording.
     fileprivate func releaseResume(captureID: String, peer: UUID) {
@@ -108,7 +161,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         guard connection.peer.role == .audio else { connection.close(); return }
         lock.lock(); defer { lock.unlock() }
         guard peers.count < 100, peers[connection.peer.id] == nil else { connection.close(); return }
-        peers[connection.peer.id] = AudioPeer(connection:connection,broker:self)
+        peers[connection.peer.id] = AudioPeer(connection:connection,broker:self,clock:clock)
     }
     public func received(_ data: Data, from connection: BrowserPipeConnection) {
         lock.lock(); let peer = peers[connection.peer.id]; lock.unlock()
@@ -123,7 +176,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     fileprivate func begin(_ info: BrowserAudioStart, title: String, peer: UUID) throws -> OwnedBrowserCapture {
         let identity = Data(info.captureID.utf8)
         lock.lock()
-        guard !admissionClosed, reservations[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
+        guard !admissionClosed, reservations[identity] == nil, standIns[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
         reservations[identity] = peer; creating.enter(); lock.unlock()
         defer { creating.leave() }
         let capture: OwnedBrowserCapture
@@ -133,6 +186,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
         capture.setTimelineOrigin(ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000-Double(info.timelineOriginMs))/1000)
         lock.lock(); captures[capture.snapshot.manifest.id] = capture; identities[capture.snapshot.manifest.id] = identity; lock.unlock()
+        // The recording holds its call before anyone hears of it (No second recording).
+        if let generation = info.callGeneration { ownership?.update { $0.started(capture.snapshot.manifest.id,callGeneration:generation) } }
         DispatchQueue.global().async { [created] in if capture.snapshot.phase == .recording { created(capture,info) } }
         return capture
     }
@@ -230,7 +285,24 @@ private final class AudioPeer: @unchecked Sendable {
     private var sourceOutcomes = false
     private var captureID: String?
     private var resumed = false
-    init(connection: BrowserPipeConnection, broker: BrowserAudioBroker) { self.connection = connection; self.broker = broker }
+    private var timelineOriginMs: Int?
+    /// PCM_STALE_AFTER for this transport (D52.5: every frame on it counts).
+    private let liveness = NSLock()
+    private let clock: @Sendable () -> UInt64
+    private var watchdog = AudioTransportWatchdog()
+    init(connection: BrowserPipeConnection, broker: BrowserAudioBroker, clock: @escaping @Sendable () -> UInt64) {
+        self.connection = connection; self.broker = broker; self.clock = clock
+    }
+    /// The capture this transport carries, readable from the control queue.
+    private var watched: Data?
+    func isStale(at now: UInt64) -> Bool { liveness.withLock { watchdog.isStale(at:now) } }
+    func watches(_ id: String) -> Bool { liveness.withLock { watched == Data(id.utf8) } }
+    func document(page: BrowserCallLifecycle.Page?, generation: String?, at now: UInt64) -> Bool {
+        liveness.withLock { watchdog.document(page:page,generation:generation,at:now) }
+    }
+    private func watch(_ id: String) { liveness.withLock { watched = Data(id.utf8) } }
+    func closeStale() { connection.close() }
+    private func accepted(_ frame: AudioTransportWatchdog.Frame) { liveness.withLock { watchdog.apply(frame) } }
     private func string(_ json: JSON, _ key: String, optional: Bool = false, code: String = "source") throws -> String? {
         guard let value = json[key], !value.isNull else {
             if optional { return nil }; throw BrowserProtocolError(code,"Missing source information.")
@@ -243,11 +315,25 @@ private final class AudioPeer: @unchecked Sendable {
     func receive(_ data: Data) {
         guard !failed else { return }
         var packetType: String?, json: JSON = .null
+        // Set once the host accepted the frame: a later failure (writing the reply) is the
+        // connection's, never a refusal of the source that sent it.
+        var acceptedFrame = false
         do {
             guard !data.isEmpty, data.count <= FrameIO.maximum else { throw BrowserProtocolError("framing","Invalid native frame size.") }
             do { json = try JSONParser.parse(data) } catch { throw BrowserProtocolError("framing","Invalid JSON message.") }
             guard let kind = json["type"]?.string, json.object != nil else { throw BrowserProtocolError("framing","Expected a message object.") }
             packetType = kind
+            let frameID = json["id"]?.string ?? ""
+            let frame: AudioTransportWatchdog.Frame = switch kind {
+            case "track": .track(frameID)
+            case "audio": .audio(frameID)
+            case "trackEnd": .trackEnd(frameID)
+            case "stop": .stop
+            default: .other
+            }
+            // Every frame is activity; a frame at or after the PCM_STALE_AFTER deadline is too
+            // late: close instead. Its span transition applies only once the host accepts it.
+            guard liveness.withLock({ watchdog.activity(at:clock()) }) else { closeStale(); return }
             guard ["start","resume","track","audio","stop"].contains(kind) || (sourceOutcomes && ["trackEnd","sources"].contains(kind)) else { throw BrowserProtocolError("version","Unknown browser message type.") }
             // Finalized by a browser Stop, or natively first (the app's own Stop). While saving,
             // a Stop still joins the save so its reply follows the durable metadata.
@@ -261,7 +347,7 @@ private final class AudioPeer: @unchecked Sendable {
                 let summary: [CaptureLedger.Discovered]
                 do { summary = try discovered(json["discoveredSources"],required:false) } catch { throw ScopedRefusal("source",error.localizedDescription) }
                 guard summary.isEmpty else { throw ScopedRefusal("state","Capture already saved.") }
-                completed = true
+                completed = true; accepted(frame); acceptedFrame = true
                 try connection.send(JSON.object([("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]).encoded(maximumBytes:FrameIO.maximum)); return
             }
             guard !completed else { throw BrowserProtocolError("state","Recording is already stopped.") }
@@ -287,7 +373,7 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
                 let capture = try broker.resume(captureID:id,timelineOriginMs:origin,callGeneration:generation,peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id; resumed = true
+                owner = capture; captureID = id; resumed = true; watch(id)
                 var granted = ["resume-capture-v1"]
                 if features.contains("source-outcomes-v1") { capture.enableSourceOutcomes(); sourceOutcomes = capture.sourceOutcomesEnabled }
                 if sourceOutcomes { granted.insert("source-outcomes-v1",at:0) }
@@ -313,9 +399,12 @@ private final class AudioPeer: @unchecked Sendable {
                     }
                 }
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
-                let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
+                // The call this Start names: the recording holds it from its first moment, even if
+                // its audio closes before any status tells the app its tab.
+                let generation = json["callGeneration"]?.string.flatMap { !$0.isEmpty && $0.unicodeScalars.count <= 200 ? $0 : nil }
+                let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id
+                owner = capture; captureID = id; timelineOriginMs = origin; watch(id)
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
                 if features.contains("source-outcomes-v1") {
                     capture.enableSourceOutcomes(); sourceOutcomes = true
@@ -352,7 +441,15 @@ private final class AudioPeer: @unchecked Sendable {
                     guard reason == nil || reason == "lost" else { throw BrowserProtocolError("source","Invalid failure reason.") }
                     let terminal = try string(json,"reason",optional:true)
                     guard terminal == nil || terminal.flatMap(CaptureEndReason.init(rawValue:)) != nil else { throw BrowserProtocolError("source","Invalid recording end reason.") }
-                    if reason == "lost" { try owner.browserLost(atMs:lossTime) }
+                    // A valid Stop ends every span now: the save below may take longer than
+                    // PCM_STALE_AFTER and must not let the watchdog close the pipe under it.
+                    accepted(frame)
+                    if reason == "lost" {
+                        try owner.browserLost(atMs:lossTime)
+                        // The recording runs on in its fallback. Like an EOF, this loss makes it a
+                        // resume target now: the app may ask before the extension closes the pipe.
+                        registerLoss()
+                    }
                     else if let broker {
                         let stopAt = lossTime, endReason = terminal.flatMap(CaptureEndReason.init(rawValue:)) ?? .user
                         owner.requestEnd(endReason,atMs:stopAt)
@@ -372,9 +469,10 @@ private final class AudioPeer: @unchecked Sendable {
                 default: throw BrowserProtocolError("version","Unknown browser message type.")
                 }
             }
+            accepted(frame); acceptedFrame = true
             try connection.send(response.encoded(maximumBytes:FrameIO.maximum))
         } catch {
-            if sourceOutcomes, let refusal = scoped(error,type:packetType,json:json),
+            if !acceptedFrame, sourceOutcomes, let refusal = scoped(error,type:packetType,json:json),
                let bytes = try? refusal.encoded(maximumBytes:FrameIO.maximum) {
                 do { try connection.send(bytes); return } catch {}
             }
@@ -405,6 +503,8 @@ private final class AudioPeer: @unchecked Sendable {
         // they are, and so does any refused re-declaration of an id that is still live.
         if error is KeptSourceRefusal || (type == "track" && owner.isLive(id)) { return reply("source",id:id) }
         let retired = owner.refuseSource(id:id,code:code)
+        // The owner closed this span for good; it never arms the stale watchdog again.
+        if owner.isRetired(id) { liveness.withLock { watchdog.retire(id) } }
         return reply("source",id:id,retired:retired && code == "state")
     }
     private func discovered(_ value: JSON?, required: Bool) throws -> [CaptureLedger.Discovered] {
@@ -428,10 +528,22 @@ private final class AudioPeer: @unchecked Sendable {
         max(0,(ProcessInfo.processInfo.systemUptime - (originUptime ?? ProcessInfo.processInfo.systemUptime))*1000)
     }
     func disconnected() {
+        defer { broker?.transportClosed() }
         if resumed, let captureID { broker?.releaseResume(captureID:captureID,peer:connection.peer.id) }
         guard !completed, let owner else { return }
         // A resumed transport's EOF keeps the native recording and its fallback (D33).
         try? owner.browserLost(atMs:lossTime)
+        registerLoss()
+    }
+    /// D52.4: after an EOF or a loss Stop the call may resume this recording onto its system/lost
+    /// fallback. A fresh capture becomes a resume target under its own identity; a resumed
+    /// transport releases its claim so the stand-in can be resumed again. Idempotent.
+    private func registerLoss() {
+        guard let owner, let captureID else { return }
+        // Before anything else can observe the loss: the control service reads it at admission.
+        broker?.ownership?.update { $0.transportLost(owner.snapshot.manifest.id) }
+        if resumed { broker?.releaseResume(captureID:captureID,peer:connection.peer.id) }
+        else if let timelineOriginMs { broker?.transportLost(owner,captureID:captureID,timelineOriginMs:timelineOriginMs,peer:connection.peer.id) }
     }
 }
 /// A negotiated command refusal that leaves the capture and connection running.
