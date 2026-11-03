@@ -532,6 +532,27 @@ struct R65CodemyriadNamespaceTests {
         // meeting.json carries every revision it exported.
         #expect(try raw(meeting.folder.appendingPathComponent("meeting.json"))["revision"] == restored.revision)
     }
+    /// r4 follow-up review: a recording whose meeting.json Mac may not rewrite (invalid here) can
+    /// keep no baseline, so its export carries no namespace of ours: its words, read from
+    /// transcript.json, could change under one revision. (Assets: the export CI job.)
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func invalidMetadataGetsNoNamespaceOfOurs() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (session,_) = try recording(root)
+        let url = session.directory.appendingPathComponent("meeting.json")
+        var stored = try #require(try JSONSerialization.jsonObject(with:Data(contentsOf:url)) as? [String:Any])
+        stored["title"] = ""; stored["titleSource"] = "user"   // breaks the metadata rules
+        try JSONSerialization.data(withJSONObject:stored).write(to:url)
+        let meeting = try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(meeting.issues.contains(.invalidMetadata))
+        let path = try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"])
+        let directory = URL(fileURLWithPath:path)
+        let hashes = try JSONDecoder().decode([String:String].self,from:Data(contentsOf:directory.appendingPathComponent("unsigned-sha256.json")))
+        let assets = try OpusAssets.builtForTests(directory:directory,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
+        let exported = try MeetingFileExporter.cassini(meeting,assets:assets,temporaryRoot:root)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.state == .ok && file.manifest?.raw["x"]?["codemyriad.io"] == nil)
+    }
     /// A trusted file opened from outside the Library with our namespace in `namespace`,
     /// built from conformance vector 016 (two transcripts) when `twoTranscripts`.
     private func externalFile(_ root: URL, namespace: String, twoTranscripts: Bool = false) throws -> URL {

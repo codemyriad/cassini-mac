@@ -188,13 +188,16 @@ public enum MeetingFileExporter {
             let local = CodemyriadNamespace.localNotes(stored)
                 ?? (meeting.notes.isEmpty ? nil : .array(meeting.notes.map { .object([("atMs",.number(String($0.atMs))),("text",.string($0.text))]) }))
             notes = CodemyriadNamespace.exportNotes(local:local,original:originalNotes).notes
-            if foreign == nil, let stored {
+            // Metadata Mac may not rewrite (unsupported or invalid) can't keep the baseline that
+            // pins a revision to one content (words read from transcript.json, a namePrefix or
+            // untitled title chosen per export), so it gets no namespace of ours (D65).
+            if foreign == nil, let stored, !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) {
                 // A namePrefix that could not be saved would be chosen again by each export, so
                 // one revision could carry different names (Coordinator, #116: an unwritable
-                // folder fails the export). Metadata Mac may not rewrite is exempt.
-                // The same for the untitled fallback saved at the first export (D65, Q6b).
-                if !(stored["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false) || (meeting.titleIsUntitled && CodemyriadNamespace.untitled(stored) == nil),
-                   !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) { throw MeetingExportError.libraryFolderNotWritable }
+                // folder fails the export). The same for the untitled fallback (D65, Q6b).
+                if !(stored["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false) || (meeting.titleIsUntitled && CodemyriadNamespace.untitled(stored) == nil) {
+                    throw MeetingExportError.libraryFolderNotWritable
+                }
                 namespace = try CodemyriadNamespace.make(meeting,stored:stored,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
                     .map { try CodemyriadNamespace.marking($0,damaged:meeting.state.transcript == .damaged) }
                 own = namespace != nil

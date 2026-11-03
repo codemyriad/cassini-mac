@@ -107,6 +107,8 @@ that differs from the original file's counts as a change.
   out at (Mac-local `codemyriadExport.own`). Other content at the same meeting.json
   revision (words that became unreadable, or were restored) first advances
   meeting.json's revision under the folder lock; the same content keeps it.
+- Metadata Mac may not rewrite (an unsupported version or invalid meeting.json)
+  can't keep that baseline, so such a recording's export carries no namespace of ours.
 - Another writer's namespace is validated before anything else, in or out of the
   Library: schema 1, a meeting object, a revision in 0…2^53-1, or `newerFormat`.
 - A trusted file opened from outside the Library that carries our namespace is

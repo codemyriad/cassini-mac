@@ -205,8 +205,8 @@ enum CodemyriadNamespace {
             guard unchanged(raw,since:meeting), let revision = raw?["revision"]?.int else { throw MetadataChanged() }
             return (raw,revision)
         }
-        // Metadata Mac may not rewrite can't change on Mac either: its revision stands.
-        if meeting.metadataReadOnly || meeting.issues.contains(.invalidMetadata) { return try read().revision }
+        // Only for metadata Mac rewrites: the exporter writes no namespace of ours otherwise.
+        guard !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) else { throw MeetingExportError.invalidSource }
         var result = 0
         do {
             try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction(skippingUnchanged:true) { document in
