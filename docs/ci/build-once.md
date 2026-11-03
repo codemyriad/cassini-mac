@@ -19,8 +19,8 @@ area. Unknown bases and failed detection run every area; missing outputs also
 select every area. The original unfiltered core CI still runs for every PR.
 A newer push to a pull request cancels that PR's older run automatically (D66
 mac-P1-1: one concurrency group per PR number, `cancel-in-progress` on
-pull_request only). Push, nightly and manual runs get a group per commit and are
-never cancelled, so each main commit keeps the push run the release gate needs
+pull_request only). Every push, nightly and manual run has a group of its own (its run id), so
+none is ever cancelled or replaced while pending, so each main commit keeps the push run the release gate needs
 (D20). Don't cancel runs by hand, main runs above all.
 
 Artifacts contain tar archives, so executable modes and relative framework links
