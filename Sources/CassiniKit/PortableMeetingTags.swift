@@ -3,38 +3,95 @@ import Foundation
 import CryptoKit
 import zlib
 
-/// One canonical word-timed body, with standard Cassini v1 chunk descriptors.
+/// The transcripts a file carries: their manifest entries, in order, and the tags that hold
+/// their payloads. `digest` covers both, so equal sets have equal digests.
+public struct PortableTranscripts: Sendable {
+    public let entries: [JSON]
+    let comments: [Comment]
+    public let digest: String
+}
+
+/// One canonical word-timed body, with standard Cassini v1 chunk descriptors, and any
+/// transcripts carried over from an original file byte for byte.
 /// Input manifest supplies meeting/audio/integrity/speakers and approved hints.
 public enum PortableMeetingTags {
     public static func make(manifest: JSON, transcript: Data, language: String = "und", wordCount: Int,
                             shouldCancel: () -> Bool = { false }) throws -> Data {
-        let body = try ManifestParser.words(JSONParser.parse(transcript))
-        guard body.items.count == wordCount else { throw PayloadError.json("word count mismatch") }
-        var comments: [Comment] = []
-        func chunkSet(_ raw: Data, prefix: String, mime: String) throws -> JSON {
-            guard raw.count <= CassiniReader.maxPayloadBytes else { throw PayloadError.tooLarge(CassiniReader.maxPayloadBytes) }
-            let compressed = try gzip(raw,shouldCancel:shouldCancel)
-            let base64 = compressed.base64EncodedString().replacingOccurrences(of:"+",with:"-").replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"=",with:"")
-            let bytes = Array(base64.utf8)
-            let chunks = stride(from:0,to:bytes.count,by:4096).map { String(decoding:bytes[$0..<min($0 + 4096,bytes.count)],as:UTF8.self) }
-            let sha = SHA256.hash(data:raw).map { String(format:"%02x",$0) }.joined()
-            for (suffix,value) in [("MIME",mime),("ENCODING",CassiniReader.encoding),("CHUNK_COUNT",String(chunks.count)),("SHA256",sha),("RAW_BYTES",String(raw.count)),("GZIP_BYTES",String(compressed.count))] {
-                comments.append(.init(name:prefix + suffix,value:value))
-            }
-            for (index,chunk) in chunks.enumerated() { comments.append(.init(name:prefix + String(format:"%03d",index),value:chunk)) }
-            return .object([("prefix",.string(prefix)),("chunkCount",.number(String(chunks.count))),("sha256",.string(sha)),
-                ("rawBytes",.number(String(raw.count))),("gzipBytes",.number(String(compressed.count))),("mime",.string(mime)),("encoding",.string(CassiniReader.encoding))])
+        try make(manifest:manifest,transcripts:transcripts(own:(transcript,language,wordCount),carried:nil,shouldCancel:shouldCancel),shouldCancel:shouldCancel)
+    }
+    /// `own`: this app's words body (the default transcript when given). `carried`: an
+    /// original file whose transcripts all go out unchanged, their manifest entries verbatim and
+    /// their payload tags byte for byte; when `own` is given too they stay, no longer default.
+    /// With neither, the empty body (a file always lists a transcript).
+    public static func transcripts(own: (body: Data, language: String, wordCount: Int)?, carried: CassiniFile?,
+                                   shouldCancel: () -> Bool = { false }) throws -> PortableTranscripts {
+        var entries: [JSON] = [], comments: [Comment] = []
+        var ids = Set<String>()
+        for entry in carried?.manifest?.raw["transcripts"]?.array ?? [] {
+            guard let id = entry["id"]?.string, let prefix = entry["payloadRef"]?["prefix"]?.string, !prefix.isEmpty else { continue }
+            let folded = prefix.uppercased()
+            comments += (carried?.tags?.comments ?? []).filter { $0.name.uppercased().hasPrefix(folded) }
+            entries.append(own == nil ? entry : try entry.setting("default",to:.bool(false)))
+            ids.insert(id)
         }
-        let reference = try chunkSet(transcript,prefix:"CASSINI_TX_SCRIPT_PAYLOAD_",mime:"application/vnd.cassini.transcript-words+json")
-        let entry: JSON = .object([("id",.string("script")),("default",.bool(true)),("format",.string(CassiniReader.wordsFormat)),
-            ("language",.string(language)),("wordCount",.number(String(wordCount))),("payloadRef",reference)])
-        let root = try manifest.setting("transcripts",to:.array([entry]))
+        if own != nil || entries.isEmpty {
+            let (body,language,wordCount) = own ?? (Data(#"{"items":[],"language":"und"}"#.utf8),"und",0)
+            let parsed = try ManifestParser.words(JSONParser.parse(body))
+            guard parsed.items.count == wordCount else { throw PayloadError.json("word count mismatch") }
+            // Never a carried id or payload prefix.
+            var id = "script", index = 1
+            while ids.contains(id) || comments.contains(where:{ $0.name.uppercased().hasPrefix(prefix(id)) }) { index += 1; id = "script-\(index)" }
+            let (reference,payload) = try chunkSet(body,prefix:prefix(id),mime:"application/vnd.cassini.transcript-words+json",shouldCancel:shouldCancel)
+            comments = payload + comments
+            entries.insert(.object([("id",.string(id)),("default",.bool(true)),("format",.string(CassiniReader.wordsFormat)),
+                ("language",.string(language)),("wordCount",.number(String(wordCount))),("payloadRef",reference)]),at:0)
+        }
+        var digest = SHA256()
+        digest.update(data:try JSON.array(entries).encoded())
+        for comment in comments { digest.update(data:Data((comment.name + "=" + comment.value + "\n").utf8)) }
+        return .init(entries:entries,comments:comments,digest:digest.finalize().map { String(format:"%02x",$0) }.joined())
+    }
+    private static func prefix(_ id: String) -> String {
+        "CASSINI_TX_" + id.uppercased().map { $0.isLetter || $0.isNumber ? String($0) : "_" }.joined() + "_PAYLOAD_"
+    }
+    private static func chunkSet(_ raw: Data, prefix: String, mime: String, shouldCancel: () -> Bool) throws -> (JSON,[Comment]) {
+        guard raw.count <= CassiniReader.maxPayloadBytes else { throw PayloadError.tooLarge(CassiniReader.maxPayloadBytes) }
+        let compressed = try gzip(raw,shouldCancel:shouldCancel)
+        let base64 = compressed.base64EncodedString().replacingOccurrences(of:"+",with:"-").replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"=",with:"")
+        let bytes = Array(base64.utf8)
+        let chunks = stride(from:0,to:bytes.count,by:4096).map { String(decoding:bytes[$0..<min($0 + 4096,bytes.count)],as:UTF8.self) }
+        let sha = SHA256.hash(data:raw).map { String(format:"%02x",$0) }.joined()
+        var comments: [Comment] = []
+        for (suffix,value) in [("MIME",mime),("ENCODING",CassiniReader.encoding),("CHUNK_COUNT",String(chunks.count)),("SHA256",sha),("RAW_BYTES",String(raw.count)),("GZIP_BYTES",String(compressed.count))] {
+            comments.append(.init(name:prefix + suffix,value:value))
+        }
+        for (index,chunk) in chunks.enumerated() { comments.append(.init(name:prefix + String(format:"%03d",index),value:chunk)) }
+        return (.object([("prefix",.string(prefix)),("chunkCount",.number(String(chunks.count))),("sha256",.string(sha)),
+            ("rawBytes",.number(String(raw.count))),("gzipBytes",.number(String(compressed.count))),("mime",.string(mime)),("encoding",.string(CassiniReader.encoding))]),comments)
+    }
+    /// The tags this app writes itself; any other tag of an original file is carried (`carriedTags`).
+    static let written: Set<String> = ["CASSINI_FORMAT","CASSINI_PROFILE","CASSINI_PAYLOAD_SCHEMA","CASSINI_TRANSCRIPT_IDS","CASSINI_TRANSCRIPT_DEFAULT",
+        "CASSINI_AUDIO_SAMPLE_RATE","CASSINI_AUDIO_CHANNELS","CASSINI_AUDIO_SAMPLE_COUNT","CASSINI_AUDIO_DURATION_MS","CASSINI_AUDIO_MATCH_POLICY",
+        "CASSINI_AUDIO_OPUS_SHA256","CASSINI_MEETING_ID","CASSINI_CREATED_AT","CASSINI_SPEAKER_COUNT","TITLE"]
+    /// An original file's tags this app neither writes nor rebuilds (DATE, DESCRIPTION, ENCODER,
+    /// unknown CASSINI_ facts), in file order; payload chunk sets are carried with their transcripts.
+    public static func carriedTags(_ file: CassiniFile) -> [Comment] {
+        (file.tags?.comments ?? []).filter { comment in
+            let name = comment.name.uppercased()
+            return !written.contains(name) && !name.hasPrefix("CASSINI_PAYLOAD_") && !name.hasPrefix("CASSINI_TX_")
+        }
+    }
+    public static func make(manifest: JSON, transcripts: PortableTranscripts, carriedTags: [Comment] = [],
+                            shouldCancel: () -> Bool = { false }) throws -> Data {
+        var comments = transcripts.comments
+        let root = try manifest.setting("transcripts",to:.array(transcripts.entries))
         let model = try ManifestParser.parse(root,formatMajor:1)
-        _ = try chunkSet(root.encoded(),prefix:"CASSINI_PAYLOAD_",mime:"application/vnd.cassini.portable-meeting+json")
+        comments += try chunkSet(root.encoded(),prefix:"CASSINI_PAYLOAD_",mime:"application/vnd.cassini.portable-meeting+json",shouldCancel:shouldCancel).1
+        let ids = model.transcripts.map(\.id).joined(separator:",")
         let scalarTags: [(String,String)] = [
             ("CASSINI_FORMAT","org.cassini.portable-meeting/1"),("CASSINI_PROFILE","ogg-opus"),
             ("CASSINI_PAYLOAD_SCHEMA","https://format.gocassini.com/schema/cassini-portable-meeting-manifest-v1.schema.json"),
-            ("CASSINI_TRANSCRIPT_IDS","script"),("CASSINI_TRANSCRIPT_DEFAULT","script"),
+            ("CASSINI_TRANSCRIPT_IDS",ids),("CASSINI_TRANSCRIPT_DEFAULT",model.defaultTranscript?.id ?? model.transcripts.first?.id ?? ""),
             ("CASSINI_AUDIO_SAMPLE_RATE","48000"),("CASSINI_AUDIO_CHANNELS",String(model.audio.channels)),
             ("CASSINI_AUDIO_SAMPLE_COUNT",String(model.audio.sampleCount)),("CASSINI_AUDIO_DURATION_MS",String(model.audio.durationMs)),
             ("CASSINI_AUDIO_MATCH_POLICY","exact-opus-audio-v1"),("CASSINI_AUDIO_OPUS_SHA256",model.integrity.opusAudioSha256),
@@ -42,6 +99,7 @@ public enum PortableMeetingTags {
             ("CASSINI_SPEAKER_COUNT",String(model.speakers.count)),("TITLE",model.meeting.title)
         ]
         for (name,value) in scalarTags { comments.append(.init(name:name,value:value)) }
+        comments += carriedTags
         return try packet(comments:comments)
     }
     public static func packet(comments: [Comment] = []) throws -> Data {

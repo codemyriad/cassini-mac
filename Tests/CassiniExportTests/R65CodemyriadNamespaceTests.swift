@@ -504,6 +504,72 @@ struct R65CodemyriadNamespaceTests {
         _ = try foreignFile(beyond,schema:1,revision:"9223372036854775807")
         #expect(refused(beyond))
     }
+    /// Every transcript payload tag (CASSINI_TX_…) of a file, as written.
+    private func payloadTags(_ file: CassiniFile) -> [String] {
+        (file.tags?.comments ?? []).filter { $0.name.uppercased().hasPrefix("CASSINI_TX_") }.map { $0.name + "=" + $0.value }.sorted()
+    }
+    /// #122 review: words Mac didn't write go out byte for byte, with every item fact Mac
+    /// doesn't model (attribution), and the namespace keeps its revision.
+    @Test func anUnchangedTranscriptKeepsItsAttributionFactsByteForByte() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let words = #"{"language":"en","items":[{"speaker":"spk-me","startMs":0,"endMs":400,"text":"Hello","lowConfidenceSpeaker":true,"attributionGapDb":4.5}]}"#
+        let (foreign,meeting) = try foreignFile(root,schema:1,words:words,wordCount:1)
+        let input = try CassiniReader.read(contentsOf:root.appendingPathComponent("gnome.opus"))
+        let file = try reexportFile(root)
+        #expect(payloadTags(file) == payloadTags(input) && !payloadTags(file).isEmpty)
+        #expect(try file.manifest?.raw["x"]?["codemyriad.io"]?.encoded() == foreign.encoded(),"revision 7, unchanged")
+        #expect(file.manifest?.raw["transcripts"] == input.manifest?.raw["transcripts"])
+        // Also next to an unrelated edit: the payload is still the original's.
+        try MeetingRename.apply("Renamed on Mac",to:meeting)
+        let renamed = try reexportFile(root)
+        #expect(payloadTags(renamed) == payloadTags(input))
+        #expect(renamed.manifest?.raw["x"]?["codemyriad.io"]?["revision"] == .number("8"))
+    }
+    /// #122 review: a Library import of conformance vector 016 (two transcripts) exports both,
+    /// byte for byte; after a Write down on Mac, Mac's words are the default and both originals
+    /// stay beside them unchanged.
+    @Test func everyOriginalTranscriptSurvivesALibraryReexport() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let input = try CassiniReader.read(contentsOf:vector("016-two-transcripts"))
+        #expect(input.transcripts.count == 2)
+        let meeting = try LibraryImport.copy(vector("016-two-transcripts"),into:root.appendingPathComponent("Library"))
+        let file = try reexportFile(root)
+        #expect(file.manifest?.transcripts.map(\.id) == ["raw-asr","second-pass"])
+        #expect(file.manifest?.raw["transcripts"] == input.manifest?.raw["transcripts"])
+        #expect(payloadTags(file) == payloadTags(input))
+        #expect(file.tags?["CASSINI_TRANSCRIPT_IDS"] == "raw-asr,second-pass" && file.tags?["CASSINI_TRANSCRIPT_DEFAULT"] == input.tags?["CASSINI_TRANSCRIPT_DEFAULT"])
+        try writeDown(meeting,status:"done")
+        let written = try reexportFile(root)
+        #expect(written.manifest?.transcripts.map(\.id) == ["script","raw-asr","second-pass"])
+        #expect(written.manifest?.defaultTranscript?.id == "script" && written.defaultTranscript?.load.transcript?.items.map(\.text) == ["Hello"])
+        #expect(written.manifest?.raw["transcripts"]?.array?.dropFirst().allSatisfy { $0["default"] == .bool(false) } == true)
+        let originals = Set(payloadTags(input))
+        #expect(originals.isSubset(of:Set(payloadTags(written))),"every original payload tag, byte for byte")
+        #expect(written.transcripts.dropFirst().allSatisfy { $0.load.transcript != nil })
+    }
+    private func vector(_ name: String) -> URL {
+        URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("CassiniKitTests/Conformance/opus/\(name).opus")
+    }
+    /// #122 review, MAPPING §6: what a received file carries that Mac doesn't model goes out
+    /// unchanged: a top-level member and a speaker member (vector 014), and its own tags
+    /// (vector 016: DATE, DESCRIPTION, ENCODER, CASSINI_DECODE_HINT).
+    @Test func membersAndTagsMacDoesNotModelAreCarried() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let unknown = try CassiniReader.read(contentsOf:vector("014-unknown-manifest-member"))
+        _ = try LibraryImport.copy(vector("014-unknown-manifest-member"),into:root.appendingPathComponent("Library"))
+        let file = try reexportFile(root)
+        #expect(file.manifest?.raw["cassiniFutureField"] != nil && file.manifest?.raw["cassiniFutureField"] == unknown.manifest?.raw["cassiniFutureField"])
+        #expect(file.manifest?.raw["speakers"]?.array?.first?["pronouns"] == unknown.manifest?.raw["speakers"]?.array?.first?["pronouns"])
+        #expect(file.manifest?.raw["speakers"]?.array?.first?["pronouns"] != nil)
+        let tagged = try self.root(); defer { try? FileManager.default.removeItem(at:tagged) }
+        let input = try CassiniReader.read(contentsOf:vector("016-two-transcripts"))
+        _ = try LibraryImport.copy(vector("016-two-transcripts"),into:tagged.appendingPathComponent("Library"))
+        let exported = try reexportFile(tagged)
+        for name in ["DATE","DESCRIPTION","ENCODER","CASSINI_DECODE_HINT"] {
+            #expect(exported.tags?[name] != nil && exported.tags?[name] == input.tags?[name],"\(name) carried")
+        }
+    }
     /// #116 r4: our own namespace never describes two contents at one revision: words that
     /// become unreadable (damaged) take a new revision, and so do the same words restored;
     /// an unchanged re-export keeps it.

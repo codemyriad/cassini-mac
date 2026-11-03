@@ -247,8 +247,7 @@ enum CodemyriadNamespace {
         let theirs = copy["transcript"].map { $0 == .null ? JSON.object([]) : $0 } ?? .object([])
         if let mine = raw["transcript"], mine.object != nil, theirs.object != nil {
             let keys = ["status","reference","model"]
-            let stored = foundation(.object(keys.compactMap { key in mine[key].map { (key,$0) } }))
-            if !(stored?.isEqual(importedTranscript) ?? false) {
+            if transcribedOnMac(raw,importedTranscript:importedTranscript) {
                 var transcript = theirs
                 for key in keys where transcript[key] != mine[key] {
                     if let next = try? transcript.setting(key,to:mine[key]) { transcript = next }
@@ -300,6 +299,13 @@ enum CodemyriadNamespace {
             if edited { set("speakers",.array(speakers)) }
         }
         return (copy,changed)
+    }
+    /// Mac wrote this received meeting down (or is writing it down): its transcript state
+    /// (status, reference, model) is no longer what import stored for the file.
+    static func transcribedOnMac(_ raw: JSON?, importedTranscript: [String:Any]?) -> Bool {
+        guard let mine = raw?["transcript"], mine.object != nil else { return false }
+        let stored = foundation(.object(["status","reference","model"].compactMap { key in mine[key].map { (key,$0) } }))
+        return !(stored?.isEqual(importedTranscript ?? ["status":"none","reference":NSNull()]) ?? false)
     }
     private static func foundation(_ value: JSON) -> NSDictionary? {
         (try? value.encoded()).flatMap { try? JSONSerialization.jsonObject(with:$0) as? NSDictionary }

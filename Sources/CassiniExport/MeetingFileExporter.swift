@@ -97,6 +97,7 @@ public enum MeetingFileExporter {
         // since this read, the meeting is read again.
         var attempt = 0
         let tags: Data, items: [LibraryTranscriptItem]
+        var carried = 0
         // One scanner: its cache keeps unchanged files (original.opus) cheap across attempts.
         let scanner = LibraryScanner(root:meeting.folder.deletingLastPathComponent())
         while true {
@@ -114,10 +115,16 @@ public enum MeetingFileExporter {
             let body = try encoder.encode(Body(language:language,items:words))
             do {
                 try afterRead?(attempt)
+                // #122 review: a received file's transcripts go out byte for byte while Mac hasn't
+                // written it down; Mac's own words, once it has, become the default and every
+                // original transcript stays beside them, unchanged. Nothing Mac doesn't model
+                // (an item's attribution facts, a second transcript) is rebuilt or dropped.
+                let mine = try original == nil || CodemyriadNamespace.transcribedOnMac(CodemyriadNamespace.current(current),importedTranscript:importedTranscript)
+                let set = try PortableMeetingTags.transcripts(own:mine ? (body,language,words.count) : nil,carried:original,shouldCancel:shouldCancel)
                 let manifest = try self.manifest(current,digest:digest,original:original,choice:choice,dateTag:dateTag,originalTitle:originalTitle,
-                                                 timeZone:timeZone,importedTranscript:importedTranscript,body:body,words:words,language:language)
-                tags = try PortableMeetingTags.make(manifest:manifest,transcript:body,language:language,wordCount:words.count,shouldCancel:shouldCancel)
-                items = words; break
+                                                 timeZone:timeZone,importedTranscript:importedTranscript,transcripts:set,carriedOnly:!mine,words:words)
+                tags = try PortableMeetingTags.make(manifest:manifest,transcripts:set,carriedTags:original.map(PortableMeetingTags.carriedTags) ?? [],shouldCancel:shouldCancel)
+                items = mine ? words : []; carried = set.entries.count; break
             } catch is CodemyriadNamespace.MetadataChanged {
                 attempt += 1
                 guard attempt < 8 else { throw MeetingExportError.invalidSource }
@@ -125,8 +132,8 @@ public enum MeetingFileExporter {
         }
         _ = try OpusStreamFile.rewrite(audio,tags:tags,to:artifact.url,shouldCancel:shouldCancel)
         let verified = try CassiniReader.read(contentsOf:artifact.url)
-        guard verified.state == .ok, try verified.audioDigest?.get() == digest,
-              verified.defaultTranscript?.load.transcript?.items.count == items.count else { throw MeetingExportError.invalidSource }
+        guard verified.state == .ok, try verified.audioDigest?.get() == digest, verified.transcripts.count == carried,
+              items.isEmpty || verified.defaultTranscript?.load.transcript?.items.count == items.count else { throw MeetingExportError.invalidSource }
         try? FileManager.default.removeItem(at:directory.appendingPathComponent("audio.opus"))
         return artifact
     }
@@ -159,7 +166,11 @@ public enum MeetingFileExporter {
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
-                                 importedTranscript: [String:Any]?, body: Data, words: [LibraryTranscriptItem], language: String) throws -> JSON {
+                                 importedTranscript: [String:Any]?, transcripts: PortableTranscripts, carriedOnly: Bool,
+                                 words: [LibraryTranscriptItem]) throws -> JSON {
+        // Words Mac read as damaged are marked so only when they are Mac's own: carried
+        // originals go out as they came, whatever Mac could read of them.
+        let damaged = !carriedOnly && meeting.state.transcript == .damaged
         let original = file?.manifest
         var extensions = original?.raw["x"] ?? .object([])
         var owned = extensions["gocassini.com"] ?? .object([])
@@ -179,9 +190,7 @@ public enum MeetingFileExporter {
             notes = originalNotes
         } else if let foreign {
             let merged = try CodemyriadNamespace.merged(foreign,with:meeting,originalNotes:originalNotes,importedTranscript:importedTranscript,
-                                                        body:SHA256.hash(data:body).map { String(format:"%02x",$0) }.joined(),
-                                                        bodyMatchesOriginal:bodyMatches(words:words,language:language,original:file),
-                                                        damaged:meeting.state.transcript == .damaged)
+                                                        body:transcripts.digest,bodyMatchesOriginal:carriedOnly,damaged:damaged)
             notes = merged.notes; namespace = merged.namespace; mergedCopy = true
         } else {
             stored = try CodemyriadNamespace.current(meeting)
@@ -199,7 +208,7 @@ public enum MeetingFileExporter {
                     throw MeetingExportError.libraryFolderNotWritable
                 }
                 namespace = try CodemyriadNamespace.make(meeting,stored:stored,dateTag:dateTag,originalTitle:originalTitle,now:Date(),zone:timeZone)
-                    .map { try CodemyriadNamespace.marking($0,damaged:meeting.state.transcript == .damaged) }
+                    .map { try CodemyriadNamespace.marking($0,damaged:damaged) }
                 own = namespace != nil
             }
         }
@@ -229,9 +238,33 @@ public enum MeetingFileExporter {
         }
         // Q2: one entry per speaker id the exported words use (none while they aren't exported).
         let used = Set(words.map(\.speaker))
-        let speakers: JSON = .array(meeting.speakers.filter { used.contains($0.id) }.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) })
+        let projected = meeting.speakers.filter { used.contains($0.id) }
+        var speakers: JSON = .array(projected.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) })
+        // #122 review (MAPPING §6): a received file's speaker entries describe the transcripts it
+        // carries, so they stay with their unknown members; Mac's name for one replaces its label,
+        // and the speakers of Mac's own words follow.
+        if let theirs = original?.raw["speakers"]?.array {
+            var merged = theirs
+            for (index,entry) in merged.enumerated() {
+                guard let id = entry["id"]?.string, let mine = meeting.speakers.first(where:{ $0.id == id }),
+                      entry["label"]?.string != mine.displayName else { continue }
+                merged[index] = try entry.setting("label",to:.string(mine.displayName))
+            }
+            let listed = Set(theirs.compactMap { $0["id"]?.string })
+            merged += projected.filter { !listed.contains($0.id) }.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) }
+            speakers = .array(merged)
+        }
+        // The original meeting's members Mac doesn't write stay (Mac's own facts win).
+        for (name,value) in original?.raw["meeting"]?.object ?? [] where info[name] == nil && name != "recordedAtLocal" {
+            info = try info.setting(name,to:value)
+        }
         var root: JSON = .object([("kind",.string("cassini-portable-meeting")),("version",.number("1")),("profile",.string("ogg-opus")),
             ("meeting",info),("audio",audio),("integrity",integrity),("speakers",speakers)])
+        // ... and so do its top-level members Mac doesn't write (provenance, attachments, any
+        // member a later format adds). The transcripts are carried separately, payloads and all.
+        for (name,value) in original?.raw.object ?? [] where root[name] == nil && !["transcripts","x","audioEncode"].contains(name) {
+            root = try root.setting(name,to:value)
+        }
         if let choice { root = try root.setting("audioEncode",to:JSONParser.parse(JSONEncoder().encode(choice))) }
         else if let recorded = original?.raw["audioEncode"] { root = try root.setting("audioEncode",to:recorded) }
         if meeting.state.origin == .own, meeting.audioTracks.contains(where:{ $0.frameCount != 0 && $0.startOffsetMs == nil }) {
@@ -248,21 +281,12 @@ public enum MeetingFileExporter {
             // carries except the export stamp and the revision itself.
             var content = try root.setting("meeting",to:root["meeting"]!.setting("createdAtUtc",to:nil))
             content = try content.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace.setting("revision",to:nil)))
-            var data = try content.encoded(); data.append(0); data.append(body)
+            var data = try content.encoded(); data.append(0); data.append(Data(transcripts.digest.utf8))
             let revision = try CodemyriadNamespace.ownRevision(meeting,digest:SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined())
             namespace = try namespace.setting("revision",to:.number(String(revision)))
             root = try root.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace))
         }
         return root
-    }
-    /// The exported words are the original file's: its only transcript, same words and language.
-    private static func bodyMatches(words: [LibraryTranscriptItem], language: String, original: CassiniFile?) -> Bool {
-        guard let original, original.transcripts.count <= 1 else { return original == nil && words.isEmpty }
-        guard let body = original.defaultTranscript?.load.transcript else { return words.isEmpty && original.transcripts.isEmpty }
-        // In the scanner's order: by start, ties in file order.
-        let theirs = body.items.map { LibraryTranscriptItem(speaker:$0.speaker,startMs:Int64($0.startMs),endMs:Int64($0.endMs),text:$0.text) }
-            .enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
-        return theirs == words && TranscriptLanguage.written(body.language) == language
     }
     private static func regular(_ url: URL) throws {
         var info = stat()

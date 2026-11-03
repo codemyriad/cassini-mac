@@ -113,3 +113,14 @@ that differs from the original file's counts as a change.
   Library: schema 1, a meeting object, a revision in 0…2^53-1, or `newerFormat`.
 - A trusted file opened from outside the Library that carries our namespace is
   exported byte-for-byte, so none of its transcripts is dropped under its revision.
+
+## Carried, never rebuilt (#122 review, MAPPING §6)
+
+A received file's transcripts go out byte for byte (manifest entries and payload
+tags) while Mac hasn't written it down, so item facts Mac doesn't model
+(`lowConfidenceSpeaker`, `attributionGapDb`) and every other transcript survive.
+Once Mac writes it down, Mac's words become the default transcript and every
+original transcript stays beside them, unchanged and no longer default. The file's
+other top-level manifest members, the meeting's and speakers' unknown members, and
+its tags Mac doesn't write (DATE, DESCRIPTION, ENCODER, unknown `CASSINI_` facts) are
+carried too. Mac's own facts (title, speaker labels, audio) still win.
