@@ -80,12 +80,17 @@ public enum MeetingTranscriber {
             try setStatus(directory: directory, id: meeting.id, status: "running")
             let received = meeting.state.origin == .received
             struct Track {
-                let audio: SegmentedAudio; let speaker: TranscriptSpeaker; let offset: Int64
+                /// D52 M15: planned from a first pass whose scratch is already released.
+                let url: URL; let sampleCount: Int; let speaker: TranscriptSpeaker; let offset: Int64
                 /// Speech segments clipped to the half-open ranges this source owns.
                 let segments: [SpeechSegment]
                 let id: String
                 /// Track-local 16 kHz sample ranges inside D52.2 presence and ownership.
                 let kept: [Range<Int>]
+                /// D52.4 R71 activity inside `kept`, measured while planning.
+                let active: [Bool]; let activeSeconds: Double
+                /// D56/D57: under 32 non-zero native 32 ms frames: never decoded or recognized.
+                var silent = false
             }
             var tracks: [Track] = []
             let sources: [(URL, String, String, Double?, String?, Double?, [TrackPresence.Gap]?)]
@@ -113,10 +118,20 @@ public enum MeetingTranscriber {
             })
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
+            var silentTracks: [String] = []
             for (url, id, kind, offset, sourceTrackID, _, gaps) in sources {
                 if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
+                // D56/D57 (GNOME R76): each session.json track entry is judged on its own native
+                // samples. A silent one is left out of recognition and its fallback; it stays in
+                // the meeting and the mixdown, and captureOutcome is unchanged.
+                if !received, Self.isSilent(wav:url) {
+                    silentTracks.append(id)
+                    var track = Track(url: url, sampleCount: 0, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: [], id: id, kept: [], active: [], activeSeconds: 0)
+                    track.silent = true; tracks.append(track)
+                    continue
+                }
                 let audio = try SegmentedAudio(url: url, detector: detector)
                 var segments = audio.segments
                 var kept = audio.sampleCount > 0 ? [0..<audio.sampleCount] : []
@@ -142,7 +157,24 @@ public enum MeetingTranscriber {
                         }
                     }
                 }
-                tracks.append(.init(audio: audio, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept))
+                // D56 (R75, gocassini's rule): a track with fewer than 32 non-zero 32 ms frames
+                // (under 1 s of sound) is left out of recognition and its fallback. It stays in
+                // the mixdown; captureOutcome is unchanged, since zeros are received audio.
+                // D52.4 R71: activity inside this track's present, owned time (never the mix).
+                var meter = RecognitionFallback.ActivityMeter(), cursor = 0
+                for range in kept {
+                    if range.lowerBound > cursor { meter.feedSilence(range.lowerBound - cursor) }
+                    var at = range.lowerBound
+                    while at < range.upperBound {
+                        let end = min(range.upperBound,at + 240000)
+                        meter.feed(try audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
+                    }
+                    cursor = range.upperBound
+                }
+                let active = meter.active()
+                tracks.append(.init(url: url, sampleCount: audio.sampleCount, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept,
+                                    active: active, activeSeconds: meter.activeSeconds(active)))
+                // The planning scratch is released here (end of scope), before the next track.
             }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
@@ -204,6 +236,8 @@ public enum MeetingTranscriber {
                             writing["recognitionFallback"] = ["method":"vadFreeWindows","windowMs":RecognitionFallback.window*1000/RecognitionFallback.rate,
                                 "overlapMs":RecognitionFallback.overlap*1000/RecognitionFallback.rate,"tracks":fallbackDecisions]
                         }
+                        // D56: the tracks this attempt left out as silent; replaced each attempt, omitted when empty.
+                        if silentTracks.isEmpty { writing.removeValue(forKey:"silentTracks") } else { writing["silentTracks"] = silentTracks }
                         details["writingDown"] = writing
                         metadata["recordingDetails"] = details
                     }
@@ -211,8 +245,8 @@ public enum MeetingTranscriber {
             }
             try publish(status: "running")
             /// Recognise one range of a track; word times are clamped to its own audio (G11).
-            func words(_ track: Track, _ segment: SpeechSegment) throws -> [RecognitionFallback.Word] {
-                let began = ProcessInfo.processInfo.systemUptime, samples = try track.audio.samples(segment)
+            func words(_ track: Track, _ audio: SegmentedAudio, _ segment: SpeechSegment) throws -> [RecognitionFallback.Word] {
+                let began = ProcessInfo.processInfo.systemUptime, samples = try audio.samples(segment)
                 let result = try recognize(samples)
                 if ["auto","und",""].contains(language) { language = result.language }
                 let start = track.offset + Int64(segment.startSample * 1000 / 16000), length = Int64(samples.count) * 1000 / 16000
@@ -225,23 +259,16 @@ public enum MeetingTranscriber {
                 for word in words { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
             }
             for (index, track) in tracks.enumerated() {
-                // D52.4 R71: activity inside this track's present, owned time (never the mix).
-                var meter = RecognitionFallback.ActivityMeter(), cursor = 0
-                for range in track.kept {
-                    if range.lowerBound > cursor { meter.feedSilence(range.lowerBound - cursor) }
-                    var at = range.lowerBound
-                    while at < range.upperBound {
-                        let end = min(range.upperBound,at + 240000)
-                        meter.feed(try track.audio.samples(.init(startSample:at,endSample:end,reason:"activity"))); at = end
-                    }
-                    cursor = range.upperBound
-                }
-                let active = meter.active(), activeSeconds = meter.activeSeconds(active)
+                if track.silent { progress.finish(track:index); continue }
+                // D52 M15: one track's scratch at a time; the same deterministic decode as planning.
+                let audio = try SegmentedAudio(url: track.url)
+                guard audio.sampleCount == track.sampleCount else { throw TranscriptionFailure.audioFormat }
+                let active = track.active, activeSeconds = track.activeSeconds
                 // A track with plenty of active audio holds its VAD words until it reaches the threshold.
                 var held: [RecognitionFallback.Word]? = activeSeconds >= RecognitionFallback.minActiveSeconds ? [] : nil
                 var heldEnd: Int64?, vadWords = 0
                 for segment in track.segments {
-                    let found = try words(track,segment)
+                    let found = try words(track,audio,segment)
                     vadWords += found.count
                     let end = track.offset + Int64(segment.endSample * 1000 / 16000)
                     if held == nil { append(found,track:index); progress.advance(track:index,to:end); try publish(status: "running"); continue }
@@ -265,7 +292,7 @@ public enum MeetingTranscriber {
                     for window in windows {
                         let segment = SpeechSegment(startSample:window.lowerBound,endSample:window.upperBound,reason:"noVadWindow")
                         let base = track.offset + Int64(window.lowerBound * 1000 / 16000)
-                        let kept = RecognitionFallback.energetic(try words(track,segment),samples:try track.audio.samples(segment),baseMs:base)
+                        let kept = RecognitionFallback.energetic(try words(track,audio,segment),samples:try audio.samples(segment),baseMs:base)
                         if let previousEnd, window.lowerBound < previousEnd {
                             fallback = RecognitionFallback.mergeSeam(fallback,kept,windowStartMs:base,overlapMs:Int64((previousEnd - window.lowerBound) * 1000 / 16000))
                         } else { fallback += kept }
@@ -283,6 +310,56 @@ public enum MeetingTranscriber {
             }
             try publish(status: "done")
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
+    }
+    /// D56/D57 (GNOME R76): a track is silent with fewer than 32 non-zero frames. Frames are
+    /// floor(rate × 32 / 1000) native samples, non-overlapping from the file's first sample, and a
+    /// trailing partial frame never counts; a frame is non-zero if any sample on any channel is
+    /// != 0 (DC counts). Reads the WAV directly and stops at the 32nd frame. A file this reader
+    /// does not understand is never called silent.
+    ///
+    /// Like the decoder and the Library scanner, a Cassini WAV (the canonical 44-byte header)
+    /// is judged on its physical complete frames: a recovered track's checkpoint header can
+    /// declare fewer bytes than were written, or more than exist. Other layouts keep their
+    /// declared size, bounded by what is on disk.
+    static let silentFrameLimit = 32
+    static func isSilent(wav url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom:url) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount:12), header.count == 12,
+              header.prefix(4) == Data("RIFF".utf8), header[8..<12] == Data("WAVE".utf8) else { return false }
+        func u32(_ d: Data, _ at: Int) -> Int { Int(d[d.startIndex+at]) | Int(d[d.startIndex+at+1]) << 8 | Int(d[d.startIndex+at+2]) << 16 | Int(d[d.startIndex+at+3]) << 24 }
+        func u16(_ d: Data, _ at: Int) -> Int { Int(d[d.startIndex+at]) | Int(d[d.startIndex+at+1]) << 8 }
+        var channels = 0, rate = 0, bits = 0, fmtSize = 0, offset: UInt64 = 12
+        while let chunk = try? { try handle.seek(toOffset:offset); return try handle.read(upToCount:8) }(), chunk.count == 8 {
+            let size = u32(chunk,4), body = offset + 8
+            if chunk.prefix(4) == Data("fmt ".utf8) {
+                guard size >= 16, let fmt = try? handle.read(upToCount:16), fmt.count == 16, u16(fmt,0) == 1 || u16(fmt,0) == 0xFFFE else { return false }
+                channels = u16(fmt,2); rate = u32(fmt,4); bits = u16(fmt,14); fmtSize = size
+            } else if chunk.prefix(4) == Data("data".utf8) {
+                guard channels > 0, rate > 0, bits == 16 else { return false }
+                let frameBytes = rate * 32 / 1000 * channels * 2
+                guard frameBytes > 0 else { return false }
+                // nil: read to the end of the file, as the decoder does for a Cassini WAV.
+                var remaining: Int? = fmtSize == 16 && body == 44 ? nil : size / frameBytes
+                var found = 0
+                while remaining.map({ $0 > 0 }) ?? true {
+                    let count = min(remaining ?? 256,256)
+                    guard let block = try? handle.read(upToCount:count * frameBytes) else { break }
+                    // A short read still holds complete frames; only a trailing partial frame is dropped.
+                    let complete = block.count / frameBytes
+                    found += block.withUnsafeBytes { raw -> Int in
+                        let samples = raw.bindMemory(to:Int16.self), per = frameBytes / 2
+                        return (0..<complete).filter { f in samples[(f*per)..<((f+1)*per)].contains { $0 != 0 } }.count
+                    }
+                    if found >= silentFrameLimit { return false }
+                    if complete < count { break }
+                    remaining = remaining.map { $0 - count }
+                }
+                return true
+            }
+            offset = body + UInt64(size) + UInt64(size & 1)
+        }
+        return false
     }
     private static func atomicTranscript(_ data: Data, directory: URL) throws {
         let temp = directory.appendingPathComponent(".transcript-" + UUID().uuidString + ".tmp")
