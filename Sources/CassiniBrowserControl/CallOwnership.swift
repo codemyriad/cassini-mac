@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
+import CassiniKit
+
+/// D52.5 lost-call ownership: which browser call each live recording holds, and what follows
+/// from it once the recording's audio transport closed.
+///
+/// The app feeds each recording's binding (its call key and generation, whether it follows the
+/// call, whether it is still recording). The audio broker feeds transport loss and resume
+/// synchronously, on its own thread, as the EOF or loss Stop is handled. The control service
+/// reads `lostCalls` on its queue right before it admits any Start, so a control reconnect
+/// never Starts a call whose recording is waiting to be resumed, however late the app's main
+/// actor catches up. Pure: every decision here is a function of what was fed.
+public struct CallOwnership: Sendable, Equatable {
+    public struct Binding: Sendable, Equatable {
+        /// The call row the recording is bound to (control peer and tab), when known.
+        public var key: BrowserMeetingKey?
+        /// The call generation the recording belongs to, once learned (never replaced).
+        public var callGeneration: String?
+        /// A Chromium capture, or a D49 stand-in whose take-over committed (callConnected).
+        public var follows: Bool
+        /// Recording and not saving.
+        public var recording: Bool
+        public init(key: BrowserMeetingKey?, callGeneration: String?, follows: Bool, recording: Bool) {
+            self.key = key; self.callGeneration = callGeneration; self.follows = follows; self.recording = recording
+        }
+    }
+    private var bindings: [UUID:Binding] = [:]
+    private var lost: Set<UUID> = []
+    /// What a recording's own control peer last said about itself, kept across control gaps.
+    private struct Known: Sendable, Equatable { var multiStream: Bool; var instance: BrowserInstance? }
+    private var known: [UUID:Known] = [:]
+    public init() {}
+
+    /// One poll's lost-call decisions for a recording (see `follow`).
+    public struct Follow: Sendable, Equatable {
+        /// The call row the recording is bound to after this poll.
+        public var key: BrowserMeetingKey?
+        /// The lost recording followed its call to another row this poll: adopt `key`.
+        public var rebound = false
+        /// Its control speaks multi-stream-v1: the D52 policy applies. Kept across a control gap,
+        /// so a missing peer is never mistaken for a legacy one (whose D33 lifecycle would end a
+        /// lost recording that waits to be resumed).
+        public var multiStream: Bool
+        /// The recording's call is over in its tab (D52 M6), also seen from a new control peer.
+        public var end: BrowserCallLifecycle.StopReason?
+        /// D57 (R78.1): an active session for the tab is still listed.
+        public var sessionListed: Bool
+    }
+
+    /// The app's view of a recording. A learned generation is kept: a later binding without one
+    /// (a status that no longer lists the session) never forgets which call this is.
+    public mutating func bind(_ id: UUID, _ binding: Binding) {
+        var value = binding
+        if value.callGeneration == nil { value.callGeneration = bindings[id]?.callGeneration }
+        bindings[id] = value
+    }
+    /// The recording ended or was saved; it holds no call.
+    public mutating func remove(_ id: UUID) { bindings.removeValue(forKey:id); lost.remove(id); known.removeValue(forKey:id) }
+    /// The broker: this recording's audio transport closed (EOF or a loss Stop). The
+    /// recording keeps running on its fallback and waits to be resumed.
+    public mutating func transportLost(_ id: UUID) { lost.insert(id) }
+    /// The broker: a resumed transport attached to this recording.
+    public mutating func transportResumed(_ id: UUID) { lost.remove(id) }
+
+    public func binding(_ id: UUID) -> Binding? { bindings[id] }
+    public func isLost(_ id: UUID) -> Bool { lost.contains(id) && holds(id) != nil }
+    /// A bound, still recording recording that follows its call.
+    private func holds(_ id: UUID) -> Binding? {
+        guard let value = bindings[id], value.follows, value.recording, value.key != nil else { return nil }
+        return value
+    }
+    /// The calls (tab, generation) held by a recording whose transport closed. Each is resumed,
+    /// never Started afresh, by auto-record or Record all, on any control peer.
+    public var lostCalls: Set<BrowserControlRegistry.LostCall> {
+        Set(lost.compactMap { id in holds(id).map { .init(tabID:$0.key!.tabID,callGeneration:$0.callGeneration) } })
+    }
+    /// The recording's call (same tab and generation) among the meetings of every reconciled
+    /// control peer, past or present. Only a lost recording follows its call to another peer.
+    public func call(of id: UUID, among meetings: [BrowserMeeting]) -> BrowserMeetingKey? {
+        guard isLost(id), let value = bindings[id], let key = value.key, let generation = value.callGeneration else { return nil }
+        return meetings.first { $0.key.tabID == key.tabID && $0.callGeneration == generation }?.key
+    }
+    /// D52 M6: the recording ends as callEnded once its tab's row names another call. It is
+    /// judged against the generation the recording learned, so it still applies after the
+    /// session left the status (a lost recording), and falls back to the session's own report.
+    public func endsForCallChange(_ id: UUID, reported: String?, current: String?) -> BrowserCallLifecycle.StopReason? {
+        BrowserCallPolicy.endForCallChange(started:bindings[id]?.callGeneration ?? reported,current:current)
+    }
+    /// A lost recording holds this call: no other recording (a fresh Start or a D49 stand-in)
+    /// may take it; only this recording's own resume.
+    public func holds(meeting: BrowserMeeting) -> Bool {
+        lostCalls.contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration))
+    }
+    /// Every per-poll lost-call decision for a recording, from the reconciled control peers:
+    /// - a lost recording follows its call (same tab and generation) to whichever peer reports it;
+    /// - its own peer's capabilities and browser instance are remembered across control gaps;
+    /// - under D52 it ends as callEnded once its tab names another call, judged against the
+    ///   generation it learned (else its session's report); after a reconnect, the same
+    ///   browser's new peer reporting the tab on another call and not on this one ends it too;
+    /// - only an active session (never interrupted history) counts as listed.
+    public mutating func follow(_ id: UUID, captureID: String?, peers: [BrowserControlPeerSnapshot]) -> Follow {
+        guard var value = bindings[id] else { return .init(key:nil,multiStream:false,end:nil,sessionListed:false) }
+        let reconciled = peers.filter(\.reconciled)
+        var rebound = false
+        if isLost(id), let key = value.key, let generation = value.callGeneration,
+           let row = reconciled.flatMap(\.meetings).first(where:{ $0.key.tabID == key.tabID && $0.callGeneration == generation }), row.key != key {
+            value.key = row.key; bindings[id] = value; rebound = true
+        }
+        let peer = reconciled.first { $0.id == value.key?.peer }
+        if let peer { known[id] = .init(multiStream:peer.supportsMultiStream,instance:peer.browserInstance ?? known[id]?.instance) }
+        let multiStream = peer?.supportsMultiStream ?? known[id]?.multiStream ?? false
+        var end: BrowserCallLifecycle.StopReason?
+        if multiStream {
+            let reported = captureID.flatMap { id in
+                peer.flatMap { ($0.captures + $0.interrupted).first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.callGeneration }
+            }
+            end = BrowserCallPolicy.endForCallChange(started:value.callGeneration ?? reported,current:peer?.meetings.first { $0.key == value.key }?.callGeneration)
+            if end == nil, peer == nil, isLost(id), let key = value.key, let generation = value.callGeneration, let instance = known[id]?.instance {
+                let rows = reconciled.filter { $0.browserInstance == instance }.flatMap(\.meetings).filter { $0.key.tabID == key.tabID }
+                if !rows.contains(where:{ $0.callGeneration == generation }), let other = rows.first(where:{ $0.callGeneration != nil }) {
+                    end = BrowserCallPolicy.endForCallChange(started:generation,current:other.callGeneration)
+                }
+            }
+        }
+        return .init(key:value.key,rebound:rebound,multiStream:multiStream,end:end,sessionListed:Self.sessionListed(tabID:value.key?.tabID,peer:peer))
+    }
+    /// D57 (R78.1): the extension still lists an active session (starting, recording or
+    /// stopping) for the tab. Interrupted history from a worker restart is not a session.
+    public static func sessionListed(tabID: Int?, peer: BrowserControlPeerSnapshot?) -> Bool {
+        guard let tabID, let peer else { return false }
+        return peer.captures.contains { $0.key.tabID == tabID }
+    }
+}
+
+/// The one shared `CallOwnership`, fed from the main actor and the broker, read by the service.
+public final class CallOwnershipStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var state = CallOwnership()
+    public init() {}
+    public func update(_ body: (inout CallOwnership) -> Void) { lock.withLock { body(&state) } }
+    public var snapshot: CallOwnership { lock.withLock { state } }
+    public var lostCalls: Set<BrowserControlRegistry.LostCall> { lock.withLock { state.lostCalls } }
+    public func follow(_ id: UUID, captureID: String?, peers: [BrowserControlPeerSnapshot]) -> CallOwnership.Follow {
+        lock.withLock { state.follow(id,captureID:captureID,peers:peers) }
+    }
+}

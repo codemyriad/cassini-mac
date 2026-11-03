@@ -516,11 +516,13 @@ public struct BrowserControlRegistry: Sendable {
     }
     /// D52.1 R67: join an active native stand-in. Requires the peer's resume-capture-v1
     /// and multi-stream-v1 hello and the row's call generation; never a fresh Start.
-    public mutating func resume(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int) throws -> (BrowserControlRequest,String) {
+    public mutating func resume(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, expectedGeneration: String? = nil) throws -> (BrowserControlRequest,String) {
         guard var peer = peers[key.peer], !peer.superseded else { throw BrowserControlStateError.unavailable }
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
         guard peer.independent, peer.supportsResume, peer.supportsMultiStream else { throw BrowserControlStateError.incompatible }
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }), let generation = meeting.callGeneration else { throw BrowserControlStateError.noSources }
+        // The caller judged one call; the tab may have moved on since (a call change).
+        if let expectedGeneration, Data(expectedGeneration.utf8) != Data(generation.utf8) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         guard !captureID.isEmpty, captureID.utf8.count <= 128, (0...253402300799000).contains(timelineOriginMs) else { throw BrowserControlStateError.malformed }
         let request = try Self.command(key,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,

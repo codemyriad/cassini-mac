@@ -45,6 +45,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     /// Observes each audio transport's end after the broker has applied it (the owner's loss
     /// and the stand-in identity), so a caller can wait on it instead of polling.
     fileprivate let transportClosed: @Sendable () -> Void
+    /// D52.5: fed synchronously with each transport loss and resume (see CallOwnership).
+    fileprivate let ownership: CallOwnershipStore?
     private var recordAttempts: [UUID:Int] = [:]
     static let recordAttemptLimit = 5
     /// D52.4 PCM_STALE_AFTER, 45 s per D52.5: the extension's longest source retry (30 s)
@@ -57,9 +59,9 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
                 stopNative: @escaping BrowserNativeStop,
                 persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) },
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
-                transportClosed: @escaping @Sendable () -> Void = {}) {
+                transportClosed: @escaping @Sendable () -> Void = {}, ownership: CallOwnershipStore? = nil) {
         self.make = make; self.created = created; self.stopNative = stopNative; self.persistRecord = persistRecord; self.clock = clock
-        self.transportClosed = transportClosed
+        self.transportClosed = transportClosed; self.ownership = ownership
         let timer = DispatchSource.makeTimerSource(queue:.global(qos:.utility))
         timer.schedule(deadline:.now() + 1,repeating:1)
         timer.setEventHandler { [weak self] in self?.closeStaleTransports() }
@@ -132,6 +134,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
         do { try capture.attachResumedBrowser() }
         catch { lock.withLock { if reservations[identity] == peer { reservations.removeValue(forKey:identity) } }; throw error }
+        ownership?.update { $0.transportResumed(capture.snapshot.manifest.id) }
         lock.withLock { standIns[identity]?.expected = nil }
         return capture
     }
@@ -530,6 +533,8 @@ private final class AudioPeer: @unchecked Sendable {
     /// transport releases its claim so the stand-in can be resumed again. Idempotent.
     private func registerLoss() {
         guard let owner, let captureID else { return }
+        // Before anything else can observe the loss: the control service reads it at admission.
+        broker?.ownership?.update { $0.transportLost(owner.snapshot.manifest.id) }
         if resumed { broker?.releaseResume(captureID:captureID,peer:connection.peer.id) }
         else if let timelineOriginMs { broker?.transportLost(owner,captureID:captureID,timelineOriginMs:timelineOriginMs,peer:connection.peer.id) }
     }

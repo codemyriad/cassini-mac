@@ -23,12 +23,15 @@ public final class BrowserControlService: @unchecked Sendable {
     /// Observes each control frame's type after the service has applied it (heartbeat
     /// liveness included), so a caller can wait on receipt instead of polling.
     private let received: @Sendable (String?) -> Void
+    /// D52.5: which calls a recording waits to resume; read on this queue before any Start.
+    private let ownership: CallOwnershipStore?
     public init(changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void,
                 completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil,
                 canStart: @escaping @Sendable () -> Bool = { true },
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
-                received: @escaping @Sendable (String?) -> Void = { _ in }) {
+                received: @escaping @Sendable (String?) -> Void = { _ in }, ownership: CallOwnershipStore? = nil) {
         self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock; self.received = received
+        self.ownership = ownership
         queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {
@@ -57,6 +60,7 @@ public final class BrowserControlService: @unchecked Sendable {
     public func recordAll(microphone: Bool, choices: [BrowserMeetingKey:Bool] = [:], issued: @escaping @Sendable ([BrowserControlRequest]) -> Void = { _ in }) {
         queue.async { [self] in
             guard canStart() else { issued([]); return }
+            refreshLostCalls()
             let requests = registry.startAll(microphone:microphone,choices:choices)
             send(requests); publish(); issued(requests)
         }
@@ -65,6 +69,7 @@ public final class BrowserControlService: @unchecked Sendable {
         queue.async { [self] in
             do {
                 guard canStart() else { throw BrowserIPCError.unavailable }
+                refreshLostCalls()
                 send([try registry.start(key,microphone:microphone)]); publish()
             }
             catch { completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
@@ -73,20 +78,28 @@ public final class BrowserControlService: @unchecked Sendable {
     /// D52.1 R67: ask the extension to join a native stand-in. `armed` receives the
     /// selected call generation before the command is sent, so the native resume
     /// can be validated; a failure is reported and never retried as a fresh Start.
-    public func resumeMeeting(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, armed: @escaping @Sendable (String?) -> Void) {
+    /// `expectedGeneration`: the call the caller judged (a lost recording's own call); a tab
+    /// that moved on to another call since is refused, never resumed into the new call.
+    public func resumeMeeting(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, expectedGeneration: String? = nil,
+                              armed: @escaping @Sendable (String?) -> Void) {
         queue.async { [self] in
             do {
                 guard canStart() else { throw BrowserIPCError.unavailable }
-                let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs)
+                let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,expectedGeneration:expectedGeneration)
                 armed(generation); send([request]); publish()
             }
             catch { armed(nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil),false) }
         }
     }
-    /// D52.5: calls whose recording is on system/lost; they are resumed, never auto-Started.
-    public func setLostCalls(_ calls: Set<BrowserControlRegistry.LostCall>) {
-        queue.async { [self] in registry.setLostCalls(calls); reconcile() }
+    /// D52.5: an ownership change that may release a call (a recording saving or retired) is
+    /// applied on this queue, after every request already queued (a user's Stop memory first),
+    /// and then Starts are admitted again. Taking a hold needs no ordering: it only suppresses.
+    public func updateOwnership(_ body: @escaping @Sendable (inout CallOwnership) -> Void) {
+        queue.async { [self] in ownership?.update(body); reconcile() }
     }
+    /// D52.5: calls whose recording waits to resume are never Started afresh. They are read
+    /// from the shared ownership at admission time, never from a later main-actor publication.
+    private func refreshLostCalls() { if let ownership { registry.setLostCalls(ownership.lostCalls) } }
     public func rememberUserStop(captureID: String, key: BrowserMeetingKey?) {
         queue.async { [self] in registry.rememberUserStop(key:key,captureID:captureID) }
     }
@@ -154,6 +167,7 @@ public final class BrowserControlService: @unchecked Sendable {
     private func reconcile() {
         registry.setRetainedCaptureIDs(audio?.retainedCaptureIDs ?? [])
         send(registry.drainStops())
+        refreshLostCalls()
         if autoRecord && canStart() { send(registry.automaticStarts(microphone:microphone),automatic:true) }
         publish()
     }
