@@ -31,6 +31,9 @@ public struct SearchHit: Sendable, Identifiable {
     /// UTF16 positions in the original normalised turn, including all matches.
     public let spans: [SearchSpan]
     public let occurrence: Int
+    /// The hit's turn and its neighbours (index, turn), from the index's prepared turns, so the
+    /// context view never prepares a transcript on the main actor (#118 review).
+    public var context: [(index: Int, turn: MeetingPresentation.Turn)] = []
     public var id: String { meetingKey + ":\(turn):\(occurrence)" }
     public var excerpt: (text: String, spans: [SearchSpan]) {
         guard let selected = spans.dropFirst(occurrence).first,
@@ -117,7 +120,9 @@ public actor SearchIndex {
                     if span.start < at + length { position = item.startMs; break }
                     at += length + 1
                 }
-                hits.append(.init(meetingKey:key,turn:index,positionMs:position,speaker:turn.speaker,text:parsed.text,spans:parsed.spans,occurrence:occurrence))
+                var hit = SearchHit(meetingKey:key,turn:index,positionMs:position,speaker:turn.speaker,text:parsed.text,spans:parsed.spans,occurrence:occurrence)
+                if let all = turns[key] { hit.context = (max(0,index - 1)...min(all.count - 1,index + 1)).map { ($0,all[$0]) } }
+                hits.append(hit)
             }
         }
         return hits.sorted {
