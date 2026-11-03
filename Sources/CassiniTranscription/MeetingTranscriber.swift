@@ -81,7 +81,10 @@ public enum MeetingTranscriber {
             let received = meeting.state.origin == .received
             struct Track {
                 /// D52 M15: planned from a first pass whose scratch is already released.
-                let url: URL; let sampleCount: Int; let speaker: TranscriptSpeaker; let offset: Int64
+                /// D55 (M9): the session 16 kHz sample where the track starts (TrackPlacement).
+                let url: URL; let sampleCount: Int; let speaker: TranscriptSpeaker; let startSample: Int
+                /// Session milliseconds of a track-local 16 kHz sample.
+                func ms(_ local: Int) -> Int64 { Int64(startSample + local) * 1000 / 16000 }
                 /// Speech segments clipped to the half-open ranges this source owns.
                 let segments: [SpeechSegment]
                 let id: String
@@ -116,8 +119,14 @@ public enum MeetingTranscriber {
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
             var silentTracks: [String] = []
-            for (url, id, kind, offset, sourceTrackID, _, gaps) in sources {
-                if offset == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
+            // D55 (M9): an unknown offset is placed at 0 and flagged on this attempt. D57: a silent
+            // track is never placed, so it never sets the flag.
+            var assumedZero = false
+            for (url, id, kind, recorded, sourceTrackID, _, gaps) in sources {
+                if recorded == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
+                // The one placement at 16 kHz; presence and ownership edges are measured from it.
+                let startSample = Int(TrackPlacement.frame(ms:recorded ?? 0,rate:16000))
+                let offset = recorded.map { _ in Double(startSample) / 16 }
                 var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
                 // D56/D57 (GNOME R76): each session.json track entry is judged on its own native
@@ -125,10 +134,11 @@ public enum MeetingTranscriber {
                 // the meeting and the mixdown, and captureOutcome is unchanged.
                 if !received, Self.isSilent(wav:url) {
                     silentTracks.append(id)
-                    var track = Track(url: url, sampleCount: 0, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: [], id: id, kept: [], active: [], activeSeconds: 0)
+                    var track = Track(url: url, sampleCount: 0, speaker: speaker, startSample: startSample, segments: [], id: id, kept: [], active: [], activeSeconds: 0)
                     track.silent = true; tracks.append(track)
                     continue
                 }
+                if !received && recorded == nil { assumedZero = true }
                 let audio = try SegmentedAudio(url: url, detector: detector)
                 var segments = audio.segments
                 var kept = audio.sampleCount > 0 ? [0..<audio.sampleCount] : []
@@ -148,7 +158,7 @@ public enum MeetingTranscriber {
                 // D52.4 R71: activity inside this track's present, owned time (never the mix).
                 let meter = try activity(audio,kept:kept)
                 let active = meter.active()
-                tracks.append(.init(url: url, sampleCount: audio.sampleCount, speaker: speaker, offset: Int64(floor(offset ?? 0)), segments: segments, id: id, kept: kept,
+                tracks.append(.init(url: url, sampleCount: audio.sampleCount, speaker: speaker, startSample: startSample, segments: segments, id: id, kept: kept,
                                     active: active, activeSeconds: meter.activeSeconds(active)))
                 // The planning scratch is released here (end of scope), before the next track.
             }
@@ -214,6 +224,8 @@ public enum MeetingTranscriber {
                         }
                         // D56: the tracks this attempt left out as silent; replaced each attempt, omitted when empty.
                         if silentTracks.isEmpty { writing.removeValue(forKey:"silentTracks") } else { writing["silentTracks"] = silentTracks }
+                        // D55 (M9): replaced with each attempt; absent unless an offset was assumed.
+                        if assumedZero { writing["offsetsAssumedZero"] = true } else { writing.removeValue(forKey:"offsetsAssumedZero") }
                         details["writingDown"] = writing
                         metadata["recordingDetails"] = details
                     }
@@ -225,7 +237,7 @@ public enum MeetingTranscriber {
                 let began = ProcessInfo.processInfo.systemUptime, samples = try audio.samples(segment)
                 let result = try recognize(samples)
                 if ["auto","und",""].contains(language) { language = result.language }
-                let start = track.offset + Int64(segment.startSample * 1000 / 16000), length = Int64(samples.count) * 1000 / 16000
+                let start = track.ms(segment.startSample), length = Int64(samples.count) * 1000 / 16000
                 let out = try Self.clamped(result.words ?? [],startMs:start,lengthMs:length)
                 let speech = Double(samples.count) / 16000
                 processed += speech; remaining = max(0,remaining - speech); elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
@@ -246,7 +258,7 @@ public enum MeetingTranscriber {
                 for segment in track.segments {
                     let found = try words(track,audio,segment)
                     vadWords += found.count
-                    let end = track.offset + Int64(segment.endSample * 1000 / 16000)
+                    let end = track.ms(segment.endSample)
                     if held == nil { append(found,track:index); progress.advance(track:index,to:end); try publish(status: "running"); continue }
                     held! += found; heldEnd = end
                     if vadWords >= RecognitionFallback.fewWords {
@@ -267,7 +279,7 @@ public enum MeetingTranscriber {
                     var fallback: [RecognitionFallback.Word] = [], previousEnd: Int?
                     for window in windows {
                         let segment = SpeechSegment(startSample:window.lowerBound,endSample:window.upperBound,reason:"noVadWindow")
-                        let base = track.offset + Int64(window.lowerBound * 1000 / 16000)
+                        let base = track.ms(window.lowerBound)
                         let kept = RecognitionFallback.energetic(try words(track,audio,segment),samples:try audio.samples(segment),baseMs:base)
                         if let previousEnd, window.lowerBound < previousEnd {
                             fallback = RecognitionFallback.mergeSeam(fallback,kept,windowStartMs:base,overlapMs:Int64((previousEnd - window.lowerBound) * 1000 / 16000))

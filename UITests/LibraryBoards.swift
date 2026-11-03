@@ -770,7 +770,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Could not write this meeting down. The audio is fine.", in: window))
         XCTAssertTrue(window.buttons["preview-play"].isEnabled)
         retry.click()
-        let readable = NSPredicate { _, _ in window.buttons["preview-read-transcript"].isEnabled && !retry.exists }
+        // Partial words enable the button while the write-down still runs; the preview then
+        // drops its transcribing line and the button moves. Click only once it has settled.
+        let transcribing = window.descendants(matching: .any)["preview-transcribing"]
+        let readable = NSPredicate { _, _ in window.buttons["preview-read-transcript"].isEnabled && !retry.exists && !transcribing.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: readable, object: nil)], timeout: 40), .completed, app.debugDescription)
         window.buttons["preview-read-transcript"].click()
         XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout: 10))
