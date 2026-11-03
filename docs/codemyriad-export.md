@@ -129,8 +129,12 @@ The file's other top-level members, the meeting's and audio's unknown members, i
 speaker entries (with the user's names from meeting.json; Mac's speakers follow
 only with Mac's own words), and its tags Mac doesn't write (DATE, ARTIST,
 DESCRIPTION, ENCODER, unknown `CASSINI_` facts, also from a plain Opus file) are
-carried too. `CASSINI_TRANSCRIPT_IDS` lists the ids sorted. `createdAtUtc` is
-still the export time until the D65 follow-up.
+carried too. `CASSINI_TRANSCRIPT_IDS` lists the ids sorted. `createdAtUtc` is the
+meeting's own (D65): a received Cassini file keeps its manifest's, any other
+received file takes its trusted DATE tag, else its import time, and a Mac
+recording takes its recording start, also written as its DATE tag
+(`YYYY-MM-DDTHH:MM:SS±HH:MM`, seconds floored). Only a recording whose start is
+lost falls back to the export time.
 
 ## Speaker labels and read-only Libraries (#122 r3, #116 CI)
 

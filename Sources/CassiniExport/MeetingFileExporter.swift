@@ -131,8 +131,10 @@ public enum MeetingFileExporter {
                 let manifest = try self.manifest(current,digest:digest,original:original,choice:choice,dateTag:dateTag,originalTitle:originalTitle,
                                                  timeZone:timeZone,importedTranscript:importedTranscript,transcripts:set,carriedOnly:!mine,
                                                  damaged:(original == nil || writtenOnMac) && current.state.transcript == .damaged,stored:stored,words:words)
+                // D65: a received file keeps its own DATE (carried); a Mac recording's is its start.
+                let date = current.state.origin == .own ? Self.dateTag(current.start,zone:timeZone).map { [Comment(name:"DATE",value:$0)] } ?? [] : []
                 tags = try PortableMeetingTags.make(manifest:manifest,transcripts:set,
-                                                    carriedTags:tagSource.map { PortableMeetingTags.carriedTags($0,besides:set) } ?? [],shouldCancel:shouldCancel)
+                                                    carriedTags:(tagSource.map { PortableMeetingTags.carriedTags($0,besides:set) } ?? []) + date,shouldCancel:shouldCancel)
                 items = mine ? words : []; carried = set.entries.count; break
             } catch is CodemyriadNamespace.MetadataChanged {
                 attempt += 1
@@ -237,7 +239,7 @@ public enum MeetingFileExporter {
         let integrity: JSON = .object([("matchPolicy",.string("exact-opus-audio-v1")),("opusAudioSha256",.string(digest.sha256)),
             ("sampleRate",.number("48000")),("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
         var info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
-            ("createdAtUtc",.string(iso.string(from:Date()))),("durationMs",.number(String(digest.durationMs)))])
+            ("createdAtUtc",.string(createdAtUtc(meeting,original:original,dateTag:dateTag))),("durationMs",.number(String(digest.durationMs)))])
         if meeting.state.origin == .own, let start = meeting.start {
             let local = ISO8601DateFormatter(); local.formatOptions = [.withInternetDateTime,.withFractionalSeconds]; local.timeZone = .current
             info = try info.setting("recordedAtLocal",to:.string(local.string(from:start)))
@@ -328,6 +330,31 @@ public enum MeetingFileExporter {
             }
         }
         return root
+    }
+    /// D65 (MAPPING): the meeting's own creation time, never the export time when it is known.
+    /// A received Cassini file keeps its manifest's; any other received file takes its trusted
+    /// DATE tag, else its import time; a Mac recording takes its recording start. Only a
+    /// recording whose start is lost (no session.json) falls back to the export time.
+    private static func createdAtUtc(_ meeting: LibraryMeeting, original: Manifest?, dateTag: String?) -> String {
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        if meeting.state.origin == .received {
+            if let kept = original?.meeting.createdAtUtc { return kept }
+            if let tag = dateTag, let date = parseDate(tag) { return iso.string(from:date) }
+            if let imported = meeting.received?.importedAtMs { return iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)) }
+        } else if let start = meeting.start { return iso.string(from:start) }
+        return iso.string(from:Date())
+    }
+    private static func parseDate(_ tag: String) -> Date? {
+        let plain = ISO8601DateFormatter(); plain.formatOptions = [.withInternetDateTime]
+        let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        return plain.date(from:tag) ?? fractional.date(from:tag)
+    }
+    /// MAPPING: DATE is the meeting's start, `YYYY-MM-DDTHH:MM:SS±HH:MM`, seconds floored.
+    static func dateTag(_ start: Date?, zone: TimeZone) -> String? {
+        guard let start else { return nil }
+        let format = DateFormatter(); format.locale = Locale(identifier:"en_US_POSIX"); format.timeZone = zone
+        format.dateFormat = "yyyy-MM-dd'T'HH:mm:ssxxx"
+        return format.string(from:Date(timeIntervalSince1970:start.timeIntervalSince1970.rounded(.down)))
     }
     private static func regular(_ url: URL) throws {
         var info = stat()

@@ -759,6 +759,38 @@ struct R65CodemyriadNamespaceTests {
         try lock(library,0o755)
         #expect(throws:MeetingExportError.libraryFolderNotWritable) { _ = try reexportFile(root) }
     }
+    /// D65: a received file without a manifest or DATE is dated by its import, not its export.
+    @Test func anUndatedReceivedFileIsDatedByItsImport() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let input = try CassiniReader.read(contentsOf:fixture)
+        let meeting = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Library"))
+        let imported = try #require(meeting.received?.importedAtMs)
+        let file = try reexportFile(root)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        if input.tags?["DATE"] == nil {
+            #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
+            #expect(file.tags?["DATE"] == nil,"no DATE is made up")
+        }
+    }
+    /// D65: a Mac recording's creation time and DATE are its recording start, never the export
+    /// time. (Assets: the export CI job.)
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func aRecordingIsDatedByItsStart() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try recording(root)
+        let start = try #require(meeting.start)
+        let path = try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"])
+        let directory = URL(fileURLWithPath:path)
+        let hashes = try JSONDecoder().decode([String:String].self,from:Data(contentsOf:directory.appendingPathComponent("unsigned-sha256.json")))
+        let assets = try OpusAssets.builtForTests(directory:directory,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
+        let rome = try #require(TimeZone(identifier:"Europe/Rome"))
+        let exported = try MeetingFileExporter.cassini(meeting,assets:assets,temporaryRoot:root,timeZone:rome)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:start))
+        #expect(file.tags?["DATE"] == MeetingFileExporter.dateTag(start,zone:rome))
+    }
     /// #116 r4: our own namespace never describes two contents at one revision: words that
     /// become unreadable (damaged) take a new revision, and so do the same words restored;
     /// an unchanged re-export keeps it.
@@ -934,6 +966,10 @@ struct R65CodemyriadNamespaceTests {
         let x = try #require(CassiniReader.read(contentsOf:exported.url).manifest?.raw["x"]?["codemyriad.io"])
         #expect(x["namePrefix"]?.string == "2026-03-04--09.15-" && x["namePrefixSource"]?.string == "date-tag")
         #expect(x["automaticTitle"]?.string == "Board review")
+        // D65: its DATE stays, and its creation time is that DATE, not the export time.
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.tags?["DATE"] == "2026-03-04T09:15:00+01:00")
+        #expect(file.manifest?.meeting.createdAtUtc == "2026-03-04T08:15:00.000Z")
         #expect(try raw(imported.folder.appendingPathComponent("meeting.json"))["namePrefix"]?.string == "2026-03-04--09.15-")
     }
     /// Naming on Mac a speaker another writer had cleared removes the clear (it goes only with unnamed).
