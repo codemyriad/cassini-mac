@@ -41,7 +41,7 @@ struct RecordingPageView: View {
                     }
                 }
                 if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
-                if let owned = model.owned, owned.input.failedSides.contains(.me) { CapturePermissionNotice(side:.me) }
+                if let owned = model.owned, owned.input.failedSides.contains(.me) { CapturePermissionNotice(side:.me,refusal:owned.input.refusedSides[.me]) }
                 if sourceProblem {
                     Text(UXText.text("recording.sourceProblem")).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true)
                         .accessibilityIdentifier("recording-source-problem")

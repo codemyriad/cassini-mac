@@ -22,6 +22,8 @@ public enum CaptureRecordWriter {
             if let unreported = outcome["unreportedSourceCount"] { record["unreportedSourceCount"] = unreported }
         } else { record["sources"] = [[String:Any]]() }
         if let kind = session["problemKind"] { record["problemKind"] = kind }
+        // D58: a verbatim copy of the session's refusals, also without captureOutcome.
+        if let refusals = session["refusals"] { record["refusals"] = refusals }
         return record
     }
     /// Merge `fresh` into a stored record. Returns nil when the stored record must be left untouched.
@@ -43,7 +45,7 @@ public enum CaptureRecordWriter {
         var merged = stored
         merged["sources"] = rows("sources",id:"sourceTrackId"); merged["tracks"] = rows("tracks",id:"id")
         merged["events"] = fresh["events"]
-        for key in ["problemKind","unreportedSourceCount"] { merged[key] = fresh[key] }
+        for key in ["problemKind","unreportedSourceCount","refusals"] { merged[key] = fresh[key] }
         return merged
     }
     public static func write(_ manifest: RecordingManifest, directory: URL) throws {
