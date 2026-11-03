@@ -293,6 +293,101 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
         await fixture.finish()
     }
 
+    /// Round 4, first major: whichever comes first, the app's creation feed or the broker's
+    /// Start record, the recording ends up holding its call.
+    func testTheStartRecordAndTheAppFeedAgreeInEitherOrder() {
+        var appFirst = CallOwnership(), brokerFirst = CallOwnership(); let id = UUID()
+        appFirst.bind(id,.init(key:nil,callGeneration:nil,follows:true,recording:true))
+        appFirst.started(id,callGeneration:"call-A")
+        XCTAssertEqual(appFirst.binding(id)?.callGeneration,"call-A","an existing binding gains the generation it lacks")
+        brokerFirst.started(id,callGeneration:"call-A")
+        brokerFirst.bind(id,.init(key:nil,callGeneration:nil,follows:true,recording:true))
+        XCTAssertEqual(brokerFirst.binding(id)?.callGeneration,"call-A")
+        appFirst.started(id,callGeneration:"call-Z")
+        XCTAssertEqual(appFirst.binding(id)?.callGeneration,"call-A","never replaced")
+    }
+    /// Round 4, first major, through the real host: the creation callback (the app's first
+    /// feed) runs only after the broker recorded the call, and carries the generation itself.
+    func testTheCreationCallbackSeesTheCallAlreadyRecorded() async throws {
+        let ownership = CallOwnershipStore(), seen = Seen()
+        let called = expectation(description:"the creation callback ran")
+        let fixture = try AudioFixture(ownership:ownership,created:{ owner,info in
+            let id = owner.snapshot.manifest.id
+            seen.store(recorded:ownership.snapshot.binding(id)?.callGeneration,info:info.callGeneration)
+            // What the app feeds at creation.
+            ownership.update { $0.bind(id,.init(key:nil,callGeneration:info.callGeneration,follows:true,recording:true)) }
+            called.fulfill()
+        })
+        do {
+            let (audio,owner) = try startCapture(fixture,"ordered")
+            await fulfillment(of:[called],timeout:5)
+            XCTAssertEqual(seen.recorded,"call-A","recorded before the callback was dispatched")
+            XCTAssertEqual(seen.info,"call-A","and handed to it")
+            XCTAssertEqual(ownership.snapshot.binding(owner.snapshot.manifest.id)?.callGeneration,"call-A")
+            audio.end()
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+    /// Round 4, second major: transport loss, a resume that never joins, then the meeting row
+    /// disappears with no session left. The call is no longer visible, so the D52 grace runs
+    /// and the recording stops as pageGone; it used to be taken as present (control connected)
+    /// with unknown inventory, and recorded on until stopped by hand.
+    func testALostRecordingStopsWhenItsMeetingRowDisappears() async throws {
+        let ownership = CallOwnershipStore(), log = PeerLog()
+        let fixture = try AudioFixture(ownership:ownership,changed:{ log.changed($0) })
+        do {
+            let control = try connect(fixture,capabilities:resumeCapabilities,meetings:[(2,"call-A")],sessions:[(2,"gone","call-A")])
+            let bound = log.next("the session is reported") { $0.contains { $0.captures.contains { $0.captureID == "gone" } } }
+            await fulfillment(of:[bound],timeout:5)
+            let peer = try XCTUnwrap(log.peers.first { $0.reconciled }).id
+            let (audio,owner) = try startCapture(fixture,"gone")
+            let id = owner.snapshot.manifest.id
+            ownership.update { $0.bind(id,.init(key:.init(peer:peer,tabID:2),callGeneration:"call-A",follows:true,recording:true)) }
+            let closed = fixture.closures.next("the transport closed")
+            audio.end()
+            await fulfillment(of:[closed],timeout:5)
+            try await owner.requestSystemFallback()
+            let stage = StagedNativeWriter()
+            try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            try await owner.activateNative(stage,side:.others,allowed:{ true })
+            var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
+            var asked = 0
+            // As the app builds its observation (no page reports here).
+            func poll(_ now: TimeInterval, legacyPresent: Bool = false) -> BrowserCallLifecycle.Action? {
+                let follow = ownership.follow(id,captureID:"gone",peers:log.peers)
+                let current = log.peers.first { $0.id == follow.key?.peer && $0.reconciled }
+                let row = current?.meetings.first { $0.key == follow.key }
+                let page: BrowserCallLifecycle.Page? = legacyPresent ? (current == nil ? nil : .present) : (follow.callVisible ? .present : nil)
+                var o = BrowserCallPolicy.Observation(page:page,rowPresent:row != nil,sourceCount:row?.sourceCount,sourceCountKnown:row?.sourceCountKnown ?? false,
+                                                      heard:row?.heard ?? false,controlAlive:current != nil,transportAlive:owner.snapshot.transportAlive,
+                                                      callGeneration:row?.callGeneration,controlConnection:current?.id.uuidString ?? "")
+                o.sessionListed = follow.sessionListed
+                let committed = CaptureSourceState(events:owner.snapshot.manifest.events ?? [],atMs:.infinity)
+                return BrowserCallPolicy.decide(pending:false,multiStream:follow.multiStream,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
+                                                others:true,restoreReady:false,legacy:{ nil },onAskResume:{ asked += 1 })
+            }
+            // The extension drops the session; the one resume ask goes out and never joins.
+            let dropped = log.next("the session left the status") { $0.contains { $0.id == peer && $0.captures.isEmpty } }
+            try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[]],control)
+            await fulfillment(of:[dropped],timeout:5)
+            XCTAssertNil(poll(100)); XCTAssertEqual(asked,1)
+            // The last source leaves and the extension removes the meeting row.
+            let vanished = log.next("the meeting row is gone") { $0.contains { $0.id == peer && $0.meetings.isEmpty } }
+            try send(["type":"meetings","meetings":[]],control)
+            await fulfillment(of:[vanished],timeout:5)
+            XCTAssertFalse(ownership.follow(id,captureID:"gone",peers:log.peers).callVisible)
+            var legacy = policy
+            XCTAssertNil(poll(101))
+            XCTAssertNil(poll(220),"within the grace")
+            XCTAssertEqual(poll(221),.stop(.pageGone),"bounded: 120 s after the call left")
+            // What the old observation did: present while control is connected, forever.
+            swap(&policy,&legacy)
+            XCTAssertNil(poll(101,legacyPresent:true)); XCTAssertNil(poll(1000,legacyPresent:true))
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+
     /// Review r3, third major: after a worker restart the new extension keeps the old session
     /// as interrupted history. That is not a listed session, so the recovered call is asked
     /// once to resume, and the resume joins the original folder.
@@ -496,3 +591,10 @@ private final class PeerLog: @unchecked Sendable {
     }
 }
 
+
+private final class Seen: @unchecked Sendable {
+    private let lock = NSLock(); private var values: (String?,String?) = (nil,nil)
+    func store(recorded: String?, info: String?) { lock.withLock { values = (recorded,info) } }
+    var recorded: String? { lock.withLock { values.0 } }
+    var info: String? { lock.withLock { values.1 } }
+}

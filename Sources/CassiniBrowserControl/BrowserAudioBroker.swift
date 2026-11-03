@@ -18,8 +18,10 @@ public struct BrowserAudioStart: Sendable {
     public let captureID: String
     public let timelineOriginMs: Int
     public let microphone: Bool
-    public init(captureID: String, timelineOriginMs: Int, microphone: Bool) {
-        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone
+    /// The call the Start names (D52.5: its identity), recorded before the app hears of it.
+    public let callGeneration: String?
+    public init(captureID: String, timelineOriginMs: Int, microphone: Bool, callGeneration: String? = nil) {
+        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone; self.callGeneration = callGeneration
     }
 }
 public typealias BrowserNativeStop = @Sendable (OwnedBrowserCapture,@escaping @Sendable (String?) -> Void) -> Void
@@ -184,6 +186,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         }
         capture.setTimelineOrigin(ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000-Double(info.timelineOriginMs))/1000)
         lock.lock(); captures[capture.snapshot.manifest.id] = capture; identities[capture.snapshot.manifest.id] = identity; lock.unlock()
+        // The recording holds its call before anyone hears of it (No second recording).
+        if let generation = info.callGeneration { ownership?.update { $0.started(capture.snapshot.manifest.id,callGeneration:generation) } }
         DispatchQueue.global().async { [created] in if capture.snapshot.phase == .recording { created(capture,info) } }
         return capture
     }
@@ -395,14 +399,12 @@ private final class AudioPeer: @unchecked Sendable {
                     }
                 }
                 guard let broker else { throw BrowserProtocolError("io","Recording broker is unavailable.") }
-                let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
+                // The call this Start names: the recording holds it from its first moment, even if
+                // its audio closes before any status tells the app its tab.
+                let generation = json["callGeneration"]?.string.flatMap { !$0.isEmpty && $0.unicodeScalars.count <= 200 ? $0 : nil }
+                let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
                 owner = capture; captureID = id; timelineOriginMs = origin; watch(id)
-                // The recording holds its call from its first moment (No second recording), even
-                // if its audio closes before any status tells the app its tab.
-                if let generation = json["callGeneration"]?.string, !generation.isEmpty, generation.unicodeScalars.count <= 200 {
-                    broker.ownership?.update { $0.started(capture.snapshot.manifest.id,callGeneration:generation) }
-                }
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
                 if features.contains("source-outcomes-v1") {
                     capture.enableSourceOutcomes(); sourceOutcomes = true

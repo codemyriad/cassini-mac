@@ -292,8 +292,8 @@ private final class CaptureFiles: @unchecked Sendable {
         let meetingKey = key(for:info.captureID)
         let modern = peers.first { $0.id == meetingKey?.peer }?.supportsPageState
         captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,modernLifecycle:modern)
-        // The call this recording belongs to, as the broker recorded it at Start.
-        if let generation = ownership.snapshot.binding(id)?.callGeneration {
+        // The call this recording belongs to, as the Start named it (the broker recorded it first).
+        if let generation = info.callGeneration ?? ownership.snapshot.binding(id)?.callGeneration {
             captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation
         }
         feedOwnership(id)
@@ -577,7 +577,9 @@ private final class CaptureFiles: @unchecked Sendable {
                 // keeps a call alive while control is absent. Until the call has taken over, a
                 // stand-in is a plain native recording: nothing but the take-over applies.
                 let committed = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
-                var callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (peer == nil ? nil : .present),rowPresent:meeting != nil,
+                // No page report: present only while the bound call is still reported. A row that
+                // vanished with no session left is missing evidence (bounded by the D52 grace).
+                var callObservation = BrowserCallPolicy.Observation(page:page?.0 ?? (follow.callVisible ? .present : nil),rowPresent:meeting != nil,
                     sourceCount:count,sourceCountKnown:meeting?.sourceCountKnown ?? false,heard:meeting?.heard ?? false,
                     controlAlive:peer != nil,pcmLive:fresh,transportAlive:source.transportAlive,
                     callGeneration:meeting?.callGeneration,controlConnection:peer?.id.uuidString ?? "",pageObservedAt:page?.1,lostAt:source.browserLostUptime)

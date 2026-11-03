@@ -46,6 +46,11 @@ public struct CallOwnership: Sendable, Equatable {
         public var end: BrowserCallLifecycle.StopReason?
         /// D57 (R78.1): an active session for the tab is still listed.
         public var sessionListed: Bool
+        /// The bound call is still reported: its own peer is reconciled and either its row or
+        /// an active session for its tab is listed. When the row is gone too, the call has
+        /// left: that is missing-page evidence, not unknown inventory (a row with an unknown
+        /// count stays visible).
+        public var callVisible = false
     }
 
     /// The app's view of a recording. A learned generation is kept: a later binding without one
@@ -58,8 +63,9 @@ public struct CallOwnership: Sendable, Equatable {
     /// The broker, as it accepts a browser Start: the recording belongs to this call from its
     /// first moment, before any status could tell the app its tab. The generation is the
     /// call's identity (browser-made, unguessable); its tab is the row reporting it.
+    /// A binding that exists already (the app was faster) only gains the generation it lacks.
     public mutating func started(_ id: UUID, callGeneration: String) {
-        guard bindings[id] == nil else { return }
+        if bindings[id] != nil { if bindings[id]?.callGeneration == nil { bindings[id]?.callGeneration = callGeneration }; return }
         bindings[id] = .init(key:nil,callGeneration:callGeneration,follows:true,recording:true)
     }
     /// The recording ended or was saved; it holds no call.
@@ -138,7 +144,9 @@ public struct CallOwnership: Sendable, Equatable {
                 }
             }
         }
-        return .init(key:value.key,rebound:rebound,multiStream:multiStream,end:end,sessionListed:Self.sessionListed(tabID:value.key?.tabID,peer:peer))
+        let listed = Self.sessionListed(tabID:value.key?.tabID,peer:peer)
+        let visible = peer.map { peer in listed || peer.meetings.contains { $0.key == value.key } } ?? false
+        return .init(key:value.key,rebound:rebound,multiStream:multiStream,end:end,sessionListed:listed,callVisible:visible)
     }
     /// D57 (R78.1): the extension still lists an active session (starting, recording or
     /// stopping) for the tab. Interrupted history from a worker restart is not a session.
