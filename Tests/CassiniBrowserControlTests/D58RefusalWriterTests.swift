@@ -15,8 +15,11 @@ import CassiniRecording
     let kind: String, origin: UInt64, plan: Plan
     var sink: RecordingSink?
     var failure: (@Sendable (String) -> Void)?
+    /// Holds authorization until the test opens it.
+    var authorization: Gate?
     init(_ kind: String, origin: UInt64, plan: Plan) { self.kind = kind; self.origin = origin; self.plan = plan }
     func authorize() async throws {
+        await authorization?.wait()
         if case .refuse(let code,_) = plan, code == CaptureRefusal.permissionDenied { throw CaptureOpenRefusal.denied }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
@@ -39,12 +42,16 @@ import CassiniRecording
     var plans: [CaptureSide:[ScriptedInput.Plan]] = [.me:[],.others:[]]
     var drivers: [CaptureSide:ScriptedInput] = [:]
     var refused: [CaptureRefusal] = []
+    var authorizations: [CaptureSide:Gate] = [:]
+    /// Fulfilled when that side's driver is made (just before it is authorized).
+    var made: [CaptureSide:XCTestExpectation] = [:]
     let origin: UInt64
     init(origin: UInt64) { self.origin = origin }
     func make(_ side: CaptureSide) -> any CaptureInput {
         let plan = plans[side]!.isEmpty ? .open(atMs:0) : plans[side]!.removeFirst()
         let driver = ScriptedInput(side == .me ? "microphone" : "system",origin:origin,plan:plan)
-        drivers[side] = driver; return driver
+        driver.authorization = authorizations[side]
+        drivers[side] = driver; made[side]?.fulfill(); return driver
     }
 }
 
@@ -318,6 +325,60 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
         XCTAssertEqual(manifest.refusals?.map(\.code),["deviceUnavailable"])
         XCTAssertTrue(manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 })
+    }
+    /// #120 r3: an unsupported first buffer just before Stop, with Stop running before the
+    /// failure handler: the side still never opened, so it is refused and drains without its
+    /// failure, and the other side saves completed.
+    @MainActor func testAnInvalidFirstBufferJustBeforeStopIsStillARefusal() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniD58-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Stop race",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let gate = Gate(), script = Script(origin:origin)
+        script.plans[.others] = [.later]
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ script.make(.me) },system:{ script.make(.others) },
+            failure:{ message in XCTFail("a refusal is not a failure: \(message)") },refused:{ _,refusal in script.refused.append(refusal) },openBound:{ await gate.wait() })
+        try await inputs.start()
+        await waitUntil(inputs) { inputs.openedSides.contains(.me) }
+        // In one main-actor turn: the invalid buffer fails the sink (its handler is queued for
+        // the main actor), then Stop begins before that handler can run.
+        script.drivers[.others]?.emit(atMs:0,rate:4000)
+        try await inputs.stop()
+        gate.release()
+        try await owner.finish(reason:.user,atMs:5000)
+        let manifest = owner.snapshot.manifest
+        XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
+        XCTAssertEqual(manifest.refusals?.map(\.side),["others"]); XCTAssertEqual(manifest.refusals?.first?.code,"deviceUnavailable")
+        XCTAssertTrue(manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 })
+    }
+    /// #120 r3: admission and expiry are one terminal decision. The system side's bound passes
+    /// while the microphone's authorization is held (the start is still busy); its PCM then
+    /// arrives late: it is not admitted, records nothing, and the side is refused, never opened.
+    @MainActor func testALateBufferCannotOpenASideWhoseBoundPassed() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniD58-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Late",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let bound = Gate(), authorized = Gate(), script = Script(origin:origin)
+        script.plans[.others] = [.later]; script.authorizations[.me] = authorized
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ script.make(.me) },system:{ script.make(.others) },
+            failure:{ message in XCTFail("no failure: \(message)") },refused:{ _,refusal in script.refused.append(refusal) },openBound:{ await bound.wait() })
+        let microphoneMade = expectation(description:"system started, microphone waiting for authorization")
+        script.made[.me] = microphoneMade
+        let started = Task { @MainActor in try await inputs.start() }
+        await fulfillment(of:[microphoneMade],timeout:5)
+        XCTAssertNotNil(script.drivers[.others]?.sink,"the system side started first")
+        bound.release()                                  // the system side's bound passes
+        await waitUntil(inputs) { inputs.expiredSides.contains(.others) }
+        script.drivers[.others]?.emit(atMs:200)          // its first PCM, too late
+        authorized.release()
+        try await started.value
+        await waitUntil(inputs) { !script.refused.isEmpty }
+        XCTAssertEqual(script.refused.map(\.side),["others"]); XCTAssertFalse(inputs.openedSides.contains(.others))
+        try await inputs.stop(); try await owner.finish(reason:.user,atMs:5000)
+        let manifest = owner.snapshot.manifest
+        XCTAssertEqual(manifest.refusals?.map(\.side),["others"])
+        XCTAssertFalse(manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 },"nothing recorded past the bound")
     }
     /// D58: a side that admits no buffer within the bound never opened: it is refused at 0 and
     /// closed without a problem, and the other side keeps recording.

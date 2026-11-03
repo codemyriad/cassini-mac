@@ -78,6 +78,8 @@ private final class SourceChangeToken: @unchecked Sendable {
     public var hasRunningInputs: Bool { inputs.keys.contains { !failedSides.contains($0) } }
     /// D58: sides that admitted a first buffer at least once in this recording.
     public private(set) var openedSides: Set<CaptureSide> = [] { didSet { observer?() } }
+    /// Sides whose opening bound passed before a first buffer (terminal for that attempt).
+    private(set) var expiredSides: Set<CaptureSide> = [] { didSet { observer?() } }
     /// D58: the refusal code of each side refused at start or at its last turn-on attempt.
     public private(set) var refusedSides: [CaptureSide:String] = [:] { didSet { observer?() } }
     /// The 3 s first-buffer bound (D58); tests replace it with an event they control.
@@ -288,7 +290,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         guard !closed else { throw BrowserIPCError.closed }
         let generation = UUID(), stage = StagedNativeWriter(), signal = FirstBufferSignal()
         let report = report(side,generation:generation,stage:stage)
-        let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report,onAdmitted:{ signal.fire() })
+        let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report,admit:{ signal.admit() })
         let value = Input(generation:generation,driver:driver,sink:sink,stage:stage)
         do {
             try driver.start(sink:sink,failure:report)
@@ -324,9 +326,16 @@ private final class SourceChangeToken: @unchecked Sendable {
         let task = Task { @MainActor in
             try await self.enqueue {
                 var first: Error?
+                // #120 r3: a start side whose sink failed before admitting a buffer (an
+                // unsupported first buffer just before Stop) never opened, whether or not its
+                // failure handler has run: it is refused here, after its quiet drain in end().
+                var refusing: [(CaptureSide,Double)] = []
                 for side in [CaptureSide.me,.others] {
+                    if let input = self.inputs[side], let atMs = input.refusingAt, let signal = input.firstBuffer, !signal.hasFired,
+                       input.sink.hasFailed, !self.openedSides.contains(side), self.refusedSides[side] == nil { refusing.append((side,atMs)) }
                     do { try await self.end(side) } catch { first = first ?? error }
                 }
+                for (side,atMs) in refusing { await self.refuse(side,.init(code:CaptureRefusal.deviceUnavailable),atMs:atMs) }
                 if let first { throw first }
             }
         }
@@ -418,7 +427,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         let report: @Sendable (String) -> Void = { [weak self] message in
             Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
         }
-        let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,onFailure:report,onAdmitted:{ signal.fire() })
+        let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,onFailure:report,admit:{ signal.admit() })
         do { try driver.start(sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }
         catch {
             driver.stop()
@@ -436,6 +445,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         Task { @MainActor [weak self] in
             let opened = await signal.wait(bound:bound)
             guard let self else { return }
+            if !opened, self.inputs[side]?.generation == generation { self.expiredSides.insert(side) }
             if opened {
                 if self.inputs[side]?.generation == generation { self.openedSides.insert(side); self.refusedSides.removeValue(forKey:side) }
                 return
@@ -473,7 +483,10 @@ private final class SourceChangeToken: @unchecked Sendable {
         guard let input = inputs.removeValue(forKey:side) else { return }
         if !input.paused { input.driver.stop() }
         let sink = input.sink
-        try await Task.detached(priority:.userInitiated) { unopened ? try sink.finishUnopened() : try sink.finish(problem:problem) }.value
+        // #120 r3: decided here, from the input's own first-buffer decision, not from whichever
+        // callback ran first: an input that never admitted a buffer drains without its failure.
+        let quiet = unopened || input.firstBuffer.map { !$0.hasFired } ?? false
+        try await Task.detached(priority:.userInitiated) { quiet ? try sink.finishUnopened() : try sink.finish(problem:problem) }.value
     }
     private func enqueue(_ operation: @escaping @MainActor () async throws -> Void) async throws {
         let previous = tail

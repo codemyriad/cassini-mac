@@ -127,19 +127,21 @@ public final class RecordingSink: @unchecked Sendable {
     private let origin: UInt64
     private let capacitySeconds: Double
     private let onFailure: @Sendable (String) -> Void
-    /// D58: called once, when the first valid buffer is admitted (queued for the writer), before
-    /// any disk write: a slow Library disk never makes a working input look unopened.
-    private let onAdmitted: (@Sendable () -> Void)?
+    /// D58: asked once, at the first valid buffer, before it is queued for the writer (so before
+    /// any disk write: a slow Library disk never makes a working input look unopened). False
+    /// means the input's opening bound already passed: that buffer and every later one are
+    /// refused, so an expired input records nothing (#120 r3).
+    private let admit: (@Sendable () -> Bool)?
     private var admitted = false
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
-                onFailure: @escaping @Sendable (String) -> Void, onAdmitted: (@Sendable () -> Void)? = nil) {
+                onFailure: @escaping @Sendable (String) -> Void, admit: (@Sendable () -> Bool)? = nil) {
         writer = session
         origin = originHostTime
         self.capacitySeconds = max(0.01, min(60, capacitySeconds))
         self.onFailure = onFailure
-        self.onAdmitted = onAdmitted
+        self.admit = admit
     }
 
     public func receive(_ buffer: AVAudioPCMBuffer, hostTime: UInt64, id: String, label: String, kind: String) {
@@ -149,6 +151,11 @@ public final class RecordingSink: @unchecked Sendable {
               let input = buffer.floatChannelData, (1...64).contains(buffer.format.channelCount),
               buffer.format.sampleRate.isFinite, buffer.format.sampleRate.rounded() == buffer.format.sampleRate, (8_000...192_000).contains(buffer.format.sampleRate) else {
             lock.unlock(); fail("The audio source changed to an unsupported format. The recorded audio was preserved."); return
+        }
+        if !admitted {
+            // The signal's own lock decides; nothing here calls back into this sink.
+            guard admit?() ?? true else { accepting = false; lock.unlock(); return }
+            admitted = true
         }
         let rate = buffer.format.sampleRate
         let inputChannels = buffer.format.channelCount
@@ -186,14 +193,11 @@ public final class RecordingSink: @unchecked Sendable {
         let offset = source.timeline.advance(frames: frames)
         if abs(hostOffset - offset) >= 250 { warnings.insert("\(label): device time differs from the sample timeline; sample continuity was preserved.") }
         sourceFrames[id] = source.timeline.frames
-        let first = !admitted
-        admitted = true
         guard source.pendingFrames + frames <= UInt64(rate * capacitySeconds) else {
             source.droppedFrames += frames
             hole(id,"writer",frames)
             sources[id] = source
             lock.unlock()
-            if first { onAdmitted?() }
             return
         }
         source.pendingFrames += frames
@@ -238,7 +242,6 @@ public final class RecordingSink: @unchecked Sendable {
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()
-        if first { onAdmitted?() }
     }
 
     // Drain before activating a prepared input; never called from the audio callback.
@@ -308,6 +311,9 @@ public final class RecordingSink: @unchecked Sendable {
     /// buffer, a driver that failed before admitting one) is a refusal, not a recording problem,
     /// so it never reaches the writer, the owner, or the other side's recording.
     public func finishUnopened() throws { try finish(problem:nil,keepingFailure:false) }
+    /// The input failed (its own failure, e.g. an unsupported buffer), whether or not its
+    /// failure callback has been handled yet.
+    public var hasFailed: Bool { lock.withLock { failed } }
     private func finish(problem: String?, keepingFailure: Bool) throws {
         lock.lock()
         guard !finished else { lock.unlock(); return }
