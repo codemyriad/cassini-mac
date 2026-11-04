@@ -83,6 +83,14 @@ public enum LibraryNames {
         let instant = try parseUTC(utc)
         return (try format(instant,zone:zone),Int((Double(zone.secondsFromGMT(for:instant)) / 60).rounded(.down)))
     }
+    /// The instant a DATE tag names, under the same rules as `dateTag`: nil for an unknown
+    /// offset (`-00:00`), an offset outside -720..+840, missing seconds or an invalid date.
+    public static func dateTagInstant(_ tag: String) -> Date? {
+        guard dateTag(tag) != nil else { return nil }
+        let plain = ISO8601DateFormatter(); plain.formatOptions = [.withInternetDateTime]
+        let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        return plain.date(from:tag) ?? fractional.date(from:tag)
+    }
     /// A complete DATE (seconds required) with `Z` or `±HH:MM` within -720..+840, never `-00:00`.
     static func dateTag(_ tag: String) -> (prefix: String, offset: Int)? {
         let pattern = #"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"#
