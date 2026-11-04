@@ -10,9 +10,16 @@ The UX workflows keep their original assertions, fixtures, golden comparisons
 and artifact names. D66 mac-P1-4 folded three single-purpose jobs into the kit
 job (the Library model tests with their UTC/C environment, the native recording
 sink, and packaging Cassini.app, with the same artifact names) and keeps one
-board-size capture. They consume same-run products through
+board-size capture. D66 mac-P2-1 merged three more: kit also runs the arm64
+portable-export checks (with the Opus assets, the export report folder and the
+independent cassini-format readers); one Intel `Package tests` job runs the
+export and model-downloader filters, each only when its area changed; and the
+window screenshots job captures the default size first, then selects a larger
+display mode and captures 1120x720 (formerly `ux-board-shot.yml`, artifact
+`board-screenshots-<sha>`). The kit and Intel package-test jobs run only inside
+`CI`. The remaining `ux-*.yml` workflows consume same-run products through
 `workflow_call`; each also has `workflow_dispatch`, which first invokes the shared
-producer. The central manual dispatch, push to main and nightly run all six areas.
+producer. The central manual dispatch, push to main and nightly run every area.
 The historical `ux/1a-library-model` push is retained and now runs the full suite.
 
 `.github/ci/paths.json` preserves every original PR path pattern. The Ubuntu
