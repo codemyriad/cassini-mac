@@ -162,6 +162,9 @@ public struct BrowserControlRegistry: Sendable {
     private var peers: [UUID:PeerState] = [:]
     private var retainedCaptureIDs: Set<Data> = []
     public private(set) var outcomes: [BrowserControlOutcome] = []
+    /// An app that follows calls only by the D52 policy starts no capture on a peer whose hello
+    /// lacks multi-stream-v1 (Mac, D51: extension 0.2.12+). The protocol itself still allows them.
+    public var requireMultiStream = false
     public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                 instanceAlive: @escaping @Sendable (BrowserInstance) -> Bool? = { $0.isAlive }) {
         self.clock = clock; self.instanceAlive = instanceAlive
@@ -566,7 +569,7 @@ public struct BrowserControlRegistry: Sendable {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
         guard !peer.superseded else { throw BrowserControlStateError.unavailable }
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
-        guard peer.independent else { throw BrowserControlStateError.incompatible }
+        guard peer.independent, !requireMultiStream || peer.supportsMultiStream else { throw BrowserControlStateError.incompatible }
         guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
         // D52.5: the call already has a recording on a lost transport; it is resumed, not started.

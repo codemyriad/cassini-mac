@@ -87,36 +87,32 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(CallOwnership.sessionListed(tabID:2,peer:nil))
     }
 
-    private func peer(_ id: UUID, instance: BrowserInstance?, multiStream: Bool = true, meetings: [(Int,String)],
+    private func peer(_ id: UUID, instance: BrowserInstance?, meetings: [(Int,String)],
                       captures: [BrowserCaptureStatus] = [], interrupted: [BrowserCaptureStatus] = []) -> BrowserControlPeerSnapshot {
         .init(id:id,browser:"Chrome",browserInstance:instance,reconciled:true,independent:true,
               meetings:meetings.map { BrowserMeeting(key:.init(peer:id,tabID:$0.0),title:"Call",url:"https://meet.example/\($0.0)",sourceCount:1,heard:true,callGeneration:$0.1) },
-              captures:captures,interrupted:interrupted,supportsPageState:true,supportsMultiStream:multiStream,supportsResume:multiStream)
+              captures:captures,interrupted:interrupted,supportsPageState:true,supportsMultiStream:true,supportsResume:true)
     }
-    /// Review of the state machine: a control gap is not a legacy peer. The recording keeps the
-    /// D52 policy (its 120 s grace starts at the gap), where a fresh D33 lifecycle would end a
-    /// recording that has waited on its fallback for more than 120 s at once.
-    func testAControlGapKeepsTheMultiStreamPolicy() {
+    /// Review of the state machine: a control gap keeps the recording's binding and its D52
+    /// policy, whose 120 s return grace starts at the gap, not at the earlier transport loss.
+    func testAControlGapStartsThePolicysReturnGrace() {
         var state = CallOwnership(); let id = UUID(), old = UUID()
         state.bind(id,.init(key:.init(peer:old,tabID:2),callGeneration:"call-A",follows:true,recording:true))
-        XCTAssertTrue(state.follow(id,captureID:"x",peers:[peer(old,instance:instance,meetings:[(2,"call-A")])]).multiStream)
+        _ = state.follow(id,captureID:"x",peers:[peer(old,instance:instance,meetings:[(2,"call-A")])])
         state.transportLost(id)
         let gap = state.follow(id,captureID:"x",peers:[])
-        XCTAssertTrue(gap.multiStream,"kept across the gap"); XCTAssertNil(gap.end); XCTAssertEqual(gap.key,.init(peer:old,tabID:2))
-        // The policy that applies: lost at 0, the call present until 200, then the gap at 201.
+        XCTAssertNil(gap.end); XCTAssertEqual(gap.key,.init(peer:old,tabID:2))
+        // Lost at 0, the call present until 200, then the gap at 201.
         var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
         let present = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true,transportAlive:false,callGeneration:"call-A",controlConnection:"c1",lostAt:0)
         for t in stride(from:1.0,through:200,by:1) {
-            _ = BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:t,present,source:"system",reason:"lost",others:true,restoreReady:false,legacy:{ nil })
+            _ = BrowserCallPolicy.decide(pending:false,policy:&policy,now:t,present,source:"system",reason:"lost",others:true,restoreReady:false)
         }
         let missing = BrowserCallPolicy.Observation(page:nil,rowPresent:false,sourceCount:nil,heard:false,controlAlive:false,transportAlive:false,lostAt:0)
-        var legacy = BrowserCallLifecycle()
-        let action = BrowserCallPolicy.decide(pending:false,multiStream:gap.multiStream,policy:&policy,now:201,missing,source:"system",reason:"lost",
-                                              others:true,restoreReady:false,legacy:{ legacy.step(now:201,page:nil,sourceCount:0,transportAlive:false,usingSystem:true,others:true,restoreReady:false,lostAt:0) })
-        XCTAssertNil(action,"the D52 grace starts at the gap")
-        var fresh = BrowserCallLifecycle()
-        XCTAssertEqual(fresh.step(now:201,page:nil,sourceCount:0,transportAlive:false,usingSystem:true,others:true,restoreReady:false,lostAt:0),.stop(.pageGone),
-                       "what treating the gap as a legacy peer did")
+        XCTAssertNil(BrowserCallPolicy.decide(pending:false,policy:&policy,now:201,missing,source:"system",reason:"lost",others:true,restoreReady:false),
+                     "the D52 grace starts at the gap")
+        XCTAssertEqual(BrowserCallPolicy.decide(pending:false,policy:&policy,now:321,missing,source:"system",reason:"lost",others:true,restoreReady:false),
+                       .stop(.pageGone),"and ends 120 s after it")
     }
     /// Review of the state machine: after a reconnect, the same browser's new peer reports the
     /// lost recording's tab on another call: the recording ends as callEnded. Another browser
@@ -129,7 +125,7 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
         let elsewhere = BrowserInstance(pid:5151,startSeconds:1_793_000_000)
         XCTAssertNil(state.follow(id,captureID:"x",peers:[peer(other,instance:elsewhere,meetings:[(2,"call-B")])]).end,"another browser's tab 2")
         let moved = state.follow(id,captureID:"x",peers:[peer(new,instance:instance,meetings:[(2,"call-B")])])
-        XCTAssertEqual(moved.end,.callEnded); XCTAssertTrue(moved.multiStream)
+        XCTAssertEqual(moved.end,.callEnded)
         let back = state.follow(id,captureID:"x",peers:[peer(new,instance:instance,meetings:[(2,"call-A")])])
         XCTAssertNil(back.end); XCTAssertEqual(back.key,.init(peer:new,tabID:2),"the same call: it follows instead")
     }
@@ -146,7 +142,7 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
         state.bind(id,.init(key:.init(peer:new,tabID:2),callGeneration:nil,follows:true,recording:true))
         let fresh = state.follow(id,captureID:"x",peers:[reconnected])
         XCTAssertEqual(fresh.key,.init(peer:new,tabID:2)); XCTAssertFalse(fresh.rebound)
-        XCTAssertTrue(fresh.multiStream); XCTAssertTrue(fresh.sessionListed); XCTAssertNil(fresh.end)
+        XCTAssertTrue(fresh.sessionListed); XCTAssertNil(fresh.end)
         // The same call on the new peer moves on to call B: callEnded, from the live peer.
         let moved = state.follow(id,captureID:"x",peers:[peer(new,instance:instance,meetings:[(2,"call-B")],captures:[listed])])
         XCTAssertEqual(moved.end,.callEnded)
@@ -371,8 +367,8 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                                                       callGeneration:row?.callGeneration,controlConnection:current?.id.uuidString ?? "")
                 o.sessionListed = follow.sessionListed
                 let committed = CaptureSourceState(events:owner.snapshot.manifest.events ?? [],atMs:.infinity)
-                return BrowserCallPolicy.decide(pending:false,multiStream:follow.multiStream,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
-                                                others:true,restoreReady:false,legacy:{ nil },onAskResume:{ asked += 1 })
+                return BrowserCallPolicy.decide(pending:false,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
+                                                others:true,restoreReady:false,onAskResume:{ asked += 1 })
             }
             // The extension keeps the session only as interrupted history, last seen present; the
             // one resume ask goes out and never joins.
@@ -430,7 +426,7 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
             let follow = ownership.follow(id,captureID:"orig",peers:log.peers)
             let key = try XCTUnwrap(follow.key)
             XCTAssertEqual(key,.init(peer:peer.id,tabID:2),"the recording follows its call to the new peer")
-            XCTAssertTrue(follow.multiStream); XCTAssertNil(follow.end)
+            XCTAssertNil(follow.end)
             ownership.update { $0.bind(id,.init(key:key,callGeneration:"call-A",follows:true,recording:true)) }
             XCTAssertTrue((peer.captures + peer.interrupted).contains { $0.key.tabID == 2 },"the old rule counted the history as a session")
             XCTAssertFalse(follow.sessionListed)
@@ -451,8 +447,8 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                 var o = BrowserCallPolicy.Observation(page:.present,rowPresent:row != nil,sourceCount:row?.sourceCount,heard:row?.heard ?? false,
                                                       transportAlive:snapshot.transportAlive,callGeneration:row?.callGeneration,controlConnection:current.key?.peer.uuidString ?? "")
                 o.sessionListed = current.sessionListed
-                _ = BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
-                                             others:snapshot.others,restoreReady:snapshot.restoreReady,legacy:{ nil },onAskResume:{
+                _ = BrowserCallPolicy.decide(pending:false,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
+                                             others:snapshot.others,restoreReady:snapshot.restoreReady,onAskResume:{
                     asks += 1
                     // As the app's askResume does.
                     guard let identity = fixture.broker.standInIdentity(owner) else { return XCTFail("not a resume target") }

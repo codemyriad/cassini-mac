@@ -28,7 +28,7 @@ public struct CallOwnership: Sendable, Equatable {
     private var bindings: [UUID:Binding] = [:]
     private var lost: Set<UUID> = []
     /// What a recording's own control peer last said about itself, kept across control gaps.
-    private struct Known: Sendable, Equatable { var multiStream: Bool; var instance: BrowserInstance? }
+    private struct Known: Sendable, Equatable { var instance: BrowserInstance? }
     private var known: [UUID:Known] = [:]
     public init() {}
 
@@ -38,10 +38,6 @@ public struct CallOwnership: Sendable, Equatable {
         public var key: BrowserMeetingKey?
         /// The lost recording followed its call to another row this poll: adopt `key`.
         public var rebound = false
-        /// Its control speaks multi-stream-v1: the D52 policy applies. Kept across a control gap,
-        /// so a missing peer is never mistaken for a legacy one (whose D33 lifecycle would end a
-        /// lost recording that waits to be resumed).
-        public var multiStream: Bool
         /// The recording's call is over in its tab (D52 M6), also seen from a new control peer.
         public var end: BrowserCallLifecycle.StopReason?
         /// D57 (R78.1): an active session for the tab is still listed.
@@ -116,37 +112,33 @@ public struct CallOwnership: Sendable, Equatable {
     }
     /// Every per-poll lost-call decision for a recording, from the reconciled control peers:
     /// - a lost recording follows its call (same tab and generation) to whichever peer reports it;
-    /// - its own peer's capabilities and browser instance are remembered across control gaps;
-    /// - under D52 it ends as callEnded once its tab names another call, judged against the
+    /// - its own peer's browser instance is remembered across control gaps;
+    /// - it ends as callEnded once its tab names another call, judged against the
     ///   generation it learned (else its session's report); after a reconnect, the same
     ///   browser's new peer reporting the tab on another call and not on this one ends it too;
     /// - only an active session (never interrupted history) counts as listed.
     public mutating func follow(_ id: UUID, captureID: String?, peers: [BrowserControlPeerSnapshot]) -> Follow {
-        guard var value = bindings[id] else { return .init(key:nil,multiStream:false,end:nil,sessionListed:false) }
+        guard var value = bindings[id] else { return .init(key:nil,end:nil,sessionListed:false) }
         let reconciled = peers.filter(\.reconciled)
         var rebound = false
         if isLost(id), let key = call(of:id,among:reconciled.flatMap(\.meetings)), key != value.key {
             value.key = key; bindings[id] = value; rebound = true
         }
         let peer = reconciled.first { $0.id == value.key?.peer }
-        if let peer { known[id] = .init(multiStream:peer.supportsMultiStream,instance:peer.browserInstance ?? known[id]?.instance) }
-        let multiStream = peer?.supportsMultiStream ?? known[id]?.multiStream ?? false
-        var end: BrowserCallLifecycle.StopReason?
-        if multiStream {
-            let reported = captureID.flatMap { id in
-                peer.flatMap { ($0.captures + $0.interrupted).first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.callGeneration }
-            }
-            end = BrowserCallPolicy.endForCallChange(started:value.callGeneration ?? reported,current:peer?.meetings.first { $0.key == value.key }?.callGeneration)
-            if end == nil, peer == nil, isLost(id), let key = value.key, let generation = value.callGeneration, let instance = known[id]?.instance {
-                let rows = reconciled.filter { $0.browserInstance == instance }.flatMap(\.meetings).filter { $0.key.tabID == key.tabID }
-                if !rows.contains(where:{ $0.callGeneration == generation }), let other = rows.first(where:{ $0.callGeneration != nil }) {
-                    end = BrowserCallPolicy.endForCallChange(started:generation,current:other.callGeneration)
-                }
+        if let peer { known[id] = .init(instance:peer.browserInstance ?? known[id]?.instance) }
+        let reported = captureID.flatMap { id in
+            peer.flatMap { ($0.captures + $0.interrupted).first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.callGeneration }
+        }
+        var end = BrowserCallPolicy.endForCallChange(started:value.callGeneration ?? reported,current:peer?.meetings.first { $0.key == value.key }?.callGeneration)
+        if end == nil, peer == nil, isLost(id), let key = value.key, let generation = value.callGeneration, let instance = known[id]?.instance {
+            let rows = reconciled.filter { $0.browserInstance == instance }.flatMap(\.meetings).filter { $0.key.tabID == key.tabID }
+            if !rows.contains(where:{ $0.callGeneration == generation }), let other = rows.first(where:{ $0.callGeneration != nil }) {
+                end = BrowserCallPolicy.endForCallChange(started:generation,current:other.callGeneration)
             }
         }
         let listed = Self.sessionListed(tabID:value.key?.tabID,peer:peer)
         let visible = peer.map { peer in listed || peer.meetings.contains { $0.key == value.key } } ?? false
-        return .init(key:value.key,rebound:rebound,multiStream:multiStream,end:end,sessionListed:listed,callVisible:visible)
+        return .init(key:value.key,rebound:rebound,end:end,sessionListed:listed,callVisible:visible)
     }
     /// The page evidence a poll acts on: a closed report wins, else the latest. While the bound
     /// call is not visible (neither its row nor an active session remains), a `present` report

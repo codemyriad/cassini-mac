@@ -430,12 +430,6 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private func forgetDeadTransportSources() {
         browserSources.removeAll(); browserPeaks.removeAll()
     }
-    public func manageBrowserLifecycle(_ enabled: Bool) async throws {
-        try await operation {
-            guard self.phase == .recording, self.recording.manifest.source == "chromium", self.managedBrowser != enabled else { return }
-            self.managedBrowser = enabled; self.publish()
-        }
-    }
     /// A prepared, authorized system driver may now be attached. Source metadata
     /// is still unchanged until the staged writer admits its first actual PCM.
     public func requestSystemFallback(allowed: @escaping @Sendable () -> Bool = { true }) async throws {
