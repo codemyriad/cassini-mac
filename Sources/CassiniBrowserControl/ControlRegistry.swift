@@ -72,6 +72,12 @@ public struct BrowserControlOutcome: Equatable, Sendable {
     public var failure: String? = nil
     /// D58 #10: the answer to a resume ask, never a Start refusal: no failed meeting, no banner.
     public var resume = false
+    /// A held Start (its acknowledgement lost with its control link) that settled ok: the key
+    /// under which the newer link of the same browser reports the capture.
+    public var settledKey: BrowserMeetingKey? = nil
+    /// A held Start whose call the user stopped while it was held: it ends quietly, neither a
+    /// failure (no failed meeting, no banner) nor a start to announce.
+    public var userStopped = false
     /// The refusal a refused Start records for the attempt: startRejected when the browser
     /// answered ok:false, startFailed (banner only) when it never answered or was refused here.
     public func startRefusal(atMs: Double = 0) -> CaptureRefusal? {
@@ -100,6 +106,8 @@ public struct BrowserControlRegistry: Sendable {
         let order: UInt64
         let stopCaptureID: String?
         let url: String?
+        /// The multi-stream call a Start was issued for (nil for a Stop or an older peer).
+        var callGeneration: String? = nil
     }
     private struct PeerState: Sendable {
         let peer: BrowserPeer
@@ -156,6 +164,22 @@ public struct BrowserControlRegistry: Sendable {
     private var captureStops: [Data:CaptureStop] = [:]
     private struct IssuedCall: Sendable { let key: BrowserMeetingKey; let context: CallContext }
     private var unboundStarts: [String:IssuedCall] = [:]
+    /// A Start whose control link closed before its result (an extension worker restart). The
+    /// browser may have started it, so it is neither failed nor resent at once: it settles ok
+    /// when a newer link of the same browser instance reports a running capture for the same tab
+    /// and call generation, and fails as disconnected after `heldStartGrace`, when that browser
+    /// instance exits, or at shutdown.
+    private struct HeldStart: Sendable {
+        let request: BrowserControlRequest
+        let instance: BrowserInstance
+        let connectionOrder: UInt64
+        let callGeneration: String
+        let deadline: TimeInterval
+        let call: BrowserCallIdentity?
+    }
+    private var heldStarts: [String:HeldStart] = [:]
+    public static let heldStartGrace: TimeInterval = 10
+    var heldStartCount: Int { heldStarts.count }
     private let clock: @Sendable () -> TimeInterval
     private let instanceAlive: @Sendable (BrowserInstance) -> Bool?
     private var connectionOrder: UInt64 = 0
@@ -365,16 +389,64 @@ public struct BrowserControlRegistry: Sendable {
         connectionOrder &+= 1
         peers[peer.id] = PeerState(peer:peer,connectedAt:clock(),connectionOrder:connectionOrder)
     }
-    public mutating func disconnect(_ id: UUID) {
+    /// `holding` names the pending Starts that actually reached the link (the service passes the
+    /// ones it sent); of those, a multi-stream Start is held for settlement instead of failed, and
+    /// the IDs held are returned. A link closed for an unanswered command holds nothing.
+    @discardableResult public mutating func disconnect(_ id: UUID, holding: Set<String> = []) -> Set<String> {
         expireRememberedStops()
-        guard let peer = peers.removeValue(forKey:id) else { return }
+        guard let peer = peers.removeValue(forKey:id) else { return [] }
         if stoppedCalls.retirementConnections.contains(id), let history = LineageHistory(peer) {
             disconnectedLineages[id] = history
         }
         pruneDisconnectedLineages()
-        for pending in peer.pending.values {
+        var held: Set<String> = []
+        for pending in peer.pending.values.sorted(by:{ $0.order < $1.order }) {
+            if holding.contains(pending.request.id), pending.request.action == .start, !pending.request.resume, peer.supportsMultiStream,
+               let instance = peer.peer.browserInstance, let generation = pending.callGeneration, heldStarts.count < 128 {
+                heldStarts[pending.request.id] = .init(request:pending.request,instance:instance,connectionOrder:peer.connectionOrder,
+                                                       callGeneration:generation,deadline:clock()+Self.heldStartGrace,
+                                                       call:unboundStarts[pending.request.id]?.context.call)
+                held.insert(pending.request.id); continue
+            }
             appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil,failure:"disconnected",resume:pending.request.resume))
         }
+        return held
+    }
+    /// Settles held Starts (see `HeldStart`). `shutdown` fails every one still held.
+    public mutating func settleHeldStarts(shutdown: Bool = false) -> [BrowserControlOutcome] {
+        guard !heldStarts.isEmpty else { return [] }
+        let now = clock()
+        var settled: [BrowserControlOutcome] = []
+        for (id,held) in heldStarts.sorted(by:{ $0.value.deadline < $1.value.deadline || $0.value.deadline == $1.value.deadline && $0.key < $1.key }) {
+            let reported = shutdown ? nil : peers.values
+                .filter { $0.peer.browserInstance == held.instance && $0.connectionOrder > held.connectionOrder && $0.reconciled }
+                .sorted { $0.connectionOrder > $1.connectionOrder }
+                .lazy.compactMap { peer in peer.captures.first { capture in
+                    capture.key.tabID == held.request.key.tabID && (capture.recording || capture.stopping) && capture.captureID != nil &&
+                    capture.callGeneration.map { Data($0.utf8) == Data(held.callGeneration.utf8) } == true
+                } }.first
+            if !shutdown, let call = held.call, stoppedCalls.contains(call) {
+                heldStarts.removeValue(forKey:id)
+                var outcome = BrowserControlOutcome(requestID:id,key:held.request.key,action:.start,ok:true,error:nil)
+                outcome.userStopped = true
+                settled.append(outcome)
+            } else if let reported {
+                heldStarts.removeValue(forKey:id)
+                var outcome = BrowserControlOutcome(requestID:id,key:held.request.key,action:.start,ok:true,error:nil)
+                outcome.settledKey = reported.key
+                settled.append(outcome)
+            } else if shutdown || now >= held.deadline || instanceAlive(held.instance) == false {
+                heldStarts.removeValue(forKey:id)
+                settled.append(.init(requestID:id,key:held.request.key,action:.start,ok:false,error:nil,failure:"disconnected"))
+            }
+        }
+        for outcome in settled { appendOutcome(outcome) }
+        return settled
+    }
+    /// A held Start may be recording this call already: no second Start goes out for it.
+    private func holdsStart(_ meeting: BrowserMeeting, peer: PeerState) -> Bool {
+        guard let instance = peer.peer.browserInstance, let generation = meeting.callGeneration else { return false }
+        return heldStarts.values.contains { $0.instance == instance && $0.request.key.tabID == meeting.key.tabID && Data($0.callGeneration.utf8) == Data(generation.utf8) }
     }
     public mutating func receive(_ bytes: Data, from id: UUID) throws {
         let json = try JSONParser.parse(FrameIO.normalized(bytes))
@@ -574,13 +646,15 @@ public struct BrowserControlRegistry: Sendable {
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }) else { throw BrowserControlStateError.noSources }
         // D52.5: the call already has a recording on a lost transport; it is resumed, not started.
         guard !hasLostRecording(meeting) else { throw BrowserControlStateError.busy }
+        guard !holdsStart(meeting,peer:peer) else { throw BrowserControlStateError.busy }
         if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         let request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
                                        callGeneration:peer.supportsMultiStream ? meeting.callGeneration : nil)
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
-        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url)
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url,
+                                         callGeneration:peer.supportsMultiStream ? meeting.callGeneration : nil)
         peer.autoAttempted.insert(key.tabID)
         if let identity = call(meeting,peer:peer) {
             if !automatic {
@@ -630,7 +704,7 @@ public struct BrowserControlRegistry: Sendable {
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where peer.reconciled && peer.independent {
             for meeting in peer.meetings where meeting.sourceCount > 0 && (!peer.callEvidence || meeting.heard) && !peer.autoAttempted.contains(meeting.key.tabID) && !peer.requestedStops.contains(meeting.key.tabID) {
-                guard newestOwner(peer,tab:meeting.key.tabID), !hasLostRecording(meeting) else { continue }
+                guard newestOwner(peer,tab:meeting.key.tabID), !hasLostRecording(meeting), !holdsStart(meeting,peer:peer) else { continue }
                 if let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { continue }
                 keys.append(meeting.key)
             }

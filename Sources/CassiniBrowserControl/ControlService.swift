@@ -128,6 +128,7 @@ public final class BrowserControlService: @unchecked Sendable {
             timer?.cancel(); timer = nil
             server?.stop(); server = nil
             for id in Array(connections.keys) { disconnect(id) }
+            settleHeldStarts(shutdown:true)
         }
     }
     private func sync<T>(_ body: () throws -> T) rethrows -> T {
@@ -168,7 +169,15 @@ public final class BrowserControlService: @unchecked Sendable {
             received(message["type"]?.string)
         } catch { connection.close(); disconnect(connection.peer.id) }
     }
+    /// A Start held across its link's loss completes when it settles: ok once the newer link
+    /// reports its capture, disconnected at the deadline (checked on every tick) or at shutdown.
+    private func settleHeldStarts(shutdown: Bool = false) {
+        for outcome in registry.settleHeldStarts(shutdown:shutdown) {
+            completed(outcome,automatic.remove(outcome.requestID) != nil)
+        }
+    }
     private func reconcile() {
+        settleHeldStarts()
         registry.setRetainedCaptureIDs(audio?.retainedCaptureIDs ?? [])
         send(registry.drainStops())
         refreshLostCalls()
@@ -189,9 +198,13 @@ public final class BrowserControlService: @unchecked Sendable {
         guard connections.removeValue(forKey:id) != nil else { return }
         heartbeats.removeValue(forKey:id)
         let requests = deadlines.values.map(\.0).filter { $0.key.peer == id }
-        registry.disconnect(id)
+        // A sent Start whose link closed before its result (a worker restart, or a hung worker
+        // the heartbeat gave up on) may be recording: the registry holds it until the newer link
+        // reports it (see settleHeldStarts). A link closed for an unanswered command holds none.
+        let held = registry.disconnect(id,holding:failure == "disconnected" ? Set(requests.map(\.id)) : [])
         for request in requests {
             deadlines.removeValue(forKey:request.id)
+            if held.contains(request.id) { continue }
             let wasAutomatic = automatic.remove(request.id) != nil
             completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:failure,resume:request.resume),wasAutomatic)
         }
