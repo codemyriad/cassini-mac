@@ -241,7 +241,7 @@ extension LibraryBoards {
         // it does not prove that the Dock's restore action was performed.
         // The idle-menu test above retains independent LaunchServices coverage.
         let dock=XCUIApplication(bundleIdentifier:"com.apple.dock")
-        let icon=dock.dockItems.matching(NSPredicate(format:"label IN %@ OR identifier IN %@",Array(names),Array(names))).firstMatch
+        let icon=dock.dockItems.matching(NSPredicate(format:"title IN %@ OR label IN %@ OR identifier IN %@",Array(names),Array(names),Array(names))).firstMatch
         XCTAssertTrue(icon.waitForExistence(timeout:10),dock.debugDescription)
         icon.click()
     }
