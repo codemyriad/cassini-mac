@@ -416,8 +416,17 @@ private final class CaptureFiles: @unchecked Sendable {
         // the browser answered is recorded there, in Details only; a timeout, a closed
         // connection or a local failure records nothing. Never a failed meeting or a banner.
         if outcome.resume { broker.resumeAnswered(outcome); return }
+        // A held Start whose call the user stopped meanwhile: the attempt ends, nothing to report.
+        if outcome.action == .start, outcome.userStopped {
+            if !automatic, !manualIssued || manualPending.contains(outcome.key) {
+                manualCompleted.insert(outcome.key); manualPending.remove(outcome.key); finishAttempt()
+            }
+            return
+        }
         if outcome.action == .start {
-            if outcome.ok { failedMeetings.removeValue(forKey:outcome.key); meetingRefusals.removeValue(forKey:outcome.key) }
+            if outcome.ok {
+                for key in [outcome.key,outcome.settledKey].compactMap({ $0 }) { failedMeetings.removeValue(forKey:key); meetingRefusals.removeValue(forKey:key) }
+            }
             else {
                 failedMeetings[outcome.key] = peers.flatMap(\.meetings).first { $0.key == outcome.key }?.title ?? UXText.text("library.untitled")
                 // D58 noFallback: a refused browser Start opens nothing and never falls back.
@@ -434,7 +443,8 @@ private final class CaptureFiles: @unchecked Sendable {
                 }
             } else if !outcome.ok { recordFailed = !isRecording }
         }
-        if automatic && outcome.action == .start && outcome.ok { pendingAuto.insert(outcome.key); announce() }
+        // A held Start settles under the newer link's key, which its capture now carries.
+        if automatic && outcome.action == .start && outcome.ok { pendingAuto.insert(outcome.settledKey ?? outcome.key); announce() }
     }
     private func finishAttempt() {
         guard manualIssued, manualPending.isEmpty else { return }
@@ -452,7 +462,9 @@ private final class CaptureFiles: @unchecked Sendable {
     private func announce() {
         for (id,value) in captures {
             if let key = value.key, pendingAuto.contains(key), !announced.contains(id) {
-                pendingAuto.remove(key); announced.insert(id); onAutomaticStart?(id)
+                // A capture already saving (stopped before its Start was confirmed) is not announced.
+                pendingAuto.remove(key); announced.insert(id)
+                if value.savingSinceMs == nil { onAutomaticStart?(id) }
             }
         }
     }
