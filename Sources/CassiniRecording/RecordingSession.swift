@@ -90,7 +90,11 @@ public struct RecordingTrack: Codable, Identifiable, Sendable {
     /// D52.2: every padding write, session-absolute, half-open, never coalesced.
     /// `[]` means none; nil (absent) means unknown.
     public var gaps: [GapRange]? = nil
-    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames, receivedFrames, captureOutcome, problemKind, gaps }
+    /// D61: a browser span's clock facts, copied from its track declaration as received.
+    public var clockMethod: String? = nil
+    public var clockUncertaintyMs: Int? = nil
+    public var clockClampMs: Int? = nil
+    enum CodingKeys: String, CodingKey { case id, label, kind, file, sampleRate, channels, startOffsetMs, frames, endOffsetMs, ended, labelSource, sourceTrackId, droppedFrames, gapFrames, receivedFrames, captureOutcome, problemKind, gaps, clockMethod, clockUncertaintyMs, clockClampMs }
 }
 
 extension RecordingManifest {
@@ -123,6 +127,10 @@ extension RecordingTrack {
         captureOutcome = try? c.decode(CaptureOutcome.self,forKey:.captureOutcome)
         problemKind = (try? c.decode(String.self,forKey:.problemKind)).flatMap { ["capture","io"].contains($0) ? $0 : nil }
         gaps = (try? c.decodeIfPresent([GapRange].self,forKey:.gaps)) ?? nil
+        // Lenient: an absent, null or invalid fact is unknown.
+        let clock = ClockFacts(method:try? c.decode(String.self,forKey:.clockMethod),uncertaintyMs:try? c.decode(Int.self,forKey:.clockUncertaintyMs),
+                               clampMs:try? c.decode(Int.self,forKey:.clockClampMs))
+        clockMethod = clock.method; clockUncertaintyMs = clock.uncertaintyMs; clockClampMs = clock.clampMs
     }
 }
 
@@ -146,6 +154,8 @@ public struct RecordingSource: Sendable {
     /// D52.2 prefix: a span opened at a selection boundary starts there; the time
     /// before its first frame is a `prefix` range (absence, never a gap).
     public let boundaryMs: Double?
+    /// D61: a browser span's clock facts, written into its track as received.
+    public var clock: ClockFacts? = nil
     public init(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, endsImmediately: Bool = false, boundaryMs: Double? = nil) {
         self.id = id; self.label = label; self.kind = kind; self.sampleRate = sampleRate; self.channels = channels; self.sourceTrackId = sourceTrackId; self.labelSource = labelSource; self.endsImmediately = endsImmediately
         self.boundaryMs = boundaryMs.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
@@ -248,6 +258,7 @@ public final class RecordingSession {
                 track.sourceTrackId = source.sourceTrackId
                 track.labelSource = source.labelSource ?? (manifest.source == "chromium" ? "browser" : "device")
                 track.gaps = []
+                track.clockMethod = source.clock?.method; track.clockUncertaintyMs = source.clock?.uncertaintyMs; track.clockClampMs = source.clock?.clampMs
                 if let boundary = source.boundaryMs, !source.endsImmediately { track.startOffsetMs = boundary; prefixPending.insert(source.id) }
                 if source.endsImmediately { try writer.close(); track.ended = true }
                 staged.append((track,writer))

@@ -272,6 +272,12 @@ public struct BrowserCallPolicy: Sendable {
                 default: return []
                 }
             }
+            // A loss whose fallback has not committed yet (none/lost: the system input is still
+            // starting, or waits on the OS permission prompt) is undone too, heard or not: the
+            // return cancels that fallback, so without a restore the Others would record nothing.
+            if o.transportAlive, actions.isEmpty, source == "none", reason == "lost", others {
+                if restoreReady { askedOn = nil; return [.restore] }; return []
+            }
             // D52.5: ask once per loss and control connection; never on a timer or later tick.
             if source == "system", reason == "lost", mayAsk(o,others:others), askedOn != o.controlConnection {
                 askedOn = o.controlConnection
