@@ -100,12 +100,17 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         // A well-formed live record wins even when it then fails validation (no fallback).
         let live = Self.liveRecord(input.session)
         let record = live ?? input.captureRecord
-        var rows: [SourceRow] = []
-        if let record, let sources = Self.validSources(record,requireVersion:live == nil) {
-            // Track facts come from the session, or from the record when the session is gone.
-            let tracks = input.session?["tracks"] ?? record["tracks"]
-            rows = sources.map { Self.row($0,tracks:tracks,final:final) }
+        var rows: [SourceRow] = [], recordValid = true
+        // Track facts come from the session, or from the record when the session is gone.
+        let tracks = input.session?["tracks"] ?? record?["tracks"]
+        if let record {
+            if let sources = Self.validSources(record,requireVersion:live == nil) {
+                rows = sources.map { Self.row($0,tracks:tracks,final:final) }
+            } else { recordValid = false }
         }
+        // D58.2 R3: a native recording has no captureOutcome (only browser capture reports
+        // sources), so its captured microphone and this computer's sound are listed from its tracks.
+        if rows.isEmpty, recordValid { rows = Self.nativeRows(tracks:tracks,final:final) }
         sources = rows
         // The session's list while it exists, else the captureRecord's verbatim copy.
         refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
@@ -175,6 +180,31 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             }
         }
         return .init(line:line,problem:problem,gapLines:gaps)
+    }
+    /// D58.2 R3: one captured row per native kind (microphone, then this computer's sound) whose
+    /// tracks received audio: frames minus gap padding, at each track's own rate. Gap and dropped
+    /// lines follow as for any source. A side with no received audio has no row (a refusal line
+    /// says why, D58).
+    static func nativeRows(tracks: JSON?, final: Bool) -> [SourceRow] {
+        guard let list = tracks?.array else { return [] }
+        func integer(_ value: JSON?) -> Double? {
+            guard case .number(let literal)? = value, let count = Double(literal), count.rounded() == count, (0...safe).contains(count) else { return nil }
+            return count
+        }
+        return ["microphone","system"].compactMap { kind -> SourceRow? in
+            var ids: [String] = [], received = 0.0
+            for track in list where track["kind"]?.string == kind {
+                guard let id = identity(track["id"]), let rate = track["sampleRate"]?.int, (8000...192000).contains(rate),
+                      let frames = integer(track["frames"]) else { continue }
+                ids.append(id)
+                received += max(0,frames - (integer(track["gapFrames"]) ?? 0)) * 1000 / Double(rate)
+            }
+            guard !ids.isEmpty, received > 0, received <= safe else { return nil }
+            let source: JSON = .object([("sourceTrackId",.string(kind)),("kind",.string(kind)),("label",.string("")),
+                                        ("captureOutcome",.string("captured")),("audioMs",.number(String(Int64(floor(received))))),
+                                        ("trackIds",.array(ids.map { .string($0) }))])
+            return row(source,tracks:tracks,final:final)
+        }
     }
     /// Milliseconds of a per-track counter over a source's distinct tracks; nil when unknown.
     static func counter(_ field: String, ids: [String], tracks: JSON?) -> Double? {

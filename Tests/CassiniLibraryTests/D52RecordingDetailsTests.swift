@@ -128,6 +128,33 @@ struct D52RecordingDetailsTests {
         let native = report(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":48000}],\"events\":[{\"atMs\":9000,\"type\":\"end\",\"reason\":\"user\"}]}"))
         #expect(native.sources.isEmpty); #expect(native.ended.id == "details.end.at")
     }
+    /// D58.2 R3 (Mac QA, 0.1.0): a native recording lists the sources it captured, from its tracks,
+    /// instead of "No audio sources were reported".
+    @Test func nativeRecordingsListTheirCapturedSources() {
+        let tracks = "[{\"id\":\"m1\",\"kind\":\"microphone\",\"sampleRate\":48000,\"frames\":480000},"
+            + "{\"id\":\"s1\",\"kind\":\"system\",\"sampleRate\":48000,\"frames\":960000,\"gapFrames\":96000},"
+            + "{\"id\":\"s2\",\"kind\":\"system\",\"sampleRate\":44100,\"frames\":44100}]"
+        func check(_ result: RecordingDetailsReport, _ name: String) {
+            #expect(result.sources.map(\.line.id) == ["details.sources.captured","details.sources.captured"],"\(name)")
+            #expect(result.sources.map { $0.line.values["source"] } == [.catalog("common.yourMicrophone"),.catalog("recordFirst.sound.title")],"\(name)")
+            // Received audio: 10 s of microphone; 20 s - 2 s of padding + 1 s for this computer's sound.
+            #expect(result.sources.map { $0.line.values["duration"] } == [.duration(10000),.duration(19000)],"\(name)")
+            #expect(result.sources.map(\.problem) == [false,false],"\(name)")
+            #expect(result.sources[1].gapLines.map(\.id) == ["details.sources.gap"],"\(name): its padding is still a gap line")
+            #expect(!result.sourcesEmpty,"\(name)")
+        }
+        check(report(json("{\"source\":\"macos\",\"tracks\":\(tracks)}")),"saved session")
+        check(report(json("{\"source\":\"macos\",\"tracks\":\(tracks)}"),.recording),"live session")
+        // Saved, the session gone: the meeting.json captureRecord a native recording carries (no sources).
+        check(report(nil,record:json("{\"version\":1,\"sources\":[],\"tracks\":\(tracks),\"events\":[]}")),"captureRecord")
+        // Only what received audio is listed; nothing is listed for an invalid record.
+        let micOnly = report(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":48000,\"frames\":48000},{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":48000,\"frames\":0}]}"))
+        #expect(micOnly.sources.map { $0.line.values["source"] } == [.catalog("common.yourMicrophone")])
+        #expect(report(nil,record:json("{\"version\":2,\"sources\":[],\"tracks\":\(tracks)}")).sources.isEmpty,"an invalid record lists nothing")
+        // A browser recording's reported sources are unchanged: no native rows are added.
+        let browser = report(session([source(kind:"microphone",label:"",tracks:["m1"])],tracks:tracks))
+        #expect(browser.sources.count == 1)
+    }
     @Test func liveSourceProblemRule() {
         #expect(RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed")])))
         #expect(!RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed",expected:"false")])))
