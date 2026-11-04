@@ -17678,6 +17678,39 @@
    }
   },
   {
+   "id": "details.sources.silent",
+   "en": "{source}: no speech heard.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D67",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D67.1, GNOME R87 test 8). Captured source whose every track is in writingDown.silentTracks and whose transcript is done. A never-captured line (neverAudio) takes precedence.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: nessun parlato rilevato."
+    },
+    "fr": {
+     "text": "{source} : aucune parole entendue."
+    },
+    "es": {
+     "text": "{source}: no se detectó habla."
+    },
+    "pt-BR": {
+     "text": "{source}: nenhuma fala detectada."
+    },
+    "pt-PT": {
+     "text": "{source}: não foi detetada fala."
+    }
+   }
+  },
+  {
    "id": "details.sources.failed",
    "en": "{source}: audio couldn’t be recorded.",
    "platforms": [
