@@ -45,6 +45,12 @@ jobs:
     uses: ./.github/workflows/ci-build.yml
     with:
       parakeet_models: ${{ needs.changes.outputs.parakeet != 'false' }}
+  # D66 mac-P2-2: the Release app and its packaging (Cassini-<sha>), off the Debug consumers'
+  # critical path; only packaging and the Parakeet checks wait for it.
+  build_release:
+    needs: [build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' }}
+    uses: ./.github/workflows/ci-build-release.yml
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
@@ -57,7 +63,6 @@ jobs:
       with:
         swiftpm: 'true'
         debug: 'true'
-        release: 'true'
     - name: Swift version
       run: swift --version
     - name: Test
@@ -142,15 +147,6 @@ jobs:
         retention-days: 14
         name: native-recording-${{ github.sha }}
         path: ${{ runner.temp }}/native-artifacts
-    - name: Package Cassini.app
-      timeout-minutes: 3
-      run: python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
-    - uses: actions/upload-artifact@v5
-      with:
-        name: Cassini-${{ github.sha }}
-        path: |
-          build/Cassini.zip
-          build/Cassini.zip.sha256
     needs:
     - build
   shot:
@@ -210,8 +206,8 @@ jobs:
 
   parakeet:
     name: UX Parakeet Ultra
-    needs: [changes, build]
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
+    needs: [changes, build, build_release]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
     uses: ./.github/workflows/ux-parakeet.yml
     with:
       products_ready: true

@@ -2,8 +2,11 @@
 
 `CI` is the sole PR/main/nightly orchestrator. It builds native SwiftPM executables
 and test bundles once on ARM and Intel with Xcode 16.4. The ARM producer also
-cross-compiles both app architectures, including the UI runner, in Debug and
-Release. Universal Opus/Whistle/ONNX/Silero assets are staged once into those apps.
+cross-compiles both app architectures in Debug, including the UI runner.
+Universal Opus/Whistle/ONNX/Silero assets and the Parakeet runtime are staged once
+and shared. D66 mac-P2-2: the universal Release app is built from those staged
+assets in a job of its own (`ci-build-release.yml`), which also packages
+`Cassini-<sha>`; only that packaging and the Parakeet checks wait for it.
 The Intel export and speech jobs still execute on real hosted Intel runners.
 
 The UX workflows keep their original assertions, fixtures, golden comparisons

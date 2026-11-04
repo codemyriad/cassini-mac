@@ -159,7 +159,7 @@ class ProductDownloads(unittest.TestCase):
     """D66 mac-P0-4: the products action downloads strictly and retries an incomplete product
     once; its shell steps run here with a stub python3 standing in for ci-products.py."""
     ACTION = (ROOT/'.github/actions/ci-products/action.yml').read_text()
-    KINDS = ['swiftpm','assets','parakeet','debug','release']
+    KINDS = ['swiftpm','assets','parakeet','runtime','debug','release']
 
     def script(self, marker):
         lines = self.ACTION.split('\n')
@@ -210,8 +210,45 @@ class ParakeetCoverage(unittest.TestCase):
     def test_optional_golden_weights_do_not_enter_legacy_or_shipped_products(self):
         self.assertEqual(products.PRODUCTS['assets'],['build/Whistle','build/Opus'])
         self.assertEqual(products.PRODUCTS['parakeet'],['build/Parakeet','build/ParakeetModel'])
+        self.assertEqual(products.PRODUCTS['runtime'],['build/Parakeet'])
         self.assertNotIn('build/ParakeetModel',products.PRODUCTS['debug'])
         self.assertNotIn('build/ParakeetModel',products.PRODUCTS['release'])
+
+
+class ReleaseOffTheCriticalPath(unittest.TestCase):
+    """D66 mac-P2-2: the Release app builds in its own job after the producer; only packaging and
+    the Parakeet checks wait for it, so the Debug and SwiftPM consumers start without it."""
+    WORKFLOWS = ROOT/'.github/workflows'
+
+    def test_the_producer_no_longer_builds_release(self):
+        producer = (self.WORKFLOWS/'ci-build.yml').read_text()
+        self.assertNotIn('-configuration Release', producer)
+        self.assertNotIn('ci-release', producer)
+        self.assertIn('pack runtime', producer)
+        release = (self.WORKFLOWS/'ci-build-release.yml').read_text()
+        self.assertIn('-configuration Release', release)
+        self.assertIn('pack release', release)
+        self.assertIn('scripts/package-release.py', release)
+        self.assertIn('name: Cassini-${{ github.sha }}', release)
+        self.assertIn("assets: 'true'", release); self.assertIn("runtime: 'true'", release)
+
+    def test_only_packaging_and_parakeet_wait_for_the_release_build(self):
+        ci = (self.WORKFLOWS/'ci.yml').read_text()
+        jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n',1)[1], re.M | re.S))
+        self.assertIn('needs: [build]', jobs['build_release'])
+        self.assertIn('uses: ./.github/workflows/ci-build-release.yml', jobs['build_release'])
+        waiting = {name for name, body in jobs.items() if 'build_release' in body and name != 'build_release'}
+        self.assertEqual(waiting, {'parakeet'})
+        self.assertIn("needs.build_release.result == 'success'", jobs['parakeet'])
+        for workflow in self.WORKFLOWS.glob('*.yml'):
+            with self.subTest(workflow=workflow.name):
+                restores = "release: 'true'" in workflow.read_text()
+                self.assertEqual(restores, workflow.name == 'ux-parakeet.yml')
+                self.assertEqual('package-release.py' in workflow.read_text(),
+                                 workflow.name in ('ci-build-release.yml', 'release.yml'))
+        standalone = (self.WORKFLOWS/'ux-parakeet.yml').read_text()
+        self.assertIn('uses: ./.github/workflows/ci-build-release.yml', standalone)
+        self.assertIn('needs: [build, release]', standalone)
 
 
 class Measurements(unittest.TestCase):
