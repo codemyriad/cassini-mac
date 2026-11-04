@@ -7,6 +7,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import fcntl
 import tempfile
 import unittest
 
@@ -59,6 +60,11 @@ def release_dir(root, base=SITE, version='0.1.2', build=12):
 
 
 class PublishTests(unittest.TestCase):
+    def setUp(self):
+        # Never touch the real ~/.cassini-release.lock.
+        self.lockdir = tempfile.TemporaryDirectory(); self.addCleanup(self.lockdir.cleanup)
+        publish.LOCK = Path(self.lockdir.name)/'release.lock'
+
     def testDryRunCopiesIntoTheMacPrefixInOrderAndChangesNothing(self):
         with tempfile.TemporaryDirectory() as temporary:
             output, _ = release_dir(Path(temporary)); runner = FakeRunner()
@@ -211,6 +217,35 @@ class PublishTests(unittest.TestCase):
             runner = FakeRunner(deployed=feed('0.1.0', 9), listing=['Cassini-talk-0.1.1.dmg', 'Cassini-talk-0.1.0.dmg'])
             publish.publish(output, runner=runner, log=lambda _: None)
             self.assertEqual(len(runner.copies), 4)
+
+    def testASecondPublisherFailsFastOnTheLock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output, sums = release_dir(Path(temporary)); runner = FakeRunner()
+            # Another publisher holds the lock (a separate open file, as a second process would).
+            with open(publish.LOCK, 'a') as other:
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaisesRegex(RuntimeError, 'Another publish holds'):
+                    publish.publish(output, dry_run=False, runner=runner, log=lambda _: None,
+                                    verify=lambda _: dict(bytes=3, sha256=sums['Cassini-talk.dmg'], edSignatureVerified=True))
+            self.assertEqual(runner.calls, [])
+            # Released: the same publish runs.
+            publish.publish(output, dry_run=False, runner=runner, log=lambda _: None,
+                            verify=lambda _: dict(bytes=3, sha256=sums['Cassini-talk.dmg'], edSignatureVerified=True))
+            self.assertEqual(len(runner.copies), 4)
+
+    def testAFeedChangedDuringThePublishAbortsBeforeTheFeedUpload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output, sums = release_dir(Path(temporary), version='0.1.1', build=10)
+            runner = FakeRunner(deployed=feed('0.1.0', 9))
+            def verify(_):
+                # A concurrent publisher deploys 0.1.2 (11) while this one is between steps.
+                runner.deployed = feed('0.1.2', 11)
+                return dict(bytes=3, sha256=sums['Cassini-talk.dmg'], edSignatureVerified=True)
+            with self.assertRaisesRegex(RuntimeError, 'changed during this publish'):
+                publish.publish(output, dry_run=False, runner=runner, log=lambda _: None, verify=verify)
+            uploaded = [call[6] for call in runner.copies]
+            self.assertFalse(any(key.endswith('/appcast.xml') for key in uploaded), uploaded)
+            self.assertEqual([call[4] for call in runner.calls][-2:], ['lsf', 'cat'])
 
     def testTheCommandLineRefusesALiveRunWithoutVersionAndQA(self):
         with tempfile.TemporaryDirectory() as temporary:

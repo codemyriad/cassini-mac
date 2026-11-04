@@ -81,7 +81,10 @@ It checks every file against `SHA256SUMS` and the release's base URL. Before any
 in a dry run too, it reads the appcast deployed in the bucket (not the CDN copy) and refuses
 a lower version or a build that is not higher than the deployed one, because Sparkle offers
 only a higher build and an older upload would roll back the latest copy and the feed. The
-one exception is a retry whose appcast is byte-identical to the deployed one. Then:
+one exception is a retry whose appcast is byte-identical to the deployed one. An exclusive
+lock on `~/.cassini-release.lock` is held from that read through the last upload (a second
+publisher on this machine fails at once), and the deployed appcast is read again just
+before the feed upload, which aborts if it changed. Then:
 
 1. Uploads `Cassini-talk-<version>.dmg` with `--immutable`: an existing versioned file is
    never replaced.

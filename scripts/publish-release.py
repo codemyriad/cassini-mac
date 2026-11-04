@@ -9,7 +9,9 @@ coordinator-owned). The versioned DMG is uploaded immutably and verified over
 HTTPS before the latest copy, the release notes and, last, the appcast.
 Before any upload it reads the appcast deployed in the bucket and refuses a
 lower version or a build that is not higher; only a byte-identical retry of the
-deployed release is allowed.
+deployed release is allowed. An exclusive lock on ~/.cassini-release.lock is held
+from that read through the last upload, and the deployed appcast is read again
+just before the feed upload, which aborts if it changed.
 
 A dry run is the default: rclone --dry-run reports each copy and changes
 nothing. Uploading is public at once, so it needs --publish <version> and
@@ -18,6 +20,8 @@ confirmed the release. Credentials are sourced from ~/.config/cassini-talk/r2.en
 inside sh -c and are never read, printed or passed on the command line here.
 """
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 from pathlib import Path
@@ -30,6 +34,8 @@ SITE = 'https://cassini.talk/download/mac'
 REMOTE = 'cassinitalk:cassini-talk/'
 PREFIX = 'download/mac/'
 ENV = Path.home()/'.config/cassini-talk/r2.env'
+# One machine publishes; this lock stops two publishers on it from interleaving.
+LOCK = Path.home()/'.cassini-release.lock'
 # rclone subcommands this script may run; anything that can delete is absent.
 ALLOWED = {'copyto', 'lsf', 'cat'}
 SPARKLE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
@@ -147,10 +153,30 @@ def check_against_deployed(output, report, deployed, dmg_versions=()):
     return 'deployed '+live_version+' ('+str(live_build)+') is older than '+version+' ('+str(build)+')'
 
 
-def publish(output, dry_run=True, env=ENV, runner=subprocess.run, verify=None, log=print):
+@contextlib.contextmanager
+def exclusive(path):
+    """Held from the first read of the deployed state through the final upload. Fails fast."""
+    with open(path, 'a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError('Another publish holds '+str(path)+'; wait for it to finish') from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def publish(output, dry_run=True, env=ENV, runner=subprocess.run, verify=None, log=print, lock=None):
     plan, report = load(output)
+    with exclusive(lock or LOCK):
+        return run_plan(output, plan, report, dry_run, env, runner, verify, log)
+
+
+def run_plan(output, plan, report, dry_run, env, runner, verify, log):
     # Read-only and before any upload, in a dry run too.
-    log(check_against_deployed(output, report, *deployed(env=env, runner=runner)))
+    first_feed, dmg_versions = deployed(env=env, runner=runner)
+    log(check_against_deployed(output, report, first_feed, dmg_versions))
     for step in plan['steps']:
         if step['action'] == 'verifyHTTPS':
             if dry_run:
@@ -164,6 +190,9 @@ def publish(output, dry_run=True, env=ENV, runner=subprocess.run, verify=None, l
         if step['action'] != 'upload':
             raise ValueError('Unknown publication step '+step['action'])
         key = bucket_key(step['url'])
+        if step['file'] == 'appcast.xml' and deployed(env=env, runner=runner)[0] != first_feed:
+            # Something else changed the feed after the first read; never overwrite it.
+            raise RuntimeError('The deployed appcast changed during this publish; nothing more was uploaded')
         # --immutable: an existing versioned file is never replaced (an identical one is skipped).
         arguments = ['copyto', str(output/step['file']), REMOTE+key] + ([] if step['overwrite'] else ['--immutable'])
         rclone(arguments + (['--dry-run'] if dry_run else []), env=env, runner=runner)
