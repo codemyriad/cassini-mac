@@ -131,7 +131,10 @@ def verify_uploaded_download(output, public_key=ROOT/'Distribution/sparkle-publi
     if size != report['bytes'] or sha256_file(local) != report['sha256']:
         raise ValueError('Local release no longer matches its report')
     verify_signature(local, report['edSignature'], public_key)
-    opener = opener or urllib.request.build_opener(HTTPSRedirects())
+    if opener is None:
+        opener = urllib.request.build_opener(HTTPSRedirects())
+        # The CDN refuses urllib's default agent (403); name this read-only check instead.
+        opener.addheaders = [('User-Agent', 'Cassini-release-verifier/1')]
     with tempfile.TemporaryDirectory(prefix='cassini-https-check-') as temporary:
         downloaded = Path(temporary)/'download.dmg'
         with opener.open(urls['download'], timeout=60) as response, downloaded.open('xb') as target:
