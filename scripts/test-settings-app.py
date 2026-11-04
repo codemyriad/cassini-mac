@@ -61,7 +61,9 @@ for path in cleanup:
     assert path.is_absolute() and path.parent.resolve() == container_tmp and not path.is_symlink(), path
     assert path.stat().st_uid == os.getuid(), path
 for path in cleanup:
-    shutil.rmtree(path)
+    try: shutil.rmtree(path)
+    except OSError:
+        print(diagnose()); raise
 report.update(resumed)
 assert report['audioDevicesOpened'] is False
 args.output.write_text(json.dumps(report,indent=2)+'\n')

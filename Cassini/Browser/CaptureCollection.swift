@@ -473,10 +473,11 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func announce() {
         for (id,value) in captures {
-            if value.inputsAdmitted, let key = value.key, pendingAuto.contains(key), !announced.contains(id) {
-                // A capture already saving (stopped before its Start was confirmed) is not announced.
+            // A capture already saving (stopped before its Start was confirmed or before its
+            // inputs were admitted) consumes the pending Start without being announced.
+            if value.inputsAdmitted || value.savingSinceMs != nil, let key = value.key, pendingAuto.contains(key), !announced.contains(id) {
                 pendingAuto.remove(key); announced.insert(id)
-                if value.savingSinceMs == nil { onAutomaticStart?(id) }
+                if value.inputsAdmitted, value.savingSinceMs == nil { onAutomaticStart?(id) }
             }
         }
     }
