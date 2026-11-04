@@ -38,16 +38,20 @@ jobs:
     - name: Require both whole-window PNGs
       run: python3 scripts/check-window-screenshots.py build/window-screenshots
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: window-screenshots-${{ github.sha }}
         path: |
           build/window-screenshots/*.png
           build/window-screenshots/manifest.json
           build/window-tests.log
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: failure()
       with:
+        retention-days: 14
         name: window-screenshot-diagnostics-${{ github.sha }}
         path: build/WindowScreenshots.xcresult
     needs:
