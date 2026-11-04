@@ -98,7 +98,11 @@ def version_key(version):
 def feed_release(feed):
     """(version, build) of the newest item in a Sparkle appcast."""
     items = []
-    for item in ET.fromstring(feed).iter('item'):
+    try:
+        root = ET.fromstring(feed)
+    except ET.ParseError:
+        raise ValueError('An appcast is not well-formed XML') from None
+    for item in root.iter('item'):
         version, build = item.findtext(SPARKLE+'shortVersionString'), item.findtext(SPARKLE+'version')
         if version is None or build is None or not re.fullmatch(r'[0-9]+', build.strip()):
             raise ValueError('The deployed appcast has an item without a version and numeric build')
@@ -108,23 +112,31 @@ def feed_release(feed):
     return max(items, key=lambda item: item[1])
 
 
-def deployed_feed(env=ENV, runner=subprocess.run):
-    """The appcast currently in the bucket (not the CDN, which may serve an older copy), or None."""
-    listed = rclone(['lsf', REMOTE+PREFIX, '--files-only', '--max-depth', '1'], env=env, runner=runner).stdout or ''
-    if 'appcast.xml' not in listed.splitlines():
-        return None
-    return rclone(['cat', REMOTE+PREFIX+'appcast.xml'], env=env, runner=runner, binary=True).stdout
+def deployed(env=ENV, runner=subprocess.run):
+    """The appcast in the bucket (not the CDN, which may serve an older copy) or None, and the
+    versions of the versioned DMGs already there. An rclone error stops the publish."""
+    listed = (rclone(['lsf', REMOTE+PREFIX, '--files-only', '--max-depth', '1'], env=env, runner=runner).stdout or '').splitlines()
+    versions = [match.group(1) for name in listed if (match := re.fullmatch(r'Cassini-talk-([0-9]+(?:\.[0-9]+)*)\.dmg', name))]
+    feed = rclone(['cat', REMOTE+PREFIX+'appcast.xml'], env=env, runner=runner, binary=True).stdout if 'appcast.xml' in listed else None
+    return feed, versions
 
 
-def check_against_deployed(output, report, deployed):
+def check_against_deployed(output, report, deployed, dmg_versions=()):
     """Sparkle only offers a higher build, and an older upload would roll back latest and the feed.
     Refuse a lower version or a build that is not higher, unless this is a byte-identical retry."""
+    local = (output/'appcast.xml').read_bytes()
+    version, build = report['version'], int(report['build'])
+    # Compare what is actually uploaded: the signed feed must announce release.json's release.
+    if feed_release(local) != (version, build):
+        raise ValueError('The local appcast does not announce '+version+' ('+str(build)+') as release.json says')
+    # A publish that stopped after the latest copy leaves a newer versioned DMG than the feed.
+    newer = [other for other in dmg_versions if version_key(other) > version_key(version)]
+    if newer:
+        raise ValueError('Refusing to publish '+version+': the bucket already holds the newer Cassini-talk-'+max(newer, key=version_key)+'.dmg')
     if deployed is None:
         return 'no deployed appcast; this is the first release'
     if isinstance(deployed, str):
         deployed = deployed.encode()
-    local = (output/'appcast.xml').read_bytes()
-    version, build = report['version'], int(report['build'])
     live_version, live_build = feed_release(deployed)
     if deployed == local:
         return 'deployed appcast is byte-identical to '+version+' ('+str(build)+'); retrying'
@@ -138,7 +150,7 @@ def check_against_deployed(output, report, deployed):
 def publish(output, dry_run=True, env=ENV, runner=subprocess.run, verify=None, log=print):
     plan, report = load(output)
     # Read-only and before any upload, in a dry run too.
-    log(check_against_deployed(output, report, deployed_feed(env=env, runner=runner)))
+    log(check_against_deployed(output, report, *deployed(env=env, runner=runner)))
     for step in plan['steps']:
         if step['action'] == 'verifyHTTPS':
             if dry_run:

@@ -25,14 +25,14 @@ def feed(version, build):
 
 class FakeRunner:
     """rclone stand-in. `deployed` is the appcast bytes in the bucket, or None for none."""
-    def __init__(self, fail_on=None, deployed=None):
-        self.calls = []; self.fail_on = fail_on; self.deployed = deployed
+    def __init__(self, fail_on=None, deployed=None, listing=()):
+        self.calls = []; self.fail_on = fail_on; self.deployed = deployed; self.listing = list(listing)
     def __call__(self, command, **kwargs):
         self.calls.append(command)
         failed = self.fail_on is not None and self.fail_on in command
         stdout = ''
         if command[4] == 'lsf':
-            stdout = 'Cassini-talk.dmg\n' + ('appcast.xml\n' if self.deployed is not None else '')
+            stdout = ''.join(name+'\n' for name in ['Cassini-talk.dmg', *self.listing]) + ('appcast.xml\n' if self.deployed is not None else '')
         elif command[4] == 'cat':
             stdout = self.deployed if kwargs.get('text') is False else self.deployed.decode()
         return subprocess.CompletedProcess(command, 1 if failed else 0, stdout, '')
@@ -171,11 +171,46 @@ class PublishTests(unittest.TestCase):
     def testAnUnreadableDeployedAppcastStopsBeforeAnyUpload(self):
         with tempfile.TemporaryDirectory() as temporary:
             output, _ = release_dir(Path(temporary))
-            for deployed in [b'<rss/>', b'not xml', feed('0.1.0', 9).replace(b'>9<', b'>nine<')]:
+            for deployed in [b'<rss/>', b'not xml', feed('0.1.0', 9)[:-40], feed('0.1.0', 9).replace(b'>9<', b'>nine<')]:
                 runner = FakeRunner(deployed=deployed)
-                with self.subTest(deployed=deployed), self.assertRaises(Exception):
+                with self.subTest(deployed=deployed), self.assertRaises(ValueError):
                     publish.publish(output, runner=runner, log=lambda _: None)
                 self.assertEqual(runner.copies, [])
+
+    def testAnRcloneErrorReadingTheBucketIsNeverTakenForAFirstRelease(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output, _ = release_dir(Path(temporary), version='0.1.1', build=1)
+            for step in ['lsf', 'cat']:
+                runner = FakeRunner(fail_on=step, deployed=feed('0.1.0', 9))
+                with self.subTest(step=step), self.assertRaises(RuntimeError):
+                    publish.publish(output, dry_run=False, runner=runner, log=lambda _: None)
+                self.assertEqual(runner.copies, [])
+
+    def testTheUploadedAppcastMustAnnounceTheReleaseItClaims(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            # release.json says 0.1.1 (10) but the signed feed that would be uploaded says build 1.
+            output, _ = release_dir(Path(temporary), version='0.1.1', build=10)
+            report = json.loads((output/'release.json').read_text())
+            stale = feed('0.1.1', 1); (output/'appcast.xml').write_bytes(stale)
+            sums = (output/'SHA256SUMS').read_text().splitlines()
+            (output/'SHA256SUMS').write_text(''.join((hashlib.sha256(stale).hexdigest()+'  appcast.xml' if line.endswith('  appcast.xml') else line)+'\n' for line in sums))
+            self.assertEqual(report['build'], 10)
+            self.assertRefusedBeforeAnyUpload(output, feed('0.1.0', 9), 'does not announce')
+
+    def testANewerVersionedDMGInTheBucketBlocksAnOlderRelease(self):
+        # A publish of 0.1.2 stopped after the latest copy, before the appcast: no feed yet,
+        # but publishing 0.1.1 now would roll Cassini-talk.dmg back.
+        with tempfile.TemporaryDirectory() as temporary:
+            output, _ = release_dir(Path(temporary), version='0.1.1', build=11)
+            for deployed in [None, feed('0.1.0', 9)]:
+                runner = FakeRunner(deployed=deployed, listing=['Cassini-talk-0.1.2.dmg', 'Cassini-talk-0.1.0.dmg'])
+                with self.subTest(deployed=deployed), self.assertRaisesRegex(ValueError, 'newer Cassini-talk-0.1.2.dmg'):
+                    publish.publish(output, runner=runner, log=lambda _: None)
+                self.assertEqual(runner.copies, [])
+            # Retrying the same version, or a newer one, is not blocked by it.
+            runner = FakeRunner(deployed=feed('0.1.0', 9), listing=['Cassini-talk-0.1.1.dmg', 'Cassini-talk-0.1.0.dmg'])
+            publish.publish(output, runner=runner, log=lambda _: None)
+            self.assertEqual(len(runner.copies), 4)
 
     def testTheCommandLineRefusesALiveRunWithoutVersionAndQA(self):
         with tempfile.TemporaryDirectory() as temporary:
