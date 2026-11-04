@@ -179,8 +179,9 @@ public enum MeetingTranscriber {
             // D67.2 (#139 review): a failed attempt's partial words wait, unreferenced, in
             // transcript.json. Until this attempt has written as many words, a running publish
             // must not replace them, so a retry that fails early never loses the longer snapshot;
-            // a completed attempt replaces it.
-            let retained = LibraryScanner.sidecarWordCount(folder:directory)
+            // a completed attempt replaces it. Only an unreferenced body is retained: a referenced
+            // one is resumed through `previous` (same model) or regenerated (a new model).
+            let retained = meeting.transcriptReferenced ? 0 : LibraryScanner.sidecarWordCount(folder:directory)
             // Whether this attempt has written transcript.json yet. Until it has, the stored
             // reference stays as it was (null after a failure), so the retained words of a failed
             // attempt never become visible again under this attempt's model.

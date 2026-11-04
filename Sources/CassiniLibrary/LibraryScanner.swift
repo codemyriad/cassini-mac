@@ -121,6 +121,7 @@ public struct LibraryScanner: Sendable {
         }
         meeting.state.transcript = metadata?.transcript.status ?? .none
         meeting.transcriptModel = metadata?.transcript.model
+        meeting.transcriptReferenced = metadata?.transcript.reference != nil
         meeting.state.etaMinutes = metadata?.etaMinutes
         meeting.state.error = metadata?.error
         var titleCandidates: [String?] = [metadata?.title]
