@@ -296,7 +296,10 @@ private final class SourceChangeToken: @unchecked Sendable {
             try driver.start(sink:sink,failure:report)
             await Task.detached { sink.flush() }.value
             // D58: the side opened only once its first buffer is admitted within the bound.
-            if !signal.hasFired {
+            // D58.1: the others' side (the system tap) is never refused for silence or a missing
+            // buffer: a quiet Mac or a quiet call is the normal case. It stays armed and records
+            // from its first buffer, however late; only an explicit error refuses it.
+            if side == .me, !signal.hasFired {
                 guard await signal.wait(bound:bound) else { throw CaptureOpenRefusal.noSample }
                 await Task.detached { sink.flush() }.value
             }
@@ -440,7 +443,18 @@ private final class SourceChangeToken: @unchecked Sendable {
     }
     /// D58: a started side that admits no buffer within the bound never opened. At start it is
     /// refused and closed without a problem; otherwise only `openedSides` is updated.
+    /// D58.1: the others' side has no bound. It opens on its first buffer, however late, and is
+    /// refused only for an explicit error (`failed`), never for silence.
     private func watchFirstBuffer(_ side: CaptureSide, generation: UUID, signal: FirstBufferSignal, refusingAt atMs: Double?) {
+        if side == .others {
+            signal.onOpen { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.inputs[side]?.generation == generation else { return }
+                    self.openedSides.insert(side); self.refusedSides.removeValue(forKey:side)
+                }
+            }
+            return
+        }
         let bound = bound
         Task { @MainActor [weak self] in
             let opened = await signal.wait(bound:bound)
