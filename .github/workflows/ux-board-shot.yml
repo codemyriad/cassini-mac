@@ -1,4 +1,4 @@
-name: UX board-size screenshot spike
+name: UX board-size screenshots
 'on':
   workflow_call:
     inputs:

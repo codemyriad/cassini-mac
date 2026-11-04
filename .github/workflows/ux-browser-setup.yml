@@ -83,6 +83,7 @@ jobs:
             build/browser-return-report.json
             build/browser-return-report.json.stderr.txt
             build/browser-return-report.json.stdout.txt
+            build/browser-return-report.json.extension.json
             build/browser-capture-app.json
             build/browser-capture-app.stderr.txt
             build/local-companion

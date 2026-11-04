@@ -78,6 +78,9 @@ jobs:
       run: |
         npm ci --prefix BrowserExtension/tests
         BrowserExtension/tests/node_modules/.bin/playwright install chromium
+    - name: Extension native-messaging diagnostics survive their worker (D66 mac-P0-1)
+      timeout-minutes: 3
+      run: node scripts/test-extension-native-log.mjs
     - name: Browser capture scenarios
       timeout-minutes: 8
       run: |
@@ -148,7 +151,7 @@ jobs:
     needs:
     - build
   shot:
-    name: UX window screenshot spike
+    name: UX window screenshots
     needs:
     - changes
     - build
@@ -157,7 +160,7 @@ jobs:
     with:
       products_ready: true
   board_shot:
-    name: UX board-size screenshot spike
+    name: UX board-size screenshots
     needs:
     - changes
     - build
@@ -193,7 +196,7 @@ jobs:
     with:
       products_ready: true
   whistle:
-    name: Whistle bundling spike
+    name: Whistle bundle
     needs:
     - changes
     - build
@@ -220,7 +223,7 @@ jobs:
       products_ready: true
 
   browser_setup:
-    name: UX browser setup spike
+    name: UX browser setup
     needs: [changes, build]
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.browser_setup != 'false' }}
     uses: ./.github/workflows/ux-browser-setup.yml
