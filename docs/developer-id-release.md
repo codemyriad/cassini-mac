@@ -18,7 +18,8 @@ and matching `developer-id-application.key.pem`, grants codesign/productbuild
 access, adds only that keychain to the existing search list and proves signing
 without running its generated Mach-O. Its random password is retained in
 `cassini-signing-keychain.password`. Release unlocks it and sets a6-hour timeout.
-Do not copy credentials into environment variables, source control or logs.
+Do not copy credentials into environment variables, source control or logs. A failing or
+hung keychain command reports only its tool and subcommand, never its arguments or output.
 
 `notary.json` is an owned0600 JSON file with `key` (absolute path to the existing
 ASC `.p8` file), `keyId` and `issuer`. Obtain these through the private local
@@ -76,7 +77,11 @@ on this exact DMG and the coordinator has confirmed the release:
 python3 scripts/publish-release.py build/release-2 --publish 0.1.0 --clean-vm-qa-passed
 ```
 
-It checks every file against `SHA256SUMS` and the release's base URL, then:
+It checks every file against `SHA256SUMS` and the release's base URL. Before any upload,
+in a dry run too, it reads the appcast deployed in the bucket (not the CDN copy) and refuses
+a lower version or a build that is not higher than the deployed one, because Sparkle offers
+only a higher build and an older upload would roll back the latest copy and the feed. The
+one exception is a retry whose appcast is byte-identical to the deployed one. Then:
 
 1. Uploads `Cassini-talk-<version>.dmg` with `--immutable`: an existing versioned file is
    never replaced.

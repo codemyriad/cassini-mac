@@ -7,6 +7,9 @@ Mac-owned bucket prefix download/mac/ only. It never syncs, deletes, moves or
 touches anything outside that prefix (the site's index.html and 404.html stay
 coordinator-owned). The versioned DMG is uploaded immutably and verified over
 HTTPS before the latest copy, the release notes and, last, the appcast.
+Before any upload it reads the appcast deployed in the bucket and refuses a
+lower version or a build that is not higher; only a byte-identical retry of the
+deployed release is allowed.
 
 A dry run is the default: rclone --dry-run reports each copy and changes
 nothing. Uploading is public at once, so it needs --publish <version> and
@@ -21,13 +24,15 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 SITE = 'https://cassini.talk/download/mac'
 REMOTE = 'cassinitalk:cassini-talk/'
 PREFIX = 'download/mac/'
 ENV = Path.home()/'.config/cassini-talk/r2.env'
 # rclone subcommands this script may run; anything that can delete is absent.
-ALLOWED = {'copyto', 'lsf'}
+ALLOWED = {'copyto', 'lsf', 'cat'}
+SPARKLE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
 
 
 def bucket_key(url):
@@ -40,7 +45,7 @@ def bucket_key(url):
     return PREFIX+rest
 
 
-def rclone(arguments, env=ENV, runner=subprocess.run):
+def rclone(arguments, env=ENV, runner=subprocess.run, binary=False):
     if arguments[0] not in ALLOWED:
         raise ValueError('Refusing rclone '+arguments[0])
     for argument in arguments[1:]:
@@ -48,7 +53,7 @@ def rclone(arguments, env=ENV, runner=subprocess.run):
             raise ValueError('Refusing a remote path outside '+PREFIX)
     # The env file is sourced only inside this shell; its values never reach our argv or output.
     command = ['sh', '-c', 'set -a; . "$0"; set +a; exec rclone "$@"', str(env), *arguments]
-    result = runner(command, capture_output=True, text=True, timeout=3600)
+    result = runner(command, capture_output=True, text=not binary, timeout=3600)
     if result.returncode != 0:
         raise RuntimeError('rclone '+arguments[0]+' failed (exit '+str(result.returncode)+')')
     return result
@@ -67,7 +72,7 @@ def load(output):
     report = json.loads((output/'release.json').read_text())
     if plan['baseURL'] != SITE or report['baseURL'] != SITE:
         raise ValueError('This release was built for another base URL; rebuild it for '+SITE)
-    if plan['version'] != report['version'] or report.get('notarized') is not True:
+    if plan['version'] != report['version'] or report.get('notarized') is not True or not isinstance(report.get('build'), int):
         raise ValueError('publication.json and release.json disagree, or the release is not notarized')
     sums = dict(reversed(line.split('  ', 1)) for line in (output/'SHA256SUMS').read_text().splitlines())
     uploads = [step for step in plan['steps'] if step['action'] == 'upload']
@@ -81,8 +86,59 @@ def load(output):
     return plan, report
 
 
+def version_key(version):
+    if not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', str(version)):
+        raise ValueError('Unexpected version '+repr(version))
+    parts = [int(part) for part in str(version).split('.')]
+    while parts and parts[-1] == 0:
+        parts.pop()
+    return parts
+
+
+def feed_release(feed):
+    """(version, build) of the newest item in a Sparkle appcast."""
+    items = []
+    for item in ET.fromstring(feed).iter('item'):
+        version, build = item.findtext(SPARKLE+'shortVersionString'), item.findtext(SPARKLE+'version')
+        if version is None or build is None or not re.fullmatch(r'[0-9]+', build.strip()):
+            raise ValueError('The deployed appcast has an item without a version and numeric build')
+        items.append((version.strip(), int(build)))
+    if not items:
+        raise ValueError('The deployed appcast has no release')
+    return max(items, key=lambda item: item[1])
+
+
+def deployed_feed(env=ENV, runner=subprocess.run):
+    """The appcast currently in the bucket (not the CDN, which may serve an older copy), or None."""
+    listed = rclone(['lsf', REMOTE+PREFIX, '--files-only', '--max-depth', '1'], env=env, runner=runner).stdout or ''
+    if 'appcast.xml' not in listed.splitlines():
+        return None
+    return rclone(['cat', REMOTE+PREFIX+'appcast.xml'], env=env, runner=runner, binary=True).stdout
+
+
+def check_against_deployed(output, report, deployed):
+    """Sparkle only offers a higher build, and an older upload would roll back latest and the feed.
+    Refuse a lower version or a build that is not higher, unless this is a byte-identical retry."""
+    if deployed is None:
+        return 'no deployed appcast; this is the first release'
+    if isinstance(deployed, str):
+        deployed = deployed.encode()
+    local = (output/'appcast.xml').read_bytes()
+    version, build = report['version'], int(report['build'])
+    live_version, live_build = feed_release(deployed)
+    if deployed == local:
+        return 'deployed appcast is byte-identical to '+version+' ('+str(build)+'); retrying'
+    if version_key(version) < version_key(live_version):
+        raise ValueError('Refusing to publish '+version+' ('+str(build)+') over the deployed '+live_version+' ('+str(live_build)+'): lower version')
+    if build <= live_build:
+        raise ValueError('Refusing to publish '+version+' ('+str(build)+') over the deployed '+live_version+' ('+str(live_build)+'): the build must be higher, or Sparkle never offers it')
+    return 'deployed '+live_version+' ('+str(live_build)+') is older than '+version+' ('+str(build)+')'
+
+
 def publish(output, dry_run=True, env=ENV, runner=subprocess.run, verify=None, log=print):
     plan, report = load(output)
+    # Read-only and before any upload, in a dry run too.
+    log(check_against_deployed(output, report, deployed_feed(env=env, runner=runner)))
     for step in plan['steps']:
         if step['action'] == 'verifyHTTPS':
             if dry_run:
