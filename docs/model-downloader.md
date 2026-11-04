@@ -9,7 +9,7 @@ remain unchanged.
 
 The app locates model data with `ModelStorage.appData` (Foundation Application
 Support / Cassini; container-relative in sandbox builds). The service receives
-access to that directory by bookmark and uses `ModelDownloader(appData:)` with
+access to that directory by bookmark and uses `ModelDownloader(appData:userAgent:)` with
 an explicit `(id, sourceSHA256)`. `plan` fetches schema-v2 manifest metadata;
 `spaceRequired` quotes and checks compressed + decoded staging + bounded metadata
 space while preserving max(1 GiB, 2% of volume). `install` repeats the check
@@ -17,7 +17,9 @@ immediately before writing artifacts. Existing revisions stay in place.
 
 Only https://dist.gocassini.com is permitted in production. There are no cookies,
 credential storage, HTTP cache or redirects, and requests use Accept-Encoding:
-identity and User-Agent: Cassini/<app-version> (D15.1). Each immutable compressed object has its compressed SHA as ETag.
+identity and, on every request including a redirect hop, the User-Agent
+`CassiniTalk/<marketing version> (macOS <version>; <arch>)` (D54), built once by the
+app layer with `ModelUserAgent.app()`; no person or device identifiers. Each immutable compressed object has its compressed SHA as ETag.
 A bounded partial resumes using Range and If-Range; a full 200 replaces it,
 416 retries once from zero, and an invalid ETag/range is discarded. Transport
 interruptions retain a partial; an invalid compressed hash is never decoded.
@@ -60,10 +62,11 @@ injects for UI testing. This does not grant any device or OS permission.
 
 Both architecture builds are useful; an Intel compile is not an Intel execution.
 
-Hosted downloader jobs run the same local HTTP fixtures on ARM and Intel,
-restoring the D20 producer test bundles with `--skip-build`. Original PR paths
-are recorded in `.github/ci/paths.json`; main, nightly and central dispatch run
-the full matrix. The reusable area also supports standalone dispatch.
+Hosted CI runs the same local HTTP fixtures on ARM and Intel, restoring the D20
+producer test bundles with `--skip-build`: on ARM within the kit job's full
+`swift test`, and on Intel in the `Package tests (macos-15-intel)` job of `CI`,
+whenever the `model_download` area of `.github/ci/paths.json` changes. Main,
+nightly and a manual dispatch of `CI` run every area.
 
 The Settings app has no network-client entitlement. Networking lives in a
 separate XPC download service with an explicit model-directory bookmark,

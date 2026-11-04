@@ -45,8 +45,43 @@ class ControlTests(unittest.TestCase):
             with self.subTest(case=case['name']):
                 self.assertTrue(validator.is_valid(dict(type='hello',version=1,capabilities=case['capabilities'])))
                 self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[case['meeting']])))
+                # D57: real rows always carry pageState; absent is unknown and
+                # would hold back a D52.5 resume ask in both desktop runners.
+                self.assertEqual(case['meeting'].get('pageState'),'present')
                 self.assertIs(type(case['expect']['automatic']),bool)
                 self.assertIs(type(case['expect']['manual']),bool)
+                # D52.5: optional app-side recordings, matched to the row by tabId plus
+                # callGeneration across every control peer, and the optional resume
+                # expectation (absent means false).
+                self.assertIs(type(case['expect'].get('resume',False)),bool)
+                self.assertLessEqual(set(case['expect']),{'automatic','manual','resume'})
+                for recording in case.get('recordings',[]):
+                    self.assertLessEqual({'captureId','tabId','callGeneration','othersSource'},set(recording))
+                    self.assertLessEqual(set(recording),{'captureId','tabId','callGeneration','othersSource','heardSeen','controlPeer'})
+                    self.assertIs(type(recording.get('heardSeen',False)),bool)
+                    self.assertIn(recording.get('controlPeer','current'),['current','earlier'])
+                    self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[dict(case['meeting'],tabId=recording['tabId'],callGeneration=recording['callGeneration'])])))
+                    self.assertEqual(recording['othersSource'],dict(source='system',reason='lost'))
+                if case.get('recordings'): self.assertIn('callGeneration',case['meeting'])
+
+
+    def test_d33_page_state_and_opt_in_are_additive_and_typed(self):
+        extension=Draft202012Validator(json.loads((ROOT/'schemas/control-extension.schema.json').read_text()))
+        host=Draft202012Validator(json.loads((ROOT/'schemas/control-host.schema.json').read_text()))
+        for state in ['present','closed','navigating']:
+            row=dict(type='status',recording=True,tabId=2,path='/Recording-test',message='',pageState=state)
+            self.assertTrue(extension.is_valid(row))
+            self.assertTrue(extension.is_valid(dict(row,sessions=[row])))
+        for state in ['missing',None,1]:
+            self.assertFalse(extension.is_valid(dict(row,pageState=state)))
+        start=dict(type='command',requestId='s',action='start',mode='tracks',tabId=2,independent=True,keepOnNavigation=True)
+        self.assertTrue(host.is_valid(start))
+        self.assertFalse(host.is_valid(dict(start,independent=False)))
+        self.assertFalse(host.is_valid(dict(start,keepOnNavigation='true')))
+        self.assertFalse(host.is_valid(dict(start,reason='user')))
+        stop=dict(type='command',requestId='s',action='stop',tabId=2,reason='tabClosed')
+        self.assertTrue(host.is_valid(stop))
+        self.assertFalse(host.is_valid(dict(stop,reason='unknown')))
 
     def test_host_schema_matches_valid_and_invalid_commands(self):
         validator=Draft202012Validator(json.loads((ROOT/'schemas/control-host.schema.json').read_text()))
@@ -67,9 +102,14 @@ class ControlTests(unittest.TestCase):
 
     def test_audio_vectors_and_runner_are_unchanged(self):
         import hashlib
-        self.assertEqual(len(json.loads((ROOT / 'conformance/vectors.json').read_text())), 88)
-        self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), 'b3cbc8efa9decd119b3a5e7ef1e99584c488b12ba49b73824fb490b55b4eecbd')
-        self.assertEqual(hashlib.sha256((ROOT / 'conformance/run.py').read_bytes()).hexdigest(), '94087b8076f6a7f135fcd8b13c8fea6fd4fa08ccba5c0da94350e2b064756c62')
+        self.assertEqual(len(json.loads((ROOT / 'conformance/vectors.json').read_text())), 91)
+        # D52.2 Q7 added host-derived gapFrames/state to the two legacy gap vectors.
+        # D61 appended track-clock-and-document-fields: the extra track keys are acknowledged
+        # and the three clock facts are copied into session.json. Mac review of #39 appended
+        # track-invalid-clock-facts-are-omitted and track-clock-facts-are-not-cross-checked.
+        self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), '1ecb25a8e57899eb437822c983b6daab3ffe76f723d2edfeb266308b444ce979')
+        # The runner gained per-case private Libraries (test Library isolation).
+        self.assertEqual(hashlib.sha256((ROOT / 'conformance/run.py').read_bytes()).hexdigest(), 'e1c01b919bcfb465e511058d285171f9ff1095f9193b8ca4684cc40236a26cb1')
 
 if __name__ == '__main__':
     unittest.main()

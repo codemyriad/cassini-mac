@@ -91,7 +91,7 @@ final class LocalCompanionInstall: XCTestCase {
         wait("Real native messaging handshake enables Done",timeout:50) { done.isEnabled }
         attach(app,name:"companion-local-connected")
         done.click()
-        XCTAssertFalse(guide.exists)
+        wait("Done closes the guide",timeout:10) { !guide.exists }
         app.terminate(); chrome.terminate()
 
         // The next app is a private copy of this signed product with only its

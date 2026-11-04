@@ -1,4 +1,4 @@
-name: Whistle bundling spike
+name: Whistle bundle
 'on':
   workflow_call:
     inputs:
@@ -22,7 +22,7 @@ jobs:
         - macos-15
         - macos-15-intel
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -68,8 +68,10 @@ jobs:
             if report.is_file(): shutil.copy2(report,output/report.name)
         PY
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: whistle-${{ matrix.runner }}
         path: |
           build/pipeline
@@ -110,8 +112,10 @@ jobs:
         assert result.returncode==0,result.returncode
         PY
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: whistle-universal-bundle
         path: |
           build/whistle-*

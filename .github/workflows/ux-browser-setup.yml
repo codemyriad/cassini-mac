@@ -39,6 +39,7 @@ jobs:
       - name: Shared control-host vectors
         run: |
           python3 -m pip install -r browser-protocol/requirements-test.txt
+          python3 browser-protocol/conformance/check-call-lifecycle.py
           python3 browser-protocol/conformance/control/run.py .build/debug/cassini-control-host
       - name: Scoped XPC registration without touching browser profiles
         run: python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
@@ -58,12 +59,19 @@ jobs:
           python3 scripts/hosted-display.py
           python3 scripts/test-local-companion.py build/Build/Products/Debug/Cassini.app --output build/local-companion
       - name: Installed app connects to fresh browser without a click
+        id: browser_background
         run: node scripts/test-browser-background.mjs build/Build/Products/Debug/Cassini.app build/browser-background-report.json
       - name: Product app capture ownership without devices
+        if: ${{ !cancelled() && steps.browser_background.outcome == 'success' }}
         run: python3 scripts/test-browser-capture-app.py build/Build/Products/Debug/Cassini.app --output build/browser-capture-app.json
+      - name: Real Chromium navigation and app-owned source restoration
+        if: ${{ !cancelled() && steps.browser_background.outcome == 'success' }}
+        run: node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
       - uses: actions/upload-artifact@v5
+        continue-on-error: true
         if: always()
         with:
+          retention-days: 14
           name: browser-setup-${{ matrix.runner }}
           path: |
             build/browser-setup-report.json
@@ -72,6 +80,10 @@ jobs:
             build/browser-connect-report.stderr.txt
             build/browser-background-report.json
             build/browser-background-report.json.stderr.txt
+            build/browser-return-report.json
+            build/browser-return-report.json.stderr.txt
+            build/browser-return-report.json.stdout.txt
+            build/browser-return-report.json.extension.json
             build/browser-capture-app.json
             build/browser-capture-app.stderr.txt
             build/local-companion

@@ -26,6 +26,15 @@
             "string",
             "null"
           ]
+        },
+        "features": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          }
         }
       },
       "additionalProperties": true
@@ -77,6 +86,50 @@
             "string",
             "null"
           ]
+        },
+        "sourceTrackId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "clockMethod": {
+          "enum": [
+            "outputTimestamp",
+            "roundTrip",
+            null
+          ],
+          "$comment": "Since extension 0.2.12 (D61), record-only: how the extension placed this span's start on the session timeline. Readers treat absent, null or any other value as unknown; writers never send another value."
+        },
+        "clockUncertaintyMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86400000,
+          "$comment": "Since extension 0.2.12 (D61), record-only: the part of the error in this span's start against the session origin that the extension measures, rounded up. Not a bound on the browser's own output timestamp and latency estimates or on input latency it does not report. At least clockClampMs when that is present."
+        },
+        "clockClampMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 86400000,
+          "$comment": "Since extension 0.2.12 (D61), record-only: present only when the calibrated start was before the session origin and the whole span was moved later by this many milliseconds. Its presence is the flag."
+        },
+        "documentGeneration": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "Since extension 0.2.12 (D61): the opaque generation of the document the span came from, the same value status reports, compared only for equality. Written by the extension's background, never taken from the page. Absent for whole-tab spans and when unknown. At most 200 UTF-8 bytes, independently of this character bound: the receiver checks the bytes and treats a longer value as absent. A live liveness hint, never written to session.json."
         }
       },
       "additionalProperties": true
@@ -133,9 +186,201 @@
             "string",
             "null"
           ]
+        },
+        "reason": {
+          "enum": [
+            "user",
+            "callEnded",
+            "tabClosed",
+            "pageGone",
+            "disk",
+            "error",
+            "appQuit"
+          ]
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "discoveredSources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/discoveredSource"
+          },
+          "$comment": "The framed JSON size limit bounds diagnostics; the separate 64-track limit bounds audio allocation."
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "reason",
+        "droppedFrames",
+        "endOffsetMs"
+      ],
+      "properties": {
+        "type": {
+          "const": "trackEnd"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "reason": {
+          "enum": [
+            "ended",
+            "replaced",
+            "retry",
+            "stopped",
+            "failed",
+            "callChanged"
+          ]
+        },
+        "droppedFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483629
+        },
+        "endOffsetMs": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86460000
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "discoveredSources"
+      ],
+      "properties": {
+        "type": {
+          "const": "sources"
+        },
+        "discoveredSources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/discoveredSource"
+          },
+          "$comment": "Negotiated source-outcomes-v1 only. Bounded by native framing; does not allocate a WAV."
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "version",
+        "independent",
+        "captureId",
+        "timelineOriginMs",
+        "callGeneration",
+        "features"
+      ],
+      "properties": {
+        "type": {
+          "const": "resume"
+        },
+        "version": {
+          "const": 1
+        },
+        "independent": {
+          "const": true
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "$comment": "At most128 UTF-8 bytes; opaque active native capture identity."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "features": {
+          "type": "array",
+          "contains": {
+            "const": "resume-capture-v1"
+          },
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "requestId": {
+          "$comment": "Since extension 0.2.11: the control command's requestId, copied verbatim so a host can tell which ask a refused resume answers. Hosts that do not use it ignore it.",
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "$comment": "At most 128 Unicode code points."
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          ]
         }
       },
       "additionalProperties": true
     }
-  ]
+  ],
+  "$defs": {
+    "discoveredSource": {
+      "type": "object",
+      "required": [
+        "sourceTrackId",
+        "kind"
+      ],
+      "properties": {
+        "sourceTrackId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "remote",
+            "media",
+            "tab",
+            "application"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "failed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
 }

@@ -1,0 +1,384 @@
+{
+  "version": 1,
+  "note": "Mac-only copy. Shared copy remains in the unchanged coordinator catalog.",
+  "entries": [
+    {
+      "id": "mac.menu.open",
+      "en": "Open…",
+      "l10n": {
+        "it": {
+          "text": "Apri…"
+        },
+        "fr": {
+          "text": "Ouvrir…"
+        },
+        "es": {
+          "text": "Abrir…"
+        },
+        "pt-BR": {
+          "text": "Abrir…"
+        },
+        "pt-PT": {
+          "text": "Abrir…"
+        }
+      }
+    },
+    {
+      "id": "mac.menu.playback",
+      "en": "Playback",
+      "l10n": {
+        "it": {
+          "text": "Riproduzione"
+        },
+        "fr": {
+          "text": "Lecture"
+        },
+        "es": {
+          "text": "Reproducción"
+        },
+        "pt-BR": {
+          "text": "Reprodução"
+        },
+        "pt-PT": {
+          "text": "Reprodução"
+        }
+      }
+    },
+    {
+      "id": "mac.permission.microphone",
+      "en": "Cassini records your microphone as a separate local meeting track.",
+      "l10n": {
+        "it": {
+          "text": "Cassini registra il tuo microfono in una traccia separata della riunione su questo computer."
+        },
+        "fr": {
+          "text": "Cassini enregistre votre microphone sur une piste distincte de la réunion, sur cet ordinateur."
+        },
+        "es": {
+          "text": "Cassini graba tu micrófono en una pista separada de la reunión en este equipo."
+        },
+        "pt-BR": {
+          "text": "O Cassini grava seu microfone em uma faixa separada da reunião neste computador."
+        },
+        "pt-PT": {
+          "text": "O Cassini grava o seu microfone numa faixa separada da reunião neste computador."
+        }
+      }
+    },
+    {
+      "id": "mac.permission.audio",
+      "en": "Cassini records selected application or system audio locally when you start recording.",
+      "l10n": {
+        "it": {
+          "text": "Quando avvii una registrazione, Cassini registra su questo computer l’audio delle applicazioni selezionate o del sistema."
+        },
+        "fr": {
+          "text": "Lorsque vous démarrez un enregistrement, Cassini enregistre le son des applications sélectionnées ou du système sur cet ordinateur."
+        },
+        "es": {
+          "text": "Cuando empiezas a grabar, Cassini graba el audio de las aplicaciones seleccionadas o del sistema en este equipo."
+        },
+        "pt-BR": {
+          "text": "Quando você começa a gravar, o Cassini grava o áudio dos aplicativos selecionados ou do sistema neste computador."
+        },
+        "pt-PT": {
+          "text": "Quando começa a gravar, o Cassini grava o áudio das aplicações selecionadas ou do sistema neste computador."
+        }
+      }
+    },
+    {
+      "id": "mac.recording.micDenied",
+      "en": "Allow microphone access in System Settings → Privacy & Security → Microphone, then try again.",
+      "l10n": {
+        "it": {
+          "text": "Consenti l’accesso al microfono in Impostazioni di Sistema → Privacy e sicurezza → Microfono, poi riprova."
+        },
+        "fr": {
+          "text": "Autorisez l’accès au microphone dans Réglages Système → Confidentialité et sécurité → Microphone, puis réessayez."
+        },
+        "es": {
+          "text": "Permite el acceso al micrófono en Ajustes del Sistema → Privacidad y seguridad → Micrófono y vuelve a intentarlo."
+        },
+        "pt-BR": {
+          "text": "Permita o acesso ao microfone em Ajustes do Sistema → Privacidade e Segurança → Microfone e tente novamente."
+        },
+        "pt-PT": {
+          "text": "Permita o acesso ao microfone em Definições do Sistema → Privacidade e segurança → Microfone e tente novamente."
+        }
+      }
+    },
+    {
+      "id": "mac.recording.outputChanged",
+      "en": "The output audio format changed. Start a new recording with the current device.",
+      "l10n": {
+        "it": {
+          "text": "Il formato dell’audio in uscita è cambiato. Avvia una nuova registrazione con il dispositivo attuale."
+        },
+        "fr": {
+          "text": "Le format du son en sortie a changé. Démarrez un nouvel enregistrement avec le périphérique actuel."
+        },
+        "es": {
+          "text": "El formato del audio de salida cambió. Empieza una nueva grabación con el dispositivo actual."
+        },
+        "pt-BR": {
+          "text": "O formato do áudio de saída mudou. Inicie uma nova gravação com o dispositivo atual."
+        },
+        "pt-PT": {
+          "text": "O formato do áudio de saída mudou. Inicie uma nova gravação com o dispositivo atual."
+        }
+      }
+    },
+    {
+      "id": "mac.recording.micMissing",
+      "en": "No supported microphone is available. Choose an input in Sound settings. Multichannel inputs record channels 1 and 2.",
+      "l10n": {
+        "it": {
+          "text": "Nessun microfono supportato disponibile. Scegli un ingresso nelle impostazioni Suono. Gli ingressi multicanale registrano i canali 1 e 2."
+        },
+        "fr": {
+          "text": "Aucun microphone compatible n’est disponible. Choisissez une entrée dans les réglages Son. Les entrées multicanaux enregistrent les canaux 1 et 2."
+        },
+        "es": {
+          "text": "No hay ningún micrófono compatible disponible. Elige una entrada en los ajustes de Sonido. Las entradas multicanal graban los canales 1 y 2."
+        },
+        "pt-BR": {
+          "text": "Nenhum microfone compatível está disponível. Escolha uma entrada nos ajustes de Som. Entradas multicanal gravam os canais 1 e 2."
+        },
+        "pt-PT": {
+          "text": "Não está disponível nenhum microfone compatível. Escolha uma entrada nas definições de Som. As entradas multicanal gravam os canais 1 e 2."
+        }
+      }
+    },
+    {
+      "id": "mac.recording.micChanged",
+      "en": "The microphone configuration changed. Start a new recording with the current input.",
+      "l10n": {
+        "it": {
+          "text": "La configurazione del microfono è cambiata. Avvia una nuova registrazione con l’ingresso attuale."
+        },
+        "fr": {
+          "text": "La configuration du microphone a changé. Démarrez un nouvel enregistrement avec l’entrée actuelle."
+        },
+        "es": {
+          "text": "La configuración del micrófono cambió. Empieza una nueva grabación con la entrada actual."
+        },
+        "pt-BR": {
+          "text": "A configuração do microfone mudou. Inicie uma nova gravação com a entrada atual."
+        },
+        "pt-PT": {
+          "text": "A configuração do microfone mudou. Inicie uma nova gravação com a entrada atual."
+        }
+      }
+    },
+    {
+      "id": "mac.audio.unsupported",
+      "en": "The audio device uses an unsupported tap format.",
+      "l10n": {
+        "it": {
+          "text": "Il dispositivo audio usa un formato di acquisizione non supportato."
+        },
+        "fr": {
+          "text": "Le périphérique audio utilise un format de capture non pris en charge."
+        },
+        "es": {
+          "text": "El dispositivo de audio usa un formato de captura no compatible."
+        },
+        "pt-BR": {
+          "text": "O dispositivo de áudio usa um formato de captura incompatível."
+        },
+        "pt-PT": {
+          "text": "O dispositivo de áudio utiliza um formato de captura incompatível."
+        }
+      }
+    },
+    {
+      "id": "mac.audio.failed",
+      "en": "{operation} failed ({status}). Check System Settings → Privacy & Security → Screen & System Audio Recording, then try again.",
+      "l10n": {
+        "it": {
+          "text": "Operazione non riuscita: {operation} ({status}). Controlla Impostazioni di Sistema → Privacy e sicurezza → Registrazione schermo e audio di sistema, poi riprova."
+        },
+        "fr": {
+          "text": "Échec de l’opération « {operation} » ({status}). Vérifiez Réglages Système → Confidentialité et sécurité → Enregistrement de l’écran et de l’audio système, puis réessayez."
+        },
+        "es": {
+          "text": "Falló la operación «{operation}» ({status}). Revisa Ajustes del Sistema → Privacidad y seguridad → Grabación de pantalla y del audio del sistema y vuelve a intentarlo."
+        },
+        "pt-BR": {
+          "text": "A operação “{operation}” falhou ({status}). Verifique Ajustes do Sistema → Privacidade e Segurança → Gravação de Tela e Áudio do Sistema e tente novamente."
+        },
+        "pt-PT": {
+          "text": "A operação «{operation}» falhou ({status}). Verifique Definições do Sistema → Privacidade e segurança → Gravação do ecrã e áudio do sistema e tente novamente."
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.list",
+      "en": "Listing audio processes",
+      "l10n": {
+        "it": {
+          "text": "Elenco dei processi audio"
+        },
+        "fr": {
+          "text": "Liste des processus audio"
+        },
+        "es": {
+          "text": "Lista de procesos de audio"
+        },
+        "pt-BR": {
+          "text": "Listagem de processos de áudio"
+        },
+        "pt-PT": {
+          "text": "Listagem de processos de áudio"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.read",
+      "en": "Reading audio processes",
+      "l10n": {
+        "it": {
+          "text": "Lettura dei processi audio"
+        },
+        "fr": {
+          "text": "Lecture des processus audio"
+        },
+        "es": {
+          "text": "Lectura de procesos de audio"
+        },
+        "pt-BR": {
+          "text": "Leitura de processos de áudio"
+        },
+        "pt-PT": {
+          "text": "Leitura de processos de áudio"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.tap",
+      "en": "Creating audio tap",
+      "l10n": {
+        "it": {
+          "text": "Creazione dell’acquisizione audio"
+        },
+        "fr": {
+          "text": "Création de la capture audio"
+        },
+        "es": {
+          "text": "Creación de la captura de audio"
+        },
+        "pt-BR": {
+          "text": "Criação da captura de áudio"
+        },
+        "pt-PT": {
+          "text": "Criação da captura de áudio"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.format",
+      "en": "Reading tap format",
+      "l10n": {
+        "it": {
+          "text": "Lettura del formato audio"
+        },
+        "fr": {
+          "text": "Lecture du format de capture"
+        },
+        "es": {
+          "text": "Lectura del formato de captura"
+        },
+        "pt-BR": {
+          "text": "Leitura do formato de captura"
+        },
+        "pt-PT": {
+          "text": "Leitura do formato de captura"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.monitor",
+      "en": "Monitoring the audio format",
+      "l10n": {
+        "it": {
+          "text": "Controllo del formato audio"
+        },
+        "fr": {
+          "text": "Surveillance du format audio"
+        },
+        "es": {
+          "text": "Supervisión del formato de audio"
+        },
+        "pt-BR": {
+          "text": "Monitoramento do formato de áudio"
+        },
+        "pt-PT": {
+          "text": "Monitorização do formato de áudio"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.device",
+      "en": "Creating capture device",
+      "l10n": {
+        "it": {
+          "text": "Creazione del dispositivo di acquisizione"
+        },
+        "fr": {
+          "text": "Création du périphérique de capture"
+        },
+        "es": {
+          "text": "Creación del dispositivo de captura"
+        },
+        "pt-BR": {
+          "text": "Criação do dispositivo de captura"
+        },
+        "pt-PT": {
+          "text": "Criação do dispositivo de captura"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.callback",
+      "en": "Installing audio callback",
+      "l10n": {
+        "it": {
+          "text": "Preparazione dell’acquisizione audio"
+        },
+        "fr": {
+          "text": "Préparation de la capture audio"
+        },
+        "es": {
+          "text": "Preparación de la captura de audio"
+        },
+        "pt-BR": {
+          "text": "Preparação da captura de áudio"
+        },
+        "pt-PT": {
+          "text": "Preparação da captura de áudio"
+        }
+      }
+    },
+    {
+      "id": "mac.audio.operation.start",
+      "en": "Starting system audio",
+      "l10n": {
+        "it": {
+          "text": "Avvio dell’audio di sistema"
+        },
+        "fr": {
+          "text": "Démarrage du son du système"
+        },
+        "es": {
+          "text": "Inicio del audio del sistema"
+        },
+        "pt-BR": {
+          "text": "Início do áudio do sistema"
+        },
+        "pt-PT": {
+          "text": "Início do áudio do sistema"
+        }
+      }
+    }
+  ]
+}

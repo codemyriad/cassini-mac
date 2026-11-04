@@ -42,11 +42,25 @@ test('idle discovery forwards only evidence and reconnect requires a fresh hook 
  const hiddenCount=ports[1].sent.length;
  send({type:'discovery',sourceCount:3,heard:true});assert.equal(ports[1].sent.length,hiddenCount,'late hidden-page proof is ignored');
  ports[1].onDisconnect.emit();handlers.get('pageshow')();
- assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[],'pageshow must wait for its forced hook answer');
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[{type:'pageState',state:'present'}],'pageshow publishes only trusted lifecycle until the forced hook answer');
  send({type:'discovery',sourceCount:3,heard:false});
- assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[{type:'discovery',sourceCount:3,heard:false}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent.at(-1))),{type:'discovery',sourceCount:3,heard:false});
  send({type:'discovery',sourceCount:3,heard:true});handlers.get('pagehide')();
  const shownCount=ports[2].sent.length;handlers.get('pageshow')();
- assert.equal(ports[2].sent.length,shownCount,'pageshow on the same port must not replay a cached count');
+ assert.equal(ports[2].sent.length,shownCount+1,'pageshow publishes lifecycle but no cached count');
+ assert.equal(ports[2].sent.at(-1).type,'pageState');
  send({type:'discovery',sourceCount:3,heard:false});assert.equal(ports[2].sent.at(-1).heard,false);
+});
+
+test('relay forwards live source records and never truncates a full diagnostic list at 64',()=>{
+ const ports=[],runtime=event();let handler;
+ const window={postMessage(){},addEventListener:(name,fn)=>{if(name==='message')handler=fn}};
+ const chrome={runtime:{getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome});
+ ports[0].onMessage.emit({type:'start',token:'sources'});
+ const sources=Array.from({length:257},(_,i)=>({sourceTrackId:`source-${i}`,kind:'remote',failed:true}));
+ handler({source:window,data:{channel:'cassini-page',token:'sources',type:'packet',request:1,packet:{type:'sources',discoveredSources:sources}}});
+ assert.equal(ports[0].sent[0].packet.discoveredSources.length,257);
+ handler({source:window,data:{channel:'cassini-page',token:'sources',type:'warning',discoveredSources:sources}});
+ assert.equal(ports[0].sent[1].discoveredSources.length,257);
 });

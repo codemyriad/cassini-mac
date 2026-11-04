@@ -134,6 +134,14 @@ struct SearchTests {
 }
 
 extension SearchTests {
+    @Test func legacyEchoFieldsRemainSearchable() async throws {
+        let fixture=try SearchFixture();var meeting=try #require(fixture.meetings().first)
+        let body=Data("[{\"speaker\":\"me\",\"startMs\":300,\"endMs\":400,\"text\":\"microphone repeat\",\"echo\":true}]".utf8)
+        meeting.transcriptItems=try JSONDecoder().decode([LibraryTranscriptItem].self,from:body)
+        let index=try SearchIndex(cache:fixture.cache);try await index.replace([meeting])
+        #expect(try await index.search("microphone repeat").first?.positionMs == 300)
+    }
+
     @Test func quoteCleanupKeepsSearchOffsetsAndPlaybackPositions() async throws {
         let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
         meeting.transcriptItems = [

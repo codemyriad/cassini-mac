@@ -18,6 +18,7 @@ struct LibraryView: View {
     @State private var trash = MeetingTrashCoordinator.shared
     @Environment(\.undoManager) private var undoManager
     @State private var exporter = MeetingExportCoordinator.shared
+    @State private var recordingDetails = RecordingDetailsCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
@@ -113,11 +114,13 @@ struct LibraryView: View {
                     LibraryToolbarAction(title:UXText.text("common.exportEllipsis"),label:UXText.text("common.exportEllipsis"),identifier:"meeting-export",style:.capsule,enabled:MeetingExportCoordinator.canExport(detail.meeting)) { exporter.show(detail.meeting) }
                 }
                 ToolbarItem(placement:.primaryAction) {
-                    LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,enabled:trash.canTrash(detail.meeting),menu:{
-                        LibraryToolbarAction.singleMenu(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash") {
-                            store.selectedKey = detail.meeting.libraryKey
-                            trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
-                        }
+                    LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
+                        LibraryToolbarAction.menu([
+                            .init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(detail.meeting) },
+                            .init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
+                                store.selectedKey = detail.meeting.libraryKey
+                                trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
+                            }])
                     }) { }
                 }
             } else {
@@ -135,7 +138,7 @@ struct LibraryView: View {
         .toolbar {
             if !search.visible && navigation.detail == nil && !store.meetings.isEmpty {
                 ToolbarItem(placement:.primaryAction) {
-                    LibrarySearchField(text:$search.query,onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
+                    LibrarySearchField(text:$search.query,onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
                 }
             }
         }
@@ -151,6 +154,7 @@ struct LibraryView: View {
         })
         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
+        .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         #if DEBUG
         .overlay(alignment:.topLeading) {
@@ -163,12 +167,8 @@ struct LibraryView: View {
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
         .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
         .onAppear {
-            SettingsNavigation.shared.open = { openSettings(); NSApp.activate(ignoringOtherApps:true) }
             search.update(store.meetings)
             sessionPlayback.onFailure = { NSApp.presentError($0) }
-            let open = openWindow
-            LegacyOpening.handler = { url in open(id: "legacy-viewer", value: LegacyRoute(url: url)) }
-            navigation.openLibrary = { open(id: "library") }
             store.start()
         }
         .onDisappear { sessionPlayback.stop(); navigation.back(); search.close() }
@@ -269,6 +269,7 @@ struct LibraryView: View {
                         }
                     } header: {
                         Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(LibraryTheme.dim).textCase(nil)
+                            .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                     }
                 }
                 if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
@@ -320,7 +321,7 @@ struct LibraryView: View {
                 if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
                 if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(dim).lineLimit(1) }
             }.font(.system(size: 11.5))
-            if let line = rowSecondLine(meeting) { Text(line).font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
+            if let line = rowSecondLine(meeting) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
         }
         .foregroundStyle(selected ? .white : Color(nsColor: .labelColor))
         .padding(.vertical, 1).frame(minHeight: 50, alignment: .top)
@@ -333,12 +334,12 @@ struct LibraryView: View {
         default: return LibraryFormat.rowMeta(durationMs: meeting.durationMs, names: meeting.speakerNames)
         }
     }
-    private func rowSecondLine(_ meeting: LibraryMeeting) -> String? {
+    private func rowSecondLine(_ meeting: LibraryMeeting) -> Text? {
         switch meeting.state.badge?.kind {
-        case "recording": return meeting.isBrowserCapture ? UXText.text("library.row.recording.line") : nil
+        case "recording": return meeting.isBrowserCapture ? Text(UXText.text("library.row.recording.line")) : nil
         case "saving": return nil
-        case "transcribing": return meeting.durationMs.map { UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)]) }
-        default: return meeting.quote?.displayText
+        case "transcribing": return meeting.durationMs.map { Text(UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)])) }
+        default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
         }
     }
     private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {
@@ -418,7 +419,7 @@ struct LibraryView: View {
                                     }
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit()
                                 }.frame(width: 110, alignment: .leading)
-                                Text(turn.text).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                                Text(turn.text).textSelection(.enabled).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                     }
@@ -491,6 +492,19 @@ private struct LibraryToolbarAction: NSViewRepresentable {
     let action: () -> Void
     func makeNSView(context: Context) -> LibraryToolbarActionView { LibraryToolbarActionView() }
     func updateNSView(_ view: LibraryToolbarActionView, context: Context) { view.update(self) }
+    struct MenuEntry {
+        let title: String, identifier: String
+        var enabled = true
+        let action: () -> Void
+    }
+    static func menu(_ entries: [MenuEntry]) -> NSMenu {
+        let menu = NSMenu(); menu.autoenablesItems = false
+        for entry in entries {
+            let item = ActionItem(title:entry.title,handler:entry.action)
+            item.isEnabled = entry.enabled; item.setAccessibilityIdentifier(entry.identifier); menu.addItem(item)
+        }
+        return menu
+    }
     static func singleMenu(title: String, identifier: String, action: @escaping () -> Void) -> NSMenu {
         let menu = NSMenu(); menu.autoenablesItems = false
         let item = ActionItem(title:title,handler:action)

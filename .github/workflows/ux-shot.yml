@@ -1,4 +1,4 @@
-name: UX window screenshot spike
+name: UX window screenshots
 'on':
   workflow_call:
     inputs:
@@ -11,15 +11,22 @@ jobs:
   build:
     if: ${{ !inputs.products_ready }}
     uses: ./.github/workflows/ci-build.yml
+  # D66 mac-P2-1: one job, two phases, on the same restored Debug product and xctestrun. The
+  # default-size capture runs first, before hosted-display.py changes the display mode, so its
+  # 960x640 assertions keep the host's original display. The board-size phase then selects a
+  # larger mode and captures 1120x720. Each phase runs whatever the other one's result, so a
+  # failure in one still leaves the other's evidence.
   screenshots:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
     - uses: actions/checkout@v5
-    - uses: ./.github/actions/ci-products
+    - id: products
+      uses: ./.github/actions/ci-products
       with:
         debug: 'true'
     - name: Require GitHub-hosted runner
+      id: hosted
       run: test "$RUNNER_ENVIRONMENT" = github-hosted
     - name: Capture actual windows with XCUITest
       env:
@@ -31,26 +38,84 @@ jobs:
           -resultBundlePath build/WindowScreenshots.xcresult \
           2>&1 | tee build/window-tests.log
     - name: Export window PNGs
-      if: always()
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
       run: |
-        xcrun xcresulttool export attachments --path build/WindowScreenshots.xcresult \
-          --output-path build/window-screenshots
+        if test -d build/WindowScreenshots.xcresult; then
+          xcrun xcresulttool export attachments --path build/WindowScreenshots.xcresult \
+            --output-path build/window-screenshots
+        fi
     - name: Require both whole-window PNGs
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
       run: python3 scripts/check-window-screenshots.py build/window-screenshots
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: window-screenshots-${{ github.sha }}
         path: |
           build/window-screenshots/*.png
           build/window-screenshots/manifest.json
           build/window-tests.log
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: failure()
       with:
+        retention-days: 14
         name: window-screenshot-diagnostics-${{ github.sha }}
         path: build/WindowScreenshots.xcresult
+        if-no-files-found: ignore
+    # Board-size phase (formerly ux-board-shot.yml).
+    - name: Install capture tools
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
+      run: brew install displayplacer
+    - name: Select and verify a larger display mode
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
+      run: |
+        set -o pipefail
+        mkdir -p build
+        system_profiler SPDisplaysDataType > build/display-system.txt
+        python3 scripts/hosted-display.py 2>&1 | tee build/display-mode.log
+    - name: Capture 1120 by 720 windows and sheet
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_SCREENSHOT_SIZE: 1120x720
+      run: |
+        set -o pipefail
+        xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -resultBundlePath build/BoardScreenshots.xcresult \
+          2>&1 | tee build/board-tests.log
+    - name: Export board-size PNGs
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
+      run: |
+        if test -d build/BoardScreenshots.xcresult; then
+          xcrun xcresulttool export attachments --path build/BoardScreenshots.xcresult \
+            --output-path build/board-screenshots
+        fi
+    - name: Require exact board-size PNGs
+      if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
+      run: python3 scripts/check-window-screenshots.py build/board-screenshots 1120x720
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        retention-days: 14
+        name: board-screenshots-${{ github.sha }}
+        path: |
+          build/board-screenshots/*.png
+          build/board-screenshots/manifest.json
+          build/board-tests.log
+          build/display-*
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: failure()
+      with:
+        retention-days: 14
+        name: board-screenshot-diagnostics-${{ github.sha }}
+        path: build/BoardScreenshots.xcresult
+        if-no-files-found: ignore
     needs:
     - build
     if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
-    name: Window screenshots
+    name: Window and board-size screenshots

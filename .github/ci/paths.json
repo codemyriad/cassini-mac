@@ -3,16 +3,9 @@
     "Cassini/**",
     "UITests/**",
     "project.yml",
-    "scripts/check-window-screenshots.py",
-    ".github/workflows/ux-shot.yml"
-  ],
-  "board_shot": [
-    "Cassini/**",
-    "UITests/**",
-    "project.yml",
     "scripts/hosted-display.py",
     "scripts/check-window-screenshots.py",
-    ".github/workflows/ux-board-shot.yml"
+    ".github/workflows/ux-shot.yml"
   ],
   "boards": [
     "Cassini/**",
@@ -29,6 +22,7 @@
     "scripts/check-ux-copy.py",
     "scripts/hosted-display.py",
     "scripts/test-search-app.py",
+    "scripts/test-meeting-preparation-app.py",
     "scripts/test-import-lifecycle.py",
     "scripts/test-settings-app.py",
     "scripts/test-recording-saving.py",
@@ -42,17 +36,7 @@
     "Opus/**",
     "scripts/*opus*",
     "scripts/check-export-reference.py",
-    "Package.swift",
-    ".github/workflows/ux-export.yml"
-  ],
-  "library": [
-    "Sources/CassiniLibrary/**",
-    "Sources/CassiniSearch/**",
-    "Tests/CassiniSearchTests/**",
-    "Sources/CassiniLibraryWatchers/**",
-    "Tests/CassiniLibraryTests/**",
-    "Package.swift",
-    ".github/workflows/ux-model.yml"
+    "Package.swift"
   ],
   "whistle": [
     "Cassini/**",
@@ -83,8 +67,7 @@
     "Tests/CassiniModelsTests/**",
     "Cassini/Resources/Licenses/**",
     "scripts/verify-model-vendor.py",
-    "Package.swift",
-    ".github/workflows/ux-model-download.yml"
+    "Package.swift"
   ],
   "parakeet": [
     "Parakeet/**",
@@ -128,6 +111,7 @@
     "scripts/test-browser-setup-spike.py",
     "Cassini/Cassini.entitlements",
     "Package.swift",
-    ".github/workflows/ux-browser-setup.yml"
+    ".github/workflows/ux-browser-setup.yml",
+    "scripts/test-browser-background.mjs"
   ]
 }

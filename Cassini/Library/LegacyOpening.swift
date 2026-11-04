@@ -12,7 +12,7 @@ struct LegacyRoute: Codable, Hashable {
 
 @MainActor
 enum LegacyOpening {
-    static var handler: ((URL) -> Void)? {
+    static var handler: ((URL) -> Void)? = { ApplicationWindows.legacy($0) } {
         didSet {
             guard let handler else { return }
             let queued = pendingURLs; pendingURLs.removeAll()

@@ -6,6 +6,8 @@ import Darwin
 
 private let pin = ModelPin(id:"fixture-model",sourceSHA256:String(repeating:"a",count:64))
 private let enough: @Sendable (URL) throws -> ModelDiskSpace = { _ in .init(free:20 << 30,total:100 << 30) }
+/// D54: the exact header the app layer would build for CassiniTalk 9.8.7 on macOS 15.1, arm64.
+private let agent = "CassiniTalk/9.8.7 (macOS 15.1; arm64)"
 private final class Server: @unchecked Sendable {
     let process = Process()
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniModelTests-" + UUID().uuidString)
@@ -26,7 +28,7 @@ private final class Server: @unchecked Sendable {
     }
     deinit { process.terminate(); process.waitUntilExit(); try? FileManager.default.removeItem(at:root) }
     var appData: URL { root.appendingPathComponent("data") }
-    func downloader(budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = enough) throws -> ModelDownloader { try .init(appData:appData,fixtureOrigin:origin,budget:budget) }
+    func downloader(budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = enough) throws -> ModelDownloader { try .init(appData:appData,fixtureOrigin:origin,userAgent:agent,budget:budget) }
     var requests: [[String:Any]] { ((try? String(contentsOf:log,encoding:.utf8)) ?? "").split(separator:"\n").compactMap { try? JSONSerialization.jsonObject(with:Data($0.utf8)) as? [String:Any] } }
     var destination: URL { appData.appendingPathComponent("models/" + pin.id + "/" + pin.sourceSHA256) }
 }
@@ -183,7 +185,10 @@ private final class ProgressLog: @unchecked Sendable {
         _ = try await downloader.install(pin)
         #expect(server.requests.filter { ($0["path"] as? String)?.hasPrefix("/models/") == true }.count == before)
         #expect(server.requests.allSatisfy { $0["encoding"] as? String == "identity" })
-        #expect(server.requests.allSatisfy { $0["userAgent"] as? String == ModelHTTP.userAgent })
+        // D54: the manifest, the NOTICE and every artifact request carry the exact header.
+        let paths = server.requests.compactMap { $0["path"] as? String }
+        #expect(paths.contains("/manifest.json") && paths.contains("/NOTICE.txt") && paths.contains { $0.hasPrefix("/models/") })
+        #expect(server.requests.allSatisfy { $0["userAgent"] as? String == agent })
         #expect(!server.requests.contains { ($0["path"] as? String)?.contains("example.invalid") == true })
         try await downloader.remove(pin); #expect(!FileManager.default.fileExists(atPath:result.path)); #expect(ModelStorage.notices(in:server.appData).isEmpty)
         _ = try await downloader.install(pin); #expect(FileManager.default.fileExists(atPath:result.path))
@@ -225,6 +230,19 @@ private final class ProgressLog: @unchecked Sendable {
         let folders = (try? FileManager.default.contentsOfDirectory(atPath:server.destination.deletingLastPathComponent().path)) ?? []
         #expect(!folders.contains { $0.hasPrefix(".install-") })
         if scenario == "unsafe-path" || scenario == "wrong-origin" { #expect(server.requests.count == 1) }
+        // D54: the hop that answered with a redirect carried the header too; the redirect
+        // itself is refused (models come only from the pinned origin).
+        if scenario == "redirect" { #expect(server.requests.contains { ($0["path"] as? String)?.hasPrefix("/models/") == true }) }
+        #expect(server.requests.allSatisfy { $0["userAgent"] as? String == agent })
+    }
+    @Test func theUserAgentNamesTheAppItsVersionAndThePlatformOnly() {
+        #expect(ModelUserAgent.make(version:"9.8.7",system:.init(majorVersion:15,minorVersion:1,patchVersion:0),architecture:"arm64") == agent)
+        #expect(ModelUserAgent.make(version:"0.3.0-dev",system:.init(majorVersion:26,minorVersion:0,patchVersion:2),architecture:"x86_64")
+                == "CassiniTalk/0.3.0-dev (macOS 26.0.2; x86_64)")
+        // A missing or unsafe version is never replaced by a stale literal.
+        #expect(ModelUserAgent.make(version:"",system:.init(majorVersion:15,minorVersion:1,patchVersion:0),architecture:"arm64") == "CassiniTalk/unknown (macOS 15.1; arm64)")
+        #expect(ModelUserAgent.make(version:"1.0\r\nX: y",system:.init(majorVersion:15,minorVersion:1,patchVersion:0),architecture:"arm64").hasPrefix("CassiniTalk/unknown "))
+        #expect(ModelUserAgent.architecture == "arm64" || ModelUserAgent.architecture == "x86_64")
     }
     @Test func fullDiskStopsBeforeArtifact() async throws {
         let server = try Server("normal"), downloader = try server.downloader(budget:{ _ in .init(free:1 << 30,total:100 << 30) })

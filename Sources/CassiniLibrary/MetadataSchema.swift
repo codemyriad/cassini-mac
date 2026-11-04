@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CassiniKit
 
@@ -58,6 +59,7 @@ enum MetadataSchema {
     private static func matches(_ value: JSON, type: String) -> Bool {
         switch type {
         case "null": return value.isNull
+        case "boolean": return value.bool != nil
         case "object": return value.object != nil
         case "array": return value.array != nil
         case "string": return value.string != nil

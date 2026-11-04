@@ -59,6 +59,26 @@
               },
               "heard": {
                 "type": "boolean"
+              },
+              "pageState": {
+                "enum": [
+                  "present",
+                  "closed",
+                  "navigating"
+                ]
+              },
+              "sourceCountKnown": {
+                "type": "boolean"
+              },
+              "documentGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "callGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
@@ -156,7 +176,39 @@
               "captureId": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 128
+                "maxLength": 200,
+                "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+              },
+              "pageState": {
+                "enum": [
+                  "present",
+                  "closed",
+                  "navigating"
+                ]
+              },
+              "failedSources": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "documentGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "callGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "timelineOriginMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 253402300799000
               }
             },
             "required": [
@@ -167,6 +219,43 @@
             ],
             "additionalProperties": true
           }
+        },
+        "pageState": {
+          "enum": [
+            "present",
+            "closed",
+            "navigating"
+          ]
+        },
+        "failedSources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "documentGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
         }
       },
       "required": [
@@ -204,6 +293,11 @@
         "error": {
           "type": "string",
           "maxLength": 2000
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{1,32}$",
+          "$comment": "D58 (R79): optional on ok:false, an open refusal class. Known: busy, limit, noSources, gone, notWebPage, pageUnreachable, invalid, resumeRefused, workletBlocked, audioBlocked. Hosts accept results without it and copy any value that matches the pattern as a whole string (not before a final newline) into the refusal's detail. Unrelated to the closed audio-plane code of response.schema.json."
         },
         "status": {
           "$ref": "#/$defs/status"
@@ -245,6 +339,25 @@
           }
         }
       ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "pong"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "type",
+        "seq"
+      ],
+      "additionalProperties": true,
+      "$comment": "heartbeat-v1: only ever a reply echoing an app ping's seq; never unsolicited."
     }
   ],
   "$defs": {
@@ -285,6 +398,43 @@
         },
         "stopping": {
           "type": "boolean"
+        },
+        "pageState": {
+          "enum": [
+            "present",
+            "closed",
+            "navigating"
+          ]
+        },
+        "failedSources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "documentGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
         }
       },
       "required": [

@@ -8,15 +8,19 @@ name: CI
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
+# D66 mac-P1-1: a newer push to a pull request cancels that PR's older run. Every push, nightly
+# and manual run has a group of its own (its run id), so none is ever cancelled or replaced while
+# pending, and every main commit keeps the push run the release gate needs (D20, release.yml).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
       shot: ${{ steps.paths.outputs.shot }}
-      board_shot: ${{ steps.paths.outputs.board_shot }}
       boards: ${{ steps.paths.outputs.boards }}
       exports: ${{ steps.paths.outputs.exports }}
-      library: ${{ steps.paths.outputs.library }}
       whistle: ${{ steps.paths.outputs.whistle }}
       model_download: ${{ steps.paths.outputs.model_download }}
       parakeet: ${{ steps.paths.outputs.parakeet }}
@@ -31,6 +35,7 @@ jobs:
         EVENT_NAME: ${{ github.event_name }}
       run: |
         python3 scripts/test-ci-contract.py
+        python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
   build:
     needs: [changes]
@@ -38,17 +43,34 @@ jobs:
     uses: ./.github/workflows/ci-build.yml
     with:
       parakeet_models: ${{ needs.changes.outputs.parakeet != 'false' }}
+  # D66 mac-P2-2: the Release app and its packaging (Cassini-<sha>), off the Debug consumers'
+  # critical path; only packaging and the Parakeet checks wait for it.
+  build_release:
+    needs: [build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' }}
+    uses: ./.github/workflows/ci-build-release.yml
   kit:
     name: CassiniKit tests and conformance
     runs-on: macos-15
+    # About 2.5x its p95 (9.2 min) with the folded Library, native-sink and packaging steps; a
+    # hang can't hold a shared macOS slot for 6 hours (D66 mac-P0-5, #130 review).
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
       with:
         swiftpm: 'true'
+        assets: 'true'
+        debug: 'true'
     - name: Swift version
       run: swift --version
+    # D66 mac-P2-1: with the pinned Opus assets and an export report folder, this one run also
+    # covers the arm64 portable-export suites (golden text, packet preservation, safe save and
+    # audio round trips) that the separate arm64 exports job ran.
     - name: Test
+      env:
+        CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+        CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
       run: swift test --skip-build
     - name: Browser audio worklet tests
       run: node --test browser-protocol/extension/tests/*.test.cjs BrowserExtension/tests/tone-window.test.cjs
@@ -59,6 +81,24 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+    - uses: actions/checkout@v5
+      with:
+        repository: codemyriad/cassini-format
+        ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+        path: build/format-reference
+        persist-credentials: 'false'
+    - name: Independent pure metadata and audio readers
+      run: python3 scripts/check-export-reference.py build/format-reference build/export-cases
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        retention-days: 14
+        name: exports-macos-15
+        path: |
+          build/export-cases
+          build/Opus/pins.json
+          build/Opus/unsigned-sha256.json
     - name: Install strict conformance dependencies
       run: python3 -m pip install -r browser-protocol/requirements-test.txt
     - name: Browser host conformance
@@ -70,6 +110,9 @@ jobs:
       run: |
         npm ci --prefix BrowserExtension/tests
         BrowserExtension/tests/node_modules/.bin/playwright install chromium
+    - name: Extension native-messaging diagnostics survive their worker (D66 mac-P0-1)
+      timeout-minutes: 3
+      run: node scripts/test-extension-native-log.mjs
     - name: Browser capture scenarios
       timeout-minutes: 8
       run: |
@@ -78,10 +121,12 @@ jobs:
         PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/BrowserExtension/tests/node_modules/playwright/index.mjs" node browser-protocol/tests/product-topologies.mjs 2>&1 | tee BrowserExtension/tests/artifacts/topologies.log
         node BrowserExtension/tests/synthetic-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/synthetic.log
         node BrowserExtension/tests/extension-capture.mjs 2>&1 | tee BrowserExtension/tests/artifacts/extension.log
-        echo "Real tabCapture runs on drmeyers-audio; hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
+        echo "Real tabCapture is a manual check (node BrowserExtension/tests/tab-capture.mjs): hosted macOS has no reliable output audio device." >> "$GITHUB_STEP_SUMMARY"
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: failure()
       with:
+        retention-days: 14
         name: recording-failure-${{ github.sha }}
         path: |
           BrowserExtension/tests/artifacts
@@ -93,43 +138,47 @@ jobs:
         grep -q " 0 fail" full.txt
         python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect --metadata" --profile metadata | tee metadata.txt
         grep -q " 0 fail" metadata.txt
-    needs:
-    - build
-  app:
-    name: Build Cassini.app
-    runs-on: macos-15
-    steps:
-    - uses: actions/checkout@v5
-    - uses: ./.github/actions/ci-products
-      with:
-        release: 'true'
-    - name: Package
+    # D66 mac-P1-4: three single-purpose macOS jobs (UX Library model, Native recording sink,
+    # Build Cassini.app) folded into this one, with their exact environments and products.
+    - name: Golden vectors and read-only Library tests (UTC, C locale)
+      timeout-minutes: 5
+      env:
+        TZ: UTC
+        LANG: C
+        CASSINI_LIBRARY_RESULTS: ux-library-vector-results
       run: |
-        python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
+        set -o pipefail
+        swift test --skip-build --filter 'Library|SearchTests' 2>&1 | tee ux-library-tests.log
     - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
       with:
-        name: Cassini-${{ github.sha }}
+        retention-days: 14
+        name: ux-library-test-results
         path: |
-          build/Cassini.zip
-          build/Cassini.zip.sha256
+          ux-library-tests.log
+          ux-library-vector-results
+    - name: Native recording sink (generated 440/880 Hz stereo through the production sink and WAV writer)
+      timeout-minutes: 5
+      run: |
+        python3 scripts/run-native-ci.py --mode sink-only --app build/Build/Products/Debug/Cassini.app \
+          --artifacts "$RUNNER_TEMP/native-artifacts"
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        retention-days: 14
+        name: native-recording-${{ github.sha }}
+        path: ${{ runner.temp }}/native-artifacts
     needs:
     - build
   shot:
-    name: UX window screenshot spike
+    name: UX window screenshots
     needs:
     - changes
     - build
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.shot != 'false' }}
     uses: ./.github/workflows/ux-shot.yml
-    with:
-      products_ready: true
-  board_shot:
-    name: UX board-size screenshot spike
-    needs:
-    - changes
-    - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.board_shot != 'false' }}
-    uses: ./.github/workflows/ux-board-shot.yml
     with:
       products_ready: true
   boards:
@@ -141,26 +190,8 @@ jobs:
     uses: ./.github/workflows/ux-boards.yml
     with:
       products_ready: true
-  exports:
-    name: UX portable exports
-    needs:
-    - changes
-    - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.exports != 'false' }}
-    uses: ./.github/workflows/ux-export.yml
-    with:
-      products_ready: true
-  library:
-    name: UX Library model
-    needs:
-    - changes
-    - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.library != 'false' }}
-    uses: ./.github/workflows/ux-model.yml
-    with:
-      products_ready: true
   whistle:
-    name: Whistle bundling spike
+    name: Whistle bundle
     needs:
     - changes
     - build
@@ -168,26 +199,82 @@ jobs:
     uses: ./.github/workflows/ux-whistle.yml
     with:
       products_ready: true
-  model_download:
-    name: UX model downloader
-    needs:
-    - changes
-    - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.model_download != 'false' }}
-    uses: ./.github/workflows/ux-model-download.yml
-    with:
-      products_ready: true
+  # D66 mac-P2-1: the Intel exports and Intel downloader jobs, as one job. Each area's steps run
+  # only when its paths changed (push, nightly and manual runs select every area).
+  package_tests:
+    name: Package tests (macos-15-intel)
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && (needs.changes.outputs.exports != 'false' || needs.changes.outputs.model_download != 'false') }}
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    env:
+      EXPORTS: ${{ needs.changes.outputs.exports != 'false' }}
+      MODEL_DOWNLOAD: ${{ needs.changes.outputs.model_download != 'false' }}
+    steps:
+    - uses: actions/checkout@v5
+    - id: products
+      uses: ./.github/actions/ci-products
+      with:
+        swiftpm: 'true'
+        assets: 'true'
+    # D66 mac-P1-3: the downloader runs before setup-python (with it, the fixture server's
+    # interpreter made the suite take 15x longer).
+    - name: Model downloader, local HTTP fault fixtures only
+      if: env.MODEL_DOWNLOAD == 'true'
+      timeout-minutes: 8
+      run: |
+        set -o pipefail
+        swift test --skip-build --filter ModelDownloaderTests 2>&1 | tee downloader.log
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.MODEL_DOWNLOAD == 'true'
+      with:
+        retention-days: 14
+        name: downloader-macos-15-intel
+        path: downloader.log
+    - uses: actions/setup-python@v5
+      if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
+      with:
+        python-version: '3.12'
+    - name: Portable exports, golden text, policy, packet preservation, safe save and audio round trips
+      id: exports
+      if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
+      timeout-minutes: 12
+      env:
+        CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+        CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
+      run: swift test --skip-build --filter 'ExportGoldenTests|MeetingExportTests|ExportDestinationTests|PortableWriterTests|OpusTests|LibraryImport|R65CodemyriadNamespaceTests'
+    - uses: actions/checkout@v5
+      if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
+      with:
+        repository: codemyriad/cassini-format
+        ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+        path: build/format-reference
+        persist-credentials: 'false'
+    - name: Independent pure metadata and audio readers
+      if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' && steps.exports.outcome == 'success' }}
+      run: python3 scripts/check-export-reference.py build/format-reference build/export-cases
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.EXPORTS == 'true'
+      with:
+        retention-days: 14
+        name: exports-macos-15-intel
+        path: |
+          build/export-cases
+          build/Opus/pins.json
+          build/Opus/unsigned-sha256.json
 
   parakeet:
     name: UX Parakeet Ultra
-    needs: [changes, build]
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
+    needs: [changes, build, build_release]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
     uses: ./.github/workflows/ux-parakeet.yml
     with:
       products_ready: true
 
   browser_setup:
-    name: UX browser setup spike
+    name: UX browser setup
     needs: [changes, build]
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.browser_setup != 'false' }}
     uses: ./.github/workflows/ux-browser-setup.yml

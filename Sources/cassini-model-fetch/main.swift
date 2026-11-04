@@ -13,7 +13,8 @@ let pin = ModelPin.parakeetUltra
 do {
     let output = URL(fileURLWithPath:arguments[1],isDirectory:true)
     try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
-    let downloader = ModelDownloader(appData:output)
+    // D54 covers shipped apps; this build tool names itself.
+    let downloader = ModelDownloader(appData:output,userAgent:"cassini-model-fetch/1 (build tool)")
     let installed = try await downloader.install(pin)
     print(installed.path)
 } catch {

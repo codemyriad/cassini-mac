@@ -14,7 +14,7 @@ enum SettingsTab: String, CaseIterable { case recording, updates, transcription,
     static let shared = SettingsNavigation()
     var tab = SettingsTab.recording
     var capturingShortcut = false
-    @ObservationIgnored var open: (() -> Void)?
+    @ObservationIgnored var open: (() -> Void)? = { ApplicationWindows.preferences(); NSApp.activate(ignoringOtherApps:true) }
 }
 struct CassiniSettingsView: View {
     @State private var navigation = SettingsNavigation.shared
@@ -59,6 +59,7 @@ private struct SettingsUpdatesView: View {
 }
 private struct SettingsRecordingView: View {
     @AppStorage("CassiniSkipRecordFirst",store:RecordingPreferences.defaults) private var skipFirst = false
+    @AppStorage("CassiniShowMenuBar",store:RecordingPreferences.defaults) private var showMenuBar = true
     @State private var shortcut = RecordingRuntime.shared.shortcut
     @State private var navigation = SettingsNavigation.shared
     var body: some View {
@@ -88,6 +89,9 @@ private struct SettingsRecordingView: View {
                         Task { do { try await CaptureCollection.shared.setAutoRecord(enabled) } catch { NSApp.presentError(error) } }
                     })).labelsHidden().toggleStyle(.switch).accessibilityIdentifier("settings-auto-record")
                 }
+                Divider()
+                Toggle(UXText.text("settings.general.menuBar"),isOn:$showMenuBar)
+                    .toggleStyle(.switch).accessibilityIdentifier("settings-show-menu-bar")
             }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
         }.sheet(isPresented:$navigation.capturingShortcut) {
             VStack(alignment:.leading,spacing:18) {

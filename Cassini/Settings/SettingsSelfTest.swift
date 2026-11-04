@@ -243,6 +243,8 @@ import Sparkle
             try await wait { !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.location.pendingMoves.isEmpty }
             for name in names { try check(FileManager.default.fileExists(atPath:destination.appendingPathComponent(name + "/session.json").path),"idle folder moved after relaunch") }
             try check(LibraryLocationModel.shared.location.previousPaths.isEmpty,"old readers retired after all moves finish")
+            // D66 mac-P0-3: shut the move coordinator down first; if the proof still fails,
+            // test-settings-app.py records what holds the destination.
             LibraryMoveCoordinator.shared.beginShutdown(); LibraryStore.shared.stop()
             // A security-scoped directory grant permits its contents, not
             // deleting the granted root through its parent. The outer fixture

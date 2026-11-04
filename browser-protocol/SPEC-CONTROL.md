@@ -1,7 +1,7 @@
 # App/browser control — v1
 
 This separate channel lets Cassini show and record meetings in the browser. It does not
-change the audio host, audio SPEC, or the 88 audio vectors. The extension maintains a
+change the audio host, audio SPEC, or the audio vectors. The extension maintains a
 persistent Native Messaging connection to **io.codemyriad.cassini.control**; PCM still
 uses **io.codemyriad.cassini**, one connection per recording. Either host may be missing
 without breaking the other. Losing control never stops or deletes a recording.
@@ -84,8 +84,12 @@ recording continues. No management message supplies a filesystem destination.
 | status | recording bool, tabId nullable, path nullable string, message string; optional tracks integer ≥0 and stopping bool |
 | action / mode | start or stop; start requires tracks |
 | error | string ≤2000 code points |
+| code | optional on ok:false, `^[A-Za-z]{1,32}$`; see Result codes |
 
-Unknown fields are ignored. Unknown host message types are ignored. A missing host uses
+Unknown fields are ignored. Unknown host message types are ignored. Apps ignore unknown
+extension message types. The extension sends no unsolicited message types beyond those
+listed; new types are replies to app-initiated, capability-gated requests (for example
+`pong`, see heartbeat-v1). A missing host uses
 bounded 1–30 second retry plus a one-minute alarm that survives MV3 worker idling; do not use
 Chrome-150-only alarm persistence options. Permissions added: tabs (background metadata),
 alarms (reconnect). The minimum remains Chrome 116.
@@ -142,6 +146,9 @@ The version-1 control envelope is unchanged; heard is optional for legacy reader
 [`auto-start-vectors.json`](conformance/control/auto-start-vectors.json) inputs and
 hand-written expectations must run against each desktop's production auto/manual
 start policy; see [adapter assumptions](conformance/control/AUTO-START.md).
+D52.5 adds one exclusion: a call (tabId, callGeneration) with a recording on a
+`system/lost` fallback, under any control peer past or present, MUST NOT be
+started automatically; it may only be resumed, asked once (see "Control heartbeat").
 
 ## Product behavior shared by both apps
 
@@ -207,7 +214,7 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1"]`.
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
@@ -259,3 +266,423 @@ of a receiver is the same source and must not create a second recording track;
 known clone roots are deduplicated. Source IDs still describe capture sources,
 not participant identities. Whole-tab capture still requires the browser action
 invocation grant and keeps its single offscreen document.
+
+## Call lifecycle capability (D33; extension 0.2.3)
+
+Hello also advertises `page-state-v1`. Version remains1; independent transport
+and `call-evidence-v1` auto-start rules are unchanged. Both new and legacy tab
+statuses may add `pageState`: `present`, `closed`, or `navigating`. It appears in
+per-tab `sessions` entries, the tab-scoped command result/top-level status and
+meeting entries. It is optional for old peers. An absent field is unknown,
+not evidence of a closed tab. The existing `sessions` replacement-list semantics
+are unchanged; there is no new inventory of stopped sessions.
+
+Only the browser's `tabs.onRemoved` establishes `closed`. Document loading and
+trusted top-frame relay pagehide establish `navigating`; a fresh top-frame relay
+or pageshow establishes `present`. Same-document URL changes do not invalidate
+healthy audio. Obsolete document messages cannot revive old counts or override
+closed, and a subframe cannot assert top-level lifecycle. A missing control peer
+or native port is unknown loss, never an inferred closed tab. Title/URL still
+come from the tabs API, never page-supplied lifecycle data.
+
+Extension 0.2.3 delivers the lifecycle publication fix to local installs of
+0.2.2. D39 installers replace an installed companion only with a strictly newer
+version; changed extension bytes must not retain the version of an earlier
+published bundle.
+
+For an active recording, after the initial `hello`, `meetings`, `status`
+snapshot, publish each lifecycle transition immediately on the connected
+control port, before waiting for an asynchronous meeting inventory. Until that
+initial snapshot is sent, transitions are represented by its current state,
+not by an early standalone `status` that would break connection ordering.
+A rapid `navigating` → `present` transition must not be coalesced away by a
+pending tabs lookup. The publisher first awaits **all** metadata lookups in the
+batch, then synchronously collects source count, heard evidence and page state
+for **every** row from the current documents, with no intervening await. Reading
+A's evidence when A's lookup resolves is insufficient: A can reload while B's
+lookup is pending. An unloaded document's count must never publish after its
+navigation/return statuses. Missing tabs and invalid metadata remain omitted.
+A disconnected control port still uses the ordinary replacement snapshot on
+reconnect; historical transitions are not replayed as new events.
+
+Before evaluating lifecycle policy, a `status` reporting `navigating` or `closed`
+invalidates the cached source count and heard evidence for **that tab** (effective
+`sourceCount: 0`, `heard: false`). This applies both to per-tab `sessions` entries
+and to a tab-scoped top-level status. A later `status(present)` cannot revive the
+departed document's count. Only a subsequent `meetings` snapshot supplies fresh
+source evidence; other tabs' counts remain intact. In particular, the wire order
+`meetings(present, 3)` → `status(navigating)` → `status(present)` →
+`meetings(present, 0)` keeps the navigation return deadline and must not start the
+short call-ended timer. `conformance/control/call-lifecycle-wire-vectors.json`
+contains literal packet/tick interleavings, effective cached evidence and actions
+for both apps to run, alongside the existing normalized lifecycle vectors.
+
+The corpus also records the faulty-publisher trace `status(navigating)` →
+`status(present)` → `meetings(present, 3)` → `meetings(present, 0)`. Without a wire
+freshness marker, a reader cannot distinguish that stale positive snapshot from
+real returned audio followed by hang-up: the positive count clears the return
+deadline and zero sources then start the two-second call-ended timer. Its literal
+expected actions document why the publisher must avoid this trace when no new
+sources appeared. Readers must not mask it by ignoring valid positive snapshots.
+The two-tab blocked-lookup extension regression checks the actual publisher:
+after navigation/return, both its pending inventory and dirty refresh report A's
+current zero count even while B's metadata lookup had held the batch open.
+
+An app that implements this policy opts in for an independent start with
+`keepOnNavigation:true`. The extension retains that recording's native connection,
+capture ID, origin and folder when frames unload, and starts returning frames
+with the original token/origin. An opted-in closed tab also remains owned until
+the app's Stop. Without this flag, existing immediate loss/`failureReason:lost`
+behavior is preserved for older apps; the popup's legacy start is unchanged.
+The flag requires `independent:true` and action=start. It does not recover a
+terminated extension worker or dead native connection; their existing interrupted
+recovery status remains truthful. An app never switches to an absent PCM transport.
+
+An app Stop may carry `reason`: user/callEnded/tabClosed/pageGone/disk/error/appQuit.
+It is validated before cancellation or any recording side effect. On an opted-in
+session it is forwarded in the native stop packet; absent means user. Repeated
+Stops share one finalization and never emit a second end event. A transient lost
+path that keeps a fallback is not a terminal Stop and must not write end.
+
+The app owns these monotonic per-session timers (seconds):
+
+- `CALL_END_GRACE = 2`: present page with zero sources, outside a pending reload,
+  stops as callEnded. Recovery before2s cancels that pending end.
+- Browser-confirmed closed tab stops as tabClosed after2s. It never starts a
+  computer-sound fallback. Closed is terminal evidence despite late messages.
+- Navigating/absent page starts computer-sound fallback after2s in the same folder.
+  `BROWSER_RETURN_GRACE = 120`, measured from first loss, bounds its lifetime.
+  Present with zero sources during that pending return does not become callEnded.
+  Once the same tab has returned with audio, a later hang-up uses the normal2s
+  callEnded grace even if restoring the selected browser source failed; keeping
+  the working system source is not itself evidence of a new navigation.
+- Check a stored120s deadline **before** accepting a returned page, including a
+  return after expiry before the next policy tick. Expiry stops as pageGone.
+- Same browser instance and tab returning with positive sourceCount and a live
+  original PCM transport before expiry can restore the browser path. Under
+  D52.4 this means a live PCM transport, original or resumed through
+  resume-capture-v1 after the original closed. Do not use
+  a different tab, title or URL as identity. Respect the current per-session mic
+  and The others choices; The others off stays off. Keep the computer source if
+  a staged restoration fails; do not checkpoint a restored event without its track.
+- Brief trouble that leaves the page and sources present changes nothing.
+
+Timers and source changes are independent for concurrent recordings. These rules
+never split the folder or broaden a recording to the microphone. Track/source
+identity, rollback, 64-track limits and atomic event/track checkpoints remain in
+force. `conformance/control/call-lifecycle-vectors.json` supplies literal timed
+expectations for both apps, checked by an independent fixture oracle. It is not
+production policy code. Each app must additionally test its actual writer and
+fallback/restore device failures.
+
+## D52 multi-stream lifecycle (extension 0.2.6)
+
+The extension advertises multi-stream-v1 alongside its existing capabilities.
+The following policy supersedes the legacy two-second present-page call-end
+rule only for adopting apps: after remote audio has been heard in this call,
+a present page with a known zero source count has OTHERS_GONE_GRACE=30 seconds.
+A 15-second rejoin survives; a call that never supplied remote audio does not
+arm this timer. A closed tab retains its two-second grace. Missing inventory is
+unknown, never zero. Active rows retain their last browser-owned title/URL when
+lookup fails and mark sourceCountKnown:false; the cached count is not evidence.
+Healthy admitted browser PCM prevents fallback for absent control. The native
+microphone alone is not that evidence. Shared literal cases are in
+conformance/multistream/lifecycle.json. How apps derive controlAlive and
+transportAlive from the wire is in "Control heartbeat" below (D52.4).
+
+Rows/status include optional documentGeneration and callGeneration; capture
+statuses retain captureId. Since extension 0.2.12 the same documentGeneration also
+rides on each audio-plane `track` of a page span (SPEC.md, "Page trust and browser
+clocks"), written by the extension's background; it is a liveness hint only.
+Adopting starts echo callGeneration and are checked
+after tab lookup. Stops echo captureId and are checked before cancellation.
+A changed call address retires the old token before admitting new-call audio;
+fragment-only navigation preserves the existing call. Document-local generation
+changes likewise fence old spans. Reloading the same address retains the
+browser-owned call generation. Old peers closing late cannot open B under A.
+Peer roots retain their call binding across stats reads and local sender changes.
+A reused peer is rebound only after a successful remote description whose API
+call began in the new generation; a negotiation begun in A and completed in B
+cannot rebind it. Deliberate call fencing emits trackEnd(callChanged), never a
+source failure or retry into the new call. Fresh RTP baseline/progress is required before reopening its
+remote spans. Sender/media aliases belonging to a fenced peer stay excluded.
+
+Live sources retry indefinitely with monotonic deadlines: 1, 5, 15, then 30-second
+backoff, resetting after 60 seconds of healthy acknowledged audio (zero samples
+are healthy). Initial attach failures retry too. Remote spans require a connected
+peer and positive inbound RTP progress, not merely recvonly slots. A suspension
+that would create a gap above 60 seconds rotates the span before sending it.
+The background never forwards a 65th distinct track ID; a refusal stays per
+source and is visible in failedSources. See the schemas and new source tests.
+
+
+### Call identity across service-worker restart (D52)
+
+A browser service-worker restart is not a new call. Persist the per-tab browser
+callGeneration and a bounded SHA-256 address fingerprint in storage.session,
+with the main frame's hook
+documentGeneration/callGeneration baseline. Hydrate these before processing page
+messages or browser URL changes and before publishing the initial inventory.
+Hydration compares the current browser-owned tab address to the saved digest;
+long query strings cannot discard the identity or expand the stored record. A
+URL boundary fences the saved hook baseline before the first returning snapshot,
+so stale heard evidence cannot vote or rotate the generation a second time.
+A reconnect from the same live document and hook generation keeps the same
+browser callGeneration. A reload at the same URL also retains call identity;
+a real address or same-document hook-generation boundary still rotates exactly
+once, in either event order, including while startup hydration is pending.
+Store only bounded tab metadata, never PCM or source labels, and retain these
+identities independently of the active-recording records removed after Stop.
+
+
+### Source readiness failures during retry
+
+A source that cannot initialize its render clock keeps its specific error and
+sourceTrackId while retrying. Live status includes that source in failedSources
+and keeps the error visible when another source declares a track or sends PCM.
+Readiness has a four-second upper bound; a timeout disconnects the unsuccessful
+graph without closing a shared context or stopping healthy sources. Repeated
+identical retry errors need not generate repeated warnings.
+
+Only acknowledged PCM from that same source clears its active retry warning;
+a successful declaration alone is not recovery. Permanent/previously recorded
+source failures remain in the capture ledger. A source still retrying at Stop
+is reported failed, with its existing specific error retained. A recovered
+transient readiness error does not turn the final Stop into an interruption.
+
+## Resume an app's active stand-in (D52.1 / R67; extension 0.2.7)
+
+Opt-in capability `resume-capture-v1` joins an already recording native system-
+sound stand-in. Apps MUST see this hello capability before sending the command;
+an unknown optional field on an ordinary Start is not safe feature negotiation.
+Fresh manual Record remains an ordinary independent Start with a new identity.
+A failed resume MUST NOT be retried as a fresh Start automatically. When and
+how often an app may ask to resume a system/lost fallback (once per loss and
+control connection, D52.5) is under "Control heartbeat" below.
+
+```json
+{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000}}
+```
+
+`keepOnNavigation:true` (page-state-v1) applies to a resume Start as to any
+independent Start: without it, a reload ends the resumed extension session.
+
+`resumeCapture` requires independent Start, a selected callGeneration, a nonempty
+captureId of at most128 UTF-8 bytes and an integer original timelineOriginMs in
+0..253402300799000. Unknown members are ignored; no path is supplied. The target
+is this recording operation, not merely a call address/generation. The extension
+uses its captureId and exact origin from session construction, including status
+before the native ACK and every scoped Stop. It does not invent an alias token
+or shift timestamps. After asynchronous lookup it checks the selected generation.
+
+The first native packet is deliberately a distinct `type:"resume"`, version1,
+with independent:true, captureId, timelineOriginMs, callGeneration and features
+including resume-capture-v1. It otherwise uses the same transport as Start.
+Since extension 0.2.11 it also carries this command's `requestId`, so the app
+can tell which ask a refused resume answers; an ordinary Start never carries it.
+An app that keys on it gives every resume ask a fresh, never reused requestId
+(see conformance/control/RESUME-CAPTURE.md).
+Older hosts must reject this unknown type before creating any folder. This is
+safer than adding an ignored optional field to Start. The app atomically verifies
+that the target is active, not stopping/stopped, the exact origin/generation
+matches and the current others source is an eligible system-sound stand-in:
+either the initial system/missing stand-in (D49) or a system/lost fallback
+after the recording's audio transport closed (D52.4). It
+attaches the new transport to that recording. It never creates another folder,
+resets its clock or replaces its microphone/selection. Title/microphone defaults
+from a fresh Start do not modify the target. A refused resume has no side effect.
+
+```json
+{"type":"started","path":"/Library/.sessions/Recording-example","features":["source-outcomes-v1","resume-capture-v1"],"resumed":true,"captureId":"stand-in-F","timelineOriginMs":1793500000000,"callGeneration":"call-A"}
+```
+
+The extension requires this explicit proof, including the exact identity/origin/
+generation, before admitting tracks. A missing/mismatched proof closes only the
+attempted transport; it never sends Stop to an unaccepted target. A native host
+must not let that failed transport's EOF/Stop finalize an unrelated active job.
+Once attached, unexpected EOF keeps native recording/fallback under D33; an
+ordinary user Stop finalizes normally.
+
+Stop is fenced at receipt, not only when its queued handler runs: it cancels a
+matching queued resume, a pending tab lookup and a session awaiting native ACK.
+The app must also reject a resume arriving after it stopped the native target,
+including when Start/Stop cross between the independent control/audio pipes.
+This cancellation does not prohibit a subsequent fresh manual Record for the
+same call. Changed-call signals from A must not bind or stop B.
+
+On successful attachment, transition othersSource from system to browser at the
+committed seam, retaining microphone and selection. The seam reason is
+callConnected when resuming the initial system/missing stand-in (D49), and
+restored when resuming a system/lost fallback (D52.4). Literal seams for both
+are in resume-capture-vectors.json (`seam`, `lostSeam`).
+S-6 ownership is half-open: system audio before the seam and browser audio from
+the seam, with no overlap or dropped sample. Stored audio is not filtered.
+
+Early status carries timelineOriginMs (also on each sessions[] entry). A pending
+status is an intent, not native acceptance: apps switch sources only after their
+own native attachment has committed, regardless of control/status delivery order.
+
+## Control heartbeat (heartbeat-v1, D52.4 / P11; extension 0.2.9)
+
+A frozen browser or companion can keep both native connections open, so "the
+connection is still open" is not liveness. Opt-in control capability
+`heartbeat-v1` lets the app detect a silent control link. The direction is
+fixed: **the app pings, the extension only answers.**
+
+```json
+{"type":"ping","seq":17}
+{"type":"pong","seq":17}
+```
+
+- The app sends `ping` only when the connection's hello lists `heartbeat-v1`,
+  and only after it has received that connection's first `status` (this keeps
+  the hello → meetings → status order). `seq` is an integer JSON number in
+  0..9007199254740991 (an integral value such as `3.0` is the integer 3, as in
+  JavaScript and JSON Schema), starting at 0 on each connection and increasing
+  by one per ping. The pong echoes its numeric value.
+- The extension answers `{"type":"pong","seq":N}` immediately, echoing seq
+  exactly, from its control receive handler: never through the command queues,
+  which may legitimately hold a command for longer than the loss deadline
+  (tab lookup, Stop flush, PCM acknowledgement). The pong does not wait for the
+  extension's own initial snapshot. A ping with a missing or invalid seq (not a
+  nonnegative safe integer) gets no reply, like an uncorrelatable requestId.
+  Unknown fields are ignored. A ping has no audio or command side effect and
+  takes no request slot; it resets the extension's reconnect backoff as a
+  command does.
+- The extension never sends `pong`, or any other new type, unprompted: an older
+  broker may close the link on an unknown extension message type.
+
+The app owns these monotonic timers for each connection (milliseconds in the vectors):
+
+| Constant | Value | Rule |
+| --- | --- | --- |
+| `HEARTBEAT_INTERVAL` | 10 s | Send a ping when `now - lastPingSent >= 10 s`, measured from the first status and then from each ping. Pings are unconditional, not idle-only. |
+| `CONTROL_LOSS_AFTER` | 25 s | Declare control lost when `now - lastInboundFrame >= 25 s`, where every inbound frame counts (pong, meetings, status, result, hello, or any other). Never earlier; SHOULD be within one policy tick. |
+
+The loss deadline runs only while heartbeat is active, i.e. after a negotiated
+hello and its first status. A hello without `heartbeat-v1` is never pinged and
+never timed out; an open connection remains its only liveness signal. Apps gate
+on the capability, never on the extension version number.
+
+On loss the app closes that control connection without waiting behind a stuck
+write, and proceeds exactly as for EOF: `controlAlive` becomes false for every
+recording of that browser and in-flight commands are discarded. Losing control
+still never stops or deletes a recording; with healthy browser PCM (`pcmLive`,
+see SPEC.md "Audio transport liveness") nothing changes. The extension notices
+the closed relay through its ordinary disconnect handling and reconnects with
+a fresh hello and snapshot; seq restarts at 0. There is no extension-side
+heartbeat timer. Apps bound writes to the browser at `WRITE_DEADLINE` = 10 s
+and close a peer that stops reading (SPEC.md).
+
+**Audio transport lost while the call is visibly ongoing (D52.4 Q3).** When a
+recording's audio transport closes (EOF, error, or the app's
+`PCM_STALE_AFTER` watchdog) the app falls back to computer sound at once. If the
+page is present with a known positive sourceCount and control alive, the app
+stays on that fallback until the call ends: it arms no missing timer and no
+`pageGone` deadline. A later known zero count after heard still stops as
+callEnded after OTHERS_GONE_GRACE. Restoring the browser source needs a live
+audio transport: a system/lost fallback is an eligible resume-capture-v1
+target, and that seam writes othersSource browser with reason `restored`
+(`callConnected` is only for resuming the initial system/missing stand-in,
+D49). If control is lost too, the ordinary
+missing/BROWSER_RETURN_GRACE rules apply from the moment of control loss.
+
+**Resuming a lost recording: ask once, never a second recording (D52.5).**
+These are app-side rules; the extension and the wire are unchanged.
+
+- *Ask once.* For a recording on a `system/lost` fallback whose browser's
+  hello lists `resume-capture-v1`, the app MUST send one resume-capture-v1
+  Start (`resumeCapture` naming that recording) at the first policy tick where
+  all of these hold: the recording's audio transport is closed; control is
+  alive; the page is present (pageState `present`, not navigating or closed);
+  the call's row is present with a known positive sourceCount; the row's
+  callGeneration equals the recording's callGeneration; and heard:true has
+  been seen at any time during this recording on a row of that same
+  callGeneration (another call's heard never counts, and it never arms this
+  recording's restore or OTHERS_GONE_GRACE either).
+  The app asks to resume only after the extension's status no longer reports a session for that tab.
+  After that resume is
+  refused or fails (error result, refused native resume, missing or
+  mismatched proof), and while it is still pending, the app MUST NOT ask
+  again on the same control connection: there is no retry on later ticks and
+  no retry timer. On each new control connection (a new hello), whose
+  predecessor's in-flight commands were discarded, the app MUST ask once
+  more, at the first tick where the conditions above hold. A successful
+  attach (`restored`) ends the loss; a later fallback to `system/lost` is a
+  new loss. This mirrors D49's "ask once" for the initial system/missing
+  stand-in, and a failed resume is still never retried as a fresh Start
+  (R67, above).
+- *Call identity.* callGeneration is a browser-generated, unguessable
+  identifier (the extension uses a random UUID per tab call; see "Call
+  identity across service-worker restart"), so it cannot collide between
+  browsers or calls. Apps MUST match a lost recording to a call by
+  (tabId, callGeneration) across all control peers, past and present, never
+  by the control peer, connection or hello the recording was started under.
+  A frozen companion that returns as a new control peer with a fresh hello
+  therefore still finds its lost recording.
+- *No second recording.* While a recording of (tabId, callGeneration) is on
+  `system/lost`, that call is recording: its row shows Stop (the live
+  indicator, not Record), and Record all skips it. The app MUST NOT
+  automatically Start that call, even when the `call-evidence-v1` auto-start
+  rule would otherwise start it, including after a frozen companion returns
+  as a new control peer. It MAY only resume that recording under the
+  ask-once rule, so no second folder is created for the call. After the user
+  stops that recording, a manual Record is an ordinary independent Start
+  with a new identity (R67). A different callGeneration in that tab, or a
+  different tab, follows the ordinary auto-start rules.
+
+Literal cases: the `resumeCapture` cases (action `askResume`) in
+`conformance/multistream/lifecycle.json` and the `recordings` cases in
+`conformance/control/auto-start-vectors.json` (fields `heardSeen`,
+`controlPeer`, `expect.resume`), each with an independent oracle
+(`lifecycle.py`, `auto_start.py`). The `PCM_STALE_AFTER` watchdog that closes
+the transport has its own cases in `conformance/multistream/stale-watchdog.json`.
+
+Shared literal cases: `conformance/control/heartbeat-vectors.json` (ping/loss
+timing and the exact wire replies, independent oracle `heartbeat.py`) and the
+`transportAlive` cases in `conformance/multistream/lifecycle.json`. Frozen
+companion example: control lost at 25 s and computer-sound fallback at 27 s;
+the audio transport closed at 45 s (`PCM_STALE_AFTER`); `pageGone` at 145 s if the browser never
+returns, or restoration once it returns with a new audio transport.
+
+## Result codes (D58 / R79; extension 0.2.10)
+
+An `ok:false` result MAY carry `code`, a string matching `^[A-Za-z]{1,32}$` as a whole
+string (not before a final newline: see SPEC.md, "Refusals"), that classifies the refusal:
+
+```json
+{"type":"result","requestId":"record-1","ok":false,"error":"No audio is available from that meeting yet.","code":"noSources"}
+```
+
+The field is optional. Hosts MUST accept results without it (older extensions, and Starts
+the extension does not classify) and need no capability, since unknown fields are ignored.
+A host copies any pattern-valid value, known or not, into the browser refusal's `detail`
+(SPEC.md, "Refusals") and drops any other value; the result's `error` becomes its `message`.
+This is an open vocabulary, separate from and unrelated to the closed audio-plane `code` of
+`response.schema.json` (`version`, `state`, `source`, ...): the extension never forwards a
+native host's error code as a result code. Apps do not wait for it: they classify what they
+know locally and record a code-less `startRejected` otherwise.
+
+| code | Extension 0.2.12 sets it when |
+| --- | --- |
+| `busy` | a recording is already running or starting, in that tab or (legacy) anywhere; also a legacy Stop for another tab |
+| `limit` | 128 requests are pending, or 100 recordings are running or starting |
+| `noSources` | the tab has no discovered meeting audio |
+| `gone` | the tab no longer exists or closes during Start, the call generation changed before or during Start, or a Stop names a capture that is no longer active |
+| `notWebPage` | the tab is not an http(s) page |
+| `pageUnreachable` | no page frame of the tab connected in time |
+| `invalid` | the command or its options are malformed, or ask for whole-tab capture |
+| `resumeRefused` | the host's answer to a resume did not confirm the original capture |
+| `workletBlocked` | the page blocked the AudioWorklet (capture.js) |
+| `audioBlocked` | the browser kept the page's audio suspended or refused playback (capture.js) |
+
+`busy` comes first: a Start for a tab that is already recording or starting (or, for a
+legacy Start, any recording) answers `busy` before any other check, including `noSources`,
+`limit` and `invalid`, so an app that falls back on other refusals never records that
+meeting twice (D58 #11; wire case `same-tab-busy-result-is-detail-busy`).
+
+Only a Start the app cancelled itself (`Recording could not start.`: its own Stop or
+cancel) and a failure reported by the native host, or the loss of that host, carry no code. `workletBlocked` and `audioBlocked` are set where capture.js
+raises the error; a tracks Start answers before the page's capture begins, so today these
+reach the app as a later source failure (`captureOutcome failed`, P10), not on a result.
+Shared wire cases: the `wire` list in `conformance/refusals/writer.json`.

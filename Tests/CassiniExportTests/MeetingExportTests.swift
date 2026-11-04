@@ -8,6 +8,42 @@ import CassiniRecording
 @testable import CassiniExport
 
 struct MeetingExportTests {
+    @Test func markdownArtifactUsesItsExplicitLanguage() throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let source=try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let before=try Data(contentsOf:source)
+        let meeting=try LibraryImport.copy(source,into:root.appendingPathComponent("Library"))
+        let artifact=try MeetingFileExporter.markdown(meeting,timeZone:TimeZone(secondsFromGMT:0)!,locale:Locale(identifier:"en_US"),language:.fr,temporaryRoot:root)
+        let text=try String(contentsOf:artifact.url,encoding:.utf8)
+        #expect(text.contains("## Transcription\n"))
+        #expect(!text.contains("## Transcript\n"))
+        #expect(try Data(contentsOf:source)==before)
+    }
+    @Test func legacyEchoFieldsCannotDropWordsFromExports() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let original = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let imported = try LibraryImport.copy(original,into:root.appendingPathComponent("Library"))
+        let words: [[String:Any]] = [
+            ["speaker":"one","startMs":0,"endMs":100,"text":"Keep"],
+            ["speaker":"one","startMs":100,"endMs":200,"text":"discard-echo","echo":true]
+        ]
+        let body = try JSONSerialization.data(withJSONObject:["language":"en","items":words])
+        let sidecar = imported.folder.appendingPathComponent("transcript.json")
+        try body.write(to:sidecar)
+        try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
+            $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        let meeting = try #require(LibraryScanner(root:imported.folder.deletingLastPathComponent()).scan().meetings.first)
+        #expect(meeting.transcriptItems.count == 2)
+        let markdown = try MeetingFileExporter.markdown(meeting,timeZone:TimeZone(secondsFromGMT:0)!,temporaryRoot:root)
+        #expect(try String(contentsOf:markdown.url,encoding:.utf8).contains("discard-echo"))
+        let artifact = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+        let reopened = try CassiniReader.read(contentsOf:artifact.url)
+        #expect(reopened.state == .ok)
+        #expect(reopened.defaultTranscript?.load.transcript?.items.map(\.text) == ["Keep","discard-echo"])
+        #expect(try Data(contentsOf:sidecar) == body)
+    }
+
     @Test(arguments:[8000,11025,16000,22050,24000,44100,48000,96000])
     func resamplerEOFProducesTheExactTimelineEvenForFractionalAndShortInputs(rate: Int) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
@@ -112,7 +148,8 @@ struct MeetingExportTests {
         let result = try CassiniReader.read(contentsOf:exported.url)
         #expect(result.state == .ok)
         #expect(result.manifest?.meeting.recordedAtLocal == recorded)
-        #expect(result.manifest?.meeting.createdAtUtc != "2020-01-02T03:04:05Z")
+        // D65 (MAPPING): a received file keeps its own creation time, never the export time.
+        #expect(result.manifest?.meeting.createdAtUtc == "2020-01-02T03:04:05Z")
     }
     @Test func ordinaryAudioTitleTagsStillSurviveBothOpenAndImport() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
@@ -280,7 +317,10 @@ struct MeetingExportTests {
             #expect(file.defaultTranscript?.load.transcript?.items.count == (status == "done" ? 1 : 0))
             #expect(file.manifest?.transcripts.count == 1 && file.manifest?.raw["readableTranscripts"] == nil)
             #expect(file.manifest?.raw["provenance"]?["speechToText"] == nil)
-            #expect(file.manifest?.raw["speakers"]?.array?.first?.keys == ["id","label"])
+            // D65: the speakers listed are those of the exported words, so none while the words
+            // aren't exported (running, failed).
+            #expect(file.manifest?.raw["speakers"]?.array?.first?.keys == (status == "done" ? ["id","label"] : nil))
+            #expect(file.manifest?.raw["speakers"]?.array?.count == (status == "done" ? 1 : 0))
             let markdown = MeetingMarkdown.render(meeting,timeZone:TimeZone(secondsFromGMT:0)!)
             #expect(markdown.contains("Only export when complete") == (status == "done"))
         }

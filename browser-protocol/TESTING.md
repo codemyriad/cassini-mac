@@ -1,6 +1,8 @@
 # Layered recording checks
 
-1. Portable raw-JSON stdio vectors in conformance/, against both executable hosts. Includes
+1. Portable raw-JSON stdio vectors in conformance/, against both executable hosts. Each case
+   gets a private `CASSINI_LIBRARY_DIR`; a host that writes elsewhere stops the run
+   (tests/test_library_isolation.py guards the real user Library). Includes
    null/type/lexical-number rules, nonfinite input, sequence, silence gaps, EOF, errors and WAV
    finalization. Swift additionally tests malformed/truncated/oversize native framing directly.
 2. Portable extension worklet/clock/buffering unit tests (extension/tests/*.test.cjs).
@@ -61,3 +63,39 @@ cover legacy/null annotations, unknown event types/fields, selection bounds and
 the 1000-event cap. Neither schema validation nor these silent files prove a
 writer's atomic event/track checkpoint: both apps must test crash/failure at
 their real writer boundary and read these same fixtures independently.
+
+
+D33 adds14 literal monotonic lifecycle vectors, checked by
+`python3 conformance/check-call-lifecycle.py` and adopted unchanged by both apps.
+The actual loaded-extension independent-session test also reloads a live call,
+checks the original native connection/capture ID/folder and renewed PCM, closes
+another tab, and verifies explicit terminal reasons through the fixture writer.
+The fake-control driver does not prove desktop fallback or2s/120s real app timers;
+those require the desktop's own adoption tests. Unit cases keep legacy loss behavior,
+late old-document events, subframe bounds and invalid Stop side effects covered.
+
+## D52 multi-stream wave 1
+
+`python3 -m unittest discover -s tests -p "test_*.py"` checks the hand-written
+lifecycle, outcome and half-open ownership vectors, actual generated public-speech
+WAVs, per-source refusals, UTF-8 identity bounds and schema/pinning integrity.
+The corpus test mutates presence/gaps and source ownership to prove the guards
+fail; overlap bleed is checked against the independently pinned speech carrier.
+
+`npm test` includes injected-clock retry/long-suspension cases and real Chromium
+pre-join, source-switch, call-generation, worker-recovery and independent-session
+cases. A receiver switch waits for the actual replacement waveform with unchanged
+sample, power and bleed thresholds. Call-generation tests reuse a receiver,
+exclude late old peers, and preserve intentional `callChanged` retirement.
+Run only with a private audio server. Network-isolated containers need a private
+bridge with a route for ICE, not a desktop audio/bus/home mount.
+
+## D58 classified refusals
+
+`conformance/refusals/` holds the injected-refusal writer cases, the wire cases for
+`ok:false` result codes and the Details reader lines, with an independent oracle.
+`tests/test_refusals.py` checks the oracle against every case, mutates it to prove each
+R79 guard fails a case, and validates every expected list against the session schema.
+CI cannot produce a real TCC or device denial: each app injects the refusals through its
+own start path, writer and reader. `extension/tests/result-codes.test.cjs` checks the
+code the extension sets at each `ok:false` site.

@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
     private var menuTrackingObservers: [NSObjectProtocol] = []
     @MainActor private static var trackingMenus: Set<ObjectIdentifier> = []
+    @MainActor private static var miniaturizingWindows: Set<ObjectIdentifier> = []
+    @MainActor private static var reopenAfterMiniaturizing: Set<ObjectIdentifier> = []
     private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,11 +24,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        menuTrackingObservers += [NSWindow.willMiniaturizeNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification].map { name in
+            NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { notification in
+                MainActor.assumeIsolated {
+                    guard let window=notification.object as? NSWindow else {return}
+                    let id=ObjectIdentifier(window)
+                    if notification.name == NSWindow.willMiniaturizeNotification {Self.miniaturizingWindows.insert(id)}
+                    else {
+                        Self.miniaturizingWindows.remove(id)
+                        let requested=Self.reopenAfterMiniaturizing.remove(id) != nil
+                        if requested && notification.name == NSWindow.didMiniaturizeNotification {
+                            window.deminiaturize(nil);window.makeKeyAndOrderFront(nil)
+                            NSApp.activate(ignoringOtherApps:true)
+                        }
+                    }
+                }
+            }
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             MainActor.assumeIsolated { AppDelegate.handle(event) }
         }
 
         #if DEBUG
+        if CommandLine.arguments.contains("--browser-return-self-test") {
+            guard CaptureFixture.enabled else { exit(77) }
+            LibraryStore.shared.start()
+            Task { @MainActor in
+                try? await CaptureCollection.shared.setAutoRecord(false)
+                await CaptureCollection.shared.start(root:BrowserBackgroundSelfTest.controlRoot)
+                CompanionSetup.shared.start()
+                await BrowserReturnSelfTest.run()
+            }; return
+        }
         if CommandLine.arguments.contains("--browser-background-self-test") {
             startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
             Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return
@@ -63,11 +92,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--meeting-preparation-self-test") {
+            Task { @MainActor in await MeetingPreparationSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--search-self-test") {
             Task { @MainActor in await SearchSelfTest.run() }; return
         }
         if ScreenshotFixture.launchIfRequested() {
             if RecordingFixture.enabled || RecordingPageFixture.enabled { RecordingRuntime.shared.start() }
+            if RecordingFixture.enabled, !CommandLine.arguments.contains("--fixture-windowless-launch") { presentLibraryOnLaunch() }
+            if RecordingFixture.enabled, CommandLine.arguments.contains("--fixture-windowless-launch"),
+               CommandLine.arguments.contains("--fixture-recording-on-launch"), let root=RecordingFixture.root {
+                // Hosted generated PCM models an unattended recording before
+                // any Library content view has ever mounted. No device opens.
+                Task { @MainActor in await RecordingController.shared.start(parent:root) }
+            }
             return
         }
         if CommandLine.arguments.contains("--export-self-test") {
@@ -88,6 +127,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CaptureNotifications.shared.configure()
         startBrowserConnection()
         ApplicationUpdates.shared.start()
+        presentLibraryOnLaunch()
+    }
+
+    private func presentLibraryOnLaunch() {
+        DispatchQueue.main.async {
+            guard !NSApp.windows.contains(where:Self.isRestorableContentWindow) else { return }
+            ApplicationWindows.library()
+            NSApp.activate(ignoringOtherApps:true)
+        }
     }
 
     @MainActor private func startBrowserConnection(root: URL? = nil) {
@@ -135,7 +183,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await MeetingRenameCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
-            RecordingConfirmation.askToQuit(window: sender.keyWindow ?? sender.mainWindow) { choice in
+            // A menu-bar Quit may still have its transient popup as keyWindow.
+            // Never attach the save confirmation to a popup that is closing.
+            let parent = [sender.keyWindow,sender.mainWindow].compactMap { $0 }.first(where:Self.isContentWindow)
+                ?? sender.windows.first(where:Self.isContentWindow)
+            sender.activate(ignoringOtherApps:true)
+            parent?.makeKeyAndOrderFront(nil)
+            RecordingConfirmation.askToQuit(window: parent) { choice in
                 Task { @MainActor in
                     let stop = choice == .stop
                     if stop {
@@ -193,6 +247,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { !CommandLine.arguments.contains("--recording-self-test") && !CommandLine.arguments.contains("--recording-sink-self-test") }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    @MainActor private static func isContentWindow(_ window: NSWindow) -> Bool {
+        window.isVisible && window.level == .normal && window.styleMask.contains(.titled)
+    }
+
+    @MainActor private static func isRestorableContentWindow(_ window:NSWindow) -> Bool {
+        (window.isVisible || window.isMiniaturized) && window.level == .normal && window.styleMask.contains(.titled)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // MenuBarExtra owns visible status/popup windows too. Only ordinary
+        // content windows (or an active modal) count as a way back into the app.
+        let visibleContent = sender.windows.contains {
+            Self.isContentWindow($0) && !$0.isMiniaturized && !Self.miniaturizingWindows.contains(ObjectIdentifier($0))
+        }
+        guard !visibleContent, sender.modalWindow == nil else { return true }
+        // During the minimize animation neither isVisible nor isMiniaturized
+        // necessarily describes the final state. Reopen must preserve the
+        // mounted Meeting/Search and restore it after the actual AppKit event.
+        if let window=sender.windows.first(where:{
+            ($0.isMiniaturized || Self.miniaturizingWindows.contains(ObjectIdentifier($0))) &&
+            $0.level == .normal && $0.styleMask.contains(.titled)
+        }) {
+            let id=ObjectIdentifier(window)
+            if Self.miniaturizingWindows.contains(id) {Self.reopenAfterMiniaturizing.insert(id)}
+            else {window.deminiaturize(nil);window.makeKeyAndOrderFront(nil)}
+            sender.activate(ignoringOtherApps:true)
+            return false
+        }
+        MainActor.assumeIsolated {
+            LibrarySearchModel.shared.close()
+            MeetingNavigation.shared.back()
+            MeetingNavigation.shared.openLibrary?()
+            sender.activate(ignoringOtherApps:true)
+        }
+        return false
+    }
+
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
         // AppKit's outline consumes Return before SwiftUI onKeyPress. Treat it
@@ -242,9 +335,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case 49:  // Space
             player.toggle()
         case 123:  // ←
-            session.seek(toMs: player.currentMs - 15_000)
+            session.seek(toMs: player.currentMs - PlayerController.skipMs)
         case 124:  // →
-            session.seek(toMs: player.currentMs + 15_000)
+            session.seek(toMs: player.currentMs + PlayerController.skipMs)
         default:
             return event
         }

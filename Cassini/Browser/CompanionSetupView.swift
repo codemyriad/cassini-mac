@@ -2,6 +2,7 @@
 import SwiftUI
 import Observation
 import CassiniBrowserSetup
+import CassiniLibrary
 
 @MainActor @Observable private final class PreparedCompanionFolder {
     var path: String?
@@ -70,7 +71,7 @@ import CassiniBrowserSetup
     private(set) var hasConnected = RecordingPreferences.defaults.bool(forKey:"CassiniCompanionHasConnected")
     var noBrowser: Bool { background.state == .failed(.noBrowser) || discovered && suggestedBrowser == nil }
     var canAdd: Bool { discovered && suggestedBrowser != nil && !noBrowser }
-    var showLibraryState: Bool { !noBrowser && (CaptureCollection.shared.connected || hasConnected && discovered) }
+    var showLibraryState: Bool { !noBrowser && (CaptureCollection.shared.connected || CaptureCollection.shared.needsUpdate || hasConnected && discovered) }
     var working: Bool { background.state == .settingUp }
     var failed: Bool { if case .failed = background.state { !noBrowser } else { false } }
     func didConnect() {
@@ -107,7 +108,8 @@ import CassiniBrowserSetup
     func stop() { background.stop(); localBackground.stop() }
     var stateLine: String {
         if noBrowser { return UXText.text("browser.state.needsBrowser") }
-        let names = Set(CaptureCollection.shared.peers.filter(\.reconciled).compactMap(\.browser))
+        if CaptureCollection.shared.needsUpdate { return UXText.text("browser.state.needsUpdate") }
+        let names = Set(CaptureCollection.shared.peers.filter { $0.reconciled && $0.supportsMultiStream }.compactMap(\.browser))
         if CaptureCollection.shared.connected {
             return names.count == 1 ? UXText.text("browser.state.connected",["browser":names.first!]) : UXText.text("browser.state.connectedGeneric")
         }
@@ -230,8 +232,7 @@ struct CompanionSetupView: View {
         if !added { return UXText.text("companion.addStep.notAdded") }
         if browsers.count == 1 { return UXText.text("companion.addStep.done",["browser":browsers[0]]) }
         if browsers.isEmpty { return UXText.text("settings.browser.status.connectedGeneric") }
-        let formatter = ListFormatter(); formatter.locale = Locale(identifier:"en_GB")
-        return UXText.text("companion.addStep.doneSeveral",["browsers":formatter.string(from:browsers) ?? browsers.joined(separator:", ")])
+        return UXText.text("companion.addStep.doneSeveral",["browsers":LibraryFormat(locale:UXText.locale,language:UXText.language).list(browsers)])
     }
     private var connectCaption: String { added ? setup.stateLine : "" }
     private func step<Content:View>(_ number: Int, done: Bool, title: String, caption: String, @ViewBuilder action: () -> Content) -> some View {

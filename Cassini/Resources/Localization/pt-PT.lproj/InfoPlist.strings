@@ -1,0 +1,3 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+"NSMicrophoneUsageDescription" = "O Cassini grava o seu microfone numa faixa separada da reunião neste computador.";
+"NSAudioCaptureUsageDescription" = "Quando começa a gravar, o Cassini grava o áudio das aplicações selecionadas ou do sistema neste computador.";

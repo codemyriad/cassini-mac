@@ -1,0 +1,3 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+"NSMicrophoneUsageDescription" = "Cassini enregistre votre microphone sur une piste distincte de la réunion, sur cet ordinateur.";
+"NSAudioCaptureUsageDescription" = "Lorsque vous démarrez un enregistrement, Cassini enregistre le son des applications sélectionnées ou du système sur cet ordinateur.";

@@ -68,6 +68,17 @@ import CassiniLibrary
         #expect(abs(mean(samples, from: 6000, to: 9600) - 2000.0 / 32768) < 0.0002)
     }
 
+    /// D55 (M9): playback places a track with the one placement, at the track's own rate.
+    @Test func placesATrackAtTheSharedPlacementFrame() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = try wave(root, "placed", rate: 16000, frames: 1600, value: 3000)
+        let timeline = try await SessionComposition.make(tracks: [.init(url: source, startOffsetMs: 1234.5104, frameCount: 1600, sampleRate: 16000)])
+        let track = try #require(try await timeline.asset.loadTracks(withMediaType: .audio).first)
+        let start = try #require(try await track.load(.segments).first { !$0.isEmpty }?.timeMapping.target.start)
+        #expect(TrackPlacement.frame(ms: 1234.5104, rate: 16000) == 19752)
+        #expect(CMTimeCompare(start, CMTime(value: 19752, timescale: 16000)) == 0)
+        #expect(CMTimeCompare(start, CMTime(value: 19753, timescale: 16000)) != 0, "a one-frame shift is not the placement")
+    }
     @Test func refusesUnknownOrInvalidTimingInsteadOfAssumingZero() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let source = try wave(root, "source", rate: 8000, frames: 80, value: 1)
@@ -122,6 +133,29 @@ import CassiniLibrary
         text("data"); u32(UInt32(declaredFrames * 2))
         for _ in 0..<frames { u16(5000) }
         try data.write(to: url); return url
+    }
+    /// D52/D49: the stand-in and the browser overlap physically for 2 s, but each
+    /// owns a half-open range, so playback never doubles the others.
+    @Test func ownershipMasksTheD49SeamInPlayback() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Playback-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let system = try wave(root, "system", rate: 48000, frames: 48000*7, value: 4000)
+        let browser = try wave(root, "browser", rate: 48000, frames: 48000*5, value: 8000)
+        let ownership = try #require(OthersOwnership(events: [
+            .init(atMs: 0, type: "selection", reason: "start", me: true, others: true),
+            .init(atMs: 0, type: "othersSource", source: "system", reason: "missing"),
+            .init(atMs: 6000, type: "othersSource", source: "browser", reason: "callConnected")]))
+        let timeline = try await SessionComposition.make(tracks: [
+            .init(url: system, startOffsetMs: 0, frameCount: UInt64(48000*7), sourceKind: "system", sampleRate: 48000),
+            .init(url: browser, startOffsetMs: 5000, frameCount: UInt64(48000*5), sourceKind: "remote", sampleRate: 48000)], ownership: ownership)
+        func level(_ at: Double) throws -> Float {
+            let samples = try read(timeline.asset, start: at, duration: 0.1)
+            return samples.reduce(0, +) / Float(max(1, samples.count))
+        }
+        #expect(abs(try level(5.4) - 4000/32768) < 0.01, "Before the seam only the stand-in plays")
+        #expect(abs(try level(6.4) - 8000/32768) < 0.01, "After the seam only the browser plays")
+        #expect(abs(timeline.durationMs - 10000) < 1)
     }
     private func wave(_ root: URL, _ name: String, rate: Int, frames: Int, value: Int16) throws -> URL {
         let url = root.appendingPathComponent(name + ".wav")

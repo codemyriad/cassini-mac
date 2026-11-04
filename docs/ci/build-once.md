@@ -2,14 +2,27 @@
 
 `CI` is the sole PR/main/nightly orchestrator. It builds native SwiftPM executables
 and test bundles once on ARM and Intel with Xcode 16.4. The ARM producer also
-cross-compiles both app architectures, including the UI runner, in Debug and
-Release. Universal Opus/Whistle/ONNX/Silero assets are staged once into those apps.
+cross-compiles both app architectures in Debug, including the UI runner.
+Universal Opus/Whistle/ONNX/Silero assets and the Parakeet runtime are staged once
+and shared. D66 mac-P2-2: the universal Release app is built from those staged
+assets in a job of its own (`ci-build-release.yml`), which also packages
+`Cassini-<sha>`; only that packaging and the Parakeet checks wait for it.
 The Intel export and speech jobs still execute on real hosted Intel runners.
 
-The six UX workflows keep their original matrices, assertions, fixtures, golden
-comparisons and artifact names. They consume same-run products through
+The UX workflows keep their original assertions, fixtures, golden comparisons
+and artifact names. D66 mac-P1-4 folded three single-purpose jobs into the kit
+job (the Library model tests with their UTC/C environment, the native recording
+sink, and packaging Cassini.app, with the same artifact names) and keeps one
+board-size capture. D66 mac-P2-1 merged three more: kit also runs the arm64
+portable-export checks (with the Opus assets, the export report folder and the
+independent cassini-format readers); one Intel `Package tests` job runs the
+export and model-downloader filters, each only when its area changed; and the
+window screenshots job captures the default size first, then selects a larger
+display mode and captures 1120x720 (formerly `ux-board-shot.yml`, artifact
+`board-screenshots-<sha>`). The kit and Intel package-test jobs run only inside
+`CI`. The remaining `ux-*.yml` workflows consume same-run products through
 `workflow_call`; each also has `workflow_dispatch`, which first invokes the shared
-producer. The central manual dispatch, push to main and nightly run all six areas.
+producer. The central manual dispatch, push to main and nightly run every area.
 The historical `ux/1a-library-model` push is retained and now runs the full suite.
 
 `.github/ci/paths.json` preserves every original PR path pattern. The Ubuntu
@@ -17,8 +30,11 @@ changes job applies those patterns to a merge-base diff (including deletions and
 renames). Changes to package sources/tests, shared engines or CI run every UX
 area. Unknown bases and failed detection run every area; missing outputs also
 select every area. The original unfiltered core CI still runs for every PR.
-There is no automatic cancellation or concurrency group. Cancel superseded runs
-manually, preserving the last candidate and all main/nightly runs.
+A newer push to a pull request cancels that PR's older run automatically (D66
+mac-P1-1: one concurrency group per PR number, `cancel-in-progress` on
+pull_request only). Every push, nightly and manual run has a group of its own (its run id), so
+none is ever cancelled or replaced while pending, so each main commit keeps the push run the release gate needs
+(D20). Don't cancel runs by hand, main runs above all.
 
 Artifacts contain tar archives, so executable modes and relative framework links
 survive transport. Before extraction, consumers require an exact checkout SHA,

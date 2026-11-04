@@ -4,6 +4,7 @@ import CassiniLibrary
 
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     private var exportMeeting: LibraryMeeting? {
         let search = LibrarySearchModel.shared
         if search.visible { return search.searching ? nil : search.selected.flatMap { search.meeting($0) } }
@@ -11,13 +12,14 @@ struct AppCommands: Commands {
     }
     private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
+        let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
         CommandGroup(after: .appInfo) {
             Button(UXText.text("app.checkForUpdates")) { ApplicationUpdates.shared.checkForUpdates() }
                 .disabled(!ApplicationUpdates.shared.canCheckForUpdates)
         }
         CommandGroup(replacing:.help) { }
         CommandGroup(replacing: .newItem) {
-            Button("Open…") { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
+            Button(UXText.mac("menu.open")) { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
             Button(RecordingOverview.recordCommandTitle) {
                 if RecordingConfirmation.active { RecordingConfirmation.stop() }
                 else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryStore.shared.context.root) }
@@ -44,7 +46,7 @@ struct AppCommands: Commands {
         CommandGroup(replacing:.textEditing) {
             Button(UXText.text("search.field.a11y")) { LibrarySearchModel.shared.open() }.keyboardShortcut("f",modifiers:.command)
         }
-        CommandMenu("Playback") {
+        CommandMenu(UXText.mac("menu.playback")) {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }
                 .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(detail?.canPlay != true)

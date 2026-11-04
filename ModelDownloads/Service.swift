@@ -21,6 +21,8 @@ final class ModelDownloadConnection: NSObject, CassiniModelDownloadService, @unc
     private var operation: (id: UUID, task: Task<Void,Never>)?
     private var progressBucket = -1
     init(_ connection: NSXPCConnection) { self.connection = connection }
+    /// D54: built once per service process from the app bundle's marketing version.
+    private static let userAgent = ModelUserAgent.app()
     func cancel() { lock.lock(); let task = operation?.task; lock.unlock(); task?.cancel() }
     func install(destinationBookmark: Data, expectedDirectory: String, reply: @escaping @Sendable (String?,NSError?) -> Void) {
         lock.lock()
@@ -34,7 +36,7 @@ final class ModelDownloadConnection: NSObject, CassiniModelDownloadService, @unc
                 let root = access.url
                 guard root.resolvingSymlinksInPath().path == expectedDirectory else { throw ModelDownloadError.unsafePath }
                 defer { withExtendedLifetime(access) {} }
-                let downloader = ModelDownloader(appData:root)
+                let downloader = ModelDownloader(appData:root,userAgent:Self.userAgent)
                 result = .success(try await downloader.install(.parakeetUltra) { [weak self] progress in self?.send(progress) })
             } catch { result = .failure(error) }
             finish(id)

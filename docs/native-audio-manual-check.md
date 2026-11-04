@@ -7,9 +7,10 @@ Do not reset or write TCC, and do not infer consent from browser/tab-capture suc
 
 ## Full generated-tone gate
 
-Run `gh workflow run native-recording.yml --ref main -f mode=full` against the Mac repository.
-The job tests only Cassini's generated 440/880 Hz stereo tone, not other applications or the
-microphone. Download the native artifact and record the run URL and result.json. Require a
+Run `python3 scripts/run-native-ci.py --mode full` on a Mac where Cassini's system-audio
+permission has genuinely been granted (hosted CI runs only the sink-only phase). It tests only
+Cassini's generated 440/880 Hz stereo tone, not other applications or the microphone. Record
+the commit, the Mac and result.json from `native-artifacts/`. Require a
 passed `tap` phase and `RECORDING_SELF_TEST_PASSED`, plus spectral separation in both channels.
 Consent or output-device timeout remains `status: blocked` with a nonzero job exit.
 

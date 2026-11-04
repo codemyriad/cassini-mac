@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Bundle the exact reviewed runtime files, public key and GPL text; no tests."""
 from pathlib import Path
-import argparse, hashlib, json, shutil, subprocess
+import argparse, hashlib, json, shutil, stat, subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,6 +26,7 @@ def check(destination, files=None):
     assert destination.is_dir() and not destination.is_symlink(), 'Missing bundled companion'
     entries = list(destination.rglob('*'))
     assert all(not p.is_symlink() for p in entries), 'Linked companion payload'
+    assert all(stat.S_IMODE(p.stat().st_mode) & 0o022 == 0 for p in [destination,*entries]), 'Writable companion payload'
     assert {p.relative_to(destination) for p in entries if p.is_file()} == set(files), 'Unexpected companion payload'
     for name, source in files.items():
         assert (destination/name).read_bytes() == source.read_bytes(), 'Changed companion: '+str(name)
@@ -35,9 +36,12 @@ def bundle(destination):
     files = reviewed_files()
     stage = destination.with_name(destination.name+'.staging')
     if stage.exists(): shutil.rmtree(stage)
-    stage.mkdir(parents=True)
+    stage.mkdir(mode=0o755,parents=True)
     for name, source in files.items():
-        target = stage/name; target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
+        target = stage/name; target.parent.mkdir(mode=0o755,parents=True,exist_ok=True); shutil.copy2(source,target)
+        # Git archives can retain group-writable modes. The installed app's
+        # reviewed runtime must pass the native installer's no-group-write rule.
+        target.chmod(0o644)
     manifest=json.loads((stage/'manifest.json').read_text())
     assert manifest['key'] and manifest['minimum_chrome_version']=='116'
     check(stage, files)

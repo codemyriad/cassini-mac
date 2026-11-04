@@ -34,14 +34,14 @@ public struct MeetingState: Codable, Equatable, Sendable {
         self.transcript = transcript; self.etaMinutes = etaMinutes; self.error = error; self.liveMs = liveMs; self.audioAvailable = audioAvailable
     }
     public var badge: MeetingBadge? {
-        if lifecycle == .recording { return .init(kind: "recording", text: "Recording " + LibraryFormat.liveBadge(liveMs ?? 0), tint: "red", dot: true) }
-        if lifecycle == .saving { return .init(kind: "saving", text: "Saving…", tint: "grey") }
+        if lifecycle == .recording { return .init(kind: "recording", text: LibraryLocalization.shared.text("states.badge.recording",["liveBadge":LibraryFormat.liveBadge(liveMs ?? 0)]), tint: "red", dot: true) }
+        if lifecycle == .saving { return .init(kind: "saving", text: LibraryLocalization.shared.text("states.badge.saving"), tint: "grey") }
         if [.queued, .running].contains(transcript) {
-            return .init(kind: "transcribing", text: etaMinutes.map(LibraryFormat.eta) ?? "Transcribing…", tint: "accent")
+            return .init(kind: "transcribing", text: etaMinutes.map {LibraryFormat.eta($0)} ?? LibraryLocalization.shared.text("states.badge.transcribing.noEta"), tint: "accent")
         }
-        if error?.action != nil { return .init(kind: "needsAttention", text: "Needs attention", tint: "amber") }
-        if let interruptedAtMs { return .init(kind: "interrupted", text: "Interrupted at " + LibraryFormat.position(interruptedAtMs), tint: "amber") }
-        if origin == .received { return .init(kind: "received", text: "Received", tint: "grey") }
+        if error?.action != nil { return .init(kind: "needsAttention", text: LibraryLocalization.shared.text("states.badge.needsAttention"), tint: "amber") }
+        if let interruptedAtMs { return .init(kind: "interrupted", text: LibraryLocalization.shared.text("states.badge.interrupted",["position":LibraryFormat.position(interruptedAtMs)]), tint: "amber") }
+        if origin == .received { return .init(kind: "received", text: LibraryLocalization.shared.text("states.badge.received"), tint: "grey") }
         return nil
     }
     public var canWriteDown: Bool { lifecycle == .saved && [.none, .failed].contains(transcript) && audioAvailable != false }
@@ -57,12 +57,15 @@ public struct CaptureActivitySnapshot: CaptureActivityProviding {
 }
 public enum NameProvenance: String, Codable, Sendable { case user, recognised, unnamed, source }
 public struct MeetingSpeaker: Sendable, Equatable {
+    /// The speaker id written for a system-sound ("The others") track: a mixed source, not a person.
+    public static let mixedOthersID = "others"
     public var id: String
     public var name: String?
     /// nil for old embedded names whose naming history is unknown.
     public var provenance: NameProvenance?
     public var colourIndex: Int
-    public var displayName: String { name ?? "Speaker \(colourIndex + 1)" }
+    public var label: String? = nil
+    public var displayName: String { name ?? label ?? "Speaker \(colourIndex + 1)" }
 }
 public struct MeetingQuote: Codable, Equatable, Sendable {
     public var atMs: Int64
@@ -86,9 +89,17 @@ public struct LibraryAudioTrack: Sendable, Equatable {
     public let sourceID: String?
     public let sourceKind: String?
     public let sourceTrackID: String?
-    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil) {
+    public let sampleRate: Int?
+    /// D52.2 stored gap ranges; nil means unknown (an older or foreign writer).
+    public let gaps: [TrackPresence.Gap]?
+    public init(url: URL, startOffsetMs: Double?, frameCount: UInt64? = nil, sourceID: String? = nil, sourceKind: String? = nil, sourceTrackID: String? = nil, sampleRate: Int? = nil, gaps: [TrackPresence.Gap]? = nil) {
         self.url = url; self.startOffsetMs = startOffsetMs; self.frameCount = frameCount
-        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID
+        self.sourceID = sourceID; self.sourceKind = sourceKind; self.sourceTrackID = sourceTrackID; self.sampleRate = sampleRate; self.gaps = gaps
+    }
+    /// Exact physical end on the session timeline, when offset and length are known.
+    public var endOffsetMs: Double? {
+        guard let startOffsetMs, let frameCount, let sampleRate, sampleRate > 0 else { return nil }
+        return startOffsetMs + Double(frameCount)*1000/Double(sampleRate)
     }
 }
 public struct LibraryMeeting: Sendable {
@@ -113,6 +124,10 @@ public struct LibraryMeeting: Sendable {
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
     public var metadataReadOnly: Bool = false
+    /// The meeting.json revision this read saw (nil without readable metadata).
+    public var metadataRevision: Int64? = nil
+    /// No title of its own: `title` is the catalog's untitled fallback in the UI language.
+    public var titleIsUntitled = false
     public var received: LibraryReceivedInfo? = nil
     public var transcriptItems: [LibraryTranscriptItem] = []
     public var transcriptLanguage: String? = nil
@@ -142,7 +157,11 @@ public struct LibraryMeeting: Sendable {
         state.audioAvailable == true && !audioFiles.isEmpty
     }
     public var canWriteDown: Bool { state.canWriteDown || (hasNoSpeech && !metadataReadOnly) }
-    public var speakerNames: [String] { speakers.map(\.displayName) }
+    /// D52 M12: people, not devices. "The others" is a mixed capture of system sound,
+    /// so it is left out of row names and people counts (it still has its own speaker
+    /// row and transcript turns).
+    public var people: [MeetingSpeaker] { speakers.filter { $0.id != MeetingSpeaker.mixedOthersID } }
+    public var speakerNames: [String] { people.map(\.displayName) }
 }
 public struct LibraryTranscriptTurn: Equatable, Sendable {
     public let speaker: String

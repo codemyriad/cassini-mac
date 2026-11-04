@@ -155,6 +155,32 @@
             "maxLength": 200,
             "$comment": "Opaque source identity, at most 200 UTF-8 bytes in addition to the Unicode length limit. Omit when unknown, and for microphone/system sources. Never derive identity from labels."
           },
+          "clockMethod": {
+            "enum": [
+              "outputTimestamp",
+              "roundTrip",
+              null
+            ],
+            "$comment": "Since extension 0.2.12 (D61), record-only: copied from the browser track declaration as received; omitted when absent or invalid. Readers treat absent, null or any other value as unknown, and never move or widen anything with it."
+          },
+          "clockUncertaintyMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400000,
+            "$comment": "Since extension 0.2.12 (D61), record-only: copied from the browser track declaration as received; omitted when absent or invalid."
+          },
+          "clockClampMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 86400000,
+            "$comment": "Since extension 0.2.12 (D61), record-only: copied from the browser track declaration as received; omitted when absent or invalid. documentGeneration is never written here."
+          },
           "gapFrames": {
             "type": [
               "integer",
@@ -170,6 +196,92 @@
             ],
             "minimum": 0,
             "maximum": 2147483629
+          },
+          "gaps": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 1001,
+            "items": {
+              "type": "object",
+              "required": [
+                "atMs",
+                "kind"
+              ],
+              "properties": {
+                "atMs": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 86460000
+                },
+                "durationMs": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 86460000
+                },
+                "frames": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483629
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                }
+              },
+              "additionalProperties": true,
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "overflow"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "durationMs"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "frames"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "durationMs",
+                  "frames"
+                ]
+              }
+            },
+            "$comment": "D52.2/P7: half-open, sorted, never coalesced absence ranges on the session timeline. Missing or null means unknown; [] means none. Readers treat every kind as absence; overflow (atMs and kind only) means unknown to the track end."
+          },
+          "captureOutcome": {
+            "enum": [
+              "captured",
+              "neverAudio",
+              "lowAudio",
+              "failed"
+            ]
+          },
+          "receivedFrames": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483629
+          },
+          "problemKind": {
+            "enum": [
+              "capture",
+              "io"
+            ]
           }
         },
         "additionalProperties": true
@@ -184,7 +296,145 @@
       "items": {
         "$ref": "#/$defs/sessionEvent"
       },
-      "$comment": "S-6: optional append-only session timeline, ordered by non-decreasing finite atMs. Readers ignore unknown types/fields. The ordering and UTF-8 source-ID byte bound require checks beyond JSON Schema."
+      "$comment": "S-6: optional append-only session timeline, ordered by non-decreasing finite atMs. Readers ignore unknown types/fields. The ordering and UTF-8 source-ID byte bound require checks beyond JSON Schema. D33: at most one terminal end; ordering, terminal position and restored transition checks are also required.",
+      "contains": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "end"
+          }
+        }
+      },
+      "minContains": 0,
+      "maxContains": 1
+    },
+    "captureOutcome": {
+      "type": "object",
+      "required": [
+        "sources"
+      ],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sourceTrackId",
+              "kind",
+              "captureOutcome",
+              "audioMs",
+              "trackIds"
+            ],
+            "properties": {
+              "sourceTrackId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+              },
+              "kind": {
+                "enum": [
+                  "local",
+                  "remote",
+                  "media",
+                  "tab",
+                  "microphone",
+                  "application",
+                  "system"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "captureOutcome": {
+                "enum": [
+                  "captured",
+                  "neverAudio",
+                  "lowAudio",
+                  "failed"
+                ]
+              },
+              "audioMs": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 86400000
+              },
+              "trackIds": {
+                "type": "array",
+                "maxItems": 64,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "unreportedSourceCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": true
+    },
+    "refusals": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": [
+          "atMs",
+          "side",
+          "code"
+        ],
+        "properties": {
+          "atMs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86460000
+          },
+          "side": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{1,32}$",
+            "$comment": "Open. Known: me, others, browser."
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{1,32}$",
+            "$comment": "Open. Writers use permissionDenied, deviceUnavailable, startRejected, startFailed."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z]{1,32}$",
+            "$comment": "Open. A pattern-valid control result code is copied here as is; any other value is dropped. Null means absent."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "$comment": "Raw text from whoever refused, never catalog copy; cut to 200 Unicode code points; an empty text is omitted. Null means absent."
+          }
+        },
+        "additionalProperties": true
+      },
+      "$comment": "D58 (R79): optional; sides requested but never opened (SPEC S-6, Refusals). Step order, the first 15 plus the latest. Omitted when empty. Never changes state, problem, problemKind, end reason, othersSource or captureOutcome. Apply the patterns to the whole string: Python re.search and ICU/NSRegularExpression also let $ match before a final newline. Readers skip an entry this item schema rejects."
     }
   },
   "additionalProperties": true,
@@ -275,11 +525,32 @@
                   "missing",
                   "lost",
                   "user",
-                  "restored"
-                ],
-                "$comment": "Readers accept reserved restored for forward compatibility; current writers never emit it."
+                  "restored",
+                  "callConnected"
+                ]
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "reason": {
+                      "enum": [
+                        "restored",
+                        "callConnected"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "const": "browser"
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
@@ -326,6 +597,33 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "end"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "enum": [
+                  "user",
+                  "callEnded",
+                  "tabClosed",
+                  "pageGone",
+                  "disk",
+                  "error",
+                  "appQuit"
+                ]
+              }
+            }
           }
         }
       ]

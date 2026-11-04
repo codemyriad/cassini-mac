@@ -5,6 +5,7 @@ public struct Comment: Sendable, Hashable {
     /// The name as spelled in the file.
     public var name: String
     public var value: String
+    public init(name: String, value: String) { self.name = name; self.value = value }
 }
 
 /// The OpusTags comment vector. Names compare with ASCII case folded; values compare exactly.

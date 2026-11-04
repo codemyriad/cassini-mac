@@ -22,6 +22,17 @@ final class PCMInput {
     private var buffered: [Float] = []
     private var bufferedAt = 0
     private var consumed: Int64 = 0
+    /// D52 half-open ownership in 48 kHz timeline frames; nil keeps every sample.
+    private var owned: [(Int64,Int64)]?
+    convenience init(_ track: LibraryAudioTrack, ownership: OthersOwnership?) throws {
+        try self.init(track)
+        if let ownership, let start = track.startOffsetMs, frameCount > 0 {
+            let end = start + Double(outputFrames)/48
+            owned = ownership.owned(kind:track.sourceKind,startMs:start,endMs:end).map {
+                (TrackPlacement.frame(ms:$0.0,rate:48000),TrackPlacement.frame(ms:$0.1,rate:48000))
+            }
+        }
+    }
     init(_ track: LibraryAudioTrack) throws {
         let fd = open(track.url.path,O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { throw MeetingExportError.invalidSource }
@@ -44,7 +55,7 @@ final class PCMInput {
         if frameCount > 0 {
             let ms = track.startOffsetMs ?? 0 // D19: marked as assumed in export provenance.
             guard ms.isFinite, ms >= 0, ms <= 9_007_199_254_740_991 else { throw MeetingExportError.invalidSource }
-            offsetFrames = Int64((ms * 48).rounded(.toNearestOrAwayFromZero))
+            offsetFrames = TrackPlacement.frame(ms:ms,rate:48000) // D55: the one placement, at 48 kHz.
         } else { offsetFrames = 0 }
         guard outputFrames <= Int64.max - offsetFrames - 960 else { throw MeetingExportError.tooLarge }
         inputRemaining = frameCount; outputRemaining = outputFrames
@@ -68,7 +79,15 @@ final class PCMInput {
             if bufferedAt == buffered.count { buffered = try readOutput(); bufferedAt = 0 }
             let count = min(left,buffered.count - bufferedAt)
             guard count > 0 else { throw MeetingExportError.invalidSource }
-            for index in 0..<count { output[destination + index] += buffered[bufferedAt + index] }
+            if let owned {
+                // Samples outside this source's ownership are read but never mixed.
+                for index in 0..<count {
+                    let frame = position + Int64(destination + index)
+                    if owned.contains(where:{ frame >= $0.0 && frame < $0.1 }) { output[destination + index] += buffered[bufferedAt + index] }
+                }
+            } else {
+                for index in 0..<count { output[destination + index] += buffered[bufferedAt + index] }
+            }
             bufferedAt += count; destination += count; left -= count; consumed += Int64(count)
         }
     }

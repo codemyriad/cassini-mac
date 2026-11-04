@@ -101,7 +101,8 @@ public enum BrowserControlHost {
 public enum BrowserAudioHost {
     public static func usesBroker(_ data: Data) -> Bool {
         guard let message = try? JSONParser.parse(data) else { return false }
-        return message["type"]?.string == "start" && message["independent"]?.bool == true
+        // D52.1 R67: a resume always targets an app-owned stand-in.
+        return ["start","resume"].contains(message["type"]?.string ?? "") && message["independent"]?.bool == true
     }
     public static func run(firstRequest: Data, environment: [String:String] = ProcessInfo.processInfo.environment) -> Int32 {
         NativeHostBridge.run(role:.audio,initial:firstRequest,environment:environment)
@@ -118,7 +119,7 @@ private enum NativeHostBridge {
             if role == .control, let path = environment["CASSINI_CONTROL_SOCKET"], !path.isEmpty { endpoint = try TestSocketEndpoint(path:path) }
             else {
                 let root = environment["CASSINI_CONTROL_PIPE_ROOT"].map { URL(fileURLWithPath:$0,isDirectory:true) } ?? PipeFiles.standardRoot
-                endpoint = try PipeEndpoint(root:root,role:role,browser:BrowserCompanionConnection.parentBrowserName)
+                endpoint = try PipeEndpoint(root:root,role:role,browser:BrowserCompanionConnection.parentBrowserName,browserInstance:BrowserInstance.parentBrowser)
             }
             guard let connection = endpoint else { throw BrowserIPCError.unavailable }
             try FrameIO.prepare(STDIN_FILENO); try FrameIO.prepare(STDOUT_FILENO)
@@ -129,7 +130,9 @@ private enum NativeHostBridge {
                     while !state.cancellation.isCancelled, let data = try connection.receive() {
                         try FrameIO.writeFrame(STDOUT_FILENO,data:data,cancel:state.cancellation)
                         if role == .audio { state.forwardedResponse() }
-                        if role == .audio, (try? JSONParser.parse(data)["type"]?.string) == "error" {
+                        // D52: a source- or command-scoped refusal keeps the connection;
+                        // only an unscoped (session) error ends it.
+                        if role == .audio, let reply = try? JSONParser.parse(data), reply["type"]?.string == "error", reply["scope"] == nil {
                             state.reportProtocolError(); connection.stop(); break
                         }
                     }

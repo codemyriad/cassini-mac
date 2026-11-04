@@ -9,7 +9,7 @@ final class Fixture {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString.lowercased())
     let id = UUID(uuidString: "9037a57c-c501-44e6-8f1a-56f4c9317695")!
     var folder: URL { root.appendingPathComponent("Recording-" + id.uuidString.lowercased()) }
-    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let repository = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     init() throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: repository.appendingPathComponent("browser-protocol/conformance/native-session"), to: folder)

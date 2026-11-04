@@ -90,7 +90,11 @@ public final class BrowserRecordingHost {
             }
             let label = try string("label", code: "source") ?? kind
             guard session.manifest.tracks.count < 64 else { throw BrowserProtocolError("limit", "Too many audio sources.") }
-            try write("source") { try session.addTrack(id: id, label: label, kind: kind, sampleRate: rate, channels: channels) }
+            // D61: the clock facts are copied as received (each omitted when invalid);
+            // documentGeneration is a liveness hint and never written.
+            var source = RecordingSource(id: id, label: label, kind: kind, sampleRate: rate, channels: channels)
+            source.clock = ClockFacts.parse(message)
+            try write("source") { try session.transition(starting: [source]) }
             sequences[id] = 0
         case "audio":
             guard let session, !stopped else { throw BrowserProtocolError("state", "No active recording.") }

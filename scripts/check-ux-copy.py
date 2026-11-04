@@ -6,7 +6,9 @@ folder=root/'Cassini/Resources/UX'
 pin=json.loads((folder/'UPSTREAM.json').read_text())
 raw=(folder/'strings.json').read_bytes()
 assert hashlib.sha256(raw).hexdigest()==pin['sha256']
+assert (root/'Sources/CassiniLibrary/Localization/strings.json').read_bytes() == raw
 entries={e['id']:e for e in json.loads(raw)['entries']}
+mac_entries={e['id']:e for e in json.loads((root/'Sources/CassiniLibrary/Localization/mac.json').read_text())['entries']}
 # D7 Q5 explicitly requires this published line for reserve-stop behavior.
 # Catalog v5 still labels its later UX6 milestone pending. Keep the shared bytes
 # verbatim, and limit this exception to the exact message selected by D7.
@@ -18,4 +20,7 @@ for file in (root/'Cassini').rglob('*.swift'):
     for key in re.findall(r'UXText\.text\("([^"]+)"',file.read_text()):
         assert key in entries and (entries[key]['status']!='pending' or key in decision_approved), (file,key)
         assert 'mac' in entries[key]['platforms'] or key in platform_decision_approved, (file,key)
+for file in (root/'Cassini').rglob('*.swift'):
+    for key in re.findall(r'UXText\.mac\("([^"]+)"',file.read_text()):
+        assert 'mac.'+key in mac_entries,(file,key)
 print('Shared catalog hash and every used Mac string id verified')

@@ -11,7 +11,16 @@ enum MeetingInputError: Error { case microphoneUnavailable, microphoneChanged, s
     private var engine: AVAudioEngine?
     private var observer: NSObjectProtocol?
     private var installed = false
-    func authorize() async throws { try await NativeRecordingInputs().authorize() }
+    /// D58: only the OS denial is permissionDenied (no message); nothing is inferred from silence.
+    func authorize() async throws {
+        let permitted: Bool
+        switch AVCaptureDevice.authorizationStatus(for:.audio) {
+        case .authorized: permitted = true
+        case .notDetermined: permitted = await AVCaptureDevice.requestAccess(for:.audio)
+        default: permitted = false
+        }
+        guard permitted else { throw CaptureOpenRefusal.denied }
+    }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         let engine = AVAudioEngine(); self.engine = engine
         let input = engine.inputNode, format = input.outputFormat(forBus:0)

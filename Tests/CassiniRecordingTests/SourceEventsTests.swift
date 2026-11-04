@@ -153,11 +153,13 @@ final class SourceEventsTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at:parent) }
         let session = try RecordingSession(parent:parent,title:"Generated",source:"chromium")
         let event = CaptureEvent(atMs:0,type:"selection",reason:"user",me:true,others:false)
-        try session.transition(events:Array(repeating:event,count:1000))
+        try session.transition(events:Array(repeating:event,count:999))
         let file = session.directory.appendingPathComponent("session.json"), before = try Data(contentsOf:file)
         XCTAssertThrowsError(try session.transition(starting:[.init(id:"new",label:"Generated",kind:"system",sampleRate:8000,channels:1)],events:[event]))
         XCTAssertEqual(try Data(contentsOf:file),before); XCTAssertTrue(session.manifest.tracks.isEmpty)
         try session.finish()
+        XCTAssertEqual(session.manifest.events?.count,1000)
+        XCTAssertEqual(session.manifest.events?.last?.type,"end")
     }
     func testOpaqueSourceIdentityUsesUTF8BytesAndIsOmittedForNativeSides() throws {
         let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

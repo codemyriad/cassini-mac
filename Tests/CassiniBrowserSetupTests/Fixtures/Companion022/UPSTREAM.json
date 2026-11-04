@@ -1,0 +1,25 @@
+{
+  "repository": "git@github.com:codemyriad/cassini-browser-protocol.git",
+  "commit": "bb13da92fa8c3192bb6d9b8444acd3197c772d62",
+  "version": "0.2.2",
+  "archiveSHA256": "5aa70f6a37f8e18bf4340746434f09680d725269ae31b0be621e8418d07bc157",
+  "filesSHA256": {
+    "COPYING": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "PROTOCOL_COMMIT.txt": "fcaded07d51b4b9dd56de107f2fdd6e5847195612e8b6f6b397eda0c6a6e341e",
+    "app-control.js": "e860b47da72d93e22234b53812c03ef18e740a0ad9b5460a7064e695dbc3e92f",
+    "background.js": "a4dd3283ddfc66b4f727a77045adb263cb5ba183e79f4cc6c389b4ba3058cebb",
+    "capture.js": "ae8fc9709f92339889a32a98f44953ff418faac888f34ba1e816dab5ce1e1b3e",
+    "icons/icon-128.png": "73a49e37a711211ae30f3977b97f3e11ef58428f9216ad94ac35c59e3b226bec",
+    "icons/icon-16.png": "88eaaad4f16fc5dc82bda57c7b4e3cc30efcdd22955738ce2faa69b4ac1993e8",
+    "icons/icon-32.png": "43b30c48377f761a32620f5d1280ff6ea49fcfc1bdd54370741d146f768f1626",
+    "icons/icon-48.png": "acbf161f267aa1b23ff6f6ab2efc46c5060053c04e099f62192ffc318df56c93",
+    "manifest.json": "fca3f889bd0c5be0cfb65cfad84e5e1d618d33f16a64a9a9186becb1dfc0cc97",
+    "offscreen.html": "dff8a3a6f75ea716ebe89e75c86282d2252da350b9de06304381d1cd401491c3",
+    "offscreen.js": "6fc95b8e8a17ba51df71c9fb0aee0b3cb5be8ebc687454284e7e20be70657f00",
+    "page-hook.js": "5d343925ad14b06058c13417852f56650349cd13a2fe241c83c77c7c0a0815c7",
+    "pcm-worklet.js": "3924fef2a0b3fd96c8a3506aeb5cabdd70b7f2b2719fede073955ab810244239",
+    "popup.html": "c727fbdb0f89c64b4c5d38f8f066a3944bf25a5f9e70e68a2cfd01623a81f16c",
+    "popup.js": "bbab9607dfa7ac3af7933722965ff3bbc179133440aa40ac4909ec750b7b4a71",
+    "relay.js": "87fd783992d0df6e25c1f4fb7645df1f472f6c752faf6619d8ba2bad00042ea0"
+  }
+}

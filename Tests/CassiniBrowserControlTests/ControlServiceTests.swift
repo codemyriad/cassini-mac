@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import XCTest
 import Foundation
+import Darwin
 import CassiniKit
 @testable import CassiniBrowserControl
 
@@ -17,6 +18,87 @@ private final class Admission: @unchecked Sendable {
     func read() -> Bool { lock.withLock { allowed } }
 }
 final class ControlServiceTests: XCTestCase {
+    func testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let oldReady = expectation(description:"Old capture status"), newReady = expectation(description:"Replacement capture status")
+        oldReady.assertForOverFulfill = false; newReady.assertForOverFulfill = false
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        // Observe the first peer UUID from its actual published local metadata.
+        let service = BrowserControlService(changed:{ peers in
+            guard let peer = peers.first, peer.captures.first?.captureID == "capture" else { return }
+            if peer.captures.first?.path == "/replacement-status" { newReady.fulfill() }
+            else { oldReady.fulfill() }
+        },completed:{ _,_ in })
+        try service.start(root:root); defer { service.stop() }
+        let first = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        let folder = try XCTUnwrap(FileManager.default.contentsOfDirectory(at:root.appendingPathComponent("clients"),includingPropertiesForKeys:nil).first { UUID(uuidString:$0.lastPathComponent) != nil })
+        let oldKey = BrowserMeetingKey(peer:try XCTUnwrap(UUID(uuidString:folder.lastPathComponent)),tabID:2)
+        try hello(first); try send(status(true),first)
+        wait(for:[oldReady],timeout:3)
+        let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(second)
+        var replacement = status(true)
+        var sessions = replacement["sessions"] as! [[String:Any]]
+        sessions[0]["path"] = "/replacement-status"; replacement["sessions"] = sessions
+        try send(replacement,second)
+        wait(for:[newReady],timeout:3)
+        service.stopMeeting(oldKey,captureID:"capture")
+        XCTAssertEqual(try receive(second)["action"]?.string,"stop")
+        XCTAssertThrowsError(try receive(first,seconds:0.2))
+    }
+    func testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let bound = expectation(description:"First status binds before audio registration")
+        let gone = expectation(description:"Control connection gone")
+        bound.assertForOverFulfill = false; gone.assertForOverFulfill = false
+        let service = BrowserControlService(changed:{ peers in
+            if peers.contains(where:{ $0.captures.first?.captureID == "capture" }) { bound.fulfill() }
+            if peers.isEmpty { gone.fulfill() }
+        },completed:{ _,_ in })
+        try service.start(root:root); defer { service.stop() }
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(try XCTUnwrap(first)); try send(status(true),try XCTUnwrap(first))
+        wait(for:[bound],timeout:3)
+        first = nil
+        wait(for:[gone],timeout:3)
+        service.rememberUserStop(captureID:"capture",key:nil)
+        service.setAutoRecord(true,microphone:false)
+        let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(second); try send(status(false),second)
+        XCTAssertThrowsError(try receive(second,seconds:0.3))
+        try send(["type":"meetings","meetings":[["tabId":2,"title":"New call","url":"https://meet.example/new","sourceCount":2]]],second)
+        XCTAssertEqual(try receive(second)["action"]?.string,"start")
+    }
+    func testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let closing = Admission(), gone = expectation(description:"Control really disconnected")
+        gone.assertForOverFulfill = false
+        let broker = BrowserAudioBroker(make:{ title,mic in
+            try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic)
+        },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
+        let service = BrowserControlService(changed:{ peers in
+            if closing.read(), peers.isEmpty { gone.fulfill() }
+        },completed:{ _,_ in },audio:broker)
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        var control: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(try XCTUnwrap(control)); try send(status(false),try XCTUnwrap(control))
+        XCTAssertEqual(try receive(try XCTUnwrap(control))["action"]?.string,"start")
+        let audio = try PipeEndpoint(root:root,role:.audio,browser:"Chrome",browserInstance:instance)
+        try send(["type":"start","version":1,"independent":true,"captureId":"capture-2",
+                  "timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":false,"title":"Call"],audio)
+        XCTAssertEqual(try receive(audio)["type"]?.string,"started")
+        XCTAssertEqual(broker.retainedCaptureIDs,["capture-2"])
+        closing.set(true); control = nil; wait(for:[gone],timeout:3)
+        service.stopRecordings()
+        let next = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+        try hello(next); try send(status(false),next)
+        XCTAssertThrowsError(try receive(next,seconds:0.3))
+        // This test opens only private files/FIFOs; no PCM or device is used.
+        try send(["type":"stop"],audio); XCTAssertEqual(try receive(audio)["type"]?.string,"stopped")
+    }
     func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let admission = Admission()

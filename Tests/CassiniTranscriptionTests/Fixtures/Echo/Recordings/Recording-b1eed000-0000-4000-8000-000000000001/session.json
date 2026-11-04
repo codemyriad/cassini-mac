@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "b1eed000-0000-4000-8000-000000000001",
+  "source": "macos",
+  "title": "Bleed fixture: clean",
+  "createdAt": "2026-10-30T09:00:00Z",
+  "state": "completed",
+  "tracks": [
+    {
+      "id": "microphone",
+      "file": "track-microphone.wav",
+      "kind": "microphone",
+      "label": "Your microphone",
+      "labelSource": "device",
+      "sampleRate": 16000,
+      "channels": 1,
+      "frames": 703314,
+      "ended": true,
+      "startOffsetMs": 0,
+      "endOffsetMs": 43957
+    },
+    {
+      "id": "system",
+      "file": "track-system.wav",
+      "kind": "system",
+      "label": "The others",
+      "labelSource": "device",
+      "sampleRate": 16000,
+      "channels": 1,
+      "frames": 703314,
+      "ended": true,
+      "startOffsetMs": 0,
+      "endOffsetMs": 43957
+    }
+  ]
+}

@@ -6,18 +6,15 @@ import Darwin
 /// No model-sized Data is retained in memory. Rejected headers never truncate
 /// an existing partial file. Cancellation leaves only a validated-prefix partial.
 enum ModelHTTP {
-    static var userAgent: String {
-        let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.1.0"
-        let safe = !version.isEmpty && version.utf8.count <= 64 && version.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45,46,95].contains($0) }
-        return "Cassini/" + (safe ? version : "0.1.0")
-    }
     enum WriteMode { case replace, append, ignore }
-    static func transfer(_ request: URLRequest, to file: URL, limit: UInt64,
+    static func transfer(_ request: URLRequest, userAgent: String, to file: URL, limit: UInt64,
                          progress: @escaping @Sendable (UInt64) -> Void = { _ in },
                          headers: @escaping @Sendable (HTTPURLResponse) throws -> WriteMode) async throws -> HTTPURLResponse {
         let cancellation = Cancellation()
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
+            // D54: on the request itself as well as the session, so no library default is sent.
+            var request = request; request.setValue(userAgent,forHTTPHeaderField:"User-Agent")
             return try await withCheckedThrowingContinuation { continuation in
                 let delegate = Transfer(file:file,limit:limit,progress:progress,headers:headers,continuation:continuation)
                 let configuration = URLSessionConfiguration.ephemeral

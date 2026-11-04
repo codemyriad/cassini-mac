@@ -1,0 +1,2064 @@
+{
+  "description": "Frozen raw PCM measurements only; transcript echo classification is superseded by D46.",
+  "cases": [
+    {
+      "id": "fixture-clean",
+      "words": [
+        {
+          "track": "mic",
+          "startMs": 160,
+          "endMs": 400,
+          "rmsDbfs": -17.141106377,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 400,
+          "endMs": 560,
+          "rmsDbfs": -17.706132524,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 560,
+          "endMs": 1360,
+          "rmsDbfs": -22.072410628,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 1760,
+          "endMs": 2080,
+          "rmsDbfs": -25.748655203,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2080,
+          "endMs": 2320,
+          "rmsDbfs": -18.12831189,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2320,
+          "endMs": 2560,
+          "rmsDbfs": -15.869950469,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2560,
+          "endMs": 2960,
+          "rmsDbfs": -19.708855794,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2960,
+          "endMs": 3280,
+          "rmsDbfs": -17.694417405,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 3280,
+          "endMs": 3600,
+          "rmsDbfs": -17.578226488,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 3600,
+          "endMs": 3920,
+          "rmsDbfs": -19.691279229,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 3920,
+          "endMs": 4000,
+          "rmsDbfs": -18.488499319,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 4000,
+          "endMs": 4400,
+          "rmsDbfs": -17.92547232,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 4400,
+          "endMs": 4960,
+          "rmsDbfs": -21.380993939,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 6064,
+          "endMs": 6384,
+          "rmsDbfs": -16.5504157
+        },
+        {
+          "track": "system",
+          "startMs": 6464,
+          "endMs": 6864,
+          "rmsDbfs": -14.463288605
+        },
+        {
+          "track": "system",
+          "startMs": 7184,
+          "endMs": 7344,
+          "rmsDbfs": -16.321908653
+        },
+        {
+          "track": "system",
+          "startMs": 7344,
+          "endMs": 7584,
+          "rmsDbfs": -16.103184584
+        },
+        {
+          "track": "system",
+          "startMs": 7584,
+          "endMs": 7664,
+          "rmsDbfs": -13.324736443
+        },
+        {
+          "track": "system",
+          "startMs": 7664,
+          "endMs": 7824,
+          "rmsDbfs": -17.276142828
+        },
+        {
+          "track": "system",
+          "startMs": 7824,
+          "endMs": 8064,
+          "rmsDbfs": -14.611121237
+        },
+        {
+          "track": "system",
+          "startMs": 8064,
+          "endMs": 8224,
+          "rmsDbfs": -17.150550813
+        },
+        {
+          "track": "system",
+          "startMs": 8224,
+          "endMs": 8704,
+          "rmsDbfs": -15.339534305
+        },
+        {
+          "track": "system",
+          "startMs": 8704,
+          "endMs": 8944,
+          "rmsDbfs": -13.038257145
+        },
+        {
+          "track": "system",
+          "startMs": 8944,
+          "endMs": 9104,
+          "rmsDbfs": -13.780549026
+        },
+        {
+          "track": "system",
+          "startMs": 9104,
+          "endMs": 9264,
+          "rmsDbfs": -16.645669626
+        },
+        {
+          "track": "system",
+          "startMs": 9264,
+          "endMs": 9584,
+          "rmsDbfs": -17.632387715
+        },
+        {
+          "track": "system",
+          "startMs": 9584,
+          "endMs": 9904,
+          "rmsDbfs": -12.502255405
+        },
+        {
+          "track": "system",
+          "startMs": 9904,
+          "endMs": 10144,
+          "rmsDbfs": -15.315177524
+        },
+        {
+          "track": "system",
+          "startMs": 10144,
+          "endMs": 10624,
+          "rmsDbfs": -18.879045449
+        },
+        {
+          "track": "mic",
+          "startMs": 11648,
+          "endMs": 12048,
+          "rmsDbfs": -22.159036576,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12368,
+          "endMs": 12528,
+          "rmsDbfs": -17.134917215,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12528,
+          "endMs": 12688,
+          "rmsDbfs": -18.827366137,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12688,
+          "endMs": 12848,
+          "rmsDbfs": -17.4076566,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12848,
+          "endMs": 13168,
+          "rmsDbfs": -19.341277169,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 13168,
+          "endMs": 13568,
+          "rmsDbfs": -17.782593335,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 13568,
+          "endMs": 13808,
+          "rmsDbfs": -15.984510304,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 13808,
+          "endMs": 14208,
+          "rmsDbfs": -18.387307268,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 14208,
+          "endMs": 14528,
+          "rmsDbfs": -18.633283408,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 14528,
+          "endMs": 14928,
+          "rmsDbfs": -22.118728682,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 15904,
+          "endMs": 16384,
+          "rmsDbfs": -15.263465747
+        },
+        {
+          "track": "system",
+          "startMs": 16384,
+          "endMs": 16544,
+          "rmsDbfs": -15.196124753
+        },
+        {
+          "track": "system",
+          "startMs": 16544,
+          "endMs": 16944,
+          "rmsDbfs": -20.550005502
+        },
+        {
+          "track": "system",
+          "startMs": 16944,
+          "endMs": 17744,
+          "rmsDbfs": -17.06514394
+        },
+        {
+          "track": "system",
+          "startMs": 17904,
+          "endMs": 18064,
+          "rmsDbfs": -17.144353012
+        },
+        {
+          "track": "system",
+          "startMs": 18064,
+          "endMs": 18304,
+          "rmsDbfs": -16.96227603
+        },
+        {
+          "track": "system",
+          "startMs": 18304,
+          "endMs": 18544,
+          "rmsDbfs": -17.78056489
+        },
+        {
+          "track": "system",
+          "startMs": 18544,
+          "endMs": 18784,
+          "rmsDbfs": -14.595686921
+        },
+        {
+          "track": "system",
+          "startMs": 18784,
+          "endMs": 19024,
+          "rmsDbfs": -14.753935131
+        },
+        {
+          "track": "system",
+          "startMs": 19024,
+          "endMs": 19264,
+          "rmsDbfs": -17.925029516
+        },
+        {
+          "track": "system",
+          "startMs": 19264,
+          "endMs": 19824,
+          "rmsDbfs": -17.607074677
+        },
+        {
+          "track": "system",
+          "startMs": 19824,
+          "endMs": 20064,
+          "rmsDbfs": -18.238120918
+        },
+        {
+          "track": "system",
+          "startMs": 20064,
+          "endMs": 20384,
+          "rmsDbfs": -15.991178204
+        },
+        {
+          "track": "mic",
+          "startMs": 21440,
+          "endMs": 22160,
+          "rmsDbfs": -25.294881208,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 22240,
+          "endMs": 22560,
+          "rmsDbfs": -21.280841342,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 22560,
+          "endMs": 22720,
+          "rmsDbfs": -19.622253027,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 22720,
+          "endMs": 23040,
+          "rmsDbfs": -21.320071105,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 23040,
+          "endMs": 23440,
+          "rmsDbfs": -23.886734393,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 23920,
+          "endMs": 24400,
+          "rmsDbfs": -22.488599847,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 24640,
+          "endMs": 24880,
+          "rmsDbfs": -17.097320021,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 24880,
+          "endMs": 24960,
+          "rmsDbfs": -18.865345453,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 24960,
+          "endMs": 25200,
+          "rmsDbfs": -18.592892707,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25200,
+          "endMs": 25360,
+          "rmsDbfs": -16.567733631,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25360,
+          "endMs": 25680,
+          "rmsDbfs": -18.435085966,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25680,
+          "endMs": 25920,
+          "rmsDbfs": -18.678108962,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25920,
+          "endMs": 26080,
+          "rmsDbfs": -17.578376112,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 26080,
+          "endMs": 26480,
+          "rmsDbfs": -19.99412938,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 26480,
+          "endMs": 26800,
+          "rmsDbfs": -17.298059521,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 26800,
+          "endMs": 27040,
+          "rmsDbfs": -18.553711057,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 27040,
+          "endMs": 28240,
+          "rmsDbfs": -24.283459028,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 28576,
+          "endMs": 28976,
+          "rmsDbfs": -15.642505475
+        },
+        {
+          "track": "system",
+          "startMs": 29216,
+          "endMs": 29376,
+          "rmsDbfs": -17.505772017
+        },
+        {
+          "track": "system",
+          "startMs": 29376,
+          "endMs": 29536,
+          "rmsDbfs": -13.838420999
+        },
+        {
+          "track": "system",
+          "startMs": 29536,
+          "endMs": 29696,
+          "rmsDbfs": -15.48165442
+        },
+        {
+          "track": "system",
+          "startMs": 29696,
+          "endMs": 29856,
+          "rmsDbfs": -17.500302424
+        },
+        {
+          "track": "system",
+          "startMs": 29856,
+          "endMs": 30096,
+          "rmsDbfs": -17.713018607
+        },
+        {
+          "track": "system",
+          "startMs": 30096,
+          "endMs": 30336,
+          "rmsDbfs": -17.492883213
+        },
+        {
+          "track": "system",
+          "startMs": 30336,
+          "endMs": 30656,
+          "rmsDbfs": -15.699757669
+        },
+        {
+          "track": "system",
+          "startMs": 30656,
+          "endMs": 32096,
+          "rmsDbfs": -17.406115205
+        },
+        {
+          "track": "system",
+          "startMs": 32368,
+          "endMs": 32608,
+          "rmsDbfs": -14.396700096
+        },
+        {
+          "track": "system",
+          "startMs": 32608,
+          "endMs": 32768,
+          "rmsDbfs": -17.860839494
+        },
+        {
+          "track": "system",
+          "startMs": 32768,
+          "endMs": 33088,
+          "rmsDbfs": -16.853764881
+        },
+        {
+          "track": "system",
+          "startMs": 33088,
+          "endMs": 33248,
+          "rmsDbfs": -21.478953684
+        },
+        {
+          "track": "system",
+          "startMs": 33248,
+          "endMs": 33488,
+          "rmsDbfs": -16.372752522
+        },
+        {
+          "track": "system",
+          "startMs": 33488,
+          "endMs": 33968,
+          "rmsDbfs": -16.23779383
+        },
+        {
+          "track": "system",
+          "startMs": 33968,
+          "endMs": 34128,
+          "rmsDbfs": -15.834327922
+        },
+        {
+          "track": "system",
+          "startMs": 34128,
+          "endMs": 34368,
+          "rmsDbfs": -14.458993508
+        },
+        {
+          "track": "system",
+          "startMs": 34368,
+          "endMs": 34528,
+          "rmsDbfs": -19.034687932
+        },
+        {
+          "track": "system",
+          "startMs": 34528,
+          "endMs": 34848,
+          "rmsDbfs": -13.074221859
+        },
+        {
+          "track": "system",
+          "startMs": 34848,
+          "endMs": 35168,
+          "rmsDbfs": -12.840006045
+        },
+        {
+          "track": "system",
+          "startMs": 35168,
+          "endMs": 36128,
+          "rmsDbfs": -20.147265774
+        },
+        {
+          "track": "mic",
+          "startMs": 36512,
+          "endMs": 37072,
+          "rmsDbfs": -24.018815317,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 37392,
+          "endMs": 37552,
+          "rmsDbfs": -18.547688274,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 37552,
+          "endMs": 37792,
+          "rmsDbfs": -18.5611773,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 37792,
+          "endMs": 38112,
+          "rmsDbfs": -25.34733588,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 38352,
+          "endMs": 38592,
+          "rmsDbfs": -17.617494971,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 38592,
+          "endMs": 38832,
+          "rmsDbfs": -19.594672346,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 38832,
+          "endMs": 39152,
+          "rmsDbfs": -16.04942793,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 39152,
+          "endMs": 39472,
+          "rmsDbfs": -17.443587533,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 39472,
+          "endMs": 39712,
+          "rmsDbfs": -17.626065636,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 39712,
+          "endMs": 40112,
+          "rmsDbfs": -18.304893234,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 40112,
+          "endMs": 41152,
+          "rmsDbfs": -25.709502873,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 41152,
+          "endMs": 41472,
+          "rmsDbfs": -18.132221886,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 41472,
+          "endMs": 41792,
+          "rmsDbfs": -24.788255186,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 42032,
+          "endMs": 42272,
+          "rmsDbfs": -16.75109356,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 42272,
+          "endMs": 42672,
+          "rmsDbfs": -22.057111762,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 42672,
+          "endMs": 43632,
+          "rmsDbfs": -28.96424066,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        }
+      ]
+    },
+    {
+      "id": "fixture-bleed",
+      "words": [
+        {
+          "track": "mic",
+          "startMs": 160,
+          "endMs": 400,
+          "rmsDbfs": -17.141106377,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 400,
+          "endMs": 560,
+          "rmsDbfs": -17.706132524,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 560,
+          "endMs": 1360,
+          "rmsDbfs": -22.072410628,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 1760,
+          "endMs": 2080,
+          "rmsDbfs": -25.748655203,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2080,
+          "endMs": 2320,
+          "rmsDbfs": -18.12831189,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2320,
+          "endMs": 2560,
+          "rmsDbfs": -15.869950469,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2560,
+          "endMs": 2960,
+          "rmsDbfs": -19.708855794,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 2960,
+          "endMs": 3280,
+          "rmsDbfs": -17.694417405,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 3280,
+          "endMs": 3600,
+          "rmsDbfs": -17.578226488,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 3600,
+          "endMs": 3920,
+          "rmsDbfs": -19.691279229,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 3920,
+          "endMs": 4000,
+          "rmsDbfs": -18.488499319,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 4000,
+          "endMs": 4400,
+          "rmsDbfs": -17.92547232,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 4400,
+          "endMs": 4960,
+          "rmsDbfs": -21.380993939,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 6064,
+          "endMs": 6384,
+          "rmsDbfs": -16.5504157
+        },
+        {
+          "track": "mic",
+          "startMs": 6384,
+          "endMs": 6704,
+          "rmsDbfs": -28.548871179,
+          "otherWindowRmsDbfs": {
+            "system": -16.414136781
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 6464,
+          "endMs": 6864,
+          "rmsDbfs": -14.463288605
+        },
+        {
+          "track": "mic",
+          "startMs": 6784,
+          "endMs": 7184,
+          "rmsDbfs": -26.733988701,
+          "otherWindowRmsDbfs": {
+            "system": -16.764517248
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 7184,
+          "endMs": 7344,
+          "rmsDbfs": -16.321908653
+        },
+        {
+          "track": "system",
+          "startMs": 7344,
+          "endMs": 7584,
+          "rmsDbfs": -16.103184584
+        },
+        {
+          "track": "mic",
+          "startMs": 7424,
+          "endMs": 7584,
+          "rmsDbfs": -29.360976807,
+          "otherWindowRmsDbfs": {
+            "system": -18.151994243
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 7584,
+          "endMs": 7984,
+          "rmsDbfs": -26.800359686,
+          "otherWindowRmsDbfs": {
+            "system": -16.16924817
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 7584,
+          "endMs": 7664,
+          "rmsDbfs": -13.324736443
+        },
+        {
+          "track": "system",
+          "startMs": 7664,
+          "endMs": 7824,
+          "rmsDbfs": -17.276142828
+        },
+        {
+          "track": "system",
+          "startMs": 7824,
+          "endMs": 8064,
+          "rmsDbfs": -14.611121237
+        },
+        {
+          "track": "mic",
+          "startMs": 7984,
+          "endMs": 8064,
+          "rmsDbfs": -28.995339661,
+          "otherWindowRmsDbfs": {
+            "system": -15.508892857
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 8064,
+          "endMs": 8384,
+          "rmsDbfs": -27.234390596,
+          "otherWindowRmsDbfs": {
+            "system": -15.405512406
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 8064,
+          "endMs": 8224,
+          "rmsDbfs": -17.150550813
+        },
+        {
+          "track": "system",
+          "startMs": 8224,
+          "endMs": 8704,
+          "rmsDbfs": -15.339534305
+        },
+        {
+          "track": "mic",
+          "startMs": 8384,
+          "endMs": 8544,
+          "rmsDbfs": -30.198088709,
+          "otherWindowRmsDbfs": {
+            "system": -15.7099425
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 8544,
+          "endMs": 9024,
+          "rmsDbfs": -27.060041259,
+          "otherWindowRmsDbfs": {
+            "system": -14.832850132
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 8704,
+          "endMs": 8944,
+          "rmsDbfs": -13.038257145
+        },
+        {
+          "track": "system",
+          "startMs": 8944,
+          "endMs": 9104,
+          "rmsDbfs": -13.780549026
+        },
+        {
+          "track": "mic",
+          "startMs": 9024,
+          "endMs": 9264,
+          "rmsDbfs": -24.996302482,
+          "otherWindowRmsDbfs": {
+            "system": -14.716119537
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 9104,
+          "endMs": 9264,
+          "rmsDbfs": -16.645669626
+        },
+        {
+          "track": "mic",
+          "startMs": 9264,
+          "endMs": 9424,
+          "rmsDbfs": -26.032489068,
+          "otherWindowRmsDbfs": {
+            "system": -14.214351181
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 9264,
+          "endMs": 9584,
+          "rmsDbfs": -17.632387715
+        },
+        {
+          "track": "mic",
+          "startMs": 9424,
+          "endMs": 9584,
+          "rmsDbfs": -29.686824712,
+          "otherWindowRmsDbfs": {
+            "system": -15.376035965
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 9584,
+          "endMs": 9904,
+          "rmsDbfs": -28.867410925,
+          "otherWindowRmsDbfs": {
+            "system": -14.658846197
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 9584,
+          "endMs": 9904,
+          "rmsDbfs": -12.502255405
+        },
+        {
+          "track": "mic",
+          "startMs": 9904,
+          "endMs": 10224,
+          "rmsDbfs": -24.46140797,
+          "otherWindowRmsDbfs": {
+            "system": -14.439776986
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 9904,
+          "endMs": 10144,
+          "rmsDbfs": -15.315177524
+        },
+        {
+          "track": "system",
+          "startMs": 10144,
+          "endMs": 10624,
+          "rmsDbfs": -18.879045449
+        },
+        {
+          "track": "mic",
+          "startMs": 10224,
+          "endMs": 10384,
+          "rmsDbfs": -27.954622258,
+          "otherWindowRmsDbfs": {
+            "system": -14.506004565
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 10384,
+          "endMs": 11264,
+          "rmsDbfs": -32.441342947,
+          "otherWindowRmsDbfs": {
+            "system": -18.211059649
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 11264,
+          "endMs": 11984,
+          "rmsDbfs": -24.484466913,
+          "otherWindowRmsDbfs": {
+            "system": -79.70017894
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12304,
+          "endMs": 12464,
+          "rmsDbfs": -16.386512415,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12464,
+          "endMs": 12704,
+          "rmsDbfs": -17.34931405,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12704,
+          "endMs": 12864,
+          "rmsDbfs": -17.366432221,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 12864,
+          "endMs": 13184,
+          "rmsDbfs": -20.255561974,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 13184,
+          "endMs": 13504,
+          "rmsDbfs": -17.376399597,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 13504,
+          "endMs": 13824,
+          "rmsDbfs": -16.678248265,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 13824,
+          "endMs": 14224,
+          "rmsDbfs": -18.386690608,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 14224,
+          "endMs": 14544,
+          "rmsDbfs": -18.648959297,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 14544,
+          "endMs": 15504,
+          "rmsDbfs": -25.921657531,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 15904,
+          "endMs": 16384,
+          "rmsDbfs": -15.263465747
+        },
+        {
+          "track": "mic",
+          "startMs": 16272,
+          "endMs": 16672,
+          "rmsDbfs": -27.861678681,
+          "otherWindowRmsDbfs": {
+            "system": -16.57301566
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 16384,
+          "endMs": 16544,
+          "rmsDbfs": -15.196124753
+        },
+        {
+          "track": "system",
+          "startMs": 16544,
+          "endMs": 16944,
+          "rmsDbfs": -20.550005502
+        },
+        {
+          "track": "mic",
+          "startMs": 16672,
+          "endMs": 16832,
+          "rmsDbfs": -26.752600178,
+          "otherWindowRmsDbfs": {
+            "system": -17.07781648
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 16832,
+          "endMs": 17232,
+          "rmsDbfs": -32.544949133,
+          "otherWindowRmsDbfs": {
+            "system": -16.452034126
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 16944,
+          "endMs": 17744,
+          "rmsDbfs": -17.06514394
+        },
+        {
+          "track": "mic",
+          "startMs": 17232,
+          "endMs": 18032,
+          "rmsDbfs": -29.064940969,
+          "otherWindowRmsDbfs": {
+            "system": -17.29400124
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 17904,
+          "endMs": 18064,
+          "rmsDbfs": -17.144353012
+        },
+        {
+          "track": "system",
+          "startMs": 18064,
+          "endMs": 18304,
+          "rmsDbfs": -16.96227603
+        },
+        {
+          "track": "mic",
+          "startMs": 18112,
+          "endMs": 18352,
+          "rmsDbfs": -27.2803263,
+          "otherWindowRmsDbfs": {
+            "system": -17.434355231
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 18304,
+          "endMs": 18544,
+          "rmsDbfs": -17.78056489
+        },
+        {
+          "track": "mic",
+          "startMs": 18352,
+          "endMs": 18592,
+          "rmsDbfs": -29.258470672,
+          "otherWindowRmsDbfs": {
+            "system": -16.594082786
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 18544,
+          "endMs": 18784,
+          "rmsDbfs": -14.595686921
+        },
+        {
+          "track": "mic",
+          "startMs": 18592,
+          "endMs": 18832,
+          "rmsDbfs": -29.141483506,
+          "otherWindowRmsDbfs": {
+            "system": -16.09322781
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 18784,
+          "endMs": 19024,
+          "rmsDbfs": -14.753935131
+        },
+        {
+          "track": "mic",
+          "startMs": 18832,
+          "endMs": 19072,
+          "rmsDbfs": -26.634071367,
+          "otherWindowRmsDbfs": {
+            "system": -15.42713332
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 19024,
+          "endMs": 19264,
+          "rmsDbfs": -17.925029516
+        },
+        {
+          "track": "mic",
+          "startMs": 19072,
+          "endMs": 19392,
+          "rmsDbfs": -27.367129814,
+          "otherWindowRmsDbfs": {
+            "system": -15.662865707
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 19264,
+          "endMs": 19824,
+          "rmsDbfs": -17.607074677
+        },
+        {
+          "track": "mic",
+          "startMs": 19392,
+          "endMs": 19552,
+          "rmsDbfs": -30.797209443,
+          "otherWindowRmsDbfs": {
+            "system": -16.114645431
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 19552,
+          "endMs": 20112,
+          "rmsDbfs": -29.362544692,
+          "otherWindowRmsDbfs": {
+            "system": -17.485713647
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 19824,
+          "endMs": 20064,
+          "rmsDbfs": -18.238120918
+        },
+        {
+          "track": "system",
+          "startMs": 20064,
+          "endMs": 20384,
+          "rmsDbfs": -15.991178204
+        },
+        {
+          "track": "mic",
+          "startMs": 20112,
+          "endMs": 20352,
+          "rmsDbfs": -30.286339391,
+          "otherWindowRmsDbfs": {
+            "system": -17.601547127
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 20352,
+          "endMs": 21312,
+          "rmsDbfs": -32.714503115,
+          "otherWindowRmsDbfs": {
+            "system": -21.238646954
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 21312,
+          "endMs": 22112,
+          "rmsDbfs": -23.759925437,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 22272,
+          "endMs": 22592,
+          "rmsDbfs": -20.964592982,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 22592,
+          "endMs": 22752,
+          "rmsDbfs": -24.575908854,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 22752,
+          "endMs": 23072,
+          "rmsDbfs": -21.252068287,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 23072,
+          "endMs": 23552,
+          "rmsDbfs": -24.80165067,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 23952,
+          "endMs": 24352,
+          "rmsDbfs": -23.025868687,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 24672,
+          "endMs": 24832,
+          "rmsDbfs": -17.233830032,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 24832,
+          "endMs": 24992,
+          "rmsDbfs": -16.730187828,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 24992,
+          "endMs": 25232,
+          "rmsDbfs": -18.324059797,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25232,
+          "endMs": 25392,
+          "rmsDbfs": -17.600220604,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25392,
+          "endMs": 25712,
+          "rmsDbfs": -18.829700859,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25712,
+          "endMs": 25952,
+          "rmsDbfs": -17.720898189,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 25952,
+          "endMs": 26112,
+          "rmsDbfs": -19.112220601,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 26112,
+          "endMs": 26512,
+          "rmsDbfs": -19.99462539,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 26512,
+          "endMs": 26832,
+          "rmsDbfs": -17.029201785,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 26832,
+          "endMs": 27072,
+          "rmsDbfs": -19.066917796,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 27072,
+          "endMs": 28112,
+          "rmsDbfs": -23.669977679,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 28576,
+          "endMs": 28976,
+          "rmsDbfs": -15.642505475
+        },
+        {
+          "track": "mic",
+          "startMs": 28864,
+          "endMs": 29264,
+          "rmsDbfs": -27.366174964,
+          "otherWindowRmsDbfs": {
+            "system": -17.464482155
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 29216,
+          "endMs": 29376,
+          "rmsDbfs": -17.505772017
+        },
+        {
+          "track": "system",
+          "startMs": 29376,
+          "endMs": 29536,
+          "rmsDbfs": -13.838420999
+        },
+        {
+          "track": "mic",
+          "startMs": 29504,
+          "endMs": 29664,
+          "rmsDbfs": -28.870635659,
+          "otherWindowRmsDbfs": {
+            "system": -17.019162964
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 29536,
+          "endMs": 29696,
+          "rmsDbfs": -15.48165442
+        },
+        {
+          "track": "mic",
+          "startMs": 29664,
+          "endMs": 29904,
+          "rmsDbfs": -26.227395093,
+          "otherWindowRmsDbfs": {
+            "system": -16.081179512
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 29696,
+          "endMs": 29856,
+          "rmsDbfs": -17.500302424
+        },
+        {
+          "track": "system",
+          "startMs": 29856,
+          "endMs": 30096,
+          "rmsDbfs": -17.713018607
+        },
+        {
+          "track": "mic",
+          "startMs": 29904,
+          "endMs": 29984,
+          "rmsDbfs": -28.021066742,
+          "otherWindowRmsDbfs": {
+            "system": -15.716583542
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 29984,
+          "endMs": 30144,
+          "rmsDbfs": -29.995594224,
+          "otherWindowRmsDbfs": {
+            "system": -16.245408003
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 30096,
+          "endMs": 30336,
+          "rmsDbfs": -17.492883213
+        },
+        {
+          "track": "mic",
+          "startMs": 30144,
+          "endMs": 30464,
+          "rmsDbfs": -29.388299178,
+          "otherWindowRmsDbfs": {
+            "system": -16.547047797
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 30336,
+          "endMs": 30656,
+          "rmsDbfs": -15.699757669
+        },
+        {
+          "track": "mic",
+          "startMs": 30464,
+          "endMs": 30624,
+          "rmsDbfs": -29.184386889,
+          "otherWindowRmsDbfs": {
+            "system": -17.002566423
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 30624,
+          "endMs": 31024,
+          "rmsDbfs": -27.315433707,
+          "otherWindowRmsDbfs": {
+            "system": -16.442898235
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 30656,
+          "endMs": 32096,
+          "rmsDbfs": -17.406115205
+        },
+        {
+          "track": "mic",
+          "startMs": 31024,
+          "endMs": 32384,
+          "rmsDbfs": -29.714497042,
+          "otherWindowRmsDbfs": {
+            "system": -17.861215475
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 32368,
+          "endMs": 32608,
+          "rmsDbfs": -14.396700096
+        },
+        {
+          "track": "system",
+          "startMs": 32608,
+          "endMs": 32768,
+          "rmsDbfs": -17.860839494
+        },
+        {
+          "track": "mic",
+          "startMs": 32656,
+          "endMs": 32896,
+          "rmsDbfs": -26.550748646,
+          "otherWindowRmsDbfs": {
+            "system": -17.208898619
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 32768,
+          "endMs": 33088,
+          "rmsDbfs": -16.853764881
+        },
+        {
+          "track": "mic",
+          "startMs": 32896,
+          "endMs": 33056,
+          "rmsDbfs": -30.020419609,
+          "otherWindowRmsDbfs": {
+            "system": -16.493232723
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 33056,
+          "endMs": 33376,
+          "rmsDbfs": -28.684285531,
+          "otherWindowRmsDbfs": {
+            "system": -16.476347242
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 33088,
+          "endMs": 33248,
+          "rmsDbfs": -21.478953684
+        },
+        {
+          "track": "system",
+          "startMs": 33248,
+          "endMs": 33488,
+          "rmsDbfs": -16.372752522
+        },
+        {
+          "track": "mic",
+          "startMs": 33376,
+          "endMs": 33536,
+          "rmsDbfs": -35.301254644,
+          "otherWindowRmsDbfs": {
+            "system": -17.004373427
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 33488,
+          "endMs": 33968,
+          "rmsDbfs": -16.23779383
+        },
+        {
+          "track": "mic",
+          "startMs": 33536,
+          "endMs": 33776,
+          "rmsDbfs": -28.047701128,
+          "otherWindowRmsDbfs": {
+            "system": -17.077475071
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 33776,
+          "endMs": 34256,
+          "rmsDbfs": -28.409509729,
+          "otherWindowRmsDbfs": {
+            "system": -16.193322048
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 33968,
+          "endMs": 34128,
+          "rmsDbfs": -15.834327922
+        },
+        {
+          "track": "system",
+          "startMs": 34128,
+          "endMs": 34368,
+          "rmsDbfs": -14.458993508
+        },
+        {
+          "track": "mic",
+          "startMs": 34256,
+          "endMs": 34496,
+          "rmsDbfs": -28.121231475,
+          "otherWindowRmsDbfs": {
+            "system": -15.895434553
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 34368,
+          "endMs": 34528,
+          "rmsDbfs": -19.034687932
+        },
+        {
+          "track": "mic",
+          "startMs": 34496,
+          "endMs": 34656,
+          "rmsDbfs": -25.699287414,
+          "otherWindowRmsDbfs": {
+            "system": -15.258864502
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 34528,
+          "endMs": 34848,
+          "rmsDbfs": -13.074221859
+        },
+        {
+          "track": "mic",
+          "startMs": 34656,
+          "endMs": 34896,
+          "rmsDbfs": -28.155565952,
+          "otherWindowRmsDbfs": {
+            "system": -14.648335967
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 34848,
+          "endMs": 35168,
+          "rmsDbfs": -12.840006045
+        },
+        {
+          "track": "mic",
+          "startMs": 34896,
+          "endMs": 35136,
+          "rmsDbfs": -25.035478013,
+          "otherWindowRmsDbfs": {
+            "system": -13.679442238
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 35136,
+          "endMs": 35456,
+          "rmsDbfs": -24.81256945,
+          "otherWindowRmsDbfs": {
+            "system": -13.494270815
+          }
+        },
+        {
+          "track": "system",
+          "startMs": 35168,
+          "endMs": 36128,
+          "rmsDbfs": -20.147265774
+        },
+        {
+          "track": "mic",
+          "startMs": 35456,
+          "endMs": 36496,
+          "rmsDbfs": -28.144935098,
+          "otherWindowRmsDbfs": {
+            "system": -18.07303312
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 36496,
+          "endMs": 37056,
+          "rmsDbfs": -23.183859931,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 37376,
+          "endMs": 37536,
+          "rmsDbfs": -18.095470259,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 37536,
+          "endMs": 37856,
+          "rmsDbfs": -18.854958654,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 37856,
+          "endMs": 38096,
+          "rmsDbfs": -28.220076639,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 38336,
+          "endMs": 38576,
+          "rmsDbfs": -18.114928099,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 38576,
+          "endMs": 38816,
+          "rmsDbfs": -19.00332745,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 38816,
+          "endMs": 39216,
+          "rmsDbfs": -16.462691389,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 39216,
+          "endMs": 39536,
+          "rmsDbfs": -18.076585244,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 39536,
+          "endMs": 39696,
+          "rmsDbfs": -16.785008036,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 39696,
+          "endMs": 40176,
+          "rmsDbfs": -18.7028176,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 40176,
+          "endMs": 41136,
+          "rmsDbfs": -26.13413663,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 41216,
+          "endMs": 41456,
+          "rmsDbfs": -18.686291772,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 41456,
+          "endMs": 41776,
+          "rmsDbfs": -23.481253833,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 42016,
+          "endMs": 42256,
+          "rmsDbfs": -16.478540998,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 42256,
+          "endMs": 42656,
+          "rmsDbfs": -22.00447599,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        },
+        {
+          "track": "mic",
+          "startMs": 42656,
+          "endMs": 43616,
+          "rmsDbfs": -28.788596888,
+          "otherWindowRmsDbfs": {
+            "system": -270.308998699
+          }
+        }
+      ]
+    }
+  ]
+}

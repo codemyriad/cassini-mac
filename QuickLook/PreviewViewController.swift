@@ -1,6 +1,14 @@
 import AppKit
 import CassiniKit
+import CassiniLibrary
 import Quartz
+
+/// D50: the preview follows the Mac UI language through the shared catalog.
+enum PreviewCopy {
+    static func text(_ id: String, _ values: [String: String] = [:]) -> String {
+        LibraryLocalization.shared.text(id, values, language: .system, locale: .autoupdatingCurrent)
+    }
+}
 
 /// Quick Look preview: the title, the speakers and the first lines of the transcript.
 final class PreviewViewController: NSViewController, QLPreviewingController {
@@ -54,11 +62,11 @@ enum PreviewText {
 
         var meta: [String] = []
         if let m = file.manifest {
-            meta.append(m.speakers.count == 1 ? "1 speaker" : "\(m.speakers.count) speakers")
+            meta.append(PreviewCopy.text("mac.quicklook.speakerCount", ["n": String(m.speakers.count)]))
             meta.append(formatClock(m.meeting.durationMs))
             meta.append(SessionDate.text(m))
         } else {
-            meta.append(file.stateReason ?? "No transcript in this file")
+            meta.append(PreviewCopy.text("mac.legacy.noTranscript"))
         }
         let p = NSMutableParagraphStyle()
         p.paragraphSpacing = 14
@@ -77,7 +85,8 @@ enum PreviewText {
         body.paragraphSpacing = 10
         body.lineHeightMultiple = 1.2
         for turn in timeline.turns.prefix(maxTurns) {
-            let label = m.speaker(turn.speaker)?.label ?? "Unknown speaker"
+            // D53.3: an unnamed speaker is written in the UI language.
+            let label = m.speaker(turn.speaker)?.label ?? PreviewCopy.text("common.speaker.unnamed", ["n": String(m.speakers.count + 1)])
             out.append(NSAttributedString(string: "\(label)  ", attributes: [
                 .font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
             ]))
@@ -91,7 +100,7 @@ enum PreviewText {
             ]))
         }
         if timeline.turns.count > maxTurns {
-            out.append(NSAttributedString(string: "Open in Cassini for the whole transcript.", attributes: [
+            out.append(NSAttributedString(string: PreviewCopy.text("mac.quicklook.openForMore"), attributes: [
                 .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.tertiaryLabelColor,
             ]))
         }
@@ -100,24 +109,18 @@ enum PreviewText {
 }
 
 enum SessionDate {
+    /// D50.3: date words in the UI language; a local label is never shifted to a zone.
     static func text(_ m: Manifest) -> String {
-        let style = Date.FormatStyle(date: .abbreviated, time: .omitted)
         if let local = m.meeting.recordedAtLocal {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
             f.timeZone = TimeZone(identifier: "UTC")
             f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-            if let d = f.date(from: local) {
-                var s = style
-                s.timeZone = TimeZone(identifier: "UTC")!
-                return d.formatted(s)
-            }
+            if let d = f.date(from: local) { return LibraryFormat(timeZone: TimeZone(identifier: "UTC")!, locale: .autoupdatingCurrent, language: .system).absoluteDate(d) }
         }
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: m.meeting.createdAtUtc) { return d.formatted(style) }
-        iso.formatOptions = [.withInternetDateTime]
-        if let d = iso.date(from: m.meeting.createdAtUtc) { return d.formatted(style) }
-        return ""
+        let date = iso.date(from: m.meeting.createdAtUtc) ?? { iso.formatOptions = [.withInternetDateTime]; return iso.date(from: m.meeting.createdAtUtc) }()
+        return date.map { LibraryFormat(locale: .autoupdatingCurrent, language: .system).absoluteDate($0) } ?? ""
     }
 }

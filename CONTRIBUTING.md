@@ -91,20 +91,11 @@ python3 run-conformance.py --adapter ../../../.build/debug/cassini-inspect --pro
 
 Currently 26 pass, 0 warn, 0 fail on the full profile.
 
-### DrMeyers native runner
+### Native recording in CI
 
-The repository-scoped `DrMeyers-audio` runner is installed on DrMeyers as a user LaunchAgent, labelled `drmeyers-audio` (`self-hosted`, `macOS`, `ARM64`). Its files live in `~/.local/share/cassini-actions-runner`; it needs the silvio GUI login session for app/audio validation. Manage it from that directory with `./svc.sh status|stop|start`.
+All CI runs on GitHub-hosted runners. The `native` job in `.github/workflows/ci.yml` runs the generated-PCM sink check against the Debug app built once per push, on pull requests, `main`, nightly and `workflow_dispatch` like every other CI job. It covers planar and interleaved input, frame counts, stereo 440/880 Hz separation and the production WAV writer, without microphone or system-audio permission. The native session and writer Swift tests run in the `kit` job's full `swift test`.
 
-`.github/workflows/native-recording.yml` runs only on `workflow_dispatch` or nightly at 02:23 UTC, and its job additionally requires this repository's `main` ref. Pull requests, forks and pushes do not trigger native jobs. Other CI jobs continue on hosted machines. A repository maintainer can run it with:
-
-```sh
-gh workflow run native-recording.yml --ref main -f mode=sink-only
-gh workflow run native-recording.yml --ref main -f mode=full
-```
-
-Both modes test the native writer/session loader and real tabCapture; `full` also attempts an actual Core Audio process tap of Cassini's generated 440/880 Hz tone. It never opens the microphone or captures other applications. The full mode needs genuine macOS system-audio consent and a working output device; runner registration does not grant that permission. Nightly runs sink-only until one manual full dispatch has passed after real audio consent. Only then should the schedule be changed back to full. Manual full runs remain nonzero if capture cannot be validated. Ad-hoc app updates can require renewed consent. Actual microphone validation additionally needs an input device.
-
-Logs and `result.json` are uploaded even on failure. Diagnostic processes have a 45-second watchdog; the harness has an independent timeout and only terminates its own diagnostic. Use `python3 scripts/run-native-ci.py --mode sink-only` for the same local check. No private account credentials or recordings are put into workflow artifacts.
+The actual Core Audio process tap and real tabCapture need genuine macOS system-audio consent and a working output device, which hosted runners do not have. They are manual checks on a developer Mac: `python3 scripts/run-native-ci.py --mode full` (or `scripts/check-native-recording.sh`) and `node BrowserExtension/tests/tab-capture.mjs`. Consent/output-device timeouts produce `status: "blocked"` in `result.json` and still exit nonzero. Logs and `result.json` are uploaded even on failure. Diagnostic processes have a 45-second watchdog; the harness has an independent timeout and only terminates its own diagnostic. No private account credentials or recordings are put into workflow artifacts.
 
 ### Shared protocol ownership and product checks
 
@@ -114,7 +105,7 @@ SPEC v1.1 keeps wire version 1. Both native recorders use the same session folde
 
 Manual compatibility priorities are Teams web, Zoom web, then Meet; checklists and the per-version result template are under `browser-protocol/products/`. Controlled topology fixtures cover mixed receivers, a PC-free Web Audio path requiring tab fallback, and three receive slots whose speaker content changes without changing receiver identity. They do not claim that a live vendor version is compatible. Chromium-only and Chrome 116 minimum remain in scope; live product/account tests, Firefox and Flatpak are separate follow-up work.
 
-Hosted macOS runs WebRTC, media/iframe, worker-lifecycle and protocol checks. Real tabCapture runs in the DrMeyers manual/nightly workflow: hosted macOS's Null Audio Device is not a reliable rendering target. The tab test waits for saved audio frames, not a fixed startup delay. Consent/output-device timeouts produce `status: "blocked"` in native `result.json` and still exit nonzero, so an unavailable hardware gate cannot be mistaken for a passing code test.
+Hosted macOS runs WebRTC, media/iframe, worker-lifecycle and protocol checks. Real tabCapture is a manual check on a developer Mac: hosted macOS's Null Audio Device is not a reliable rendering target. The tab test waits for saved audio frames, not a fixed startup delay. Consent/output-device timeouts produce `status: "blocked"` in native `result.json` and still exit nonzero, so an unavailable hardware gate cannot be mistaken for a passing code test.
 
 ## Releases and packaging
 

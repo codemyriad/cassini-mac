@@ -62,11 +62,21 @@ jobs:
           python3 scripts/fetch-opus.py --output build/Opus
           python3 scripts/fetch-parakeet-runtime.py --output build/Parakeet
           python3 scripts/ci-products.py pack assets build/ci-upload/assets
+          python3 scripts/ci-products.py pack runtime build/ci-upload/runtime
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
         with:
           name: ci-assets
           path: build/ci-upload/assets
+          retention-days: 3
+          compression-level: 0
+      # The Release app job (ci-build-release.yml, D66 mac-P2-2) stages this runtime; the
+      # optional ci-parakeet product below carries it only when the model goldens run.
+      - uses: actions/upload-artifact@v5
+        if: matrix.arch == 'arm64'
+        with:
+          name: ci-runtime
+          path: build/ci-upload/runtime
           retention-days: 3
           compression-level: 0
       - uses: actions/cache@v4
@@ -129,32 +139,6 @@ jobs:
         with:
           name: ci-debug
           path: build/ci-upload/debug
-          retention-days: 3
-          compression-level: 0
-      - name: Build universal Release app once
-        if: matrix.arch == 'arm64'
-        env:
-          CASSINI_CI_ASSETS: ${{ github.workspace }}/build
-        run: |
-          set -o pipefail
-          # Generated Library fixtures belong to Debug screenshot products only.
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import shutil
-          generated = Path('UITests/Fixtures/Library')
-          if generated.exists(): shutil.rmtree(generated)
-          PYTHON
-          xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Release \
-            -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CASSINI_APP_HARDENED_RUNTIME=NO 2>&1 | tee build/release-build.log
-          codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
-          python3 scripts/check-signing-identifiers.py build/Build/Products/Release/Cassini.app
-          python3 scripts/ci-products.py pack release build/ci-upload/release
-      - uses: actions/upload-artifact@v5
-        if: matrix.arch == 'arm64'
-        with:
-          name: ci-release
-          path: build/ci-upload/release
           retention-days: 3
           compression-level: 0
       - uses: actions/upload-artifact@v5

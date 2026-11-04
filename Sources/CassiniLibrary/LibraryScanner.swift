@@ -62,6 +62,16 @@ public struct LibraryScanner: Sendable {
         cache.prune(keeping: Set(snapshot.files.values.flatMap { $0 }))
         return .init(meetings: snapshot.meetings.values.sorted(by: Self.ordered), issues: snapshot.issues.values.flatMap { $0 })
     }
+    /// A Library meeting folder name (Recording-<uuid> or Received-<uuid>).
+    public static func isMeetingFolder(_ folder: URL) -> Bool { identity(folder.lastPathComponent) != nil }
+    /// One meeting folder, read as `scan` reads it (meeting.json first, then its words), with
+    /// the meeting.json revision that read saw. nil when it is not a readable meeting folder.
+    public func meeting(at folder: URL, now: Date = Date()) -> LibraryMeeting? {
+        guard let (id, received) = Self.identity(folder.lastPathComponent),
+              let info = try? pathInfo(folder), info.st_mode & S_IFMT == S_IFDIR else { return nil }
+        var seen = Set<URL>()
+        return read(folder: folder, id: id, received: received, activity: activity.snapshot()[id], now: now, seen: &seen)
+    }
     public func scanInBackground(affected: URL? = nil, now: Date = Date()) async throws -> LibraryScan {
         try await Task.detached(priority: .userInitiated) { try scan(affected: affected, now: now) }.value
     }
@@ -84,7 +94,7 @@ public struct LibraryScanner: Sendable {
     private static func identityOrdered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
         a.id == b.id ? a.libraryKey < b.libraryKey : a.id.uuidString < b.id.uuidString
     }
-    private func json<Value: Decodable>(_ type: Value.Type, at url: URL, limit: Int = 1_048_576,
+    private func json<Value: Decodable>(_ type: Value.Type, at url: URL, limit: Int,
                                        seen: inout Set<URL>) throws -> Value {
         seen.insert(url)
         return try cache.read(url) { try decodeJSON(type, data: regularData($0, limit: limit)) }
@@ -97,13 +107,14 @@ public struct LibraryScanner: Sendable {
         do {
             let url = try safeFile("meeting.json", in: folder); seen.insert(url)
             if try pathInfo(url) != nil {
-                metadata = try cache.read(url) { try AppMetadata.parse(regularData($0, limit: 1_048_576)) }
+                metadata = try cache.read(url) { try AppMetadata.parse(regularData($0, limit: MeetingMetadataLimit.bytes)) }
                 try metadata?.validate(id: id, received: received)
             }
         } catch MetadataError.unsupportedVersion {
             meeting.metadataReadOnly = true; meeting.issues.append(.unsupportedVersion)
         } catch { metadata = nil; meeting.issues.append(.invalidMetadata) }
         guard !received || metadata != nil else { return nil } // R1.4: import not committed.
+        meeting.metadataRevision = metadata?.revision
         meeting.notes = metadata?.notes ?? []
         if let value = metadata?.received {
             meeting.received = .init(originalName:value.originalName,originalFolderName:value.originalFolderName,sha256:value.sha256,importedAtMs:value.importedAtMs)
@@ -155,7 +166,8 @@ public struct LibraryScanner: Sendable {
             }
         }
         meeting.state.audioAvailable = !meeting.audioFiles.isEmpty
-        meeting.title = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? "Untitled meeting"
+        let titled = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        meeting.title = titled ?? LibraryLocalization.shared.text("library.untitled"); meeting.titleIsUntitled = titled == nil
 
         var words: [LibraryTranscriptItem] = []
         var readable = false
@@ -211,10 +223,11 @@ public struct LibraryScanner: Sendable {
         let overrides = Dictionary(uniqueKeysWithValues: (metadata?.speakers ?? []).map { ($0.id, $0) })
         meeting.speakers = ids.enumerated().map { index, id in
             let override = overrides[id]
-            let label = embeddedNames[id]?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let embedded = label.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : $0 }
-            let name = override?.name ?? embedded
-            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index)
+            let storedLabel = embeddedNames[id]
+            let classification = storedLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let embedded = classification.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : storedLabel }
+            let name = override != nil ? override?.name : embedded
+            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(sorted)
@@ -241,7 +254,11 @@ public struct LibraryScanner: Sendable {
         struct Track: Decodable {
             let sourceID: String?; let sourceKind: String?; let sourceTrackID: String?
             let file: String?; let sampleRate: Int?; let channels: Int?; var startOffsetMs: DisplayOffset?; let gapFrames: Double?
-            enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames, id, kind, sourceTrackId }
+            var gaps: [TrackPresence.Gap]? = nil
+            enum CodingKeys: CodingKey { case file, sampleRate, channels, startOffsetMs, gapFrames, id, kind, sourceTrackId, gaps }
+            struct GapRow: Decodable {
+                let atMs: Double; let durationMs: Double?; let frames: UInt64?; let kind: String
+            }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 let id = try? c.decode(String.self,forKey:.id)
@@ -253,6 +270,21 @@ public struct LibraryScanner: Sendable {
                 file = try? c.decode(String.self, forKey: .file)
                 sampleRate = try? c.decode(Int.self, forKey: .sampleRate); channels = try? c.decode(Int.self, forKey: .channels)
                 startOffsetMs = nil; gapFrames = try? c.decode(Double.self, forKey: .gapFrames)
+                // A malformed or null list is unknown, like a missing one.
+                gaps = (try? c.decode([GapRow].self, forKey: .gaps)).flatMap { rows in
+                    rows.count <= 1001 && rows.allSatisfy({ $0.atMs.isFinite && $0.atMs >= 0 && !$0.kind.isEmpty }) ? rows.map { .init(atMs:$0.atMs,durationMs:$0.durationMs,frames:$0.frames,kind:$0.kind) } : nil
+                }
+            }
+            /// D52.2 Q4: with ranges, only a range of at least 1 s that is not a selection
+            /// prefix, writer loss (R70, io) or the overflow marker flags the meeting.
+            /// Without ranges (missing, null or malformed), any counted gap still does.
+            var flagsGap: Bool {
+                guard let gaps else { return (gapFrames ?? 0) > 0 }
+                return gaps.contains { gap in
+                    guard !["prefix","writer","overflow"].contains(gap.kind) else { return false }
+                    if let frames = gap.frames, let rate = sampleRate, rate > 0 { return frames >= UInt64(rate) }
+                    return (gap.durationMs ?? 0) >= 1000
+                }
             }
         }
         static func parse(_ data: Data) throws -> Self {
@@ -270,13 +302,13 @@ public struct LibraryScanner: Sendable {
         var result = Capture()
         do {
             let session = try safeFile("session.json", in: folder); seen.insert(session)
-            let manifest = try cache.read(session) { try Manifest.parse(regularData($0, limit: 1_048_576)) }
+            let manifest = try cache.read(session) { try Manifest.parse(regularData($0, limit: SessionManifestLimit.bytes)) }
             if manifest.version > 1 { result.issues.append(.unsupportedVersion) }
             guard manifest.version == 1, manifest.id == id, manifest.tracks.count <= 64,
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
             result.source = manifest.source; result.events = manifest.events; result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
             result.unfinalized = manifest.state == "recording"; result.finalized = manifest.state != "recording"
-            result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains { ($0.gapFrames ?? 0) > 0 }
+            result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains(where:\.flagsGap)
             var ends: [Int64] = []
             for track in manifest.tracks {
                 do {
@@ -285,7 +317,7 @@ public struct LibraryScanner: Sendable {
                     let wave = try Self.wave(url)
                     guard wave.rate == track.sampleRate, wave.channels == track.channels else { throw MetadataError.invalid }
                     result.files.append(url)
-                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames, sourceID:track.sourceID, sourceKind:track.sourceKind, sourceTrackID:track.sourceTrackID))
+                    result.tracks.append(.init(url: url, startOffsetMs: track.startOffsetMs?.milliseconds, frameCount: wave.frames, sourceID:track.sourceID, sourceKind:track.sourceKind, sourceTrackID:track.sourceTrackID, sampleRate:wave.rate, gaps:track.gaps))
                     if wave.frames > 0, track.startOffsetMs == nil { result.issues.append(.unknownStartOffset) }
                     ends.append((track.startOffsetMs ?? .zero).end(frames: wave.frames, rate: wave.rate))
                 } catch { result.issues.append(.invalidAudio) } // R4: a completed session is trusted.
@@ -297,7 +329,7 @@ public struct LibraryScanner: Sendable {
             var lengths: [Int64] = []
             for url in candidates.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where url.lastPathComponent.hasPrefix("track-") && url.pathExtension == "wav" {
                 if let safe = try? safeFile(url.lastPathComponent, in: folder), let wave = try? Self.wave(safe) {
-                    result.files.append(safe); result.tracks.append(.init(url: safe, startOffsetMs: nil, frameCount: wave.frames)); lengths.append(Int64(wave.frames * 1000 / UInt64(wave.rate)))
+                    result.files.append(safe); result.tracks.append(.init(url: safe, startOffsetMs: nil, frameCount: wave.frames, sampleRate: wave.rate)); lengths.append(Int64(wave.frames * 1000 / UInt64(wave.rate)))
                 }
             }
             result.endMs = lengths.max()

@@ -1,0 +1,57 @@
+name: Build the shared Release product
+# D66 mac-P2-2: the universal Release app is built in a job of its own, after the shared
+# producer (ci-build.yml) has staged the pinned assets and the Parakeet runtime once. Only the
+# packaging below and the Parakeet checks use it, so every Debug and SwiftPM consumer starts
+# without waiting for this build.
+on:
+  workflow_call: {}
+permissions:
+  contents: read
+jobs:
+  release:
+    name: Build Release app and package (universal, Xcode 16.4)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-products
+        with:
+          assets: 'true'
+          runtime: 'true'
+      - name: Install build tools
+        run: brew install xcodegen
+      # No generated Library fixtures here: they belong to the Debug screenshot products only.
+      - run: xcodegen generate
+      - name: Build universal Release app once
+        env:
+          CASSINI_CI_ASSETS: ${{ github.workspace }}/build
+        run: |
+          set -o pipefail
+          test ! -e UITests/Fixtures/Library
+          xcodebuild build -project Cassini.xcodeproj -scheme Cassini -configuration Release \
+            -derivedDataPath build ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CASSINI_APP_HARDENED_RUNTIME=NO 2>&1 | tee build/release-build.log
+          codesign --verify --deep --strict build/Build/Products/Release/Cassini.app
+          python3 scripts/check-signing-identifiers.py build/Build/Products/Release/Cassini.app
+          python3 scripts/ci-products.py pack release build/ci-upload/release
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ci-release
+          path: build/ci-upload/release
+          retention-days: 3
+          compression-level: 0
+      - name: Package Cassini.app
+        timeout-minutes: 3
+        run: python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Cassini-${{ github.sha }}
+          path: |
+            build/Cassini.zip
+            build/Cassini.zip.sha256
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: build-diagnostics-release
+          path: build/release-build.log
+          if-no-files-found: ignore

@@ -90,7 +90,7 @@ import CassiniTranscription
         operation = Task {
             defer { busy = false; operation = nil }
             do {
-                try await ModelDownloader(appData:Self.appData).remove(.parakeetUltra)
+                try await ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app()).remove(.parakeetUltra)
                 downloaded = false; refreshed = true; failedDownload = false
                 message = UXText.text("models.parakeetUltra.removedFallback")
             } catch { refreshed = false; NSApp.presentError(error) }
@@ -129,7 +129,7 @@ import CassiniTranscription
         do {
             let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
             let plan = try ModelManifest.plan(Data(contentsOf:manifest),pin:.parakeetUltra)
-            let removed = try await ModelDownloader(appData:Self.appData).removeInvalid(plan)
+            let removed = try await ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app()).removeInvalid(plan)
             guard cleanupGeneration == generation else { return }
             downloaded = !removed; refreshed = true; failedDownload = false
             if !removed { chooseParakeet(wasSelected) }

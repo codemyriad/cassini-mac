@@ -15,7 +15,7 @@ struct AppMetadata: Decodable {
     let error: MeetingIssue?
     let quoteOverride: MeetingQuote?
     let received: Received?
-    struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int }
+    struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int; let label: String?; let nameCleared: Bool? }
     struct Transcript: Decodable { let status: TranscriptStatus; let reference: Reference?; let model: String? }
     struct Reference: Decodable { let kind: String; let file: String; let format: String?; let transcriptId: String? }
     struct Received: Decodable { let originalName: String; let originalFolderName: String?; let sha256: String; let importedAtMs: Int64 }
@@ -28,9 +28,10 @@ struct AppMetadata: Decodable {
         try require(notes.allSatisfy { (0...Self.safe).contains($0.atMs) && $0.text.unicodeScalars.count <= 100000 })
         try require(speakers.count <= 1000 && Set(speakers.map(\.id)).count == speakers.count)
         for speaker in speakers {
-            try require(!speaker.id.isEmpty && speaker.id.unicodeScalars.count <= 200 && speaker.colourIndex >= 0 && speaker.colourIndex <= Self.safe)
+            try require(!speaker.id.isEmpty && speaker.id.unicodeScalars.count <= 256 && speaker.colourIndex >= 0 && speaker.colourIndex <= Self.safe)
             try require(speaker.provenance == .unnamed ? speaker.name == nil : speaker.name?.isEmpty == false)
             try require((speaker.name?.unicodeScalars.count ?? 0) <= 200)
+            try require(speaker.label == nil || (speaker.label?.isEmpty == false && speaker.label!.unicodeScalars.count <= 200))
         }
         if ![.queued, .running].contains(transcript.status) { try require(etaMinutes == nil) }
         if let reference = transcript.reference {

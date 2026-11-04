@@ -59,6 +59,88 @@ class Selection(unittest.TestCase):
             self.assertTrue(all(changes.select('pull_request', 'base', PATHS, [name]).values()))
 
 
+def ci_job(name):
+    """The body of one top-level job in ci.yml (its lines up to the next two-space key)."""
+    body = (ROOT/'.github/workflows/ci.yml').read_text()
+    found = re.search(rf'^  {name}:\n(.*?)(?=^  \S|^\S|\Z)', body, re.M | re.S)
+    assert found, name
+    return found.group(1)
+
+
+def step_condition(job, marker):
+    """The `if:` of the step whose text contains marker (searching back to its `- ` line)."""
+    at = job.index(marker)
+    start = job.rindex('\n    - ', 0, at + len('\n    - ')) + 1  # the last step start at or before marker
+    end = job.find('\n    - ', at)
+    found = re.search(r'^\s+if: (.+)$', job[start:end if end >= 0 else None], re.M)
+    assert found, marker
+    return found.group(1)
+
+
+class FoldedJobs(unittest.TestCase):
+    """D66 mac-P2-1: every path area still selects a job, and the merged jobs keep the checks,
+    order and conditions of the jobs they replace."""
+    CI = (ROOT/'.github/workflows/ci.yml').read_text()
+
+    def test_every_area_is_an_output_that_some_job_reads(self):
+        outputs = set(re.findall(r'^      (\w+): \$\{\{ steps\.paths\.outputs\.(\w+) \}\}$', self.CI, re.M))
+        self.assertEqual({key for key, value in outputs if key == value}, set(PATHS))
+        for area in PATHS:
+            with self.subTest(area=area):
+                self.assertTrue(f"needs.changes.outputs.{area} != 'false'" in self.CI, f'no job reads the {area} area')
+        self.assertEqual(set(re.findall(r'needs\.changes\.outputs\.(\w+)', self.CI)), set(PATHS))
+
+    def test_scripts_of_the_merged_jobs_trigger_their_area(self):
+        for area, body in [('shot', (ROOT/'.github/workflows/ux-shot.yml').read_text()),
+                           ('exports', ci_job('package_tests'))]:
+            scripts = re.findall(r'python3\s+(scripts/[\w.-]+\.py)', body)
+            self.assertTrue(scripts, area)
+            for script in scripts:
+                with self.subTest(area=area, script=script):
+                    self.assertTrue(changes.select('pull_request', 'base', PATHS, [script])[area])
+
+    def test_one_intel_job_runs_each_area_only_when_selected(self):
+        job = ci_job('package_tests')
+        self.assertIn('runs-on: macos-15-intel', job)
+        self.assertIn("needs.changes.outputs.exports != 'false' || needs.changes.outputs.model_download != 'false'", job)
+        downloader = job.index('--filter ModelDownloaderTests')
+        self.assertIn("if: env.MODEL_DOWNLOAD == 'true'", job[:downloader])
+        # D66 mac-P1-3: no setup-python before the downloader's fixture server.
+        self.assertLess(downloader, job.index('actions/setup-python'))
+        exports = job.index("--filter 'ExportGoldenTests|")
+        self.assertLess(exports, job.index('check-export-reference.py'))
+        # Each exports step's own condition (not a neighbour's) names the area.
+        for marker in ['- uses: actions/setup-python', '      id: exports\n', '- name: Independent pure metadata',
+                       'name: exports-macos-15-intel']:
+            with self.subTest(step=marker):
+                self.assertIn("env.EXPORTS == 'true'", step_condition(job, marker))
+        self.assertIn("env.MODEL_DOWNLOAD == 'true'", step_condition(job, 'name: downloader-macos-15-intel'))
+        # No other job repeats the Intel downloader or the export filter on any runner.
+        others = self.CI.replace(job, '')
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            text = others if workflow.name == 'ci.yml' else workflow.read_text()
+            with self.subTest(workflow=workflow.name):
+                self.assertNotIn('--filter ModelDownloaderTests', text)
+                self.assertNotIn("--filter 'ExportGoldenTests|", text)
+
+    def test_kit_runs_the_arm64_export_checks(self):
+        kit = ci_job('kit')
+        self.assertIn("assets: 'true'", kit)
+        test = kit[kit.index('- name: Test\n'):kit.index('run: swift test --skip-build\n')]
+        self.assertIn('CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus', test)
+        self.assertIn('CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases', test)
+        self.assertIn('python3 scripts/check-export-reference.py build/format-reference build/export-cases', kit)
+
+    def test_window_captures_run_before_the_display_mode_changes(self):
+        shot = (ROOT/'.github/workflows/ux-shot.yml').read_text()
+        self.assertEqual(shot.count('runs-on:'), 1)
+        self.assertLess(shot.index('python3 scripts/check-window-screenshots.py build/window-screenshots\n'),
+                        shot.index('python3 scripts/hosted-display.py'))
+        self.assertLess(shot.index('python3 scripts/hosted-display.py'),
+                        shot.index('python3 scripts/check-window-screenshots.py build/board-screenshots 1120x720'))
+        self.assertFalse((ROOT/'.github/workflows/ux-board-shot.yml').exists())
+
+
 class Transport(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -107,6 +189,28 @@ class Transport(unittest.TestCase):
         with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'changed')
         with self.assertRaisesRegex(ValueError, 'digest'): products.unpack('swiftpm',self.output)
 
+    def test_an_incomplete_download_is_retryable_and_a_mismatch_is_not(self):
+        products.pack('swiftpm', self.output)
+        with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'truncated')
+        with self.assertRaises(products.TransferError): products.unpack('swiftpm',self.output)
+        (self.output/'swiftpm.tar.gz').unlink()
+        with self.assertRaises(products.TransferError): products.unpack('swiftpm',self.output)
+        products.pack('swiftpm', self.output)
+        with patch.object(products, 'identity', return_value={**self.identity,'commit':'b'*40}):
+            with self.assertRaises(ValueError) as caught: products.unpack('swiftpm',self.output)
+        self.assertNotIsInstance(caught.exception, products.TransferError)
+
+    def test_the_cli_exits_75_only_for_an_incomplete_download(self):
+        products.pack('swiftpm', self.output)
+        with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'truncated')
+        with patch.object(products.sys,'argv',['ci-products.py','unpack','swiftpm',str(self.output)]), patch('sys.stderr',io.StringIO()):
+            with self.assertRaises(SystemExit) as caught: products.main()
+        self.assertEqual(caught.exception.code, products.TRANSFER_EXIT)
+        products.pack('swiftpm', self.output)
+        with patch.object(products.sys,'argv',['ci-products.py','unpack','swiftpm',str(self.output)]), \
+             patch.object(products, 'identity', return_value={**self.identity,'arch':'x86_64'}):
+            with self.assertRaisesRegex(ValueError,'do not match'): products.main()
+
     def test_traversal_and_external_links_are_rejected(self):
         for name, link in [('../outside', None), ('.build/link','../../outside'),('.build/link','/tmp/outside')]:
             with self.subTest(name=name,link=link):
@@ -122,6 +226,64 @@ class Transport(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Unsafe'): products.unpack('swiftpm',self.output)
 
 
+class Concurrency(unittest.TestCase):
+    """D66 mac-P1-1: only a pull request's own newer run cancels it; every other run (push,
+    nightly, manual) has a group of its own, so GitHub never cancels or replaces it while pending."""
+    def test_only_pull_requests_share_a_cancellable_group(self):
+        body = (ROOT/'.github/workflows/ci.yml').read_text()
+        group = re.search(r'^concurrency:\n  group: (.+)\n  cancel-in-progress: (.+)$', body, re.M)
+        self.assertIsNotNone(group)
+        self.assertIn("github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)", group.group(1))
+        self.assertIn("format('run-{0}', github.run_id)", group.group(1), 'non-PR runs need a unique group, not the commit')
+        self.assertNotIn('github.sha', group.group(1))
+        self.assertEqual(group.group(2).strip(), "${{ github.event_name == 'pull_request' }}")
+class ProductDownloads(unittest.TestCase):
+    """D66 mac-P0-4: the products action downloads strictly and retries an incomplete product
+    once; its shell steps run here with a stub python3 standing in for ci-products.py."""
+    ACTION = (ROOT/'.github/actions/ci-products/action.yml').read_text()
+    KINDS = ['swiftpm','assets','parakeet','runtime','debug','release']
+
+    def script(self, marker):
+        lines = self.ACTION.split('\n')
+        start = next(i for i,line in enumerate(lines) if marker in line)
+        run = next(i for i in range(start,len(lines)) if lines[i].strip() == 'run: |')
+        body = []
+        for line in lines[run+1:]:
+            if line.strip() and not line.startswith(' '*8): break
+            body.append(line[8:])
+        return '\n'.join(body)
+
+    def run_step(self, marker, statuses, env):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder); stub = folder/'python3'
+            stub.write_text('#!/bin/sh\n' + ''.join(f'[ "$3" = {kind} ] && exit {code}\n' for kind,code in statuses.items()) + 'exit 0\n')
+            stub.chmod(0o755); output = folder/'output'; output.write_text('')
+            result = subprocess.run(['bash','-e','-c',self.script(marker)],cwd=folder,capture_output=True,text=True,
+                                    env={**os.environ,'PATH':f'{folder}:{os.environ["PATH"]}','GITHUB_OUTPUT':str(output),**env})
+            return result, output.read_text()
+
+    def test_downloads_are_strict_and_each_retried_at_most_once(self):
+        self.assertNotIn('continue-on-error', self.ACTION)
+        for kind in self.KINDS:
+            with self.subTest(kind=kind):
+                self.assertEqual(self.ACTION.count(f"if: inputs.{kind} == 'true'"), 2)
+                self.assertEqual(self.ACTION.count(f"contains(steps.verify.outputs.retry, ' {kind} ')"), 1)
+
+    def test_only_an_incomplete_product_is_downloaded_again_with_a_warning(self):
+        env = {f'RESTORE_{kind.upper()}':'true' for kind in self.KINDS}
+        result, output = self.run_step('- id: verify', {'debug':75}, env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('retry= debug ', output); self.assertIn('::warning::CI product debug', result.stdout)
+        result, _ = self.run_step('- id: verify', {'debug':1}, env)
+        self.assertNotEqual(result.returncode, 0, 'any other mismatch fails at once')
+
+    def test_a_second_incomplete_download_fails_the_job(self):
+        result, _ = self.run_step("- if: steps.verify.outputs.retry != ' '", {'debug':75}, {'RETRY':' debug '})
+        self.assertNotEqual(result.returncode, 0)
+        result, _ = self.run_step("- if: steps.verify.outputs.retry != ' '", {}, {'RETRY':' debug '})
+        self.assertEqual(result.returncode, 0)
+
+
 class ParakeetCoverage(unittest.TestCase):
     def test_runtime_and_service_changes_recheck_all_app_consumers(self):
         for name in ['Parakeet/model-manifest.json','ModelDownloads/Service.swift']:
@@ -130,8 +292,45 @@ class ParakeetCoverage(unittest.TestCase):
     def test_optional_golden_weights_do_not_enter_legacy_or_shipped_products(self):
         self.assertEqual(products.PRODUCTS['assets'],['build/Whistle','build/Opus'])
         self.assertEqual(products.PRODUCTS['parakeet'],['build/Parakeet','build/ParakeetModel'])
+        self.assertEqual(products.PRODUCTS['runtime'],['build/Parakeet'])
         self.assertNotIn('build/ParakeetModel',products.PRODUCTS['debug'])
         self.assertNotIn('build/ParakeetModel',products.PRODUCTS['release'])
+
+
+class ReleaseOffTheCriticalPath(unittest.TestCase):
+    """D66 mac-P2-2: the Release app builds in its own job after the producer; only packaging and
+    the Parakeet checks wait for it, so the Debug and SwiftPM consumers start without it."""
+    WORKFLOWS = ROOT/'.github/workflows'
+
+    def test_the_producer_no_longer_builds_release(self):
+        producer = (self.WORKFLOWS/'ci-build.yml').read_text()
+        self.assertNotIn('-configuration Release', producer)
+        self.assertNotIn('ci-release', producer)
+        self.assertIn('pack runtime', producer)
+        release = (self.WORKFLOWS/'ci-build-release.yml').read_text()
+        self.assertIn('-configuration Release', release)
+        self.assertIn('pack release', release)
+        self.assertIn('scripts/package-release.py', release)
+        self.assertIn('name: Cassini-${{ github.sha }}', release)
+        self.assertIn("assets: 'true'", release); self.assertIn("runtime: 'true'", release)
+
+    def test_only_packaging_and_parakeet_wait_for_the_release_build(self):
+        ci = (self.WORKFLOWS/'ci.yml').read_text()
+        jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n',1)[1], re.M | re.S))
+        self.assertIn('needs: [build]', jobs['build_release'])
+        self.assertIn('uses: ./.github/workflows/ci-build-release.yml', jobs['build_release'])
+        waiting = {name for name, body in jobs.items() if 'build_release' in body and name != 'build_release'}
+        self.assertEqual(waiting, {'parakeet'})
+        self.assertIn("needs.build_release.result == 'success'", jobs['parakeet'])
+        for workflow in self.WORKFLOWS.glob('*.yml'):
+            with self.subTest(workflow=workflow.name):
+                restores = "release: 'true'" in workflow.read_text()
+                self.assertEqual(restores, workflow.name == 'ux-parakeet.yml')
+                self.assertEqual('package-release.py' in workflow.read_text(),
+                                 workflow.name in ('ci-build-release.yml', 'release.yml'))
+        standalone = (self.WORKFLOWS/'ux-parakeet.yml').read_text()
+        self.assertIn('uses: ./.github/workflows/ci-build-release.yml', standalone)
+        self.assertIn('needs: [build, release]', standalone)
 
 
 class Measurements(unittest.TestCase):

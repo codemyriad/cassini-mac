@@ -21,7 +21,7 @@ public enum SessionComposition {
         public var errorDescription: String? { CocoaError(.fileReadCorruptFile).localizedDescription }
     }
 
-    public static func make(tracks: [LibraryAudioTrack]) async throws -> SessionTimeline {
+    public static func make(tracks: [LibraryAudioTrack], ownership: OthersOwnership? = nil) async throws -> SessionTimeline {
         guard !tracks.isEmpty else { throw Failure.noAudio }
         let composition = AVMutableComposition()
         let storage = PlaybackStorage()
@@ -42,10 +42,27 @@ public enum SessionComposition {
             let range = try await input.load(.timeRange)
             guard range.duration.isNumeric else { throw Failure.unreadableAudio }
             if range.duration == .zero { composition.removeTrack(output); continue }
-            // A nanosecond time base retains fractional millisecond offsets and
-            // stays safely within Int64 across the protocol's one-day bound.
-            let start = CMTime(seconds: offset / 1000, preferredTimescale: 1_000_000_000)
-            try output.insertTimeRange(range, of: input, at: start)
+            // D55 (M9): the one placement, at this track's own rate (an exact CMTime timescale).
+            let natural = try await input.load(.naturalTimeScale)
+            let rate = Int32(clamping: source.sampleRate ?? Int(natural))
+            guard rate > 0 else { throw Failure.unreadableAudio }
+            func at(_ ms: Double) -> Int64 { TrackPlacement.frame(ms: ms, rate: Int(rate)) }
+            let first = at(offset)
+            let start = CMTime(value: first, timescale: rate)
+            if let ownership {
+                // D52: insert only the half-open ranges this source owns.
+                let end = offset + range.duration.seconds*1000
+                let owned = ownership.owned(kind:source.sourceKind,startMs:offset,endMs:end)
+                for (a,b) in owned {
+                    let from = CMTime(value:at(a) - first,timescale:rate) + range.start
+                    let length = CMTime(value:at(b) - at(a),timescale:rate)
+                    guard length > .zero else { continue }
+                    try output.insertTimeRange(CMTimeRange(start:from,duration:length),of:input,at:CMTime(value:at(a),timescale:rate))
+                }
+                if owned.isEmpty { composition.removeTrack(output); continue }
+            } else {
+                try output.insertTimeRange(range, of: input, at: start)
+            }
             sources += 1
         }
         try Task.checkCancellation()

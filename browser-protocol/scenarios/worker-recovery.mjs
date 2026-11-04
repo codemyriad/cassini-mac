@@ -18,7 +18,8 @@ export async function stopRecordingWorker(context, meetingPage, extensionId) {
 }
 
 // Shared by both app adapters; the meeting page must already have an audible generated source.
-export async function workerDeathDuringRecording({ context, meetingPage, popup, extensionId, mode = 'tracks' }) {
+// With library, the host's meeting must stay inside that private test Library.
+export async function workerDeathDuringRecording({ context, meetingPage, popup, extensionId, mode = 'tracks', library }) {
   const status = () => popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   await popup.click(mode === 'tracks' ? '#tracks' : '#tab');
   const deadline = Date.now() + 20000;
@@ -26,6 +27,7 @@ export async function workerDeathDuringRecording({ context, meetingPage, popup, 
   while (true) {
     before = await status();
     if (before.path && before.recording && before.tracks) {
+      if (library) assert.ok(path.resolve(before.path).startsWith(path.resolve(library) + path.sep), `host wrote outside its test Library: ${before.path}`);
       metadata = JSON.parse(await readFile(path.join(before.path, 'session.json')));
       const track = metadata.tracks[0];
       if (track) {
@@ -48,6 +50,13 @@ export async function workerDeathDuringRecording({ context, meetingPage, popup, 
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.equal(after.path, before.path);
+  if (before.callGeneration) {
+    const restored = await popup.evaluate(async tabId => {
+      const value = await chrome.storage.session.get('cassiniCallGenerations');
+      return value.cassiniCallGenerations?.find(row => row.tabId === tabId)?.generation;
+    }, before.tabId);
+    assert.equal(restored, before.callGeneration, 'worker restart changed the retained call identity');
+  }
   assert.equal(await popup.evaluate(() => chrome.action.getBadgeText({})), '');
   assert.ok(metadata.tracks.some(track => track.frames > track.sampleRate * 4), 'audio accepted before worker death survived');
   const retained = await Promise.all(metadata.tracks.map(track => readFile(path.join(before.path, track.file))));

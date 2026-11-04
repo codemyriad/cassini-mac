@@ -16,7 +16,7 @@ async function twoMeetings() {
 test('independent capability starts two tabs, routes packets and stops only one', async () => {
   const app = await twoMeetings();
   try {
-    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1']);
+    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1', 'page-state-v1', 'multi-stream-v1', 'resume-capture-v1', 'heartbeat-v1']);
     assert.equal((await app.command(command('one','start',2,{captureLocal:false,microphone:true}))).ok,true);
     const second = await app.command(command('two','start',3,{captureLocal:false,microphone:false}));
     assert.equal(second.ok,true);assert.equal(app.audio.length,2);
@@ -24,9 +24,11 @@ test('independent capability starts two tabs, routes packets and stops only one'
     assert.equal(app.audio[0].sent[0].microphone,true);assert.equal(app.audio[1].sent[0].microphone,false);
     assert.ok(app.audio.every(port=>port.sent[0].independent && Number.isSafeInteger(port.sent[0].timelineOriginMs)));
     assert.ok(app.pages.every(frame=>frame.sent.find(m=>m.type==='start').captureLocal===false));
-    const packet={type:'audio',id:'opaque',pcm:'AA==',frames:1};
+    app.pages[1].onMessage.emit({type:'packet',request:0,packet:{type:'track',id:'opaque',kind:'remote',sampleRate:48000,channels:1}});
+    await until(()=>app.pages[1].sent.some(m=>m.type==='ack'&&m.request===0));
+    const packet={type:'audio',id:'opaque',pcm:'AAA=',sequence:0,offsetMs:0};
     app.pages[1].onMessage.emit({type:'packet',request:1,packet});
-    await until(()=>app.audio[1].sent.some(m=>m.id==='opaque'));
+    await until(()=>app.audio[1].sent.some(m=>m.type==='audio'&&m.id==='opaque'));
     assert.ok(!app.audio[0].sent.some(m=>m.id==='opaque'));
     const stopped=await app.command(command('stop-one','stop',2));
     assert.equal(stopped.ok,true);assert.equal(stopped.status.recording,false);
@@ -260,7 +262,12 @@ for(const vector of autoStartCases)test('desktop manual vector: '+vector.name,as
     assert.deepEqual(vector.capabilities,expectedCapabilities,'vectors use a real compatible transport hello');
     app.pages[0].onMessage.emit({type:'discovery',sourceCount:vector.meeting.sourceCount,heard:vector.meeting.heard});
     const result=await app.command(command('vector-manual','start',vector.meeting.tabId));
-    assert.equal(result.ok,vector.expect.manual,vector.name);
+    // D52.5: `recordings` live in the app's registry, which the extension never
+    // sees. A seeded same-call system/lost recording makes the app's Record all
+    // skip the row (expect.manual false), but an explicit Start that does reach
+    // the extension is still accepted for a tab with sources (R67 after Stop).
+    const wireManual=vector.recordings?vector.meeting.sourceCount>0:vector.expect.manual;
+    assert.equal(result.ok,wireManual,vector.name);
     if(result.ok)await app.command(command('vector-stop','stop',vector.meeting.tabId));
   } finally {app.close();}
 });

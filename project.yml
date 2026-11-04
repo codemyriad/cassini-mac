@@ -44,6 +44,8 @@ targets:
       - path: Cassini/Resources/Licenses
         type: folder
         buildPhase: resources
+      - path: Cassini/Resources/Localization
+        buildPhase: resources
       - path: Cassini/Resources/UX
         type: folder
         buildPhase: resources
@@ -148,6 +150,7 @@ targets:
         CFBundleDisplayName: Cassini talk
         CassiniStoreListingPublic: "$(CASSINI_STORE_LISTING_PUBLIC)"
         CFBundleIconName: AppIcon
+        CFBundleLocalizations: [en, it, fr, es, pt-BR, pt-PT]
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
@@ -318,6 +321,9 @@ targets:
     dependencies:
       - package: CassiniKit
         product: CassiniKit
+      # D50: the preview reads the shared six-language catalog.
+      - package: CassiniKit
+        product: CassiniLibrary
       - sdk: Quartz.framework
     info:
       path: QuickLook/Info.plist

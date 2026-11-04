@@ -13,8 +13,8 @@ import Testing
     @Test func wallTimesRespectTheLocaleWhilePlaybackPositionsStayDurations() throws {
         let zone = try #require(TimeZone(secondsFromGMT:0))
         let date = Date(timeIntervalSince1970:13 * 3600 + 5 * 60)
-        let british = LibraryFormat(timeZone:zone,now:date,locale:Locale(identifier:"en_GB"))
-        let american = LibraryFormat(timeZone:zone,now:date,locale:Locale(identifier:"en_US"))
+        let british = LibraryFormat(timeZone:zone,now:date,locale:Locale(identifier:"en_GB"),language:.en)
+        let american = LibraryFormat(timeZone:zone,now:date,locale:Locale(identifier:"en_US"),language:.en)
         #expect(british.rowTime(date) == "13:05")
         #expect(american.rowTime(date).contains("1:05"))
         #expect(american.rowTime(date).contains("PM"))

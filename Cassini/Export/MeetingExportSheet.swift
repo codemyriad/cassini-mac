@@ -50,6 +50,18 @@ struct MeetingExportSheet: View {
                     .accessibilityIdentifier("export-choose-folder")
                     .disabled(coordinator.working)
             }.padding(14).background(LibraryTheme.chip.opacity(0.65),in:RoundedRectangle(cornerRadius:7))
+            if let failure = coordinator.failure {
+                HStack(alignment:.firstTextBaseline,spacing:10) {
+                    Image(systemName:"exclamationmark.triangle.fill").accessibilityHidden(true)
+                    Text(UXText.text(failure.line)).fixedSize(horizontal:false,vertical:true)
+                        .frame(maxWidth:.infinity,alignment:.leading)
+                    if failure.retries {
+                        Button(UXText.text("common.tryAgain")) { coordinator.perform() }.disabled(coordinator.working)
+                            .accessibilityIdentifier("export-try-again")
+                    }
+                }.padding(12).foregroundStyle(LibraryTheme.amber).background(LibraryTheme.amberTint,in:RoundedRectangle(cornerRadius:7))
+                    .accessibilityElement(children:.contain).accessibilityIdentifier("export-failed")
+            }
             HStack(spacing:10) {
                 Spacer()
                 if coordinator.working { ProgressView().controlSize(.small) }
@@ -83,9 +95,8 @@ struct MeetingExportSheet: View {
         let names = meeting.speakers.filter { $0.provenance == .recognised }.map(\.displayName)
         if names.isEmpty { return Text(UXText.text("export.speakerNames.body.none")) }
         if names.count == 1 { return template("export.speakerNames.body",token:"name",value:Text(names[0]).fontWeight(.semibold)) }
-        let formatter = ListFormatter(); formatter.locale = Locale(identifier:"en_GB")
         let tokens = names.indices.map { "\u{F0000}\($0)\u{F0001}" }
-        var remaining = formatter.string(from:tokens) ?? tokens.joined(separator:", "), result = Text("")
+        var remaining = LibraryFormat(locale:UXText.locale,language:UXText.language).list(tokens), result = Text("")
         for (index,token) in tokens.enumerated() {
             if let range = remaining.range(of:token) {
                 result = result + Text(String(remaining[..<range.lowerBound])) + Text(names[index]).fontWeight(.semibold)
