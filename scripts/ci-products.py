@@ -17,6 +17,8 @@ PRODUCTS = {
     'swiftpm': ['.build'],
     'assets': ['build/Whistle', 'build/Opus'],
     'parakeet': ['build/Parakeet', 'build/ParakeetModel'],
+    # The Parakeet runtime alone (no model), for the Release build (D66 mac-P2-2).
+    'runtime': ['build/Parakeet'],
     'debug': ['build/Build/Products/Debug', 'build/Build/Products'],
     'release': ['build/Build/Products/Release'],
 }

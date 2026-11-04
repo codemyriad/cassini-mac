@@ -10,6 +10,9 @@ inputs:
   parakeet:
     default: 'false'
     description: Optional Parakeet runtime and golden model, never included in shipped products
+  runtime:
+    default: 'false'
+    description: Pinned Parakeet runtime alone, without the optional model
   debug:
     default: 'false'
     description: Universal signed app and UI tests
@@ -44,6 +47,11 @@ runs:
         name: ci-parakeet
         path: build/ci-products
     - uses: actions/download-artifact@v5
+      if: inputs.runtime == 'true'
+      with:
+        name: ci-runtime
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
       if: inputs.debug == 'true'
       with:
         name: ci-debug
@@ -59,11 +67,12 @@ runs:
         RESTORE_SWIFTPM: ${{ inputs.swiftpm }}
         RESTORE_ASSETS: ${{ inputs.assets }}
         RESTORE_PARAKEET: ${{ inputs.parakeet }}
+        RESTORE_RUNTIME: ${{ inputs.runtime }}
         RESTORE_DEBUG: ${{ inputs.debug }}
         RESTORE_RELEASE: ${{ inputs.release }}
       run: |
         retry=" "
-        for kind in swiftpm assets parakeet debug release; do
+        for kind in swiftpm assets parakeet runtime debug release; do
           flag="RESTORE_$(echo "$kind" | tr '[:lower:]' '[:upper:]')"
           [ "${!flag}" = true ] || continue
           status=0; python3 scripts/ci-products.py unpack "$kind" build/ci-products || status=$?
@@ -87,6 +96,11 @@ runs:
       if: inputs.parakeet == 'true' && contains(steps.verify.outputs.retry, ' parakeet ')
       with:
         name: ci-parakeet
+        path: build/ci-products
+    - uses: actions/download-artifact@v5
+      if: inputs.runtime == 'true' && contains(steps.verify.outputs.retry, ' runtime ')
+      with:
+        name: ci-runtime
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.debug == 'true' && contains(steps.verify.outputs.retry, ' debug ')
