@@ -112,6 +112,73 @@ final class HeldStartTests: XCTestCase {
         XCTAssertEqual(state.settleHeldStarts(shutdown:true).map { [$0.requestID,$0.failure ?? ""] },[[second.id,"disconnected"]])
     }
 
+    /// #138 review: the extension may publish the capture's status before the Start's result,
+    /// which binds the capture (and drops the unbound Start). Either way a user Stop during the
+    /// hold ends it quietly, also when the restarted link then reports the call idle.
+    func testAUserStopWhileHeldEndsItQuietlyWhicheverArrivedFirst() throws {
+        for statusFirst in [false,true] {
+            for stopsOne in [false,true] {
+                let clock = HeldClock(); var state = registry(clock)
+                let old = try ready(&state)
+                let start = try state.start(.init(peer:old,tabID:2),microphone:true)
+                if statusFirst { try send(status(capture:"capture-1"),&state,old) }
+                state.disconnect(old,holding:[start.id])
+                if stopsOne { state.rememberUserStop(key:.init(peer:old,tabID:2),captureID:"capture-1") }
+                else { _ = state.stopAll(userInitiated:true) }
+                _ = try ready(&state) // The restarted worker: the call is idle, the user stopped it.
+                let settled = state.settleHeldStarts()
+                let label = "status first \(statusFirst), \(stopsOne ? "that capture's Stop" : "Stop All")"
+                XCTAssertEqual(settled.map(\.requestID),[start.id],label)
+                XCTAssertEqual(settled.first?.userStopped,true,label); XCTAssertNil(settled.first?.failure,label)
+                XCTAssertEqual(state.heldStartCount,0,label)
+                clock.advance(BrowserControlRegistry.heldStartGrace)
+                XCTAssertTrue(state.settleHeldStarts().isEmpty,"\(label): no failure at the deadline")
+            }
+        }
+    }
+
+    /// The same over real pipes: status before the (lost) result, link closes, the user stops,
+    /// the restarted link reports the call idle. The app hears one quiet end, never a failure.
+    func testTheServiceEndsAHeldStartQuietlyAfterAUserStopWhenStatusCameFirst() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniHeldStart-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at:root) }
+        let completions = Completions(), boundOnFirst = Armed(), goneAfterStart = Armed()
+        let bound = expectation(description:"capture status bound"), gone = expectation(description:"first link gone")
+        let ended = expectation(description:"held Start ended")
+        bound.assertForOverFulfill = false; gone.assertForOverFulfill = false; ended.assertForOverFulfill = false
+        let service = BrowserControlService(changed:{ peers in
+            if peers.contains(where:{ $0.captures.contains { $0.captureID == "capture-1" } }) { boundOnFirst.fulfill() }
+            if peers.isEmpty { goneAfterStart.fulfill() }
+        },completed:{ outcome,automatic in completions.append(outcome,automatic); ended.fulfill() })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        func open() throws -> PipeEndpoint {
+            let link = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
+            try link.send(JSONSerialization.data(withJSONObject:["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"]]))
+            try link.send(JSONSerialization.data(withJSONObject:meetings("call-A")))
+            return link
+        }
+        var first: PipeEndpoint? = try open()
+        try XCTUnwrap(first).send(JSONSerialization.data(withJSONObject:status()))
+        guard let data = try XCTUnwrap(first).receive(deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000) else { throw BrowserIPCError.closed }
+        XCTAssertEqual(try JSONParser.parse(data)["action"]?.string,"start")
+        boundOnFirst.arm(bound)
+        try XCTUnwrap(first).send(JSONSerialization.data(withJSONObject:status(capture:"capture-1")))
+        wait(for:[bound],timeout:3)
+        goneAfterStart.arm(gone)
+        first = nil // The worker restarts before the Start's result.
+        wait(for:[gone],timeout:3)
+        service.stopRecordings()
+        let second = try open()
+        try second.send(JSONSerialization.data(withJSONObject:status()))
+        wait(for:[ended],timeout:3)
+        XCTAssertEqual(completions.all.count,1)
+        XCTAssertEqual(completions.all.first?.0.userStopped,true)
+        XCTAssertNil(completions.all.first?.0.failure)
+    }
+
     func testOnlyASentMultiStreamStartOnAClosedLinkIsHeld() throws {
         let clock = HeldClock(); var state = registry(clock)
         let older = try ready(&state,multiStream:false)

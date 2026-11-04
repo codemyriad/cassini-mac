@@ -405,7 +405,10 @@ public struct BrowserControlRegistry: Sendable {
                let instance = peer.peer.browserInstance, let generation = pending.callGeneration, heldStarts.count < 128 {
                 heldStarts[pending.request.id] = .init(request:pending.request,instance:instance,connectionOrder:peer.connectionOrder,
                                                        callGeneration:generation,deadline:clock()+Self.heldStartGrace,
-                                                       call:unboundStarts[pending.request.id]?.context.call)
+                                                       // From the request itself: the instance, tab and address it was issued
+                                                       // for. unboundStarts no longer has it once a status published before
+                                                       // the result has bound its capture (bindCaptures, same identity).
+                                                       call:pending.url.map { .init(instance:instance,tabID:pending.request.key.tabID,url:$0) })
                 held.insert(pending.request.id); continue
             }
             appendOutcome(.init(requestID:pending.request.id,key:pending.request.key,action:pending.request.action,ok:false,error:nil,failure:"disconnected",resume:pending.request.resume))
