@@ -13,6 +13,10 @@ struct AppCommands: Commands {
     private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
     var body: some Commands {
         let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
+        CommandGroup(after: .appInfo) {
+            Button(UXText.text("app.checkForUpdates")) { ApplicationUpdates.shared.checkForUpdates() }
+                .disabled(!ApplicationUpdates.shared.canCheckForUpdates)
+        }
         CommandGroup(replacing:.help) { }
         CommandGroup(replacing: .newItem) {
             Button(UXText.mac("menu.open")) { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)

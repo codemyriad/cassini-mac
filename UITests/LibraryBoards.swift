@@ -404,6 +404,10 @@ final class LibraryBoards: XCTestCase {
         let shortcutClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for:[shortcutClosed],timeout:5),.completed,app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
+        window.toolbars.buttons["Updates"].click()
+        let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
+        XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
+        XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)
         window.toolbars.buttons["Library"].click()
         XCTAssertTrue(window.buttons["settings-move-library"].waitForExistence(timeout:5))
         window.buttons["settings-move-library"].click()
@@ -968,7 +972,7 @@ final class LibraryBoards: XCTestCase {
         if extra.contains("--fixture-library-recording") || extra.contains("--fixture-library-rename"),
            !app.windows.firstMatch.waitForExistence(timeout: 2) {
             app.menuBars.menuBarItems["Window"].click()
-            app.menuBars.menuBarItems["Window"].menus.menuItems["Library"].click()
+            app.menuBars.menuBarItems["Window"].menus.menuItems["Cassini talk"].click()
         }
         return app
     }
@@ -976,6 +980,17 @@ final class LibraryBoards: XCTestCase {
         let app = try launch(name, fixture: fixture); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
+        // The custom toolbar hides the window title, so its AX label is empty.
+        // Window's own menu still exposes the actual NSWindow title.
+        app.menuBars.menuBarItems["Window"].click()
+        XCTAssertTrue(app.menuItems["Cassini talk"].exists, app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
+        let productMenu = app.menuBars.menuBarItems["Cassini talk"]
+        XCTAssertTrue(productMenu.exists, app.debugDescription)
+        productMenu.click()
+        XCTAssertTrue(app.menuItems["About Cassini talk"].exists, app.debugDescription)
+        XCTAssertTrue(app.menuItems["Check for Updates…"].exists, app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
         let expectedControl = name == "library" ? "preview-read-transcript" : "first-run-record"
         XCTAssertTrue(window.buttons[expectedControl].waitForExistence(timeout: 20), window.debugDescription)
         let exactFrame = NSPredicate { _, _ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }

@@ -73,10 +73,13 @@ import CassiniRecording
         let parent = LibraryLocationModel.shared.roots[0]
         Task {
             #if DEBUG
-            if RecordingFixture.enabled { await RecordingController.shared.start(parent:parent); return }
+            if RecordingFixture.enabled && !CaptureFixture.enabled { await RecordingController.shared.start(parent:parent); return }
             #endif
-            await CaptureNotifications.shared.authorize()
-            do { try await CaptureCollection.shared.record() } catch { /* Catalog failure banner owns presentation. */ }
+            // Notifications are optional. In particular, the first notification
+            // consent callback must never gate the user's recording request.
+            do {
+                try await CaptureCollection.shared.record()
+            } catch { /* Catalog failure banner owns presentation. */ }
         }
     }
 }

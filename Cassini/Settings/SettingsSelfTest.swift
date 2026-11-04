@@ -7,6 +7,7 @@ import CassiniRecording
 import Darwin
 import CryptoKit
 import CassiniKit
+import Sparkle
 
 /// Real app proof over private generated files/RAM inputs. No picker, desktop
 /// automation, user Library or real capture device is involved.
@@ -180,6 +181,23 @@ import CassiniKit
             let noticesRoot = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsNotices-" + id.uuidString)
             defer { try? FileManager.default.removeItem(at:noticesRoot) }
             let noticesLabel = UXText.text("about.modelNotices")
+            // A genuine Sparkle preference binding, without starting its
+            // scheduler, presenting permission prompts or contacting a feed.
+            let updaterController = SPUStandardUpdaterController(startingUpdater:false,updaterDelegate:nil,userDriverDelegate:nil)
+            let updates = ApplicationUpdates.fixture(updaterController)
+            try check(updates.activity.contains(.recording) && updates.activity.contains(.transcription),"Real capture and queue activity protect updates")
+            try await UpdateDeferralSelfTest.run()
+            let previousAutomaticChecks = updaterController.updater.automaticallyChecksForUpdates
+            defer { updaterController.updater.automaticallyChecksForUpdates = previousAutomaticChecks }
+            try check(updates.available && !updates.canCheckForUpdates,"Update settings bind without starting an update check")
+            updates.automaticChecks = !previousAutomaticChecks
+            try check(updaterController.updater.automaticallyChecksForUpdates == !previousAutomaticChecks,"Settings writes Sparkle's own automatic-check preference")
+            updaterController.updater.automaticallyChecksForUpdates = previousAutomaticChecks
+            try await wait { updates.automaticChecks == previousAutomaticChecks }
+            let bundledCredits = ModelNotices.credits(appData:noticesRoot).string
+            try check([UXText.text("app.name"),"Whistle","Silero VAD","ONNX Runtime","sherpa-onnx","Zstandard","Sparkle"].allSatisfy { bundledCredits.contains($0) },"About credits name the app and bundled projects")
+            try check(!bundledCredits.contains(".txt") && !bundledCredits.contains("/"),"About credits display project names rather than packaging paths")
+            try check(Bundle.main.object(forInfoDictionaryKey:"NSHumanReadableCopyright") as? String == "© 2026 Codemyriad OÜ","About copyright names Codemyriad OÜ")
             try check(!ModelNotices.credits(appData:noticesRoot).string.contains(noticesLabel),"no downloaded-model label before a download")
             let notice = noticesRoot.appendingPathComponent("models/fixture-model/" + String(repeating:"a",count:64) + "/NOTICE.txt")
             try FileManager.default.createDirectory(at:notice.deletingLastPathComponent(),withIntermediateDirectories:true)
@@ -198,7 +216,7 @@ import CassiniKit
             queue.beginShutdown(); await queue.waitForShutdown(); await recorder.stopAndWait()
             let persisted = try LibraryLocation.read(file:config)
             try check(persisted.pendingMoves.count == 2 && !persisted.previousPaths.isEmpty,"pending move intent survives Quit")
-            let report: [String:Any] = ["conditionalDownloadedNotices":true,"aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
+            let report: [String:Any] = ["updateDefersRecordingSavingScanningTranscription":true,"updateDismissesInstallUIAndShowsFooter":true,"updateContinuationRunsOnce":true,"quitNeverRelaunchesPendingUpdate":true,"conditionalDownloadedNotices":true,"aboutNoticesReachable":true,"firstCaptureCreatesLibrary":true,"settingsPreferences":true,"realShortcutReplacement":true,"shortcutConflictRetainsOld":true,
                                       "closedMeetingMovedAtomically":true,"partialFailureRetainsOriginal":true,"liveFolderDeferred":true,"pendingMovesPersisted":true,
                                       "activeInferencePathPreserved":true,"queuedMetadataMovedAfterPreparation":true,"importIntentResumesAfterMove":true,"retainedSelectionUsesFolder":true,"searchReindexed":true,"hostReadsLocation":true,"producerBytesPreserved":true,"audioDevicesOpened":false]
             output = try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])
@@ -225,31 +243,16 @@ import CassiniKit
             try await wait { !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.location.pendingMoves.isEmpty }
             for name in names { try check(FileManager.default.fileExists(atPath:destination.appendingPathComponent(name + "/session.json").path),"idle folder moved after relaunch") }
             try check(LibraryLocationModel.shared.location.previousPaths.isEmpty,"old readers retired after all moves finish")
-            // D66 mac-P0-3: an intermittent EPERM here is not explained yet (the moves are done:
-            // `busy` is false above). removeReporting and test-settings-app.py record what holds
-            // the folder on the next failure.
+            // D66 mac-P0-3: shut the move coordinator down first; if the proof still fails,
+            // test-settings-app.py records what holds the destination.
             LibraryMoveCoordinator.shared.beginShutdown(); LibraryStore.shared.stop()
-            for url in [original,destination,config.deletingLastPathComponent()] { try removeReporting(url) }
-            let report = ["liveFolderMovedAfterStop":true,"pendingMovesResumedAfterRelaunch":true,"audioDevicesOpened":false]
+            // A security-scoped directory grant permits its contents, not
+            // deleting the granted root through its parent. The outer fixture
+            // harness owns cleanup after this sandboxed process exits.
+            let report: [String:Any] = ["liveFolderMovedAfterStop":true,"pendingMovesResumedAfterRelaunch":true,"audioDevicesOpened":false,
+                "cleanupPaths":[original.deletingLastPathComponent().path,destination.path,config.deletingLastPathComponent().path]]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch { FileHandle.standardError.write(Data("Move resume proof failed: \(error)\n".utf8)); exit(1) }
-    }
-    /// Strict cleanup: a folder that still can't be removed after shutdown means something
-    /// wrote into the Library after Quit, so its remaining entries (POSIX mode and flags) go to
-    /// stderr before the proof fails.
-    private static func removeReporting(_ url: URL) throws {
-        do { try FileManager.default.removeItem(at:url) }
-        catch {
-            var lines = ["Cleanup could not remove \(url.path): \(error)"]
-            let entries = FileManager.default.enumerator(at:url,includingPropertiesForKeys:nil)?.compactMap { $0 as? URL } ?? []
-            for entry in [url] + entries.prefix(200) {
-                var info = stat()
-                guard lstat(entry.path,&info) == 0 else { lines.append("  \(entry.path): lstat errno \(errno)"); continue }
-                lines.append("  \(entry.path) mode \(String(info.st_mode,radix:8)) flags 0x\(String(info.st_flags,radix:16)) uid \(info.st_uid)")
-            }
-            FileHandle.standardError.write(Data((lines.joined(separator:"\n") + "\n").utf8))
-            throw error
-        }
     }
     private static func require<T>(_ value: T?) throws -> T { guard let value else { throw Failure.check("missing value") }; return value }
     private static func wait(_ condition: () -> Bool) async throws {

@@ -2,8 +2,8 @@
 import AppKit
 import CassiniModels
 
-/// Keep the native localized About menu/panel. Document links use their actual
-/// filenames; no new prose or model rows are invented outside the catalog.
+/// Keep the native localized About panel, with readable project credits and
+/// links to the complete locally bundled licences and attribution notices.
 @MainActor enum ModelNotices {
     static func configureMenu() {
         guard let item = NSApp.mainMenu?.items.first?.submenu?.items.first(where:{ $0.action == #selector(NSApplication.orderFrontStandardAboutPanel(_:)) }) else { return }
@@ -21,8 +21,19 @@ import CassiniModels
     static var credits: NSAttributedString { credits(appData:SpeechModelController.appData) }
     static func credits(appData: URL) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        for file in files {
-            let name = file.path.contains("/models/") ? file.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent + "/NOTICE.txt" : file.pathComponents.suffix(2).joined(separator:"/")
+        // Project and licence names are proper names. Never expose packaging
+        // paths as credits in the standard About panel.
+        let projects: [(String,String,String?,String?)] = [
+            (UXText.text("app.name") + " · GPL-3.0-or-later","COPYING",nil,nil),
+            ("Whistle · Apache-2.0","NOTICE",nil,"Whistle"),
+            ("Silero VAD · MIT","Silero-LICENSE",nil,"Whistle"),
+            ("ONNX Runtime · MIT","ONNXRuntime-ThirdPartyNotices","txt","Whistle"),
+            ("sherpa-onnx · Apache-2.0","Sherpa-LICENSE",nil,"Parakeet"),
+            ("Zstandard · BSD-3-Clause","Zstandard-LICENSE","txt","Licenses"),
+            ("Sparkle · MIT","Sparkle-LICENSE","txt","Licenses")
+        ]
+        for (name,resource,extensionName,folder) in projects {
+            guard let file = Bundle.main.url(forResource:resource,withExtension:extensionName,subdirectory:folder) else { continue }
             text.append(NSAttributedString(string:name,attributes:[.link:file,.font:NSFont.systemFont(ofSize:12)]))
             text.append(NSAttributedString(string:"\n"))
         }

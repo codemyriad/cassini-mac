@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Pure files/XML and cryptographic CLI checks; no app/desktop/device execution."""
+import base64
+from datetime import datetime, timezone
+import importlib.util
+import io
+import json
+import plistlib
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import Mock
+import xml.etree.ElementTree as ET
+
+ROOT = Path(__file__).resolve().parent.parent
+spec = importlib.util.spec_from_file_location('release', ROOT/'scripts/release.py')
+release = importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
+
+class ReleaseTests(unittest.TestCase):
+    def testMissingNotesFailBeforeCredentialsOrBuild(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = SimpleNamespace(base_url=release.BASE_URL, version='1.0', build=2,
+                release_notes=root/'missing.html', output=root/'new-output')
+            empty=root/'empty.html'; empty.write_bytes(b'')
+            for notes in [None, root/'missing.html', empty]:
+                args.release_notes = notes
+                with patch.object(release, 'notary_credentials') as credentials:
+                    with self.assertRaises(ValueError): release.release(args)
+                credentials.assert_not_called()
+            self.assertFalse(args.output.exists())
+
+    def testApprovedLayoutAndConfigurableBase(self):
+        self.assertEqual(release.PRODUCT_NAME, 'Cassini talk')
+        spec = importlib.util.spec_from_file_location('companion_page', ROOT/'scripts/bundle-companion-page.py')
+        page = importlib.util.module_from_spec(spec); spec.loader.exec_module(page)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)/'Cassini.html'; page.bundle(output)
+            body = output.read_text()
+            self.assertIn('<title>'+release.PRODUCT_NAME+'</title>', body)
+            entries = json.loads((ROOT/'Cassini/Resources/UX/strings.json').read_text())['entries']
+            hint = next(e['en'] for e in entries if e['id'] == 'companion.local.extensionsPasteHint')
+            subject = next(e['en'] for e in entries if e['id'] == 'companion.local.extensionsCopied')
+            self.assertIn('<p class="address"><strong>'+subject+'</strong></p>', body)
+            self.assertIn('<p>'+hint+'</p>', body)
+            self.assertLess(body.index(subject), body.index(hint))
+            self.assertNotIn('{{', body)
+            self.assertIn("default-src 'none'", body)
+            self.assertEqual(page.render('<p>{{app.name}}</p>', [{'id':'app.name','en':'<a>&"'}]), '<p>&lt;a&gt;&amp;&quot;</p>')
+        info = plistlib.loads((ROOT/'Cassini/Info.plist').read_bytes())
+        self.assertIs(info.get('SUShowReleaseNotes', True), True)
+        for key in ['CFBundleName', 'CFBundleDisplayName']:
+            self.assertEqual(info[key], release.PRODUCT_NAME)
+        self.assertEqual(release.release_urls(release.BASE_URL+'/', '0.1.2'), dict(
+            base='https://cassini.talk/download/mac', feed='https://cassini.talk/download/mac/appcast.xml',
+            download='https://cassini.talk/download/mac/Cassini-talk-0.1.2.dmg', latest='https://cassini.talk/download/mac/Cassini-talk.dmg',
+            notes='https://cassini.talk/download/mac/notes/0.1.2.html'))
+        self.assertEqual(release.release_urls('https://fixture.example/other', '2.0')['feed'], 'https://fixture.example/other/appcast.xml')
+        for base in ['http://example.org/mac', 'https://u:p@example.org/mac', 'https://example.org/mac?x=1', 'https://example.org/../mac']:
+            with self.assertRaises(ValueError): release.release_urls(base, '1.0')
+        for version in ['../x', '1/2', '1', '1.0-beta', '١.٢']:
+            with self.assertRaises(ValueError): release.release_urls(release.BASE_URL, version)
+
+    def testDeveloperIDVerifierRejectsHiddenNotesAndRawPage(self):
+        spec = importlib.util.spec_from_file_location('developer_id_check', ROOT/'scripts/check-developer-id.py')
+        checker = importlib.util.module_from_spec(spec); spec.loader.exec_module(checker)
+        with tempfile.TemporaryDirectory() as temporary:
+            app = Path(temporary)/'Cassini talk.app'
+            resources = app/'Contents/Resources'; resources.mkdir(parents=True)
+            info = app/'Contents/Info.plist'
+            info.write_bytes(plistlib.dumps({'SUShowReleaseNotes':False}))
+            with self.assertRaisesRegex(AssertionError, 'release notes'):
+                checker.inspect(app)
+            info.write_bytes(plistlib.dumps({'SUShowReleaseNotes':True}))
+            (resources/'Cassini.html').write_text('<title>{{app.name}}</title>')
+            with self.assertRaisesRegex(AssertionError, 'Unrendered companion'):
+                checker.inspect(app)
+
+    def testPublicationOrderAndImmutableLocalCopies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            versioned = output/'Cassini-talk-1.0.dmg'; versioned.write_bytes(b'signed archive fixture')
+            release.copy_new(versioned, output/'Cassini-talk.dmg')
+            with self.assertRaises(FileExistsError): release.copy_new(versioned, output/'Cassini-talk.dmg')
+            (output/'notes').mkdir(); (output/'notes/1.0.html').write_text('<p>Notes</p>')
+            (output/'appcast.xml').write_bytes(b'<rss/>')
+            release.publication_plan(output, release.release_urls(release.BASE_URL, '1.0'), '1.0', 'A'*86+'==', notes=True)
+            plan = json.loads((output/'publication.json').read_text())
+            self.assertEqual([(s['action'], s.get('file')) for s in plan['steps']], [
+                ('upload','Cassini-talk-1.0.dmg'), ('verifyHTTPS',None), ('upload','Cassini-talk.dmg'),
+                ('upload','notes/1.0.html'), ('upload','appcast.xml')])
+            self.assertFalse(plan['steps'][0]['overwrite'])
+            self.assertEqual(plan['steps'][1]['bytes'], len(b'signed archive fixture'))
+            self.assertEqual(plan['steps'][1]['sha256'], release.sha256_file(versioned))
+            sums = dict(line.split('  ', 1)[::-1] for line in (output/'SHA256SUMS').read_text().splitlines())
+            self.assertEqual(sums['Cassini-talk-1.0.dmg'], sums['Cassini-talk.dmg'])
+            (output/'Cassini-talk.dmg').write_bytes(b'other bytes')
+            with self.assertRaises(ValueError):
+                release.publication_plan(output, release.release_urls(release.BASE_URL, '1.0'), '1.0', 'A'*86+'==')
+
+    def testOptionalNotesAreLinkedOnlyWhenPresent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary)/'Cassini-talk-1.0.dmg'; archive.write_bytes(b'fixture')
+            args = (archive, 'A'*86+'==', '1.0', 2, release.release_urls(release.BASE_URL, '1.0')['download'])
+            tag = 'channel/item/{'+release.SPARKLE+'}releaseNotesLink'
+            self.assertIsNone(ET.fromstring(release.appcast(*args)).find(tag))
+            notes = 'https://cassini.talk/download/mac/notes/1.0.html'
+            link = ET.fromstring(release.appcast(*args,release_notes_url=notes,release_notes_signature='B'*86+'==',release_notes_length=123)).find(tag)
+            self.assertEqual(link.text,notes)
+            self.assertEqual(link.attrib,{'{'+release.SPARKLE+'}edSignature':'B'*86+'==','{'+release.SPARKLE+'}length':'123'})
+            for signature,length in [(None,123),('bad',123),('B'*86+'==',None),('B'*86+'==',0),('B'*86+'==',True)]:
+                with self.assertRaises(ValueError):release.appcast(*args,release_notes_url=notes,release_notes_signature=signature,release_notes_length=length)
+
+    def testLinkedNotesAreSignedBeforeTheFeedAndTamperedHTMLIsRejected(self):
+        import subprocess
+        tools = ROOT/'.build/Sparkle/distribution/bin'
+        if not (tools/'sign_update').exists(): self.skipTest('Fetch pinned Sparkle tools before this cryptographic check')
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary); seed=folder/'test-seed'; public=folder/'test-public'
+            seed.write_text(base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')).decode()); seed.chmod(0o600)
+            public.write_text('11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=')
+            archive=folder/'Cassini-talk-1.0.dmg'; archive.write_bytes(b'signed archive fixture')
+            signature=release.run([tools/'sign_update','--ed-key-file',seed,'-p',archive]).decode().strip()
+            notes=folder/'notes/1.0.html'; notes.parent.mkdir()
+            original='<!doctype html>\r\n<p>Release notes: ✓</p>\r\n'.encode('utf-8'); notes.write_bytes(original)
+            urls=release.release_urls(release.BASE_URL,'1.0')
+            report=release.write_signed_appcast(folder,archive,signature,'1.0',2,urls,tools,seed,public)
+            feed=folder/'appcast.xml'; link=ET.fromstring(feed.read_bytes()).find('channel/item/{'+release.SPARKLE+'}releaseNotesLink')
+            actual_signature=link.attrib['{'+release.SPARKLE+'}edSignature']; length=int(link.attrib['{'+release.SPARKLE+'}length'])
+            self.assertEqual(notes.read_bytes(),original)
+            self.assertEqual(length,len(original)); self.assertEqual(actual_signature,report['edSignature'])
+            self.assertEqual(report['sha256'],release.sha256_file(notes)); self.assertEqual(link.text,urls['notes'])
+            release.verify_release_notes(notes,actual_signature,length,public)
+            # Sparkle verifies the finished feed including note attributes.
+            verify_feed=[tools/'sign_update','--verify','--ed-key-file',seed,feed]
+            release.run(verify_feed,timeout=180)
+            notes.write_bytes(original.replace(b'Release',b'Altered'))
+            release.run(verify_feed,timeout=180)  # Feed is still authentic.
+            with self.assertRaises(RuntimeError):release.verify_release_notes(notes,actual_signature,length,public)
+            notes.write_bytes(original+b'extra')
+            with self.assertRaises(ValueError):release.verify_release_notes(notes,actual_signature,length,public)
+            notes.write_bytes(original)
+            seed.unlink()  # Notes verification needs only the public key.
+            release.verify_release_notes(notes,actual_signature,length,public)
+
+    def testHTTPSRedirectCannotDowngrade(self):
+        from urllib.request import Request
+        request = Request('https://cassini.talk/download/mac/Cassini-talk-1.0.dmg')
+        with self.assertRaises(ValueError):
+            release.HTTPSRedirects().redirect_request(request, None, 302, 'Found', {}, 'http://example.org/archive')
+        redirected = release.HTTPSRedirects().redirect_request(request, None, 302, 'Found', {}, 'https://cdn.example.org/archive')
+        self.assertEqual(redirected.full_url, 'https://cdn.example.org/archive')
+
+    def testReadOnlyHTTPSVerificationUsesPublicKeyAndRejectsBadBytes(self):
+        import subprocess
+        tools = ROOT/'.build/Sparkle/distribution/bin/sign_update'
+        if not tools.exists(): self.skipTest('Fetch pinned Sparkle tools before this cryptographic check')
+        class Response(io.BytesIO):
+            status = 200
+            def geturl(self): return 'https://cassini.talk/download/mac/Cassini-talk-1.0.dmg'
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary); data = b'actual signed fixture bytes'
+            archive = folder/'Cassini-talk-1.0.dmg'; archive.write_bytes(data)
+            seed = folder/'seed'; public = folder/'public'
+            seed.write_text(base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')).decode()); seed.chmod(0o600)
+            public.write_text('11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=')
+            signature = subprocess.run([str(tools),'--ed-key-file',str(seed),'-p',str(archive)],capture_output=True,text=True,check=True).stdout.strip()
+            report = dict(version='1.0', baseURL=release.BASE_URL, bytes=len(data), sha256=release.sha256_file(archive), edSignature=signature)
+            (folder/'release.json').write_text(json.dumps(report))
+            opener = Mock(); opener.open.return_value = Response(data)
+            checked = release.verify_uploaded_download(folder, public, opener)
+            self.assertTrue(checked['edSignatureVerified'])
+            opener.open.assert_called_once_with('https://cassini.talk/download/mac/Cassini-talk-1.0.dmg', timeout=60)
+            # No private seed is needed by either verifier after signing.
+            seed.unlink()
+            for damaged in [data[:-1], b'x'+data[1:], data+b'extra']:
+                opener = Mock(); opener.open.return_value = Response(damaged)
+                with self.assertRaises(ValueError): release.verify_uploaded_download(folder, public, opener)
+            # Changing both local bytes and the report's hash still cannot
+            # launder them into a valid artifact without the Ed25519 signature.
+            archive.write_bytes(b'x'+data[1:]); report['sha256'] = release.sha256_file(archive)
+            (folder/'release.json').write_text(json.dumps(report)); opener = Mock()
+            with self.assertRaises(RuntimeError): release.verify_uploaded_download(folder, public, opener)
+            opener.open.assert_not_called()
+
+    def testGeneratedScreenshotLibrariesCannotEnterARelease(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for relative in ['UITests/Fixtures/Library', 'Cassini.app/Contents/Resources/Fixtures/Library']:
+                path = root/relative
+                release.reject_generated_library(path)
+                path.mkdir(parents=True)
+                with self.assertRaises(ValueError): release.reject_generated_library(path)
+                path.rmdir()
+                path.symlink_to(root/'missing')
+                with self.assertRaises(ValueError): release.reject_generated_library(path)
+
+    def testHTTPSOnlyWithoutEmbeddedCredentialsOrPlaceholders(self):
+        for url in ['http://example.org/appcast.xml','https://a:b@example.org/x','https://example.org/x#fragment',
+                    'https://example.org/PLACEHOLDER/x','https://updates.invalid/x','file:///tmp/x']:
+            with self.assertRaises(ValueError):release.https_url(url)
+        self.assertEqual(release.https_url('https://example.org/cassini/appcast.xml'),'https://example.org/cassini/appcast.xml')
+    def testNotaryTimeoutRetainsSubmissionIdWithoutReupload(self):
+        import subprocess, json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            report=Path(temporary)/'notary.json'
+            with patch.object(release,'run',side_effect=[b'{"id":"known-submission","status":"In Progress"}',subprocess.TimeoutExpired('notarytool',2800)]) as tool:
+                with self.assertRaises(subprocess.TimeoutExpired):release.submit_and_wait(Path('app.zip'),[],report)
+            self.assertEqual(json.loads(report.read_text())['id'],'known-submission')
+            self.assertEqual(tool.call_args_list[0].args[0][2],'submit')
+            self.assertEqual(tool.call_args_list[1].args[0][2:4],['wait','known-submission'])
+
+    def testAppcastUsesActualFileSizeEscapesAndBindsBuild(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            archive=Path(temporary)/'Cassini-talk.dmg';archive.write_bytes(b'12345')
+            data=release.appcast(archive,'A'*86+'==','0.1.2',42,'https://example.org/Cassini-talk.dmg?a=1&b=2',datetime(2026,10,30,tzinfo=timezone.utc))
+            root=ET.fromstring(data);item=root.find('channel/item');enclosure=item.find('enclosure')
+            self.assertEqual(root.find('channel/title').text, 'Cassini talk for Mac')
+            self.assertEqual(item.find('title').text, 'Cassini talk 0.1.2')
+            self.assertEqual(item.find('{'+release.SPARKLE+'}version').text,'42')
+            self.assertEqual(enclosure.attrib['length'],'5')
+            self.assertEqual(enclosure.attrib['url'],'https://example.org/Cassini-talk.dmg?a=1&b=2')
+            self.assertEqual(enclosure.attrib['{'+release.SPARKLE+'}edSignature'],'A'*86+'==')
+            self.assertEqual(item.find('{'+release.SPARKLE+'}minimumSystemVersion').text,'15.0')
+    def testMalformedSignatureRejected(self):
+        with self.assertRaises(ValueError):release.appcast(Path('/nonexistent'),'bad','1.0',1,'https://example.org/x')
+    def testSecretsRejectWorldReadableAndSymlink(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'private';path.write_text('not an actual key');path.chmod(0o644)
+            with self.assertRaises(ValueError):release.private_file(path)
+            path.chmod(0o600);self.assertEqual(release.private_file(path),path)
+            link=path.parent/'link';link.symlink_to(path)
+            with self.assertRaises(ValueError):release.private_file(link)
+    def testRFC8032SeedMustMatchEmbeddedPublicKey(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as temporary:
+            seed=Path(temporary)/'seed';public=Path(temporary)/'public'
+            seed.write_text(base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')).decode());seed.chmod(0o600)
+            public.write_text(base64.b64encode(bytes.fromhex('d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a')).decode())
+            command=['xcrun','swift',str(ROOT/'scripts/check-update-key.swift'),str(seed),str(public)]
+            self.assertEqual(subprocess.run(command,capture_output=True).returncode,0)
+            public.write_text(base64.b64encode(bytes(32)).decode())
+            self.assertNotEqual(subprocess.run(command,capture_output=True).returncode,0)
+
+    def testMalformedSeedRejectedBeforeUpstreamCanEchoIt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'key';path.write_text(base64.b64encode(b'short').decode());path.chmod(0o600)
+            with self.assertRaises(ValueError):release.verify_update_key(path)
+    def testToolFailureDoesNotRevealOutputOrArguments(self):
+        import subprocess
+        from unittest.mock import patch
+        with patch.object(release.subprocess,'run',return_value=subprocess.CompletedProcess([],1,b'secret-output',b'secret-error')):
+            with self.assertRaises(RuntimeError) as caught:release.run(['security','unlock-keychain','-p','secret-argument'])
+        self.assertNotIn('secret',str(caught.exception))
+    def testRealUpstreamEd25519VerificationAndTamperRejection(self):
+        import subprocess
+        tools=ROOT/'.build/Sparkle/distribution/bin/sign_update'
+        if not tools.exists():self.skipTest('Fetch pinned Sparkle tools before this cryptographic check')
+        # Test key only: never access the retained production update key.
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary);seed=folder/'seed';seed.write_text(base64.b64encode(bytes(range(32))).decode());seed.chmod(0o600)
+            data=folder/'archive';data.write_bytes(b'actual bytes to bind')
+            signed=subprocess.run([str(tools),'--ed-key-file',str(seed),'-p',str(data)],check=True,capture_output=True,text=True).stdout.strip()
+            command=[str(tools),'--verify','--ed-key-file',str(seed),str(data),signed]
+            self.assertEqual(subprocess.run(command,capture_output=True).returncode,0)
+            feed=folder/'appcast.xml'
+            feed.write_bytes(release.appcast(data,signed,'1.0',2,'https://example.org/Cassini-talk.dmg'))
+            subprocess.run([str(tools),'--ed-key-file',str(seed),str(feed)],check=True,capture_output=True)
+            verify_feed=[str(tools),'--verify','--ed-key-file',str(seed),str(feed)]
+            self.assertEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
+            feed.write_bytes(feed.read_bytes().replace(b'Cassini talk for Mac',b'Tampered title'))
+            self.assertNotEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
+            data.write_bytes(b'tampered bytes');self.assertNotEqual(subprocess.run(command,capture_output=True).returncode,0)
+
+CTRL_C_CHILD = r"""
+import runpy, subprocess, sys
+mode, script = sys.argv[1], sys.argv[2]
+sys.path.insert(0, str(__import__('pathlib').Path(script).parent))
+import safe_process
+def interrupted_cleanup(argv, **kwargs):
+    # Ctrl-C while subprocess is still cleaning up a timed-out child: KeyboardInterrupt
+    # raised inside the TimeoutExpired handler, so the TimeoutExpired (argv and all) is chained.
+    try:
+        raise subprocess.TimeoutExpired(argv, kwargs.get('timeout') or 30)
+    except subprocess.TimeoutExpired:
+        raise KeyboardInterrupt
+def fake(argv, **kwargs):
+    if argv[:2] == ['security', 'unlock-keychain']:
+        interrupted_cleanup(argv, **kwargs)
+    return subprocess.CompletedProcess(argv, 0, b'', b'')
+subprocess.run = fake
+if mode == 'escaped':
+    # The interrupt escapes the helper entirely; only the entry-point guard stands.
+    real = safe_process.run
+    def leaky(command, **kwargs):
+        argv = [str(part) for part in command]
+        if argv[:2] == ['security', 'unlock-keychain']:
+            interrupted_cleanup(argv, **kwargs)
+        return real(command, **kwargs)
+    safe_process.run = leaky
+sys.argv = [script, *sys.argv[3:]]
+runpy.run_path(script, run_name='__main__')
+"""
+
+
+class SecretArgvTests(unittest.TestCase):
+    def testCtrlCDuringATimedOutUnlockNeverPrintsTheKeychainPassword(self):
+        import os, subprocess, sys
+        password = 'kc-SENTINEL-'+'y'*40
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)/'home'; secrets = home/'.config/cassini/secrets'; secrets.mkdir(parents=True)
+            def private(name, data):
+                path = secrets/name; path.write_text(data); path.chmod(0o600); return path
+            private('cassini-signing-keychain.password', password)
+            private('cassini-signing.keychain-db', '')
+            private('sparkle-ed25519.key', base64.b64encode(bytes(32)).decode())
+            api = private('AuthKey_TEST.p8', 'not a real key')
+            notary = private('notary.json', json.dumps({'key': str(api), 'keyId': 'TEST1234', 'issuer': '0'*8+'-'+'0'*4+'-'+'0'*4+'-'+'0'*4+'-'+'0'*12}))
+            notes = Path(temporary)/'notes.html'; notes.write_text('<p>notes</p>')
+            for mode in ['helper', 'escaped']:
+                with self.subTest(mode=mode):
+                    result = subprocess.run([sys.executable, '-c', CTRL_C_CHILD, mode, str(ROOT/'scripts/release.py'),
+                        '--version', '0.1.0', '--build', '9', '--release-notes', str(notes), '--notary-config', str(notary),
+                        '--output', str(Path(temporary)/('out-'+mode))], capture_output=True, text=True, timeout=120,
+                        env=dict(os.environ, HOME=str(home)))
+                    output = result.stdout+result.stderr
+                    self.assertEqual(result.returncode, 130, output)
+                    self.assertNotIn('SENTINEL', output)
+                    self.assertNotIn('Traceback', output)
+                    self.assertNotIn('unlock-keychain -p', output)
+                    self.assertIn('Interrupted', result.stderr)
+                    self.assertFalse((Path(temporary)/('out-'+mode)).exists())
+
+    def testEverySecretBearingCallGoesThroughTheSharedHelper(self):
+        import re
+        # Scripts that put a secret on argv (keychain password, notary key, Sparkle seed path).
+        direct = re.compile(r'subprocess\.(run|Popen|call|check_call|check_output|getoutput|getstatusoutput)\(|os\.(system|popen|exec\w*|spawn\w*)\(')
+        for name in ['release.py', 'setup-signing-keychain.py']:
+            for number, line in enumerate((ROOT/'scripts'/name).read_text().splitlines(), 1):
+                if direct.search(line):
+                    # The one exception: xcodebuild's argv carries no secret and streams into build.log.
+                    self.assertTrue(name == 'release.py' and line.rstrip().endswith('# no-secret-argv') and "'xcodebuild'" not in line,
+                                    name+':'+str(number)+' calls a subprocess directly: '+line.strip())
+        self.assertIn('safe_process.guard(', (ROOT/'scripts/release.py').read_text())
+        self.assertIn('safe_process.guard(', (ROOT/'scripts/setup-signing-keychain.py').read_text())
+
+if __name__ == '__main__':unittest.main()

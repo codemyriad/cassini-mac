@@ -17,9 +17,14 @@ settings:
     OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
     CASSINI_APP_HARDENED_RUNTIME: YES
+    CASSINI_UPDATE_FEED: https://cassini.talk/download/mac/appcast.xml
+    CASSINI_UPDATES_ENABLED: NO
     SWIFT_STRICT_CONCURRENCY: targeted
     CASSINI_STORE_LISTING_PUBLIC: NO
 packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
   CassiniKit:
     path: .
 targets:
@@ -34,7 +39,7 @@ targets:
           - "Resources"
       - path: Cassini/Assets.xcassets
         buildPhase: resources
-      - path: Cassini/Resources/Cassini.html
+      - path: COPYING
         buildPhase: resources
       - path: Cassini/Resources/Licenses
         type: folder
@@ -48,6 +53,8 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
+      - package: Sparkle
+        product: Sparkle
       - package: CassiniKit
         product: CassiniKit
       - package: CassiniKit
@@ -92,6 +99,14 @@ targets:
         link: false
         embed: false
     postBuildScripts:
+      - name: Render offline companion paste hint
+        inputFiles:
+          - $(SRCROOT)/Cassini/Resources/Cassini.html
+          - $(SRCROOT)/Cassini/Resources/UX/strings.json
+          - $(SRCROOT)/scripts/bundle-companion-page.py
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html
+        script: python3 "$SRCROOT/scripts/bundle-companion-page.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cassini.html"
       - name: Bundle reviewed browser companion
         basedOnDependencyAnalysis: false
         script: python3 "$SRCROOT/scripts/bundle-browser-companion.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion"
@@ -116,11 +131,23 @@ targets:
       - name: Bundle pinned Parakeet runtime and worker
         script: bash "$SRCROOT/scripts/bundle-parakeet.sh"
         basedOnDependencyAnalysis: false
+      - name: Sign Sparkle nested helpers
+        script: bash "$SRCROOT/scripts/sign-sparkle.sh"
+        basedOnDependencyAnalysis: false
     info:
       path: Cassini/Info.plist
       properties:
-        CFBundleName: Cassini
-        CFBundleDisplayName: Cassini
+        SUFeedURL: "$(CASSINI_UPDATE_FEED)"
+        CassiniUpdatesEnabled: "$(CASSINI_UPDATES_ENABLED)"
+        SUPublicEDKey: C/yBLLXnCHyydg2/EBmbuSC8ijeLtnga8VX/lCSUEiY=
+        SUEnableInstallerLauncherService: true
+        SUEnableDownloaderService: true
+        SUVerifyUpdateBeforeExtraction: true
+        SURequireSignedFeed: true
+        SUShowReleaseNotes: true
+        SUEnableSystemProfiling: false
+        CFBundleName: Cassini talk
+        CFBundleDisplayName: Cassini talk
         CassiniStoreListingPublic: "$(CASSINI_STORE_LISTING_PUBLIC)"
         CFBundleIconName: AppIcon
         CFBundleLocalizations: [en, it, fr, es, pt-BR, pt-PT]
@@ -128,7 +155,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "15.0"
-        NSHumanReadableCopyright: "© 2026 Code Myriad"
+        NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
         NSPrincipalClass: NSApplication
         NSMicrophoneUsageDescription: Cassini records your microphone as a separate local meeting track.
         NSAudioCaptureUsageDescription: Cassini records selected application or system audio locally when you start recording.
@@ -156,6 +183,9 @@ targets:
     entitlements:
       path: Cassini/Cassini.entitlements
       properties:
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - io.codemyriad.cassini-spks
+          - io.codemyriad.cassini-spki
         com.apple.security.app-sandbox: true
         com.apple.security.files.bookmarks.app-scope: true
         com.apple.security.files.user-selected.read-write: true
@@ -302,7 +332,7 @@ targets:
         CFBundleDisplayName: Cassini Transcript Preview
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSHumanReadableCopyright: "© 2026 Code Myriad"
+        NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.quicklook.preview
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController

@@ -12,6 +12,7 @@ import CassiniBrowserControl
     static var beforeBrowserLoss: (@MainActor () async -> Void)?
     static var systemAuthorizationCompletions = 0
     static var microphoneAllowed = true
+    static var microphoneAuthorizationFixture: (() async -> Void)?
     static var microphoneStartsAllowed = true
     static var silentMicrophone = false
     static var microphoneDC: Float = 0
@@ -33,6 +34,7 @@ import CassiniBrowserControl
     init(_ side: CaptureSide) { self.side = side }
     func authorize() async throws {
         defer { if side == .others { CaptureFixture.systemAuthorizationCompletions += 1 } }
+        if side == .me, let authorize = CaptureFixture.microphoneAuthorizationFixture { await authorize() }
         if side == .me && !CaptureFixture.microphoneAllowed { throw CocoaError(.fileReadNoPermission) }
         if side == .others && CaptureFixture.holdSystemPermission {
             try await withCheckedThrowingContinuation { CaptureFixture.systemPermission = $0 }

@@ -1,4 +1,4 @@
-Cassini for Mac
+Cassini talk for Mac
 
 Requires macOS 15 or later. No developer tools are needed.
 

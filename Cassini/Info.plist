@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Cassini</string>
+	<string>Cassini talk</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -39,7 +39,7 @@
 		<string>pt-PT</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>Cassini</string>
+	<string>Cassini talk</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -48,6 +48,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CassiniStoreListingPublic</key>
 	<string>$(CASSINI_STORE_LISTING_PUBLIC)</string>
+	<key>CassiniUpdatesEnabled</key>
+	<string>$(CASSINI_UPDATES_ENABLED)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -55,7 +57,7 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Cassini records selected application or system audio locally when you start recording.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Code Myriad</string>
+	<string>© 2026 Codemyriad OÜ</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cassini records your microphone as a separate local meeting track.</string>
 	<key>NSPrincipalClass</key>
@@ -64,6 +66,22 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
+	<key>SUEnableDownloaderService</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>$(CASSINI_UPDATE_FEED)</string>
+	<key>SUPublicEDKey</key>
+	<string>C/yBLLXnCHyydg2/EBmbuSC8ijeLtnga8VX/lCSUEiY=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUShowReleaseNotes</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

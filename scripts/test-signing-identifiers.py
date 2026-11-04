@@ -48,6 +48,7 @@ class SigningIdentifiersTests(unittest.TestCase):
         info_file = self.app/'Contents/Info.plist'
         info = plistlib.loads(info_file.read_bytes()); info['CFBundleIconName'] = 'AppIcon'
         info_file.write_bytes(plistlib.dumps(info))
+        subprocess.run(['python3',str(ROOT/'scripts/bundle-companion-page.py'),str(self.app/'Contents/Resources/Cassini.html')],check=True,capture_output=True)
         (self.app/'Contents/Resources/Assets.car').write_bytes(b'generated catalog fixture')
         (self.app/'Contents/Resources/AppIcon.icns').write_bytes(b'icns\x00\x00\x00\x08')
         for relative, suffix in reversed(self.bundles):
@@ -64,6 +65,9 @@ class SigningIdentifiersTests(unittest.TestCase):
         return subprocess.run(command,capture_output=True,text=True)
     def testValidFinishedBundle(self):
         result = self.inspect(strict=True);self.assertEqual(result.returncode,0,result.stderr)
+    def testUnrenderedCompanionPageIsRejected(self):
+        (self.app/'Contents/Resources/Cassini.html').write_text('<title>{{app.name}}</title>')
+        result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('Unrendered companion page',result.stderr)
     def testWrongHelperSigningIdentifierIsRejected(self):
         self.sign(self.app/'Contents/MacOS/cassini-browser-host','com.example.unrelated')
         result=self.inspect();self.assertNotEqual(result.returncode,0);self.assertIn('com.example.unrelated',result.stderr)
