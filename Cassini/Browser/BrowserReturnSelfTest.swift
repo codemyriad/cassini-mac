@@ -41,7 +41,7 @@ import CassiniRecording
             try await wait("Real browser did not discover the call") { collection.connected && collection.hasCalls && CompanionSetup.shared.prepared }
             try await collection.record()
             try await wait("Real browser capture did not deliver PCM") {
-                collection.captures.count == 1 && collection.captures.values.first?.modernLifecycle == true &&
+                collection.captures.count == 1 && collection.captures.values.first?.peerKnown == true &&
                 collection.captures.values.first?.owner.snapshot.manifest.tracks.contains { $0.kind == "remote" && $0.frames > 0 } == true
             }
             guard let capture = collection.first else { throw CocoaError(.fileReadUnknown) }
