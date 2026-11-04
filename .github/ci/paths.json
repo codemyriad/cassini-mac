@@ -52,8 +52,7 @@
     "Tests/CassiniSearchTests/**",
     "Sources/CassiniLibraryWatchers/**",
     "Tests/CassiniLibraryTests/**",
-    "Package.swift",
-    ".github/workflows/ux-model.yml"
+    "Package.swift"
   ],
   "whistle": [
     "Cassini/**",

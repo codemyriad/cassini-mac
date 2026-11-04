@@ -17,10 +17,11 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      # D66 mac-P1-4: one capture. The second identical one only re-answered the spike's
+      # "reproducible on a fresh host" question (488 consecutive passes).
       matrix:
         attempt:
         - 1
-        - 2
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products

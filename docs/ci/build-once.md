@@ -6,8 +6,11 @@ cross-compiles both app architectures, including the UI runner, in Debug and
 Release. Universal Opus/Whistle/ONNX/Silero assets are staged once into those apps.
 The Intel export and speech jobs still execute on real hosted Intel runners.
 
-The six UX workflows keep their original matrices, assertions, fixtures, golden
-comparisons and artifact names. They consume same-run products through
+The UX workflows keep their original assertions, fixtures, golden comparisons
+and artifact names. D66 mac-P1-4 folded three single-purpose jobs into the kit
+job (the Library model tests with their UTC/C environment, the native recording
+sink, and packaging Cassini.app, with the same artifact names) and keeps one
+board-size capture. They consume same-run products through
 `workflow_call`; each also has `workflow_dispatch`, which first invokes the shared
 producer. The central manual dispatch, push to main and nightly run all six areas.
 The historical `ux/1a-library-model` push is retained and now runs the full suite.
