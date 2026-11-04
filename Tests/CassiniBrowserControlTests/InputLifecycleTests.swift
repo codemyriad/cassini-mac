@@ -39,9 +39,11 @@ import CassiniKit
     func stop() { stops += 1; sink = nil; onStop?() }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
-    @MainActor private func returnFixture() async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
+    /// `outcomes`: the peer negotiated source-outcomes-v1 (the capture keeps a source ledger).
+    @MainActor private func returnFixture(outcomes: Bool = false) async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let owner = try OwnedBrowserCapture(parent:root,title:"Return",microphone:true,managedBrowser:true)
+        if outcomes { owner.enableSourceOutcomes() }
         try owner.browserTrack(id:"before",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
         try owner.browserAudio(id:"before",sequence:0,offsetMs:0,pcm:Data(repeating:1,count:1600))
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
@@ -343,7 +345,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
     /// The restore opens one real span per returning source; no inert, start-less 0-frame span
     /// precedes it under the same key.
     @MainActor func testADeclarationBeforeTheRestoreWritesNoTrackAndTheRestoreOpensOneSpan() async throws {
-        let (root,owner,_,_,inputs) = try await returnFixture()
+        let (root,owner,_,_,inputs) = try await returnFixture(outcomes:true)
         defer { try? FileManager.default.removeItem(at:root) }
         try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
         let before = owner.snapshot.manifest.tracks.map(\.id)
@@ -359,15 +361,27 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertNotNil(guest.first?.startOffsetMs,"placed")
         XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.startOffsetMs == nil },"no start-less track")
     }
+    /// #143 review: without source-outcomes-v1 there is no ledger, so a source declared during the
+    /// loss that never returns is recorded only by its inert track. It keeps that track: after
+    /// Stop, the reloaded session still names its key and label.
+    @MainActor func testWithoutSourceOutcomesASourceDeclaredDuringTheLossIsStillSaved() async throws {
+        let (root,owner,_,_,inputs) = try await returnFixture(outcomes:false)
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        try owner.browserTrack(id:"late",label:"Late guest",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"late-key")
+        try await inputs.stop(); try await owner.finish()
+        let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+        let late = saved.tracks.filter { $0.sourceTrackId == "late-key" }
+        XCTAssertEqual(late.count,1,"the never-restored source is still represented")
+        XCTAssertEqual(late.first?.label,"Late guest"); XCTAssertEqual(late.first?.frames,0); XCTAssertEqual(late.first?.ended,true)
+    }
     @MainActor func testRejectedReturnResumesTheExistingSystemSpanAndKeepsMicRunning() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
         defer { try? FileManager.default.removeItem(at:root) }
         try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
-        // Declarations before the restore write no track (D68), so the restore itself would
-        // take the recording past 64 tracks: 3 stored plus 62 returning spans.
-        let stored = owner.snapshot.manifest.tracks.count
-        for index in 0..<(65-stored) { try offerReturn(owner,id:"after-\(index)") }
-        XCTAssertEqual(owner.snapshot.manifest.tracks.count,stored)
+        // Without source-outcomes-v1 each declaration before the restore keeps its inert track.
+        for index in 0..<(64-owner.snapshot.manifest.tracks.count) { try offerReturn(owner,id:"after-\(index)") }
+        XCTAssertEqual(owner.snapshot.manifest.tracks.count,64)
         let events = owner.snapshot.manifest.events?.count
         system.firstAt = 2.1
         do { try await inputs.restoreBrowser(atMs:3000); XCTFail("Track limit must reject restoration") } catch {}
