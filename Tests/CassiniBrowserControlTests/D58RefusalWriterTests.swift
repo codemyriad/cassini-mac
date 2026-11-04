@@ -493,6 +493,89 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
         XCTAssertTrue(manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 })
     }
+    /// #140 re-review: the others' side opened and recorded, the user switched to Me only, then
+    /// re-enabled Others during silence. The new system input's explicit error before its own
+    /// first buffer is a refusal at that selection, not a recording failure: the earlier opening
+    /// of the side does not count for this input generation.
+    @MainActor func testAReopenedSilentSystemInputFailingBeforeItsFirstBufferIsRefused() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniD58-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Reopened",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let script = Script(origin:origin)
+        script.plans[.others] = [.open(atMs:0),.later]
+        let refusedOnce = expectation(description:"the re-enabled input's refusal is delivered")
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ script.make(.me) },system:{ script.make(.others) },
+            failure:{ message in XCTFail("a pre-buffer error of the reopened input is not a recording failure: \(message)") },
+            refused:{ _,refusal in script.refused.append(refusal); refusedOnce.fulfill() },openBound:{ await Gate().wait() })
+        try await inputs.start()
+        await waitUntil(inputs) { inputs.openedSides == [.me,.others] }
+        let first = try XCTUnwrap(script.drivers[.others])
+        try await inputs.select(me:true,others:false,atMs:2000)
+        XCTAssertEqual(first.stops,1,"the first system input is retired")
+        try await inputs.select(me:true,others:true,atMs:4000)
+        let reopened = try XCTUnwrap(script.drivers[.others]); XCTAssertFalse(reopened === first)
+        XCTAssertNotNil(reopened.sink,"re-enabled and armed, silent")
+        reopened.failure?("The audio configuration changed.")
+        await fulfillment(of:[refusedOnce],timeout:5)
+        XCTAssertEqual(script.refused.map(\.side),["others"]); XCTAssertEqual(script.refused.first?.code,"deviceUnavailable")
+        XCTAssertEqual(script.refused.first?.atMs,4000)
+        XCTAssertTrue(inputs.failedSides.contains(.others)); XCTAssertFalse(inputs.othersDenied)
+        try await inputs.stop(); try await owner.finish(reason:.user,atMs:6000)
+        let manifest = owner.snapshot.manifest
+        XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
+        XCTAssertEqual(manifest.refusals?.map(\.side),["others"])
+        XCTAssertTrue(manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 },"the first system span is kept")
+        XCTAssertTrue(manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 })
+    }
+    /// #140 review: after a permission denial, the user allows access and retries. The retried
+    /// input fails before its first buffer for another reason: it is refused as unavailable, at
+    /// the retry, not as a recording failure, and no longer reads as a permission denial.
+    @MainActor func testARetryAfterADenialIsJudgedOnItsOwnAttempt() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniD58-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Retry",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let script = Script(origin:origin)
+        script.plans[.others] = [.refuse(code:CaptureRefusal.permissionDenied,message:nil),.later]
+        let refusedTwice = expectation(description:"the retry's refusal is delivered")
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ script.make(.me) },system:{ script.make(.others) },
+            failure:{ message in XCTFail("a pre-buffer error of a retry is not a recording failure: \(message)") },
+            refused:{ _,refusal in script.refused.append(refusal); if script.refused.count == 2 { refusedTwice.fulfill() } },openBound:{ await Gate().wait() })
+        try await inputs.start()
+        await waitUntil(inputs) { inputs.openedSides.contains(.me) && inputs.othersDenied }
+        try await inputs.retry(.others)
+        XCTAssertFalse(inputs.othersDenied,"a new attempt clears the earlier denial"); XCTAssertFalse(inputs.failedSides.contains(.others))
+        try XCTUnwrap(script.drivers[.others]).failure?("The audio configuration changed.")
+        await fulfillment(of:[refusedTwice],timeout:5)
+        XCTAssertEqual(script.refused.map(\.code),["permissionDenied","deviceUnavailable"])
+        XCTAssertGreaterThan(script.refused[1].atMs,0,"stamped at the retry")
+        XCTAssertTrue(inputs.failedSides.contains(.others)); XCTAssertFalse(inputs.othersDenied)
+        try await inputs.stop(); try await owner.finish(reason:.user,atMs:6000)
+        XCTAssertNil(owner.snapshot.manifest.problemKind)
+    }
+    /// #140 review: Stop's refusal check is per input generation. Others was refused at start;
+    /// turned on later, the new input's first buffer is unsupported just before Stop runs. That
+    /// attempt is still refused, although an earlier attempt of the side was.
+    @MainActor func testStopRefusesAReenabledInputDespiteAnEarlierRefusal() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniD58-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Stop after refusal",microphone:true,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let script = Script(origin:origin)
+        script.plans[.others] = [.refuse(code:CaptureRefusal.deviceUnavailable,message:nil),.later]
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ script.make(.me) },system:{ script.make(.others) },
+            failure:{ message in XCTFail("a refusal is not a failure: \(message)") },refused:{ _,refusal in script.refused.append(refusal) },openBound:{ await Gate().wait() })
+        try await inputs.start()
+        await waitUntil(inputs) { inputs.openedSides.contains(.me) && inputs.refusedSides[.others] != nil }
+        try await inputs.select(me:true,others:true,atMs:4000)
+        // In one main-actor turn: the unsupported first buffer fails the sink, then Stop begins.
+        try XCTUnwrap(script.drivers[.others]).emit(atMs:4100,rate:4000)
+        try await inputs.stop(); try await owner.finish(reason:.user,atMs:6000)
+        let manifest = owner.snapshot.manifest
+        XCTAssertEqual(manifest.refusals?.map(\.atMs),[0,4000]); XCTAssertEqual(manifest.refusals?.map(\.side),["others","others"])
+        XCTAssertNil(manifest.problemKind)
+    }
     /// A browser recording whose page went away: the browser fallback's system input is the
     /// first system driver.
     @MainActor private func lostBrowser(_ script: Script, failure: @escaping @Sendable (String) -> Void) throws

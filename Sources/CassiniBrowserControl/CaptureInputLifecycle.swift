@@ -121,7 +121,9 @@ private final class SourceChangeToken: @unchecked Sendable {
     public func start() async throws { try await enqueue { try await self.reconcile(refusingAt:0) } }
     /// Browser loss only requests a system input when Others is selected. A
     /// management reconnect never restarts browser capture or switches it back.
-    public func update() async throws { try await enqueue { try await self.reconcile() } }
+    /// #140 review: every attempt is judged on its own generation, so an explicit error before an
+    /// updated or retried input's first buffer is a refusal at the time it was attempted (D58.1).
+    public func update() async throws { try await enqueue { try await self.reconcile(refusingAt:self.recordingMs()) } }
     /// Returns the sides whose turn-on was refused (D58), with their codes. A refused turn-on
     /// leaves that side's selection unchanged and writes no selection event for it.
     @discardableResult
@@ -185,7 +187,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                             try value.sink.resume()
                             try value.driver.start(sink:value.sink,failure:self.report(side,generation:value.generation,stage:value.stage))
                             self.inputs[side]?.paused = false
-                        } catch { self.failedSides.insert(side); self.failure(error.localizedDescription) }
+                        } catch { await self.restartFailed(side,value,error) }
                     }
                 }
                 throw error
@@ -292,7 +294,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                         try input.sink.resume()
                         try input.driver.start(sink:input.sink,failure:self.report(.others,generation:input.generation,stage:input.stage))
                         self.inputs[.others]?.paused = false
-                    } catch { self.failedSides.insert(.others); self.failure(error.localizedDescription) }
+                    } catch { await self.restartFailed(.others,input,error) }
                 }
                 throw error
             }
@@ -322,6 +324,16 @@ private final class SourceChangeToken: @unchecked Sendable {
             guard !closed, stage.recordingProblem == nil else { throw RecordingError.invalid("The new audio input could not start.") }
             return value
         } catch { await discard(value); throw error }
+    }
+    /// A paused input whose restart failed during a rollback. One that never admitted a buffer
+    /// never opened (D58.1): it is refused at its attempt time, without a recording failure.
+    private func restartFailed(_ side: CaptureSide, _ value: Input, _ error: Error) async {
+        guard let atMs = value.refusingAt, let signal = value.firstBuffer, !signal.hasFired else {
+            failedSides.insert(side); failure(error.localizedDescription); return
+        }
+        try? await end(side,unopened:true)
+        failedSides.insert(side)
+        await refuse(side,CaptureOpenRefusal.classify(error),atMs:atMs)
     }
     /// D58.1: a committed input counts as opened only once it admitted a buffer; until then a
     /// pre-buffer error is a refusal (`failed`), and the first buffer opens it however late.
@@ -361,10 +373,12 @@ private final class SourceChangeToken: @unchecked Sendable {
                 // #120 r3: a start side whose sink failed before admitting a buffer (an
                 // unsupported first buffer just before Stop) never opened, whether or not its
                 // failure handler has run: it is refused here, after its quiet drain in end().
+                // #140 review: judged by this input generation's own first buffer, not by whether
+                // the side opened earlier in the recording.
                 var refusing: [(CaptureSide,Double)] = []
                 for side in [CaptureSide.me,.others] {
                     if let input = self.inputs[side], let atMs = input.refusingAt, let signal = input.firstBuffer, !signal.hasFired,
-                       input.sink.hasFailed, !self.openedSides.contains(side), self.refusedSides[side] == nil { refusing.append((side,atMs)) }
+                       input.sink.hasFailed { refusing.append((side,atMs)) }
                     do { try await self.end(side) } catch { first = first ?? error }
                 }
                 for (side,atMs) in refusing { await self.refuse(side,.init(code:CaptureRefusal.deviceUnavailable),atMs:atMs) }
@@ -411,9 +425,11 @@ private final class SourceChangeToken: @unchecked Sendable {
                   side == .me ? self.capture.snapshot.me : self.capture.snapshot.others else { return }
             if side == .others { try token.check() }
             try await self.end(side)
+            // A new attempt: an earlier attempt's refusal code no longer describes this side.
+            self.refusedSides.removeValue(forKey:side)
             if side == .others, self.capture.snapshot.managedBrowser, !self.capture.snapshot.browserAlive {
                 try await self.startFallback(token:token)
-            } else { try await self.reconcile() }
+            } else { try await self.reconcile(refusingAt:self.recordingMs()) }
         }
     }
     public typealias Status = (levels: [String:Float],frames: [String:UInt64],droppedMs: Double,gapMs: Double,warnings: [String])
@@ -428,7 +444,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         var refusing: [CaptureSide:CaptureOpenRefusal] = [:]
         func noteFailure(_ side: CaptureSide, _ error: Error, opened: Bool) {
             failedSides.insert(side)
-            if atMs != nil, !opened, !openedSides.contains(side), Self.isOpenFailure(error) {
+            if atMs != nil, !opened, Self.isOpenFailure(error) {
                 refusing[side] = CaptureOpenRefusal.classify(error)
             } else { first = first ?? error }
         }
@@ -493,7 +509,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                 if self.inputs[side]?.generation == generation { self.openedSides.insert(side); self.refusedSides.removeValue(forKey:side) }
                 return
             }
-            guard let atMs, !self.openedSides.contains(side) else { return }
+            guard let atMs else { return }
             try? await self.enqueue {
                 guard !self.closed, self.inputs[side]?.generation == generation, !signal.hasFired else { return }
                 try? await self.end(side,unopened:true)
@@ -507,7 +523,9 @@ private final class SourceChangeToken: @unchecked Sendable {
             guard !self.closed, let input = self.inputs[side], input.generation == generation else { return }
             // D58 (#120 review): a start side that fails before its first buffer never opened.
             // It is refused and closed without a problem, and the recording is not failed.
-            if let atMs = input.refusingAt, let signal = input.firstBuffer, !signal.hasFired, !self.openedSides.contains(side) {
+            // #140 review: whether this input generation ever admitted a buffer decides, not whether
+            // the side opened before: a re-enabled Others that fails in silence is a refusal too.
+            if let atMs = input.refusingAt, let signal = input.firstBuffer, !signal.hasFired {
                 try? await self.end(side,unopened:true)
                 self.failedSides.insert(side)
                 // The driver's text can be localized copy: the refusal carries none (D58).
