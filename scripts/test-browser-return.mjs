@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
 import {mkdir, mkdtemp, readFile, writeFile, stat, rm} from 'node:fs/promises';
+import {attachNativeLog} from './extension-native-log.mjs';
 import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
@@ -93,6 +94,18 @@ try {
  });
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
+ // D66 mac-P0-1: the one still-active flake is "Same Chromium transport did not restore after
+ // navigation". Diagnostics only (no retry, the bounds unchanged): every native connect and
+ // disconnect (with lastError) the extension makes, its worker errors, and every service
+ // worker start or close, collected in Node so they survive the worker closing.
+ const nativeLog = attachNativeLog(context);
+ await nativeLog.ready;
+ const extensionDiagnostics = async () => {
+  const text = JSON.stringify({events:nativeLog.events});
+  console.error('Extension diagnostics: '+text);
+  stderr += 'Extension diagnostics: '+text+'\n';
+  await writeFile(output+'.extension.json',JSON.stringify({events:nativeLog.events},null,1)+'\n').catch(() => {});
+ };
  const page = await context.newPage();
  page.on('pageerror',error => {stderr+='Page error: '+error.message+'\n';});
  await page.goto(url);
@@ -113,10 +126,12 @@ try {
  // keeps its call silent until the app has fallen back to computer sound.
  returning = true;
  await page.reload();
- await wait(() => phases.has('fallback'),'App did not start fallback after the old document unloaded');
+ try { await wait(() => phases.has('fallback'),'App did not start fallback after the old document unloaded'); }
+ catch (error) { await extensionDiagnostics(); throw error; }
  release();
  await connected(page);
- await wait(() => phases.has('restored'),'App did not restore real browser PCM');
+ try { await wait(() => phases.has('restored'),'App did not restore real browser PCM'); }
+ catch (error) { await extensionDiagnostics(); throw error; }
  assert.equal(phases.get('recording').id,phases.get('fallback').id);
  assert.equal(phases.get('recording').id,phases.get('restored').id);
  await page.close();

@@ -45,8 +45,10 @@ jobs:
     - name: Independent pure metadata and audio readers
       run: python3 scripts/check-export-reference.py build/format-reference build/export-cases
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: exports-${{ matrix.runner }}
         path: |
           build/export-cases
