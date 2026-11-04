@@ -17,7 +17,8 @@ import Testing
         let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: source.appendingPathComponent("cases.json"))) as! [String: Any]
         let cases = manifest["cases"] as! [[String: Any]]
         let ids = Set(cases.map { $0["id"] as! String })
-        try #require(cases.count == 13 && ids.count == 13)
+        // 13 S-3a cases plus the 9 of shared test 8 (D67).
+        try #require(cases.count == 22 && ids.count == 22)
         try #require(ids.contains("main") && Set(cases.flatMap { $0["rules"] as! [String] }).isSuperset(of: (1...9).map { "R\($0)" }))
         let expectedFiles = try FileManager.default.contentsOfDirectory(atPath: source.appendingPathComponent("expected").path)
         try #require(Set(expectedFiles.filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }) == ids)
