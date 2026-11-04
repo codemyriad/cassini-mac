@@ -62,10 +62,11 @@ injects for UI testing. This does not grant any device or OS permission.
 
 Both architecture builds are useful; an Intel compile is not an Intel execution.
 
-Hosted downloader jobs run the same local HTTP fixtures on ARM and Intel,
-restoring the D20 producer test bundles with `--skip-build`. Original PR paths
-are recorded in `.github/ci/paths.json`; main, nightly and central dispatch run
-the full matrix. The reusable area also supports standalone dispatch.
+Hosted CI runs the same local HTTP fixtures on ARM and Intel, restoring the D20
+producer test bundles with `--skip-build`: on ARM within the kit job's full
+`swift test`, and on Intel in the `Package tests (macos-15-intel)` job of `CI`,
+whenever the `model_download` area of `.github/ci/paths.json` changes. Main,
+nightly and a manual dispatch of `CI` run every area.
 
 The Settings app has no network-client entitlement. Networking lives in a
 separate XPC download service with an explicit model-directory bookmark,

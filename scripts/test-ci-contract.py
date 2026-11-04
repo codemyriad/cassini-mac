@@ -59,6 +59,88 @@ class Selection(unittest.TestCase):
             self.assertTrue(all(changes.select('pull_request', 'base', PATHS, [name]).values()))
 
 
+def ci_job(name):
+    """The body of one top-level job in ci.yml (its lines up to the next two-space key)."""
+    body = (ROOT/'.github/workflows/ci.yml').read_text()
+    found = re.search(rf'^  {name}:\n(.*?)(?=^  \S|^\S|\Z)', body, re.M | re.S)
+    assert found, name
+    return found.group(1)
+
+
+def step_condition(job, marker):
+    """The `if:` of the step whose text contains marker (searching back to its `- ` line)."""
+    at = job.index(marker)
+    start = job.rindex('\n    - ', 0, at + len('\n    - ')) + 1  # the last step start at or before marker
+    end = job.find('\n    - ', at)
+    found = re.search(r'^\s+if: (.+)$', job[start:end if end >= 0 else None], re.M)
+    assert found, marker
+    return found.group(1)
+
+
+class FoldedJobs(unittest.TestCase):
+    """D66 mac-P2-1: every path area still selects a job, and the merged jobs keep the checks,
+    order and conditions of the jobs they replace."""
+    CI = (ROOT/'.github/workflows/ci.yml').read_text()
+
+    def test_every_area_is_an_output_that_some_job_reads(self):
+        outputs = set(re.findall(r'^      (\w+): \$\{\{ steps\.paths\.outputs\.(\w+) \}\}$', self.CI, re.M))
+        self.assertEqual({key for key, value in outputs if key == value}, set(PATHS))
+        for area in PATHS:
+            with self.subTest(area=area):
+                self.assertTrue(f"needs.changes.outputs.{area} != 'false'" in self.CI, f'no job reads the {area} area')
+        self.assertEqual(set(re.findall(r'needs\.changes\.outputs\.(\w+)', self.CI)), set(PATHS))
+
+    def test_scripts_of_the_merged_jobs_trigger_their_area(self):
+        for area, body in [('shot', (ROOT/'.github/workflows/ux-shot.yml').read_text()),
+                           ('exports', ci_job('package_tests'))]:
+            scripts = re.findall(r'python3\s+(scripts/[\w.-]+\.py)', body)
+            self.assertTrue(scripts, area)
+            for script in scripts:
+                with self.subTest(area=area, script=script):
+                    self.assertTrue(changes.select('pull_request', 'base', PATHS, [script])[area])
+
+    def test_one_intel_job_runs_each_area_only_when_selected(self):
+        job = ci_job('package_tests')
+        self.assertIn('runs-on: macos-15-intel', job)
+        self.assertIn("needs.changes.outputs.exports != 'false' || needs.changes.outputs.model_download != 'false'", job)
+        downloader = job.index('--filter ModelDownloaderTests')
+        self.assertIn("if: env.MODEL_DOWNLOAD == 'true'", job[:downloader])
+        # D66 mac-P1-3: no setup-python before the downloader's fixture server.
+        self.assertLess(downloader, job.index('actions/setup-python'))
+        exports = job.index("--filter 'ExportGoldenTests|")
+        self.assertLess(exports, job.index('check-export-reference.py'))
+        # Each exports step's own condition (not a neighbour's) names the area.
+        for marker in ['- uses: actions/setup-python', '      id: exports\n', '- name: Independent pure metadata',
+                       'name: exports-macos-15-intel']:
+            with self.subTest(step=marker):
+                self.assertIn("env.EXPORTS == 'true'", step_condition(job, marker))
+        self.assertIn("env.MODEL_DOWNLOAD == 'true'", step_condition(job, 'name: downloader-macos-15-intel'))
+        # No other job repeats the Intel downloader or the export filter on any runner.
+        others = self.CI.replace(job, '')
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            text = others if workflow.name == 'ci.yml' else workflow.read_text()
+            with self.subTest(workflow=workflow.name):
+                self.assertNotIn('--filter ModelDownloaderTests', text)
+                self.assertNotIn("--filter 'ExportGoldenTests|", text)
+
+    def test_kit_runs_the_arm64_export_checks(self):
+        kit = ci_job('kit')
+        self.assertIn("assets: 'true'", kit)
+        test = kit[kit.index('- name: Test\n'):kit.index('run: swift test --skip-build\n')]
+        self.assertIn('CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus', test)
+        self.assertIn('CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases', test)
+        self.assertIn('python3 scripts/check-export-reference.py build/format-reference build/export-cases', kit)
+
+    def test_window_captures_run_before_the_display_mode_changes(self):
+        shot = (ROOT/'.github/workflows/ux-shot.yml').read_text()
+        self.assertEqual(shot.count('runs-on:'), 1)
+        self.assertLess(shot.index('python3 scripts/check-window-screenshots.py build/window-screenshots\n'),
+                        shot.index('python3 scripts/hosted-display.py'))
+        self.assertLess(shot.index('python3 scripts/hosted-display.py'),
+                        shot.index('python3 scripts/check-window-screenshots.py build/board-screenshots 1120x720'))
+        self.assertFalse((ROOT/'.github/workflows/ux-board-shot.yml').exists())
+
+
 class Transport(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
