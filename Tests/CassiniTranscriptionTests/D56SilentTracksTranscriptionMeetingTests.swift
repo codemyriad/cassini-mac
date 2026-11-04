@@ -124,6 +124,33 @@ final class D56SilentTracksTranscriptionMeetingTests: XCTestCase {
         XCTAssertFalse(fallback.contains { ["zeros","blip"].contains($0["trackId"] as? String ?? "") })
         XCTAssertEqual(written.audioTracks.count,3,"they stay in the meeting and its mixdown")
     }
+    /// D67.3: a track that never received a frame (never captured) is listed in silentTracks too,
+    /// in the meeting's track order, as the schema text says.
+    func testANeverCapturedTrackIsListedAsSilent() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else { throw XCTSkip("Pinned offline VAD supplied by pipeline CI") }
+        let detector = try SpeechDetector(assets:(try? VADAssets.forWorker(arguments:["--assets",assets])) ?? VADAssets.pinned(directory:URL(fileURLWithPath:assets)))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D67NeverCaptured-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = try RecordingSession(parent:root,title:"Never captured",source:"chromium")
+        try session.transition(starting:[.init(id:"never",label:"Absent",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"absent"),
+                                         .init(id:"speech",label:"Guest",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"guest"),
+                                         .init(id:"zeros",label:"Quiet",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"quiet")])
+        let speech = Data(try Data(contentsOf:XCTUnwrap(Bundle.module.url(forResource:"jfk",withExtension:"wav",subdirectory:"Goldens"))).dropFirst(44).prefix(160000))
+        for (id,pcm) in [("speech",speech),("zeros",Data(count:160000))] {
+            for start in stride(from:0,to:pcm.count,by:80000) {
+                try session.appendNative(id:id,pcm:pcm.subdata(in:start..<min(pcm.count,start + 80000)),offsetMs:Double(start / 2) / 16)
+            }
+        }
+        try session.finish()
+        let before = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(before.audioTracks.filter { $0.frameCount == 0 }.count,1,"the never-captured track is a 0-frame track")
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:runModel)
+        let stored = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as? [String:Any]
+        let writing = ((stored?["recordingDetails"] as? [String:Any])?["writingDown"] as? [String:Any]) ?? [:]
+        XCTAssertEqual(writing["silentTracks"] as? [String],["never","zeros"])
+        let written = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(Set(written.transcriptItems.map(\.speaker)),["track-guest"])
+    }
     /// #111 review: a recovered speech track whose checkpoint header still declares no data is
     /// transcribed from its physical frames, not skipped as silent and published with no words.
     func testRecoveredTrackWithStaleZeroHeaderIsTranscribed() throws {

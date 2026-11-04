@@ -30,6 +30,9 @@ public enum MeetingTranscriber {
                 // Retry is a fresh recognition, not a resume of failed output.
                 transcript["reference"] = NSNull()
             }
+            // D67.2: a failed write-down references no words. Its partial transcript.json stays in the
+            // folder, unreferenced, so no reader (or a published copy) shows partial words as stored.
+            if status == "failed" { transcript["reference"] = NSNull() }
             transcript["status"] = status; metadata["transcript"] = transcript
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
@@ -118,7 +121,11 @@ public enum MeetingTranscriber {
             })
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
+            // D56 and D67.3: the tracks left out as silent, a 0-frame (never-captured) track included,
+            // in the meeting's track order.
             var silentTracks: [String] = []
+            let trackOrder = meeting.audioTracks.map { $0.sourceID ?? String($0.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count)) }
+            if !received { silentTracks = meeting.audioTracks.filter { $0.frameCount == 0 }.map { $0.sourceID ?? String($0.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count)) } }
             // D55 (M9): an unknown offset is placed at 0 and flagged on this attempt. D57: a silent
             // track is never placed, so it never sets the flag.
             var assumedZero = false
@@ -162,6 +169,9 @@ public enum MeetingTranscriber {
                                     active: active, activeSeconds: meter.activeSeconds(active)))
                 // The planning scratch is released here (end of scope), before the next track.
             }
+            let silent = Set(silentTracks)
+            var listed = Set<String>()
+            silentTracks = trackOrder.filter { silent.contains($0) && listed.insert($0).inserted }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
             let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
