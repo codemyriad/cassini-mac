@@ -29,9 +29,10 @@ public final class BrowserControlService: @unchecked Sendable {
                 completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil,
                 canStart: @escaping @Sendable () -> Bool = { true },
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
-                received: @escaping @Sendable (String?) -> Void = { _ in }, ownership: CallOwnershipStore? = nil) {
+                received: @escaping @Sendable (String?) -> Void = { _ in }, ownership: CallOwnershipStore? = nil,
+                requireMultiStream: Bool = false) {
         self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock; self.received = received
-        self.ownership = ownership
+        self.ownership = ownership; registry.requireMultiStream = requireMultiStream
         queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {

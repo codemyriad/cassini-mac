@@ -127,7 +127,7 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             let events = capture.snapshot.manifest.events ?? []
             XCTAssertFalse(BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:events),"take-over committed")
             // The resumed page navigates; its transport stays connected.
-            XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.navigating,count:nil,multiStream:true,navigation:true,fallback:false))
+            XCTAssertTrue(BrowserCallPolicy.commitsLoss(browserAlive:true,page:.navigating,navigation:true,fallback:false))
             try capture.browserLost(atMs:7000,transportAlive:true)
             XCTAssertFalse(capture.snapshot.browserAlive); XCTAssertTrue(capture.snapshot.transportAlive)
             try await capture.requestSystemFallback()
@@ -185,31 +185,29 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(capture.snapshot.phase,.recording)
         }
     }
-    /// #103 delta review 1: when control disappears before the take-over, the collection's
-    /// D33 branch runs (multiStream false). A pending stand-in never steps it, so no pageGone
-    /// ends the native recording however long control stays away.
+    /// #103 delta review 1: when control disappears before the take-over, a pending stand-in
+    /// never steps its policy, so no pageGone ends the native recording however long control
+    /// stays away.
     func testAControlLossBeforeTakeOverNeverEndsTheStandIn() async throws {
         try await run { fixture in
             let (capture,id) = try standIn(fixture)
             fixture.broker.expectResume(capture,callGeneration:"call-A")
             XCTAssertEqual(try fixture.client().request(resume(id))["resumed"]?.bool,true)
-            var policy = BrowserCallPolicy(), lifecycle = BrowserCallLifecycle(), legacySteps = 0
-            let gone = BrowserCallPolicy.Observation(page:nil,rowPresent:false,sourceCount:nil,controlAlive:false)
+            var policy = BrowserCallPolicy()
+            let gone = BrowserCallPolicy.Observation(page:nil,rowPresent:false,sourceCount:nil,controlAlive:false,transportAlive:false)
             for second in stride(from:0.0,through:300,by:0.25) {
                 let pending = BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:capture.snapshot.manifest.events ?? [])
-                let action = BrowserCallPolicy.decide(pending:pending,multiStream:false,policy:&policy,now:second,gone,
-                                                      source:"system",reason:"missing",others:true,restoreReady:false) {
-                    legacySteps += 1
-                    return lifecycle.step(now:second,page:nil,sourceCount:0,transportAlive:false,usingSystem:true,others:true,restoreReady:false)
-                }
+                let action = BrowserCallPolicy.decide(pending:pending,policy:&policy,now:second,gone,
+                                                      source:"system",reason:"missing",others:true,restoreReady:false)
                 XCTAssertNil(action,"at \(second) s")
             }
-            XCTAssertEqual(legacySteps,0,"the D33 lifecycle never runs for a pending stand-in")
+            XCTAssertNil(policy.missingSince,"the recording's policy never runs for a pending stand-in")
             XCTAssertEqual(capture.snapshot.phase,.recording)
-            // Unprotected, the same D33 lifecycle ends the recording as pageGone.
-            var unprotected = BrowserCallLifecycle(), ended: BrowserCallLifecycle.Action?
+            // Stepped, the same observations end the recording as pageGone.
+            var unprotected = BrowserCallPolicy(), ended: BrowserCallLifecycle.Action?
             for second in stride(from:0.0,through:300,by:0.25) {
-                let step = unprotected.step(now:second,page:nil,sourceCount:0,transportAlive:false,usingSystem:true,others:true,restoreReady:false)
+                let step = BrowserCallPolicy.decide(pending:false,policy:&unprotected,now:second,gone,
+                                                    source:"system",reason:"missing",others:true,restoreReady:false)
                 if case .stop? = step { ended = step; break }
             }
             XCTAssertEqual(ended,.stop(.pageGone))
@@ -228,9 +226,9 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             func poll(_ second: Double, count: Int) -> BrowserCallLifecycle.Action? {
                 let pending = BrowserCallPolicy.standInPending(source:"macos",keyed:true,events:capture.snapshot.manifest.events ?? [])
                 let committed = CaptureSourceState(events:capture.snapshot.manifest.events ?? [],atMs:.infinity)
-                return BrowserCallPolicy.decide(pending:pending,multiStream:true,policy:&policy,now:second,
+                return BrowserCallPolicy.decide(pending:pending,policy:&policy,now:second,
                     .init(page:.present,sourceCount:count,heard:true),source:committed.source,reason:committed.reason,others:true,
-                    restoreReady:capture.snapshot.restoreReady) { XCTFail("no legacy lifecycle under multi-stream"); return nil }
+                    restoreReady:capture.snapshot.restoreReady)
             }
             XCTAssertNil(poll(0,count:1))
             for second in stride(from:1.0,through:45,by:0.25) { XCTAssertNil(poll(second,count:0),"no stop before take-over at \(second) s") }
@@ -343,8 +341,8 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             var o = BrowserCallPolicy.Observation(page:.present,rowPresent:row,sourceCount:row ? count : nil,heard:row,transportAlive:transport,
                                                   callGeneration:row ? "call-A" : nil,controlConnection:connection)
             o.sessionListed = listed
-            return BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:source,reason:reason,others:true,restoreReady:false,
-                                            legacy:{ nil },onAskResume:{ asked.append(connection) })
+            return BrowserCallPolicy.decide(pending:false,policy:&policy,now:now,o,source:source,reason:reason,others:true,restoreReady:false,
+                                            onAskResume:{ asked.append(connection) })
         }
         XCTAssertNil(poll(0,transport:true,"browser","start"))
         XCTAssertEqual(poll(1,transport:false,"browser","start"),.fallback)
@@ -396,7 +394,7 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
         func poll(_ now: TimeInterval, count: Int) -> (BrowserCallLifecycle.Action?,BrowserCallPolicy.Action?) {
             let o = BrowserCallPolicy.Observation(page:.present,sourceCount:count,heard:true,transportAlive:false)
             // The system fallback failed: the committed source stays none/lost.
-            let decided = BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:"none",reason:"lost",others:true,restoreReady:false,legacy:{ nil })
+            let decided = BrowserCallPolicy.decide(pending:false,policy:&policy,now:now,o,source:"none",reason:"lost",others:true,restoreReady:false)
             return (decided,stepped.step(now:now,o,source:"none",reason:"lost"))
         }
         XCTAssertEqual(poll(0,count:1).0,.fallback,"the ongoing call clears the missing timer")
@@ -431,8 +429,8 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
                 // Control reports the call ongoing and the tab's session gone (sessionListed false).
                 let o = BrowserCallPolicy.Observation(page:.present,sourceCount:1,heard:true,transportAlive:snapshot.transportAlive,
                                                       callGeneration:"call-A",controlConnection:"c1")
-                return BrowserCallPolicy.decide(pending:false,multiStream:true,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
-                                                others:snapshot.others,restoreReady:snapshot.restoreReady,legacy:{ nil },onAskResume:{
+                return BrowserCallPolicy.decide(pending:false,policy:&policy,now:now,o,source:committed.source,reason:committed.reason,
+                                                others:snapshot.others,restoreReady:snapshot.restoreReady,onAskResume:{
                     // As the app does: expect the answer, and the extension resumes on this ask.
                     fixture.broker.expectResume(capture,callGeneration:"call-A")
                     replies.append((try? fixture.client().request(self.resume("held-call",origin:origin)))?["type"]?.string)

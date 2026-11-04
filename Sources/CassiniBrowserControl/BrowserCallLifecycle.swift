@@ -2,81 +2,16 @@
 import Foundation
 import CassiniKit
 
-/// Per-session D33 decisions. The device owner supplies the actual selected
-/// source; an attempted fallback/restoration never commits source state here.
-public struct BrowserCallLifecycle: Sendable {
+/// The page states, end reasons and source actions a browser call's policy speaks in.
+/// Only extension 0.2.12+ is supported (D51), so every browser recording follows the
+/// D52 `BrowserCallPolicy`; the D33 lifecycle for older peers is gone.
+public enum BrowserCallLifecycle {
     public enum Page: String, Sendable { case present, navigating, closed }
     public enum StopReason: String, Sendable { case callEnded, tabClosed, pageGone }
     public enum Action: Equatable, Sendable { case fallback, restore, stop(StopReason) }
-    public static let callEndGrace: TimeInterval = 2
-    public static let browserReturnGrace: TimeInterval = 120
-    private var missingSince: TimeInterval?
-    private var emptySince: TimeInterval?
-    private var closedSince: TimeInterval?
-    private var previous: TimeInterval?
-    private var observedLoss: TimeInterval?
-    private var navigationPending = false
-    private var stopped = false
-    var pendingTimers: (missing: TimeInterval?, ended: TimeInterval?) { (missingSince,emptySince) }
-    public init() {}
-
-    public mutating func step(now: TimeInterval, page: Page?, sourceCount: Int,
-                              sameTab: Bool = true, transportAlive: Bool = true,
-                              usingSystem: Bool, others: Bool, restoreReady: Bool = true,
-                              pageObservedAt: TimeInterval? = nil, lostAt: TimeInterval? = nil) -> Action? {
-        guard !stopped, now.isFinite, now >= 0, previous.map({ now >= $0 }) ?? true else { return nil }
-        previous = now
-        let page = sameTab ? page : nil
-        let count = sameTab ? sourceCount : 0
-        if page == .navigating { navigationPending = true }
-        func stamp(_ value: TimeInterval?) -> TimeInterval? {
-            guard let value, value.isFinite, value >= 0, value <= now else { return nil }; return value
-        }
-        if page == .closed, closedSince == nil { closedSince = stamp(pageObservedAt) ?? now }
-        // Browser-confirmed closure is sticky even if an obsolete page later
-        // reports audio. It never starts a new fallback source.
-        if let closedSince {
-            return now - closedSince >= Self.callEndGrace ? stop(.tabClosed) : nil
-        }
-        // A delayed first observation must still enforce the producer's loss
-        // deadline. A returned page acknowledges each loss only once, even if
-        // restoring the selected input fails and the owner retains its stamp.
-        if let loss = stamp(lostAt), loss != observedLoss {
-            observedLoss = loss; missingSince = min(missingSince ?? loss,loss)
-        }
-        if missingSince == nil, page != .present || !transportAlive {
-            missingSince = page != .present ? stamp(pageObservedAt) ?? now : now
-        }
-        // This check precedes positive-source recovery, including a return
-        // arriving after the deadline before the next timer callback.
-        if let missingSince, now - missingSince >= Self.browserReturnGrace { return stop(.pageGone) }
-        if page == .present, count > 0, transportAlive {
-            missingSince = nil; emptySince = nil; navigationPending = false
-            return usingSystem && others && restoreReady ? .restore : nil
-        }
-        // Returning control can confirm a hangup even if the audio transport
-        // is gone. Only a browser-confirmed navigation retains the long grace.
-        // Acknowledge this loss so its retained producer stamp cannot restart it.
-        if page == .present, count == 0, !navigationPending {
-            missingSince = nil
-            if emptySince == nil { emptySince = now }
-            return now - emptySince! >= Self.callEndGrace ? stop(.callEnded) : nil
-        }
-        if page != .present || !transportAlive || missingSince != nil {
-            emptySince = nil
-            if missingSince == nil { missingSince = now }
-            return now - missingSince! >= Self.callEndGrace && !usingSystem && others ? .fallback : nil
-        }
-        if emptySince == nil { emptySince = now }
-        return now - emptySince! >= Self.callEndGrace ? stop(.callEnded) : nil
-    }
-    private mutating func stop(_ reason: StopReason) -> Action {
-        stopped = true; return .stop(reason)
-    }
 }
 
-/// D52 M3 multi-stream call policy, used only when the extension advertises
-/// multi-stream-v1; the legacy D33 `BrowserCallLifecycle` stays for older peers.
+/// D52 M3 multi-stream call policy (multi-stream-v1).
 /// After remote audio was heard, a present page with a known zero source count
 /// has a 30 s grace. Missing inventory is unknown, never zero. Healthy admitted
 /// browser PCM (never the native microphone) is evidence while control is absent.
@@ -149,22 +84,20 @@ public struct BrowserCallPolicy: Sendable {
     public static func followsCall(source: String, keyed: Bool, events: [CaptureEvent]) -> Bool {
         source == "chromium" || source == "macos" && keyed && !standInPending(source:source,keyed:keyed,events:events)
     }
-    /// One poll's source action for a browser recording or a stand-in (D49, D52 M3, D33).
-    /// While a stand-in's take-over is pending only the take-over applies: neither the
-    /// recording's policy nor its legacy lifecycle is stepped, so no grace, return deadline or
-    /// terminal state is consumed before the call joins (a control loss cannot end it as
-    /// pageGone, and an expired grace cannot block callConnected). The take-over is judged by
-    /// a fresh policy seeing this observation. `legacy` steps the D33 lifecycle.
-    public static func decide(pending: Bool, multiStream: Bool, policy: inout BrowserCallPolicy, now: TimeInterval, _ o: Observation,
+    /// One poll's source action for a browser recording or a stand-in (D49, D52 M3).
+    /// While a stand-in's take-over is pending only the take-over applies: the recording's
+    /// policy is not stepped, so no grace, return deadline or terminal state is consumed
+    /// before the call joins (a control loss cannot end it as pageGone, and an expired grace
+    /// cannot block callConnected). The take-over is judged by a fresh policy seeing this
+    /// observation.
+    public static func decide(pending: Bool, policy: inout BrowserCallPolicy, now: TimeInterval, _ o: Observation,
                               source: String?, reason: String?, others: Bool, restoreReady: Bool,
-                              legacy: () -> BrowserCallLifecycle.Action?, onAskResume: () -> Void = {}) -> BrowserCallLifecycle.Action? {
+                              onAskResume: () -> Void = {}) -> BrowserCallLifecycle.Action? {
         if pending {
-            guard multiStream else { return nil }
             var fresh = BrowserCallPolicy()
             let joins = fresh.step(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady) == .callConnected
             return joins && restoreReady ? .restore : nil
         }
-        guard multiStream else { return legacy() }
         // D52.5: a step can ask to resume as well as act; the ask goes to `onAskResume`.
         let actions = policy.steps(now:now,o,source:source,reason:reason,others:others,restoreReady:restoreReady)
         // The policy asks in the step that falls back (shared vectors), but the host can only
@@ -200,14 +133,13 @@ public struct BrowserCallPolicy: Sendable {
     }
     /// When the current browser loss began (the producer's stamp when known), while one is pending.
     public var missingSince: TimeInterval? { missing }
-    /// Whether a poll commits the browser source loss before any fallback. A legacy peer's
-    /// present page with zero sources is a loss. Under D52 it is a possible rejoin, but once the
-    /// policy asks to fall back while the source is still alive, the loss is committed first:
-    /// a navigation loss cancelled by the next page report would otherwise leave the fallback
-    /// a no-op (the system input starts only after a committed loss).
-    public static func commitsLoss(browserAlive: Bool, page: BrowserCallLifecycle.Page?, count: Int?, multiStream: Bool,
-                                   navigation: Bool, fallback: Bool) -> Bool {
-        navigation || browserAlive && (page != .present || (!multiStream && count == 0) || (multiStream && fallback))
+    /// Whether a poll commits the browser source loss before any fallback. A present page with
+    /// zero sources is a possible rejoin (D52), but once the policy asks to fall back while the
+    /// source is still alive, the loss is committed first: a navigation loss cancelled by the
+    /// next page report would otherwise leave the fallback a no-op (the system input starts
+    /// only after a committed loss).
+    public static func commitsLoss(browserAlive: Bool, page: BrowserCallLifecycle.Page?, navigation: Bool, fallback: Bool) -> Bool {
+        navigation || browserAlive && (page != .present || fallback)
     }
 
     /// D52 M6: a capture belongs to the call it started in. Once the tab's row names another
