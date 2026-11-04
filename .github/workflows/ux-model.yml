@@ -33,8 +33,10 @@ jobs:
         set -o pipefail
         swift test --skip-build --filter 'Library|SearchTests' 2>&1 | tee ux-library-tests.log
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: ux-library-test-results
         path: |
           ux-library-tests.log

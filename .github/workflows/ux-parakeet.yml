@@ -63,7 +63,9 @@ jobs:
       - name: Real signed queue, active Remove and invalid-model fallback
         run: python3 scripts/test-parakeet-app.py build/Build/Products/Debug/Cassini.app --model "$CASSINI_PARAKEET_MODEL" --report build/parakeet-reports/app.json
       - uses: actions/upload-artifact@v5
+        continue-on-error: true
         if: always()
         with:
+          retention-days: 14
           name: parakeet-${{ matrix.runner }}
           path: build/parakeet-reports

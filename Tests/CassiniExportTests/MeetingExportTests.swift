@@ -148,7 +148,8 @@ struct MeetingExportTests {
         let result = try CassiniReader.read(contentsOf:exported.url)
         #expect(result.state == .ok)
         #expect(result.manifest?.meeting.recordedAtLocal == recorded)
-        #expect(result.manifest?.meeting.createdAtUtc != "2020-01-02T03:04:05Z")
+        // D65 (MAPPING): a received file keeps its own creation time, never the export time.
+        #expect(result.manifest?.meeting.createdAtUtc == "2020-01-02T03:04:05Z")
     }
     @Test func ordinaryAudioTitleTagsStillSurviveBothOpenAndImport() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }

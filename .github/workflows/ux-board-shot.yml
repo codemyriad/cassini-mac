@@ -1,4 +1,4 @@
-name: UX board-size screenshot spike
+name: UX board-size screenshots
 'on':
   workflow_call:
     inputs:
@@ -55,8 +55,10 @@ jobs:
     - name: Require exact board-size PNGs
       run: python3 scripts/check-window-screenshots.py build/window-screenshots 1120x720
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: always()
       with:
+        retention-days: 14
         name: board-screenshots-${{ matrix.attempt }}-${{ github.sha }}
         path: |
           build/window-screenshots/*.png
@@ -64,8 +66,10 @@ jobs:
           build/window-tests.log
           build/display-*
     - uses: actions/upload-artifact@v5
+      continue-on-error: true
       if: failure()
       with:
+        retention-days: 14
         name: board-screenshot-diagnostics-${{ matrix.attempt }}-${{ github.sha }}
         path: build/BoardScreenshots.xcresult
         if-no-files-found: ignore

@@ -36,7 +36,7 @@ final class D52TransportLivenessTests: XCTestCase {
         let file = try JSONParser.parse(Data(contentsOf:url))
         XCTAssertEqual(file["constants"]?["PCM_STALE_AFTER"]?.int,Int(AudioTransportWatchdog.staleAfter))
         let cases = try XCTUnwrap(file["cases"]?.array)
-        XCTAssertEqual(cases.count,17)
+        XCTAssertEqual(cases.count,24)
         for vector in cases {
             let name = try XCTUnwrap(vector["name"]?.string), frames = try XCTUnwrap(vector["frames"]?.array)
             func closed(by now: Int) -> Bool {
@@ -52,7 +52,7 @@ final class D52TransportLivenessTests: XCTestCase {
                         let page = frame["pageState"]?.string.flatMap(BrowserCallLifecycle.Page.init(rawValue:))
                         if !watchdog.document(page:page,generation:frame["documentGeneration"]?.string,at:UInt64(at)) { return true }
                         continue
-                    case "track": kind = .track(id)
+                    case "track": kind = .track(id,generation:frame["documentGeneration"]?.string)
                     case "audio": kind = .audio(id)
                     case "trackEnd": kind = .trackEnd(id)
                     case "stop": kind = .stop

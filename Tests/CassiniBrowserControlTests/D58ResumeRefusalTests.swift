@@ -48,7 +48,7 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             .appendingPathComponent("browser-protocol/conformance/control/resume-capture-vectors.json")
         let vectors = try XCTUnwrap(JSONParser.parse(Data(contentsOf:url))["askAttribution"])
         let entry = try XCTUnwrap(vectors["entry"]), cases = try XCTUnwrap(vectors["cases"]?.array)
-        XCTAssertEqual(cases.count,9)
+        XCTAssertEqual(cases.count,10)
         for vector in cases {
             let name = vector["name"]?.string ?? "?"
             try await run { fixture in
@@ -74,6 +74,9 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
                         nativeMessages[ask] = step["message"]?.string
                         let answer = try fixture.client().request(resume(captureID,generation:"call-gone",requestID:try XCTUnwrap(ids[ask])))
                         XCTAssertEqual(answer["code"]?.string,"state",name)
+                    case "forget":
+                        // The app stops waiting by its own timeout: the service's timeout outcome.
+                        fixture.broker.resumeAnswered(lost(try XCTUnwrap(ids[ask]),"timeout"))
                     case "nativeWithoutId":
                         XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-gone"))["code"]?.string,"state",name)
                     case "nativeUnknownId":
@@ -121,12 +124,14 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(capture.snapshot.manifest.refusals?.first?.atMs,1500)
         }
     }
-    func testATimeoutOrLocalFailureRecordsNothingAndTheAskStaysAnswerable() async throws {
+    /// A closed connection or a local failure records nothing and leaves the ask answerable by
+    /// its own native refusal; a timeout forgets it (08ad6f6), so a late refusal records nothing.
+    func testAClosedConnectionKeepsTheAskButATimeoutForgetsIt() async throws {
         try await run { fixture in
             let (capture,captureID) = try standIn(fixture)
             let id = UUID().uuidString.lowercased()
             fixture.broker.expectResume(capture,callGeneration:"call-A",ask:(id,2500))
-            fixture.broker.resumeAnswered(lost(id,"timeout"))
+            fixture.broker.resumeAnswered(lost(id,"disconnected"))
             fixture.broker.resumeAnswered(lost(id,"notReady"))
             await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertNil(capture.snapshot.manifest.refusals)
@@ -138,6 +143,13 @@ final class D58ResumeRefusalTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(capture.snapshot.manifest.refusals?.map(\.message),[nativeMessage])
             await capture.settled()   // The refusal is written on the recording's queue.
             XCTAssertEqual(capture.snapshot.manifest.refusals?.first?.atMs,2500)
+            let timedOut = UUID().uuidString.lowercased()
+            fixture.broker.expectResume(capture,callGeneration:"call-A",ask:(timedOut,4000))
+            fixture.broker.resumeAnswered(lost(timedOut,"timeout"))
+            XCTAssertEqual(fixture.broker.pendingResumeAsks(capture),[])
+            XCTAssertEqual(try fixture.client().request(resume(captureID,generation:"call-gone",requestID:timedOut))["code"]?.string,"state")
+            await capture.settled()   // A late refusal would be written on the recording's queue.
+            XCTAssertEqual(capture.snapshot.manifest.refusals?.count,1,"A forgotten ask's late refusal records nothing")
         }
     }
     func testAReplyWithoutACodeWritesNoMessage() async throws {

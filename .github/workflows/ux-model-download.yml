@@ -37,7 +37,9 @@ jobs:
           set -o pipefail
           swift test --skip-build --filter ModelDownloaderTests 2>&1 | tee downloader.log
       - uses: actions/upload-artifact@v5
+        continue-on-error: true
         if: always()
         with:
+          retention-days: 14
           name: downloader-${{ matrix.runner }}
           path: downloader.log
