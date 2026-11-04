@@ -69,17 +69,20 @@ import CassiniKit
         #expect(session.manifest.events?.last == .init(atMs:750,type:"end",reason:"user"))
     }
     @Test func restoredRequiresSelectedFallbackAndANewActiveBrowserSpan() throws {
-        for variant in 0..<6 {
+        // 0: system/lost; 2: none/lost, a return before the fallback committed (protocol #44).
+        // Rejected: 1 Others off, 3 system/user, 4 a span that ends at once, 5 the system span
+        // left open, 6 none/user (Others turned off is no loss).
+        for variant in 0..<7 {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             defer { try? FileManager.default.removeItem(at:root) }
             let session = try RecordingSession(parent:root,title:"Generated",source:"chromium")
             try session.transition(events:[.init(atMs:0,type:"selection",reason:"start",me:true,others:variant != 1)])
-            let source = variant == 2 ? "none" : "system", reason = variant == 3 ? "user" : "lost"
+            let source = variant == 2 || variant == 6 ? "none" : "system", reason = variant == 3 || variant == 6 ? "user" : "lost"
             let fallback: [RecordingSource] = source == "system" ? [.init(id:"system",label:"Computer",kind:"system",sampleRate:8000,channels:1,labelSource:"device")] : []
             try session.transition(starting:fallback,events:[.init(atMs:1,type:"othersSource",source:source,reason:reason)])
             let before = try Data(contentsOf:session.directory.appendingPathComponent("session.json"))
             let restore = { try session.transition(starting:[.init(id:"returned",label:"Remote",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"opaque",endsImmediately:variant == 4)],ending:source == "system" && variant != 5 ? ["system"] : [],events:[.init(atMs:2,type:"othersSource",source:"browser",reason:"restored")]) }
-            if variant == 0 { try restore(); #expect(session.manifest.events?.last?.reason == "restored") }
+            if variant == 0 || variant == 2 { try restore(); #expect(session.manifest.events?.last?.reason == "restored") }
             else { #expect(throws:(any Error).self) { try restore() }; #expect(try Data(contentsOf:session.directory.appendingPathComponent("session.json")) == before) }
         }
     }

@@ -72,13 +72,14 @@ public struct CaptureSourceState: Sendable, Equatable {
     public var reason: String?
     public var sinceMs: Double?
     public var fallback: Bool { reason == "missing" || reason == "lost" }
-    /// `restored` returns from either fallback; D49 `callConnected` only takes over
-    /// the initial system/missing stand-in. Both need an enabled others side.
+    /// `restored` returns from either fallback, or from a browser loss whose fallback never
+    /// committed because the call returned first (none/lost); D49 `callConnected` only takes
+    /// over the initial system/missing stand-in. Both need an enabled others side.
     public func admitsBrowserReturn(_ reason: String?) -> Bool {
-        guard others == true, source == "system" else { return false }
+        guard others == true else { return false }
         switch reason {
-        case "restored": return fallback
-        case "callConnected": return self.reason == "missing"
+        case "restored": return source == "system" && fallback || source == "none" && self.reason == "lost"
+        case "callConnected": return source == "system" && self.reason == "missing"
         default: return false
         }
     }
