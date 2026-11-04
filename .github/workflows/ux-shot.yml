@@ -1,4 +1,4 @@
-name: UX window screenshot spike
+name: UX window screenshots
 'on':
   workflow_call:
     inputs:
