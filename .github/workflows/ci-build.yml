@@ -102,6 +102,7 @@ jobs:
           python3 scripts/fetch-sparkle.py
           python3 scripts/test-release.py
           python3 scripts/test-publish-release.py
+          python3 scripts/test-signing-keychain.py
           python3 scripts/test-dmg-layout.py
           python3 scripts/test-signing-identifiers.py
           python3 scripts/test-native-host-staging.py
