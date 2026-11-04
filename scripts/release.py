@@ -19,6 +19,9 @@ from urllib.parse import urlparse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import safe_process  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 SECRETS = Path.home()/'.config/cassini/secrets'
 TEAM = '4LS8W738Y3'
@@ -29,12 +32,10 @@ ET.register_namespace('sparkle', SPARKLE)
 
 
 def run(command, **kwargs):
-    # Never emit commands: some Security invocations carry the local keychain
-    # password. Never forward errors from key tools (invalid input can echo keys).
-    result = subprocess.run(list(map(str, command)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
-    if result.returncode:
-        raise RuntimeError(Path(str(command[0])).name+' failed; exit '+str(result.returncode))
-    return result.stdout
+    # Every tool call goes through safe_process: some Security invocations carry the local
+    # keychain password, notarytool its API key, sign_update the seed path. Never emit argv
+    # or forward tool output (invalid input can echo keys), even on a timeout or Ctrl-C.
+    return safe_process.run(command, **kwargs).stdout
 
 
 def private_file(path):
@@ -295,9 +296,10 @@ def release(args):
         'CODE_SIGN_IDENTITY='+identity, 'CODE_SIGN_STYLE=Manual', 'DEVELOPMENT_TEAM='+TEAM,
         'CASSINI_APP_HARDENED_RUNTIME=YES', 'MARKETING_VERSION='+args.version, 'CURRENT_PROJECT_VERSION='+str(args.build),
         'CASSINI_UPDATE_FEED='+urls['feed'], 'CASSINI_UPDATES_ENABLED=YES']
-    # Build logs contain no password/ASC metadata; retain diagnostics for review.
+    # Build logs contain no password/ASC metadata; retain diagnostics for review. This is the
+    # one direct call: xcodebuild's argv carries no secret (the identity is a public hash).
     with (output/'build.log').open('wb') as log:
-        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)  # no-secret-argv
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
     # Xcode's internal product/executable paths stay stable for developer tools.
@@ -345,8 +347,6 @@ if __name__ == '__main__':
     parser.add_argument('--release-notes', type=Path, required=True, help='HTML release notes, copied into notes/<version>.html')
     parser.add_argument('--notary-config', type=Path, default=SECRETS/'notary.json')
     parser.add_argument('--output', type=Path, required=True)
-    try:
-        release(parser.parse_args())
-    except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
-        # Do not interpolate tool exceptions: argv may contain a keychain password.
-        parser.exit(1, 'Release failed. Check private credentials, signing identity and retained build/submission reports.\n')
+    # Any exception, a timeout or Ctrl-C included, ends in one sanitized line: argv may hold a password.
+    safe_process.guard(lambda: release(parser.parse_args()),
+        'Release failed. Check private credentials, signing identity and retained build/submission reports')

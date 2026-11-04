@@ -2,35 +2,31 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Import a returned certificate into an isolated local signing keychain; no app runs.
 
-Several `security` commands take the keychain password on argv. A failing,
-hanging or unlaunchable command therefore reports only the tool and its
-subcommand: no argv, no output, no exception chain and no traceback.
+Several `security` commands take the keychain password on argv, so every command
+goes through safe_process (shared with release.py): a failing, hanging, unlaunchable
+or interrupted command reports only the tool and its subcommand, with no argv, no
+output, no exception chain and no traceback.
 """
 from pathlib import Path
 import subprocess,secrets,os,json,re,sys,tempfile
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+import safe_process  # noqa: E402
 FOLDER=Path.home()/'.config/cassini/secrets'
 IDENTITY='Developer ID Application: Codemyriad OU (4LS8W738Y3)'
 
-class SetupError(Exception):
+class SetupError(safe_process.CommandError):
  """A message that is safe to print: it never contains argv or tool output."""
 
-def label(command):
- return ' '.join(str(part) for part in command[:2])
+def run(command,runner=None,timeout=30):
+ return safe_process.run(command,runner=runner,timeout=timeout).stdout
 
-def call(command,runner,timeout=30):
- try:return runner(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout)
- except subprocess.TimeoutExpired:raise SetupError('Signing keychain operation timed out: '+label(command)) from None
- except (OSError,subprocess.SubprocessError) as error:raise SetupError('Signing keychain operation could not run: '+label(command)+' ('+type(error).__name__+')') from None
-
-def run(command,runner=subprocess.run,timeout=30):
- r=call(command,runner,timeout)
- if r.returncode:raise SetupError('Signing keychain operation failed: '+label(command)+'; exit '+str(r.returncode))
- return r.stdout
+def call(command,runner=None,timeout=30):
+ return safe_process.run(command,runner=runner,timeout=timeout,check=False)
 
 def check(condition,message):
  if not condition:raise SetupError(message)
 
-def main(folder=FOLDER,runner=subprocess.run):
+def main(folder=FOLDER,runner=None):
  kc=folder/'cassini-signing.keychain-db';pwfile=folder/'cassini-signing-keychain.password'
  run_=lambda command,timeout=30:run(command,runner,timeout)
  if not pwfile.exists():
@@ -68,18 +64,8 @@ def main(folder=FOLDER,runner=subprocess.run):
   check(b'TeamIdentifier=4LS8W738Y3' in details and b'runtime' in details,'Probe signature lacks the team or hardened runtime')
  return {'dedicated_keychain':True,'password_mode':'0600','keychain_mode':'0600','developer_id_visible':True,'probe_signed_and_verified':True,'probe_executed':False,'login_modified':False}
 
-def cli(folder=FOLDER,runner=subprocess.run):
- try:print(json.dumps(main(folder,runner)))
- except SetupError as error:
-  print(str(error),file=sys.stderr);return 1
- except KeyboardInterrupt:
-  # An interrupt during a hung command's timeout handling chains that TimeoutExpired, whose
-  # message holds the argv; never let it reach the default traceback printer.
-  print('Signing keychain setup interrupted',file=sys.stderr);return 130
- except BaseException as error:
-  if isinstance(error,SystemExit):raise
-  # Anything unexpected: name the type only, so no argument or output can leak.
-  print('Signing keychain setup failed: '+type(error).__name__,file=sys.stderr);return 1
- return 0
+def cli(folder=FOLDER,runner=None):
+ # Any exception, a timeout or Ctrl-C included, ends in one sanitized line and an exit status.
+ safe_process.guard(lambda:print(json.dumps(main(folder,runner))),'Signing keychain setup failed')
 
-if __name__=='__main__':sys.exit(cli())
+if __name__=='__main__':cli()

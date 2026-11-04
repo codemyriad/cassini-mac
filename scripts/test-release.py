@@ -276,4 +276,76 @@ class ReleaseTests(unittest.TestCase):
             self.assertNotEqual(subprocess.run(verify_feed,capture_output=True).returncode,0)
             data.write_bytes(b'tampered bytes');self.assertNotEqual(subprocess.run(command,capture_output=True).returncode,0)
 
+CTRL_C_CHILD = r"""
+import runpy, subprocess, sys
+mode, script = sys.argv[1], sys.argv[2]
+sys.path.insert(0, str(__import__('pathlib').Path(script).parent))
+import safe_process
+def interrupted_cleanup(argv, **kwargs):
+    # Ctrl-C while subprocess is still cleaning up a timed-out child: KeyboardInterrupt
+    # raised inside the TimeoutExpired handler, so the TimeoutExpired (argv and all) is chained.
+    try:
+        raise subprocess.TimeoutExpired(argv, kwargs.get('timeout') or 30)
+    except subprocess.TimeoutExpired:
+        raise KeyboardInterrupt
+def fake(argv, **kwargs):
+    if argv[:2] == ['security', 'unlock-keychain']:
+        interrupted_cleanup(argv, **kwargs)
+    return subprocess.CompletedProcess(argv, 0, b'', b'')
+subprocess.run = fake
+if mode == 'escaped':
+    # The interrupt escapes the helper entirely; only the entry-point guard stands.
+    real = safe_process.run
+    def leaky(command, **kwargs):
+        argv = [str(part) for part in command]
+        if argv[:2] == ['security', 'unlock-keychain']:
+            interrupted_cleanup(argv, **kwargs)
+        return real(command, **kwargs)
+    safe_process.run = leaky
+sys.argv = [script, *sys.argv[3:]]
+runpy.run_path(script, run_name='__main__')
+"""
+
+
+class SecretArgvTests(unittest.TestCase):
+    def testCtrlCDuringATimedOutUnlockNeverPrintsTheKeychainPassword(self):
+        import os, subprocess, sys
+        password = 'kc-SENTINEL-'+'y'*40
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)/'home'; secrets = home/'.config/cassini/secrets'; secrets.mkdir(parents=True)
+            def private(name, data):
+                path = secrets/name; path.write_text(data); path.chmod(0o600); return path
+            private('cassini-signing-keychain.password', password)
+            private('cassini-signing.keychain-db', '')
+            private('sparkle-ed25519.key', base64.b64encode(bytes(32)).decode())
+            api = private('AuthKey_TEST.p8', 'not a real key')
+            notary = private('notary.json', json.dumps({'key': str(api), 'keyId': 'TEST1234', 'issuer': '0'*8+'-'+'0'*4+'-'+'0'*4+'-'+'0'*4+'-'+'0'*12}))
+            notes = Path(temporary)/'notes.html'; notes.write_text('<p>notes</p>')
+            for mode in ['helper', 'escaped']:
+                with self.subTest(mode=mode):
+                    result = subprocess.run([sys.executable, '-c', CTRL_C_CHILD, mode, str(ROOT/'scripts/release.py'),
+                        '--version', '0.1.0', '--build', '9', '--release-notes', str(notes), '--notary-config', str(notary),
+                        '--output', str(Path(temporary)/('out-'+mode))], capture_output=True, text=True, timeout=120,
+                        env=dict(os.environ, HOME=str(home)))
+                    output = result.stdout+result.stderr
+                    self.assertEqual(result.returncode, 130, output)
+                    self.assertNotIn('SENTINEL', output)
+                    self.assertNotIn('Traceback', output)
+                    self.assertNotIn('unlock-keychain -p', output)
+                    self.assertIn('Interrupted', result.stderr)
+                    self.assertFalse((Path(temporary)/('out-'+mode)).exists())
+
+    def testEverySecretBearingCallGoesThroughTheSharedHelper(self):
+        import re
+        # Scripts that put a secret on argv (keychain password, notary key, Sparkle seed path).
+        direct = re.compile(r'subprocess\.(run|Popen|call|check_call|check_output|getoutput|getstatusoutput)\(|os\.(system|popen|exec\w*|spawn\w*)\(')
+        for name in ['release.py', 'setup-signing-keychain.py']:
+            for number, line in enumerate((ROOT/'scripts'/name).read_text().splitlines(), 1):
+                if direct.search(line):
+                    # The one exception: xcodebuild's argv carries no secret and streams into build.log.
+                    self.assertTrue(name == 'release.py' and line.rstrip().endswith('# no-secret-argv') and "'xcodebuild'" not in line,
+                                    name+':'+str(number)+' calls a subprocess directly: '+line.strip())
+        self.assertIn('safe_process.guard(', (ROOT/'scripts/release.py').read_text())
+        self.assertIn('safe_process.guard(', (ROOT/'scripts/setup-signing-keychain.py').read_text())
+
 if __name__ == '__main__':unittest.main()

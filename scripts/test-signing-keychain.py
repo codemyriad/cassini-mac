@@ -69,7 +69,7 @@ class KeychainSecretTests(unittest.TestCase):
                     self.assertNotIn('Traceback', output)
                     if mode != 'interrupt':
                         self.assertIn('security ' + step, result.stderr)
-                    self.assertIn({'timeout': 'timed out', 'oserror': 'could not run', 'exit': 'exit 51', 'interrupt': 'interrupted'}[mode], result.stderr)
+                    self.assertIn({'timeout': 'timed out', 'oserror': 'could not run', 'exit': 'exit 51', 'interrupt': 'Interrupted'}[mode], result.stderr)
 
     def testTheHappyPathStillReportsWithoutThePassword(self):
         result = self.run_child('none', 'none', True)

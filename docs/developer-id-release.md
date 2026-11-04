@@ -18,8 +18,10 @@ and matching `developer-id-application.key.pem`, grants codesign/productbuild
 access, adds only that keychain to the existing search list and proves signing
 without running its generated Mach-O. Its random password is retained in
 `cassini-signing-keychain.password`. Release unlocks it and sets a6-hour timeout.
-Do not copy credentials into environment variables, source control or logs. A failing or
-hung keychain command reports only its tool and subcommand, never its arguments or output.
+Do not copy credentials into environment variables, source control or logs. Every tool call
+in `release.py` and `setup-signing-keychain.py` goes through `scripts/safe_process.py`: a
+failing, hung or interrupted (Ctrl-C) command reports only its tool and subcommand, never
+its arguments or output, and both entry points end any exception in one sanitized line.
 
 `notary.json` is an owned0600 JSON file with `key` (absolute path to the existing
 ASC `.p8` file), `keyId` and `issuer`. Obtain these through the private local
