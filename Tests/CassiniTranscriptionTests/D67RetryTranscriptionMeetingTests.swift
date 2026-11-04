@@ -50,9 +50,17 @@ final class D67RetryTranscriptionMeetingTests: XCTestCase {
         // Try again, which fails before catching up: one word, then a crash.
         try MeetingTranscriber.setStatus(directory:directory,id:id,status:"queued")
         calls = 0
+        var visibleWhileBehind: [Int] = [], referenceWhileBehind: [Bool] = []
         XCTAssertThrowsError(try MeetingTranscriber.run(directory:directory,detector:detector,model:"whistle",initialETA:0.15) { _ in
-            calls += 1; if calls == 1 { return self.words(1) }; throw Crash()
+            calls += 1
+            // Running and behind the retained snapshot: the reader shows no words, and meeting.json
+            // references none (the failed attempt's words never reappear under this attempt).
+            visibleWhileBehind.append(try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first).transcriptItems.count)
+            referenceWhileBehind.append(try self.transcript(directory)["reference"] is NSNull)
+            if calls == 1 { return self.words(1) }; throw Crash()
         })
+        XCTAssertEqual(visibleWhileBehind,[0,0],"no words are visible before the retry catches up")
+        XCTAssertEqual(referenceWhileBehind,[true,true])
         XCTAssertEqual(try transcript(directory)["status"] as? String,"failed")
         XCTAssertEqual(try sidecar(directory),["w0","w1","w2"],"a shorter failed retry never replaces the longer snapshot")
         // Try again, which completes: its words replace the snapshot, whatever their number.

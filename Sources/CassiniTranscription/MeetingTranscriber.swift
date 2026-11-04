@@ -181,6 +181,10 @@ public enum MeetingTranscriber {
             // must not replace them, so a retry that fails early never loses the longer snapshot;
             // a completed attempt replaces it.
             let retained = LibraryScanner.sidecarWordCount(folder:directory)
+            // Whether this attempt has written transcript.json yet. Until it has, the stored
+            // reference stays as it was (null after a failure), so the retained words of a failed
+            // attempt never become visible again under this attempt's model.
+            var wroteSidecar = false
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
@@ -193,14 +197,15 @@ public enum MeetingTranscriber {
                 // D53.2: an unknown language is written as "und", never the "auto" request.
                 let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
-                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory) }
+                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory); wroteSidecar = true }
                 let factor = processed > 0 ? elapsed / processed : initialETA
                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
                 try writer.transaction { metadata in
                     // D47/D56: edit the stored transcript object, so members this app does
                     // not know survive; the reference is this attempt's own sidecar.
                     var transcript = metadata["transcript"] as? [String:Any] ?? [:]
-                    transcript["status"] = status; transcript["reference"] = reference; transcript["model"] = model
+                    transcript["status"] = status; transcript["model"] = model
+                    if wroteSidecar { transcript["reference"] = reference }
                     metadata["transcript"] = transcript
                     metadata["etaMinutes"] = status == "running" ? eta : NSNull()
                     metadata["error"] = NSNull()
