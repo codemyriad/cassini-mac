@@ -176,6 +176,11 @@ public enum MeetingTranscriber {
             // another/unknown recognizer's words to the selected model.
             let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
             let previous = resumes ? meeting.transcriptItems : []
+            // D67.2 (#139 review): a failed attempt's partial words wait, unreferenced, in
+            // transcript.json. Until this attempt has written as many words, a running publish
+            // must not replace them, so a retry that fails early never loses the longer snapshot;
+            // a completed attempt replaces it.
+            let retained = LibraryScanner.sidecarWordCount(folder:directory)
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
@@ -188,7 +193,7 @@ public enum MeetingTranscriber {
                 // D53.2: an unknown language is written as "und", never the "auto" request.
                 let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
-                try atomicTranscript(data, directory: directory)
+                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory) }
                 let factor = processed > 0 ? elapsed / processed : initialETA
                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
                 try writer.transaction { metadata in
