@@ -29,6 +29,12 @@ def runner(command, **kwargs):
             raise subprocess.TimeoutExpired(command, kwargs['timeout'], output=password.encode(), stderr=password.encode())
         if mode == 'oserror':
             raise PermissionError(13, 'denied ' + password, command[0])
+        if mode == 'interrupt':
+            # Ctrl-C while subprocess is still handling the TimeoutExpired (kill/wait).
+            try:
+                raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+            except subprocess.TimeoutExpired:
+                raise KeyboardInterrupt
         if mode == 'exit':
             return subprocess.CompletedProcess(command, 51, password.encode(), password.encode())
     if command[0] == 'openssl':
@@ -54,15 +60,16 @@ class KeychainSecretTests(unittest.TestCase):
     def testAHungOrFailingPasswordCommandNeverPrintsThePassword(self):
         # create-keychain runs only for a new keychain; unlock and partition setup always run.
         for step, exists in [('create-keychain', False), ('unlock-keychain', True), ('set-key-partition-list', True)]:
-            for mode in ['timeout', 'oserror', 'exit']:
+            for mode in ['timeout', 'oserror', 'exit', 'interrupt']:
                 with self.subTest(step=step, mode=mode):
                     result = self.run_child(step, mode, exists)
                     output = result.stdout + result.stderr
-                    self.assertEqual(result.returncode, 1, output)
+                    self.assertEqual(result.returncode, 130 if mode == 'interrupt' else 1, output)
                     self.assertNotIn('SENTINEL', output)
                     self.assertNotIn('Traceback', output)
-                    self.assertIn('security ' + step, result.stderr)
-                    self.assertIn({'timeout': 'timed out', 'oserror': 'could not run', 'exit': 'exit 51'}[mode], result.stderr)
+                    if mode != 'interrupt':
+                        self.assertIn('security ' + step, result.stderr)
+                    self.assertIn({'timeout': 'timed out', 'oserror': 'could not run', 'exit': 'exit 51', 'interrupt': 'interrupted'}[mode], result.stderr)
 
     def testTheHappyPathStillReportsWithoutThePassword(self):
         result = self.run_child('none', 'none', True)

@@ -72,7 +72,12 @@ def cli(folder=FOLDER,runner=subprocess.run):
  try:print(json.dumps(main(folder,runner)))
  except SetupError as error:
   print(str(error),file=sys.stderr);return 1
- except Exception as error:
+ except KeyboardInterrupt:
+  # An interrupt during a hung command's timeout handling chains that TimeoutExpired, whose
+  # message holds the argv; never let it reach the default traceback printer.
+  print('Signing keychain setup interrupted',file=sys.stderr);return 130
+ except BaseException as error:
+  if isinstance(error,SystemExit):raise
   # Anything unexpected: name the type only, so no argument or output can leak.
   print('Signing keychain setup failed: '+type(error).__name__,file=sys.stderr);return 1
  return 0
