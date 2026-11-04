@@ -10,13 +10,16 @@ struct D52PresenceTests {
         let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("browser-protocol/conformance/gaps/presence.json")
         let cases = try #require(try JSONParser.parse(Data(contentsOf:url))["cases"]?.array)
-        #expect(cases.count == 11)
+        #expect(cases.count == 14)
         for vector in cases {
             let name = vector["name"]!.string!, track = vector["track"]!
             let gaps: [TrackPresence.Gap]? = track["gaps"]?.array.map { rows in rows.map {
                 .init(atMs:$0["atMs"]!.double!,durationMs:$0["durationMs"]?.double,frames:$0["frames"]?.int.map(UInt64.init),kind:$0["kind"]!.string!) } }
             let ownership = vector["ownership"]?.array?.map { (start:$0.array![0].double!,end:$0.array![1].double!) }
-            let result = TrackPresence.windows(startOffsetMs:track["startOffsetMs"]!.double!,sampleRate:track["sampleRate"]!.int!,
+            // R88 (D67.7): the extent starts at the D55 placement on the 16 kHz grid, as the
+            // transcriber passes it; gaps stay on the session timeline.
+            let placed = Double(TrackPlacement.frame(ms:track["startOffsetMs"]!.double!,rate:16000)) / 16
+            let result = TrackPresence.windows(startOffsetMs:placed,sampleRate:track["sampleRate"]!.int!,
                                                frames:UInt64(track["frames"]!.int!),gaps:gaps,ownership:ownership)
             func ranges(_ key: String) -> [[Int]] { vector["expected"]![key]!.array!.map { $0.array!.map { $0.int! } } }
             #expect(TrackPresence.samples16k(result.present).map { [$0.lowerBound,$0.upperBound] } == ranges("present"),"\(name) present")
