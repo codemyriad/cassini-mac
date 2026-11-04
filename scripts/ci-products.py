@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Bind same-run CI products to their source revision, pins and archive digest."""
 import argparse
+import sys
 import hashlib
 import json
 import importlib.util
@@ -55,14 +56,25 @@ def pack(kind, destination):
     (destination/(kind+'.json')).write_text(json.dumps(metadata, indent=2)+'\n')
 
 
+class TransferError(ValueError):
+    """A download that arrived incomplete (missing or truncated archive): fetching it again can
+    help. Every other product mismatch (revision, architecture, Xcode, pins, unsafe members) is
+    a plain ValueError and is never retried (D66 rule 2)."""
+
+
+TRANSFER_EXIT = 75  # EX_TEMPFAIL: the action downloads that product once more
+
+
 def unpack(kind, source):
+    if not (source/(kind+'.json')).is_file() or not (source/(kind+'.tar.gz')).is_file():
+        raise TransferError('Product download missing: '+kind)
     metadata = json.loads((source/(kind+'.json')).read_text())
     expected = identity(kind)
     if any(metadata.get(key) != value for key, value in expected.items()):
         raise ValueError('Product revision, architecture, Xcode or pins do not match checkout')
     archive = source/(kind+'.tar.gz')
     if digest(archive) != metadata['sha256']:
-        raise ValueError('Product archive digest mismatch')
+        raise TransferError('Product archive digest mismatch')
     allowed = ['.build'] if kind == 'swiftpm' else ['build']
     with tarfile.open(archive) as packed:
         members = packed.getmembers()
@@ -121,7 +133,10 @@ def main():
     elif args.action == 'pack':
         pack(args.kind, args.directory)
     else:
-        unpack(args.kind, args.directory)
+        try:
+            unpack(args.kind, args.directory)
+        except TransferError as error:
+            print(error, file=sys.stderr); sys.exit(TRANSFER_EXIT)
 
 
 if __name__ == '__main__':

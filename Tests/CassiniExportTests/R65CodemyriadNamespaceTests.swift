@@ -759,6 +759,91 @@ struct R65CodemyriadNamespaceTests {
         try lock(library,0o755)
         #expect(throws:MeetingExportError.libraryFolderNotWritable) { _ = try reexportFile(root) }
     }
+    /// D65: a received file without a manifest or DATE is dated by its import, not its export.
+    @Test func anUndatedReceivedFileIsDatedByItsImport() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let input = try CassiniReader.read(contentsOf:fixture)
+        let meeting = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Library"))
+        let imported = try #require(meeting.received?.importedAtMs)
+        let file = try reexportFile(root)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        if input.tags?["DATE"] == nil {
+            #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
+            #expect(file.tags?["DATE"] == nil,"no DATE is made up")
+        }
+    }
+    /// #133 review: a DATE whose offset is unknown (-00:00) or out of range names no instant
+    /// under the shared rules (LibraryNames): the file is dated by its import, keeps its tag as it
+    /// was, and its name doesn't come from it.
+    @Test(arguments:["2026-03-04T09:15:00-00:00","2026-03-04T09:15:00+15:30"]) func anInvalidDateTagDoesNotDateTheFile(tag: String) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        var tags = Data("OpusTags".utf8)
+        func number(_ value: Int) { var little = UInt32(value).littleEndian; withUnsafeBytes(of:&little) { tags.append(contentsOf:$0) } }
+        func text(_ value: String) { number(value.utf8.count); tags.append(Data(value.utf8)) }
+        text("other encoder"); number(1); text("DATE=" + tag)
+        let input = root.appendingPathComponent("odd-date.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:fixture),tags:tags,to:input)
+        let meeting = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        let imported = try #require(meeting.received?.importedAtMs)
+        let file = try reexportFile(root)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
+        #expect(file.tags?["DATE"] == tag,"the original tag is kept")
+        #expect(file.manifest?.raw["x"]?["codemyriad.io"]?["namePrefixSource"]?.string == "import-time")
+    }
+    /// #133 review: an export from before D65 (its revision chosen without the creation time and
+    /// DATE) is re-exported after the upgrade at a higher revision, then stays there unchanged.
+    @Test func anEarlierExportIsReExportedAtAHigherRevision() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let meeting = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Library"))
+        let first = try reexportFile(root)
+        // What an earlier build stored for that same content: the digest it computed, of the
+        // manifest without its creation time (and no DATE), then the transcripts' digest.
+        let manifest = try #require(first.manifest?.raw)
+        var content = try manifest.setting("transcripts",to:nil)
+        content = try content.setting("meeting",to:content["meeting"]!.setting("createdAtUtc",to:nil))
+        let x = try #require(content["x"])
+        content = try content.setting("x",to:x.setting("codemyriad.io",to:x["codemyriad.io"]!.setting("revision",to:nil)))
+        var transcripts = CryptoKit.SHA256()
+        transcripts.update(data:try (manifest["transcripts"] ?? .array([])).encoded())
+        let prefixes = (manifest["transcripts"]?.array ?? []).compactMap { $0["payloadRef"]?["prefix"]?.string }
+        for comment in (first.tags?.comments ?? []) where prefixes.contains(where:{ PortableMeetingTags.isChunk(comment.name,of:$0) }) {
+            transcripts.update(data:Data((comment.name + "=" + comment.value + "\n").utf8))
+        }
+        var data = try content.encoded(); data.append(0)
+        data.append(Data(transcripts.finalize().map { String(format:"%02x",$0) }.joined().utf8))
+        let earlierDigest = SHA256Hex(data)
+        let url = meeting.folder.appendingPathComponent("meeting.json")
+        let current = try #require(try raw(url)["revision"]?.int)
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction {
+            $0[CodemyriadNamespace.baselineMember] = ["own":["revision":current + 1,"sha256":earlierDigest]]
+        }
+        let earlier = current + 1
+        let upgraded = try reexport(root)
+        #expect(upgraded["revision"]?.int ?? 0 > earlier,"a higher revision than the earlier export's")
+        #expect(try reexport(root)["revision"] == upgraded["revision"],"then stable while nothing changes")
+    }
+    /// D65: a Mac recording's creation time and DATE are its recording start, never the export
+    /// time. (Assets: the export CI job.)
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func aRecordingIsDatedByItsStart() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try recording(root)
+        let start = try #require(meeting.start)
+        let path = try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"])
+        let directory = URL(fileURLWithPath:path)
+        let hashes = try JSONDecoder().decode([String:String].self,from:Data(contentsOf:directory.appendingPathComponent("unsigned-sha256.json")))
+        let assets = try OpusAssets.builtForTests(directory:directory,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
+        let rome = try #require(TimeZone(identifier:"Europe/Rome"))
+        let exported = try MeetingFileExporter.cassini(meeting,assets:assets,temporaryRoot:root,timeZone:rome)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:start))
+        #expect(file.tags?["DATE"] == MeetingFileExporter.dateTag(start,zone:rome))
+    }
     /// #116 r4: our own namespace never describes two contents at one revision: words that
     /// become unreadable (damaged) take a new revision, and so do the same words restored;
     /// an unchanged re-export keeps it.
@@ -934,6 +1019,10 @@ struct R65CodemyriadNamespaceTests {
         let x = try #require(CassiniReader.read(contentsOf:exported.url).manifest?.raw["x"]?["codemyriad.io"])
         #expect(x["namePrefix"]?.string == "2026-03-04--09.15-" && x["namePrefixSource"]?.string == "date-tag")
         #expect(x["automaticTitle"]?.string == "Board review")
+        // D65: its DATE stays, and its creation time is that DATE, not the export time.
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.tags?["DATE"] == "2026-03-04T09:15:00+01:00")
+        #expect(file.manifest?.meeting.createdAtUtc == "2026-03-04T08:15:00.000Z")
         #expect(try raw(imported.folder.appendingPathComponent("meeting.json"))["namePrefix"]?.string == "2026-03-04--09.15-")
     }
     /// Naming on Mac a speaker another writer had cleared removes the clear (it goes only with unnamed).
