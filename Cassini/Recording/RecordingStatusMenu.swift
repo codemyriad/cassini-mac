@@ -40,7 +40,9 @@ struct RecordingMenuPayload: Codable, Sendable {
                 lines.append(UXText.text(first.input.refusedSides[.me] == "deviceUnavailable" ? "errors.deviceUnavailable.me" : "errors.micPermission.line"))
             }
             if first.snapshot.others && !first.snapshot.browserAlive {
-                if first.input.failedSides.contains(.others) { lines.append(UXText.text("errors.othersPermission.line")) }
+                if first.input.failedSides.contains(.others) {
+                    lines.append(UXText.text(first.input.othersDenied ? "errors.othersPermission.line" : "errors.deviceUnavailable.others"))
+                }
                 else if first.snapshot.fallbackReason != nil { lines.append(UXText.text("errors.othersFallback.line")) }
             }
         }

@@ -336,7 +336,8 @@ public final class RecordingSink: @unchecked Sendable {
             let issue = [problem ?? recordedFailure, loss, gapNote, paddingFailure?.localizedDescription].compactMap { $0 }.joined(separator: " ")
             try writer.finish(problem: issue.isEmpty ? nil : issue, kind: lost > 0 || paddingFailure != nil ? "io" : (gaps > 0 ? "gap" : nil))
             if let paddingFailure { throw paddingFailure }
-            if problem == nil, let issue = writer.recordingProblem { throw RecordingError.invalid(issue) }
+            // An unopened input's own failure (a staged writer records it too) is its refusal's.
+            if problem == nil, keepingFailure, let issue = writer.recordingProblem { throw RecordingError.invalid(issue) }
         }
     }
 }

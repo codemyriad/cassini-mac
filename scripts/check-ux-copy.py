@@ -15,7 +15,9 @@ mac_entries={e['id']:e for e in json.loads((root/'Sources/CassiniLibrary/Localiz
 decision_approved={'errors.diskStopped.line'}
 # D22 explicitly gives the Mac Why dialog one common.close button. The catalog
 # still tags that older common entry GNOME-only; keep its published bytes.
-platform_decision_approved={'common.close'}
+# D58.1 (coordinator, #140 review): Mac shows the shared GNOME line when the system tap could
+# not be started (not a permission denial), with no settings action.
+platform_decision_approved={'common.close','errors.deviceUnavailable.others'}
 for file in (root/'Cassini').rglob('*.swift'):
     for key in re.findall(r'UXText\.text\("([^"]+)"',file.read_text()):
         assert key in entries and (entries[key]['status']!='pending' or key in decision_approved), (file,key)

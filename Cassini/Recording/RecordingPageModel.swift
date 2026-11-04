@@ -115,7 +115,7 @@ private actor RecordingEdits {
     var othersPathBody: String {
         let key: String
         if !others { key = "whatIsRecorded.othersHeard.none.description" }
-        else if othersUnavailable { key = "errors.othersPermission.line" }
+        else if othersUnavailable { key = owned?.input.othersDenied == true ? "errors.othersPermission.line" : "errors.deviceUnavailable.others" }
         else if owned?.snapshot.browserAlive ?? meeting.isBrowserCapture { key = voiceCount > 1 ? "whatIsRecorded.othersHeard.browser.description" : "whatIsRecorded.othersHeard.browserMixed.description" }
         else { key = owned?.snapshot.fallbackReason == nil ? "whatIsRecorded.othersHeard.system.description" : "whatIsRecorded.othersHeard.fallback.description" }
         return UXText.text(key)

@@ -76,10 +76,12 @@ struct RecordingPageView: View {
                 if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive,
                    owned.input.failedSides.contains(.others) || owned.snapshot.fallbackReason != nil {
                     HStack(alignment:.top,spacing:8) {
-                        Text(UXText.text(owned.input.failedSides.contains(.others) ? "errors.othersPermission.line" : "errors.othersFallback.line")).fixedSize(horizontal:false,vertical:true)
-                        if owned.input.failedSides.contains(.others) {
+                        // D58.1: the permission line and its settings action only for a denial.
+                        let failed = owned.input.failedSides.contains(.others), denied = failed && owned.input.othersDenied
+                        Text(UXText.text(!failed ? "errors.othersFallback.line" : denied ? "errors.othersPermission.line" : "errors.deviceUnavailable.others")).fixedSize(horizontal:false,vertical:true)
+                        if denied {
                             Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
-                        } else { Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true } }
+                        } else if !failed { Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true } }
                     }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-source-notice")
                 }
 
