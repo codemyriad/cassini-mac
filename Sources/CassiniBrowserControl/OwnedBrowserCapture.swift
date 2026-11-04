@@ -172,11 +172,20 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
-            let span = UUID().uuidString.lowercased(), live = others && browserAlive
-            var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)
-            start.clock = clock
-            try commitBound([(span,key,live)],starting:[start])
-            browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
+            let live = others && browserAlive
+            // D68 (#49 review): a source a resumed transport declares before the restore gets no
+            // track yet. restoreBrowser (or its first packet after the restore) opens its one real
+            // span; an inert, start-less 0-frame span here would only be a second track for the key.
+            // A declaration while the Others are deselected keeps its inert span, as before.
+            if browserAlive {
+                let span = UUID().uuidString.lowercased()
+                var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)
+                start.clock = clock
+                try commitBound([(span,key,live)],starting:[start])
+                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:true)
+            } else {
+                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:nil,current:false)
+            }
             publish()
         }
     }

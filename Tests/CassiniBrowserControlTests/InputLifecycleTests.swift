@@ -339,12 +339,35 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
     }
 
+    /// D68 (#49 review): a resumed transport's declarations before the restore write no track.
+    /// The restore opens one real span per returning source; no inert, start-less 0-frame span
+    /// precedes it under the same key.
+    @MainActor func testADeclarationBeforeTheRestoreWritesNoTrackAndTheRestoreOpensOneSpan() async throws {
+        let (root,owner,_,_,inputs) = try await returnFixture()
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        let before = owner.snapshot.manifest.tracks.map(\.id)
+        try owner.browserTrack(id:"after",label:"Returned",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.id),before,"the declaration alone writes no track")
+        try owner.browserAudio(id:"after",sequence:0,offsetMs:2500,pcm:Data(repeating:2,count:1600))
+        XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.id),before,"nor does audio before the restore")
+        try await inputs.restoreBrowser(atMs:3000)
+        try owner.browserAudio(id:"after",sequence:1,offsetMs:3100,pcm:Data(repeating:2,count:1600))
+        try await inputs.stop(); try await owner.finish()
+        let guest = owner.snapshot.manifest.tracks.filter { $0.sourceTrackId == "guest" }
+        XCTAssertEqual(guest.count,1,"one span for the returning source")
+        XCTAssertNotNil(guest.first?.startOffsetMs,"placed")
+        XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.startOffsetMs == nil },"no start-less track")
+    }
     @MainActor func testRejectedReturnResumesTheExistingSystemSpanAndKeepsMicRunning() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
         defer { try? FileManager.default.removeItem(at:root) }
         try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
-        for index in 0..<(64-owner.snapshot.manifest.tracks.count) { try offerReturn(owner,id:"after-\(index)") }
-        XCTAssertEqual(owner.snapshot.manifest.tracks.count,64)
+        // Declarations before the restore write no track (D68), so the restore itself would
+        // take the recording past 64 tracks: 3 stored plus 62 returning spans.
+        let stored = owner.snapshot.manifest.tracks.count
+        for index in 0..<(65-stored) { try offerReturn(owner,id:"after-\(index)") }
+        XCTAssertEqual(owner.snapshot.manifest.tracks.count,stored)
         let events = owner.snapshot.manifest.events?.count
         system.firstAt = 2.1
         do { try await inputs.restoreBrowser(atMs:3000); XCTFail("Track limit must reject restoration") } catch {}
