@@ -7,10 +7,11 @@ public enum MeetingMarkdown {
     public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current, language: CassiniLanguage = .system) -> String {
         render(title:meeting.title ?? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale),start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,locale:locale,language:language)
+            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,gaps:meeting.speakerGaps,locale:locale,language:language)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
-                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], locale: Locale = .current, language: CassiniLanguage = .system) -> String {
+                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], gaps: SpeakerGapRanges.Ranges = [:],
+                              locale: Locale = .current, language: CassiniLanguage = .system) -> String {
         let strings=LibraryLocalization.shared
         let title=title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? strings.text("library.untitled",language:language,locale:locale) : title
         var blocks = ["# " + escape(title)]
@@ -19,7 +20,7 @@ public enum MeetingMarkdown {
         let ordered = items.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
         }.map(\.element)
-        let turns = LibraryTranscriptTurn.coalescing(ordered)
+        let turns = LibraryTranscriptTurn.coalescing(ordered,gaps:gaps)
         var speaking: [String] = []
         for turn in turns where !speaking.contains(turn.speaker) { speaking.append(turn.speaker) }
         if !speaking.isEmpty { blocks.append(strings.text("export.markdown.speakersLine",["names":speaking.map { escape(names[$0] ?? $0) }.joined(separator:", ")],language:language,locale:locale)) }

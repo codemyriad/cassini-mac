@@ -66,17 +66,22 @@ public enum MeetingPresentation {
         }
         return out
     }
-    public static func turns(_ items: [LibraryTranscriptItem]) -> [Turn] {
-        (try? turns(items,cancellable:false)) ?? []
+    public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:]) -> [Turn] {
+        (try? turns(items,gaps:gaps,cancellable:false)) ?? []
     }
     /// The same, for a caller off the main actor: with `cancellable`, a cancelled task stops
     /// at the next step with CancellationError (#118 review: long transcripts prepare off the
     /// main actor, and a superseded preparation never finishes).
-    public static func turns(_ items: [LibraryTranscriptItem], cancellable: Bool) throws -> [Turn] {
+    /// D63 #2: with `gaps` (SpeakerGapRanges), consecutive words of one speaker split where one of
+    /// that speaker's gap ranges lies between their midpoints, and the 400 ms rejoin never joins
+    /// across one; pauses inside presence still join.
+    public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:], cancellable: Bool) throws -> [Turn] {
         let check: () throws -> Void = cancellable ? { try Task.checkCancellation() } : {}
         var fragments: [[LibraryTranscriptItem]] = []
         for item in items where !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if fragments.last?.first?.speaker == item.speaker { fragments[fragments.count - 1].append(item) } else { fragments.append([item]) }
+            if let last = fragments.last?.last, last.speaker == item.speaker, !SpeakerGapRanges.splits(last,item,gaps) {
+                fragments[fragments.count - 1].append(item)
+            } else { fragments.append([item]) }
         }
         let displayed: [[LibraryTranscriptItem]] = fragments.map { fragment in
             zip(fragment,TranscriptText.quotes(fragment.map(\.text))).compactMap { item,text in
@@ -94,7 +99,8 @@ public enum MeetingPresentation {
             let speaker = fragment[0].speaker, end = fragment.map(\.endMs).max() ?? 0
             var joined = false
             if let previous = open[speaker], let first = pools[position].first, !pools[previous.fragment].isEmpty,
-               abs(first.start - result[previous.turn].endMs) <= seamGapMs {
+               abs(first.start - result[previous.turn].endMs) <= seamGapMs,
+               let last = fragments[previous.fragment].last, !SpeakerGapRanges.splits(last,fragment[0],gaps) {
                 let intervening = pools[(previous.fragment + 1)..<position].flatMap { $0 }
                 if intervening.isEmpty || touches(intervening,pools[previous.fragment] + pools[position]) {
                     let at = result[previous.turn].items.count

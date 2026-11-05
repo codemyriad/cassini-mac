@@ -7,21 +7,6 @@ import CassiniKit
 import CassiniRecording
 import CassiniWhistle
 
-public struct TranscriptSpeaker: Sendable {
-    public let id: String
-    public let name: String?
-    public static func fromTrack(id: String, kind: String, sourceTrackID: String? = nil, received: Bool = false, me: String = "Me", others: String = "The others") -> Self {
-        if received { return .init(id: "track-original", name: nil) }
-        if ["microphone", "local"].contains(kind) { return .init(id: "me", name: me) }
-        if kind == "system" { return .init(id: "others", name: others) }
-        let identity = sourceTrackID ?? id
-        let safe = !identity.isEmpty && identity.utf8.count <= 195 && identity.utf8.allSatisfy {
-            (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45,95].contains($0)
-        }
-        let suffix = safe ? identity : "opaque-" + SHA256.hash(data:Data(identity.utf8)).map { String(format:"%02x",$0) }.joined()
-        return .init(id: "track-" + suffix, name: nil)
-    }
-}
 public enum MeetingTranscriber {
     public static func setStatus(directory: URL, id: UUID, status: String) throws {
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
@@ -111,15 +96,11 @@ public enum MeetingTranscriber {
                     return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs,presenceGaps(track))
                 }
             }
-            // D52 M1: one source becomes one speaker only while its spans are disjoint.
-            let lengths = Dictionary(meeting.audioTracks.map { ($0.url,($0.frameCount,$0.sampleRate)) },uniquingKeysWith:{ first,_ in first })
-            let lanes = SourceSpanLanes.assign(sources.compactMap { url, id, kind, offset, sourceTrackID, end, _ in
-                let base = TranscriptSpeaker.fromTrack(id:id,kind:kind,sourceTrackID:sourceTrackID,received:received,me:me,others:others).id
-                guard base.hasPrefix("track-"), !received else { return nil }
-                let length = lengths[url]
-                return .init(id:id,base:base,startMs:offset,endMs:offset == nil ? nil : end,frames:length?.0,sampleRate:length?.1)
-            })
-            let separated = lanes.values.contains { $0.contains(":overlap:") }
+            // D52 M1: one source becomes one speaker only while its spans are disjoint. Readers
+            // derive the same speakers from the same tracks (TranscriptSpeaker.assign, D63 #2).
+            let assigned = received ? [] : TranscriptSpeaker.assign(meeting.audioTracks,received:false,me:me,others:others)
+            let speakerOf = Dictionary(assigned.map { ($0.track.url,$0.speaker) },uniquingKeysWith:{ first,_ in first })
+            let separated = assigned.contains { $0.speaker.id.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
             // D56 and D67.3: the tracks left out as silent, a 0-frame (never-captured) track included,
             // in the meeting's track order.
@@ -134,8 +115,7 @@ public enum MeetingTranscriber {
                 // The one placement at 16 kHz; presence and ownership edges are measured from it.
                 let startSample = Int(TrackPlacement.frame(ms:recorded ?? 0,rate:16000))
                 let offset = recorded.map { _ in Double(startSample) / 16 }
-                var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
-                if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
+                let speaker = speakerOf[url] ?? TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 // D56/D57 (GNOME R76): each session.json track entry is judged on its own native
                 // samples. A silent one is left out of recognition and its fallback; it stays in
                 // the meeting and the mixdown, and captureOutcome is unchanged.
