@@ -17,7 +17,7 @@ public enum MeetingFileExporter {
         if meeting.state.origin == .received, let file = meeting.audioFiles.first {
             return (try FileManager.default.attributesOfItem(atPath:file.path)[.size] as? NSNumber)?.int64Value
         }
-        let inputs = try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
+        let inputs = try inputs(meeting)
         let frames = inputs.map { $0.offsetFrames + $0.outputFrames }.max() ?? 0
         guard frames > 0 else { return nil }
         let choice = AudioEncodeChoice.choose(inputs.map(\.source))
@@ -81,7 +81,7 @@ public enum MeetingFileExporter {
                     .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
             }
         } else {
-            let inputs = try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
+            let inputs = try inputs(meeting)
             guard let assets else { throw MeetingExportError.invalidAssets }
             let selected = AudioEncodeChoice.choose(inputs.map(\.source))
             let bare = directory.appendingPathComponent("audio.opus")
@@ -158,7 +158,7 @@ public enum MeetingFileExporter {
         try budget(frames:frames,bitrate:choice.bitrateBps,directory:url.deletingLastPathComponent())
         let encoder = try OpusEncoder(assets:assets,choice:choice)
         let writer = try OpusPacketWriter(url:url,head:OpusPacketWriter.monoHead(preSkip:encoder.preSkip),tags:PortableMeetingTags.packet())
-        var limiter = PeakLimiter(), pending: [Float] = [], pendingAt = 0
+        var pending: [Float] = [], pendingAt = 0
         func emit(_ samples: [Float]) throws {
             pending.append(contentsOf:samples)
             while pending.count - pendingAt >= 960 {
@@ -167,16 +167,29 @@ public enum MeetingFileExporter {
             }
             if pendingAt > 0 { pending.removeFirst(pendingAt); pendingAt = 0 }
         }
-        var position: Int64 = 0
+        try mix(inputs:inputs,shouldCancel:shouldCancel,emit:emit)
+        try emit([Float](repeating:0,count:encoder.preSkip))
+        if !pending.isEmpty { try emit([Float](repeating:0,count:960 - pending.count)) }
+        try writer.finish(sampleCount:Int(frames))
+    }
+    /// Every track of an own meeting as the export mix reads it: placed (D55) and masked to the
+    /// half-open ranges its source owns (D49/D33).
+    static func inputs(_ meeting: LibraryMeeting) throws -> [PCMInput] {
+        try meeting.audioTracks.map { try PCMInput($0,ownership:OthersOwnership(events:meeting.captureEvents)) }
+    }
+    /// The 48 kHz export mix before encoding: every input placed at its D55 frame (PCMInput),
+    /// summed in 960-frame blocks and limited. `emit` receives the stream in order (shared test 9
+    /// measures it there).
+    static func mix(inputs: [PCMInput], shouldCancel: () -> Bool = { false }, emit: ([Float]) throws -> Void) throws {
+        let frames = inputs.map { $0.offsetFrames + $0.outputFrames }.max() ?? 0
+        var limiter = PeakLimiter(), position: Int64 = 0
         while position < frames {
             if shouldCancel() { throw CancellationError() }
             var block = [Float](repeating:0,count:Int(min(960,frames - position)))
             for input in inputs { try input.add(to:&block,position:position) }
             try emit(limiter.feed(block)); position += Int64(block.count)
         }
-        try emit(limiter.finish()); try emit([Float](repeating:0,count:encoder.preSkip))
-        if !pending.isEmpty { try emit([Float](repeating:0,count:960 - pending.count)) }
-        try writer.finish(sampleCount:Int(frames))
+        try emit(limiter.finish())
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,

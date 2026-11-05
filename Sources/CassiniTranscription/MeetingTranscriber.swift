@@ -36,6 +36,12 @@ public enum MeetingTranscriber {
     /// G11: one recognized range's word times, relative to its audio, clamped to that audio.
     /// A word starting past the end, or crossing it, keeps its text and ends at the end; it is
     /// never dropped. Non-finite, negative or reversed times are a recognizer failure.
+    /// D55 (M9): the one placement at 16 kHz, the session sample where a track's recognizer input
+    /// starts; an unknown offset is placed at 0 (and flagged as offsetsAssumedZero).
+    static func placedStart(offsetMs: Double?) -> Int { Int(TrackPlacement.frame(ms:offsetMs ?? 0,rate:16000)) }
+    /// Session milliseconds of a track-local 16 kHz sample (word times add the segment start here,
+    /// and each word's start inside the segment in clamped).
+    static func sessionMs(startSample: Int, local: Int) -> Int64 { Int64(startSample + local) * 1000 / 16000 }
     static func clamped(_ words: [WhistleTranscript.Word], startMs: Int64, lengthMs: Int64) throws -> [RecognitionFallback.Word] {
         try words.map { word in
             guard word.start.isFinite, word.end.isFinite, word.start >= 0, word.end >= word.start else { throw TranscriptionFailure.runtime("invalid recognizer word timestamp") }
@@ -72,7 +78,7 @@ public enum MeetingTranscriber {
                 /// D55 (M9): the session 16 kHz sample where the track starts (TrackPlacement).
                 let url: URL; let sampleCount: Int; let speaker: TranscriptSpeaker; let startSample: Int
                 /// Session milliseconds of a track-local 16 kHz sample.
-                func ms(_ local: Int) -> Int64 { Int64(startSample + local) * 1000 / 16000 }
+                func ms(_ local: Int) -> Int64 { MeetingTranscriber.sessionMs(startSample:startSample,local:local) }
                 /// Speech segments clipped to the half-open ranges this source owns.
                 let segments: [SpeechSegment]
                 let id: String
@@ -113,7 +119,7 @@ public enum MeetingTranscriber {
             for (url, id, kind, recorded, sourceTrackID, _, gaps) in sources {
                 if recorded == nil { fputs("Cassini transcription: unknownStartOffset; using 0 for word times\n", stderr) }
                 // The one placement at 16 kHz; presence and ownership edges are measured from it.
-                let startSample = Int(TrackPlacement.frame(ms:recorded ?? 0,rate:16000))
+                let startSample = Self.placedStart(offsetMs:recorded)
                 let offset = recorded.map { _ in Double(startSample) / 16 }
                 let speaker = speakerOf[url] ?? TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 // D56/D57 (GNOME R76): each session.json track entry is judged on its own native
