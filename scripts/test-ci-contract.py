@@ -211,6 +211,29 @@ class Transport(unittest.TestCase):
              patch.object(products, 'identity', return_value={**self.identity,'arch':'x86_64'}):
             with self.assertRaisesRegex(ValueError,'do not match'): products.main()
 
+    def test_release_tool_state_in_build_never_enters_the_swiftpm_product(self):
+        # A restored .build cache held the DMG-tool venv, whose interpreter link is absolute.
+        venv = self.root/'.build/dmg-tools-e0741352c4b67aea-3.15/bin'; venv.mkdir(parents=True)
+        (venv/'python3.15').symlink_to('/opt/homebrew/opt/python@3.15/bin/python3.15')
+        (venv/'python3').symlink_to('python3.15')
+        cache = self.root/'.build/dmg-pip-cache/http'; cache.mkdir(parents=True); (cache/'entry').write_bytes(b'x')
+        named = self.root/'.build/dmg-tools-notes.txt'; named.write_text('a file, not a tool directory')
+        products.pack('swiftpm', self.output)
+        with tarfile.open(self.output/'swiftpm.tar.gz') as packed: names = packed.getnames()
+        self.assertFalse([n for n in names if n.startswith(('.build/dmg-tools-e', '.build/dmg-pip-cache'))], names)
+        self.assertIn('.build/arm64/debug/worker', names); self.assertIn('.build/debug', names)
+        self.assertIn('.build/dmg-tools-notes.txt', names, 'only the named directories are left out')
+        products.unpack('swiftpm', self.output)
+        # Any other external link still fails, packed or not.
+        (self.root/'.build/escape').symlink_to('/opt/homebrew/bin/python3')
+        products.pack('swiftpm', self.output)
+        with self.assertRaisesRegex(ValueError, 'Unsafe product link: .build/escape'): products.unpack('swiftpm', self.output)
+
+    def test_the_dmg_tools_live_outside_swiftpms_tree(self):
+        release = (ROOT/'scripts/release.py').read_text(); build = (ROOT/'.github/workflows/ci-build.yml').read_text()
+        self.assertIn("ROOT/'build'/('dmg-tools-'", release); self.assertIn("ROOT/'build/dmg-pip-cache'", release)
+        self.assertNotIn(".build/dmg-", release); self.assertNotIn('.build/dmg-pip-cache', build)
+
     def test_traversal_and_external_links_are_rejected(self):
         for name, link in [('../outside', None), ('.build/link','../../outside'),('.build/link','/tmp/outside')]:
             with self.subTest(name=name,link=link):
