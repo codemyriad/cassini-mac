@@ -100,7 +100,7 @@ struct MeetingView: View {
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         if meeting.hasNoSpeech {
-                            NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil)
+                            NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
                                 .disabled(LibraryMoveCoordinator.shared.busy)
                         }
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
@@ -235,16 +235,43 @@ private struct MeetingPositionSlider: NSViewRepresentable {
 
 struct NoSpeechTranscriptLine: View {
     let action: (() -> Void)?
+    /// The meeting page passes its meeting: when Recording details would show the D58.3 hint (a
+    /// fully silent native This computer side), the same hint and action follow this line (L2).
+    var meeting: LibraryMeeting? = nil
+    @State private var permissionHint = false
     var body: some View {
-        HStack(alignment:.firstTextBaseline,spacing:12) {
-            Text(UXText.text("transcript.noSpeech")).foregroundStyle(.secondary)
-                .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
-                .accessibilityIdentifier("transcript-no-speech")
-            if let action {
-                Button(UXText.text("transcript.writeDownAgain"),action:action).buttonStyle(.bordered)
-                    .accessibilityIdentifier("transcript-write-down-again")
+        VStack(alignment:.leading,spacing:6) {
+            HStack(alignment:.firstTextBaseline,spacing:12) {
+                Text(UXText.text("transcript.noSpeech")).foregroundStyle(.secondary)
+                    .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
+                    .accessibilityIdentifier("transcript-no-speech")
+                if let action {
+                    Button(UXText.text("transcript.writeDownAgain"),action:action).buttonStyle(.bordered)
+                        .accessibilityIdentifier("transcript-write-down-again")
+                }
+            }
+            if permissionHint {
+                HStack(alignment:.firstTextBaseline,spacing:12) {
+                    Text(UXText.text("details.sources.silent.othersPermissionHint")).font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
+                        .accessibilityIdentifier("transcript-no-speech-permission-hint")
+                    Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
+                        .accessibilityIdentifier("transcript-no-speech-permission-settings")
+                }
             }
         }
+        .task(id:meeting.map { "\($0.folder.path)#\($0.state.transcript)" }) { await loadHint() }
+    }
+    /// The same derivation as Recording details, read off the main actor.
+    private func loadHint() async {
+        guard let meeting else { permissionHint = false; return }
+        let folder = meeting.folder, lifecycle = RecordingDetailsReport.Lifecycle(meeting.state.lifecycle)
+        let title = meeting.title ?? "", done = meeting.state.transcript == .done
+        let shows = await Task.detached {
+            RecordingDetailsReport(.load(folder:folder,lifecycle:lifecycle,title:title,transcriptDone:done)).showsPermissionHint
+        }.value
+        guard !Task.isCancelled else { return }
+        permissionHint = shows
     }
 }
 

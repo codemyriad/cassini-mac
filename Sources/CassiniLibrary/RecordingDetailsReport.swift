@@ -56,6 +56,9 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     /// D58: one line per distinct refused side and code, after the source rows.
     public let refusals: [Line]
     public var sourcesEmpty: Bool { sources.isEmpty && refusals.isEmpty }
+    /// D58.3: whether a source shows the system-audio permission hint (the meeting page links it
+    /// from its "No speech was found" line).
+    public var showsPermissionHint: Bool { sources.contains { $0.permissionHint != nil } }
     public let notes: [Line]
     public let ended: Line
     public let endKnown: Bool
