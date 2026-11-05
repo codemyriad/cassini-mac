@@ -118,6 +118,12 @@ happens before the track is declared. Later offsets come only from
 render frames. Different frames/devices remain approximately aligned, not sample-accurate
 conference clocks. Local sender mute/suspension produces silence.
 
+Since extension 0.2.13 (D68.1) every capture context keeps real time. A browser moves an
+AudioContext whose output has been all zeros for about 30 s onto a timer, which can run far
+slower than real time, and the capture graph's output is silent by design. So an inaudible
+constant (6e-8, -144 dBFS, below one 16-bit step) feeds each capture context's output, once per
+context. Captured PCM is unchanged: a silent input still records exactly zero.
+
 Since extension 0.2.12 a browser `track` carries three record-only clock facts. All spans on
 one AudioContext repeat the same values. Native tracks omit them.
 
@@ -219,10 +225,22 @@ tracks are The others. These are recording roles, not verified participant names
 
 A browser path missing at start or lost later may fall back to computer sound:
 append `othersSource` with source=system and reason=missing/lost, and start a new
-system track at that event's atMs. Never fall back to the microphone. D33 permits
+system track at that event's atMs. Never fall back to the microphone. A lost
+fallback commits when the fallback device's first buffer is admitted, not when the
+transport closes: system/lost is appended then, and until then the recording keeps
+its written othersSource. A fallback that fails before it commits writes no
+system/lost, so there is nothing to resume: the app never asks to resume it, and the
+recording ends under the ordinary lifecycle rules. D33 permits
 same-tab browser return before the120s deadline: append browser/restored and start
 new browser spans, checkpointed together, before consuming their PCM. Restored
-is legal only after system/missing or system/lost while The others is selected.
+is legal only while The others is selected, after system/missing or system/lost,
+or after none/lost: a browser loss whose fallback never committed (not asked
+for yet, or still starting) because the call returned first (SPEC-CONTROL
+"Return before the fallback commits"); no system track lies between those two
+events. A writer that keeps its written othersSource until a fallback commits (it
+writes no none/lost at the loss) writes nothing at such a return: no system track
+and no restored. In either form the Others are absent over the loss in the file
+(span extents minus gap ranges, D52.2); the missing audio is never zero-filled.
 The folder, original capture clock and microphone choice remain unchanged. Reuse
 sourceTrackId only where the browser actually reports the same opaque source ID;
 labels, titles and URLs never establish identity. See SPEC-CONTROL call lifecycle.
@@ -415,6 +433,9 @@ New writers always write the key, so `gaps: []` means no gaps and a missing key 
   this can differ from the wire offset by up to the tolerance. Native tracks with host-clock
   anchors use the host time at which the gap began (the next buffer's stamp minus the gap), which
   the anchor mapping approximates. `frames` is the exact integer padding at the track rate.
+- An empty entry (`durationMs` 0, `frames` 0) is valid and is no range: it marks no absence,
+  splits no turn and drops no word. Any other entry has both positive (`durationMs` > 0,
+  `frames` >= 1): a mixed entry (one of them 0) and negative values are invalid.
 - Ranges are half-open, sorted and never coalesced: one entry per padding write, even when
   only a little received audio separates two of them.
 - `kind` is diagnostic and open. Host-derived kinds: `jump` (browser offset jump; overflow,
@@ -437,6 +458,9 @@ New writers always write the key, so `gaps: []` means no gaps and a missing key 
   the older reading, any gapFrames > 0.
 
 Presence comes only from span extents minus `gaps`, intersected with othersSource ownership.
+A span's extent starts at its D55 placement, never at the raw offset: the 16 kHz session sample
+frame(startOffsetMs, 16000), that is startOffsetMs × 16 rounded half away from zero, and it lasts
+frames/sampleRate from there. Gap ranges and ownership stay on the session timeline (R88, D67).
 Zero samples are not evidence of absence: a muted sender's zeros are present audio. Presence
 never reads PCM. An `overflow` marker or a missing/null `gaps` makes the affected time unknown,
 neither present nor absent. On a 16 kHz session grid a window [a,b) ms covers samples
@@ -559,6 +583,11 @@ only to that exact active native stand-in. It must not create a folder, reset
 its clock or alter its selection/microphone. Unknown/refused resume requests
 fail before any file is created. A stopped/changed target is an error, never a
 fresh Start. The handler's target validation and Stop share one transaction.
+The host joins only a committed fallback: the recording's othersSource system/lost
+is written once the fallback device delivers audio (its first buffer is admitted),
+not when the transport closes. An app MUST wait for that commit before it sends the
+resume; one sent earlier is refused and uses up the only ask for that loss on that
+connection.
 Explicit successful proof is a `started` response with resumed:true, the exact
 captureId/timelineOriginMs/callGeneration, path and resume-capture-v1 feature.
 See SPEC-CONTROL.md and conformance/control/RESUME-CAPTURE.md for cancellation,

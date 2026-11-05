@@ -66,6 +66,7 @@ final class D52FallbackTranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(record["method"] as? String,"vadFreeWindows"); XCTAssertEqual(record["windowMs"] as? Int,15000); XCTAssertEqual(record["overlapMs"] as? Int,500)
         let track = try XCTUnwrap((record["tracks"] as? [[String:Any]])?.first)
         XCTAssertEqual(track["trackId"] as? String,"one"); XCTAssertEqual(track["activeSeconds"] as? Double,16.64)
+        XCTAssertEqual(track["personActiveSeconds"] as? Double,16.64,"one track: the person is the track")
         let vad = try XCTUnwrap(track["vadWords"] as? Int)
         XCTAssertLessThan(vad,RecognitionFallback.fewWords)
         XCTAssertEqual(track["fallbackWords"] as? Int,20,"one word per burst; the seam keeps one copy")
@@ -88,6 +89,39 @@ final class D52FallbackTranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(track["activeSeconds"] as? Double,16.64); XCTAssertEqual(track["fallbackWords"] as? Int,20)
         let written = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
         XCTAssertTrue(written.transcriptItems.allSatisfy { $0.startMs >= 60000 },"Nothing is written down over the excluded prefix")
+    }
+    /// D63 #1: a remote who rejoins has two spans of one speaker. Neither alone reaches 15 s of
+    /// active audio; pooled they do, so both spans are decoded in windows, each with its own margin,
+    /// and the provenance has one entry per span with the person's pooled seconds.
+    func testARejoiningRemoteFallsBackOnItsPooledActiveAudio() throws {
+        let detector = try detector()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D63Pooled-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Rejoin",source:"chromium")
+        let pcm = bursts(24).map { Int16(max(-1,min(1,$0)) * 32767) }
+        func span(_ id: String, atMs: Double) throws {
+            for start in stride(from:0,to:pcm.count,by:80000) {
+                let chunk = Array(pcm[start..<min(pcm.count,start+80000)])
+                try session.appendNative(id:id,pcm:chunk.withUnsafeBytes { Data($0) },offsetMs:atMs + Double(start)/16)
+            }
+        }
+        try session.transition(starting:[.init(id:"one",label:"Guest",kind:"remote",sampleRate:rate,channels:1,sourceTrackId:"guest")])
+        try span("one",atMs:0)
+        try session.transition(starting:[.init(id:"two",label:"Guest",kind:"remote",sampleRate:rate,channels:1,sourceTrackId:"guest")],ending:["one"])
+        try span("two",atMs:30000)
+        try session.finish()
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,recognize:runModel)
+        let entries = try XCTUnwrap(try fallback(session)?["tracks"] as? [[String:Any]],"the pooled person fires")
+        XCTAssertEqual(entries.compactMap { $0["trackId"] as? String },["one","two"])
+        let each = entries.compactMap { $0["activeSeconds"] as? Double }
+        XCTAssertEqual(each.count,2); XCTAssertTrue(each.allSatisfy { $0 < RecognitionFallback.minActiveSeconds },"\(each): neither span alone fires")
+        XCTAssertEqual(Set(entries.compactMap { $0["personActiveSeconds"] as? Double }),[each.reduce(0,+)])
+        for entry in entries {
+            let vad = try XCTUnwrap(entry["vadWords"] as? Int), words = try XCTUnwrap(entry["fallbackWords"] as? Int)
+            XCTAssertEqual(entry["used"] as? Bool,words >= RecognitionFallback.need(vad),"the margin stays per track")
+        }
+        let written = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(Set(written.transcriptItems.map(\.speaker)),["track-guest"],"one person across the rejoin")
     }
     func testAShortActiveTrackStreamsWithoutTheFallback() throws {
         let detector = try detector()

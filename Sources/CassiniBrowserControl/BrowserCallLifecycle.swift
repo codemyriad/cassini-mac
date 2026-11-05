@@ -43,6 +43,11 @@ public struct BrowserCallPolicy: Sendable {
         /// D57 (R78.1): the extension's status still lists a session for this tab. The app asks
         /// to resume only once it no longer does.
         public var sessionListed = false
+        /// The shared vectors' `fallbackCommitted` (protocol #43, #44): false while a requested
+        /// fallback has not committed yet. Production passes that state as the committed source
+        /// itself (none/lost, see `steps`) and `decide` holds the ask until system/lost commits,
+        /// so it leaves this true.
+        public var fallbackCommitted = true
         public init(page: BrowserCallLifecycle.Page?, rowPresent: Bool = true, sourceCount: Int?, sourceCountKnown: Bool = true,
                     heard: Bool = false, controlAlive: Bool = true, pcmLive: Bool = false, transportAlive: Bool = true,
                     callGeneration: String? = nil, controlConnection: String = "",
@@ -195,6 +200,11 @@ public struct BrowserCallPolicy: Sendable {
             // A visibly ongoing call stays on fallback without a pageGone deadline;
             // restoring needs a live audio transport.
             missing = nil; ended = nil
+            // The call returns before its fallback commits: the return cancels that fallback, so
+            // it restores, heard or not (protocol #44).
+            if o.transportAlive, actions.isEmpty, source == "system", reason == "lost", !o.fallbackCommitted, others {
+                if restoreReady { askedOn = nil; return [.restore] }; return []
+            }
             if o.transportAlive, actions.isEmpty, source == "system", heard, others {
                 // D49 takes over only the initial stand-in; restore only undoes a
                 // fallback. An explicit system choice is never switched (D52.3b).
@@ -210,8 +220,10 @@ public struct BrowserCallPolicy: Sendable {
             if o.transportAlive, actions.isEmpty, source == "none", reason == "lost", others {
                 if restoreReady { askedOn = nil; return [.restore] }; return []
             }
-            // D52.5: ask once per loss and control connection; never on a timer or later tick.
-            if source == "system", reason == "lost", mayAsk(o,others:others), askedOn != o.controlConnection {
+            // D52.5: ask once per loss and control connection; never on a timer or later tick. The
+            // host joins only a committed system/lost, so an earlier ask would be refused and spend
+            // the connection's only ask (protocol #43).
+            if source == "system", reason == "lost", o.fallbackCommitted, mayAsk(o,others:others), askedOn != o.controlConnection {
                 askedOn = o.controlConnection
                 return actions + [.askResume]
             }

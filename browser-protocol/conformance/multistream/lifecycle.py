@@ -43,12 +43,20 @@ class Policy:
             # D52.4 Q3: a visibly ongoing call stays on fallback without a
             # pageGone deadline; restoring needs a live audio transport.
             self.missing = self.ended = None
+            if transport and self.source == 'system' and self.reason == 'lost' and row.get('fallbackCommitted', True) is False:
+                # The call returns before its fallback commits (the host's source is still
+                # none/lost): the return cancels that fallback, so it restores, heard or not.
+                self.source, self.reason, self.asked_on = 'browser', 'restored', None
+                return ['restore']
             if transport and self.source == 'system' and self.heard:
                 action = 'switch:browser:callConnected' if self.reason == 'missing' else 'restore'
                 self.source, self.reason, self.asked_on = 'browser', 'restored', None
                 return [action]
             connection = row.get('controlConnection', 0)
+            # The host joins only a committed system/lost: an earlier ask is refused
+            # and spends this loss's only ask on this connection.
             if (self.resume and not transport and self.source == 'system' and self.reason == 'lost'
+                    and row.get('fallbackCommitted', True)
                     and generation == self.generation and self.heard and self.asked_on != connection):
                 # D52.5: ask once per loss and control connection; never on a timer.
                 self.asked_on = connection

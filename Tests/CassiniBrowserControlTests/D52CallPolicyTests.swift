@@ -15,18 +15,19 @@ final class D52CallPolicyTests: XCTestCase {
         XCTAssertEqual(file["constants"]?["TAB_CLOSED_GRACE"]?.double,BrowserCallPolicy.tabClosedGrace*1000)
         XCTAssertEqual(file["constants"]?["BROWSER_RETURN_GRACE"]?.double,BrowserCallPolicy.browserReturnGrace*1000)
         let cases = try XCTUnwrap(file["cases"]?.array)
-        XCTAssertEqual(cases.count,26)
+        XCTAssertEqual(cases.count,31)
         for vector in cases {
             let name = vector["name"]!.string!
             var policy = BrowserCallPolicy(resumeCapture:vector["resumeCapture"]?.bool ?? false,callGeneration:vector["callGeneration"]?.string)
             var source = vector["source"]?.string ?? "browser", reason = vector["sourceReason"]?.string ?? "start"
             for step in vector["steps"]!.array! {
                 let page: BrowserCallLifecycle.Page? = step["pageState"]?.string.map { BrowserCallLifecycle.Page(rawValue:$0) } ?? .present
-                let observation = BrowserCallPolicy.Observation(page:page,rowPresent:step["rowPresent"]?.bool ?? true,sourceCount:step["sourceCount"]?.int,
+                var observation = BrowserCallPolicy.Observation(page:page,rowPresent:step["rowPresent"]?.bool ?? true,sourceCount:step["sourceCount"]?.int,
                     sourceCountKnown:step["sourceCountKnown"]?.bool ?? (step["sourceCount"]?.int != nil),heard:step["heard"]?.bool ?? false,
                     controlAlive:step["controlAlive"]?.bool ?? true,pcmLive:step["pcmLive"]?.bool ?? false,
                     transportAlive:step["transportAlive"]?.bool ?? true,callGeneration:step["callGeneration"]?.string,
                     controlConnection:String(step["controlConnection"]?.int ?? 0))
+                observation.fallbackCommitted = step["fallbackCommitted"]?.bool ?? true
                 // resumeRefused changes nothing: no retry until a new controlConnection.
                 let at = step["atMs"]!.double!
                 var actual: [String] = []
