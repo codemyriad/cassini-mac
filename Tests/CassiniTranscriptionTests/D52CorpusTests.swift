@@ -167,10 +167,15 @@ final class D52CorpusTests: XCTestCase {
             let frames = mine.active.indices.filter { mine.active[$0] }.map { mine.offset + (Double($0) + 0.5) * frameMs }
             let stray = frames.filter { at in !track.speechWindows.contains { at >= $0[0] - 100 && at < $0[1] + 100 } }
             if !stray.isEmpty { result.append("\(track.id): \(stray.count) active frames outside speech, first at \(Int(stray[0])) ms") }
+            // v2 speech windows are [start, end, clip offset] and may run past ownership (D49
+            // overlap): the share counts only the part this track is recognized for.
             for window in track.speechWindows {
-                let inside = frames.filter { $0 >= window[0] && $0 < window[1] }.count
-                let share = Double(inside) * frameMs / (window[1] - window[0])
-                if share < 0.25 { result.append("\(track.id): only \(Int(share*100))% of speech \(window) is active") }
+                let parts = mine.windows.map { (max($0[0],window[0]),min($0[1],window[1])) }.filter { $0.1 > $0.0 }
+                let length = parts.reduce(0.0) { $0 + $1.1 - $1.0 }
+                guard length > 0 else { continue }
+                let inside = frames.filter { at in parts.contains { at >= $0.0 && at < $0.1 } }.count
+                let share = Double(inside) * frameMs / length
+                if share < 0.25 { result.append("\(track.id): only \(Int(share*100))% of speech \(window[0..<2]) is active") }
             }
         }
         // D49/D33: system and browser never both recognized at one instant.
@@ -185,7 +190,7 @@ final class D52CorpusTests: XCTestCase {
     func testCorpusShapeGuard() throws {
         let root = try sharedCorpus()
         let meetings = try LibraryScanner(root:root).scan().meetings
-        XCTAssertEqual(meetings.count,2,"two concurrent folders")
+        XCTAssertEqual(meetings.count,3,"two concurrent folders and the D63 rejoin session")
         let meeting = try call(root)
         let remotes = meeting.audioTracks.filter { OthersOwnership.role(kind:$0.sourceKind) == "browser" }
         XCTAssertTrue(remotes.contains { late in (late.startOffsetMs ?? 0) >= 30000 && !remotes.contains { $0.sourceTrackID == late.sourceTrackID && ($0.startOffsetMs ?? 0) < 30000 } },
@@ -220,11 +225,12 @@ final class D52CorpusTests: XCTestCase {
         let root = try sharedCorpus()
         let spec = try spec(), session = spec.sessions[0], planned = try plan(call(root))
         XCTAssertEqual(failures(planned,session,try XCTUnwrap(spec.expected.sessions[session.id])),[])
-        // Overlapping speech stays active on both people.
+        // Overlapping speech stays active on both people (a real share of it, as for any speech
+        // window: v2 lays a noise bed under b-return, so its floor and threshold are higher).
         for id in ["mic","b-return"] {
             let track = try XCTUnwrap(planned.first { $0.id == id })
             let first = Int((60000 - track.offset) / 32), last = Int((68000 - track.offset) / 32)
-            XCTAssertGreaterThan(track.active[first..<last].filter { $0 }.count,(last-first)/2,"\(id) speaks during the overlap")
+            XCTAssertGreaterThan(track.active[first..<last].filter { $0 }.count,(last-first)/4,"\(id) speaks during the overlap")
         }
     }
 
