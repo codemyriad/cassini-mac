@@ -1,10 +1,10 @@
 {
-  "commit": "0bf0a4b8f862ea3d40e31140907489942fd10d1d",
-  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged; 0bf0a4b R11: only main live session source gnome\u2192chromium, all 13 expected outputs unchanged",
+  "commit": "5a2991de8244c3468c96cc008dce52644e81f9d9",
+  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged; 0bf0a4b R11: only main live session source gnome\u2192chromium, all 13 expected outputs unchanged; 5a2991d shared test 8 (D67): 9 T8 cases and outcome-lines.json, GNOME #210 and coordinator review; the 13 earlier expected outputs unchanged",
   "path": "ux-draft/library-vectors",
   "repository": "cassini-coordination",
   "sha256": {
-    "README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
+    "README.md": "c4d8f844db528e3dad3fbd9a8b057682b900629ed163d2b62d13580c9ecde0cc",
     "assets/001-minimal-v1.opus": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
     "assets/009-bad-payload-sha256.opus": "84308e357c97df9fa8bb7371038e490d7f519b6dd3b778d21f4fe74df014dfde",
     "assets/010-stale-audio.opus": "5b771e32b554214ece95566f26483da5f780613573a16f5de8677d70ac183587",
@@ -16,7 +16,7 @@
     "assets/onboarding.opus": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
     "assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
-    "cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
+    "cases.json": "59d65ca32ab38882d9783f02fd8e45a8c4ce23b9444783c3b18c752a5ed65fd4",
     "expected/empty.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/main.json": "e5cb374351532dbfa9137abf17d24c3ea0362408e0e740b6e65ffbd4a2b5fa39",
@@ -30,7 +30,17 @@
     "expected/r8-consecutive-quote.json": "684da672bcb73418a5243d093aa682a93c8b856d6af9cd90156e2fd293fa86c7",
     "expected/r9-received-once.json": "296890651d48b3809b13b5bb59ac4018045cfb3cd642ebdccecbf5c69f5d65b7",
     "expected/received-only.json": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709",
-    "make.py": "8a5fe5ecc1fd2c2bab3d1264b6137035b8f67b16fe9bacfe73af36d8b2a7eafb",
-    "verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da"
+    "expected/t8-control-others-spoke.json": "28f0a68a6355cbadd8c5252e15eb33ecf86c03bf9640d99336af0fb30f013ed4",
+    "expected/t8-failed-referenced-words.json": "7f6e4296b7a117f116c021f65c9e6e611e620500b137536e614df3727756644b",
+    "expected/t8-low-audio-silent.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
+    "expected/t8-none-referenced-words.json": "111f5a44d2db94a8faaefd635b5c3f6520af0d9280839e90a327c62493ae6c56",
+    "expected/t8-others-never-captured.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
+    "expected/t8-others-silent.json": "bc6e0c69dd2abbb8c95fdd2f5631cade47a97141fd335bfd87cad9596c42b007",
+    "expected/t8-others-transcription-failed.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
+    "expected/t8-retry-failed-stale-silent.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
+    "expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d",
+    "make.py": "fa5f79d027398ad62dc2c6ecefb69c3fe07cc7fac9f38d2df6f92b1e1509dae0",
+    "outcome-lines.json": "c796d227443ac2288fa947209fbc5c826a483ba43f8d703bae5996b3b1e251f2",
+    "verify.py": "5fd90f650ee1e5cbf0103dee61da0d5c6ec6cc8a40f6fc55b84220331cdb905d"
   }
 }

@@ -121,6 +121,7 @@ public struct LibraryScanner: Sendable {
         }
         meeting.state.transcript = metadata?.transcript.status ?? .none
         meeting.transcriptModel = metadata?.transcript.model
+        meeting.transcriptReferenced = metadata?.transcript.reference != nil
         meeting.state.etaMinutes = metadata?.etaMinutes
         meeting.state.error = metadata?.error
         var titleCandidates: [String?] = [metadata?.title]
@@ -348,6 +349,20 @@ public struct LibraryScanner: Sendable {
         guard n32(16) == 16, n16(20) == 1, n16(34) == 16, (8000...192000).contains(rate), (1...2).contains(channels),
               n16(32) == channels * 2, n32(28) == rate * channels * 2 else { throw MetadataError.invalid }
         return (rate, channels, UInt64(key.size - 44) / UInt64(channels * 2))
+    }
+}
+extension LibraryScanner {
+    /// D67.2: how many words a meeting folder's own transcript.json holds, through the validated
+    /// reader, whether or not meeting.json references it. A failed write-down leaves its partial
+    /// words there unreferenced for Try again, so the reader-visible words are not this count. A
+    /// missing, unsafe, oversized or invalid body holds none.
+    public static func sidecarWordCount(folder: URL) -> Int {
+        guard let url = try? safeFile("transcript.json", in: folder),
+              let (fd, _) = try? openRegular(url) else { return 0 }
+        defer { Darwin.close(fd) }
+        guard let data = try? regularData(fd, limit: 64 * 1024 * 1024),
+              let body = try? decodeJSON(LibraryWords.self, data: data), (try? body.validate()) != nil else { return 0 }
+        return body.items.count
     }
 }
 private struct LibraryWords: Decodable {

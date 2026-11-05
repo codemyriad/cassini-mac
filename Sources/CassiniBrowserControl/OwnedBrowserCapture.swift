@@ -172,11 +172,22 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
-            let span = UUID().uuidString.lowercased(), live = others && browserAlive
-            var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)
-            start.clock = clock
-            try commitBound([(span,key,live)],starting:[start])
-            browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
+            let live = others && browserAlive
+            // D68 (#49 review): a source a resumed transport declares before the restore gets no
+            // track yet. restoreBrowser (or its first packet after the restore) opens its one real
+            // span; an inert, start-less 0-frame span here would only be a second track for the key.
+            // That needs the source-outcomes ledger, which already records the key and label: without
+            // it (no source-outcomes-v1), the inert span is the only record of a source that never
+            // returns, so it stays. A declaration while the Others are deselected keeps its inert span.
+            if browserAlive || ledger == nil {
+                let span = UUID().uuidString.lowercased()
+                var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)
+                start.clock = clock
+                try commitBound([(span,key,live)],starting:[start])
+                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
+            } else {
+                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:nil,current:false)
+            }
             publish()
         }
     }

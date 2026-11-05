@@ -348,4 +348,24 @@ class SecretArgvTests(unittest.TestCase):
         self.assertIn('safe_process.guard(', (ROOT/'scripts/release.py').read_text())
         self.assertIn('safe_process.guard(', (ROOT/'scripts/setup-signing-keychain.py').read_text())
 
+class VerifierAgentTests(unittest.TestCase):
+    def testTheHTTPSCheckNamesItselfInsteadOfUrllibsDefaultAgent(self):
+        # cassini.talk's CDN answered 403 to "Python-urllib/3.x" during the 0.1.0 publish.
+        from unittest.mock import patch
+        seen = []
+        class Opener:
+            addheaders = [('User-agent', 'Python-urllib/3.9')]
+            def open(self, url, timeout=None):
+                seen.append(dict(self.addheaders)); raise OSError('stop after the request is built')
+        with tempfile.TemporaryDirectory() as temporary, patch.object(release.urllib.request, 'build_opener', return_value=Opener()), \
+             patch.object(release, 'verify_signature', return_value=None):
+            output = Path(temporary); dmg = output/'Cassini-talk-0.1.0.dmg'; dmg.write_bytes(b'dmg')
+            import hashlib
+            (output/'release.json').write_text(json.dumps(dict(baseURL=release.BASE_URL, version='0.1.0', bytes=3,
+                sha256=hashlib.sha256(b'dmg').hexdigest(), edSignature='sig')))
+            with self.assertRaises(OSError): release.verify_uploaded_download(output)
+        self.assertEqual(len(seen), 1)
+        agent = next(value for key, value in seen[0].items() if key.lower() == 'user-agent')
+        self.assertFalse(agent.startswith('Python-urllib'), agent)
+
 if __name__ == '__main__':unittest.main()
