@@ -122,7 +122,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         }
         // D58.2 R3: a native recording has no captureOutcome (only browser capture reports
         // sources), so its captured microphone and this computer's sound are listed from its tracks.
-        if rows.isEmpty, recordValid { rows = Self.nativeRows(tracks:tracks,final:final) }
+        if rows.isEmpty, recordValid { rows = Self.nativeRows(tracks:tracks,final:final,silentTracks:silent) }
         sources = rows
         // The session's list while it exists, else the captureRecord's verbatim copy.
         refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
@@ -199,30 +199,60 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             ? .init("details.sources.silent",["source":source]) : nil
         return .init(line:line,problem:problem,gapLines:gaps,silent:silent)
     }
-    /// D58.2 R3: one captured row per native kind (microphone, then this computer's sound) whose
-    /// tracks received audio: frames minus gap padding, at each track's own rate. Gap and dropped
-    /// lines follow as for any source. A side with no received audio has no row (a refusal line
-    /// says why, D58).
-    static func nativeRows(tracks: JSON?, final: Bool) -> [SourceRow] {
+    /// D58.2 R3: one row per native kind (microphone, then this computer's sound) whose tracks
+    /// received audio. The outcome follows the received duration as the capture ledger's does
+    /// (CaptureOutcome: under 1000 ms is lowAudio), and row() then words it (live, low audio
+    /// reads as captured). Gap and dropped lines follow as for any source. A side with no
+    /// received audio has no row (a refusal line says why, D58). silentTracks as for row().
+    static func nativeRows(tracks: JSON?, final: Bool, silentTracks: Set<String>? = nil) -> [SourceRow] {
         guard let list = tracks?.array else { return [] }
-        func integer(_ value: JSON?) -> Double? {
-            guard case .number(let literal)? = value, let count = Double(literal), count.rounded() == count, (0...safe).contains(count) else { return nil }
-            return count
-        }
         return ["microphone","system"].compactMap { kind -> SourceRow? in
             var ids: [String] = [], received = 0.0
             for track in list where track["kind"]?.string == kind {
-                guard let id = identity(track["id"]), let rate = track["sampleRate"]?.int, (8000...192000).contains(rate),
-                      let frames = integer(track["frames"]) else { continue }
-                ids.append(id)
-                received += max(0,frames - (integer(track["gapFrames"]) ?? 0)) * 1000 / Double(rate)
+                guard let id = identity(track["id"]), let ms = receivedMs(track) else { continue }
+                ids.append(id); received += ms
             }
+            // CaptureOutcome's own comparison on the unrounded total; only the shown duration is floored.
             guard !ids.isEmpty, received > 0, received <= safe else { return nil }
+            let outcome = received < 1000 ? "lowAudio" : "captured", audioMs = floor(received)
             let source: JSON = .object([("sourceTrackId",.string(kind)),("kind",.string(kind)),("label",.string("")),
-                                        ("captureOutcome",.string("captured")),("audioMs",.number(String(Int64(floor(received))))),
+                                        ("captureOutcome",.string(outcome)),("audioMs",.number(String(Int64(audioMs)))),
                                         ("trackIds",.array(ids.map { .string($0) }))])
-            return row(source,tracks:tracks,final:final)
+            return row(source,tracks:tracks,final:final,silentTracks:silentTracks)
         }
+    }
+    /// Received milliseconds of one native track, never counting padding; nil when unknown.
+    /// The writer's receivedFrames (admitted PCM, no padding) wins when present and valid. An
+    /// older file without it subtracts its stored padding ranges (gaps: jump, input, prefix
+    /// and writer), counting nothing after an overflow marker (unknown to the track end);
+    /// gapFrames repeats the jump and input ranges, so it is used only when gaps is absent,
+    /// together with droppedFrames: before D52 the sink padded the audio it lost with silence.
+    /// Milliseconds are frames * 1000 / rate, as the ledger computes them.
+    static func receivedMs(_ track: JSON) -> Double? {
+        guard let rate = track["sampleRate"]?.int, (8000...192000).contains(rate), let frames = count(track["frames"]) else { return nil }
+        let hz = Double(rate), ms = { (frames: Double) in frames * 1000 / hz }
+        if let stored = track["receivedFrames"] {
+            guard let received = count(stored), received <= frames else { return nil }
+            return ms(received)
+        }
+        guard let gaps = track["gaps"] else { return ms(max(0,frames - (count(track["gapFrames"]) ?? 0) - (count(track["droppedFrames"]) ?? 0))) }
+        guard let ranges = gaps.array else { return nil }
+        var padding = 0.0, counted = frames
+        for range in ranges {
+            if range["kind"]?.string == "overflow" {
+                guard let at = range["atMs"]?.double, at.isFinite, let start = track["startOffsetMs"]?.double, start.isFinite else { return nil }
+                counted = min(counted,max(0,((at - start) * hz / 1000).rounded(.down)))
+            } else {
+                guard let padded = count(range["frames"]) else { return nil }
+                padding += padded
+            }
+        }
+        return ms(max(0,counted - padding))
+    }
+    /// A whole, non-negative JSON number within the safe range.
+    static func count(_ value: JSON?) -> Double? {
+        guard case .number(let literal)? = value, let count = Double(literal), count.rounded() == count, (0...safe).contains(count) else { return nil }
+        return count
     }
     /// Milliseconds of a per-track counter over a source's distinct tracks; nil when unknown.
     static func counter(_ field: String, ids: [String], tracks: JSON?) -> Double? {

@@ -2,6 +2,7 @@
 import Foundation
 import Testing
 import CassiniKit
+import CassiniRecording
 @testable import CassiniLibrary
 
 /// D52.3a minimal Recording details (GNOME source_report.py / capture_details.py rules).
@@ -154,6 +155,93 @@ struct D52RecordingDetailsTests {
         // A browser recording's reported sources are unchanged: no native rows are added.
         let browser = report(session([source(kind:"microphone",label:"",tracks:["m1"])],tracks:tracks))
         #expect(browser.sources.count == 1)
+    }
+    /// #144 review: a native duration is the audio received, never padding. Real writer output:
+    /// a microphone prefix, the writer's own lost audio and an input gap.
+    @Test func nativeDurationsCountOnlyReceivedAudioFromTheRealWriter() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("R3Native-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let writer = try RecordingSession(parent:root,title:"Native",source:"macos")
+        let second = Data(count:32000)  // 1 s of 16 kHz mono PCM
+        try writer.transition(starting:[.init(id:"mic",label:"",kind:"microphone",sampleRate:16000,channels:1,boundaryMs:0),
+                                        .init(id:"sys",label:"",kind:"system",sampleRate:16000,channels:1)])
+        // Microphone: its first buffer 2 s after the selection boundary (a 2 s prefix), then 1 s.
+        try writer.appendNative(id:"mic",pcm:second,offsetMs:2000)
+        // This computer's sound: 1 s, 2 s of the writer's own lost audio, 0.5 s, a 1.5 s input gap, 1 s.
+        try writer.appendNative(id:"sys",pcm:second,offsetMs:0)
+        try writer.padNative(id:"sys",frames:32000,channels:1,rate:16000,offsetMs:1000)
+        try writer.appendNative(id:"sys",pcm:second.prefix(16000),offsetMs:3000)
+        try writer.appendNative(id:"sys",pcm:second,offsetMs:5000,gapKind:"input")
+        try writer.finish()
+        let file = try Data(contentsOf:writer.directory.appendingPathComponent("session.json"))
+        let written = try JSONParser.parse(file)
+        // The writer stored every padding range, and counted only jump/input ones as gapFrames.
+        let kinds = (written["tracks"]?.array ?? []).map { ($0["gaps"]?.array ?? []).compactMap { $0["kind"]?.string } }
+        try #require(kinds == [["prefix"],["writer","input"]])
+        try #require((written["tracks"]?.array ?? []).map { $0["frames"]?.int } == [48000,96000])
+        func check(_ result: RecordingDetailsReport, _ name: String) {
+            #expect(result.sources.map(\.line.id) == ["details.sources.captured","details.sources.captured"],"\(name)")
+            // 1 s received of the microphone's 3 s; 2.5 s of this computer's sound's 6 s.
+            #expect(result.sources.map { $0.line.values["duration"] } == [.duration(1000),.duration(2500)],"\(name)")
+            #expect(result.sources.map(\.problem) == [false,false],"\(name)")
+            // Only the input gap is a gap line, as for any source.
+            #expect(result.sources.map { $0.gapLines.map(\.values) } == [[],[["source":.catalog("recordFirst.sound.title"),"duration":.duration(1500)]]],"\(name)")
+        }
+        check(report(written),"receivedFrames")
+        // An older file without receivedFrames: its stored ranges, the input gap subtracted once.
+        var object = try #require(try JSONSerialization.jsonObject(with:file) as? [String:Any])
+        object["tracks"] = (object["tracks"] as? [[String:Any]] ?? []).map { var track = $0; track["receivedFrames"] = nil; return track }
+        check(report(try JSONParser.parse(JSONSerialization.data(withJSONObject:object))),"padding ranges")
+        // Nothing is counted after an overflow marker (unknown to the track end); a track whose
+        // received count or ranges are unreadable is left out.
+        let overflow = report(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":16000,\"frames\":160000,\"startOffsetMs\":0,"
+            + "\"gaps\":[{\"atMs\":0,\"durationMs\":1000,\"frames\":16000,\"kind\":\"writer\"},{\"atMs\":5000,\"kind\":\"overflow\"}]},"
+            + "{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":16000,\"receivedFrames\":32000},"
+            + "{\"id\":\"s2\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":16000,\"gaps\":{}}]}"))
+        #expect(overflow.sources.map { $0.line.values["duration"] } == [.duration(4000)])
+        // A file from before D52 (no gaps, no receivedFrames): the sink padded its dropped audio
+        // with silence and counted it apart from host-time gaps, so both are subtracted.
+        let early = report(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":16000,\"frames\":96000,\"gapFrames\":16000,\"droppedFrames\":32000},"
+            + "{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":32000,\"droppedFrames\":24000}]}"))
+        #expect(early.sources.map(\.line.id) == ["details.sources.captured","details.sources.lowAudio"])
+        #expect(early.sources.map { $0.line.values["duration"] } == [.duration(3000),.duration(500)])
+    }
+    /// #144 review: a native side's outcome follows its received duration (D52: under 1000 ms is
+    /// low audio), worded by row(): saved, a problem; live, still captured.
+    @Test func nativeLowAudioFollowsTheReceivedDuration() {
+        func tracks(_ kind: String, received: Int) -> JSON {
+            json("{\"tracks\":[{\"id\":\"t\",\"kind\":\"\(kind)\",\"sampleRate\":16000,\"frames\":48000,\"receivedFrames\":\(received)}]}")
+        }
+        for kind in ["microphone","system"] {
+            let low = report(tracks(kind,received:8000))  // 500 ms
+            #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio"],"\(kind)")
+            #expect(low.sources.map { $0.line.values["duration"] } == [.duration(500)],"\(kind)")
+            #expect(low.sources.map(\.problem) == [true],"\(kind)")
+            let live = report(tracks(kind,received:8000),.recording)
+            #expect(live.sources.map(\.line.id) == ["details.sources.captured"] && live.sources.map(\.problem) == [false],"\(kind) live")
+            // The threshold: 999 ms is low audio, 1000 ms is captured.
+            #expect(report(tracks(kind,received:15984)).sources.map(\.line.id) == ["details.sources.lowAudio"],"\(kind) 999 ms")
+            let enough = report(tracks(kind,received:16000))
+            #expect(enough.sources.map(\.line.id) == ["details.sources.captured"] && enough.sources.map(\.problem) == [false],"\(kind) 1000 ms")
+        }
+        // The ledger's own arithmetic (frames * 1000 / rate): one second at 44056 Hz is captured.
+        let odd = report(json("{\"tracks\":[{\"id\":\"t\",\"kind\":\"microphone\",\"sampleRate\":44056,\"frames\":44056,\"receivedFrames\":44056}]}"))
+        #expect(odd.sources.map(\.line.id) == ["details.sources.captured"] && odd.sources.map { $0.line.values["duration"] } == [.duration(1000)])
+        // Under a millisecond received is still low audio, not a missing row.
+        let tiny = report(json("{\"tracks\":[{\"id\":\"t\",\"kind\":\"microphone\",\"sampleRate\":8000,\"frames\":4000,\"receivedFrames\":4}]}"))
+        #expect(tiny.sources.map(\.line.id) == ["details.sources.lowAudio"] && tiny.sources.map(\.problem) == [true])
+    }
+    /// R13 (D67.1) on native rows: a done write-down that left out every track of a captured side
+    /// adds its silent line; a low-audio side keeps its own line only (R13.2).
+    @Test func nativeRowsShowTheSilentLine() {
+        let tracks = json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":32000},"
+            + "{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":8000}]}")
+        func silentLines(done: Bool) -> [String?] {
+            RecordingDetailsReport(.init(lifecycle:.saved,title:"Weekly",session:tracks,captureRecord:nil,storedEnd:nil,sourceSpansSeparated:false,
+                                         transcriptDone:done,silentTracks:["m","s"])).sources.map { $0.silent?.id }
+        }
+        #expect(silentLines(done:true) == ["details.sources.silent",nil])
+        #expect(silentLines(done:false) == [nil,nil],"only a done write-down's list counts")
     }
     @Test func liveSourceProblemRule() {
         #expect(RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed")])))
