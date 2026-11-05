@@ -40,8 +40,12 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         public let gapLines: [Line]
         /// R13 (D67.1): "{source}: no speech heard." after the gap lines. A role line, never a problem.
         public let silent: Line?
-        /// The lines in display order: the source's own line, its gap lines, then the silent line.
-        public var lines: [Line] { [line] + gapLines + (silent.map { [$0] } ?? []) }
+        /// D58.3: under the silent line of a native "This computer" source, "If others were
+        /// speaking, check that Cassini can record this computer's sound.", which the sheet pairs
+        /// with errors.othersPermission.action (Open System Settings). Derived, never stored.
+        public var permissionHint: Line? = nil
+        /// The lines in display order: the source's own line, its gap lines, the silent line, then the hint.
+        public var lines: [Line] { [line] + gapLines + (silent.map { [$0] } ?? []) + (permissionHint.map { [$0] } ?? []) }
     }
     public let title: Line
     public let subtitle: Line?
@@ -59,6 +63,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
         "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.failed","details.sources.silent",
+        "details.sources.silent.othersPermissionHint",
         "details.sources.notSelected","details.sources.gap","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
         "details.end.saving","details.end.at","recording.sourceProblem","details.source.microphone","details.source.system","details.source.browser"]
@@ -218,7 +223,12 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             let source: JSON = .object([("sourceTrackId",.string(kind)),("kind",.string(kind)),("label",.string("")),
                                         ("captureOutcome",.string(outcome)),("audioMs",.number(String(Int64(audioMs)))),
                                         ("trackIds",.array(ids.map { .string($0) }))])
-            return row(source,tracks:tracks,final:final,silentTracks:silentTracks)
+            var shown = row(source,tracks:tracks,final:final,silentTracks:silentTracks)
+            // D58.3: a denied system-audio permission gives the tap digital silence, which a quiet
+            // call also gives, so after Stop a captured native "This computer" side whose every
+            // track a done write-down left out as silent adds a conditional hint (never live).
+            if kind == "system", final, shown.silent != nil { shown.permissionHint = .init("details.sources.silent.othersPermissionHint") }
+            return shown
         }
     }
     /// Received milliseconds of one native track, never counting padding; nil when unknown.
