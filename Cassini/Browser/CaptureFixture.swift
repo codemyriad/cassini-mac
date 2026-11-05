@@ -7,7 +7,8 @@ import CassiniBrowserControl
 
 @MainActor enum CaptureFixture {
     nonisolated static var enabled: Bool {
-        RecordingFixture.enabled && RecordingFixture.root != nil && (CommandLine.arguments.contains("--browser-capture-self-test") || CommandLine.arguments.contains("--browser-return-self-test"))
+        RecordingFixture.enabled && RecordingFixture.root != nil && (CommandLine.arguments.contains("--browser-capture-self-test") || CommandLine.arguments.contains("--browser-return-self-test")
+            || CommandLine.arguments.contains(LiveFolderSelfTest.argument))
     }
     static var beforeBrowserLoss: (@MainActor () async -> Void)?
     static var systemAuthorizationCompletions = 0
