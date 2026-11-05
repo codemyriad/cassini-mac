@@ -5,6 +5,7 @@ import argparse
 import sys
 import hashlib
 import json
+import re
 import importlib.util
 import os
 from pathlib import Path
@@ -40,6 +41,19 @@ def identity(kind):
                 arch=os.uname().machine if kind == 'swiftpm' else 'universal')
 
 
+# Release tooling that once lived in SwiftPM's .build (release.py now keeps it in build/). A
+# restored .build cache can still hold it, so the swiftpm product never ships it: a venv's
+# interpreter link is absolute, which unpack rightly refuses. Named directories only; every
+# other member, links included, is packed and checked as before.
+TOOL_STATE = re.compile(r'^\.build/(dmg-tools-[^/]+|dmg-pip-cache)(/|$)')
+
+
+def tool_state(item):
+    """A member of one of those directories, or the directory itself (never a same-named file)."""
+    match = TOOL_STATE.match(item.name)
+    return match is not None and (match.group(2) == '/' or item.isdir())
+
+
 def pack(kind, destination):
     destination.mkdir(parents=True, exist_ok=True)
     archive = destination / (kind + '.tar.gz')
@@ -52,7 +66,7 @@ def pack(kind, destination):
         for name in paths:
             if not (ROOT/name).exists():
                 raise ValueError('Missing product: ' + name)
-            target.add(ROOT/name, arcname=name)
+            target.add(ROOT/name, arcname=name, filter=lambda item: None if tool_state(item) else item)
     metadata = identity(kind)
     metadata['sha256'] = digest(archive)
     (destination/(kind+'.json')).write_text(json.dumps(metadata, indent=2)+'\n')

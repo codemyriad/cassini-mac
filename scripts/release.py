@@ -252,7 +252,9 @@ def reject_generated_library(path):
 def dmg_tools():
     requirements = ROOT/'Distribution/dmg-requirements.txt'
     pin = hashlib.sha256(requirements.read_bytes()).hexdigest()[:16]
-    environment = ROOT/'.build'/('dmg-tools-'+pin+'-'+str(sys.version_info.major)+'.'+str(sys.version_info.minor))
+    # Outside .build: SwiftPM's tree is cached and shipped as the swiftpm CI product, and a venv's
+    # interpreter link is absolute (ci-products.py rightly refuses it).
+    environment = ROOT/'build'/('dmg-tools-'+pin+'-'+str(sys.version_info.major)+'.'+str(sys.version_info.minor))
     python = environment/'bin/python3'
     marker = environment/'installed'
     interpreter = pin+'\n'+sys.version+'\n'+str(Path(sys.executable).resolve())+'\n'
@@ -261,7 +263,7 @@ def dmg_tools():
         # Rebuild the environment while keeping the verified download cache.
         run([sys.executable, '-m', 'venv', '--clear', environment], timeout=120)
         run([python, '-m', 'pip', 'install', '--disable-pip-version-check', '--require-hashes', '--only-binary=:all:',
-             '--cache-dir', ROOT/'.build/dmg-pip-cache', '-r', requirements], timeout=180)
+             '--cache-dir', ROOT/'build/dmg-pip-cache', '-r', requirements], timeout=180)
         marker.write_text(interpreter)
     return python
 
