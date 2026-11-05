@@ -349,12 +349,21 @@ class ReleaseOffTheCriticalPath(unittest.TestCase):
             with self.subTest(workflow=workflow.name):
                 restores = "release: 'true'" in workflow.read_text()
                 self.assertEqual(restores, workflow.name == 'ux-parakeet.yml')
-                self.assertEqual('package-release.py' in workflow.read_text(),
-                                 workflow.name in ('ci-build-release.yml', 'release.yml'))
+                self.assertEqual('package-release.py' in workflow.read_text(), workflow.name == 'ci-build-release.yml')
         standalone = (self.WORKFLOWS/'ux-parakeet.yml').read_text()
         self.assertIn('uses: ./.github/workflows/ci-build-release.yml', standalone)
         self.assertIn('needs: [build, release]', standalone)
 
+    def test_no_workflow_publishes_a_github_release(self):
+        # D58.4: a GitHub release carries only the exact QA-passed, notarized DMG that
+        # publish-release.py put on cassini.talk, attached by hand. No workflow starts on a tag
+        # or creates, edits or uploads to a release, so a CI build can never land on one.
+        for workflow in self.WORKFLOWS.glob('*.yml'):
+            with self.subTest(workflow=workflow.name):
+                text = workflow.read_text()
+                self.assertNotIn('tags:', text)
+                self.assertNotRegex(text, r'gh\s+release|repos/[^\s]*/releases|softprops/action-gh-release|actions/create-release')
+                self.assertNotIn('contents: write', text)
 
 class Measurements(unittest.TestCase):
     def test_round_each_assigned_mac_job_and_exclude_queued_cancellations(self):

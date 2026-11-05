@@ -21,20 +21,12 @@ Cassini is a Mac app that records your meetings, writes them down, and lets you 
 
 ### Install
 
-The latest published release, `v0.1.0`, is an earlier version: the Library, Recording page, writing down, Search every meeting, Received meetings, and Export described here come with the next release. Until then, you can build Cassini from source by following [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
 Cassini requires macOS 15 or later and runs on both Apple Silicon and Intel Macs.
 
-1. Download `Cassini-<version>.zip` from the [Releases page](https://github.com/codemyriad/cassini-mac/releases) (or bookmark the [latest release](https://github.com/codemyriad/cassini-mac/releases/latest)) and unzip it. While this repository is private, downloading requires a GitHub account with access to it.
-2. Move `Cassini.app` to `/Applications`. If you also want to record meetings in your browser, keep the unzipped `Cassini` folder (`BrowserExtension` and `Install Browser Host.command`) in a permanent folder on your Mac.
-3. These early builds are ad-hoc signed and not notarized yet, so macOS 15 blocks the first launch. The old right-click → Open shortcut no longer works on macOS 15; open the app like this the first time:
-   1. Double-click `Cassini.app`. macOS shows a dialog titled **“Cassini” Not Opened** saying Apple could not verify it is free of malware. Click **Done**, not Move to Trash.
-   2. Right away, open **System Settings → Privacy & Security**, scroll to the **Security** section, and click **Open Anyway** next to the Cassini notice. If the notice has disappeared, double-click `Cassini.app` again and look again.
-   3. Confirm the prompt with your administrator password or Touch ID. On company-managed Macs the button may be hidden by policy, so ask IT to allow the app.
+1. Download `Cassini-talk-<version>.dmg` from [cassini.talk/download/mac](https://cassini.talk/download/mac/) or the [latest release](https://github.com/codemyriad/cassini-mac/releases/latest). It is signed with Developer ID and notarized by Apple.
+2. Open the DMG and drag **Cassini talk** to Applications.
 
-Do this only for a build you downloaded from this repository. See [Apple’s instructions](https://support.apple.com/102445) for more detail.
-
-To update later, quit Cassini, download and unzip the newer release, replace `Cassini.app` in `/Applications`, and repeat the **Open Anyway** step once for the new build. Updating leaves your meetings in `Music/Cassini` untouched.
+Cassini talk updates itself: choose **Check for Updates…**. Updating leaves your meetings in `Music/Cassini` untouched. To build Cassini from source, follow [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ### Your first meeting
 
