@@ -577,8 +577,12 @@ private final class CaptureFiles: @unchecked Sendable {
             // D58.2 R2: only the others' own system input counts (a native recording or the browser
             // fallback); the playback probe runs only while that input has heard nothing.
             let silent = value.snapshot.others && !value.snapshot.browserAlive && value.savingSinceMs == nil ? value.input.othersOnlyDigitalSilence : nil
-            captures[id]?.othersPermissionHint = captures[id]?.othersSilenceRule.update(
-                silent:silent,playing:silent == true && SystemAudioPlayback.anotherAppIsPlaying(),now:ProcessInfo.processInfo.systemUptime) ?? false
+            // One access to captures: the rule's update is itself mutating.
+            if var live = captures[id] {
+                live.othersPermissionHint = live.othersSilenceRule.update(
+                    silent:silent,playing:silent == true && SystemAudioPlayback.anotherAppIsPlaying(),now:ProcessInfo.processInfo.systemUptime)
+                captures[id] = live
+            }
             // A native stand-in joins this path once it asked a call to resume it; until the
             // take-over commits it is a plain native recording.
             let standIn = value.snapshot.manifest.source == "macos" && value.key != nil
