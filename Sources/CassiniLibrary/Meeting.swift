@@ -132,6 +132,8 @@ public struct LibraryMeeting: Sendable {
     public var transcriptItems: [LibraryTranscriptItem] = []
     public var transcriptLanguage: String? = nil
     public var transcriptModel: String? = nil
+    /// meeting.json's transcript names a body (D67.2: a failed write-down stores none).
+    public var transcriptReferenced = false
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
     public var captureEvents: [CaptureEvent] = []

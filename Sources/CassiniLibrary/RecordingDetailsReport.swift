@@ -38,6 +38,10 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         /// An expected source that failed, or (once final) produced no or little audio.
         public let problem: Bool
         public let gapLines: [Line]
+        /// R13 (D67.1): "{source}: no speech heard." after the gap lines. A role line, never a problem.
+        public let silent: Line?
+        /// The lines in display order: the source's own line, its gap lines, then the silent line.
+        public var lines: [Line] { [line] + gapLines + (silent.map { [$0] } ?? []) }
     }
     public let title: Line
     public let subtitle: Line?
@@ -54,7 +58,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
 
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
-        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.failed",
+        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.failed","details.sources.silent",
         "details.sources.notSelected","details.sources.gap","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
         "details.end.saving","details.end.at","recording.sourceProblem","details.source.microphone","details.source.system","details.source.browser"]
@@ -68,10 +72,13 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         public var storedEnd: JSON?
         public var sourceSpansSeparated: Bool
         public var transcriptDone: Bool
+        /// recordingDetails.writingDown.silentTracks of the last completed write-down (D56, D67.3).
+        public var silentTracks: Set<String>
         public init(lifecycle: Lifecycle, title: String, session: JSON?, captureRecord: JSON? = nil, storedEnd: JSON? = nil,
-                    sourceSpansSeparated: Bool = false, transcriptDone: Bool = false) {
+                    sourceSpansSeparated: Bool = false, transcriptDone: Bool = false, silentTracks: Set<String> = []) {
             self.lifecycle = lifecycle; self.title = title; self.session = session; self.captureRecord = captureRecord
             self.storedEnd = storedEnd; self.sourceSpansSeparated = sourceSpansSeparated; self.transcriptDone = transcriptDone
+            self.silentTracks = silentTracks
         }
         /// Bounded, symlink-refusing reads of session.json and meeting.json in a meeting folder.
         public static func load(folder: URL, lifecycle: Lifecycle, title: String, transcriptDone: Bool) -> Inputs {
@@ -86,8 +93,12 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             }
             let meeting = read("meeting.json",limit:MeetingMetadataLimit.bytes)
             let details = meeting?["recordingDetails"]
+            // A malformed list is no list: no source reads as silent.
+            let listed = details?["writingDown"]?["silentTracks"]?.array
+            let silent = listed.flatMap { list in list.allSatisfy { RecordingDetailsReport.identity($0) != nil } ? Set(list.compactMap(\.string)) : nil } ?? []
             return .init(lifecycle:lifecycle,title:title,session:read("session.json",limit:SessionManifestLimit.bytes),captureRecord:details?["captureRecord"],
-                         storedEnd:details?["end"],sourceSpansSeparated:details?["writingDown"]?["sourceSpansSeparated"]?.bool == true,transcriptDone:transcriptDone)
+                         storedEnd:details?["end"],sourceSpansSeparated:details?["writingDown"]?["sourceSpansSeparated"]?.bool == true,transcriptDone:transcriptDone,
+                         silentTracks:silent)
         }
     }
 
@@ -100,12 +111,13 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         // A well-formed live record wins even when it then fails validation (no fallback).
         let live = Self.liveRecord(input.session)
         let record = live ?? input.captureRecord
+        let silent = input.transcriptDone ? input.silentTracks : nil
         var rows: [SourceRow] = [], recordValid = true
         // Track facts come from the session, or from the record when the session is gone.
         let tracks = input.session?["tracks"] ?? record?["tracks"]
         if let record {
             if let sources = Self.validSources(record,requireVersion:live == nil) {
-                rows = sources.map { Self.row($0,tracks:tracks,final:final) }
+                rows = sources.map { Self.row($0,tracks:tracks,final:final,silentTracks:silent) }
             } else { recordValid = false }
         }
         // D58.2 R3: a native recording has no captureOutcome (only browser capture reports
@@ -157,7 +169,8 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             return collapsed.isEmpty ? .catalog("details.source.unknown") : .text(String(collapsed.prefix(180)))
         }
     }
-    static func row(_ row: JSON, tracks: JSON?, final: Bool) -> SourceRow {
+    /// silentTracks is nil unless the transcript is done (R13.1).
+    static func row(_ row: JSON, tracks: JSON?, final: Bool, silentTracks: Set<String>? = nil) -> SourceRow {
         let expected = row["captureExpected"]?.bool != false
         let recorded = row["captureOutcome"]!.string!
         let outcome = expected ? recorded : "notSelected"
@@ -179,7 +192,12 @@ public struct RecordingDetailsReport: Equatable, Sendable {
                 gaps.append(.init(label:.catalog("details.health.dropped"),value:.duration(Int64(floor(dropped)))))
             }
         }
-        return .init(line:line,problem:problem,gapLines:gaps)
+        // R13 (D67.1): a captured expected source whose every track was left out as silent by a
+        // done write-down. neverAudio and lowAudio keep their own line only (R13.2).
+        let ids = (row["trackIds"]?.array ?? []).compactMap(\.string)
+        let silent: Line? = expected && recorded == "captured" && !ids.isEmpty && silentTracks.map({ set in ids.allSatisfy(set.contains) }) == true
+            ? .init("details.sources.silent",["source":source]) : nil
+        return .init(line:line,problem:problem,gapLines:gaps,silent:silent)
     }
     /// D58.2 R3: one captured row per native kind (microphone, then this computer's sound) whose
     /// tracks received audio: frames minus gap padding, at each track's own rate. Gap and dropped

@@ -49,6 +49,11 @@ struct RecordingDetailsSheet: View {
                                         Text(text(line)).font(.system(size:11.5)).foregroundStyle(.orange)
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
                                     }
+                                    // R13 (D67.1): a role line after the gap lines, never a warning.
+                                    if let silent = row.silent {
+                                        Text(text(silent)).font(.system(size:11.5)).foregroundStyle(.secondary)
+                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-silent-\(index)")
+                                    }
                                 }
                             }
                             // D58: sides that were requested but never opened, after the rows.
