@@ -22,7 +22,11 @@ struct CapturePermissionNotice: View {
     /// D58: the side's refusal code, when it never opened.
     var refusal: String? = nil
     var body: some View {
-        if side == .me, refusal == "deviceUnavailable" {
+        if side == .others, refusal != CaptureRefusal.permissionDenied {
+            // D58.1: the system tap could not be started; no settings action applies.
+            Text(UXText.text("errors.deviceUnavailable.others")).fixedSize(horizontal:false,vertical:true)
+                .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-others-unavailable")
+        } else if side == .me, refusal == "deviceUnavailable" {
             // The microphone could not be started at all; no settings action applies.
             Text(UXText.text("errors.deviceUnavailable.me")).fixedSize(horizontal:false,vertical:true)
                 .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-microphone-unavailable")

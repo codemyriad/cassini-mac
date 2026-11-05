@@ -36,13 +36,14 @@ import CassiniBrowserControl
         defer { if side == .others { CaptureFixture.systemAuthorizationCompletions += 1 } }
         if side == .me, let authorize = CaptureFixture.microphoneAuthorizationFixture { await authorize() }
         if side == .me && !CaptureFixture.microphoneAllowed { throw CocoaError(.fileReadNoPermission) }
+        // D58.1: an OS denial of system audio arrives at authorization, as permissionDenied.
+        if side == .others && !CaptureFixture.systemAllowed { throw CaptureOpenRefusal.denied }
         if side == .others && CaptureFixture.holdSystemPermission {
             try await withCheckedThrowingContinuation { CaptureFixture.systemPermission = $0 }
         }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if side == .me && !CaptureFixture.microphoneStartsAllowed { throw CocoaError(.fileReadUnknown) }
-        if side == .others && !CaptureFixture.systemAllowed { throw CocoaError(.fileReadNoPermission) }
         self.sink = sink
         origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime); frames = 0
         if side == .me { CaptureFixture.microphoneStarts += 1 } else { CaptureFixture.systemStarts += 1 }
