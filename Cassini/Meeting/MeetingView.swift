@@ -100,8 +100,9 @@ struct MeetingView: View {
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         if meeting.hasNoSpeech {
+                            // A Library move disables Write down again only (the line disables it); the
+                            // permission hint's Open System Settings stays available, as in Recording details.
                             NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
-                                .disabled(LibraryMoveCoordinator.shared.busy)
                         }
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
                         if showsCompanionSuggestion { companionCard }
@@ -247,6 +248,7 @@ struct NoSpeechTranscriptLine: View {
                     .accessibilityIdentifier("transcript-no-speech")
                 if let action {
                     Button(UXText.text("transcript.writeDownAgain"),action:action).buttonStyle(.bordered)
+                        .disabled(LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("transcript-write-down-again")
                 }
             }
@@ -264,7 +266,9 @@ struct NoSpeechTranscriptLine: View {
     }
     /// The same derivation as Recording details, read off the main actor.
     private func loadHint() async {
-        guard let meeting else { permissionHint = false; return }
+        // A reused view never shows the previous meeting's hint while this one is read.
+        permissionHint = false
+        guard let meeting else { return }
         let folder = meeting.folder, lifecycle = RecordingDetailsReport.Lifecycle(meeting.state.lifecycle)
         let title = meeting.title ?? "", done = meeting.state.transcript == .done
         let shows = await Task.detached {
