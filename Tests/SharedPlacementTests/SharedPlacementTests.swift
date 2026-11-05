@@ -127,9 +127,12 @@ final class SharedPlacementTests: XCTestCase {
                     let rate = try XCTUnwrap(track.sampleRate)
                     var stream: [Float] = []
                     for segment in output.segments where !segment.isEmpty {
-                        let at = Int(CMTimeConvertScale(segment.timeMapping.target.start,timescale:Int32(rate),method:.roundHalfAwayFromZero).value)
-                        let from = Int(CMTimeConvertScale(segment.timeMapping.source.start,timescale:Int32(rate),method:.roundHalfAwayFromZero).value)
-                        let count = Int(CMTimeConvertScale(segment.timeMapping.source.duration,timescale:Int32(rate),method:.roundHalfAwayFromZero).value)
+                        // Each edit must be on a whole frame of the track's rate: the composition's own
+                        // placement, never one rounded here (a nanosecond edit at 59256.4992 frames would
+                        // otherwise read as the expected 59256).
+                        let at = try Self.frames(segment.timeMapping.target.start,rate:rate,name)
+                        let from = try Self.frames(segment.timeMapping.source.start,rate:rate,name)
+                        let count = try Self.frames(segment.timeMapping.source.duration,rate:rate,name)
                         let source = try XCTUnwrap(segment.sourceURL)
                         let frames = try Self.mono(source,from:from,count:count)
                         if stream.count < at + frames.count { stream += [Float](repeating:0,count:at + frames.count - stream.count) }
@@ -167,6 +170,16 @@ final class SharedPlacementTests: XCTestCase {
             try? FileManager.default.copyItem(at:results,to:directory.appendingPathComponent(name + ".json"))
         }
         XCTAssertEqual(checked.0,0,"placement.py check \(mutant.map { "--mutant " + $0 } ?? ""):\n" + checked.1)
+    }
+    struct NotOnAFrame: Error, CustomStringConvertible { let description: String }
+    /// A composition time as whole frames of `rate`, only when it is exactly one (converting toward
+    /// zero and back gives the same time); otherwise the playback leg fails.
+    static func frames(_ time: CMTime, rate: Int, _ track: String) throws -> Int {
+        let converted = CMTimeConvertScale(time,timescale:Int32(rate),method:.roundTowardZero)
+        guard time.isNumeric, CMTimeCompare(converted,time) == 0 else {
+            throw NotOnAFrame(description:"\(track): playback edit \(time.value)/\(time.timescale) s is not a whole frame at \(rate) Hz")
+        }
+        return Int(converted.value)
     }
     /// A file's frames at its own rate, channels averaged to mono (playback never resamples them).
     static func mono(_ url: URL, from: Int, count: Int) throws -> [Float] {
