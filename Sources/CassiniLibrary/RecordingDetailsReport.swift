@@ -24,7 +24,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
                 switch value {
                 case .text(let text): return text
                 case .catalog(let id): return LibraryLocalization.shared.text(id,language:language,locale:locale)
-                case .duration(let ms): return LibraryFormat.meetingDuration(ms,locale:locale,language:language)
+                case .duration(let ms): return LibraryFormat.detailsDuration(ms,locale:locale,language:language)
                 case .position(let ms): return LibraryFormat.position(ms,locale:locale,language:language)
                 }
             }
@@ -62,7 +62,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
 
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
-        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.failed","details.sources.silent",
+        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.lowAudio.underSecond","details.sources.failed","details.sources.silent",
         "details.sources.silent.othersPermissionHint",
         "details.sources.notSelected","details.sources.gap","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
@@ -174,27 +174,33 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             return collapsed.isEmpty ? .catalog("details.source.unknown") : .text(String(collapsed.prefix(180)))
         }
     }
+    /// Whole milliseconds to show: a positive amount under 1 ms shows as the smallest one, never as
+    /// nothing (L1 review).
+    static func shown(_ ms: Double) -> Int64 { ms > 0 ? max(1,Int64(floor(ms))) : 0 }
     /// silentTracks is nil unless the transcript is done (R13.1).
     static func row(_ row: JSON, tracks: JSON?, final: Bool, silentTracks: Set<String>? = nil) -> SourceRow {
         let expected = row["captureExpected"]?.bool != false
         let recorded = row["captureOutcome"]!.string!
         let outcome = expected ? recorded : "notSelected"
-        let source = name(row), duration = Line.Part.duration(Int64(floor(row["audioMs"]!.double!)))
+        let source = name(row), duration = Line.Part.duration(shown(row["audioMs"]!.double!))
         let line: Line
         if !final && outcome == "neverAudio" { line = .init(text:source) }
         else {
             let shown = !final && outcome == "lowAudio" ? "captured" : outcome
-            line = shown == "neverAudio" || shown == "failed" || shown == "notSelected"
-                ? .init("details.sources."+shown,["source":source]) : .init("details.sources."+shown,["source":source,"duration":duration])
+            // D58.4: under one second the low-audio line says so in words, not as a rounded number.
+            let underSecond = shown == "lowAudio" && row["audioMs"]!.double! < 1000
+            line = shown == "neverAudio" || shown == "failed" || shown == "notSelected" || underSecond
+                ? .init("details.sources."+shown+(underSecond ? ".underSecond" : ""),["source":source])
+                : .init("details.sources."+shown,["source":source,"duration":duration])
         }
         let problem = expected && (recorded == "failed" || (final && (recorded == "neverAudio" || recorded == "lowAudio")))
         var gaps: [Line] = []
         if expected {
             let ids = (row["trackIds"]?.array ?? []).compactMap(\.string)
             let padding = counter("gapFrames",ids:ids,tracks:tracks), dropped = counter("droppedFrames",ids:ids,tracks:tracks)
-            if let padding, padding > 0 { gaps.append(.init("details.sources.gap",["source":source,"duration":.duration(Int64(floor(padding)))])) }
+            if let padding, padding > 0 { gaps.append(.init("details.sources.gap",["source":source,"duration":.duration(shown(padding))])) }
             if let dropped, dropped > 0, dropped != padding {
-                gaps.append(.init(label:.catalog("details.health.dropped"),value:.duration(Int64(floor(dropped)))))
+                gaps.append(.init(label:.catalog("details.health.dropped"),value:.duration(shown(dropped))))
             }
         }
         // R13 (D67.1): a captured expected source whose every track was left out as silent by a
@@ -219,7 +225,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             }
             // CaptureOutcome's own comparison on the unrounded total; only the shown duration is floored.
             guard !ids.isEmpty, received > 0, received <= safe else { return nil }
-            let outcome = received < 1000 ? "lowAudio" : "captured", audioMs = floor(received)
+            let outcome = received < 1000 ? "lowAudio" : "captured", audioMs = Double(shown(received))
             let source: JSON = .object([("sourceTrackId",.string(kind)),("kind",.string(kind)),("label",.string("")),
                                         ("captureOutcome",.string(outcome)),("audioMs",.number(String(Int64(audioMs)))),
                                         ("trackIds",.array(ids.map { .string($0) }))])

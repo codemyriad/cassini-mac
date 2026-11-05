@@ -29,7 +29,7 @@ struct D52RecordingDetailsTests {
         #expect(english.contains("Guest") && english.contains(LibraryFormat.meetingDuration(61000,locale:gb,language:.en)))
         #expect(rows.map(\.problem) == [false,true,true,true])
         #expect(rows[0].line.id == "details.sources.captured" && rows[1].line.id == "details.sources.neverAudio")
-        #expect(rows[2].line.id == "details.sources.lowAudio" && rows[3].line.id == "details.sources.failed")
+        #expect(rows[2].line.id == "details.sources.lowAudio.underSecond" && rows[3].line.id == "details.sources.failed")
         let live = report(session([source(id:"n",outcome:"neverAudio",audioMs:"0"),source(id:"l",outcome:"lowAudio",audioMs:"500"),source(id:"f",outcome:"failed")]),.recording).sources
         #expect(live[0].line.id == nil && text(live[0].line) == "Guest","Live neverAudio is just the name")
         #expect(live[1].line.id == "details.sources.captured","Live lowAudio shows as captured")
@@ -55,7 +55,7 @@ struct D52RecordingDetailsTests {
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":120000}]").map(\.id) == ["details.sources.gap"])
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":96000,\"droppedFrames\":96000}]").count == 1,"Equal drop and padding: one line")
         let both = lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":96000,\"droppedFrames\":48000}]")
-        #expect(both.count == 2); #expect(text(both[1]) == "Dropped audio: 1 min".replacingOccurrences(of:"1 min",with:LibraryFormat.meetingDuration(1000,locale:gb,language:.en)))
+        #expect(both.count == 2); #expect(text(both[1]) == "Dropped audio: 1 s")
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000}]").isEmpty,"Missing counters are zero")
         #expect(lines("[{\"id\":\"x\",\"sampleRate\":48000,\"gapFrames\":96000}]").isEmpty,"Missing track: unknown")
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":96000},{\"id\":\"t\",\"sampleRate\":48000}]").isEmpty,"Duplicate track: unknown")
@@ -203,8 +203,8 @@ struct D52RecordingDetailsTests {
         // with silence and counted it apart from host-time gaps, so both are subtracted.
         let early = report(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":16000,\"frames\":96000,\"gapFrames\":16000,\"droppedFrames\":32000},"
             + "{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":32000,\"droppedFrames\":24000}]}"))
-        #expect(early.sources.map(\.line.id) == ["details.sources.captured","details.sources.lowAudio"])
-        #expect(early.sources.map { $0.line.values["duration"] } == [.duration(3000),.duration(500)])
+        #expect(early.sources.map(\.line.id) == ["details.sources.captured","details.sources.lowAudio.underSecond"])
+        #expect(early.sources.map { $0.line.values["duration"] } == [.duration(3000),nil])
     }
     /// #144 review: a native side's outcome follows its received duration (D52: under 1000 ms is
     /// low audio), worded by row(): saved, a problem; live, still captured.
@@ -214,13 +214,13 @@ struct D52RecordingDetailsTests {
         }
         for kind in ["microphone","system"] {
             let low = report(tracks(kind,received:8000))  // 500 ms
-            #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio"],"\(kind)")
-            #expect(low.sources.map { $0.line.values["duration"] } == [.duration(500)],"\(kind)")
+            #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio.underSecond"],"\(kind)")
+            #expect(low.sources.map { $0.line.values["duration"] } == [nil],"\(kind): under a second, no number (D58.4)")
             #expect(low.sources.map(\.problem) == [true],"\(kind)")
             let live = report(tracks(kind,received:8000),.recording)
             #expect(live.sources.map(\.line.id) == ["details.sources.captured"] && live.sources.map(\.problem) == [false],"\(kind) live")
             // The threshold: 999 ms is low audio, 1000 ms is captured.
-            #expect(report(tracks(kind,received:15984)).sources.map(\.line.id) == ["details.sources.lowAudio"],"\(kind) 999 ms")
+            #expect(report(tracks(kind,received:15984)).sources.map(\.line.id) == ["details.sources.lowAudio.underSecond"],"\(kind) 999 ms")
             let enough = report(tracks(kind,received:16000))
             #expect(enough.sources.map(\.line.id) == ["details.sources.captured"] && enough.sources.map(\.problem) == [false],"\(kind) 1000 ms")
         }
@@ -229,7 +229,7 @@ struct D52RecordingDetailsTests {
         #expect(odd.sources.map(\.line.id) == ["details.sources.captured"] && odd.sources.map { $0.line.values["duration"] } == [.duration(1000)])
         // Under a millisecond received is still low audio, not a missing row.
         let tiny = report(json("{\"tracks\":[{\"id\":\"t\",\"kind\":\"microphone\",\"sampleRate\":8000,\"frames\":4000,\"receivedFrames\":4}]}"))
-        #expect(tiny.sources.map(\.line.id) == ["details.sources.lowAudio"] && tiny.sources.map(\.problem) == [true])
+        #expect(tiny.sources.map(\.line.id) == ["details.sources.lowAudio.underSecond"] && tiny.sources.map(\.problem) == [true])
     }
     /// R13 (D67.1) on native rows: a done write-down that left out every track of a captured side
     /// adds its silent line; a low-audio side keeps its own line only (R13.2).
@@ -276,7 +276,7 @@ struct D52RecordingDetailsTests {
         #expect(details(native,silent:["s"],done:false).sources.allSatisfy { $0.permissionHint == nil })
         // Low audio keeps its own line only (R13.2): no silent line, no hint.
         let low = details(json("{\"tracks\":[{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":8000}]}"),silent:["s"])
-        #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio"] && low.sources.map { $0.permissionHint } == [nil])
+        #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio.underSecond"] && low.sources.map { $0.permissionHint } == [nil])
         // A browser recording's reported "This computer" source, silent: the silent line only.
         let browser = details(session([source(id:"sys",kind:"system",label:"",tracks:["s"])],tracks:both),silent:["s"])
         #expect(browser.sources.map { $0.silent?.id } == ["details.sources.silent"] && browser.sources.map { $0.permissionHint } == [nil])
@@ -285,6 +285,28 @@ struct D52RecordingDetailsTests {
             let shown = silentSystem.sources[1].permissionHint!.render(language:language,locale:gb)
             #expect(!shown.isEmpty && !shown.contains("{"),"\(language)")
         }
+    }
+    /// L1 (Mac QA 0.1.1), D58.4: Recording details never rounds a duration down to whole minutes.
+    @Test func durationsAreShownInSecondsUnderAMinute() {
+        func line(_ ms: Int, outcome: String = "captured", final: Bool = true) -> RecordingDetailsReport.Line {
+            report(session([source(kind:"microphone",label:"",outcome:outcome,audioMs:String(ms))]),final ? .saved : .recording).sources[0].line
+        }
+        #expect(text(line(43_000)) == "Your microphone: 43 s recorded.")
+        #expect(text(line(87_000)) == "Your microphone: 1 min 27 s recorded.")
+        #expect(text(line(3_600_000)).hasPrefix("Your microphone: 1 h"))
+        #expect(LibraryFormat.detailsDuration(1_999,locale:gb,language:.en) == "1 s","whole seconds")
+        // Under a second the low-audio line says so in words, with no number (underSecond).
+        let low = line(500, outcome:"lowAudio")
+        #expect(low.id == "details.sources.lowAudio.underSecond" && low.values["duration"] == nil)
+        #expect(text(low) == "Your microphone: less than a second of audio was received.")
+        #expect(line(1_500, outcome:"lowAudio").id == "details.sources.lowAudio","a stored lowAudio of a second or more keeps its number")
+        #expect(line(500, outcome:"lowAudio", final:false).id == "details.sources.captured","live, low audio still reads as captured")
+        // A positive gap or drop under a second shows as 1 s, never as 0 s.
+        let gap = report(session([source(tracks:["t"])],tracks:"[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":14400}]")).sources[0].gapLines
+        #expect(gap.map { text($0) }.first?.contains("1 s") == true,"a 300 ms gap: \(gap.map { text($0) })")
+        let tiny = report(session([source(tracks:["t"])],tracks:"[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":1}]")).sources[0].gapLines
+        #expect(tiny.map { text($0) }.first?.contains("1 s") == true,"\(tiny.map { text($0) })")
+        #expect(LibraryFormat.detailsDuration(0,locale:gb,language:.en) == "0 s")
     }
     @Test func liveSourceProblemRule() {
         #expect(RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed")])))
