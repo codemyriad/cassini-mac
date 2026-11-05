@@ -39,9 +39,11 @@ import CassiniKit
     func stop() { stops += 1; sink = nil; onStop?() }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
-    @MainActor private func returnFixture() async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
+    /// `outcomes`: the peer negotiated source-outcomes-v1 (the capture keeps a source ledger).
+    @MainActor private func returnFixture(outcomes: Bool = false) async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let owner = try OwnedBrowserCapture(parent:root,title:"Return",microphone:true,managedBrowser:true)
+        if outcomes { owner.enableSourceOutcomes() }
         try owner.browserTrack(id:"before",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
         try owner.browserAudio(id:"before",sequence:0,offsetMs:0,pcm:Data(repeating:1,count:1600))
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
@@ -339,10 +341,45 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
     }
 
+    /// D68 (#49 review): a resumed transport's declarations before the restore write no track.
+    /// The restore opens one real span per returning source; no inert, start-less 0-frame span
+    /// precedes it under the same key.
+    @MainActor func testADeclarationBeforeTheRestoreWritesNoTrackAndTheRestoreOpensOneSpan() async throws {
+        let (root,owner,_,_,inputs) = try await returnFixture(outcomes:true)
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        let before = owner.snapshot.manifest.tracks.map(\.id)
+        try owner.browserTrack(id:"after",label:"Returned",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.id),before,"the declaration alone writes no track")
+        try owner.browserAudio(id:"after",sequence:0,offsetMs:2500,pcm:Data(repeating:2,count:1600))
+        XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.id),before,"nor does audio before the restore")
+        try await inputs.restoreBrowser(atMs:3000)
+        try owner.browserAudio(id:"after",sequence:1,offsetMs:3100,pcm:Data(repeating:2,count:1600))
+        try await inputs.stop(); try await owner.finish()
+        let guest = owner.snapshot.manifest.tracks.filter { $0.sourceTrackId == "guest" }
+        XCTAssertEqual(guest.count,1,"one span for the returning source")
+        XCTAssertNotNil(guest.first?.startOffsetMs,"placed")
+        XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.startOffsetMs == nil },"no start-less track")
+    }
+    /// #143 review: without source-outcomes-v1 there is no ledger, so a source declared during the
+    /// loss that never returns is recorded only by its inert track. It keeps that track: after
+    /// Stop, the reloaded session still names its key and label.
+    @MainActor func testWithoutSourceOutcomesASourceDeclaredDuringTheLossIsStillSaved() async throws {
+        let (root,owner,_,_,inputs) = try await returnFixture(outcomes:false)
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        try owner.browserTrack(id:"late",label:"Late guest",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"late-key")
+        try await inputs.stop(); try await owner.finish()
+        let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+        let late = saved.tracks.filter { $0.sourceTrackId == "late-key" }
+        XCTAssertEqual(late.count,1,"the never-restored source is still represented")
+        XCTAssertEqual(late.first?.label,"Late guest"); XCTAssertEqual(late.first?.frames,0); XCTAssertEqual(late.first?.ended,true)
+    }
     @MainActor func testRejectedReturnResumesTheExistingSystemSpanAndKeepsMicRunning() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
         defer { try? FileManager.default.removeItem(at:root) }
         try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        // Without source-outcomes-v1 each declaration before the restore keeps its inert track.
         for index in 0..<(64-owner.snapshot.manifest.tracks.count) { try offerReturn(owner,id:"after-\(index)") }
         XCTAssertEqual(owner.snapshot.manifest.tracks.count,64)
         let events = owner.snapshot.manifest.events?.count
