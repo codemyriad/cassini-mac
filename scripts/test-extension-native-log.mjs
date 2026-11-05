@@ -15,8 +15,10 @@ const base = await mkdtemp(path.join(os.tmpdir(),'native-log-'));
 const extension = path.join(base,'extension');
 await (await import('node:fs/promises')).mkdir(extension);
 await writeFile(path.join(extension,'manifest.json'),JSON.stringify({manifest_version:3,name:'native log',version:'1',permissions:['nativeMessaging'],background:{service_worker:'worker.js'}}));
-// The worker connects on request, to a host that does not exist: Chromium disconnects it with a lastError.
-await writeFile(path.join(extension,'worker.js'),"self.connectMissing = () => chrome.runtime.connectNative('io.codemyriad.cassini.missing-host');\n");
+// The worker connects on request, to a host that does not exist: Chromium disconnects it with a
+// lastError. It first sends one audio message on the port, as the extension does.
+await writeFile(path.join(extension,'worker.js'),"self.connectMissing = () => { const port = chrome.runtime.connectNative('io.codemyriad.cassini.missing-host');" +
+  " try { port.postMessage({type:'audio',id:'source-1',sequence:3,offsetMs:12.6,pcm:'AAAA'}); } catch {} };\n");
 let context;
 try {
   context = await chromium.launchPersistentContext(path.join(base,'profile'),{channel:'chromium',headless:true,
@@ -36,6 +38,12 @@ try {
   const disconnect = log.events.find(e => e.event === 'disconnect');
   assert.ok(log.events.some(e => e.event === 'connect'),JSON.stringify(log.events));
   assert.ok(disconnect && typeof disconnect.error === 'string' && disconnect.error.length > 0,JSON.stringify(log.events));
+  // What the worker sends is logged with its fields, never its PCM, and every entry carries the
+  // worker's own time next to Node's receipt time.
+  const sent = log.events.find(e => e.event === 'sent');
+  assert.deepEqual(sent && {type:sent.type,id:sent.id,sequence:sent.sequence,offsetMs:sent.offsetMs,pcm:sent.pcm},
+    {type:'audio',id:'source-1',sequence:3,offsetMs:13,pcm:undefined},JSON.stringify(log.events));
+  assert.ok(log.events.filter(e => e.worker).every(e => Number.isFinite(e.t) && Number.isFinite(e.at)),JSON.stringify(log.events));
   console.log('PASS native connect and disconnect with lastError survive their worker ending');
 } finally {
   await context?.close(); await rm(base,{recursive:true,force:true});

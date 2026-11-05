@@ -361,6 +361,50 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertNotNil(guest.first?.startOffsetMs,"placed")
         XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.startOffsetMs == nil },"no start-less track")
     }
+    /// D66 mac-P0-1 (CI "Same Chromium transport did not restore", signature B): on a live
+    /// transport the app refused part of the returning source. A source the app refused and the
+    /// extension declared again under a new wire id, same key, restores on its first PCM, into one
+    /// new span for that key.
+    @MainActor func testARefusedReturningSourceDeclaredAgainRestoresOnItsFirstPCM() async throws {
+        let (root,owner,_,_,inputs) = try await returnFixture(outcomes:true)
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        try owner.browserTrack(id:"after-1",label:"Returned",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        XCTAssertFalse(owner.snapshot.restoreReady,"a declaration alone is no return")
+        XCTAssertFalse(owner.refuseSource(id:"after-1",code:"chunk"))
+        XCTAssertFalse(owner.snapshot.restoreReady)
+        try owner.browserTrack(id:"after-2",label:"Returned",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        try owner.browserAudio(id:"after-2",sequence:0,offsetMs:2500,pcm:Data(repeating:2,count:1600))
+        XCTAssertTrue(owner.snapshot.restoreReady,"the declaration again, with PCM after the loss, is a return")
+        try await inputs.restoreBrowser(atMs:3000)
+        XCTAssertTrue(owner.snapshot.browserAlive)
+        // After the restore point: PCM before it is trimmed from the new span.
+        try owner.browserAudio(id:"after-2",sequence:1,offsetMs:3100,pcm:Data(repeating:2,count:1600))
+        try await inputs.stop(); try await owner.finish()
+        XCTAssertTrue(owner.snapshot.manifest.events?.contains { $0.type == "othersSource" && $0.source == "browser" && $0.reason == "restored" } ?? false)
+        // The refused declaration's failure stays in the outcome (D52: never silently missing).
+        XCTAssertEqual(owner.snapshot.manifest.events?.last?.reason,"error")
+        let guest = owner.snapshot.manifest.tracks.filter { $0.sourceTrackId == "guest" && $0.startOffsetMs != nil }
+        XCTAssertEqual(guest.count,1,"one placed span for the key")
+        XCTAssertGreaterThan(guest.first?.frames ?? 0,0)
+    }
+    /// D66 mac-P0-1: only returning PCM at or after the loss counts as a return. PCM a returning
+    /// source stamps before the loss (a capture clock that lags) never makes the restore ready;
+    /// the same source's PCM that reaches the loss does.
+    @MainActor func testReturningPCMBeforeTheLossIsNoReturnUntilItReachesTheLoss() async throws {
+        let (root,owner,_,_,inputs) = try await returnFixture(outcomes:true)
+        defer { try? FileManager.default.removeItem(at:root) }
+        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+        try owner.browserTrack(id:"after",label:"Returned",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        // 100 ms chunks from 500 ms: 500..900 lie before the loss at 1000.
+        for sequence in 0..<5 {
+            try owner.browserAudio(id:"after",sequence:sequence,offsetMs:500+Double(sequence)*100,pcm:Data(repeating:2,count:1600))
+            XCTAssertFalse(owner.snapshot.restoreReady,"PCM at \(500+sequence*100) ms is before the loss")
+        }
+        try owner.browserAudio(id:"after",sequence:5,offsetMs:1000,pcm:Data(repeating:2,count:1600))
+        XCTAssertTrue(owner.snapshot.restoreReady,"PCM at the loss is a return")
+        try await inputs.stop(); try await owner.finish()
+    }
     /// #143 review: without source-outcomes-v1 there is no ledger, so a source declared during the
     /// loss that never returns is recorded only by its inert track. It keeps that track: after
     /// Stop, the reloaded session still names its key and label.

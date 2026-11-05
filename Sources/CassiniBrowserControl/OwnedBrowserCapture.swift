@@ -331,6 +331,19 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             publish()
         }
     }
+    #if DEBUG
+    /// Hosted self-test diagnostics (D66 mac-P0-1): each declared browser source's state, by its
+    /// opaque wire id and key, never a label.
+    public func sourceDiagnostics() -> String {
+        sync {
+            let sources = browserSources.values.sorted { $0.id < $1.id }.map { source in
+                "\(source.id.prefix(12)) key=\(source.key.prefix(12)) current=\(source.current) returning=\(source.returning) " +
+                "span=\(source.span != nil) next=\(source.nextSequence) frames=\(source.frames) last=\(source.lastPacketAt.map { String(Int($0)) } ?? "nil")"
+            }
+            return (sources.isEmpty ? "none" : sources.joined(separator:"; ")) + " | retired=\(retired.count) returnAt=\(Int(browserReturnAt))"
+        }
+    }
+    #endif
     /// A refused `track`/`audio`/`trackEnd` fails only that source; the capture
     /// and connection stay usable. Returns whether the span was already retired.
     @discardableResult public func refuseSource(id: String, code: String) -> Bool {
