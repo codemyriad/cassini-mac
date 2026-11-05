@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +98,30 @@ class GapTests(unittest.TestCase):
             with self.subTest(mutation=name):
                 self.assertTrue(any(not matches(replay(c, mutant), c['expected']) for c in WRITER))
 
+    def test_presence_starts_at_the_d55_placement(self):
+        # R88 (D67 item 7): the raw fractional offset, or any other rounding of it, fails a literal.
+        writedown = json.loads((ROOT / 'conformance/multistream/writedown.json').read_text())['keep']
+
+        def failures():
+            found = [c['name'] for c in PRESENCE if gaps.presence(c['track'], c.get('ownership')) != c['expected']]
+            for case in writedown:
+                ranges = gaps.presence(case['track'], case.get('ownership'))
+                ranges = ranges['present'] + ranges['unknown']
+                found += [case['name'] for word in case['words']
+                          if any(a <= 8 * sum(word['ms']) < b for a, b in ranges) is not word['keep']]
+            return found
+        self.assertEqual(failures(), [])
+
+        def exact(ms, rate):
+            return gaps.Fraction(str(ms)) * rate / 1000
+        for name, mutant in (('raw offset', exact), ('raw offset rounded up', lambda ms, rate: gaps.math.ceil(exact(ms, rate))),
+                             ('half-even', lambda ms, rate: round(exact(ms, rate))),
+                             ('floor', lambda ms, rate: gaps.math.floor(exact(ms, rate)))):
+            with self.subTest(mutation=name), mock.patch.object(gaps, 'frame', mutant):
+                self.assertNotEqual(failures(), [])
+        with mock.patch.object(gaps, 'frame', exact):
+            self.assertIn('a-fractional-start-offset-compares-in-session-samples', failures())
+
     def test_presence_never_comes_from_pcm_or_counts(self):
         for case in PRESENCE:
             track = dict(case['track'], droppedFrames=12345)
@@ -128,6 +153,35 @@ class GapTests(unittest.TestCase):
         self.assertFalse(validator.is_valid(document))
         document['tracks'][0]['gaps'] = [dict(atMs=-1, durationMs=1, frames=48, kind='jump')]
         self.assertFalse(validator.is_valid(document))
+
+    def test_an_empty_gap_validates_and_a_negative_one_fails(self):
+        # D63 vectors and both apps read an empty gap (durationMs 0, frames 0) as no range.
+        validator = Draft202012Validator(json.loads((ROOT / 'schemas/session.schema.json').read_text()),
+                                         format_checker=FormatChecker())
+        base = json.loads((ROOT / 'conformance/examples/session.json').read_text())
+
+        def valid(gaps):
+            document = copy.deepcopy(base)
+            document['tracks'][0]['gaps'] = gaps
+            return validator.is_valid(document)
+        empty = dict(atMs=1000, durationMs=0, frames=0, kind='jump')
+        self.assertTrue(valid([empty]))
+        self.assertFalse(valid([dict(empty, durationMs=-1)]))
+        self.assertFalse(valid([dict(empty, frames=-1)]))
+        self.assertFalse(valid([dict(empty, durationMs=-1e-9, frames=0)]))
+        # Both zero or both positive: a mixed entry is a writer bug, not a range.
+        self.assertTrue(valid([dict(empty, durationMs=50, frames=2400)]))
+        self.assertFalse(valid([dict(empty, durationMs=50, frames=0)]))
+        self.assertFalse(valid([dict(empty, durationMs=0, frames=480)]))
+        self.assertFalse(valid([dict(empty, durationMs=1e-9, frames=0)]))
+        self.assertFalse(valid([dict(atMs=1000, kind='overflow', durationMs=0, frames=0)]))
+        writedown = json.loads((ROOT / 'conformance/multistream/writedown.json').read_text())
+        stored = [c['track']['gaps'] for c in PRESENCE + writedown['keep'] if c['track'].get('gaps')]
+        stored += [c['gaps'] for c in writedown['turns'] if c.get('gaps')]
+        self.assertIn([empty], stored)
+        for gaps_ in stored:
+            with self.subTest(gaps=gaps_):
+                self.assertTrue(valid(gaps_))
 
 
 if __name__ == '__main__':
