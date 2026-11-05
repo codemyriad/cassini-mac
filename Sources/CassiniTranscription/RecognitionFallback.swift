@@ -61,6 +61,13 @@ public enum RecognitionFallback {
             codes.append(contentsOf:repeatElement(silent,count:left / frame))
             tail = [Float](repeating:0,count:left % frame)
         }
+        /// The measured floor: the 10th percentile (index int(0.1 × (n − 1))) of audible frames, above
+        /// -90 dBFS with digital silence excluded; nil without any. thresholdDB uses it only from
+        /// FLOOR_MIN_FRAMES of them (the corpus reports it for every track).
+        public func floorDB() -> Double? {
+            let levels = codes.filter { $0 != silent && Int($0) - 120 > -90 }.sorted()
+            return levels.isEmpty ? nil : Double(levels[Int(floorPercentile * Double(levels.count - 1))]) - 120
+        }
         /// max(-50 dBFS, floor + 12 dB); the floor is the 10th percentile of audible frames.
         public func thresholdDB() -> (floor: Double?, threshold: Double) {
             let levels = codes.filter { $0 != silent && Int($0) - 120 > -90 }.sorted()
