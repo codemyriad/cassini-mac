@@ -8,17 +8,29 @@ import subprocess
 import sys
 import tempfile
 import wave
-from jsonschema import Draft202012Validator, FormatChecker
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / 'conformance/session-events'
-SCHEMA = Draft202012Validator(json.loads((ROOT / 'schemas/session.schema.json').read_text()),
-                             format_checker=FormatChecker())
+
+
+@lru_cache(maxsize=None)
+def schema():
+    """The session schema validator. jsonschema is imported here, not at load, so the
+    stdlib-only live-folder oracle (conformance/live-folder/check.py) can reuse bounds()."""
+    from jsonschema import Draft202012Validator, FormatChecker
+    return Draft202012Validator(json.loads((ROOT / 'schemas/session.schema.json').read_text()),
+                                format_checker=FormatChecker())
 
 
 def validate(document):
     """JSON Schema plus S-6 bounds that JSON Schema cannot express."""
-    SCHEMA.validate(document)
+    schema().validate(document)
+    bounds(document)
+
+
+def bounds(document):
+    """The S-6 bounds JSON Schema cannot express; needs no jsonschema."""
     previous = 0
     ended = False
     source = None
@@ -32,8 +44,13 @@ def validate(document):
         if event['type'] == 'selection':
             others = event['others']
         elif event['type'] == 'othersSource':
-            if event['reason'] == 'restored' and (not others or source is None or
-                    source['source'] != 'system' or source['reason'] not in ('missing', 'lost')):
+            # A fallback that committed (system/missing, system/lost), or a browser loss whose
+            # fallback never committed (not asked yet, or still starting) because the call
+            # returned first (none/lost).
+            fallback = source is not None and (
+                source['source'] == 'system' and source['reason'] in ('missing', 'lost') or
+                source['source'] == 'none' and source['reason'] == 'lost')
+            if event['reason'] == 'restored' and (not others or not fallback):
                 raise ValueError('restored needs an enabled others side and a preceding fallback')
             if event['reason'] == 'callConnected' and (not others or source is None or
                     source['source'] != 'system' or source['reason'] != 'missing' or event['source'] != 'browser'):
@@ -71,11 +88,55 @@ def state_at(document, at):
                 fallback=source['reason'] in ('missing', 'lost'))
 
 
+def placed_ms(ms):
+    """D55: the session ms of the 16 kHz sample ms * 16 rounded half away from zero."""
+    x = ms * 16
+    whole = math.floor(abs(x) + 0.5)
+    return (whole if x >= 0 else -whole) / 16
+
+
+def others_presence(document):
+    """Independent presence oracle (D52.2): The others' span extents minus gap ranges, merged.
+
+    An extent starts at the track's D55 placement and lasts its frames (R88, D67 item 7);
+    gap ranges stay absolute session times. A track with no known start (startOffsetMs is
+    optional, and readers accept null) has no extent: it adds no presence and is never
+    placed at an invented time.
+    """
+    spans = []
+    for track in document['tracks']:
+        if track['kind'] in ('microphone', 'local') or track.get('startOffsetMs') is None:
+            continue
+        start = placed_ms(track['startOffsetMs'])
+        end = start + track['frames'] * 1000 / track['sampleRate']
+        cuts = sorted((g['atMs'], g['atMs'] + g['durationMs']) for g in track.get('gaps') or []
+                      if g.get('durationMs', 0) > 0)
+        for cut_start, cut_end in cuts:
+            if cut_start > start:
+                spans.append([start, min(cut_start, end)])
+            start = max(start, cut_end)
+        if start < end:
+            spans.append([start, end])
+    merged = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
 def check_fixtures():
     for case, manifest_name, expected_name in [
         ('fallback', 'session.json', 'expected.json'),
         ('browser-off-on', 'browser-off-on.session.json', 'browser-off-on.expected.json'),
         ('call-return', 'call-return.session.json', 'call-return.expected.json'),
+        ('uncommitted-return', 'uncommitted-return.session.json', 'uncommitted-return.expected.json'),
+        # The same return written by an app that keeps its written othersSource while a
+        # fallback is pending: no none/lost, no restored. The absence is the file's truth
+        # in both forms: no Others presence over the loss (span extents minus gaps).
+        ('uncommitted-return-kept', 'uncommitted-return-kept.session.json',
+         'uncommitted-return-kept.expected.json'),
     ]:
         document = json.loads((FIXTURES / manifest_name).read_text())
         expected = json.loads((FIXTURES / expected_name).read_text())
@@ -94,6 +155,8 @@ def check_fixtures():
             final = state_at(document, duration)
             for key in ('me', 'others', 'source', 'fallback'):
                 assert final[key] == expected[key]
+        if 'othersPresenceMs' in expected:
+            assert others_presence(document) == expected['othersPresenceMs'], others_presence(document)
         if 'end' in expected:
             assert document['events'][-1] == dict(type='end', **expected['end'])
         if 'trackRoles' in expected:

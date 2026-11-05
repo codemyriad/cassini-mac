@@ -7,21 +7,6 @@ import CassiniKit
 import CassiniRecording
 import CassiniWhistle
 
-public struct TranscriptSpeaker: Sendable {
-    public let id: String
-    public let name: String?
-    public static func fromTrack(id: String, kind: String, sourceTrackID: String? = nil, received: Bool = false, me: String = "Me", others: String = "The others") -> Self {
-        if received { return .init(id: "track-original", name: nil) }
-        if ["microphone", "local"].contains(kind) { return .init(id: "me", name: me) }
-        if kind == "system" { return .init(id: "others", name: others) }
-        let identity = sourceTrackID ?? id
-        let safe = !identity.isEmpty && identity.utf8.count <= 195 && identity.utf8.allSatisfy {
-            (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45,95].contains($0)
-        }
-        let suffix = safe ? identity : "opaque-" + SHA256.hash(data:Data(identity.utf8)).map { String(format:"%02x",$0) }.joined()
-        return .init(id: "track-" + suffix, name: nil)
-    }
-}
 public enum MeetingTranscriber {
     public static func setStatus(directory: URL, id: UUID, status: String) throws {
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
@@ -93,8 +78,8 @@ public enum MeetingTranscriber {
                 let id: String
                 /// Track-local 16 kHz sample ranges inside D52.2 presence and ownership.
                 let kept: [Range<Int>]
-                /// D52.4 R71 activity inside `kept`, measured while planning.
-                let active: [Bool]; let activeSeconds: Double
+                /// D52.4 R71 activity inside `kept`, measured while planning, and its whole active frames.
+                let active: [Bool]; var activeFrames: Int { active.filter { $0 }.count }
                 /// D56/D57: under 32 non-zero native 32 ms frames: never decoded or recognized.
                 var silent = false
             }
@@ -111,15 +96,11 @@ public enum MeetingTranscriber {
                     return (track.url,track.sourceID ?? filenameID,track.sourceKind ?? "media",track.startOffsetMs,track.sourceTrackID,track.endOffsetMs,presenceGaps(track))
                 }
             }
-            // D52 M1: one source becomes one speaker only while its spans are disjoint.
-            let lengths = Dictionary(meeting.audioTracks.map { ($0.url,($0.frameCount,$0.sampleRate)) },uniquingKeysWith:{ first,_ in first })
-            let lanes = SourceSpanLanes.assign(sources.compactMap { url, id, kind, offset, sourceTrackID, end, _ in
-                let base = TranscriptSpeaker.fromTrack(id:id,kind:kind,sourceTrackID:sourceTrackID,received:received,me:me,others:others).id
-                guard base.hasPrefix("track-"), !received else { return nil }
-                let length = lengths[url]
-                return .init(id:id,base:base,startMs:offset,endMs:offset == nil ? nil : end,frames:length?.0,sampleRate:length?.1)
-            })
-            let separated = lanes.values.contains { $0.contains(":overlap:") }
+            // D52 M1: one source becomes one speaker only while its spans are disjoint. Readers
+            // derive the same speakers from the same tracks (TranscriptSpeaker.assign, D63 #2).
+            let assigned = received ? [] : TranscriptSpeaker.assign(meeting.audioTracks,received:false,me:me,others:others)
+            let speakerOf = Dictionary(assigned.map { ($0.track.url,$0.speaker) },uniquingKeysWith:{ first,_ in first })
+            let separated = assigned.contains { $0.speaker.id.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
             // D56 and D67.3: the tracks left out as silent, a 0-frame (never-captured) track included,
             // in the meeting's track order.
@@ -134,14 +115,13 @@ public enum MeetingTranscriber {
                 // The one placement at 16 kHz; presence and ownership edges are measured from it.
                 let startSample = Int(TrackPlacement.frame(ms:recorded ?? 0,rate:16000))
                 let offset = recorded.map { _ in Double(startSample) / 16 }
-                var speaker = TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
-                if let lane = lanes[id] { speaker = .init(id:lane,name:speaker.name) }
+                let speaker = speakerOf[url] ?? TranscriptSpeaker.fromTrack(id: id, kind: kind, sourceTrackID:sourceTrackID, received: received, me: me, others: others)
                 // D56/D57 (GNOME R76): each session.json track entry is judged on its own native
                 // samples. A silent one is left out of recognition and its fallback; it stays in
                 // the meeting and the mixdown, and captureOutcome is unchanged.
                 if !received, Self.isSilent(wav:url) {
                     silentTracks.append(id)
-                    var track = Track(url: url, sampleCount: 0, speaker: speaker, startSample: startSample, segments: [], id: id, kept: [], active: [], activeSeconds: 0)
+                    var track = Track(url: url, sampleCount: 0, speaker: speaker, startSample: startSample, segments: [], id: id, kept: [], active: [])
                     track.silent = true; tracks.append(track)
                     continue
                 }
@@ -166,7 +146,7 @@ public enum MeetingTranscriber {
                 let meter = try activity(audio,kept:kept)
                 let active = meter.active()
                 tracks.append(.init(url: url, sampleCount: audio.sampleCount, speaker: speaker, startSample: startSample, segments: segments, id: id, kept: kept,
-                                    active: active, activeSeconds: meter.activeSeconds(active)))
+                                    active: active))
                 // The planning scratch is released here (end of scope), before the next track.
             }
             let silent = Set(silentTracks)
@@ -264,59 +244,91 @@ public enum MeetingTranscriber {
                 processed += speech; remaining = max(0,remaining - speech); elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
                 return out
             }
+            /// D63 #3: on every path (VAD and fallback), a word is written only when its midpoint lies
+            /// in its track's kept time; a word clamped to zero length at the end of presence is not.
             func append(_ words: [RecognitionFallback.Word], track index: Int) {
-                for word in words { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
+                for word in words where Self.writes(startMs:word.startMs,endMs:word.endMs,kept:tracks[index].kept,startSample:tracks[index].startSample) { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
+            }
+            // D63 #1: the R71 tests pool every non-silent track of one person (the same speaker id
+            // across rejoins; an R64 overlap lane is its own). A person with enough pooled active audio
+            // holds its VAD words until they reach FEW_WORDS over all its tracks; if they never do, its
+            // last track decides, and each of its tracks is decoded in windows with its own margin.
+            var personTracks: [String:[Int]] = [:]
+            for (index,track) in tracks.enumerated() where !track.silent { personTracks[track.speaker.id,default:[]].append(index) }
+            let candidate = personTracks.mapValues { indices in indices.reduce(0) { $0 + tracks[$1].activeFrames } >= RecognitionFallback.minActiveFrames }
+            var personVad: [String:Int] = [:], released = Set<String>(), trackVad = [Int](repeating:0,count:tracks.count)
+            var held: [Int:[RecognitionFallback.Word]] = [:], heldEnd: [Int:Int64] = [:], waiting = Set<Int>()
+            var decisions: [(index: Int, track: RecognitionFallback.PersonTrack)] = [], fallbackOf: [Int:[RecognitionFallback.Word]] = [:]
+            /// A person reached FEW_WORDS: its held VAD words are written, and its finished tracks finish.
+            func release(_ person: String) {
+                released.insert(person)
+                for index in personTracks[person] ?? [] {
+                    if let words = held.removeValue(forKey:index) { append(words,track:index) }
+                    if let end = heldEnd[index] { progress.advance(track:index,to:end) }
+                    if waiting.remove(index) != nil { progress.finish(track:index) }
+                }
+            }
+            /// One track's VAD pass. The track's scratch is released when this returns (M15).
+            func vadPass(_ index: Int) throws {
+                let track = tracks[index], person = track.speaker.id
+                let audio = try SegmentedAudio(url: track.url)
+                guard audio.sampleCount == track.sampleCount else { throw TranscriptionFailure.audioFormat }
+                if candidate[person] == true && !released.contains(person) { held[index] = [] }
+                for segment in track.segments {
+                    let found = try words(track,audio,segment)
+                    trackVad[index] += found.count; personVad[person,default:0] += found.count
+                    let end = track.ms(segment.endSample)
+                    if held[index] == nil { append(found,track:index); progress.advance(track:index,to:end); try publish(status: "running"); continue }
+                    held[index]! += found; heldEnd[index] = end
+                    if personVad[person]! >= RecognitionFallback.fewWords { release(person); try publish(status: "running") }
+                }
+            }
+            /// R71 windows of one track of a firing person, decoded and merged across seams.
+            func fallbackWords(_ index: Int) throws -> [RecognitionFallback.Word] {
+                let track = tracks[index]
+                let audio = try SegmentedAudio(url: track.url)
+                guard audio.sampleCount == track.sampleCount else { throw TranscriptionFailure.audioFormat }
+                let windows = RecognitionFallback.fallbackWindows(kept:track.kept,active:track.active)
+                remaining += Double(windows.reduce(0) { $0 + $1.count }) / 16000
+                var fallback: [RecognitionFallback.Word] = [], previousEnd: Int?
+                for window in windows {
+                    let segment = SpeechSegment(startSample:window.lowerBound,endSample:window.upperBound,reason:"noVadWindow")
+                    let base = track.ms(window.lowerBound)
+                    let kept = RecognitionFallback.energetic(try words(track,audio,segment),samples:try audio.samples(segment),baseMs:base)
+                    if let previousEnd, window.lowerBound < previousEnd {
+                        fallback = RecognitionFallback.mergeSeam(fallback,kept,windowStartMs:base,overlapMs:Int64((previousEnd - window.lowerBound) * 1000 / 16000))
+                    } else { fallback += kept }
+                    previousEnd = window.upperBound
+                }
+                return fallback
             }
             for (index, track) in tracks.enumerated() {
                 if track.silent { progress.finish(track:index); continue }
-                // D52 M15: one track's scratch at a time; the same deterministic decode as planning.
-                let audio = try SegmentedAudio(url: track.url)
-                guard audio.sampleCount == track.sampleCount else { throw TranscriptionFailure.audioFormat }
-                let active = track.active, activeSeconds = track.activeSeconds
-                // A track with plenty of active audio holds its VAD words until it reaches the threshold.
-                var held: [RecognitionFallback.Word]? = activeSeconds >= RecognitionFallback.minActiveSeconds ? [] : nil
-                var heldEnd: Int64?, vadWords = 0
-                for segment in track.segments {
-                    let found = try words(track,audio,segment)
-                    vadWords += found.count
-                    let end = track.ms(segment.endSample)
-                    if held == nil { append(found,track:index); progress.advance(track:index,to:end); try publish(status: "running"); continue }
-                    held! += found; heldEnd = end
-                    if vadWords >= RecognitionFallback.fewWords {
-                        append(held!,track:index); held = nil
-                        progress.advance(track:index,to:end); try publish(status: "running")
-                    }
+                try vadPass(index)
+                let person = track.speaker.id
+                guard held[index] != nil else { progress.finish(track:index); try publish(status:"running"); continue }
+                waiting.insert(index)
+                guard index == personTracks[person]?.last else { continue }
+                // The person's last track, still under FEW_WORDS pooled: it fires. Each of its tracks
+                // is decoded in windows (one scratch at a time) and keeps its own margin.
+                for member in personTracks[person] ?? [] { fallbackOf[member] = try fallbackWords(member) }
+                let verdict = RecognitionFallback.decide((personTracks[person] ?? []).map { member in
+                    .init(trackId:tracks[member].id,speaker:person,activeFrames:tracks[member].activeFrames,vadWords:trackVad[member],fallbackWords:fallbackOf[member]!.count)
+                })
+                for (member,entry) in zip(personTracks[person] ?? [],verdict.entries) {
+                    append(entry.used ? fallbackOf[member]! : held.removeValue(forKey:member) ?? [],track:member)
+                    held[member] = nil
+                    if let end = heldEnd[member] { progress.advance(track:member,to:end) }
+                    waiting.remove(member); progress.finish(track:member)
                 }
-                if let vad = held {
-                    // Active 15 s windows inside the kept ranges, so none crosses a gap or ownership edge.
-                    let needed = Int((0.5 * 16000 / 512.0).rounded(.up))
-                    let windows = track.kept.flatMap { range in
-                        RecognitionFallback.windowBounds(range.count).map { (range.lowerBound + $0.lowerBound)..<(range.lowerBound + $0.upperBound) }
-                    }.filter { w in
-                        let a = w.lowerBound / 512, b = min(active.count,(w.upperBound + 511) / 512)
-                        return a < b && active[a..<b].filter { $0 }.count >= needed
-                    }
-                    remaining += Double(windows.reduce(0) { $0 + $1.count }) / 16000
-                    var fallback: [RecognitionFallback.Word] = [], previousEnd: Int?
-                    for window in windows {
-                        let segment = SpeechSegment(startSample:window.lowerBound,endSample:window.upperBound,reason:"noVadWindow")
-                        let base = track.ms(window.lowerBound)
-                        let kept = RecognitionFallback.energetic(try words(track,audio,segment),samples:try audio.samples(segment),baseMs:base)
-                        if let previousEnd, window.lowerBound < previousEnd {
-                            fallback = RecognitionFallback.mergeSeam(fallback,kept,windowStartMs:base,overlapMs:Int64((previousEnd - window.lowerBound) * 1000 / 16000))
-                        } else { fallback += kept }
-                        previousEnd = window.upperBound
-                    }
-                    let used = fallback.count >= RecognitionFallback.need(vadWords)
-                    // The fallback replaces the VAD words only past the margin; never both.
-                    append(used ? fallback : vad,track:index)
-                    fallbackDecisions.append(["trackId":track.id,"vadWords":vadWords,"fallbackWords":fallback.count,
-                                              "activeSeconds":(activeSeconds * 1000).rounded() / 1000,"used":used])
-                    if let heldEnd { progress.advance(track:index,to:heldEnd) }
+                decisions += (personTracks[person] ?? []).map { member in
+                    (member,.init(trackId:tracks[member].id,speaker:person,activeFrames:tracks[member].activeFrames,vadWords:trackVad[member],fallbackWords:fallbackOf[member]!.count))
                 }
-                progress.finish(track:index)
+                fallbackOf = [:]
                 try publish(status:"running")
             }
+            // D52.4 R71 provenance (additive, not displayed): every firing person's tracks, in track order.
+            fallbackDecisions = RecognitionFallback.decide(decisions.sorted { $0.index < $1.index }.map(\.track)).entries.map(\.json)
             try publish(status: "done")
         } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
     }
@@ -372,20 +384,33 @@ public enum MeetingTranscriber {
     }
     /// Stored gap ranges as presence gaps. Gap frames are at the track's own rate;
     /// they are carried as milliseconds.
-    static func presenceGaps(_ track: LibraryAudioTrack) -> [TrackPresence.Gap]? {
-        let rate = Double(track.sampleRate ?? 48000)
-        return track.gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
+    static func presenceGaps(_ track: LibraryAudioTrack) -> [TrackPresence.Gap]? { presenceGaps(track.gaps,sampleRate:track.sampleRate) }
+    static func presenceGaps(_ gaps: [TrackPresence.Gap]?, sampleRate: Int?) -> [TrackPresence.Gap]? {
+        let rate = Double(sampleRate ?? 48000)
+        return gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
     }
     /// The session-millisecond windows of a 16 kHz track that are recognized: owned
     /// time (D49/D33) minus stored gap ranges (D52.2; prefix and padding are absence).
     /// Unknown time is kept because its audio exists. nil keeps the whole track.
     static func ownedWindows(offsetMs offset: Double, sampleCount: Int, kind: String, gaps: [TrackPresence.Gap]?, ownership: OthersOwnership?) -> [(Double,Double)]? {
-        guard ownership != nil || gaps?.isEmpty == false else { return nil }
         let end = offset + Double(sampleCount)/16
         let mask = ownership.map { $0.owned(kind:kind,startMs:offset,endMs:end).map { (start:$0.0,end:$0.1) } }
+        return ownedWindows(offsetMs:offset,sampleCount:sampleCount,gaps:gaps,mask:mask)
+    }
+    /// The same, with the ownership already resolved to session-millisecond windows.
+    static func ownedWindows(offsetMs offset: Double, sampleCount: Int, gaps: [TrackPresence.Gap]?, mask: [TrackPresence.Window]?) -> [(Double,Double)]? {
+        guard mask != nil || gaps?.isEmpty == false else { return nil }
         let presence = TrackPresence.windows(startOffsetMs:offset,sampleRate:16000,frames:UInt64(sampleCount),gaps:gaps,ownership:mask)
         // Present and unknown windows are disjoint; together they are the kept time.
         return (presence.present + presence.unknown).sorted { $0.start < $1.start }.map { ($0.start,$0.end) }
+    }
+    /// D63 #3: a word is written only when its exact midpoint M = 8 × (startMs + endMs), in 16 kHz
+    /// session samples, lies in one of its track's kept ranges (owned present-or-unknown time,
+    /// track-local from the D55 placement `startSample`), compared in session samples. A word
+    /// clamped to zero length at the end of presence (G11) lands on the end and is not written.
+    static func writes(startMs: Int64, endMs: Int64, kept: [Range<Int>], startSample: Int) -> Bool {
+        let m = 8 * (Int(startMs) + Int(endMs))
+        return kept.contains { startSample + $0.lowerBound <= m && m < startSample + $0.upperBound }
     }
     /// Track-local 16 kHz sample ranges of `owned`, on the D52.2 presence grid.
     static func keptRanges(_ owned: [(Double,Double)], offsetMs offset: Double, sampleCount: Int) -> [Range<Int>] {

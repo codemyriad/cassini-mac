@@ -18,6 +18,55 @@ class SessionEventsTests(unittest.TestCase):
     def test_shared_fixtures_materialised_timelines_and_reserved_reader_vector(self):
         annotations.check_fixtures()
 
+    def test_an_uncommitted_return_is_true_only_with_the_absence_in_the_file(self):
+        """Either writer form passes; a zero-filled loss never does (D47, D52.2)."""
+        kept = json.loads((annotations.FIXTURES / 'uncommitted-return-kept.session.json').read_text())
+        expected = json.loads((annotations.FIXTURES / 'uncommitted-return-kept.expected.json').read_text())
+        tracks = {track['id']: track for track in kept['tracks']}
+        one = dict(tracks['remote-before'], id='remote', file='track-remote.wav', frames=40000, endOffsetMs=5000)
+        for gaps, present in [
+            ([dict(atMs=1000, durationMs=2500, frames=20000, kind='jump')], True),  # One span, the loss as a range.
+            ([], False),  # The same span zero-filled: it would claim the Others were there.
+        ]:
+            session = dict(kept, tracks=[tracks['mic'], dict(one, gaps=gaps)])
+            annotations.validate(session)
+            self.assertEqual(annotations.others_presence(session) == expected['othersPresenceMs'], present)
+
+    def test_presence_starts_at_the_d55_placement(self):
+        """R88 (D67 item 7): 1000.03 ms is 16 kHz sample 16000.48, placed at 16000 (1000 ms).
+
+        The extent lasts its 8000 frames at 8 kHz, so it ends at 2000 ms, not 2000.03 ms;
+        the gap [1500, 1600) stays absolute. 1000.03125 ms is 16000.5, placed half away
+        from zero at 16001, so its extent is [1000.0625, 2000.0625).
+        """
+        tracks = {track['id']: track for track in self.session['tracks']}
+        remote = dict(tracks['browser-1'], frames=8000, startOffsetMs=1000.03, endOffsetMs=2000.03,
+                      gaps=[dict(atMs=1500, durationMs=100, frames=800, kind='jump')])
+        session = dict(self.session, tracks=[tracks['microphone-1'], remote])
+        self.assertEqual(annotations.others_presence(session), [[1000.0, 1500], [1600, 2000.0]])
+        tie = dict(remote, startOffsetMs=1000.03125, endOffsetMs=2000.03125, gaps=[])
+        session = dict(self.session, tracks=[tracks['microphone-1'], tie])
+        self.assertEqual(annotations.others_presence(session), [[1000.0625, 2000.0625]])
+
+    def test_a_track_with_no_known_start_adds_no_presence(self):
+        """startOffsetMs is optional (readers also accept null): a track with no known start has no
+        extent, so it adds no presence and never aborts the oracle (a 0-frame declaration that Mac
+        commits before its restore)."""
+        tracks = {track['id']: track for track in self.session['tracks']}
+        remote = dict(tracks['browser-1'], frames=8000, startOffsetMs=1000, endOffsetMs=2000, gaps=[])
+        session = dict(self.session, tracks=[tracks['microphone-1'], remote])
+        present = annotations.others_presence(session)
+        for start in ('missing', None):
+            with self.subTest(startOffsetMs=start):
+                declared = dict(remote, id='declared', file='track-declared.wav', frames=0, ended=True)
+                declared.pop('endOffsetMs')
+                declared.pop('startOffsetMs')
+                if start is None:
+                    declared.update(startOffsetMs=None, endOffsetMs=None)
+                with_declared = dict(self.session, tracks=[tracks['microphone-1'], remote, declared])
+                annotations.validate(with_declared)
+                self.assertEqual(annotations.others_presence(with_declared), present)
+
     def test_legacy_and_null_annotations_do_not_infer_a_fallback(self):
         for value in [None, []]:
             self.session['events'] = value
@@ -142,6 +191,19 @@ class SessionEventsTests(unittest.TestCase):
                        [fallback, dict(type='selection',atMs=1,me=True,others=False,reason='user'),restore]]:
             self.session['events'] = events
             with self.assertRaises((ValueError,ValidationError)): annotations.validate(self.session)
+
+    def test_restore_after_a_fallback_that_never_committed(self):
+        # The call returned before its fallback committed (SPEC-CONTROL "Return before the
+        # fallback commits"): none/lost, then browser/restored with no system track between.
+        restore = dict(type='othersSource', atMs=2, source='browser', reason='restored')
+        lost = dict(type='othersSource', atMs=0, source='none', reason='lost')
+        self.session['events'] = [lost, restore]
+        annotations.validate(self.session)
+        # Only a loss: Others turned off (none/user) is not a fallback, nor is a lost Others side.
+        for events in [[dict(lost, reason='user'), restore],
+                       [lost, dict(type='selection',atMs=1,me=True,others=False,reason='user'),restore]]:
+            self.session['events'] = events
+            with self.assertRaises(ValueError): annotations.validate(self.session)
 
 
 if __name__ == '__main__':
