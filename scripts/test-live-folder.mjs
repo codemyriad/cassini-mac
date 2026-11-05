@@ -149,12 +149,17 @@ try {
   const browserPid = browserProcess();
   // Evidence: each page's audio render clock against wall time, sampled every 2 s (a sampler,
   // never a wait). A rate under 1 is a stalling output device.
+  // Each probe keeps its output non-silent as the extension does (D68.1), so it reads the device
+  // clock, not the silent-sink timer a silent probe would fall onto after 30 s.
   for (const page of [meeting, remote]) await page.evaluate(async () => {
-    window.cassiniClockProbe = new AudioContext(); await window.cassiniClockProbe.resume();
+    const probe = window.cassiniClockProbe = new AudioContext(), keep = probe.createConstantSource();
+    keep.offset.value = 6e-8; keep.connect(probe.destination); keep.start(); await probe.resume();
   });
   const sample = async page => page.evaluate(() => ({ audio: window.cassiniClockProbe?.currentTime ?? null, state: window.cassiniClockProbe?.state ?? null })).catch(() => null);
   sampler = setInterval(async () => {
-    clock.push({ wall: Date.now(), meeting: await sample(meeting), remote: await sample(remote) });
+    // wall (Date.now) and monotonic (performance.now) together: the driver's session clock is the
+    // wall clock, the apps' events the monotonic one, so their drift is evidence too.
+    clock.push({ wall: Date.now(), monotonic: performance.now(), meeting: await sample(meeting), remote: await sample(remote) });
     // Every 10 s: the load average and the top CPU users (evidence for a slow render clock).
     if (clock.length % 5 === 1) {
       try { load.push({ wall: Date.now(), uptime: execFileSync('uptime', { encoding: 'utf8' }).trim(),
@@ -199,7 +204,10 @@ try {
     const [a, b] = [points[0], points.at(-1)];
     return (b[key].audio - a[key].audio) / ((b.wall - a.wall) / 1000);
   };
-  await writeFile(path.join(out, 'audio-clock.json'), JSON.stringify({ rate: { meeting: rate('meeting'), remote: rate('remote') }, samples: clock }, null, 1) + '\n').catch(() => {});
+  // Wall minus monotonic, from the first sample to the last (ms): the wall clock's slew over the run.
+  const drift = clock.length > 1 ? (clock.at(-1).wall - clock[0].wall) - (clock.at(-1).monotonic - clock[0].monotonic) : null;
+  await writeFile(path.join(out, 'audio-clock.json'), JSON.stringify({ rate: { meeting: rate('meeting'), remote: rate('remote') }, wallMinusMonotonicMs: drift, samples: clock }, null, 1) + '\n').catch(() => {});
+  console.log(`live-folder: wall clock minus monotonic clock over the run ${drift?.toFixed(1)} ms`);
   await writeFile(path.join(out, 'load.json'), JSON.stringify(load, null, 1) + '\n').catch(() => {});
   console.log(`live-folder: audio render clock rate meeting ${rate('meeting')?.toFixed(3)} remote ${rate('remote')?.toFixed(3)}`);
   await writeFile(path.join(out, 'app.stdout.txt'), stdout).catch(() => {});
