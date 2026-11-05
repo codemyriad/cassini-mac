@@ -72,7 +72,7 @@ import Observation
 @MainActor @Observable final class MeetingDetailModel {
     var meeting: LibraryMeeting {
         didSet {
-            if meeting.transcriptItems != oldValue.transcriptItems || meeting.speakers.map(\.id) != oldValue.speakers.map(\.id) {
+            if MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
                 prepareTurns()
                 shares = MeetingPresentation.shares(meeting)
             }

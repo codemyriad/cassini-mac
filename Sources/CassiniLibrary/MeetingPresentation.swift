@@ -66,6 +66,11 @@ public enum MeetingPresentation {
         }
         return out
     }
+    /// Whether a meeting update changes what its turns are prepared from: the words, the speakers,
+    /// or the speakers' gap ranges (D63 #2; a gap-only manifest update re-splits turns).
+    public static func turnInputsChanged(from old: LibraryMeeting, to new: LibraryMeeting) -> Bool {
+        new.transcriptItems != old.transcriptItems || new.speakers.map(\.id) != old.speakers.map(\.id) || new.speakerGaps != old.speakerGaps
+    }
     public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:]) -> [Turn] {
         (try? turns(items,gaps:gaps,cancellable:false)) ?? []
     }
