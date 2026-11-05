@@ -17678,6 +17678,39 @@
    }
   },
   {
+   "id": "details.sources.lowAudio.underSecond",
+   "en": "{source}: less than a second of audio was received.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D58.4",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D58.4, Mac QA L1). Used instead of details.sources.lowAudio when the received audio is under 1 s, so no rounded duration ('0 s', 'under 1 min') is shown.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: ricevuto meno di un secondo di audio."
+    },
+    "fr": {
+     "text": "{source} : moins d'une seconde de son reçue."
+    },
+    "es": {
+     "text": "{source}: se recibió menos de un segundo de audio."
+    },
+    "pt-BR": {
+     "text": "{source}: menos de um segundo de áudio recebido."
+    },
+    "pt-PT": {
+     "text": "{source}: foi recebido menos de um segundo de áudio."
+    }
+   }
+  },
+  {
    "id": "details.sources.silent",
    "en": "{source}: no speech heard.",
    "platforms": [

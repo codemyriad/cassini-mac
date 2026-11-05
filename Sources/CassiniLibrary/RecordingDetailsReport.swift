@@ -62,7 +62,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
 
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
-        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.failed","details.sources.silent",
+        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.lowAudio.underSecond","details.sources.failed","details.sources.silent",
         "details.sources.silent.othersPermissionHint",
         "details.sources.notSelected","details.sources.gap","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
@@ -187,8 +187,11 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         if !final && outcome == "neverAudio" { line = .init(text:source) }
         else {
             let shown = !final && outcome == "lowAudio" ? "captured" : outcome
-            line = shown == "neverAudio" || shown == "failed" || shown == "notSelected"
-                ? .init("details.sources."+shown,["source":source]) : .init("details.sources."+shown,["source":source,"duration":duration])
+            // D58.4: under one second the low-audio line says so in words, not as a rounded number.
+            let underSecond = shown == "lowAudio" && row["audioMs"]!.double! < 1000
+            line = shown == "neverAudio" || shown == "failed" || shown == "notSelected" || underSecond
+                ? .init("details.sources."+shown+(underSecond ? ".underSecond" : ""),["source":source])
+                : .init("details.sources."+shown,["source":source,"duration":duration])
         }
         let problem = expected && (recorded == "failed" || (final && (recorded == "neverAudio" || recorded == "lowAudio")))
         var gaps: [Line] = []
