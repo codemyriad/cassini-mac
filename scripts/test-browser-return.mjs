@@ -100,11 +100,22 @@ try {
  // worker start or close, collected in Node so they survive the worker closing.
  const nativeLog = attachNativeLog(context);
  await nativeLog.ready;
+ // The page's own audio clock against performance.now() over one second: a hosted context
+ // running slow (D68.1) delays every capture behind it. Measured only after a failure.
+ const renderRate = async page => page.evaluate(async () => {
+  const context = window.generatedCall?.context;
+  if (!context) return null;
+  const [audio,wall] = [context.currentTime,performance.now()];
+  await new Promise(resolve => setTimeout(resolve,1000));
+  return {state:context.state,rate:(context.currentTime-audio)*1000/(performance.now()-wall)};
+ }).catch(error => ({unavailable:String(error)}));
+ // Written on a pass too (a baseline for the next failure); printed only on a failure.
+ const saveExtensionLog = () => writeFile(output+'.extension.json',JSON.stringify({events:nativeLog.events},null,1)+'\n').catch(() => {});
  const extensionDiagnostics = async () => {
-  const text = JSON.stringify({events:nativeLog.events});
+  const text = JSON.stringify({events:nativeLog.events,pageAudio:await renderRate(page)});
   console.error('Extension diagnostics: '+text);
   stderr += 'Extension diagnostics: '+text+'\n';
-  await writeFile(output+'.extension.json',JSON.stringify({events:nativeLog.events},null,1)+'\n').catch(() => {});
+  await saveExtensionLog();
  };
  const page = await context.newPage();
  page.on('pageerror',error => {stderr+='Page error: '+error.message+'\n';});
@@ -139,7 +150,13 @@ try {
  await wait(() => exited,'App did not finish cleanly');
  assert.equal(exitCode,0,stderr);
  const report=phases.get('complete');
- for(const key of ['sameFolder','originalTransport','realPageLifecycle','systemFallback','freshBrowserSpan','microphoneUninterrupted','nativeInputsGenerated']) assert.equal(report[key],true,key);
+ for(const key of ['sameFolder','realPageLifecycle','systemFallback','freshBrowserSpan','microphoneUninterrupted','nativeInputsGenerated']) assert.equal(report[key],true,key);
+ // D66 mac-P0-1: whether the original transport survived the navigation, or died and was resumed
+ // (D52.4): reported, not asserted, so how often it dies becomes visible without failing a run
+ // that recovered as designed.
+ assert.equal(typeof report.originalTransport,'boolean','originalTransport');
+ if (!report.originalTransport) console.log('::warning title=Browser return::The Chromium transport died on navigation and the recording resumed on a new one (D52.4)');
+ await saveExtensionLog();
  assert.equal(report.endReason,'tabClosed'); assert.equal(report.audioDevicesOpened,false);
  report.realChromium=true; report.realExtension=true; report.nativeArchitecture=os.arch();
  await writeFile(output,JSON.stringify(report,null,2)+'\n');

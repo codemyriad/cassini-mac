@@ -30,7 +30,8 @@ import CassiniRecording
             "row: page=\(meeting?.pageState?.rawValue ?? "nil")@\(meeting?.pageStateAt.map { String(format:"%.2f",$0) } ?? "nil") count=\(meeting.map { String($0.sourceCount) } ?? "nil") " +
             "known=\(meeting.map { String($0.sourceCountKnown) } ?? "nil") heard=\(meeting.map { String($0.heard) } ?? "nil") " +
             "status=\(status?.pageState?.rawValue ?? "nil")@\(status?.pageStateAt.map { String(format:"%.2f",$0) } ?? "nil")\n" +
-            "events: \(events.joined(separator:" "))\ntracks: \(tracks.joined(separator:" "))\n"
+            "events: \(events.joined(separator:" "))\ntracks: \(tracks.joined(separator:" "))\n" +
+            "sources: \(capture.owner.sourceDiagnostics())\n"
     }
     static func run() async {
         guard CaptureFixture.enabled,
@@ -48,10 +49,19 @@ import CassiniRecording
             let id = capture.snapshot.manifest.id, folder = capture.owner.snapshot.directory
             let before = Set(capture.owner.snapshot.manifest.tracks.filter { $0.kind == "remote" }.map(\.id))
             try report(["phase":"recording","id":id.uuidString])
-            try await wait("Navigation did not start computer-sound fallback") { capture.owner.snapshot.usingSystem }
+            // D66 mac-P0-1: whether the original transport ever died (then resumed, D52.4). A
+            // dead transport stays dead until the resume, seconds later, so the 25 ms waits see it.
+            var transportDied = false
+            let navigated = ProcessInfo.processInfo.systemUptime
+            try await wait("Navigation did not start computer-sound fallback") {
+                transportDied = transportDied || !capture.owner.snapshot.transportAlive
+                return capture.owner.snapshot.usingSystem
+            }
+            let fellBack = ProcessInfo.processInfo.systemUptime
             try report(["phase":"fallback","id":id.uuidString])
             try await wait("Same Chromium transport did not restore after navigation") {
                 let source = capture.owner.snapshot
+                transportDied = transportDied || !source.transportAlive
                 return source.browserAlive && source.transportAlive && !source.usingSystem &&
                     source.manifest.events?.contains { $0.type == "othersSource" && $0.source == "browser" && $0.reason == "restored" } == true &&
                     source.manifest.tracks.contains { $0.kind == "remote" && !before.contains($0.id) && $0.frames > 0 }
@@ -59,6 +69,7 @@ import CassiniRecording
             guard collection.captures[id]?.captureID == capture.captureID,
                   capture.owner.snapshot.directory == folder,
                   CaptureFixture.microphoneStarts == 1, CaptureFixture.systemStarts == 1 else { throw CocoaError(.fileReadCorruptFile) }
+            let restored = ProcessInfo.processInfo.systemUptime
             try report(["phase":"restored","id":id.uuidString])
             try await wait("Closed Chromium tab did not stop") { collection.captures.isEmpty }
             let manifest = try await Task.detached { try RecordingLoader.load(directory:folder) }.value
@@ -66,7 +77,9 @@ import CassiniRecording
                   manifest.tracks.filter({ $0.kind == "microphone" && $0.frames > 0 }).count == 1,
                   manifest.tracks.filter({ $0.kind == "system" && $0.frames > 0 }).count == 1,
                   manifest.tracks.filter({ $0.kind == "remote" && $0.frames > 0 }).count >= 2 else { throw CocoaError(.fileReadCorruptFile) }
-            try report(["phase":"complete","sameFolder":true,"originalTransport":true,"realPageLifecycle":true,
+            try report(["phase":"complete","sameFolder":true,"originalTransport":!transportDied,"realPageLifecycle":true,
+                        // From the recording report (the test then reloads the page) to the fallback, and on to the restore.
+                        "secondsToFallback":((fellBack-navigated)*100).rounded()/100,"secondsToRestore":((restored-fellBack)*100).rounded()/100,
                         "systemFallback":true,"freshBrowserSpan":true,"microphoneUninterrupted":true,"endReason":"tabClosed",
                         "nativeInputsGenerated":true,"audioDevicesOpened":false])
             CompanionSetup.shared.stop(); await collection.shutdown()
