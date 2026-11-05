@@ -45,7 +45,7 @@ const url = `http://127.0.0.1:${server.address().port}`;
 let ownsProfile = false, context = null, remoteBrowser = null, child = null, exited = false, stdout = '', stderr = '';
 const pending = new Map(), lines = [];
 let next = 0, ready = null, cleaned = null, code = 1, sampler = null;
-const clock = [];
+const clock = [], load = [];
 
 function launchApp(env) {
   child = spawn(path.join(app, 'Contents/MacOS/Cassini'), [
@@ -132,8 +132,11 @@ try {
   // renders on the output device's clock, and the capture worklet stamps frames by that clock, so a
   // stalling device made a remote track grow at ~72% of real time. Chromium's fake audio output is
   // timer-driven in real time: the hosted counterpart of GNOME's PulseAudio null sink.
+  // A hosted-runner diagnostic (experiment/hosted-audio-clock) measured every variant alone at
+  // 0.98-1.00 of real time (fake output exactly 1.000), but 0.70-0.73 during this scenario: the render
+  // thread misses deadlines under load, so renderers are never backgrounded or throttled either.
   const callArgs = ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns',
-    '--disable-audio-output'];
+    '--disable-audio-output', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'];
   try { await writeFile(path.join(out, 'audio-devices.json'), execFileSync('system_profiler', ['SPAudioDataType', '-json'], { encoding: 'utf8' })); } catch {}
   // The app first, so its control pipe root is served when the extension's control host connects.
   const started = new Promise((resolve, reject) => { ready = { resolve, reject }; });
@@ -157,6 +160,11 @@ try {
   const sample = async page => page.evaluate(() => ({ audio: window.cassiniClockProbe?.currentTime ?? null, state: window.cassiniClockProbe?.state ?? null })).catch(() => null);
   sampler = setInterval(async () => {
     clock.push({ wall: Date.now(), meeting: await sample(meeting), remote: await sample(remote) });
+    // Every 10 s: the load average and the top CPU users (evidence for a slow render clock).
+    if (clock.length % 5 === 1) {
+      try { load.push({ wall: Date.now(), uptime: execFileSync('uptime', { encoding: 'utf8' }).trim(),
+        top: execFileSync('ps', ['-axro', 'pid,pcpu,rss,comm'], { encoding: 'utf8' }).split('\n').slice(0, 14) }); } catch {}
+    }
   }, 2000);
 
   const adapter = {
@@ -197,6 +205,7 @@ try {
     return (b[key].audio - a[key].audio) / ((b.wall - a.wall) / 1000);
   };
   await writeFile(path.join(out, 'audio-clock.json'), JSON.stringify({ rate: { meeting: rate('meeting'), remote: rate('remote') }, samples: clock }, null, 1) + '\n').catch(() => {});
+  await writeFile(path.join(out, 'load.json'), JSON.stringify(load, null, 1) + '\n').catch(() => {});
   console.log(`live-folder: audio render clock rate meeting ${rate('meeting')?.toFixed(3)} remote ${rate('remote')?.toFixed(3)}`);
   await writeFile(path.join(out, 'app.stdout.txt'), stdout).catch(() => {});
   await writeFile(path.join(out, 'app.stderr.txt'), stderr).catch(() => {});
