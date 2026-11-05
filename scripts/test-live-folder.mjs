@@ -44,7 +44,8 @@ const url = `http://127.0.0.1:${server.address().port}`;
 
 let ownsProfile = false, context = null, remoteBrowser = null, child = null, exited = false, stdout = '', stderr = '';
 const pending = new Map(), lines = [];
-let next = 0, ready = null, cleaned = null, code = 1;
+let next = 0, ready = null, cleaned = null, code = 1, sampler = null;
+const clock = [];
 
 function launchApp(env) {
   child = spawn(path.join(app, 'Contents/MacOS/Cassini'), [
@@ -98,6 +99,7 @@ function browserProcess() {
 // relay or waiting launcher left; it keeps controlHost.observe for the evidence.
 async function cleanup() {
   cleaned ??= (async () => {
+    clearInterval(sampler);
     if (child && !exited) {
       try { await bounded(command('quit'), 15000, 'quit'); } catch {}
       if (!exited) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
@@ -126,7 +128,13 @@ try {
   const env = { ...process.env, CASSINI_CONTROL_PIPE_ROOT: controlRoot, CASSINI_HOSTED_SCREENSHOTS: '1' };
   const chromiumApp = chromium.executablePath().split('/Contents/')[0];
   execFileSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', chromiumApp]);
-  const callArgs = ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
+  // Hosted macOS has no reliable audio output device (runner-images#13668). Every AudioContext
+  // renders on the output device's clock, and the capture worklet stamps frames by that clock, so a
+  // stalling device made a remote track grow at ~72% of real time. Chromium's fake audio output is
+  // timer-driven in real time: the hosted counterpart of GNOME's PulseAudio null sink.
+  const callArgs = ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns',
+    '--disable-audio-output'];
+  try { await writeFile(path.join(out, 'audio-devices.json'), execFileSync('system_profiler', ['SPAudioDataType', '-json'], { encoding: 'utf8' })); } catch {}
   // The app first, so its control pipe root is served when the extension's control host connects.
   const started = new Promise((resolve, reject) => { ready = { resolve, reject }; });
   launchApp(env);
@@ -141,6 +149,15 @@ try {
   const meeting = await context.newPage();
   await meeting.goto(`${url}/meeting`);
   const browserPid = browserProcess();
+  // Evidence: each page's audio render clock against wall time, sampled every 2 s (a sampler,
+  // never a wait). A rate under 1 is a stalling output device.
+  for (const page of [meeting, remote]) await page.evaluate(async () => {
+    window.cassiniClockProbe = new AudioContext(); await window.cassiniClockProbe.resume();
+  });
+  const sample = async page => page.evaluate(() => ({ audio: window.cassiniClockProbe?.currentTime ?? null, state: window.cassiniClockProbe?.state ?? null })).catch(() => null);
+  sampler = setInterval(async () => {
+    clock.push({ wall: Date.now(), meeting: await sample(meeting), remote: await sample(remote) });
+  }, 2000);
 
   const adapter = {
     name: 'macos',
@@ -170,7 +187,17 @@ try {
   console.error(error.stack || String(error));
   code = 1;
 } finally {
+  clearInterval(sampler);
   await cleanup();
+  // Render-clock rate per page: audio seconds per wall second between the first and last sample.
+  const rate = key => {
+    const points = clock.filter(c => typeof c[key]?.audio === 'number');
+    if (points.length < 2) return null;
+    const [a, b] = [points[0], points.at(-1)];
+    return (b[key].audio - a[key].audio) / ((b.wall - a.wall) / 1000);
+  };
+  await writeFile(path.join(out, 'audio-clock.json'), JSON.stringify({ rate: { meeting: rate('meeting'), remote: rate('remote') }, samples: clock }, null, 1) + '\n').catch(() => {});
+  console.log(`live-folder: audio render clock rate meeting ${rate('meeting')?.toFixed(3)} remote ${rate('remote')?.toFixed(3)}`);
   await writeFile(path.join(out, 'app.stdout.txt'), stdout).catch(() => {});
   await writeFile(path.join(out, 'app.stderr.txt'), stderr).catch(() => {});
 }
