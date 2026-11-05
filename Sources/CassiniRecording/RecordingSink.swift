@@ -133,10 +133,6 @@ public final class RecordingSink: @unchecked Sendable {
     /// refused, so an expired input records nothing (#120 r3).
     private let admit: (@Sendable () -> Bool)?
     private var admitted = false
-    private var nonzero = false
-    /// D58.2 R2: this input has delivered at least one finite non-zero sample. A denied system-audio
-    /// permission makes the tap deliver digital silence, never an error.
-    public var heardNonzero: Bool { lock.withLock { nonzero } }
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
@@ -220,7 +216,6 @@ public final class RecordingSink: @unchecked Sendable {
                 for channel in 0..<outputChannels {
                     let value = buffer.format.isInterleaved ? input[0][frame * Int(inputChannels) + channel] : input[channel][frame]
                     source.meter.receive(value,channel:channel)
-                    if !nonzero, value.isFinite, value != 0 { nonzero = true }
                     samples[frame * outputChannels + channel] = Int16((max(-1, min(1, value.isFinite ? value : 0)) * 32767).rounded()).littleEndian
                 }
                 if let value = source.meter.endFrame(channels:outputChannels,window:max(1,Int(rate/10))) {

@@ -87,12 +87,6 @@ private final class SourceChangeToken: @unchecked Sendable {
     /// D58.1: the others' side was refused because macOS denied permission. Only then does the UI
     /// ask the user to allow recording this computer's sound; any other failure is unavailable.
     public var othersDenied: Bool { refusedSides[.others] == CaptureRefusal.permissionDenied }
-    /// D58.2 R2: the current, running system input has delivered only digital silence so far
-    /// (nil when there is no such input: none started, paused or failed).
-    public var othersOnlyDigitalSilence: Bool? {
-        guard let input = inputs[.others], !input.paused, !failedSides.contains(.others) else { return nil }
-        return !input.sink.heardNonzero
-    }
     /// The 3 s first-buffer bound (D58); tests replace it with an event they control.
     public static let openBound: @Sendable () async -> Void = { try? await Task.sleep(for:.seconds(3)) }
     private let bound: @Sendable () async -> Void
