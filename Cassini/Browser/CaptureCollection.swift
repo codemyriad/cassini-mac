@@ -24,6 +24,9 @@ struct LiveCapture {
     var sourceProblem = false
     var displayTitle: String?
     var lastMicSound: TimeInterval = ProcessInfo.processInfo.systemUptime
+    /// D58.2 R2: another app plays while the others' system input hears only digital silence.
+    var othersSilenceRule = SilentOthersHint()
+    var othersPermissionHint = false
     var diskMinutes: Int?
     var fallbackAnnounced = false
     /// D52 M3: every browser recording follows its call by this policy (0.2.12+ only, D51).
@@ -571,6 +574,11 @@ private final class CaptureFiles: @unchecked Sendable {
                 captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
             }
             if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
+            // D58.2 R2: only the others' own system input counts (a native recording or the browser
+            // fallback); the playback probe runs only while that input has heard nothing.
+            let silent = value.snapshot.others && !value.snapshot.browserAlive && value.savingSinceMs == nil ? value.input.othersOnlyDigitalSilence : nil
+            captures[id]?.othersPermissionHint = captures[id]?.othersSilenceRule.update(
+                silent:silent,playing:silent == true && SystemAudioPlayback.anotherAppIsPlaying(),now:ProcessInfo.processInfo.systemUptime) ?? false
             // A native stand-in joins this path once it asked a call to resume it; until the
             // take-over commits it is a plain native recording.
             let standIn = value.snapshot.manifest.source == "macos" && value.key != nil

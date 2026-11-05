@@ -74,11 +74,13 @@ struct RecordingPageView: View {
                 }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:10))
                     .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(Color.secondary.opacity(0.25)) }
                 if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive,
-                   owned.input.failedSides.contains(.others) || owned.snapshot.fallbackReason != nil {
+                   owned.input.failedSides.contains(.others) || owned.snapshot.fallbackReason != nil || owned.othersPermissionHint {
                     HStack(alignment:.top,spacing:8) {
-                        // D58.1: the permission line and its settings action only for a denial.
-                        let failed = owned.input.failedSides.contains(.others), denied = failed && owned.input.othersDenied
-                        Text(UXText.text(!failed ? "errors.othersFallback.line" : denied ? "errors.othersPermission.line" : "errors.deviceUnavailable.others")).fixedSize(horizontal:false,vertical:true)
+                        // D58.1: the permission line and its settings action only for a denial, reported
+                        // (refusal) or inferred while another app plays into a silent tap (D58.2 R2).
+                        let failed = owned.input.failedSides.contains(.others)
+                        let denied = failed ? owned.input.othersDenied : owned.othersPermissionHint
+                        Text(UXText.text(denied ? "errors.othersPermission.line" : failed ? "errors.deviceUnavailable.others" : "errors.othersFallback.line")).fixedSize(horizontal:false,vertical:true)
                         if denied {
                             Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
                         } else if !failed { Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true } }
