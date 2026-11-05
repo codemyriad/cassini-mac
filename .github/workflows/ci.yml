@@ -72,6 +72,18 @@ jobs:
         CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
         CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
       run: swift test --skip-build
+    # Shared test 9 (D55, protocol conformance/placement): every consumer of a track's placement
+    # (recognizer input, word times, export mix, playback, offsetsAssumedZero) on the golden's clean
+    # folders and its three app mutants, checked by the shared oracle (placement.py check).
+    - name: Shared test 9, placement golden
+      env:
+        CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+        CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+        CASSINI_PLACEMENT_REPORT_DIR: ${{ github.workspace }}/build/placement
+        NEEDLE_TELEMETRY: '0'
+        DO_NOT_TRACK: '1'
+        ORT_DISABLE_TELEMETRY: '1'
+      run: swift test --skip-build --filter SharedPlacementTests
     - name: Browser audio worklet tests
       run: node --test browser-protocol/extension/tests/*.test.cjs BrowserExtension/tests/tone-window.test.cjs
     - name: Verify shared browser snapshot
@@ -97,6 +109,7 @@ jobs:
         name: exports-macos-15
         path: |
           build/export-cases
+          build/placement
           build/Opus/pins.json
           build/Opus/unsigned-sha256.json
     - name: Install strict conformance dependencies
