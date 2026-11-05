@@ -55,7 +55,7 @@ struct D52RecordingDetailsTests {
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":120000}]").map(\.id) == ["details.sources.gap"])
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":96000,\"droppedFrames\":96000}]").count == 1,"Equal drop and padding: one line")
         let both = lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":96000,\"droppedFrames\":48000}]")
-        #expect(both.count == 2); #expect(text(both[1]) == "Dropped audio: 1 min".replacingOccurrences(of:"1 min",with:LibraryFormat.meetingDuration(1000,locale:gb,language:.en)))
+        #expect(both.count == 2); #expect(text(both[1]) == "Dropped audio: 1 s")
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000}]").isEmpty,"Missing counters are zero")
         #expect(lines("[{\"id\":\"x\",\"sampleRate\":48000,\"gapFrames\":96000}]").isEmpty,"Missing track: unknown")
         #expect(lines("[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":96000},{\"id\":\"t\",\"sampleRate\":48000}]").isEmpty,"Duplicate track: unknown")
@@ -285,6 +285,22 @@ struct D52RecordingDetailsTests {
             let shown = silentSystem.sources[1].permissionHint!.render(language:language,locale:gb)
             #expect(!shown.isEmpty && !shown.contains("{"),"\(language)")
         }
+    }
+    /// L1 (Mac QA 0.1.1): Recording details never rounds a duration down to whole minutes.
+    @Test func durationsAreShownInSecondsUnderAMinute() {
+        func line(_ ms: Int) -> String {
+            text(report(session([source(kind:"microphone",label:"",audioMs:String(ms))])).sources[0].line)
+        }
+        #expect(line(43_000) == "Your microphone: 43 s recorded.")
+        #expect(line(87_000) == "Your microphone: 1 min 27 s recorded.")
+        #expect(line(3_600_000).hasPrefix("Your microphone: 1 h"))
+        // Under a second, hundredths, floored: never "1 s" for less than a second.
+        #expect(LibraryFormat.detailsDuration(300,locale:gb,language:.en) == "0.3 s")
+        #expect(LibraryFormat.detailsDuration(999,locale:gb,language:.en) == "0.99 s")
+        #expect(LibraryFormat.detailsDuration(1_000,locale:gb,language:.en) == "1 s")
+        #expect(LibraryFormat.detailsDuration(300,locale:Locale(identifier:"it_IT"),language:.it) == "0,3 s","the locale's decimal separator")
+        let gap = report(session([source(tracks:["t"])],tracks:"[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":14400}]")).sources[0].gapLines
+        #expect(gap.map { text($0) }.first?.contains("0.3 s") == true,"a 300 ms gap: \(gap.map { text($0) })")
     }
     @Test func liveSourceProblemRule() {
         #expect(RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed")])))

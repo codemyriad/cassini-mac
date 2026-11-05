@@ -24,7 +24,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
                 switch value {
                 case .text(let text): return text
                 case .catalog(let id): return LibraryLocalization.shared.text(id,language:language,locale:locale)
-                case .duration(let ms): return LibraryFormat.meetingDuration(ms,locale:locale,language:language)
+                case .duration(let ms): return LibraryFormat.detailsDuration(ms,locale:locale,language:language)
                 case .position(let ms): return LibraryFormat.position(ms,locale:locale,language:language)
                 }
             }
