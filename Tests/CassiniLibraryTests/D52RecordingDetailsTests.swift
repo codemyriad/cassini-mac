@@ -301,6 +301,9 @@ struct D52RecordingDetailsTests {
         #expect(LibraryFormat.detailsDuration(300,locale:Locale(identifier:"it_IT"),language:.it) == "0,3 s","the locale's decimal separator")
         let gap = report(session([source(tracks:["t"])],tracks:"[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":14400}]")).sources[0].gapLines
         #expect(gap.map { text($0) }.first?.contains("0.3 s") == true,"a 300 ms gap: \(gap.map { text($0) })")
+        // A positive amount under 1 ms is never shown as nothing (one padding frame at 48 kHz).
+        let tiny = report(session([source(tracks:["t"])],tracks:"[{\"id\":\"t\",\"sampleRate\":48000,\"gapFrames\":1}]")).sources[0].gapLines
+        #expect(tiny.map { text($0) }.first?.contains("0.01 s") == true,"\(tiny.map { text($0) })")
     }
     @Test func liveSourceProblemRule() {
         #expect(RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed")])))
