@@ -243,6 +243,49 @@ struct D52RecordingDetailsTests {
         #expect(silentLines(done:true) == ["details.sources.silent",nil])
         #expect(silentLines(done:false) == [nil,nil],"only a done write-down's list counts")
     }
+    /// D58.3: after Stop, a native "This computer" side whose whole track is digital silence (the
+    /// done write-down's silentTracks) adds the conditional permission hint under its silent line.
+    /// Mic-only, non-silent, low-audio, unfinished and browser sources get none.
+    @Test func nativeSilentSystemSoundGetsThePermissionHint() {
+        let hint = "details.sources.silent.othersPermissionHint"
+        let both = "[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":32000},"
+            + "{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":32000}]"
+        func details(_ session: JSON?, record: JSON? = nil, silent: Set<String>, done: Bool = true,
+                     _ lifecycle: RecordingDetailsReport.Lifecycle = .saved) -> RecordingDetailsReport {
+            .init(.init(lifecycle:lifecycle,title:"Weekly",session:session,captureRecord:record,storedEnd:nil,sourceSpansSeparated:false,
+                        transcriptDone:done,silentTracks:silent))
+        }
+        let native = json("{\"source\":\"macos\",\"tracks\":\(both)}")
+        // This computer's sound silent: its silent line, then the hint; the microphone has neither.
+        let silentSystem = details(native,silent:["s"])
+        #expect(silentSystem.sources.map { $0.silent?.id } == [nil,"details.sources.silent"])
+        #expect(silentSystem.sources.map { $0.permissionHint?.id } == [nil,hint])
+        #expect(silentSystem.sources[1].lines.map(\.id).suffix(2) == ["details.sources.silent",hint],"the hint follows the silent line")
+        #expect(silentSystem.sources.map(\.problem) == [false,false],"conditional, never a warning")
+        #expect(details(native,silent:["m","s"]).sources.map { $0.permissionHint?.id } == [nil,hint])
+        // The same from the meeting.json captureRecord once the session is gone.
+        let stored = details(nil,record:json("{\"version\":1,\"sources\":[],\"tracks\":\(both),\"events\":[]}"),silent:["s"])
+        #expect(stored.sources.map { $0.permissionHint?.id } == [nil,hint])
+        // This computer's sound not silent, or only the microphone silent: no hint.
+        #expect(details(native,silent:["m"]).sources.allSatisfy { $0.permissionHint == nil })
+        #expect(details(native,silent:[]).sources.allSatisfy { $0.permissionHint == nil })
+        // A microphone-only native recording, silent: its silent line, no hint.
+        let micOnly = details(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":32000}]}"),silent:["m"])
+        #expect(micOnly.sources.map { $0.silent?.id } == ["details.sources.silent"] && micOnly.sources.map { $0.permissionHint } == [nil])
+        // Before the write-down is done there is no silent line, so no hint.
+        #expect(details(native,silent:["s"],done:false).sources.allSatisfy { $0.permissionHint == nil })
+        // Low audio keeps its own line only (R13.2): no silent line, no hint.
+        let low = details(json("{\"tracks\":[{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":16000,\"frames\":32000,\"receivedFrames\":8000}]}"),silent:["s"])
+        #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio"] && low.sources.map { $0.permissionHint } == [nil])
+        // A browser recording's reported "This computer" source, silent: the silent line only.
+        let browser = details(session([source(id:"sys",kind:"system",label:"",tracks:["s"])],tracks:both),silent:["s"])
+        #expect(browser.sources.map { $0.silent?.id } == ["details.sources.silent"] && browser.sources.map { $0.permissionHint } == [nil])
+        // The hint renders in every catalog language.
+        for language in CassiniLanguage.allCases {
+            let shown = silentSystem.sources[1].permissionHint!.render(language:language,locale:gb)
+            #expect(!shown.isEmpty && !shown.contains("{"),"\(language)")
+        }
+    }
     @Test func liveSourceProblemRule() {
         #expect(RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed")])))
         #expect(!RecordingDetailsReport.liveSourceProblem(session:session([source(outcome:"failed",expected:"false")])))

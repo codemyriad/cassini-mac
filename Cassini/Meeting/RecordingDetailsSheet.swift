@@ -54,6 +54,13 @@ struct RecordingDetailsSheet: View {
                                         Text(text(silent)).font(.system(size:11.5)).foregroundStyle(.secondary)
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-silent-\(index)")
                                     }
+                                    // D58.3: the conditional permission hint, with its System Settings action.
+                                    if let hint = row.permissionHint {
+                                        Text(text(hint)).font(.system(size:11.5)).foregroundStyle(.secondary)
+                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-permission-hint-\(index)")
+                                        Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
+                                            .controlSize(.small).accessibilityIdentifier("recording-details-permission-settings-\(index)")
+                                    }
                                 }
                             }
                             // D58: sides that were requested but never opened, after the rows.
