@@ -112,6 +112,7 @@
     "Cassini/Cassini.entitlements",
     "Package.swift",
     ".github/workflows/ux-browser-setup.yml",
-    "scripts/test-browser-background.mjs"
+    "scripts/test-browser-background.mjs",
+    "scripts/test-live-folder.mjs"
   ]
 }

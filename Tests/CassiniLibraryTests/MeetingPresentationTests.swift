@@ -63,6 +63,23 @@ struct MeetingPresentationTests {
         try f.metadata { $0["speakers"] = [["id": "me", "name": NSNull(), "provenance": "source", "colourIndex": 0]] }
         #expect(throws: MetadataError.self) { try AppMetadata.parse(Data(contentsOf: path)) }
     }
+    /// #147 review: a gap-only manifest update (the same words and speakers) changes the turns'
+    /// inputs, so the meeting page prepares its turns again (D63 #2).
+    @Test func aGapOnlyUpdateChangesTheTurnInputs() {
+        func track(_ gaps: [TrackPresence.Gap]?) -> LibraryAudioTrack {
+            .init(url:URL(fileURLWithPath:"/fixture/track-x.wav"),startOffsetMs:0,frameCount:48000*30,sourceID:"x",sourceKind:"remote",sourceTrackID:"x",sampleRate:48000,gaps:gaps)
+        }
+        var old = LibraryMeeting(id: UUID(), folder: URL(fileURLWithPath: "/fixture"), state: .init(), title: nil,
+            start: nil, durationMs: nil, speakers: [.init(id: "track-x", provenance: .unnamed, colourIndex: 0)], quote: nil, notes: [], audioFiles: [], issues: [])
+        old.transcriptItems = [.init(speaker:"track-x",startMs:9700,endMs:9950,text:"one"),.init(speaker:"track-x",startMs:10300,endMs:10600,text:"two")]
+        old.audioTracks = [track([])]
+        var new = old
+        #expect(!MeetingPresentation.turnInputsChanged(from:old,to:new),"nothing changed")
+        new.audioTracks = [track([.init(atMs:10000,durationMs:300,frames:14400,kind:"jump")])]
+        #expect(MeetingPresentation.turnInputsChanged(from:old,to:new),"only a gap range changed")
+        #expect(MeetingPresentation.turns(old.transcriptItems,gaps:old.speakerGaps).count == 1)
+        #expect(MeetingPresentation.turns(new.transcriptItems,gaps:new.speakerGaps).count == 2,"the gap splits the turn")
+    }
     @Test func sharesUseLargestRemainderWithFirstSpeakingTies() {
         var meeting = LibraryMeeting(id: UUID(), folder: URL(fileURLWithPath: "/fixture"), state: .init(), title: nil,
             start: nil, durationMs: nil, speakers: ["a", "b", "c"].enumerated().map { .init(id: $0.element, provenance: .unnamed, colourIndex: $0.offset) }, quote: nil, notes: [], audioFiles: [], issues: [])

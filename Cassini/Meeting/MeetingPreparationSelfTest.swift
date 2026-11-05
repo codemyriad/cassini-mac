@@ -31,11 +31,11 @@ import Observation
         }
         let (events,emit) = AsyncStream<Event>.makeStream()
         let release = DispatchSemaphore(value:0)
-        MeetingDetailModel.preparerForSelfTest = { items in
+        MeetingDetailModel.preparerForSelfTest = { items, gaps in
             emit.yield(.started(onMain:Thread.isMainThread))
             release.wait()
             if Task.isCancelled { emit.yield(.cancelled); throw CancellationError() }
-            let turns = try MeetingPresentation.turns(items,cancellable:true)
+            let turns = try MeetingPresentation.turns(items,gaps:gaps,cancellable:true)
             emit.yield(.finished); return turns
         }
         var next = events.makeAsyncIterator()

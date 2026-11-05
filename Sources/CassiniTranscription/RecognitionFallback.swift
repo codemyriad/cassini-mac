@@ -61,6 +61,13 @@ public enum RecognitionFallback {
             codes.append(contentsOf:repeatElement(silent,count:left / frame))
             tail = [Float](repeating:0,count:left % frame)
         }
+        /// The measured floor: the 10th percentile (index int(0.1 × (n − 1))) of audible frames, above
+        /// -90 dBFS with digital silence excluded; nil without any. thresholdDB uses it only from
+        /// FLOOR_MIN_FRAMES of them (the corpus reports it for every track).
+        public func floorDB() -> Double? {
+            let levels = codes.filter { $0 != silent && Int($0) - 120 > -90 }.sorted()
+            return levels.isEmpty ? nil : Double(levels[Int(floorPercentile * Double(levels.count - 1))]) - 120
+        }
         /// max(-50 dBFS, floor + 12 dB); the floor is the 10th percentile of audible frames.
         public func thresholdDB() -> (floor: Double?, threshold: Double) {
             let levels = codes.filter { $0 != silent && Int($0) - 120 > -90 }.sorted()
@@ -238,4 +245,67 @@ public enum RecognitionFallback {
     }
     /// gocassini margin: the fallback must clearly beat the VAD pass to replace it.
     public static func need(_ vadWords: Int) -> Int { vadWords == 0 ? 1 : vadWords + max(2,Int((Double(vadWords) / 5).rounded(.up))) }
+
+    // MARK: D63 #1: the R71 tests count per person
+
+    /// 15 s of active audio in whole 32 ms frames: 469 frames (15.008 s) fire, 468 do not.
+    public static let minActiveFrames = (Int(minActiveSeconds) * rate + frame - 1) / frame
+    /// The R71 tests on one person's pooled counts: enough active audio, too few VAD words.
+    public static func fires(activeFrames: Int, vadWords: Int) -> Bool { vadWords < fewWords && activeFrames >= minActiveFrames }
+    /// One track as the decision sees it. `speaker` is its stored speaker id: the same `me`,
+    /// `others` or `track-<sourceTrackId>` across rejoins, and an R64 overlap lane is its own.
+    public struct PersonTrack: Sendable {
+        public let trackId: String, speaker: String
+        public let activeFrames: Int, vadWords: Int, fallbackWords: Int
+        public let silent: Bool
+        public init(trackId: String, speaker: String, activeFrames: Int, vadWords: Int, fallbackWords: Int, silent: Bool = false) {
+            self.trackId = trackId; self.speaker = speaker; self.activeFrames = activeFrames
+            self.vadWords = vadWords; self.fallbackWords = fallbackWords; self.silent = silent
+        }
+    }
+    /// recordingDetails.writingDown.recognitionFallback.tracks: one entry per non-silent track of a
+    /// firing person, in track order.
+    public struct Entry: Equatable, Sendable {
+        public let trackId: String, vadWords: Int, fallbackWords: Int
+        public let activeSeconds: Double, personActiveSeconds: Double, used: Bool
+        public var json: [String:Any] {
+            ["trackId":trackId,"vadWords":vadWords,"fallbackWords":fallbackWords,"activeSeconds":activeSeconds,
+             "personActiveSeconds":personActiveSeconds,"used":used]
+        }
+    }
+    /// Seconds of whole active frames (exact: 32 ms each).
+    public static func seconds(frames: Int) -> Double { Double(frames * frame) / Double(rate) }
+    /// Each person's pooled active frames and VAD words over its non-silent tracks.
+    public static func pooled(_ tracks: [PersonTrack]) -> [String:(frames: Int, vadWords: Int)] {
+        var result: [String:(frames: Int, vadWords: Int)] = [:]
+        for track in tracks where !track.silent {
+            let sum = result[track.speaker] ?? (0,0)
+            result[track.speaker] = (sum.frames + track.activeFrames,sum.vadWords + track.vadWords)
+        }
+        return result
+    }
+    /// D63 #1: the 15 s and 10-word tests pool every non-silent track of one person; the windows,
+    /// the active frames of each track and the gocassini margin stay per track. Returns whether each
+    /// person fires, and the provenance entries in track order.
+    public static func decide(_ tracks: [PersonTrack]) -> (fires: [String:Bool], entries: [Entry]) {
+        let people = pooled(tracks)
+        let fires = people.mapValues { Self.fires(activeFrames:$0.frames,vadWords:$0.vadWords) }
+        let entries = tracks.filter { !$0.silent && fires[$0.speaker] == true }.map { track in
+            Entry(trackId:track.trackId,vadWords:track.vadWords,fallbackWords:track.fallbackWords,activeSeconds:seconds(frames:track.activeFrames),
+                  personActiveSeconds:seconds(frames:people[track.speaker]!.frames),used:track.fallbackWords >= need(track.vadWords))
+        }
+        return (fires,entries)
+    }
+    /// R71 windows of one track: 15 s windows, overlapping by 0.5 s, inside each kept range (so
+    /// none crosses a gap or ownership edge), decoded when they hold 0.5 s of active frames,
+    /// counting the partial frames at their edges. Track-local 16 kHz samples.
+    public static func fallbackWindows(kept: [Range<Int>], active: [Bool]) -> [Range<Int>] {
+        let needed = Int((minWindowActiveSeconds * Double(rate) / Double(frame)).rounded(.up))
+        return kept.flatMap { range in
+            windowBounds(range.count).map { (range.lowerBound + $0.lowerBound)..<(range.lowerBound + $0.upperBound) }
+        }.filter { w in
+            let a = w.lowerBound / frame, b = min(active.count,(w.upperBound + frame - 1) / frame)
+            return a < b && active[a..<b].filter { $0 }.count >= needed
+        }
+    }
 }

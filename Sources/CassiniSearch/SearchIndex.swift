@@ -76,10 +76,13 @@ public actor SearchIndex {
             for removed in Set(meetings.keys).subtracting(incoming.keys) { try database.remove(removed) }
             var nextFingerprints: [String:Data] = [:], nextTurns: [String:[MeetingPresentation.Turn]] = [:]
             for meeting in snapshot {
-                let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems)))
+                // D63 #2: the turns also follow the speakers' gap ranges, so they are in the fingerprint.
+                let gaps = meeting.speakerGaps
+                let ranges = gaps.keys.sorted().map { key in [key] + gaps[key]!.map { "\($0.lowerBound)-\($0.upperBound)" } }
+                let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems) + JSONEncoder().encode(ranges)))
                 nextFingerprints[meeting.libraryKey] = hash
                 if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; continue }
-                let grouped = MeetingPresentation.turns(meeting.transcriptItems)
+                let grouped = MeetingPresentation.turns(meeting.transcriptItems,gaps:gaps)
                 try database.remove(meeting.libraryKey)
                 for (index,turn) in grouped.enumerated() {
                     try database.insert(text:turn.items.map { Self.normalise($0.text) }.joined(separator:" "),meeting:meeting.libraryKey,turn:index)

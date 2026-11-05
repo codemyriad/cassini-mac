@@ -28,7 +28,7 @@ import XCTest
         var turns: [MeetingPresentation.Turn] = []
         final class Thread_: @unchecked Sendable { let lock = NSLock(); var onMain: Bool? }
         let ran = Thread_()
-        let preparation = TurnPreparation(prepare:{ items in
+        let preparation = TurnPreparation(prepare:{ items, _ in
             ran.lock.withLock { ran.onMain = Thread.isMainThread }
             return try MeetingPresentation.turns(items,cancellable:true)
         }) { turns = $0; delivered.fulfill() }
@@ -48,7 +48,7 @@ import XCTest
         gated.onCancel = { count in if count == 3 { cancelSeen.fulfill() } }
         let delivered = expectation(description:"newer delivered")
         var deliveries: [Int] = []
-        let preparation = TurnPreparation(prepare:{ try gated.prepare($0) }) { deliveries.append($0.count); delivered.fulfill() }
+        let preparation = TurnPreparation(prepare:{ items, _ in try gated.prepare(items) }) { deliveries.append($0.count); delivered.fulfill() }
         preparation.request(alternating(3))
         await fulfillment(of:[firstStarted],timeout:5)
         preparation.request(alternating(5))
@@ -63,7 +63,7 @@ import XCTest
         gated.onStart = { _ in started.fulfill() }
         let delivered = expectation(description:"delivered after recovery")
         var deliveries: [Int] = []
-        let preparation = TurnPreparation(prepare:{ try gated.prepare($0) }) { deliveries.append($0.count); delivered.fulfill() }
+        let preparation = TurnPreparation(prepare:{ items, _ in try gated.prepare(items) }) { deliveries.append($0.count); delivered.fulfill() }
         preparation.request(alternating(4))
         preparation.cancel()              // the Library went offline mid-preparation
         preparation.resume()              // it came back with the same words

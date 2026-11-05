@@ -72,7 +72,7 @@ import Observation
 @MainActor @Observable final class MeetingDetailModel {
     var meeting: LibraryMeeting {
         didSet {
-            if meeting.transcriptItems != oldValue.transcriptItems || meeting.speakers.map(\.id) != oldValue.speakers.map(\.id) {
+            if MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
                 prepareTurns()
                 shares = MeetingPresentation.shares(meeting)
             }
@@ -98,7 +98,7 @@ import Observation
     }
     private func prepareTurns() {
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
-        if frozen { turns = MeetingPresentation.turns(meeting.transcriptItems); return }
+        if frozen { turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps); return }
         if preparation == nil {
             #if DEBUG
             if let prepare = Self.preparerForSelfTest {
@@ -107,7 +107,7 @@ import Observation
             #endif
             if preparation == nil { preparation = TurnPreparation { [weak self] in self?.turns = $0 } }
         }
-        preparation?.request(meeting.transcriptItems)
+        preparation?.request(meeting.transcriptItems,gaps:meeting.speakerGaps)
     }
     #if DEBUG
     /// MeetingPreparationSelfTest: a gated preparer, so the proof controls when work proceeds.

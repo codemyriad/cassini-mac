@@ -56,6 +56,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await BrowserReturnSelfTest.run()
             }; return
         }
+        if CommandLine.arguments.contains(LiveFolderSelfTest.argument) {
+            // Shared test 2 (D68): the driver registers the native hosts through its own launchers,
+            // so companion setup is never started here and never rewrites them.
+            guard CaptureFixture.enabled else { exit(77) }
+            LibraryStore.shared.start()
+            Task { @MainActor in
+                try? await CaptureCollection.shared.setAutoRecord(false)
+                await CaptureCollection.shared.start(root:LiveFolderSelfTest.controlRoot)
+                await LiveFolderSelfTest.run()
+            }; return
+        }
         if CommandLine.arguments.contains("--browser-background-self-test") {
             startBrowserConnection(root:BrowserBackgroundSelfTest.controlRoot)
             Task { @MainActor in await BrowserBackgroundSelfTest.run() }; return
