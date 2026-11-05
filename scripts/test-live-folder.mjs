@@ -128,15 +128,10 @@ try {
   const env = { ...process.env, CASSINI_CONTROL_PIPE_ROOT: controlRoot, CASSINI_HOSTED_SCREENSHOTS: '1' };
   const chromiumApp = chromium.executablePath().split('/Contents/')[0];
   execFileSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', chromiumApp]);
-  // Hosted macOS has no reliable audio output device (runner-images#13668). Every AudioContext
-  // renders on the output device's clock, and the capture worklet stamps frames by that clock, so a
-  // stalling device made a remote track grow at ~72% of real time. Chromium's fake audio output is
-  // timer-driven in real time: the hosted counterpart of GNOME's PulseAudio null sink.
-  // A hosted-runner diagnostic (experiment/hosted-audio-clock) measured every variant alone at
-  // 0.98-1.00 of real time (fake output exactly 1.000), but 0.70-0.73 during this scenario: the render
-  // thread misses deadlines under load, so renderers are never backgrounded or throttled either.
-  const callArgs = ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns',
-    '--disable-audio-output', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'];
+  // Production defaults. D68.1 (protocol #54, extension 0.2.13) keeps each capture context's output
+  // non-silent, so Chromium never moves it onto the slow timer that broke this test on hosted Macs.
+  // The clock and load evidence below stays, so a regression shows its rate.
+  const callArgs = ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
   try { await writeFile(path.join(out, 'audio-devices.json'), execFileSync('system_profiler', ['SPAudioDataType', '-json'], { encoding: 'utf8' })); } catch {}
   // The app first, so its control pipe root is served when the extension's control host connects.
   const started = new Promise((resolve, reject) => { ready = { resolve, reject }; });
