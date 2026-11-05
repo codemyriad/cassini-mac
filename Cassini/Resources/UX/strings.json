@@ -17711,6 +17711,35 @@
    }
   },
   {
+   "id": "details.sources.silent.othersPermissionHint",
+   "en": "If others were speaking, check that Cassini can record this computer's sound.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "hint",
+   "boards": [],
+   "milestone": "D58.3",
+   "note": "Coordinator (D58.3, Mac QA R2, Codex #145). Shown after Stop, under the silent line, only for a native This computer (system audio) source whose whole track is digital silence. Paired with errors.othersPermission.action (Open System Settings). Conditional wording: a quiet call and a denied permission look the same.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Se altri stavano parlando, verifica che Cassini possa registrare l'audio di questo computer."
+    },
+    "fr": {
+     "text": "Si d'autres personnes parlaient, vérifiez que Cassini peut enregistrer le son de cet ordinateur."
+    },
+    "es": {
+     "text": "Si otras personas estaban hablando, comprueba que Cassini pueda grabar el sonido de este ordenador."
+    },
+    "pt-BR": {
+     "text": "Se outras pessoas estavam falando, verifique se o Cassini pode gravar o som deste computador."
+    },
+    "pt-PT": {
+     "text": "Se outras pessoas estavam a falar, verifique se o Cassini pode gravar o som deste computador."
+    }
+   }
+  },
+  {
    "id": "details.sources.failed",
    "en": "{source}: audio couldn’t be recorded.",
    "platforms": [
