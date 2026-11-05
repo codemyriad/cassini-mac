@@ -30,6 +30,9 @@ public enum MeetingTranscriber {
                 // Retry is a fresh recognition, not a resume of failed output.
                 transcript["reference"] = NSNull()
             }
+            // D67.2: a failed write-down references no words. Its partial transcript.json stays in the
+            // folder, unreferenced, so no reader (or a published copy) shows partial words as stored.
+            if status == "failed" { transcript["reference"] = NSNull() }
             transcript["status"] = status; metadata["transcript"] = transcript
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
@@ -118,7 +121,11 @@ public enum MeetingTranscriber {
             })
             let separated = lanes.values.contains { $0.contains(":overlap:") }
             let ownership = received ? nil : OthersOwnership(events:meeting.captureEvents)
+            // D56 and D67.3: the tracks left out as silent, a 0-frame (never-captured) track included,
+            // in the meeting's track order.
             var silentTracks: [String] = []
+            let trackOrder = meeting.audioTracks.map { $0.sourceID ?? String($0.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count)) }
+            if !received { silentTracks = meeting.audioTracks.filter { $0.frameCount == 0 }.map { $0.sourceID ?? String($0.url.deletingPathExtension().lastPathComponent.dropFirst("track-".count)) } }
             // D55 (M9): an unknown offset is placed at 0 and flagged on this attempt. D57: a silent
             // track is never placed, so it never sets the flag.
             var assumedZero = false
@@ -162,10 +169,23 @@ public enum MeetingTranscriber {
                                     active: active, activeSeconds: meter.activeSeconds(active)))
                 // The planning scratch is released here (end of scope), before the next track.
             }
+            let silent = Set(silentTracks)
+            var listed = Set<String>()
+            silentTracks = trackOrder.filter { silent.contains($0) && listed.insert($0).inserted }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
             let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
             let previous = resumes ? meeting.transcriptItems : []
+            // D67.2 (#139 review): a failed attempt's partial words wait, unreferenced, in
+            // transcript.json. Until this attempt has written as many words, a running publish
+            // must not replace them, so a retry that fails early never loses the longer snapshot;
+            // a completed attempt replaces it. Only an unreferenced body is retained: a referenced
+            // one is resumed through `previous` (same model) or regenerated (a new model).
+            let retained = meeting.transcriptReferenced ? 0 : LibraryScanner.sidecarWordCount(folder:directory)
+            // Whether this attempt has written transcript.json yet. Until it has, the stored
+            // reference stays as it was (null after a failure), so the retained words of a failed
+            // attempt never become visible again under this attempt's model.
+            var wroteSidecar = false
             var progress = TranscriptProgress(previous:previous,speakers:tracks.map { $0.speaker.id })
             var items: [TranscriptProgress.Item] = [], language = initialLanguage, elapsed: Double = 0, processed: Double = 0
             if resumes, initialLanguage == "auto", let previousLanguage = meeting.transcriptLanguage { language = previousLanguage }
@@ -178,14 +198,15 @@ public enum MeetingTranscriber {
                 // D53.2: an unknown language is written as "und", never the "auto" request.
                 let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
-                try atomicTranscript(data, directory: directory)
+                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory); wroteSidecar = true }
                 let factor = processed > 0 ? elapsed / processed : initialETA
                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
                 try writer.transaction { metadata in
                     // D47/D56: edit the stored transcript object, so members this app does
                     // not know survive; the reference is this attempt's own sidecar.
                     var transcript = metadata["transcript"] as? [String:Any] ?? [:]
-                    transcript["status"] = status; transcript["reference"] = reference; transcript["model"] = model
+                    transcript["status"] = status; transcript["model"] = model
+                    if wroteSidecar { transcript["reference"] = reference }
                     metadata["transcript"] = transcript
                     metadata["etaMinutes"] = status == "running" ? eta : NSNull()
                     metadata["error"] = NSNull()
