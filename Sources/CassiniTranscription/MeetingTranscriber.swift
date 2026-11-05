@@ -264,8 +264,10 @@ public enum MeetingTranscriber {
                 processed += speech; remaining = max(0,remaining - speech); elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
                 return out
             }
+            /// D63 #3: on every path (VAD and fallback), a word is written only when its midpoint lies
+            /// in its track's kept time; a word clamped to zero length at the end of presence is not.
             func append(_ words: [RecognitionFallback.Word], track index: Int) {
-                for word in words { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
+                for word in words where Self.writes(startMs:word.startMs,endMs:word.endMs,kept:tracks[index].kept,startSample:tracks[index].startSample) { items.append(.init(word: .init(speaker: tracks[index].speaker.id, startMs: word.startMs, endMs: word.endMs, text: word.text), track: index, ordinal: items.count)) }
             }
             // D63 #1: the R71 tests pool every non-silent track of one person (the same speaker id
             // across rejoins; an R64 overlap lane is its own). A person with enough pooled active audio
@@ -402,20 +404,33 @@ public enum MeetingTranscriber {
     }
     /// Stored gap ranges as presence gaps. Gap frames are at the track's own rate;
     /// they are carried as milliseconds.
-    static func presenceGaps(_ track: LibraryAudioTrack) -> [TrackPresence.Gap]? {
-        let rate = Double(track.sampleRate ?? 48000)
-        return track.gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
+    static func presenceGaps(_ track: LibraryAudioTrack) -> [TrackPresence.Gap]? { presenceGaps(track.gaps,sampleRate:track.sampleRate) }
+    static func presenceGaps(_ gaps: [TrackPresence.Gap]?, sampleRate: Int?) -> [TrackPresence.Gap]? {
+        let rate = Double(sampleRate ?? 48000)
+        return gaps?.map { TrackPresence.Gap(atMs:$0.atMs,durationMs:$0.frames.map { Double($0)*1000/rate } ?? $0.durationMs,frames:nil,kind:$0.kind) }
     }
     /// The session-millisecond windows of a 16 kHz track that are recognized: owned
     /// time (D49/D33) minus stored gap ranges (D52.2; prefix and padding are absence).
     /// Unknown time is kept because its audio exists. nil keeps the whole track.
     static func ownedWindows(offsetMs offset: Double, sampleCount: Int, kind: String, gaps: [TrackPresence.Gap]?, ownership: OthersOwnership?) -> [(Double,Double)]? {
-        guard ownership != nil || gaps?.isEmpty == false else { return nil }
         let end = offset + Double(sampleCount)/16
         let mask = ownership.map { $0.owned(kind:kind,startMs:offset,endMs:end).map { (start:$0.0,end:$0.1) } }
+        return ownedWindows(offsetMs:offset,sampleCount:sampleCount,gaps:gaps,mask:mask)
+    }
+    /// The same, with the ownership already resolved to session-millisecond windows.
+    static func ownedWindows(offsetMs offset: Double, sampleCount: Int, gaps: [TrackPresence.Gap]?, mask: [TrackPresence.Window]?) -> [(Double,Double)]? {
+        guard mask != nil || gaps?.isEmpty == false else { return nil }
         let presence = TrackPresence.windows(startOffsetMs:offset,sampleRate:16000,frames:UInt64(sampleCount),gaps:gaps,ownership:mask)
         // Present and unknown windows are disjoint; together they are the kept time.
         return (presence.present + presence.unknown).sorted { $0.start < $1.start }.map { ($0.start,$0.end) }
+    }
+    /// D63 #3: a word is written only when its exact midpoint M = 8 × (startMs + endMs), in 16 kHz
+    /// session samples, lies in one of its track's kept ranges (owned present-or-unknown time,
+    /// track-local from the D55 placement `startSample`), compared in session samples. A word
+    /// clamped to zero length at the end of presence (G11) lands on the end and is not written.
+    static func writes(startMs: Int64, endMs: Int64, kept: [Range<Int>], startSample: Int) -> Bool {
+        let m = 8 * (Int(startMs) + Int(endMs))
+        return kept.contains { startSample + $0.lowerBound <= m && m < startSample + $0.upperBound }
     }
     /// Track-local 16 kHz sample ranges of `owned`, on the D52.2 presence grid.
     static func keptRanges(_ owned: [(Double,Double)], offsetMs offset: Double, sampleCount: Int) -> [Range<Int>] {
