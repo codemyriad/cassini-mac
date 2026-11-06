@@ -123,6 +123,14 @@ public struct LibraryMeeting: Sendable {
     public var notes: [MeetingNote]
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
+    /// Keep construction module-visible across Swift toolchains: private backing storage
+    /// makes the synthesized memberwise initializer private in Swift 6.1 (Xcode 16.4).
+    init(id: UUID, folder: URL, state: MeetingState, title: String?, start: Date?, durationMs: Int64?,
+         speakers: [MeetingSpeaker], quote: MeetingQuote?, notes: [MeetingNote], audioFiles: [URL], issues: [LibraryReadIssue]) {
+        self.id = id; self.folder = folder; self.state = state; self.title = title
+        self.start = start; self.durationMs = durationMs; self.speakers = speakers
+        self.quote = quote; self.notes = notes; self.audioFiles = audioFiles; self.issues = issues
+    }
     public var metadataReadOnly: Bool = false
     /// The meeting.json revision this read saw (nil without readable metadata).
     public var metadataRevision: Int64? = nil
