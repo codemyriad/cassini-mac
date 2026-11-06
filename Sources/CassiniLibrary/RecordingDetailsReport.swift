@@ -127,17 +127,19 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         let live = Self.liveRecord(input.session)
         let record = live ?? input.captureRecord
         let silent = input.transcriptDone ? input.silentTracks : nil
-        var rows: [SourceRow] = [], recordValid = true
+        var rows: [SourceRow] = [], recordValid = true, referencedTracks: Set<String> = []
         // Track facts come from the session, or from the record when the session is gone.
         let tracks = input.session?["tracks"] ?? record?["tracks"]
         if let record {
             if let sources = Self.validSources(record,requireVersion:live == nil) {
                 rows = sources.map { Self.row($0,tracks:tracks,final:final,silentTracks:silent) }
+                referencedTracks = Set(sources.flatMap { ($0["trackIds"]?.array ?? []).compactMap(\.string) })
             } else { recordValid = false }
         }
-        // D58.2 R3: a native recording has no captureOutcome (only browser capture reports
-        // sources), so its captured microphone and this computer's sound are listed from its tracks.
-        if rows.isEmpty, recordValid { rows = Self.nativeRows(tracks:tracks,final:final,silentTracks:silent) }
+        // Native microphone/system spans are not bound to the browser's source-outcomes
+        // ledger. Include them beside reported sources, once per track, so their received
+        // audio, writer loss and silent-track facts are visible in browser calls too.
+        if recordValid { rows += Self.nativeRows(tracks:tracks,final:final,silentTracks:silent,excluding:referencedTracks) }
         sources = rows
         // The session's list while it exists, else the captureRecord's verbatim copy.
         refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
@@ -281,12 +283,12 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     /// (CaptureOutcome: under 1000 ms is lowAudio), and row() then words it (live, low audio
     /// reads as captured). Gap and dropped lines follow as for any source. A side with no
     /// received audio has no row (a refusal line says why, D58). silentTracks as for row().
-    static func nativeRows(tracks: JSON?, final: Bool, silentTracks: Set<String>? = nil) -> [SourceRow] {
+    static func nativeRows(tracks: JSON?, final: Bool, silentTracks: Set<String>? = nil, excluding: Set<String> = []) -> [SourceRow] {
         guard let list = tracks?.array else { return [] }
         return ["microphone","system"].compactMap { kind -> SourceRow? in
             var ids: [String] = [], received = 0.0
             for track in list where track["kind"]?.string == kind {
-                guard let id = identity(track["id"]), let ms = receivedMs(track) else { continue }
+                guard let id = identity(track["id"]), !excluding.contains(id), let ms = receivedMs(track) else { continue }
                 ids.append(id); received += ms
             }
             // CaptureOutcome's own comparison on the unrounded total; only the shown duration is floored.
@@ -425,7 +427,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             // D69.2: writer-only loss has no error end state. D69 stores reason error over the stop's
             // own: a native stop passes none, so it was the user's; a browser capture's is lost.
             if reason == CaptureEndReason.error.rawValue, let session = input.session, WriterLoss.isWriterOnly(session) {
-                guard liveRecord(session) == nil else { return (.init("details.unknown"),false) }
+                guard session["source"]?.string != "chromium", liveRecord(session) == nil else { return (.init("details.unknown"),false) }
                 return (.init("details.end.at",["reason":.catalog("details.end.user"),"time":.position(Int64(at.rounded(.down)))]),true)
             }
             return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(Int64(at.rounded(.down)))]),true)

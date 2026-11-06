@@ -3,6 +3,7 @@ import AVFoundation
 import Foundation
 import XCTest
 import CassiniKit
+import CassiniLibrary
 import CassiniRecording
 @testable import CassiniBrowserControl
 
@@ -25,6 +26,42 @@ private final class D69GatedWriter: RecordingSinkWriter, @unchecked Sendable {
 }
 
 final class D69WriterLossTests: XCTestCase {
+    func testStoppedResponseDoesNotRelabelBrowserJumpsAsHostTimeGaps() async throws {
+        let generic = "Some audio is missing: the recording has a gap of at least one second."
+        let host = "Recording saved with 1250 ms of host-time gap; the timeline contains silence."
+        for (jumpMs,writerLoss,nativeGapMs,expected) in [(1250,false,0,generic),(1250,true,0,generic),(50,true,1250,host)] {
+            let fixture = try AudioFixture()
+            do {
+                let client = try fixture.client()
+                _ = try client.request(["type":"start","version":1,"independent":true,"captureId":"synthetic-jump",
+                    "timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":writerLoss,"title":"Synthetic call","features":["source-outcomes-v1"]])
+                _ = try client.request(["type":"track","id":"remote","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])
+                for (sequence,offset) in [0,1000+jumpMs].enumerated() {
+                    _ = try client.request(["type":"audio","id":"remote","sequence":sequence,"offsetMs":offset,"pcm":Data(repeating:0x12,count:16000).base64EncodedString()])
+                }
+                let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
+                if writerLoss {
+                    let mic = owner.nativeWriter(side:.me)
+                    try mic.addTrack(id:"mic",label:"Microphone",kind:"microphone",sampleRate:8000,channels:1)
+                    try mic.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:0)
+                    try mic.padNative(id:"mic",frames:8000,channels:1,rate:8000,offsetMs:1000,kind:"writer")
+                    try mic.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:Double(2000+nativeGapMs),gapKind:"input")
+                    try mic.finish(problem:nil,kind:"io")
+                }
+                let stopped = try client.request(["type":"stop","captureId":"synthetic-jump"])
+                XCTAssertEqual(stopped["type"]?.string,"stopped")
+                XCTAssertEqual(stopped["problem"]?.string,expected)
+                if writerLoss {
+                    let details = RecordingDetailsReport(.load(folder:owner.snapshot.directory,lifecycle:.saved,title:"Synthetic call",transcriptDone:false))
+                    let busy = details.sources.compactMap(\.computerBusy)
+                    XCTAssertEqual(busy.count,1,"the native microphone is shown beside the negotiated browser source")
+                    XCTAssertEqual(busy.first?.values["source"],.catalog("common.yourMicrophone"))
+                    XCTAssertEqual(busy.first?.values["duration"],.duration(1000))
+                }
+            } catch { await fixture.finish(); throw error }
+            await fixture.finish()
+        }
+    }
     /// Real native sink + owned broker + framed stopped response. Writer padding suppresses
     /// the sink's stored gap note; the reply must still report a real input gap from the file.
     func testStoppedResponseKeepsInputGapsWhileHidingWriterLoss() async throws {

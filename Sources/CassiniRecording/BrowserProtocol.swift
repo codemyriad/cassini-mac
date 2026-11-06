@@ -112,7 +112,7 @@ public final class BrowserRecordingHost {
             stopped = true
             var response = ["type": "stopped", "path": session.directory.path]
             // D69.2: never the stored D69 writer sentence.
-            if let problem = session.manifest.problem.map({ WriterLoss.strip($0).rest }), !problem.isEmpty { response["problem"] = problem }
+            if let problem = session.manifest.stoppedProblem { response["problem"] = problem }
             return response
         default: throw BrowserProtocolError("version", "Unknown browser message type.")
         }

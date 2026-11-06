@@ -152,9 +152,10 @@ struct D52RecordingDetailsTests {
         let micOnly = report(json("{\"tracks\":[{\"id\":\"m\",\"kind\":\"microphone\",\"sampleRate\":48000,\"frames\":48000},{\"id\":\"s\",\"kind\":\"system\",\"sampleRate\":48000,\"frames\":0}]}"))
         #expect(micOnly.sources.map { $0.line.values["source"] } == [.catalog("common.yourMicrophone")])
         #expect(report(nil,record:json("{\"version\":2,\"sources\":[],\"tracks\":\(tracks)}")).sources.isEmpty,"an invalid record lists nothing")
-        // A browser recording's reported sources are unchanged: no native rows are added.
+        // Reported tracks stay single rows; unreported native sides are included beside them.
         let browser = report(session([source(kind:"microphone",label:"",tracks:["m1"])],tracks:tracks))
-        #expect(browser.sources.count == 1)
+        #expect(browser.sources.count == 2)
+        #expect(browser.sources.map { $0.line.values["source"] } == [.catalog("common.yourMicrophone"),.catalog("recordFirst.sound.title")])
     }
     /// #144 review: a native duration is the audio received, never padding. Real writer output:
     /// a microphone prefix, the writer's own lost audio and an input gap.
@@ -292,7 +293,7 @@ struct D52RecordingDetailsTests {
         #expect(low.sources.map(\.line.id) == ["details.sources.lowAudio.underSecond"] && low.sources.map { $0.permissionHint } == [nil])
         // A browser recording's reported "This computer" source, silent: the silent line only.
         let browser = details(session([source(id:"sys",kind:"system",label:"",tracks:["s"])],tracks:both),silent:["s"])
-        #expect(browser.sources.map { $0.silent?.id } == ["details.sources.silent"] && browser.sources.map { $0.permissionHint } == [nil])
+        #expect(browser.sources.map { $0.silent?.id } == ["details.sources.silent",nil] && browser.sources.map { $0.permissionHint } == [nil,nil],"reported system stays unchanged beside the unreported microphone")
         // The hint renders in every catalog language.
         for language in CassiniLanguage.allCases {
             let shown = silentSystem.sources[1].permissionHint!.render(language:language,locale:gb)

@@ -528,7 +528,7 @@ private final class AudioPeer: @unchecked Sendable {
                     completed = true
                     var fields: [(String,JSON)] = [("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]
                     // D69.2: the extension shows this text; the stored D69 writer sentence is never shown.
-                    if let problem = Self.stoppedProblem(owner.snapshot.manifest) {
+                    if let problem = owner.snapshot.manifest.stoppedProblem {
                         fields.append(("problem",.string(problem)))
                     }
                     response = .object(fields)
@@ -547,33 +547,6 @@ private final class AudioPeer: @unchecked Sendable {
             if let bytes = try? JSON.object(fields).encoded(maximumBytes:FrameIO.maximum) { try? connection.send(bytes,closeAfter:true) }
             else { connection.close() }
         }
-    }
-    /// D69.2: owned native sinks can store only D69's sentence even when there was also
-    /// an input gap. Rebuild that warning from the final stored ranges/counters, without
-    /// changing session.json or exposing its writer diagnostic to the extension.
-    private static func stoppedProblem(_ manifest: RecordingManifest) -> String? {
-        var problem = manifest.problem.map { WriterLoss.strip($0).rest } ?? ""
-        var gapMs = 0.0, significant = false
-        for track in manifest.tracks where track.sampleRate > 0 {
-            let rate = Double(track.sampleRate)
-            var listed = 0.0
-            for gap in track.gaps ?? [] where !["prefix","writer","overflow"].contains(gap.kind) {
-                let frames = gap.frames.map { Double($0) } ?? (gap.durationMs ?? 0) * rate / 1000
-                listed += frames
-                if frames >= rate { significant = true }
-            }
-            let counted = Double(track.gapFrames ?? 0)
-            // The counter may describe unlisted ranges in old files or after overflow.
-            if track.gaps == nil || track.gaps?.contains(where: { $0.kind == "overflow" }) == true {
-                if counted - listed >= rate { significant = true }
-            }
-            gapMs += max(listed,counted) * 1000 / rate
-        }
-        if significant, gapMs.isFinite, gapMs < Double(Int64.max), !problem.contains("ms of host-time gap; the timeline contains silence.") {
-            let warning = "Recording saved with \(Int64(gapMs.rounded())) ms of host-time gap; the timeline contains silence."
-            problem = problem.isEmpty ? warning : problem + " " + warning
-        }
-        return problem.isEmpty ? nil : problem
     }
     /// D52: classify a refusal so only that source or command fails; framing,
     /// version and connection failures stay session failures.

@@ -10,6 +10,35 @@ import CassiniRecording
 /// normal recording: no Interrupted badge, no error end, no amber dropped-audio line; Recording
 /// details adds one quiet line per source when its summed writer loss is at least 1 s.
 struct D69_2QuietWriterLossTests {
+    @Test(arguments:[UInt64(0),4000,8000])
+    func browserOutcomesAlsoShowUnreferencedNativeWriterLoss(lost: UInt64) throws {
+        let native: [[String:Any]] = [("m","microphone"),("s","system")].map { id,kind in
+            ["id":id,"kind":kind,"sampleRate":8000,"frames":16000+lost,"receivedFrames":16000,"droppedFrames":lost,
+             "gaps":[["kind":"writer","atMs":2000,"frames":lost]]] as [String:Any]
+        }
+        let remote: [String:Any] = ["id":"r","kind":"remote","sampleRate":8000,"frames":16000,"receivedFrames":16000]
+        let source: [String:Any] = ["sourceTrackId":"guest","kind":"remote","label":"Guest","captureOutcome":"captured","audioMs":2000,"trackIds":["r"]]
+        let file = try JSONParser.parse(JSONSerialization.data(withJSONObject:["source":"chromium","tracks":[remote]+native,"captureOutcome":["sources":[source]]]))
+        let result = report(file)
+        #expect(result.sources.map { $0.line.values["source"] } == [.text("Guest"),.catalog("common.yourMicrophone"),.catalog("recordFirst.sound.title")])
+        #expect(result.sources.dropFirst().allSatisfy { !$0.problem && $0.gapLines.isEmpty })
+        #expect(result.sources.compactMap(\.computerBusy).count == (lost >= 8000 ? 2 : 0))
+        if lost >= 8000 {
+            #expect(result.sources.dropFirst().allSatisfy { $0.computerBusy?.values["duration"] == .duration(1000) })
+        }
+        let record: JSON = .object([("version",.number("1")),("sources",.array([try #require(file["captureOutcome"]?["sources"]?.array?.first)])),("tracks",try #require(file["tracks"]))])
+        let retained = RecordingDetailsReport(.init(lifecycle:.saved,title:"Call",session:nil,captureRecord:record))
+        #expect(retained.sources == result.sources,"retained captureRecord has the same native rows")
+    }
+    @Test func browserWithoutOutcomesDoesNotInventAUserStop() throws {
+        let root = temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let native = try stored(try writerOnly(root,lost:48_000))
+        #expect(native["captureOutcome"] == nil)
+        #expect(report(native).ended.values["reason"] == .catalog("details.end.user"))
+        let browser = try native.setting("source",to:.string("chromium"))
+        #expect(report(browser).ended == .init("details.unknown"))
+        #expect(!report(browser).endKnown)
+    }
     private func malformedTracks(_ ranges: [String], dropped: String = "0") throws -> JSON {
         let gaps = ranges.map { "{\"kind\":\"writer\",\"frames\":\($0)}" }.joined(separator:",")
         return try JSONParser.parse(Data("[{\"id\":\"t\",\"kind\":\"microphone\",\"sampleRate\":48000,\"droppedFrames\":\(dropped),\"gaps\":[\(gaps)]}]".utf8))
