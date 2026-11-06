@@ -68,6 +68,9 @@ import Observation
         guard case .finished? = await next.next() else { fail("the restarted preparation did not finish") }
         await delivered.value
         report["recoveryDelivered"] = detail.turns.count == 10_000
+        report["readoutDeliveredWithTurns"] = detail.timelineReadout.speaker(at:1500) == "b" && detail.timelineReadout.speaker(at:1200) == nil
+        for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
+        guard report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy({ $0.value as? Bool == true }) else { fail("native scrubber or preparation regression: \(report)") }
         report["audioDevicesOpened"] = false
 
         MeetingDetailModel.preparerForSelfTest = nil

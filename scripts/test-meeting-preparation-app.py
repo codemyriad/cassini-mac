@@ -22,7 +22,9 @@ args.output.parent.mkdir(parents=True,exist_ok=True)
 args.output.with_suffix('.stderr.txt').write_text(result.stderr)
 assert result.returncode == 0,(result.returncode,result.stdout,result.stderr)
 report = json.loads(result.stdout)
-assert all(report[name] is True for name in ('preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered')),report
+assert all(report[name] is True for name in ('preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
+    'nativeTrackMatchesThumbTravel','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
+    'nativeAccessibilitySeekDoesNotSnap','nativeAccessibilityTenSecondStep','nativeStopClearsSnap')),report
 assert report['audioDevicesOpened'] is False
 args.output.write_text(json.dumps(report,indent=2)+'\n')
-print('PASS meeting turns prepare off the main actor, an outage cancels and recovery delivers (production model)')
+print('PASS production meeting preparation/readout, native scrubber snapping, drag readout and VoiceOver seeks')

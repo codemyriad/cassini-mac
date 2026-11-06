@@ -41,6 +41,8 @@ import XCTest
         XCTAssertEqual(turns.count,10_000); XCTAssertFalse(preparation.preparing)
         XCTAssertEqual(preparation.speakerTurns.count,10_000,"listening spans arrive with the prepared reading rows")
         XCTAssertEqual(preparation.speakerTurns.first?.wordIndices,[0])
+        XCTAssertEqual(preparation.timelineReadout.speaker(at:1500),"b")
+        XCTAssertNil(preparation.timelineReadout.speaker(at:1200),"silence stays silent in the worker index")
         XCTAssertEqual(ran.lock.withLock { ran.onMain },false,"prepared off the main thread")
     }
     func testANewerRequestCancelsTheRunningOneWhichNeverDelivers() async {
@@ -58,6 +60,8 @@ import XCTest
         gated.release.signal(); gated.release.signal()
         await fulfillment(of:[delivered,cancelSeen],timeout:5)
         XCTAssertEqual(deliveries,[5],"only the newer request delivers")
+        XCTAssertEqual(preparation.timelineReadout.speaker(at:6000),"a")
+        XCTAssertNil(preparation.timelineReadout.speaker(at:7500),"no stale or unprepared interval is published")
         XCTAssertEqual(gated.lock.withLock { gated.sawCancel },[3],"the superseded preparation saw its cancellation")
     }
     func testAnOutageCancelsAndRecoveryResumes() async {

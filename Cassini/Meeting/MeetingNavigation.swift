@@ -80,6 +80,7 @@ import Observation
     }
     private(set) var turns: [MeetingPresentation.Turn] = []
     private(set) var listeningTurns: [SpeakerTurn] = []
+    private(set) var timelineReadout = TimelineReadout()
     /// #118 review: turns are prepared off the main actor; a newer transcript, or closing the
     /// page, cancels a preparation still running, so its result never lands.
     @ObservationIgnored private var preparation: TurnPreparation?
@@ -104,6 +105,7 @@ import Observation
         if frozen {
             turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps)
             listeningTurns = meeting.speakerTurns; listen.setTurns(listeningTurns)
+            timelineReadout = TimelineReadout(items:meeting.transcriptItems)
             #if DEBUG
             if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
                let phase = LibraryLaunchContext.argument("-CassiniListeningPreview"), ["playing","finished"].contains(phase),
@@ -125,7 +127,10 @@ import Observation
     }
     private func acceptTurns(_ turns: [MeetingPresentation.Turn]) {
         self.turns = turns
-        if let preparation { listeningTurns = preparation.speakerTurns; listen.setTurns(listeningTurns) }
+        if let preparation {
+            listeningTurns = preparation.speakerTurns; listen.setTurns(listeningTurns)
+            timelineReadout = preparation.timelineReadout
+        }
     }
     @discardableResult func listenTo(_ speaker: String, turnIndex: Int? = nil) -> Bool {
         guard !frozen else { return false }

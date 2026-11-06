@@ -10,6 +10,7 @@ import CassiniLibrary
     public private(set) var index = -1
     public private(set) var count = 0
     public private(set) var finished = false
+    public private(set) var timeline = ListeningTimeline()
     public var active: Bool { speaker != nil }
     public var turn: SpeakerTurn? { targets.indices.contains(index) ? targets[index] : nil }
     public static let leadInMs = 1500.0, tailMs = 500.0, chainGapMs = 2000.0
@@ -29,6 +30,7 @@ import CassiniLibrary
         stop()
         guard let turns = bySpeaker[speaker], !turns.isEmpty else { return }
         self.speaker = speaker; targets = turns; count = turns.count
+        timeline = ListeningTimeline(turns:turns)
         self.index = max(0,min(count-1,index)); self.finished = finished
     }
     #endif
@@ -45,7 +47,8 @@ import CassiniLibrary
         // A boundary completion records the exact stop. The native media clock can
         // differ by a fraction of a sample; that must not erase Play again on merge.
         let position = wasFinished ? playback.positionMs : playback.playheadMs
-        targets = updated; count = updated.count; serial += 1
+        targets = updated; timeline = ListeningTimeline(turns:updated)
+        count = updated.count; serial += 1
         if wasFinished, position >= end(of:updated.count-1,through:updated.count-1) {
             playback.clearSpan(); spanLast = nil; explicitTurn = updated.count-1
             index = updated.count-1; finished = true
@@ -59,6 +62,7 @@ import CassiniLibrary
         if let previous = playback.listener, previous !== self { previous.stop() }
         playback.listener = self; self.meeting = meeting
         self.speaker = speaker; targets = turns; count = turns.count
+        timeline = ListeningTimeline(turns:turns)
         let wanted = turnIndex ?? turns.firstIndex(where: { Double($0.endMs) > playback.playheadMs }) ?? 0
         return play(max(0,min(count-1,wanted)))
     }
@@ -83,7 +87,7 @@ import CassiniLibrary
     func playbackStopped() { reset() }
     private func reset() {
         serial += 1; speaker = nil; index = -1; count = 0; finished = false
-        meeting = nil; targets = []; spanLast = nil; explicitTurn = nil
+        meeting = nil; targets = []; timeline = ListeningTimeline(); spanLast = nil; explicitTurn = nil
     }
 
     public func stepTarget(_ direction: Int) -> Int? {

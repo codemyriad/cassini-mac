@@ -362,6 +362,27 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:again)],timeout:5),.completed)
         XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].exists)
     }
+    @MainActor func testListeningScrubberSnapsWithinSixPointsAndStopClearsSnapping() throws {
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","playing","-CassiniListeningSpeaker","guest"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"], slider = window.sliders["meeting-seek"]
+        XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
+        slider.adjust(toNormalizedSliderPosition:0.8)
+        let moved = NSPredicate { _,_ in slider.value as? String != "00:03:08" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:moved,object:nil)],timeout:5),.completed)
+        // This fixture has 22,600,000 frames at 8 kHz (2825 seconds).
+        // Native regular NSSlider uses a 24-point knob; marks share its center travel.
+        let point = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*188000/2825000+5,dy:slider.frame.height/2))
+        point.click()
+        let snapped = NSPredicate { _,_ in slider.value as? String == "00:03:08" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:snapped,object:nil)],timeout:5),.completed,"A five-point near miss selects the exact turn")
+        XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].exists)
+        window.buttons["listen-stop"].click()
+        slider.adjust(toNormalizedSliderPosition:0.8)
+        point.click()
+        let free = NSPredicate { _,_ in slider.value as? String != "00:03:08" && slider.value as? String != "00:37:40" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:free,object:nil)],timeout:5),.completed,"Stopping listening clears pointer snapping")
+    }
     @MainActor func testMeetingAccessibility() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
