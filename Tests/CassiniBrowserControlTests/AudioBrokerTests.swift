@@ -30,10 +30,12 @@ final class NativeFixtureInputs: @unchecked Sendable {
 final class NativeAudioClient: @unchecked Sendable {
     let process = Process()
     let input = Pipe(), output = Pipe(), errors = Pipe()
+    private let exited = DispatchSemaphore(value:0)
     init(root: URL) throws {
         process.executableURL = Bundle(for:AudioBrokerTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("cassini-browser-host")
         process.environment = ["CASSINI_CONTROL_PIPE_ROOT":root.path]
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
+        process.terminationHandler = { [exited] _ in exited.signal() }
         try process.run()
         try FrameIO.prepare(input.fileHandleForWriting.fileDescriptor)
         try FrameIO.prepare(output.fileHandleForReading.fileDescriptor)
@@ -48,9 +50,13 @@ final class NativeAudioClient: @unchecked Sendable {
     }
     func end() {
         try? input.fileHandleForWriting.close()
-        let deadline = Date().addingTimeInterval(3)
-        while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval:0.01) }
-        if process.isRunning { process.terminate(); process.waitUntilExit() }
+        guard process.processIdentifier > 0 else { return }
+        // E1: normal EOF completion is an exit event, never a polling sleep.
+        if process.isRunning, exited.wait(timeout:.now()+3) == .timedOut, process.isRunning {
+            process.terminate()
+            if exited.wait(timeout:.now()+2) == .timedOut, process.isRunning { kill(process.processIdentifier,SIGKILL) }
+        }
+        process.waitUntilExit()
     }
     deinit { end() }
 }
