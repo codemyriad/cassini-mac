@@ -607,7 +607,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let live = ids.filter { nativeSpans[$0]?.registered == true }
             // D52 (GNOME live_problem): a native input lost to an I/O failure ends its
             // track with problemKind io, which the Recording page reports per source.
-            if kind == "io" {
+            // SPEC "Gap ranges": writer loss is padding instead of failing the source, so
+            // writer loss alone (io with no diagnostic) ends the span normally (D69.2).
+            if kind == "io", problem?.isEmpty == false {
                 for id in live { try recording.failTrack(id:id,problemKind:"io") }
             } else if !live.isEmpty { try commitTransition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }

@@ -133,9 +133,10 @@ public struct LibraryLocalization: Sendable {
     public func contains(_ id: String) -> Bool { forms[id] != nil }
     public func text(_ id: String, _ values: [String: String] = [:], language: CassiniLanguage = .system, locale: Locale = .current, omitting: Set<String> = []) -> String {
         guard let entry = forms[id], let selected = entry[language] ?? entry[.en] else { preconditionFailure("Missing UX string: \(id)") }
-        let template = values["n"].flatMap { selected.plural[language.pluralCategory($0)] ?? selected.plural["other"] } ?? selected.base
+        // The plural count is {n}; D70's speakers.when.times names it {count}.
+        let template = (values["n"] ?? values["count"]).flatMap { selected.plural[language.pluralCategory($0)] ?? selected.plural["other"] } ?? selected.base
         var localized = values
-        for key in ["n", "m", "k"] {
+        for key in ["n", "m", "k", "count"] {
             guard let literal = values[key], let quantity = Quantity(literal) else { continue }
             let formatter = NumberFormatter(); formatter.locale = locale; formatter.numberStyle = .decimal
             formatter.minimumFractionDigits = quantity.fractionDigits; formatter.maximumFractionDigits = quantity.fractionDigits

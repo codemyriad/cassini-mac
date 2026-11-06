@@ -53,7 +53,8 @@ import CassiniRecording
             }
             for value in owned where value.owner.snapshot.phase == .saved {
                 let snapshot = value.owner.snapshot
-                guard snapshot.manifest.state == "completed", snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }) else { continue }
+                // D69.2: writer-only loss saves like a normal recording.
+                guard snapshot.manifest.state == "completed" || snapshot.manifest.writerOnly, snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }) else { continue }
                 CaptureNotifications.shared.saved(folder:snapshot.directory,title:value.displayTitle ?? snapshot.manifest.title)
             }
         }

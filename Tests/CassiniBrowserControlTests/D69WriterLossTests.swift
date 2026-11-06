@@ -2,6 +2,8 @@
 import AVFoundation
 import Foundation
 import XCTest
+import CassiniKit
+import CassiniLibrary
 import CassiniRecording
 @testable import CassiniBrowserControl
 
@@ -24,6 +26,87 @@ private final class D69GatedWriter: RecordingSinkWriter, @unchecked Sendable {
 }
 
 final class D69WriterLossTests: XCTestCase {
+    func testStoppedResponseDoesNotRelabelBrowserJumpsAsHostTimeGaps() async throws {
+        let generic = "Some audio is missing: the recording has a gap of at least one second."
+        let host = "Recording saved with 1250 ms of host-time gap; the timeline contains silence."
+        for (jumpMs,writerLoss,nativeGapMs,expected) in [(1250,false,0,generic),(1250,true,0,generic),(50,true,1250,host)] {
+            let fixture = try AudioFixture()
+            do {
+                let client = try fixture.client()
+                _ = try client.request(["type":"start","version":1,"independent":true,"captureId":"synthetic-jump",
+                    "timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":writerLoss,"title":"Synthetic call","features":["source-outcomes-v1"]])
+                _ = try client.request(["type":"track","id":"remote","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])
+                for (sequence,offset) in [0,1000+jumpMs].enumerated() {
+                    _ = try client.request(["type":"audio","id":"remote","sequence":sequence,"offsetMs":offset,"pcm":Data(repeating:0x12,count:16000).base64EncodedString()])
+                }
+                let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
+                if writerLoss {
+                    let mic = owner.nativeWriter(side:.me)
+                    try mic.addTrack(id:"mic",label:"Microphone",kind:"microphone",sampleRate:8000,channels:1)
+                    try mic.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:0)
+                    try mic.padNative(id:"mic",frames:8000,channels:1,rate:8000,offsetMs:1000,kind:"writer")
+                    try mic.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:Double(2000+nativeGapMs),gapKind:"input")
+                    try mic.finish(problem:nil,kind:"io")
+                }
+                let stopped = try client.request(["type":"stop","captureId":"synthetic-jump"])
+                XCTAssertEqual(stopped["type"]?.string,"stopped")
+                XCTAssertEqual(stopped["problem"]?.string,expected)
+                if writerLoss {
+                    let details = RecordingDetailsReport(.load(folder:owner.snapshot.directory,lifecycle:.saved,title:"Synthetic call",transcriptDone:false))
+                    let busy = details.sources.compactMap(\.computerBusy)
+                    XCTAssertEqual(busy.count,1,"the native microphone is shown beside the negotiated browser source")
+                    XCTAssertEqual(busy.first?.values["source"],.catalog("common.yourMicrophone"))
+                    XCTAssertEqual(busy.first?.values["duration"],.duration(1000))
+                }
+            } catch { await fixture.finish(); throw error }
+            await fixture.finish()
+        }
+    }
+    /// Real native sink + owned broker + framed stopped response. Writer padding suppresses
+    /// the sink's stored gap note; the reply must still report a real input gap from the file.
+    func testStoppedResponseKeepsInputGapsWhileHidingWriterLoss() async throws {
+        for gapMs in [0,500,1250] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Stopped-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let owner = try OwnedBrowserCapture(parent:root.appendingPathComponent("Library"),title:"Synthetic call",microphone:true)
+            let sink = owner.nativeSink(side:.me,originHostTime:1,failure:{ _ in })
+            let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in
+                do { try sink.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
+            })
+            let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)
+            let ipc = root.appendingPathComponent("ipc")
+            try service.start(root:ipc)
+            let client = try NativeAudioClient(root:ipc)
+            do {
+                let start = try client.request(["type":"start","version":1,"independent":true,"captureId":"synthetic-gap-\(gapMs)",
+                    "timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":true,"title":"Synthetic call"])
+                XCTAssertEqual(start["type"]?.string,"started")
+                let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:8000,channels:1))
+                let audio = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8000)); audio.frameLength = 8000
+                for index in 0..<8000 { audio.floatChannelData![0][index] = 0.25 }
+                sink.receive(audio,hostTime:1,id:"mic",label:"Microphone",kind:"microphone"); sink.flush()
+                sink.receive(audio,hostTime:1+AVAudioTime.hostTime(forSeconds:2),id:"mic",label:"Microphone",kind:"microphone",writerLoss:.known(frames:8000)); sink.flush()
+                sink.receive(audio,hostTime:1+AVAudioTime.hostTime(forSeconds:3+Double(gapMs)/1000),id:"mic",label:"Microphone",kind:"microphone"); sink.flush()
+                let stopped = try client.request(["type":"stop"])
+                XCTAssertEqual(stopped["type"]?.string,"stopped")
+                let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+                XCTAssertEqual(saved.tracks.first?.gapFrames ?? 0,UInt64(gapMs >= 1000 ? gapMs*8 : 0))
+                XCTAssertEqual(saved.tracks.first?.droppedFrames,8000)
+                XCTAssertEqual(saved.problem,WriterLoss.sentence(milliseconds:1000,kind:"microphone"),"stored D69 diagnostic remains unchanged")
+                XCTAssertFalse(stopped["problem"]?.string?.contains("keep up") == true)
+                if gapMs >= 1000 {
+                    XCTAssertEqual(stopped["problem"]?.string,"Recording saved with 1250 ms of host-time gap; the timeline contains silence.")
+                    XCTAssertFalse(saved.writerOnly)
+                } else {
+                    XCTAssertNil(stopped["problem"],"writer-only loss and sub-second gaps stay quiet")
+                    XCTAssertTrue(saved.writerOnly)
+                }
+            } catch {
+                client.end(); await broker.finishAll(); service.stop(); throw error
+            }
+            client.end(); await broker.finishAll(); service.stop()
+        }
+    }
     private func buffer() throws -> AVAudioPCMBuffer {
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:8000,channels:1))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:80)); buffer.frameLength = 80
@@ -94,6 +177,29 @@ final class D69WriterLossTests: XCTestCase {
         try session.finish(problem:nil)
         XCTAssertEqual(session.manifest.problem,"1 ms of application audio was lost because the computer could not keep up; the gaps contain silence.")
     }
+    /// D69.2 (review): in an owned capture, writer loss alone keeps D69's session facts but does
+    /// not fail the source (SPEC: padding instead of failing it), so the recording reads as
+    /// writer-only: no failed track or ledger outcome, no badge, and Stop sends no D69 sentence.
+    func testOwnedCaptureWriterOnlyLossDoesNotFailTheSource() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Owned-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Busy",microphone:true,browser:false)
+        let mic = owner.nativeWriter(side:.me)
+        try mic.addTrack(id:"callback",label:"microphone",kind:"microphone",sampleRate:8000,channels:1)
+        try mic.appendNative(id:"callback",pcm:Data(repeating:1,count:16000),offsetMs:0)
+        try mic.padNative(id:"callback",frames:16000,channels:1,rate:8000,offsetMs:1000,kind:"writer")
+        try mic.finish(problem:nil,kind:"io")
+        try await owner.finish(problem:nil,reason:.user,atMs:3000)
+        let manifest = try RecordingLoader.load(directory:owner.snapshot.directory)
+        XCTAssertEqual(manifest.state,"interrupted"); XCTAssertEqual(manifest.problemKind,"io")
+        XCTAssertEqual(manifest.events?.last?.reason,"error")
+        XCTAssertEqual(manifest.problem,"2000 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence.")
+        XCTAssertNil(manifest.tracks[0].problemKind,"writer loss alone never fails the source")
+        XCTAssertTrue(manifest.writerOnly)
+        let raw = try JSONParser.parse(Data(contentsOf:owner.snapshot.directory.appendingPathComponent("session.json")))
+        XCTAssertTrue(WriterLoss.isWriterOnly(raw))
+        XCTAssertNotEqual(raw["captureOutcome"]?["sources"]?.array?.first?["captureOutcome"]?.string,"failed")
+    }
     func testNativeSourceLossAcrossReenabledSpansRoundsOnce() async throws {
         for (side,kind) in [(CaptureSide.me,"microphone"),(CaptureSide.others,"system")] {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Spans-"+UUID().uuidString)
@@ -136,7 +242,8 @@ final class D69WriterLossTests: XCTestCase {
         XCTAssertThrowsError(try sink.recordWriterTail(id:"mic",untilHostTime:origin))
         try sink.recordWriterTail(id:"mic",untilHostTime:origin,loss:.known(frames:80))
         XCTAssertThrowsError(try sink.recordWriterTail(id:"mic",untilHostTime:origin,loss:.known(frames:80)))
-        XCTAssertThrowsError(try sink.finish(problem:nil))
+        // D69.2: writer-only loss is not thrown as an error at Stop; the file keeps D69's sentence.
+        XCTAssertNoThrow(try sink.finish(problem:nil))
         XCTAssertEqual(session.manifest.tracks[0].frames,320)
         XCTAssertEqual(session.manifest.tracks[0].droppedFrames,160)
         XCTAssertEqual(session.manifest.problem,"20 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence.")
