@@ -16,7 +16,7 @@ final class D52GapWriterTests: XCTestCase {
         let url = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("browser-protocol/conformance/gaps/writer.json")
         let cases = try XCTUnwrap(try JSONParser.parse(Data(contentsOf:url))["cases"]?.array)
-        XCTAssertEqual(cases.count,16)
+        XCTAssertEqual(cases.count,39)
         for vector in cases { try await run(vector) }
     }
 
@@ -25,6 +25,10 @@ final class D52GapWriterTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Gaps-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let steps = vector["steps"]!.array!
+        if steps.contains(where:{ $0["op"]?.string == "writerTail" || $0["writerFrames"] != nil || $0["inferredFrames"] != nil }) {
+            try runNativeWriterLoss(vector,root:root)
+            return
+        }
         let browser = steps.contains { ["track","audio","series","trackEnd"].contains($0["op"]?.string ?? "") }
         let owner = try OwnedBrowserCapture(parent:root,title:name,microphone:true,browser:browser)
         if vector["features"]?.array?.contains(where:{ $0.string == "source-outcomes-v1" }) == true { owner.enableSourceOutcomes() }
@@ -72,7 +76,58 @@ final class D52GapWriterTests: XCTestCase {
         }
         try await owner.finish()
         let manifest = try RecordingLoader.load(directory:owner.snapshot.directory)
-        let expected = vector["expected"]!
+        compare(manifest,vector:vector,nativeIDs:false)
+    }
+
+    /// The generic native sink supports multiple callback sources, including application
+    /// sources. Replay their producer facts through production APIs; no oracle arithmetic.
+    @MainActor private func runNativeWriterLoss(_ vector: JSON, root: URL) throws {
+        let session = try RecordingSession(parent:root,title:vector["name"]!.string!,source:"macos")
+        let origin: UInt64 = 1
+        let sink = RecordingSink(session:session,originHostTime:origin) { _ in }
+        var formats: [String:(kind:String,rate:Double)] = [:]
+        func stamp(_ ms: Double) -> UInt64 { origin + AVAudioTime.hostTime(forSeconds:ms/1000) }
+        for step in vector["steps"]!.array! {
+            let id = step["id"]!.string!
+            switch step["op"]!.string! {
+            case "nativeTrack": formats[id] = (step["kind"]!.string!,Double(step["rate"]?.int ?? 48000))
+            case "input":
+                let source = try XCTUnwrap(formats[id])
+                let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:source.rate,channels:1))
+                let frames = AVAudioFrameCount(step["frames"]!.int!)
+                let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:frames)); buffer.frameLength = frames
+                for index in 0..<Int(frames) { buffer.floatChannelData![0][index] = 0.25 }
+                let loss = step["writerFrames"]?.int.map { NativeWriterLoss.known(frames:UInt64($0)) }
+                    ?? step["inferredFrames"]?.int.map { NativeWriterLoss.inferred(frames:UInt64($0)) }
+                sink.receive(buffer,hostTime:stamp(step["hostMs"]!.double!),id:id,label:id,kind:source.kind,writerLoss:loss)
+                sink.flush()
+            case "writerTail":
+                let loss = step["writerFrames"]?.int.map { NativeWriterLoss.known(frames:UInt64($0)) }
+                    ?? step["inferredFrames"]?.int.map { NativeWriterLoss.inferred(frames:UInt64($0)) }
+                try sink.recordWriterTail(id:id,untilHostTime:stamp(step["untilMs"]!.double!),loss:loss,
+                                          resumeHostTime:step["resumeMs"]?.double.map(stamp))
+            default: XCTFail("Unexpected native operation")
+            }
+        }
+        do { try sink.finish(problem:vector["problem"]?.string) } catch RecordingError.invalid {}
+        let manifest = try RecordingLoader.load(directory:session.directory)
+        compare(manifest,vector:vector,nativeIDs:true)
+        // Actual PCM presence is independent of the JSON facts: every writer range
+        // occupies zero samples in the real WAV, including known/inferred tails.
+        for track in manifest.tracks {
+            let wav = try Data(contentsOf:session.directory.appendingPathComponent(track.file))
+            for gap in track.gaps ?? [] where gap.kind == "writer" {
+                let start = Int(((gap.atMs-(track.startOffsetMs ?? 0))*Double(track.sampleRate)/1000).rounded())
+                let end = start + Int(gap.frames!)
+                XCTAssertTrue(wav[(44+start*2)..<(44+end*2)].allSatisfy { $0 == 0 },vector["name"]!.string!)
+            }
+        }
+    }
+
+    private func compare(_ manifest: RecordingManifest, vector: JSON, nativeIDs: Bool) {
+        let name = vector["name"]!.string!, expected = vector["expected"]!
+        XCTAssertEqual(manifest.events?.last?.reason,expected["endReason"]?.string ?? "user",name)
+        if let problem = expected["problem"]?.string { XCTAssertEqual(manifest.problem,problem,name) }
         XCTAssertEqual(manifest.state,expected["state"]!.string!,name)
         XCTAssertEqual(manifest.problemKind,expected["problemKind"]?.string,name)
         // Inert zero-frame spans (declared while deselected) are left out of the comparison.
@@ -81,7 +136,7 @@ final class D52GapWriterTests: XCTestCase {
         XCTAssertEqual(spans.count,wanted.count,"\(name): spans")
         for (track,want) in zip(spans,wanted) {
             let label = "\(name) \(want["wire"]!.string!)"
-            XCTAssertEqual(track.sourceTrackId ?? track.kind,want["wire"]!.string!,label)
+            XCTAssertEqual(nativeIDs ? track.id : track.sourceTrackId ?? track.kind,want["wire"]!.string!,label)
             XCTAssertEqual(track.startOffsetMs ?? -1,want["startOffsetMs"]!.double!,accuracy:1e-6,label)
             XCTAssertEqual(track.frames,UInt64(want["frames"]!.int!),label)
             XCTAssertEqual(track.gapFrames ?? 0,UInt64(want["gapFrames"]!.int!),"\(label) gapFrames")

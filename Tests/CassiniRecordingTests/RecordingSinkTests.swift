@@ -9,6 +9,7 @@ private final class SinkWriter: RecordingSinkWriter, @unchecked Sendable {
     var formats: [String: (Int, Int)] = [:]
     var recordingProblem: String?
     var finishes = 0
+    var problemKind: String?
     var reject = false
     var retainPCM = true
     var bytes = 0
@@ -25,6 +26,7 @@ private final class SinkWriter: RecordingSinkWriter, @unchecked Sendable {
         chunks.append((id, retainPCM ? pcm : Data(), offsetMs))
     }
     func finish(problem: String?) throws { finishes += 1; recordingProblem = problem }
+    func finish(problem: String?, kind: String?) throws { problemKind = kind; try finish(problem:problem ?? (kind == "io" ? "Writer I/O loss." : nil)) }
 }
 private final class Failures: @unchecked Sendable {
     private let lock = NSLock()
@@ -164,7 +166,7 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
         #expect(writer.chunks.map { $0.0 } == ["a", "b", "a"])
         #expect(writer.chunks.last?.2 == 10)
         #expect(writer.chunks.last?.1.allSatisfy { $0 == 0 } == true)
-        #expect(writer.recordingProblem?.contains("10 ms") == true)
+        #expect(writer.problemKind == "io")
     }
 
     @Test func pausePadsDroppedTailOnceAndResumeKeepsTheSameWriter() throws {
