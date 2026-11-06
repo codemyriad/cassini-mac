@@ -286,7 +286,7 @@ struct R65CodemyriadNamespaceTests {
     /// other writer's, and the entry's other members stay.
     @Test func aSharedSpeakerIdTakesMacsLabel() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let (_,meeting) = try foreignFile(root,schema:1,moreSpeakers:#",{"id":"track-original","name":null,"provenance":"unnamed","colourIndex":2,"label":"Parlante 1","futureX":1}"#)
+        let (_,meeting) = try foreignFile(root,schema:1,moreSpeakers:#",{"id":"track-original","name":null,"provenance":"unnamed","colourIndex":2,"label":"Other writer 1","futureX":1}"#)
         try writeDown(meeting,status:"done")
         let speakers = try #require(reexport(root)["meeting"]?["speakers"]?.array)
         try #require(speakers.count == 3)

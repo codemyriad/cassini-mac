@@ -1,26 +1,26 @@
-tree 9e99cbcd54b91fa5a599cda061c6882be48bf5c1
-parent 8a3f856c8534a68a12d66b3eca37f3472df2f55b
-parent 383a4185dc877fff622d824e82e36b2802d548c2
-author Silvio Tomatis <silviot@gmail.com> 1793958271 +0100
-committer GitHub <noreply@github.com> 1793958271 +0100
+tree eda2773b27f5179200373a2418b9e415b0a1f946
+parent d288865799ae61a2a7bdec18406b70f63acda951
+parent fe826aa833d2ca0e5f795c7ecd7007835d78cc99
+author Silvio Tomatis <silviot@gmail.com> 1793989469 +0100
+committer GitHub <noreply@github.com> 1793989469 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7aF/CRC1aQ7uu5UhlAAA/FwQABV3BT6KA/0pa50n2TXYPDNK
- v0UoFDP2Hqj1O3s72GurlSZ3E0rdwW5V2Urio7qkkWdpq2fpWdJwrDD9d1hioPV/
- OVjM0P2PMWbaNDfZdW/ZXm9eFnxNPSNVGRoF0BLWlnzd4qfTmSt6tfEN4XhTRngI
- tAim8OwxClxPhhDJhgtp+T7YFfHpT4rrtRuI0j7fOnwZMWhUDIr69YFmgvFbaPV8
- TLOhGBhv3z9+sXIEseTWTIPQOiJJp4pJl6oiij9B5jdi5w0WiGsuxR40NfEqLg2p
- AIKID825QTQioEAr4AdEEWjUtiRJHRcf5aNszXbyJ206cVGsLwKfHGZ93/hZZM+K
- ov0leHoeQ5Ea+LE+ptqLgg6x30aD/SnRAOA51fHxj3yMwD+EIQZ/ewZgSQF/NCHW
- TlsYwrkFAMS7TeTgCNHfgE/LXo7sxMqZIGQ2SbipUie6fNkPUgR5VYFJ7G9VSQg0
- J2ZzX1cGaSNkqW1kufvtvuw1Na+O3F9WVS4reQYKh7oSfwG3jheMjCDVenEMB6zb
- 1pvpVlLoWixnXt8v46NBLkoEpK/lPGpoGFxakAU32kVouf0I4yAMUI3tKnsYEprz
- FCCYgPfBc+0TWrCyaqkamepOKzhvKkPEHNHkG8wQf1wPe+/BeILZjzwziXqo6vJS
- 1h0S3RZLsoZrsGIEKUB6
- =YCMr
+ wsFcBAABCAAQBQJq7htdCRC1aQ7uu5UhlAAAtb8QAB/aABIDJFRKstcR7R1ihMr3
+ KGdKPL0KZ69nnLnoTlvQUgEF7YbPuCuvc/DZqmAvKmVWTaRbyyJTc7pGxQSJ5G3n
+ pAh8beN5H4JcdEk8mdJr61pS8lO2NH7yZknKfewc8ozGaoYYBGJyrhRZDuMudJLY
+ AiWYXL4MPKFO/rHBvaU9ROK6pz+xx1wBa8FZx+NksaQ50Kr2gtLKp5HakANGpaNt
+ QQmaRkFIM1HNFkzjPvqz5nrSIrje8bz3ZaY2gMDoyAsBbUxv7JyeB+6PILv7YDZD
+ 2kXyrluo3Nnv/CUHt8nhmUzTDCnY3YCPLVeD6hMqmGSFtWgLelXkkWQTVXS1IAhg
+ iey0/a+c3E5WwXYtpi8pyCEeqKq6GLUySWFmhd/eEOwFE30PvaI2TW2KjHucguhm
+ kqrrczGOUQstmRUJZoFT620iOf9Tz5x6mkbzgSVG4t3Eo4iSm2MA6Aj125atWhkS
+ QWT4FjpwuJ436B5HKBMZR/NWgW2aBA5u+HF8r7Sx3daGpg41u06qQ/YnC+UchUv3
+ v7sJQCJm0LTse4845H1ikGVf9b/YJ79QLuhIr8iB2yDJz2axMpbHsXBcLqrYU6mU
+ CfdL/dNRwvonJHgg6KiYdnG/2sqSYr4yPAZbPAOnSnTN3ERtYibwyohUFGjjWPGe
+ Kl1Dfi1P1E5RjWr26vO6
+ =XZyI
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #62 from codemyriad/spec/d69-writer-loss
+Merge pull request #66 from codemyriad/chore/english-frame-sample
 
-D69: record native writer loss through Stop as I/O loss
+Use English sample in UTF-8 frame-reader fixture

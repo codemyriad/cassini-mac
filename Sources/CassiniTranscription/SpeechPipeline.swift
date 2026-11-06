@@ -23,14 +23,20 @@ public struct MeetingResampler {
         samples.append(contentsOf: input); count += input.count
         var output: [Float] = []
         let limit = final ? (count + 2) / 3 : max(0, (count - 49) / 3 + 1)
-        while next < limit {
-            var value: Double = 0
-            for n in 0..<97 {
-                let index = 3 * next + 48 - n
-                if index >= 0 && index < count { value += Double(coefficients[n]) * Double(samples[index - base]) }
+        // Keep the exact scalar binary64 operation order without paying Swift's
+        // unoptimized generic collection/indexing cost for every one of 97 taps.
+        let first = next, retainedBase = base, total = count
+        output = [Float](repeating:0,count:max(0,limit-first))
+        if !output.isEmpty {
+            coefficients.withUnsafeBufferPointer { taps in
+                samples.withUnsafeBufferPointer { input in
+                    output.withUnsafeMutableBufferPointer { result in
+                        cassini_fir_48k_16k(taps.baseAddress,input.baseAddress,Int64(retainedBase),Int64(total),Int64(first),result.baseAddress,result.count)
+                    }
+                }
             }
-            output.append(Float(value)); next += 1
         }
+        next = first+output.count
         let remove = min(samples.count, max(0, next * 3 - 48 - base))
         samples.removeFirst(remove); base += remove
         return output

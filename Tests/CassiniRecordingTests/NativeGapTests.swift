@@ -125,7 +125,8 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
         #expect(sink.status().frames["output"] == 80)
         writer.release.signal(); sink.flush()
         sink.receive(buffer, hostTime: 1 + AVAudioTime.hostTime(forSeconds: 0.02), id: "mic", label: "Microphone", kind: "microphone")
-        #expect(throws: (any Error).self) { try sink.finish(problem: nil) }
+        // D69.2: writer-only loss is not thrown at Stop; the file still records it as io below.
+        try sink.finish(problem: nil)
         let track = try #require(session.manifest.tracks.first)
         let wav = try Data(contentsOf: session.directory.appendingPathComponent(track.file))
         #expect(track.frames == 240)
