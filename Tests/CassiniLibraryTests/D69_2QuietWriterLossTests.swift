@@ -10,6 +10,37 @@ import CassiniRecording
 /// normal recording: no Interrupted badge, no error end, no amber dropped-audio line; Recording
 /// details adds one quiet line per source when its summed writer loss is at least 1 s.
 struct D69_2QuietWriterLossTests {
+    private func malformedTracks(_ ranges: [String], dropped: String = "0") throws -> JSON {
+        let gaps = ranges.map { "{\"kind\":\"writer\",\"frames\":\($0)}" }.joined(separator:",")
+        return try JSONParser.parse(Data("[{\"id\":\"t\",\"kind\":\"microphone\",\"sampleRate\":48000,\"droppedFrames\":\(dropped),\"gaps\":[\(gaps)]}]".utf8))
+    }
+    @Test(arguments: [
+        ["18446744073709551615","1"], ["18446744073709551616"],
+        ["9007199254740992"], ["9007199254740991","1"],
+        ["-1"], ["1.5"], ["1e3"], ["\"48000\""], ["null"], ["{}"]
+    ])
+    func invalidWriterCountsAreUnknownAndDetailsNeverTraps(counts: [String]) throws {
+        let tracks = try malformedTracks(counts)
+        #expect(RecordingDetailsReport.writerLoss(ids:["t"],tracks:tracks) == nil)
+        let source = try JSONParser.parse(Data("{\"sourceTrackId\":\"mic\",\"kind\":\"microphone\",\"captureOutcome\":\"captured\",\"audioMs\":5000,\"trackIds\":[\"t\"]}".utf8))
+        let file: JSON = .object([("tracks",tracks),("captureOutcome",.object([("sources",.array([source]))]))])
+        #expect(report(file).sources.first?.computerBusy == nil,"invalid loss stays unknown in the complete Details reader")
+    }
+    @Test(arguments: ["18446744073709551615","18446744073709551616","9007199254740992","-1","1.5","1e3","\"48000\"","{}"])
+    func invalidDroppedCountsAreUnknown(count: String) throws {
+        #expect(RecordingDetailsReport.writerLoss(ids:["t"],tracks:try malformedTracks(["48000"],dropped:count)) == nil)
+    }
+    @Test func unsafeWriterSumsAcrossTracksAndRatesAreUnknown() throws {
+        let sameRate = try JSONParser.parse(Data("""
+        [{"id":"a","sampleRate":48000,"gaps":[{"kind":"writer","frames":9007199254740991}]},
+         {"id":"b","sampleRate":48000,"gaps":[{"kind":"writer","frames":1}]}]
+        """.utf8))
+        #expect(RecordingDetailsReport.writerLoss(ids:["a","b"],tracks:sameRate) == nil)
+        let tracks = (0..<10).map { index in
+            "{\"id\":\"t\(index)\",\"sampleRate\":\(8000+index),\"gaps\":[{\"kind\":\"writer\",\"frames\":9007199254740991}]}"
+        }.joined(separator:",")
+        #expect(RecordingDetailsReport.writerLoss(ids:(0..<10).map { "t\($0)" },tracks:try JSONParser.parse(Data("[\(tracks)]".utf8))) == nil)
+    }
     private func temporary() -> URL { FileManager.default.temporaryDirectory.appendingPathComponent("D69_2-"+UUID().uuidString) }
     private func session(_ root: URL, configure: (RecordingSession) throws -> Void) throws -> RecordingSession {
         let session = try RecordingSession(parent:root,title:"Busy",source:"macos")

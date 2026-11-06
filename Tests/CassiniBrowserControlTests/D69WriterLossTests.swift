@@ -25,6 +25,51 @@ private final class D69GatedWriter: RecordingSinkWriter, @unchecked Sendable {
 }
 
 final class D69WriterLossTests: XCTestCase {
+    /// Real native sink + owned broker + framed stopped response. Writer padding suppresses
+    /// the sink's stored gap note; the reply must still report a real input gap from the file.
+    func testStoppedResponseKeepsInputGapsWhileHidingWriterLoss() async throws {
+        for gapMs in [0,500,1250] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Stopped-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let owner = try OwnedBrowserCapture(parent:root.appendingPathComponent("Library"),title:"Synthetic call",microphone:true)
+            let sink = owner.nativeSink(side:.me,originHostTime:1,failure:{ _ in })
+            let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in
+                do { try sink.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
+            })
+            let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)
+            let ipc = root.appendingPathComponent("ipc")
+            try service.start(root:ipc)
+            let client = try NativeAudioClient(root:ipc)
+            do {
+                let start = try client.request(["type":"start","version":1,"independent":true,"captureId":"synthetic-gap-\(gapMs)",
+                    "timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":true,"title":"Synthetic call"])
+                XCTAssertEqual(start["type"]?.string,"started")
+                let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:8000,channels:1))
+                let audio = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8000)); audio.frameLength = 8000
+                for index in 0..<8000 { audio.floatChannelData![0][index] = 0.25 }
+                sink.receive(audio,hostTime:1,id:"mic",label:"Microphone",kind:"microphone"); sink.flush()
+                sink.receive(audio,hostTime:1+AVAudioTime.hostTime(forSeconds:2),id:"mic",label:"Microphone",kind:"microphone",writerLoss:.known(frames:8000)); sink.flush()
+                sink.receive(audio,hostTime:1+AVAudioTime.hostTime(forSeconds:3+Double(gapMs)/1000),id:"mic",label:"Microphone",kind:"microphone"); sink.flush()
+                let stopped = try client.request(["type":"stop"])
+                XCTAssertEqual(stopped["type"]?.string,"stopped")
+                let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+                XCTAssertEqual(saved.tracks.first?.gapFrames ?? 0,UInt64(gapMs >= 1000 ? gapMs*8 : 0))
+                XCTAssertEqual(saved.tracks.first?.droppedFrames,8000)
+                XCTAssertEqual(saved.problem,WriterLoss.sentence(milliseconds:1000,kind:"microphone"),"stored D69 diagnostic remains unchanged")
+                XCTAssertFalse(stopped["problem"]?.string?.contains("keep up") == true)
+                if gapMs >= 1000 {
+                    XCTAssertEqual(stopped["problem"]?.string,"Recording saved with 1250 ms of host-time gap; the timeline contains silence.")
+                    XCTAssertFalse(saved.writerOnly)
+                } else {
+                    XCTAssertNil(stopped["problem"],"writer-only loss and sub-second gaps stay quiet")
+                    XCTAssertTrue(saved.writerOnly)
+                }
+            } catch {
+                client.end(); await broker.finishAll(); service.stop(); throw error
+            }
+            client.end(); await broker.finishAll(); service.stop()
+        }
+    }
     private func buffer() throws -> AVAudioPCMBuffer {
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:8000,channels:1))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:80)); buffer.frameLength = 80

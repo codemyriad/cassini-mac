@@ -237,26 +237,44 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     /// track's droppedFrames (all writer padding) is the better count. Nil when unknown.
     static func writerLoss(ids: [String], tracks: JSON?) -> (roundedMs: UInt64, droppedMs: Double)? {
         guard Set(ids).count == ids.count, let list = tracks?.array else { return nil }
-        var rates: [Int:UInt64] = [:], droppedMs = 0.0
+        var rates: [Int:UInt64] = [:], droppedMs = 0.0, totalMs = 0.0
+        // Match the other Details counters: malformed or unsafe numbers are unknown.
+        func framesCount(_ value: JSON?) -> UInt64? {
+            guard case .number(let literal)? = value, let count = UInt64(literal), count <= UInt64(safe) else { return nil }
+            return count
+        }
         for id in ids {
             let matches = list.filter { $0["id"]?.string == id }
             guard matches.count == 1, let track = matches.first, let rate = track["sampleRate"]?.int, (8000...192000).contains(rate) else { return nil }
             var frames: UInt64 = 0, overflow = false
+            if let gaps = track["gaps"], gaps.array == nil { return nil }
             for range in track["gaps"]?.array ?? [] {
                 switch range["kind"]?.string {
                 case "writer"?:
-                    guard case .number(let literal)? = range["frames"], let count = UInt64(literal) else { return nil }
-                    frames += count
+                    guard let count = framesCount(range["frames"]) else { return nil }
+                    let sum = frames.addingReportingOverflow(count)
+                    guard !sum.overflow, sum.partialValue <= UInt64(safe) else { return nil }
+                    frames = sum.partialValue
                 case "overflow"?: overflow = true
                 default: break
                 }
             }
-            let dropped = track["droppedFrames"].flatMap { value -> UInt64? in if case .number(let literal) = value { return UInt64(literal) }; return nil } ?? 0
+            var dropped: UInt64 = 0
+            if let value = track["droppedFrames"], !value.isNull {
+                guard let count = framesCount(value) else { return nil }
+                dropped = count
+            }
             if overflow, ["microphone","system"].contains(track["kind"]?.string ?? "") { frames = max(frames,dropped) }
-            rates[rate,default:0] += frames
+            let sum = rates[rate,default:0].addingReportingOverflow(frames)
+            guard !sum.overflow, sum.partialValue <= UInt64(safe) else { return nil }
+            rates[rate] = sum.partialValue
+            totalMs += Double(frames) * 1000 / Double(rate)
+            guard totalMs <= safe else { return nil }
             droppedMs += Double(min(frames,dropped)) * 1000 / Double(rate)
         }
-        return (WriterLoss.roundedMilliseconds(rates),droppedMs)
+        let rounded = WriterLoss.roundedMilliseconds(rates)
+        guard rounded <= UInt64(safe) else { return nil }
+        return (rounded,droppedMs)
     }
     /// D58.2 R3: one row per native kind (microphone, then this computer's sound) whose tracks
     /// received audio. The outcome follows the received duration as the capture ledger's does
