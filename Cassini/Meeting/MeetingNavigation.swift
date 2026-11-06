@@ -79,6 +79,7 @@ import Observation
         }
     }
     private(set) var turns: [MeetingPresentation.Turn] = []
+    private(set) var listeningTurns: [SpeakerTurn] = []
     /// #118 review: turns are prepared off the main actor; a newer transcript, or closing the
     /// page, cancels a preparation still running, so its result never lands.
     @ObservationIgnored private var preparation: TurnPreparation?
@@ -102,7 +103,15 @@ import Observation
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
         if frozen {
             turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps)
-            listen.setTurns(meeting.speakerTurns); return
+            listeningTurns = meeting.speakerTurns; listen.setTurns(listeningTurns)
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+               let phase = LibraryLaunchContext.argument("-CassiniListeningPreview"), ["playing","finished"].contains(phase),
+               let speaker = LibraryLaunchContext.argument("-CassiniListeningSpeaker") ?? meeting.speakers.first?.id {
+                previewListening(speaker,index:phase == "finished" ? listen.turns(of:speaker).count-1 : 0,finished:phase == "finished")
+            }
+            #endif
+            return
         }
         if preparation == nil {
             #if DEBUG
@@ -116,7 +125,7 @@ import Observation
     }
     private func acceptTurns(_ turns: [MeetingPresentation.Turn]) {
         self.turns = turns
-        if let preparation { listen.setTurns(preparation.speakerTurns) }
+        if let preparation { listeningTurns = preparation.speakerTurns; listen.setTurns(listeningTurns) }
     }
     @discardableResult func listenTo(_ speaker: String, turnIndex: Int? = nil) -> Bool {
         guard !frozen else { return false }
@@ -124,8 +133,67 @@ import Observation
         return listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
     }
     func toggleSpeakerListening(_ speaker: String) {
-        if listen.speaker == speaker { listen.stopPlayback() }
+        if listen.speaker == speaker { stopListening() }
         else { listenTo(speaker) }
+    }
+    var listeningPresentation: ListeningBarPresentation? {
+        guard let turn = listen.turn else { return nil }
+        let name = meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"])
+        let previous = turn.index > 0 && listeningTurns.indices.contains(turn.index-1) ? listeningTurns[turn.index-1] : nil
+        return .init(name:name,turn:turn,previous:previous,index:listen.index,count:listen.count,language:UXText.language,locale:UXText.locale)
+    }
+    var canUseListeningShortcuts: Bool {
+        guard listen.active, MeetingNavigation.shared.detail === self, !LibrarySearchModel.shared.visible,
+              let window = NSApp.keyWindow, window.accessibilityIdentifier() == "cassini-library-window",
+              window.attachedSheet == nil, NSApp.modalWindow == nil,
+              MeetingRenameCoordinator.shared.presentation == nil, !MeetingExportCoordinator.shared.showing,
+              !RecordingDetailsCoordinator.shared.showing, !RecordCoordinator.shared.showingFirst,
+              CompanionSetup.shared.presenter != .library, !RecordingConfirmation.active else { return false }
+        return (window.firstResponder as? NSTextView)?.isEditable != true && (window.firstResponder as? NSTextField)?.isEditable != true
+    }
+    func canStepListeningTurn(_ direction: Int) -> Bool {
+        guard direction == -1 || direction == 1 else { return false }
+        _ = positionMs // Observe the clock as well as the selected turn after a manual seek.
+        if frozen { return listen.active && (0..<listen.count).contains(listen.index+direction) }
+        return listen.stepTarget(direction) != nil
+    }
+    func canStepListeningSpeaker(_ direction: Int) -> Bool {
+        listen.speakerStepTarget(direction,order:meeting.speakers.map(\.id)) != nil
+    }
+    func stepListeningTurn(_ direction: Int) {
+        let before = listen.turn?.index
+        let accepted: Bool
+        if frozen {
+            accepted = canStepListeningTurn(direction)
+            if accepted, let speaker = listen.speaker { previewListening(speaker,index:listen.index+direction) }
+        } else if direction == 1 { accepted = listen.nextTurn() }
+        else if direction == -1 { accepted = listen.previousTurn() }
+        else { accepted = false }
+        // A playhead-relative step can reselect the displayed upcoming turn in its lead-in.
+        if accepted, before == listen.turn?.index { announceListeningTurn() }
+    }
+    func stepListeningSpeaker(_ direction: Int) {
+        if frozen {
+            if let speaker = listen.speakerStepTarget(direction,order:meeting.speakers.map(\.id)) { previewListening(speaker) }
+        } else { listen.stepSpeaker(direction,order:meeting.speakers.map(\.id)) }
+    }
+    func playListeningAgain() {
+        let before = listen.turn?.index
+        if frozen { if let speaker = listen.speaker { previewListening(speaker) } }
+        else if listen.playAgain(), before == listen.turn?.index { announceListeningTurn() }
+    }
+    func stopListening() { if frozen { fixturePlaying = false }; listen.stopPlayback() }
+    private func previewListening(_ speaker: String, index: Int = 0, finished: Bool = false) {
+        #if DEBUG
+        listen.preview(speaker,index:index,finished:finished)
+        if let turn = listen.turn { fixturePosition = Int(finished ? turn.endMs+500 : turn.startMs); fixturePlaying = !finished }
+        #endif
+    }
+    func announceListeningTurn() {
+        guard !frozen, canUseListeningShortcuts, NSWorkspace.shared.isVoiceOverEnabled, let presentation = listeningPresentation,
+              let view = NSApp.keyWindow?.contentView else { return }
+        NSAccessibility.post(element:view,notification:.announcementRequested,userInfo:[
+            .announcement:presentation.announcement,.priority:NSAccessibilityPriorityLevel.low.rawValue])
     }
     #if DEBUG
     /// MeetingPreparationSelfTest: a gated preparer, so the proof controls when work proceeds.

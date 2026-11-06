@@ -19,7 +19,11 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
 parser.add_argument('board',choices=['meeting','recording','received','export','search','settings-recording','settings-transcription'])
 parser.add_argument('--output',type=Path,required=True)
+parser.add_argument('--listening',choices=['playing','finished'])
+parser.add_argument('--speaker')
 args = parser.parse_args()
+assert not args.listening or args.board == 'meeting', 'Listening preview requires the meeting fixture'
+assert not args.speaker or args.listening, 'Speaker selection requires a listening preview'
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
 app = args.app.resolve()
 fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'main')
@@ -31,6 +35,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
                '-CassiniScreenshot',args.board,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
                '-ApplePersistenceIgnoreState','YES','-AppleLanguages','(en-GB)','-AppleLocale','en_GB',
                '-AppleInterfaceStyle','Light','-AppleAccentColor','4']
+    if args.listening: command += ['-CassiniListeningPreview',args.listening]
+    if args.speaker: command += ['-CassiniListeningSpeaker',args.speaker]
     if args.board.startswith('settings-'): command += ['-CassiniSettingsID',str(uuid.uuid4())]
     try:
         subprocess.run(command,check=True,capture_output=True,timeout=10)

@@ -23,6 +23,15 @@ import CassiniLibrary
 
     public init(playback: SessionPlayback) { self.playback = playback }
     public func turns(of speaker: String) -> [SpeakerTurn] { bySpeaker[speaker] ?? [] }
+    #if DEBUG
+    /// Frozen fixture rendering only: selects state without creating a transport or playing audio.
+    public func preview(_ speaker: String, index: Int = 0, finished: Bool = false) {
+        stop()
+        guard let turns = bySpeaker[speaker], !turns.isEmpty else { return }
+        self.speaker = speaker; targets = turns; count = turns.count
+        self.index = max(0,min(count-1,index)); self.finished = finished
+    }
+    #endif
 
     /// Called with the load worker's resolved turns after transcript/merge changes.
     /// Keep an already finished target finished when its last tail is still behind
@@ -60,8 +69,13 @@ import CassiniLibrary
     }
     /// Row Stop ends listening and pauses at the current position, including a queued span end.
     public func stopPlayback() {
-        if playback.isPlaying, let meeting { playback.toggle(meeting) }
+        guard active else { return }
+        playback.pause()
         stop()
+    }
+    func playbackReachedEnd() {
+        guard active, !targets.isEmpty else { return }
+        serial += 1; spanLast = nil; index = count-1; explicitTurn = index; finished = true
     }
     /// Page close/switch, library outage, or a new recording uses the ordinary
     /// player's stop path. Its lifecycle notification also clears listening.
