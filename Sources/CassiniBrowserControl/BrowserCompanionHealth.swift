@@ -3,12 +3,13 @@ import Foundation
 import CassiniKit
 
 /// Optional extension diagnostics never grant recording capabilities. A missing or
-/// malformed self-check is unknown; only an explicit true completes setup.
+/// malformed self-check is unknown; only an explicit false blocks setup.
 public struct BrowserCompanionDiagnostics: Equatable, Sendable {
     public private(set) var extensionVersion: String?
     public private(set) var extensionInstance: String?
     public private(set) var installType: String?
     public private(set) var filesOk: Bool?
+    public var filesMissing: Bool { filesOk == false }
     public init() { }
     mutating func update(_ raw: JSON?) {
         guard let raw, raw.object != nil else { return }
@@ -80,7 +81,8 @@ public struct BrowserCompanionHealth: Equatable, Sendable {
 }
 
 /// Setup completion is stricter than recording capability admission. Diagnostics
-/// never disable Start; every connected profile shown by setup must check out.
+/// never disable Start; an explicit file failure in any connected profile blocks
+/// Done, while legacy or pending self-check diagnostics remain non-blocking.
 public struct BrowserCompanionSetupHealth: Sendable {
     public let peers: [BrowserControlPeerSnapshot]
     public init(peers: [BrowserControlPeerSnapshot]) { self.peers = peers.filter(\.reconciled) }

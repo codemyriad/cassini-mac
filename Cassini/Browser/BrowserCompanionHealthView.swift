@@ -23,12 +23,12 @@ struct BrowserCompanionHealthView: View {
     private func peerStatus(_ peer: BrowserControlPeerSnapshot) -> some View {
         let outdated = CompanionSetup.bundledCompanionVersion.map { peer.diagnostics.isOlder(than:$0) } ?? false
         let repairs = peer.browserHealth?.reloadTabs ?? []
-        let setupAgain = peer.diagnostics.filesOk != true || outdated || !peer.supportsMultiStream
+        let setupAgain = peer.diagnostics.filesMissing || outdated || !peer.supportsMultiStream
         return VStack(alignment:.leading,spacing:6) {
             if setupAgain || !repairs.isEmpty {
                 if let name = peer.browser { Text(name).fontWeight(.semibold) }
             }
-            if peer.diagnostics.filesOk == false {
+            if peer.diagnostics.filesMissing {
                 Text(UXText.text("setup.companion.filesMissing")).fixedSize(horizontal:false,vertical:true)
                     .accessibilityIdentifier("companion-files-missing")
             }

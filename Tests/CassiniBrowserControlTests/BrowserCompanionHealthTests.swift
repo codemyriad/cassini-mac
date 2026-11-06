@@ -42,16 +42,45 @@ final class BrowserCompanionHealthTests: XCTestCase {
             XCTAssertEqual(snapshot.diagnostics.filesOk,hello["filesOk"] as? Bool)
             XCTAssertEqual(snapshot.diagnostics.extensionVersion,hello["extensionVersion"] as? String)
             XCTAssertEqual(snapshot.diagnostics.installType,hello["installType"] as? String)
-            XCTAssertEqual(snapshot.setupComplete,hello["filesOk"] as? Bool == true)
+            XCTAssertEqual(snapshot.setupComplete,hello["filesOk"] as? Bool != false)
         }
     }
-    func testSetupRequiresReconciledConnectionAndExplicitFileCheckForEveryProfile() throws {
+    func testLegacyAndPendingSelfCheckHellosPermitDoneUntilExplicitFailure() throws {
+        for pending in [false,true] {
+            var state = BrowserControlRegistry()
+            try state.connect(.init(id:peer,role:.control,browser:"Chrome"))
+            var hello: [String:Any] = ["type":"hello","version":1,"capabilities":["multi-stream-v1"]]
+            if pending {
+                hello["extensionVersion"] = "0.2.20"; hello["extensionInstance"] = "pending-self-check"
+                hello["capabilities"] = ["multi-stream-v1","tab-readiness-v1"]
+            }
+            try send(hello,&state)
+            XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete,"Hello alone is not a reconciled connection")
+            try send(status(),&state)
+            XCTAssertNil(state.snapshots.first?.diagnostics.filesOk)
+            XCTAssertEqual(state.snapshots.first?.diagnostics.filesMissing,false)
+            XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).complete,"A legacy or pending self-check must not block Done")
+            var checked = health("idle"); checked["tabs"] = []; checked["filesOk"] = false
+            if pending { checked["extensionInstance"] = "pending-self-check" }
+            try send(status(checked),&state)
+            XCTAssertEqual(state.snapshots.first?.diagnostics.filesMissing,true)
+            XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete,"Only a reported file failure blocks Done")
+            try send(status(),&state)
+            XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete,"An omitted field does not erase a known failure")
+            checked["filesOk"] = true; try send(status(checked),&state)
+            XCTAssertEqual(state.snapshots.first?.diagnostics.filesMissing,false)
+            XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).complete,"A later successful check clears the failure")
+            state.disconnect(peer)
+            XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete,"An absent connection still blocks Done")
+        }
+    }
+    func testSetupRequiresReconciledConnectionAndOnlyExplicitFileFailuresBlock() throws {
         var state = BrowserControlRegistry()
         XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
         try connect(&state)
         XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
         let other = UUID(); try connect(&state,peer:other,files:nil)
-        XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
+        XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
         try send(status(health()),&state,peer:other)
         XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
         var broken = health(); broken["filesOk"] = false
@@ -70,9 +99,10 @@ final class BrowserCompanionHealthTests: XCTestCase {
         XCTAssertNil(d.filesOk); XCTAssertNil(d.extensionVersion)
         d.update(try JSONParser.parse(Data(#"{"extensionVersion":"9999999999999999999999999999.2","filesOk":1,"installType":"bad\ntext"}"#.utf8)))
         XCTAssertNil(d.filesOk); XCTAssertNil(d.installType); XCTAssertFalse(d.isOlder(than:"0.2.20"))
-        for files: Any in [NSNull(),1,"true"] {
+        for files: Any in [NSNull(),0,1,"false","true"] {
             var state = BrowserControlRegistry(); try connect(&state,files:files)
-            XCTAssertFalse(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
+            XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).complete)
+            XCTAssertEqual(state.snapshots.first?.diagnostics.filesMissing,false)
             XCTAssertNoThrow(try state.start(.init(peer:peer,tabID:2),microphone:true))
         }
     }

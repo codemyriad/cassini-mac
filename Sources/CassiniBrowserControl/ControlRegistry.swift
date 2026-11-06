@@ -53,7 +53,7 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public var diagnostics = BrowserCompanionDiagnostics()
     public var browserHealth: BrowserCompanionHealth? = nil
     public var healthRevision: UInt64 = 0
-    public var setupComplete: Bool { reconciled && supportsMultiStream && diagnostics.filesOk == true }
+    public var setupComplete: Bool { reconciled && supportsMultiStream && !diagnostics.filesMissing }
 }
 public enum BrowserControlAction: String, Sendable { case start, stop, reloadTab }
 public struct BrowserControlRequest: Sendable {

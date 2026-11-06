@@ -467,11 +467,12 @@ final class LibraryBoards: XCTestCase {
                 XCTAssertTrue(settings.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","companion-reload-tab-")).firstMatch.isEnabled)
             } else { XCTAssertFalse(message.exists,"An idle or healthy browser must not get reload advice") }
             let setupAgain = settings.buttons["companion-setup-again"]
-            if ["health-files","health-outdated","health-legacy"].contains(kind) {
+            XCTAssertEqual(settings.staticTexts["companion-files-missing"].exists,kind == "health-files","Only explicit filesOk=false shows the missing-files line")
+            if ["health-files","health-outdated"].contains(kind) {
                 XCTAssertTrue(setupAgain.waitForExistence(timeout:10)); setupAgain.click()
                 let done = settings.sheets.buttons["companion-local-done"]
                 XCTAssertTrue(done.waitForExistence(timeout:10),app.debugDescription)
-                XCTAssertEqual(done.isEnabled,kind == "health-outdated","Done requires connection and explicit filesOk; versions do not gate capabilities")
+                XCTAssertEqual(done.isEnabled,kind == "health-outdated","Done requires connection and no explicit file failure; versions do not gate capabilities")
                 if kind == "health-files" { XCTAssertTrue(settings.sheets.staticTexts["companion-files-missing"].exists) }
                 app.typeKey(.escape,modifierFlags:[])
             } else { XCTAssertFalse(setupAgain.exists) }
