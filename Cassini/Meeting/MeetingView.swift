@@ -61,6 +61,7 @@ struct MeetingView: View {
                 }
             }
             .focusable()
+            .focusedValue(\.playTranscriptTurn,{ model.playFrom(Int(turn.startMs)) })
             .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
                 guard event.modifiers == .shift, model.canPlay else { return .ignored }
                 model.playFrom(Int(turn.startMs)); return .handled

@@ -371,6 +371,24 @@ extension MeetingTranscriptText {
                 report["focusedInlineSpacePrecedesPlayer"] = AppDelegate.handleListeningSelfTest(key(49)) == nil && presses == count+1 && frozen.isPlaying == playing
             } else { report["focusedInlineSpacePrecedesPlayer"] = false }
         }
+        let playedBeforeButtonChecks = played
+        if let button = button as? MeetingTurnTextView.InlineListenButton {
+            listened = -1
+            if let space = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:0,windowNumber:0,context:nil,characters:" ",charactersIgnoringModifiers:" ",isARepeat:false,keyCode:49) {
+                report["inlineButtonSpaceInvokesListen"] = button.handlePlaybackKey(space) && listened == 1 && played == playedBeforeButtonChecks
+                button.isEnabled = false; listened = -1
+                report["disabledInlineButtonDoesNotConsumeSpace"] = !button.handlePlaybackKey(space) && listened == -1
+                button.isEnabled = true
+            }
+            listened = -1
+            report["focusedButtonPrecedesBarePlayback"] = AppDelegate.pressPlaybackButton(button) && listened == 1 && played == playedBeforeButtonChecks
+            button.isEnabled = false
+            report["disabledButtonNotPressedByMediaRouter"] = !AppDelegate.pressPlaybackButton(button)
+            button.isEnabled = true
+            if let enter = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:.shift,timestamp:0,windowNumber:0,context:nil,characters:"\r",charactersIgnoringModifiers:"\r",isARepeat:false,keyCode:36) {
+                report["inlineButtonShiftReturnPlaysHost"] = button.handlePlaybackKey(enter) && played == playedBeforeButtonChecks+1
+            }
+        }
         return report
     }
 }

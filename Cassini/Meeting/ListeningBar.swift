@@ -62,3 +62,13 @@ extension FocusedValues {
         set { self[ListeningMeetingFocusedKey.self] = newValue }
     }
 }
+
+/// Present only while keyboard focus is inside a transcript row. Native TextKit
+/// responders provide the same action through AppCommands' responder fallback.
+struct TranscriptPlayFocusedKey: FocusedValueKey { typealias Value = () -> Void }
+extension FocusedValues {
+    var playTranscriptTurn: (() -> Void)? {
+        get { self[TranscriptPlayFocusedKey.self] }
+        set { self[TranscriptPlayFocusedKey.self] = newValue }
+    }
+}

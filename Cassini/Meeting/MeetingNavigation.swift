@@ -169,14 +169,17 @@ import Observation
     }
     var canUseListeningShortcuts: Bool { canUseListeningShortcuts(in:NSApp.keyWindow) }
     // Commands observe model state only; AppKit focus is checked when invoked.
-    var canUseListeningCommands: Bool {
-        listen.active && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
+    var canUseListeningCommands: Bool { listen.active && canUseTranscriptCommands }
+    private var canUseTranscriptCommands: Bool {
+        canPlay && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
         MeetingRenameCoordinator.shared.presentation == nil && !MeetingExportCoordinator.shared.showing &&
         !RecordingDetailsCoordinator.shared.showing && !RecordCoordinator.shared.showingFirst &&
         CompanionSetup.shared.presenter != .library && !RecordingConfirmation.active
     }
-    func canUseListeningShortcuts(in window: NSWindow?) -> Bool {
-        guard canUseListeningCommands,
+    func canUseListeningShortcuts(in window: NSWindow?) -> Bool { listen.active && canUseTranscriptShortcuts(in:window) }
+    var canUseTranscriptShortcuts: Bool { canUseTranscriptShortcuts(in:NSApp.keyWindow) }
+    func canUseTranscriptShortcuts(in window: NSWindow?) -> Bool {
+        guard canUseTranscriptCommands,
               let window, window.accessibilityIdentifier() == "cassini-library-window",
               window.attachedSheet == nil, NSApp.modalWindow == nil else { return false }
         return (window.firstResponder as? NSTextView)?.isEditable != true && (window.firstResponder as? NSTextField)?.isEditable != true
