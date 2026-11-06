@@ -94,6 +94,35 @@ final class D69WriterLossTests: XCTestCase {
         try session.finish(problem:nil)
         XCTAssertEqual(session.manifest.problem,"1 ms of application audio was lost because the computer could not keep up; the gaps contain silence.")
     }
+    func testNativeSourceLossAcrossReenabledSpansRoundsOnce() async throws {
+        for (side,kind) in [(CaptureSide.me,"microphone"),(CaptureSide.others,"system")] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Spans-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let owner = try OwnedBrowserCapture(parent:root,title:"Reenabled source",microphone:true,browser:false)
+            for (index,offset) in [0.0,2.0].enumerated() {
+                if index > 0 {
+                    try await owner.select(me:side != .me,others:side != .others,atMs:1)
+                    try await owner.select(me:true,others:true,atMs:2)
+                }
+                // Each input generation creates a fresh real native span with no
+                // sourceTrackId. Two 0.25 ms losses must produce one 1 ms sentence.
+                let writer = owner.nativeWriter(side:side)
+                try writer.addTrack(id:"callback",label:kind,kind:kind,sampleRate:8000,channels:1)
+                try writer.appendNative(id:"callback",pcm:Data(repeating:1,count:2),offsetMs:offset)
+                try writer.padNative(id:"callback",frames:2,channels:1,rate:8000,offsetMs:offset+0.125,kind:"writer")
+                try writer.finish(problem:"Span \(index+1) diagnostic.",kind:"io")
+            }
+            try await owner.finish(problem:"Earlier warning.",reason:.user,atMs:3)
+            let manifest = try RecordingLoader.load(directory:owner.snapshot.directory)
+            XCTAssertEqual(manifest.tracks.count,2,kind)
+            XCTAssertEqual(Set(manifest.tracks.map(\.id)).count,2,kind)
+            XCTAssertTrue(manifest.tracks.allSatisfy { $0.kind == kind && $0.sourceTrackId == nil },kind)
+            XCTAssertEqual(manifest.tracks.map(\.droppedFrames),[2,2],kind)
+            XCTAssertEqual(manifest.problem,"Earlier warning. Span 1 diagnostic. Span 2 diagnostic. 1 ms of \(kind) audio was lost because the computer could not keep up; the gaps contain silence.",kind)
+            XCTAssertEqual(manifest.problemKind,"io",kind)
+            XCTAssertEqual(manifest.events?.last?.reason,"error",kind)
+        }
+    }
     func testKnownLossWithoutHostStampsStaysExactAndUnstampedTailIsRejected() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Stamp-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

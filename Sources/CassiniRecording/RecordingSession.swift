@@ -441,13 +441,16 @@ public final class RecordingSession {
         manifest.tracks[index].droppedFrames = dropped > 0 ? dropped : nil
         manifest.tracks[index].gapFrames = gapFrames > 0 ? gapFrames : nil
     }
-    /// Native source spans have one fixed rate. Accumulate frames before converting or
-    /// rounding; neither truncated range lists nor producer drop counts size this text.
+    /// Like RecordingDetailsReport.nativeRows, microphone/system spans belong to
+    /// their native kind across selection changes and retries. Sum before rounding;
+    /// neither truncated range lists nor producer drop counts size this text.
     private func writerLossProblems() -> [String] {
-        var order: [String] = [], totals: [String:(kind:String, rates:[Int:UInt64])] = [:]
+        enum Source: Hashable { case native(String), identified(String), track(String) }
+        var order: [Source] = [], totals: [Source:(kind:String, rates:[Int:UInt64])] = [:]
         for track in manifest.tracks {
             guard let frames = writerPaddingFrames[track.id], frames > 0 else { continue }
-            let key = track.sourceTrackId ?? track.id
+            let key: Source = ["microphone","system"].contains(track.kind) ? .native(track.kind)
+                : track.sourceTrackId.map(Source.identified) ?? .track(track.id)
             if totals[key] == nil { order.append(key); totals[key] = (track.kind,[:]) }
             totals[key]!.rates[track.sampleRate, default:0] += frames
         }
