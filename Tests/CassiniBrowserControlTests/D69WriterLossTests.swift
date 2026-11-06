@@ -2,6 +2,7 @@
 import AVFoundation
 import Foundation
 import XCTest
+import CassiniKit
 import CassiniRecording
 @testable import CassiniBrowserControl
 
@@ -94,6 +95,29 @@ final class D69WriterLossTests: XCTestCase {
         try session.finish(problem:nil)
         XCTAssertEqual(session.manifest.problem,"1 ms of application audio was lost because the computer could not keep up; the gaps contain silence.")
     }
+    /// D69.2 (review): in an owned capture, writer loss alone keeps D69's session facts but does
+    /// not fail the source (SPEC: padding instead of failing it), so the recording reads as
+    /// writer-only: no failed track or ledger outcome, no badge, and Stop sends no D69 sentence.
+    func testOwnedCaptureWriterOnlyLossDoesNotFailTheSource() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Owned-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Busy",microphone:true,browser:false)
+        let mic = owner.nativeWriter(side:.me)
+        try mic.addTrack(id:"callback",label:"microphone",kind:"microphone",sampleRate:8000,channels:1)
+        try mic.appendNative(id:"callback",pcm:Data(repeating:1,count:16000),offsetMs:0)
+        try mic.padNative(id:"callback",frames:16000,channels:1,rate:8000,offsetMs:1000,kind:"writer")
+        try mic.finish(problem:nil,kind:"io")
+        try await owner.finish(problem:nil,reason:.user,atMs:3000)
+        let manifest = try RecordingLoader.load(directory:owner.snapshot.directory)
+        XCTAssertEqual(manifest.state,"interrupted"); XCTAssertEqual(manifest.problemKind,"io")
+        XCTAssertEqual(manifest.events?.last?.reason,"error")
+        XCTAssertEqual(manifest.problem,"2000 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence.")
+        XCTAssertNil(manifest.tracks[0].problemKind,"writer loss alone never fails the source")
+        XCTAssertTrue(manifest.writerOnly)
+        let raw = try JSONParser.parse(Data(contentsOf:owner.snapshot.directory.appendingPathComponent("session.json")))
+        XCTAssertTrue(WriterLoss.isWriterOnly(raw))
+        XCTAssertNotEqual(raw["captureOutcome"]?["sources"]?.array?.first?["captureOutcome"]?.string,"failed")
+    }
     func testNativeSourceLossAcrossReenabledSpansRoundsOnce() async throws {
         for (side,kind) in [(CaptureSide.me,"microphone"),(CaptureSide.others,"system")] {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Spans-"+UUID().uuidString)
@@ -136,7 +160,8 @@ final class D69WriterLossTests: XCTestCase {
         XCTAssertThrowsError(try sink.recordWriterTail(id:"mic",untilHostTime:origin))
         try sink.recordWriterTail(id:"mic",untilHostTime:origin,loss:.known(frames:80))
         XCTAssertThrowsError(try sink.recordWriterTail(id:"mic",untilHostTime:origin,loss:.known(frames:80)))
-        XCTAssertThrowsError(try sink.finish(problem:nil))
+        // D69.2: writer-only loss is not thrown as an error at Stop; the file keeps D69's sentence.
+        XCTAssertNoThrow(try sink.finish(problem:nil))
         XCTAssertEqual(session.manifest.tracks[0].frames,320)
         XCTAssertEqual(session.manifest.tracks[0].droppedFrames,160)
         XCTAssertEqual(session.manifest.problem,"20 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence.")

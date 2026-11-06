@@ -190,13 +190,15 @@ struct D52RecordingDetailsTests {
             // 1 s received of the microphone's 3 s; 2.5 s of this computer's sound's 6 s.
             #expect(result.sources.map { $0.line.values["duration"] } == [.duration(1000),.duration(2500)],"\(name)")
             #expect(result.sources.map(\.problem) == [false,false],"\(name)")
-            // D69's stored writer drop count adds the existing dropped-audio line.
-            // Keep its 2 s distinct from the 1.5 s input gap; neither is received audio.
+            // D69.2: the 1.5 s input gap is presented as today; the writer's own 2 s is the quiet
+            // computer-busy line, not a dropped-audio warning. Neither is received audio.
             #expect(result.sources.map { $0.gapLines.map(\.values) } == [[],[
-                ["source":.catalog("recordFirst.sound.title"),"duration":.duration(1500)],
-                ["value":.duration(2000)]]],"\(name)")
+                ["source":.catalog("recordFirst.sound.title"),"duration":.duration(1500)]]],"\(name)")
             #expect(result.sources[1].gapLines.first?.id == "details.sources.gap","\(name)")
-            #expect(result.sources[1].gapLines.last?.label == .catalog("details.health.dropped"),"\(name)")
+            #expect(result.sources.map { $0.computerBusy } == [nil,.init("details.sources.computerBusy",
+                ["source":.catalog("recordFirst.sound.title"),"duration":.duration(2000)])],"\(name)")
+            // Not writer-only (a real gap), so the end stays as D69 stored it.
+            #expect(result.ended.values["reason"] == .catalog("details.end.error"),"\(name)")
         }
         check(report(written),"receivedFrames")
         // An older file without receivedFrames: its stored ranges, the input gap subtracted once.

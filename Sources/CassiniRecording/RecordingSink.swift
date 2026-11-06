@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Foundation
+import CassiniKit
 
 /// Serial writer interface, also used by deterministic tests that model a stalled disk.
 public protocol RecordingSinkWriter: AnyObject {
@@ -398,7 +399,14 @@ public final class RecordingSink: @unchecked Sendable {
             try writer.finish(problem: issue.isEmpty ? nil : issue, kind: lost > 0 || paddingFailure != nil ? "io" : (gaps > 0 ? "gap" : nil))
             if let paddingFailure { throw paddingFailure }
             // An unopened input's own failure (a staged writer records it too) is its refusal's.
-            if problem == nil, keepingFailure, let issue = writer.recordingProblem { throw RecordingError.invalid(issue) }
+            // D69.2: the stored D69 writer sentence is never shown; only another diagnostic is thrown.
+            if problem == nil, keepingFailure, let issue = writer.recordingProblem {
+                let rest = WriterLoss.strip(issue).rest
+                if !rest.isEmpty { throw RecordingError.invalid(rest) }
+                // A host-time gap is still reported as it is without writer loss (the file keeps
+                // only D69's sentence then, so the note is built here, not stored).
+                if gaps > 0 { throw RecordingError.invalid("Recording saved with \(Int(gaps.rounded())) ms of host-time gap; the timeline contains silence.") }
+            }
         }
     }
 }

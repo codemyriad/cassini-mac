@@ -456,8 +456,7 @@ public final class RecordingSession {
         }
         return order.map { key in
             let total = totals[key]!
-            let milliseconds = WriterLossDuration.roundedMilliseconds(total.rates)
-            return "\(milliseconds) ms of \(total.kind) audio was lost because the computer could not keep up; the gaps contain silence."
+            return WriterLoss.sentence(milliseconds:WriterLoss.roundedMilliseconds(total.rates),kind:total.kind)
         }
     }
 
@@ -633,5 +632,14 @@ private func durableSync(_ handle: FileHandle) throws {
     // Network filesystems may not implement the stronger macOS disk-cache flush.
     if fcntl(handle.fileDescriptor, F_FULLFSYNC) == -1 && ![EINVAL, ENOTSUP, ENOTTY].contains(errno) {
         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+}
+
+extension RecordingManifest {
+    /// D69.2: the only problem is D69 writer loss, so the recording is presented as a normal one.
+    /// The same stored-facts rule every reader applies to session.json (WriterLoss.isWriterOnly).
+    public var writerOnly: Bool {
+        guard state == "interrupted", let data = try? JSONEncoder().encode(self), let json = try? JSONParser.parse(data) else { return false }
+        return WriterLoss.isWriterOnly(json)
     }
 }

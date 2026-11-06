@@ -527,7 +527,10 @@ private final class AudioPeer: @unchecked Sendable {
                     }
                     completed = true
                     var fields: [(String,JSON)] = [("type",.string("stopped")),("path",.string(owner.snapshot.directory.path))]
-                    if let problem = owner.snapshot.manifest.problem { fields.append(("problem",.string(problem))) }
+                    // D69.2: the extension shows this text; the stored D69 writer sentence is never shown.
+                    if let problem = owner.snapshot.manifest.problem.map({ WriterLoss.strip($0).rest }), !problem.isEmpty {
+                        fields.append(("problem",.string(problem)))
+                    }
                     response = .object(fields)
                 default: throw BrowserProtocolError("version","Unknown browser message type.")
                 }

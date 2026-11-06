@@ -251,6 +251,8 @@ public struct LibraryScanner: Sendable {
         var tracks: [Track]
         var source: String?
         var events: [CaptureEvent] = []
+        /// D69.2: the only problem is D69 writer loss; shown as a normal recording.
+        var writerOnly = false
         enum CodingKeys: CodingKey { case version, id, title, createdAt, state, problemKind, tracks }
         struct Track: Decodable {
             let sourceID: String?; let sourceKind: String?; let sourceTrackID: String?
@@ -293,6 +295,7 @@ public struct LibraryScanner: Sendable {
             var manifest = try JSONDecoder().decode(Self.self, from: data)
             manifest.source = raw["source"]?.string
             manifest.events = CaptureEvent.read(raw["events"])
+            manifest.writerOnly = WriterLoss.isWriterOnly(raw)
             if let tracks = raw["tracks"]?.array {
                 for index in manifest.tracks.indices { manifest.tracks[index].startOffsetMs = DisplayOffset(tracks[index]["startOffsetMs"]) }
             }
@@ -309,7 +312,8 @@ public struct LibraryScanner: Sendable {
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
             result.source = manifest.source; result.events = manifest.events; result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
             result.unfinalized = manifest.state == "recording"; result.finalized = manifest.state != "recording"
-            result.interrupted = manifest.state == "interrupted" || manifest.problemKind == "gap" || manifest.tracks.contains(where:\.flagsGap)
+            // D69.2: writer-only loss is not an interruption to show; the file still says D69's.
+            result.interrupted = (manifest.state == "interrupted" && !manifest.writerOnly) || manifest.problemKind == "gap" || manifest.tracks.contains(where:\.flagsGap)
             var ends: [Int64] = []
             for track in manifest.tracks {
                 do {

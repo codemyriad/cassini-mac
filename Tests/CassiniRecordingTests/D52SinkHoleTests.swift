@@ -59,8 +59,12 @@ private final class GatedSession: RecordingSinkWriter, @unchecked Sendable {
         #expect(track.gaps?.map(\.frames) == [80,16000,80])
         #expect(track.gapFrames == 16000,"Only the host-time gap counts as gapFrames")
         #expect(track.frames == 80 + 80 + 16000 + 80 + 80)
-        #expect(throws:(any Error).self) { try sink.finish(problem:nil) }   // drops end the session as io
+        // D69.2: the file still ends as io with D69's sentence. Stop reports the real 2 s gap as a
+        // gap alone would, never the stored writer sentence.
+        do { try sink.finish(problem:nil); Issue.record("the gap must still be reported at Stop") }
+        catch { #expect(error.localizedDescription == "Recording saved with 2000 ms of host-time gap; the timeline contains silence.") }
         #expect(session.manifest.tracks[0].droppedFrames == 160 && session.manifest.problemKind == "io")
+        #expect(session.manifest.problem?.hasSuffix("audio was lost because the computer could not keep up; the gaps contain silence.") == true)
     }
 
     @Test func pauseClearsPaddedDropsSoALaterHostGapIsInput() throws {

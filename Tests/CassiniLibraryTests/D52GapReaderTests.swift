@@ -63,7 +63,8 @@ struct D52GapReaderTests {
         #expect(saved.events?.last?.reason == "error")
         #expect(saved.tracks[0].droppedFrames == 96000 && saved.tracks[0].gapFrames == nil)
         #expect(saved.tracks[0].gaps?.map(\.kind) == ["writer"])
-        #expect(try scanned(writer).state.interruptedAtMs != nil,"D69's explicit I/O interruption must survive scanning")
+        // D69.2: the file says D69's, but writer-only loss shows no Interrupted badge.
+        #expect(try scanned(writer).state.interruptedAtMs == nil,"D69.2: writer-only loss shows no badge")
 
         // Isolate the reader's range-based flag from that explicit I/O status.
         // Writer ranges alone still never set the ordinary gap flag (R70 / D69).

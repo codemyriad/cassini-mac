@@ -46,12 +46,12 @@ import Testing
                             #expect(tokens.isSubset(of:source),"Unexpected placeholder: \(entry.id) \(language) \(category)")
                             #expect(source.subtracting(["n","m"]).isSubset(of:tokens),"Lost non-count placeholder: \(entry.id)")
                             if category != "one" {#expect(tokens == placeholders(plural["other"]!),"\(entry.id) \(language) \(category)")}
-                            if category == "one" && (language == .fr || language == .ptBR) {#expect(tokens.contains("n"),"Zero/one must preserve the actual count")}
+                            if category == "one" && (language == .fr || language == .ptBR) {#expect(tokens.contains("n") || tokens.contains("count"),"Zero/one must preserve the actual count")}
                         }
                     }
                 }
                 for n in ["0","1","2","1000000"] {
-                    let substitutions=Dictionary(uniqueKeysWithValues:source.union(macSource).map {($0,$0 == "n" ? n : ($0 == "m" ? "2" : "value-"+$0))})
+                    let substitutions=Dictionary(uniqueKeysWithValues:source.union(macSource).map {($0,$0 == "n" || $0 == "count" ? n : ($0 == "m" ? "2" : "value-"+$0))})
                     let rendered=catalog.text(entry.id,substitutions,language:language,locale:Locale(identifier:language.rawValue))
                     #expect(!rendered.isEmpty,"\(entry.id) \(language)")
                     #expect(placeholders(rendered).isEmpty,"Unresolved placeholder: \(entry.id) \(language) \(rendered)")
@@ -66,6 +66,9 @@ import Testing
         #expect(strings.text("savedVoices.row.meetingCount",["n":"0"],language:.fr) == "0 réunion")
         #expect(strings.text("savedVoices.row.meetingCount",["n":"0"],language:.ptBR) == "0 reunião")
         #expect(strings.text("savedVoices.row.meetingCount",["n":"0"],language:.ptPT) == "0 reuniões")
+        // D70: a plural whose count is named {count} picks its form from it too.
+        #expect(strings.text("speakers.when.times",["count":"1","position":"00:25:18"],language:.fr) == "1 fois, à 00:25:18")
+        #expect(strings.text("speakers.when.times",["count":"4","position":"00:01:02"],language:.en) == "4 times, first at 00:01:02")
     }
     @Test func searchPluralizesPlacesAndMeetingsIndependentlyInEveryLanguage() {
         let examples:[(String,Int64,Int64,String)]=[
