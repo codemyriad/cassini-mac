@@ -179,13 +179,24 @@ struct D52RecordingDetailsTests {
         let kinds = (written["tracks"]?.array ?? []).map { ($0["gaps"]?.array ?? []).compactMap { $0["kind"]?.string } }
         try #require(kinds == [["prefix"],["writer","input"]])
         try #require((written["tracks"]?.array ?? []).map { $0["frames"]?.int } == [48000,96000])
+        // SPEC.md "Gap ranges and presence" (D69): writer padding counts as
+        // droppedFrames, not gapFrames; it interrupts as io and ends in error.
+        #expect((written["tracks"]?.array ?? []).map { $0["droppedFrames"]?.int } == [nil,32000])
+        #expect((written["tracks"]?.array ?? []).map { $0["gapFrames"]?.int } == [nil,24000])
+        #expect(written["state"]?.string == "interrupted" && written["problemKind"]?.string == "io")
+        #expect(written["events"]?.array?.last?["reason"]?.string == "error")
         func check(_ result: RecordingDetailsReport, _ name: String) {
             #expect(result.sources.map(\.line.id) == ["details.sources.captured","details.sources.captured"],"\(name)")
             // 1 s received of the microphone's 3 s; 2.5 s of this computer's sound's 6 s.
             #expect(result.sources.map { $0.line.values["duration"] } == [.duration(1000),.duration(2500)],"\(name)")
             #expect(result.sources.map(\.problem) == [false,false],"\(name)")
-            // Only the input gap is a gap line, as for any source.
-            #expect(result.sources.map { $0.gapLines.map(\.values) } == [[],[["source":.catalog("recordFirst.sound.title"),"duration":.duration(1500)]]],"\(name)")
+            // D69's stored writer drop count adds the existing dropped-audio line.
+            // Keep its 2 s distinct from the 1.5 s input gap; neither is received audio.
+            #expect(result.sources.map { $0.gapLines.map(\.values) } == [[],[
+                ["source":.catalog("recordFirst.sound.title"),"duration":.duration(1500)],
+                ["value":.duration(2000)]]],"\(name)")
+            #expect(result.sources[1].gapLines.first?.id == "details.sources.gap","\(name)")
+            #expect(result.sources[1].gapLines.last?.label == .catalog("details.health.dropped"),"\(name)")
         }
         check(report(written),"receivedFrames")
         // An older file without receivedFrames: its stored ranges, the input gap subtracted once.
