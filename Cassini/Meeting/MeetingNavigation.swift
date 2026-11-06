@@ -81,6 +81,20 @@ import Observation
     private(set) var turns: [MeetingPresentation.Turn] = []
     private(set) var listeningTurns: [SpeakerTurn] = []
     private(set) var timelineReadout = TimelineReadout()
+    private(set) var transcriptListening = TranscriptListening()
+    private(set) var followRevision = 0
+    @ObservationIgnored private var transcriptFollow = TranscriptFollow()
+    var canFollowTranscript: Bool { transcriptFollow.allowsFollow(at:ProcessInfo.processInfo.systemUptime) }
+    func handScrolledTranscript() { transcriptFollow.handScrolled(at:ProcessInfo.processInfo.systemUptime) }
+    private func resumeTranscriptFollow() { transcriptFollow.stepped(); followRevision += 1 }
+    var listeningHost: Int? { listen.turn.flatMap { transcriptListening.host(forListening:$0.index) } }
+    func listenFromReadingTurn(_ id: Int) {
+        guard turns.indices.contains(id), let target = transcriptListening.listeningIndex(forReading:id,at:Int64(positionMs)) else { return }
+        let speaker = turns[id].speaker
+        guard let local = listen.turns(of:speaker).firstIndex(where:{ $0.index == target }) else { return }
+        if frozen { previewListening(speaker,index:local); resumeTranscriptFollow() }
+        else { _ = listenTo(speaker,turnIndex:local) }
+    }
     /// #118 review: turns are prepared off the main actor; a newer transcript, or closing the
     /// page, cancels a preparation still running, so its result never lands.
     @ObservationIgnored private var preparation: TurnPreparation?
@@ -106,6 +120,7 @@ import Observation
             turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps)
             listeningTurns = meeting.speakerTurns; listen.setTurns(listeningTurns)
             timelineReadout = TimelineReadout(items:meeting.transcriptItems)
+            transcriptListening = TranscriptListening(rows:turns,turns:listeningTurns)
             #if DEBUG
             if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
                let phase = LibraryLaunchContext.argument("-CassiniListeningPreview"), ["playing","finished"].contains(phase),
@@ -130,12 +145,14 @@ import Observation
         if let preparation {
             listeningTurns = preparation.speakerTurns; listen.setTurns(listeningTurns)
             timelineReadout = preparation.timelineReadout
+            transcriptListening = preparation.transcriptListening
         }
     }
     @discardableResult func listenTo(_ speaker: String, turnIndex: Int? = nil) -> Bool {
         guard !frozen else { return false }
         PlayerController.pauseActive()
-        return listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
+        let accepted = listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
+        if accepted { resumeTranscriptFollow() }; return accepted
     }
     func toggleSpeakerListening(_ speaker: String) {
         if let current = listen.speaker, (meeting.mergedInto[current] ?? current) == (meeting.mergedInto[speaker] ?? speaker) { stopListening() }
@@ -183,17 +200,23 @@ import Observation
         else if direction == -1 { accepted = listen.previousTurn() }
         else { accepted = false }
         // A playhead-relative step can reselect the displayed upcoming turn in its lead-in.
+        if accepted { resumeTranscriptFollow() }
         if accepted, before == listen.turn?.index { announceListeningTurn() }
     }
     func stepListeningSpeaker(_ direction: Int) {
+        let before = listen.speaker
         if frozen {
             if let speaker = listen.speakerStepTarget(direction,order:meeting.speakers.map(\.id)) { previewListening(speaker) }
         } else { listen.stepSpeaker(direction,order:meeting.speakers.map(\.id)) }
+        if before != listen.speaker { resumeTranscriptFollow() }
     }
     func playListeningAgain() {
         let before = listen.turn?.index
-        if frozen { if let speaker = listen.speaker { previewListening(speaker) } }
-        else if listen.playAgain(), before == listen.turn?.index { announceListeningTurn() }
+        if frozen { if let speaker = listen.speaker { previewListening(speaker); resumeTranscriptFollow() } }
+        else if listen.playAgain() {
+            resumeTranscriptFollow()
+            if before == listen.turn?.index { announceListeningTurn() }
+        }
     }
     func stopListening() { resetListeningAnnouncement(); if frozen { fixturePlaying = false }; listen.stopPlayback() }
     private func previewListening(_ speaker: String, index: Int = 0, finished: Bool = false) {

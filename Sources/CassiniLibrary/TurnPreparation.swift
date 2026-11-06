@@ -17,6 +17,7 @@ import Foundation
     /// D70 listening runs, prepared by the same worker and published with its rows.
     public private(set) var speakerTurns: [SpeakerTurn] = []
     public private(set) var timelineReadout = TimelineReadout()
+    public private(set) var transcriptListening = TranscriptListening()
     public init(prepare: @escaping Prepare = { try MeetingPresentation.turns($0,gaps:$1,cancellable:true) },
                 delivered: @escaping @MainActor ([MeetingPresentation.Turn]) -> Void) {
         self.prepare = prepare; self.delivered = delivered
@@ -40,7 +41,9 @@ import Foundation
             try Task.checkCancellation()
             let readout = TimelineReadout(items:request.items)
             try Task.checkCancellation()
-            return (rows,listening,readout)
+            let mapping = TranscriptListening(rows:rows,turns:listening)
+            try Task.checkCancellation()
+            return (rows,listening,readout,mapping)
         }
         task = Task { [weak self] in
             let turns = await withTaskCancellationHandler { try? await work.value } onCancel: { work.cancel() }
@@ -48,6 +51,7 @@ import Foundation
             self.task = nil; self.ready = request
             self.speakerTurns = turns.1
             self.timelineReadout = turns.2
+            self.transcriptListening = turns.3
             self.delivered(turns.0)
         }
     }

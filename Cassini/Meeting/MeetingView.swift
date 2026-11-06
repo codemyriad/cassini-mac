@@ -7,6 +7,7 @@ struct MeetingView: View {
     let format: LibraryFormat
     @AppStorage("CassiniCompanionSuggestionDismissed") private var suggestionDismissed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var handScrolling = false
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
     private var shares: [String: Int] { model.shares }
@@ -15,7 +16,7 @@ struct MeetingView: View {
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
     private func asides(_ turn: MeetingPresentation.Turn) -> [MeetingTranscriptText.Aside] {
         turn.asides.compactMap { aside in
-            model.turns.indices.contains(aside.turn) ? .init(after:aside.after,name:name(model.turns[aside.turn].speaker),items:model.turns[aside.turn].items) : nil
+            model.turns.indices.contains(aside.turn) ? .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),after:aside.after,name:name(model.turns[aside.turn].speaker),items:model.turns[aside.turn].items) : nil
         }
     }
     /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
@@ -49,26 +50,54 @@ struct MeetingView: View {
     /// One transcript turn. Its own function so Xcode 16.4 can type-check `body`.
     private func turnRow(_ turn: MeetingPresentation.Turn) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+            turnHeader(turn)
+            turnText(turn)
+                .frame(maxWidth:.infinity,alignment:.leading)
+        }.id(turn.id)
+            .overlay(alignment:.leading) {
+                if !model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index).isEmpty {
+                    Rectangle().fill(Color.accentColor).frame(width:3).padding(.leading,-8).accessibilityHidden(true)
+                }
+            }
+            .focusable()
+            .onKeyPress(keys:[.return],phases:.down) { event in
+                guard event.modifiers == .shift, model.canPlay else { return .ignored }
+                model.playFrom(Int(turn.startMs)); return .handled
+            }
+            .accessibilityElement(children:.contain)
+            .accessibilityLabel(turnLabel(turn))
+            .accessibilityHint(turn.over.isEmpty ? "" : UXText.text("meeting.turn.over.tooltip"))
+            .accessibilityIdentifier("meeting-turn-" + String(turn.id))
+            .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
+    }
+    private func turnHeader(_ turn: MeetingPresentation.Turn) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 5) {
-                    Text(name(turn.speaker))
-                        .fontWeight(.semibold).foregroundStyle(colour(meeting.speaker(for:turn.speaker)?.colourIndex ?? 0))
+                    Button { model.listenFromReadingTurn(turn.id) } label: {
+                        Text(name(turn.speaker)).fontWeight(.semibold)
+                            .foregroundStyle(colour(meeting.speaker(for:turn.speaker)?.colourIndex ?? 0))
+                    }.buttonStyle(.borderless).disabled(!model.canPlay)
+                        .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
+                        .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
+                        .accessibilityIdentifier("turn-listen-\(turn.id)")
                     if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
                 }.fixedSize()
-                Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
+                Button { model.playFrom(Int(turn.startMs)) } label: {
+                    Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(.secondary).monospacedDigit()
+                }.buttonStyle(.borderless).disabled(!model.canPlay)
+                    .help(UXText.text("player.playFromHere"))
+                    .accessibilityLabel(UXText.text("player.playFromHere") + ", " + LibraryFormat.position(turn.startMs))
+                    .accessibilityIdentifier("turn-play-\(turn.id)")
                 if let over = over(turn) {
                     Text(over).font(.system(size: 11.5)).foregroundStyle(.secondary)
                         .help(UXText.text("meeting.turn.over.tooltip"))
                 }
             }.frame(width: 120, alignment: .leading)
-            MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek)
-                .frame(maxWidth:.infinity,alignment:.leading)
-        }.id(turn.id)
-            .accessibilityElement(children:.ignore)
-            .accessibilityLabel(turnLabel(turn))
-            .accessibilityHint(turn.over.isEmpty ? "" : UXText.text("meeting.turn.over.tooltip"))
-            .accessibilityIdentifier("meeting-turn-" + String(turn.id))
-            .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
+    }
+    private func turnText(_ turn: MeetingPresentation.Turn) -> MeetingTranscriptText {
+        MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek,
+                                  listeningWords:model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index),
+                                  canPlay:model.canPlay,listen:model.listenFromReadingTurn,playFromHere:{ model.playFrom(Int(turn.startMs)) })
     }
     /// The speakers column, kept out of `body` for the Xcode 16.4 type checker.
     private var speakersPane: some View {
@@ -109,12 +138,30 @@ struct MeetingView: View {
                         ForEach(visibleTurns) { turn in turnRow(turn) }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")
+                    .onScrollPhaseChange { _,phase in
+                        handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+                    }
+                    .onScrollGeometryChange(for:CGFloat.self) { $0.contentOffset.y } action: { _,_ in
+                        if handScrolling { model.handScrolledTranscript() }
+                    }
                     .task {
                         await Task.yield()
-                        if let turn = currentTurn { proxy.scrollTo(turn,anchor:.center) }
+                        if let turn = model.listeningHost ?? currentTurn { proxy.scrollTo(turn,anchor:.center) }
+                    }
+                    .onChange(of:model.followRevision) { _,_ in
+                        if let host = model.listeningHost {
+                            if reduceMotion { proxy.scrollTo(host,anchor:.center) }
+                            else { withAnimation { proxy.scrollTo(host,anchor:.center) } }
+                        }
+                    }
+                    .onChange(of:model.listen.turn?.index) { _,_ in
+                        if model.canFollowTranscript, let host = model.listeningHost {
+                            if reduceMotion { proxy.scrollTo(host,anchor:.center) }
+                            else { withAnimation { proxy.scrollTo(host,anchor:.center) } }
+                        }
                     }
                     .onChange(of: currentTurn) { _, turn in
-                        if let turn {
+                        if model.canFollowTranscript, let turn {
                             if reduceMotion { proxy.scrollTo(turn,anchor:.center) }
                             else { withAnimation { proxy.scrollTo(turn,anchor:.center) } }
                         }
