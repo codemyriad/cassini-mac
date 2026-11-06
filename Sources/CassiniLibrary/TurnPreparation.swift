@@ -14,6 +14,8 @@ import Foundation
     private var wanted = Wanted(items:[],gaps:[:])
     private var ready: Wanted?
     private var task: Task<Void,Never>?
+    /// D70 listening runs, prepared by the same worker and published with its rows.
+    public private(set) var speakerTurns: [SpeakerTurn] = []
     public init(prepare: @escaping Prepare = { try MeetingPresentation.turns($0,gaps:$1,cancellable:true) },
                 delivered: @escaping @MainActor ([MeetingPresentation.Turn]) -> Void) {
         self.prepare = prepare; self.delivered = delivered
@@ -30,12 +32,19 @@ import Foundation
     private func start() {
         task?.cancel()
         let request = wanted, prepare = prepare
-        let work = Task.detached(priority:.userInitiated) { try prepare(request.items,request.gaps) }
+        let work = Task.detached(priority:.userInitiated) {
+            let rows = try prepare(request.items,request.gaps)
+            try Task.checkCancellation()
+            let listening = SpeakerTurn.grouping(request.items)
+            try Task.checkCancellation()
+            return (rows,listening)
+        }
         task = Task { [weak self] in
             let turns = await withTaskCancellationHandler { try? await work.value } onCancel: { work.cancel() }
             guard !Task.isCancelled, let turns, let self, self.wanted == request else { return }
             self.task = nil; self.ready = request
-            self.delivered(turns)
+            self.speakerTurns = turns.1
+            self.delivered(turns.0)
         }
     }
 }

@@ -12,6 +12,9 @@ import Testing
     var completion: (@MainActor @Sendable (Bool) -> Void)?
     var plays = 0, pauses = 0, closes = 0
     var lastSeek: Double?
+    var positionMs = 0.0
+    func setBoundary(atMs: Double, completion: @escaping @MainActor @Sendable () -> Void) {}
+    func clearBoundary() {}
     func play() { plays += 1 }
     func pause() { pauses += 1 }
     func rewind(_ completion: @escaping @MainActor @Sendable (Bool) -> Void) { self.completion = completion }

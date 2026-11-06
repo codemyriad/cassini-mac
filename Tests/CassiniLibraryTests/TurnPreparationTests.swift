@@ -39,6 +39,8 @@ import XCTest
         Task { @MainActor in mainProgress.fulfill() }
         await fulfillment(of:[mainProgress,delivered],timeout:10)
         XCTAssertEqual(turns.count,10_000); XCTAssertFalse(preparation.preparing)
+        XCTAssertEqual(preparation.speakerTurns.count,10_000,"listening spans arrive with the prepared reading rows")
+        XCTAssertEqual(preparation.speakerTurns.first?.wordIndices,[0])
         XCTAssertEqual(ran.lock.withLock { ran.onMain },false,"prepared off the main thread")
     }
     func testANewerRequestCancelsTheRunningOneWhichNeverDelivers() async {
