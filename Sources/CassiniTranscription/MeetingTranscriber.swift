@@ -161,7 +161,7 @@ public enum MeetingTranscriber {
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
             let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
-            let previous = resumes ? meeting.transcriptItems : []
+            let previous = resumes ? meeting.writtenTranscriptItems : [] // D24: never merged ids
             // D67.2 (#139 review): a failed attempt's partial words wait, unreferenced, in
             // transcript.json. Until this attempt has written as many words, a running publish
             // must not replace them, so a retry that fails early never loses the longer snapshot;

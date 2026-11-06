@@ -110,7 +110,7 @@ public enum MeetingFileExporter {
                 ? scanner.meeting(at:meeting.folder) : meeting
             guard let current = reread, current.state.lifecycle == .saved else { throw MeetingExportError.invalidSource }
             let complete = current.state.transcript == .done
-            let words = complete ? current.transcriptItems : []
+            let words = complete ? current.writtenTranscriptItems : [] // D24: bodies keep their own ids
             // D53.2: body and descriptor carry the run's language, or "und" when unknown.
             let language = TranscriptLanguage.written(complete ? (current.transcriptLanguage ?? original?.defaultTranscript?.load.transcript?.language) : nil)
             struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
@@ -270,9 +270,14 @@ public enum MeetingFileExporter {
             info = try info.setting("recordedAtLocal",to:.string(recorded))
         }
         // Q2: one entry per speaker id the exported words use (none while they aren't exported).
-        let used = Set(words.map(\.speaker))
-        let projected = meeting.speakers.filter { used.contains($0.id) }
-        var speakers: JSON = .array(projected.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) })
+        // MAPPING Q2 with speakerMerges (D24): the ids are the words' own, in first-speaking
+        // order, and each label is the name of the speaker it resolves to, so merged ids share it.
+        var used: [String] = []
+        for word in words where !used.contains(word.speaker) { used.append(word.speaker) }
+        let resolvedID = { (id: String) in meeting.mergedInto[id] ?? id }
+        let shown = { (id: String) in meeting.speakers.first { $0.id == resolvedID(id) }?.displayName }
+        let projected = used.compactMap { id in shown(id).map { (id:id,label:$0) } }
+        var speakers: JSON = .array(projected.map { .object([("id",.string($0.id)),("label",.string($0.label))]) })
         // #122 review (MAPPING §6): a received file's speaker entries describe the transcripts it
         // carries, so they stay with their unknown members; Mac's name for one replaces its label,
         // and the speakers of Mac's own words follow.
@@ -289,17 +294,20 @@ public enum MeetingFileExporter {
             let cleared = Set((stored?["speakers"]?.array ?? []).compactMap { entry -> String? in
                 entry["nameCleared"] == .bool(true) && entry["name"]?.string == nil ? entry["id"]?.string : nil
             })
+            let listedIDs = theirs.map { $0["id"]?.string }
             for (index,entry) in merged.enumerated() {
                 guard let id = entry["id"]?.string else { continue }
-                let unnamed = cleared.contains(id) ? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(index + 1)]) : nil
-                let label = named[id] ?? unnamed ?? (carriedOnly ? nil : projected.first { $0.id == id }?.displayName)
+                // A merged-away id takes its target's name; a cleared target is numbered by its own place.
+                let target = resolvedID(id), place = target == id ? index : (listedIDs.firstIndex(of:target) ?? index)
+                let unnamed = cleared.contains(target) ? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(place + 1)]) : nil
+                let label = named[target] ?? unnamed ?? (carriedOnly ? nil : projected.first { $0.id == id }?.label)
                 guard let label, entry["label"]?.string != label else { continue }
                 merged[index] = try entry.setting("label",to:.string(label))
             }
             // The speakers of Mac's own words follow; carried words keep the original list.
             if !carriedOnly {
                 let listed = Set(theirs.compactMap { $0["id"]?.string })
-                merged += projected.filter { !listed.contains($0.id) }.map { .object([("id",.string($0.id)),("label",.string($0.displayName))]) }
+                merged += projected.filter { !listed.contains($0.id) }.map { .object([("id",.string($0.id)),("label",.string($0.label))]) }
             }
             speakers = .array(merged)
         }

@@ -123,13 +123,32 @@ public struct LibraryMeeting: Sendable {
     public var notes: [MeetingNote]
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
+    /// Keep construction module-visible across Swift toolchains: private backing storage
+    /// makes the synthesized memberwise initializer private in Swift 6.1 (Xcode 16.4).
+    init(id: UUID, folder: URL, state: MeetingState, title: String?, start: Date?, durationMs: Int64?,
+         speakers: [MeetingSpeaker], quote: MeetingQuote?, notes: [MeetingNote], audioFiles: [URL], issues: [LibraryReadIssue]) {
+        self.id = id; self.folder = folder; self.state = state; self.title = title
+        self.start = start; self.durationMs = durationMs; self.speakers = speakers
+        self.quote = quote; self.notes = notes; self.audioFiles = audioFiles; self.issues = issues
+    }
     public var metadataReadOnly: Bool = false
     /// The meeting.json revision this read saw (nil without readable metadata).
     public var metadataRevision: Int64? = nil
     /// No title of its own: `title` is the catalog's untitled fallback in the UI language.
     public var titleIsUntitled = false
     public var received: LibraryReceivedInfo? = nil
+    /// The words as displayed: each speaker id is the final target of meeting.json's
+    /// speakerMerges (D24), so every view, Search and Markdown group merged speakers together.
     public var transcriptItems: [LibraryTranscriptItem] = []
+    /// The words with the speaker ids they were written with. Writers (resume, export bodies)
+    /// use these: a merge never rewrites a transcript body. Defaults to `transcriptItems`.
+    public var writtenTranscriptItems: [LibraryTranscriptItem] {
+        get { writtenItems ?? transcriptItems }
+        set { writtenItems = newValue }
+    }
+    private var writtenItems: [LibraryTranscriptItem]? = nil
+    /// D24: each merged-away speaker id mapped to its final target (empty without merges).
+    public var mergedInto: [String: String] = [:]
     public var transcriptLanguage: String? = nil
     public var transcriptModel: String? = nil
     /// meeting.json's transcript names a body (D67.2: a failed write-down stores none).
@@ -150,7 +169,10 @@ public struct LibraryMeeting: Sendable {
     /// views consume these same consecutive speaker turns.
     public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems,gaps:speakerGaps) }
     /// D63 #2: each speaker's gap ranges, from the tracks its words were written from.
-    public var speakerGaps: SpeakerGapRanges.Ranges { SpeakerGapRanges.of(audioTracks,received:state.origin == .received) }
+    /// A merge target also splits on the ranges of the speakers merged into it.
+    public var speakerGaps: SpeakerGapRanges.Ranges {
+        SpeakerMerges.gaps(SpeakerGapRanges.of(audioTracks,received:state.origin == .received),mergedInto)
+    }
     public var audioTracks: [LibraryAudioTrack] = []
     public var canPlaySession: Bool {
         let nonempty = audioTracks.filter { $0.frameCount != 0 }

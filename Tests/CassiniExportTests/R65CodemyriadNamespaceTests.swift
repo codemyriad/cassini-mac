@@ -292,6 +292,32 @@ struct R65CodemyriadNamespaceTests {
         try #require(speakers.count == 3)
         #expect(speakers[2]["label"]?.string == "Speaker 1" && speakers[2]["futureX"] == .number("1") && speakers[2]["colourIndex"] == .number("2"))
     }
+    /// D70 item 11 / MAPPING Q2: a received meeting Mac wrote down, with a merge recorded in
+    /// meeting.json. The file's own speakers stay first; Mac's words keep their ids in the body
+    /// and in the manifest, each labelled with the name of the speaker it resolves to.
+    @Test func mergedMacSpeakersShareTheirTargetsLabelInAReceivedFile() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let (_,meeting) = try foreignFile(root,schema:1)
+        try Data(#"{"language":"en","items":[{"speaker":"track-a","startMs":0,"endMs":400,"text":"Hello"},{"speaker":"track-c","startMs":500,"endMs":900,"text":"there"}]}"#.utf8)
+            .write(to:meeting.folder.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { metadata in
+            metadata["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"],"model":"parakeet-tdt-0.6b-v3"]
+            metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
+            var speakers = metadata["speakers"] as? [[String:Any]] ?? []
+            speakers += [["id":"track-a","name":NSNull(),"provenance":"unnamed","colourIndex":speakers.count,"label":"Speaker 1"],
+                         ["id":"track-c","name":"Carla","provenance":"user","colourIndex":speakers.count + 1]]
+            metadata["speakers"] = speakers
+            metadata["speakerMerges"] = [["from":"track-a","into":"track-c"]]
+            metadata["recordingDetails"] = ["writingDown":["wallDurationMs":1200,"resumed":false,"speechSegments":2,
+                                                           "speakerSeparation":["status":"skipped","reason":"unavailable"]]]
+        }
+        let file = try reexportFile(root)
+        let speakers = try #require(file.manifest?.raw["speakers"]?.array)
+        let mine = speakers.filter { ["track-a","track-c"].contains($0["id"]?.string ?? "") }
+        #expect(mine.map { $0["id"]?.string } == ["track-a","track-c"])
+        #expect(mine.map { $0["label"]?.string } == ["Carla","Carla"],"merged ids share the target's name")
+        #expect(file.defaultTranscript?.load.transcript?.items.map(\.speaker) == ["track-a","track-c"],"the body keeps its own ids")
+    }
     /// Every Mac transcription state reaches the namespace with its own revision: failed with
     /// its error, a retry (queued, reference cleared), running with its estimate, then done.
     @Test func transcriptionStatesFollowTheLifecycle() throws {

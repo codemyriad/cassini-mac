@@ -218,9 +218,16 @@ public struct LibraryScanner: Sendable {
         let sorted = words.enumerated().sorted {
             $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
         }.map(\.element)
-        meeting.transcriptItems = sorted
+        // D24: merges are applied once, here; the stored words keep their own speaker ids.
+        // Known ids (GNOME parity): meeting.json speakers, the received file's speakers, and the words'.
+        let known = Set((metadata?.speakers ?? []).map(\.id)).union(embeddedNames.keys).union(sorted.map(\.speaker))
+        let merges = (metadata?.speakerMerges ?? []).map { SpeakerMerges.Entry(from: $0.from, into: $0.into) }
+        meeting.mergedInto = SpeakerMerges.resolve(merges, known: known)
+        let resolved = SpeakerMerges.apply(sorted, meeting.mergedInto)
+        meeting.writtenTranscriptItems = sorted
+        meeting.transcriptItems = resolved
         var ids: [String] = []
-        for word in sorted where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        for word in resolved where !ids.contains(word.speaker) { ids.append(word.speaker) }
         let overrides = Dictionary(uniqueKeysWithValues: (metadata?.speakers ?? []).map { ($0.id, $0) })
         meeting.speakers = ids.enumerated().map { index, id in
             let override = overrides[id]
@@ -231,7 +238,7 @@ public struct LibraryScanner: Sendable {
             return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
-            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(sorted)
+            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(resolved)
         }
         return meeting
     }
