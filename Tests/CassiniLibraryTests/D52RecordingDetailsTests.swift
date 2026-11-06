@@ -286,6 +286,33 @@ struct D52RecordingDetailsTests {
             #expect(!shown.isEmpty && !shown.contains("{"),"\(language)")
         }
     }
+    /// L2 (Mac QA 0.1.1): the meeting page shows the D58.3 hint under "No speech was found" when
+    /// Recording details would. Read from a real folder through the loader both use.
+    @Test func thePermissionHintIsReadFromTheStoredMeeting() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("L2Hint-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let writer = try RecordingSession(parent:root,title:"Quiet",source:"macos")
+        try writer.transition(starting:[.init(id:"mic",label:"",kind:"microphone",sampleRate:16000,channels:1),
+                                        .init(id:"sys",label:"",kind:"system",sampleRate:16000,channels:1)])
+        try writer.appendNative(id:"mic",pcm:Data(count:64000),offsetMs:0)
+        try writer.appendNative(id:"sys",pcm:Data(count:64000),offsetMs:0)
+        try writer.finish()
+        let file = writer.directory.appendingPathComponent("meeting.json")
+        func store(silent: [String]) throws {
+            // A native session has no meeting.json until the Library writes one; only its recordingDetails matter here.
+            var meeting = ((try? Data(contentsOf:file)).flatMap { try? JSONSerialization.jsonObject(with:$0) } as? [String:Any]) ?? [:]
+            meeting["recordingDetails"] = ["writingDown":["silentTracks":silent]]
+            try JSONSerialization.data(withJSONObject:meeting).write(to:file)
+        }
+        func shows(done: Bool = true) -> Bool {
+            RecordingDetailsReport(.load(folder:writer.directory,lifecycle:.saved,title:"Quiet",transcriptDone:done)).showsPermissionHint
+        }
+        try store(silent:["mic","sys"])
+        #expect(shows(),"a fully silent native This computer side")
+        #expect(!shows(done:false),"only after a done write-down")
+        try store(silent:["mic"])
+        #expect(!shows(),"only the microphone was silent")
+    }
     /// L1 (Mac QA 0.1.1), D58.4: Recording details never rounds a duration down to whole minutes.
     @Test func durationsAreShownInSecondsUnderAMinute() {
         func line(_ ms: Int, outcome: String = "captured", final: Bool = true) -> RecordingDetailsReport.Line {
