@@ -89,6 +89,7 @@ import Observation
     private func resumeTranscriptFollow() { transcriptFollow.stepped(); followRevision += 1 }
     var listeningHost: Int? { listen.turn.flatMap { transcriptListening.host(forListening:$0.index) } }
     func listenFromReadingTurn(_ id: Int) {
+        guard frozen || MeetingNavigation.shared.detail === self else { return }
         guard turns.indices.contains(id), let target = transcriptListening.listeningIndex(forReading:id,at:Int64(positionMs)) else { return }
         let speaker = turns[id].speaker
         guard let local = listen.turns(of:speaker).firstIndex(where:{ $0.index == target }) else { return }

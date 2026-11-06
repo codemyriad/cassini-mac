@@ -442,6 +442,12 @@ final class LibraryBoards: XCTestCase {
         for title in ["Play this turn","Previous turn","Next turn","Previous speaker","Next speaker"] {
             XCTAssertFalse(app.menuItems[title].isEnabled,"Search owns keyboard input: " + title)
         }
+        app.typeKey(.escape,modifierFlags:[]) // menu
+        app.typeKey(.escape,modifierFlags:[]) // search
+        window.buttons["meeting-back"].click()
+        XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
+        app.menuBars.menuBarItems["Playback"].click()
+        XCTAssertFalse(app.menuItems["Play this turn"].isEnabled,"Leaving the page clears its focused transcript action")
     }
     @MainActor func testMeetingAccessibility() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
