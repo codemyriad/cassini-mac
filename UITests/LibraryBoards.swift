@@ -827,7 +827,14 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
         XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
-        for value in ["43%", "36%", "21%", "00:03:12", "00:47:05", "Named by you", "Recognised from saved voices", "Not named yet"] { XCTAssertTrue(text(value, in: window), value) }
+        for value in ["43%", "36%", "21%", "00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }
+        // D70 combines provenance and turn timing, and the narrow visual text
+        // may truncate. Check each real speaker row's complete accessible label.
+        for (speaker,provenance) in [("marta","Named by you"),("giulia","Recognised from saved voices"),("guest","Not named yet")] {
+            let row = window.descendants(matching:.any).matching(identifier:"speaker-row-" + speaker).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout:5),speaker)
+            XCTAssertTrue(row.label.contains(provenance),row.label)
+        }
         XCTAssertFalse(window.buttons["Name the speakers"].exists)
         XCTAssertFalse(window.buttons["Inspector"].exists)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
