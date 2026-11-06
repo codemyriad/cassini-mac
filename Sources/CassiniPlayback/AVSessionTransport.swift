@@ -46,13 +46,7 @@ private final class PlayerResources: @unchecked Sendable {
             player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
                 Task { @MainActor in
                     guard let self else { return }
-                    // Read live state; an old queued KVO event must not undo a
-                    // newer pause or play request.
-                    switch self.resources.player.timeControlStatus {
-                    case .playing: self.onState?(.playing)
-                    case .waitingToPlayAtSpecifiedRate: self.onState?(.waiting)
-                    default: self.onState?(.paused)
-                    }
+                    self.timeControlStatusChanged()
                 }
             },
             item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
@@ -73,6 +67,19 @@ private final class PlayerResources: @unchecked Sendable {
                 guard let self, !self.seeking else { return }
                 self.onPosition?(self.positionMs) // an old tick cannot undo a newer seek
             }
+        }
+    }
+    // Read live state; an old queued KVO event cannot undo a newer request.
+    func timeControlStatusChanged() {
+        switch resources.player.timeControlStatus {
+        case .playing: onState?(.playing)
+        case .waitingToPlayAtSpecifiedRate: onState?(.waiting)
+        default:
+            // forwardPlaybackEndTime can pause before its boundary/EOS callback.
+            // Complete first: forwarding this pause would cancel the owner's play
+            // intent, including a next span started reentrantly by the completion.
+            if seeking || boundaryFinished || finishBoundaryIfReached() { return }
+            onState?(.paused)
         }
     }
     func play() { boundaryFinished = false; resources.player.playImmediately(atRate: rate) }
@@ -119,7 +126,7 @@ private final class PlayerResources: @unchecked Sendable {
         resources.player.currentItem?.forwardPlaybackEndTime = .invalid
     }
     @discardableResult private func finishBoundaryIfReached() -> Bool {
-        guard !seeking, let boundary, positionMs >= boundary.end - 0.001 else { return false }
+        guard !seeking, let boundary, positionMs >= boundary.end - SessionBoundary.toleranceMs else { return false }
         resources.player.pause(); boundaryFinished = true
         clearBoundary(); onPosition?(boundary.end)
         boundary.done()
@@ -129,7 +136,7 @@ private final class PlayerResources: @unchecked Sendable {
         guard !seeking, !boundaryFinished else { return }
         if boundary != nil { _ = finishBoundaryIfReached(); return }
         // Notifications queued by the preceding span cannot rewind a new seek/span.
-        guard let duration = resources.timeline?.durationMs, positionMs >= duration - 0.001 else { return }
+        guard let duration = resources.timeline?.durationMs, positionMs >= duration - SessionBoundary.toleranceMs else { return }
         onEnd?()
     }
     func close() {

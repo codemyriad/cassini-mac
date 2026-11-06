@@ -55,6 +55,15 @@ import Testing
 // These share SessionPlayback.stopAll's process-wide owner with the original
 // playback tests, so they belong to that same serialized suite (E1/D66).
 extension SessionPlaybackTests {
+    @Test func queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() async {
+        let (meeting,audio,fake,_) = scene(); var ended = 0
+        audio.play(meeting,fromMs:123,untilMs:423,onDone:{ ended += 1 })
+        await audio.preparation?.value; fake.sought()
+        fake.positionMs = 422.875 // One 8 kHz frame before the requested millisecond.
+        fake.onEnd?()
+        #expect(ended == 1 && audio.positionMs == 423 && !audio.isPlaying)
+        audio.stop()
+    }
     @Test func overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() async {
         let words: [LibraryTranscriptItem] = [.init(speaker:"ada",startMs:0,endMs:10000,text:"A long phrase."),
             .init(speaker:"ben",startMs:300,endMs:600,text:"Yes."),.init(speaker:"ada",startMs:700,endMs:1000,text:"Thanks.")]

@@ -4,6 +4,9 @@ import Observation
 import CassiniLibrary
 
 enum SessionTransportState { case paused, waiting, playing }
+/// Native clocks can stop on the audio frame just before a requested millisecond.
+/// Share the same 1 ms end-position precision across transport and owner checks.
+enum SessionBoundary { static let toleranceMs = 1.0 }
 @MainActor protocol SessionTransport: AnyObject {
     var onState: ((SessionTransportState) -> Void)? { get set }
     var onEnd: (() -> Void)? { get set }
@@ -212,7 +215,7 @@ private final class PreparationLifetime: @unchecked Sendable {
     private func ended(generation current: Int) {
         guard current == generation, !rewinding, let transport else { return }
         if let span {
-            guard wantsPlay, transport.positionMs >= min(span.endMs,durationMs) else { return }
+            guard wantsPlay, transport.positionMs >= min(span.endMs,durationMs)-SessionBoundary.toleranceMs else { return }
             completeSpan(generation:current,seek:seekSerial,token:spanSerial,end:min(span.endMs,durationMs)); return
         }
         guard !spanEnded else { return }

@@ -1,70 +1,154 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
+import Observation
 import XCTest
-import CassiniLibrary
+@testable import CassiniLibrary
 @testable import CassiniPlayback
 
-/// Real, muted AVPlayer over a generated silent WAV. No capture devices or user
-/// files; completion/seek notifications are the waits, with timeouts only as bounds.
+/// Real muted AVPlayer, through the production owner/controller. All waits are
+/// seek/KVO/observation events; only generated media in private temporary roots.
 @MainActor final class AVSpanBoundaryTests: XCTestCase {
-    private func fixture() async throws -> (URL,SessionTimeline) {
+    @MainActor private struct Scene {
+        let root: URL, meeting: LibraryMeeting, player: AVPlayer
+        let transport: AVSessionTransport, audio: SessionPlayback
+        func close() { audio.stop(); transport.close(); try? FileManager.default.removeItem(at:root) }
+    }
+    private func fixture(rate: Int = 44100) async throws -> Scene {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D70Boundary-"+UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
-        let url = root.appendingPathComponent("silence.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:44100,channels:1))
         do {
-            let writer = try AVAudioFile(forWriting:url,settings:format.settings)
-            let pcm = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:88200)); pcm.frameLength = 88200
-            pcm.floatChannelData![0].initialize(repeating:0,count:88200)
-            try writer.write(from:pcm)
+            let url = root.appendingPathComponent("silence.wav")
+            let frames = AVAudioFrameCount(rate*4)
+            let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:Double(rate),channels:1))
+            do {
+                let writer = try AVAudioFile(forWriting:url,settings:format.settings)
+                let pcm = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:frames)); pcm.frameLength = frames
+                pcm.floatChannelData![0].initialize(repeating:0,count:Int(frames))
+                try writer.write(from:pcm)
+            }
+            let tracks: [LibraryAudioTrack] = [.init(url:url,startOffsetMs:0,frameCount:UInt64(frames),sampleRate:rate)]
+            let timeline = try await SessionComposition.make(tracks:tracks)
+            let player = AVPlayer(); player.isMuted = true; player.volume = 0
+            let transport = AVSessionTransport(timeline,player:player)
+            let audio = SessionPlayback(build:{ _ in timeline },makeTransport:{ _ in transport })
+            var meeting = LibraryMeeting(id:UUID(),folder:root,state:.init(),title:"Synthetic call",start:nil,
+                durationMs:4000,speakers:[],quote:nil,notes:[],audioFiles:[url],issues:[])
+            meeting.audioTracks = tracks
+            return .init(root:root,meeting:meeting,player:player,transport:transport,audio:audio)
+        } catch { try? FileManager.default.removeItem(at:root); throw error }
+    }
+    private func started(_ player: AVPlayer) -> (XCTestExpectation,NSKeyValueObservation) {
+        let event = expectation(description:"native player starts"); event.assertForOverFulfill = false
+        let observation = player.observe(\.timeControlStatus,options:[.new]) { player,_ in
+            if player.timeControlStatus == .playing { event.fulfill() }
         }
-        let timeline = try await SessionComposition.make(tracks:[.init(url:url,startOffsetMs:0,frameCount:88200,sampleRate:44100)])
-        return (root,timeline)
+        return (event,observation)
+    }
+    private func sampleBefore(_ ms: Double, rate: Int) -> Double {
+        (ceil(ms*Double(rate)/1000)-1)*1000/Double(rate)
+    }
+    /// A one-shot observation that also handles completion before registration.
+    @MainActor private final class Finished {
+        let listen: ListenController, event: XCTestExpectation
+        private var done = false
+        init(_ listen: ListenController, event: XCTestExpectation) { self.listen = listen; self.event = event; watch() }
+        private func watch() {
+            guard !done else { return }
+            let finished = withObservationTracking { listen.finished } onChange: { [weak self] in
+                Task { @MainActor [weak self] in self?.watch() }
+            }
+            if finished { done = true; event.fulfill() }
+        }
     }
     func testBoundaryStopsA300msSpanWithoutPositionPolling() async throws {
-        let (root,timeline) = try await fixture()
-        defer { try? FileManager.default.removeItem(at:root) }
-        let player = AVPlayer(); player.volume = 0
-        let transport = AVSessionTransport(timeline,player:player)
-        defer { transport.close() }
-        let ended = expectation(description:"AVPlayer boundary at 423 ms (between 44.1 kHz sample boundaries)")
-        var ends = 0, fileEnds = 0
-        transport.onEnd = { fileEnds += 1 }
-        transport.onPosition = nil
-        transport.seek(toMs:123) { ready in
-            XCTAssertTrue(ready)
-            transport.setBoundary(atMs:423) { ends += 1; ended.fulfill() }
-            transport.play()
-        }
+        let scene = try await fixture(); defer { scene.close() }
+        let ended = expectation(description:"owned boundary at fractional-sample 423 ms")
+        var ends = 0
+        XCTAssertTrue(scene.audio.play(scene.meeting,fromMs:123,untilMs:423) { ends += 1; ended.fulfill() })
+        await scene.audio.preparation?.value
+        XCTAssertNotNil(scene.transport.onState); XCTAssertNotNil(scene.transport.onEnd)
+        scene.transport.onPosition = nil // Completion cannot depend on periodic position ticks.
         await fulfillment(of:[ended],timeout:10)
-        XCTAssertEqual(ends,1); XCTAssertEqual(fileEnds,0)
-        XCTAssertEqual(player.rate,0)
-        XCTAssertEqual(transport.positionMs,423,accuracy:1)
+        XCTAssertEqual(ends,1); XCTAssertFalse(scene.audio.isPlaying)
+        XCTAssertEqual(scene.audio.positionMs,423)
+        XCTAssertEqual(scene.player.rate,0)
+        XCTAssertEqual(scene.transport.positionMs,423,accuracy:1)
     }
-    func testRateChangeAtTheEndAndQueuedEOSCannotEndTheNextSpan() async throws {
-        let (root,timeline) = try await fixture()
-        defer { try? FileManager.default.removeItem(at:root) }
-        let player = AVPlayer(); player.volume = 0
-        let transport = AVSessionTransport(timeline,player:player)
-        defer { transport.close() }
-        let ended = expectation(description:"replacement boundary at 1100 ms")
-        var first = 0, second = 0, fileEnds = 0
-        transport.onEnd = { fileEnds += 1 }
-        transport.setBoundary(atMs:400) {
-            first += 1
-            transport.seek(toMs:800) { ready in
+    func testPausedFirstAtQuantizedEndAdvancesAndFinishesListening() async throws {
+        for rate in [44100,16000,8000] {
+            let scene = try await fixture(rate:rate); defer { scene.close() }
+            var meeting = scene.meeting
+            meeting.transcriptItems = [.init(speaker:"ada",startMs:123,endMs:423,text:"Yes."),
+                .init(speaker:"sam",startMs:1100,endMs:1200,text:"Agreed."),
+                .init(speaker:"ada",startMs:3000,endMs:3303,text:"Next.")]
+            let listen = ListenController(playback:scene.audio); listen.setTurns(meeting.speakerTurns)
+            scene.audio.rate = 2
+            let (playing,observation) = started(scene.player); defer { observation.invalidate() }
+            XCTAssertTrue(listen.start("ada",in:meeting))
+            await fulfillment(of:[playing],timeout:10)
+            XCTAssertNotNil(scene.transport.onState); XCTAssertNotNil(scene.transport.onEnd)
+            // Hold the real clock at the final whole sample before the 923 ms stop.
+            // Deliver the production paused-KVO handler before queued boundary/EOS work.
+            scene.player.pause()
+            let paused = expectation(description:"paused-first KVO at \(rate) Hz")
+            scene.transport.seek(toMs:sampleBefore(923,rate:rate)) { ready in
                 XCTAssertTrue(ready)
-                transport.setBoundary(atMs:1100) { second += 1; ended.fulfill() }
-                NotificationCenter.default.post(name:.AVPlayerItemDidPlayToEndTime,object:player.currentItem)
-                transport.play()
+                XCTAssertEqual(scene.player.timeControlStatus,.paused)
+                XCTAssertLessThan(scene.transport.positionMs,923)
+                XCTAssertEqual(scene.transport.positionMs,923,accuracy:1)
+                scene.transport.timeControlStatusChanged()
+                paused.fulfill()
             }
+            await fulfillment(of:[paused],timeout:10)
+            XCTAssertEqual(listen.index,1,"paused-before-boundary must advance at \(rate) Hz")
+            guard listen.index == 1 else { continue }
+            XCTAssertFalse(listen.finished)
+            let ended = expectation(description:"final native listening span at \(rate) Hz")
+            let finished = Finished(listen,event:ended)
+            await fulfillment(of:[ended],timeout:10)
+            withExtendedLifetime(finished) {}
+            XCTAssertTrue(listen.finished); XCTAssertEqual(listen.count,2)
+            XCTAssertEqual(scene.audio.positionMs,3803)
+            XCTAssertFalse(scene.audio.isPlaying); XCTAssertEqual(scene.player.rate,0)
+            XCTAssertEqual(scene.transport.positionMs,3803,accuracy:1)
         }
-        // Seeking to the exact end exposes the rate-change/EOS race deterministically:
-        // setRate runs in the seek completion before a queued end can be dispatched.
-        transport.seek(toMs:400) { ready in XCTAssertTrue(ready); transport.setRate(2) }
+    }
+    func testRateChangeAtFractionalEndAndQueuedEOSCannotEndTheNextOwnedSpan() async throws {
+        let scene = try await fixture(); defer { scene.close() }
+        let ended = expectation(description:"replacement owned span at 1123 ms")
+        let (playing,observation) = started(scene.player); defer { observation.invalidate() }
+        var first = 0, second = 0
+        XCTAssertTrue(scene.audio.play(scene.meeting,fromMs:123,untilMs:423) {
+            first += 1
+            XCTAssertTrue(scene.audio.play(scene.meeting,fromMs:823,untilMs:1123) { second += 1; ended.fulfill() })
+            NotificationCenter.default.post(name:.AVPlayerItemDidPlayToEndTime,object:scene.player.currentItem)
+        })
+        await fulfillment(of:[playing],timeout:10)
+        XCTAssertNotNil(scene.transport.onState); XCTAssertNotNil(scene.transport.onEnd)
+        scene.player.pause()
+        scene.transport.seek(toMs:sampleBefore(423,rate:44100)) { ready in
+            XCTAssertTrue(ready)
+            scene.audio.rate = 2 // Runs before the queued paused/boundary events.
+        }
         await fulfillment(of:[ended],timeout:10)
-        XCTAssertEqual(first,1); XCTAssertEqual(second,1); XCTAssertEqual(fileEnds,0)
-        XCTAssertEqual(transport.positionMs,1100,accuracy:1)
-        transport.setRate(1.5); XCTAssertEqual(player.rate,0)
+        XCTAssertEqual(first,1); XCTAssertEqual(second,1)
+        XCTAssertEqual(scene.audio.positionMs,1123); XCTAssertFalse(scene.audio.isPlaying)
+        XCTAssertEqual(scene.transport.positionMs,1123,accuracy:1)
+        scene.audio.rate = 1.5; XCTAssertEqual(scene.player.rate,0)
+    }
+    func testPhysicalEOFRecognizesTheLastAudioFrame() async throws {
+        let scene = try await fixture(rate:8000); defer { scene.close() }
+        let (playing,observation) = started(scene.player); defer { observation.invalidate() }
+        scene.audio.play(scene.meeting,fromMs:123)
+        await fulfillment(of:[playing],timeout:10)
+        let ended = expectation(description:"physical EOF within one 8 kHz sample")
+        scene.player.pause()
+        scene.transport.seek(toMs:sampleBefore(4000,rate:8000)) { ready in
+            XCTAssertTrue(ready)
+            NotificationCenter.default.post(name:.AVPlayerItemDidPlayToEndTime,object:scene.player.currentItem)
+            XCTAssertEqual(scene.audio.positionMs,0,"ordinary EOF was recognized and requested rewind")
+            ended.fulfill()
+        }
+        await fulfillment(of:[ended],timeout:10)
     }
 }
