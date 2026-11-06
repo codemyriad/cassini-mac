@@ -192,6 +192,8 @@ final class D52WriterPaddingTests: XCTestCase {
         XCTAssertEqual(track.frames,144000); XCTAssertEqual(track.receivedFrames,48000)
         XCTAssertEqual(track.gaps,[.init(atMs:1000,durationMs:2000,frames:96000,kind:"writer")]); XCTAssertNil(track.gapFrames)
         let manifest = try RecordingLoader.load(directory:session.directory)
-        XCTAssertEqual(manifest.state,"completed"); XCTAssertNil(manifest.problemKind)
+        XCTAssertEqual(manifest.state,"interrupted"); XCTAssertEqual(manifest.problemKind,"io")
+        XCTAssertEqual(manifest.events?.last?.reason,"error")
+        XCTAssertEqual(manifest.problem,"2000 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence.")
     }
 }

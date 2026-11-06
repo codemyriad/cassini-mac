@@ -89,7 +89,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var phase: OwnedCapturePhase = .recording
     private var resumeAt: Double = 0
     private var meResumeAt: Double = 0
-    private var nativeProblem: String?
+    private var nativeProblems: [String] = []
+    private var nativeProblem: String? { nativeProblems.isEmpty ? nil : nativeProblems.joined(separator:" ") }
     /// The audio and final session are closed (once); a close failure is kept for every finish.
     private var audioClosed = false, closeError: Error?
     private var nativeProblemKind: String?
@@ -355,7 +356,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if let span = browserSources[Data(id.utf8)]?.span, recording.manifest.tracks.contains(where:{ $0.id == span && $0.ended != true }) {
                 // One checkpoint carries the failed span and its accounting.
                 do { try recording.failTrack(id:span,problemKind:code == "io" ? "io" : "capture") }
-                catch { nativeProblem = nativeProblem ?? error.localizedDescription; nativeProblemKind = "io" }
+                catch { nativeProblems.append(error.localizedDescription); nativeProblemKind = "io" }
             } else { try? publishLedger() }
             retired.insert(id); browserSources.removeValue(forKey:Data(id.utf8)); browserPeaks.removeValue(forKey:Data(id.utf8))
             publish()
@@ -595,19 +596,22 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     fileprivate func endNative(_ ids: [String], side: CaptureSide, problem: String?, kind: String? = nil) throws {
         try sync {
             guard phase == .recording else { return }
+            // Keep the source diagnostic even if closing/checkpointing its track fails.
+            if let problem, !problem.isEmpty {
+                nativeProblems.append(problem)
+            }
+            if kind != nil || problem?.isEmpty == false {
+                let value = kind ?? "capture"
+                if nativeProblemKind == nil || value == "io" || nativeProblemKind == "gap" { nativeProblemKind = value }
+            }
             let live = ids.filter { nativeSpans[$0]?.registered == true }
             // D52 (GNOME live_problem): a native input lost to an I/O failure ends its
             // track with problemKind io, which the Recording page reports per source.
-            if kind == "io", problem?.isEmpty == false {
+            if kind == "io" {
                 for id in live { try recording.failTrack(id:id,problemKind:"io") }
             } else if !live.isEmpty { try commitTransition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }
             reservedNative.remove(side)
-            if let problem, !problem.isEmpty {
-                nativeProblem = nativeProblem ?? problem
-                let value = kind ?? "capture"
-                if nativeProblemKind == nil || value == "io" || nativeProblemKind == "gap" { nativeProblemKind = value }
-            }
             publish()
         }
     }
@@ -656,7 +660,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         // Preserve its classification; a different external failure is capture.
         let kind = self.nativeProblemKind == "io" || problem == nil || problem == self.nativeProblem ? self.nativeProblemKind : nil
         let intent = self.endLock.withLock { self.endIntent }
-        var finalProblem = problem ?? self.nativeProblem, finalKind = kind
+        var diagnostics = self.nativeProblems
+        if let problem, !problem.isEmpty, problem != self.nativeProblem, !diagnostics.contains(problem) { diagnostics.insert(problem,at:0) }
+        var finalProblem = diagnostics.isEmpty ? nil : diagnostics.joined(separator:" "), finalKind = kind
         if let ledger = self.ledger {
             let result = ledger.result(self.recording.manifest)
             self.recording.setCaptureOutcome(result.outcome,tracks:result.tracks)
@@ -685,7 +691,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private func commitTransition(starting: [RecordingSource] = [], ending: [String] = [], events: [CaptureEvent] = []) throws {
         do { try recording.transition(starting:starting,ending:ending,events:events) }
         catch let error as RecordingTransitionCommittedError {
-            nativeProblem = nativeProblem ?? error.localizedDescription; nativeProblemKind = "io"
+            nativeProblems.append(error.localizedDescription); nativeProblemKind = "io"
         }
     }
     private func eventTime(_ requested: Double) -> Double {

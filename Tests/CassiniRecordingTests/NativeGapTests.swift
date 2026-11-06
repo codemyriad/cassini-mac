@@ -22,6 +22,9 @@ private final class StalledSession: RecordingSinkWriter, @unchecked Sendable {
         if stall { stall = false; entered.signal(); release.wait() }
         try session.appendNative(id: id, pcm: pcm, offsetMs: offsetMs)
     }
+    func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws {
+        try session.padNative(id:id,frames:frames,channels:channels,rate:rate,offsetMs:offsetMs,kind:kind)
+    }
     func finish(problem: String?) throws { try session.finish(problem: problem) }
     func finish(problem: String?, kind: String?) throws {
         try session.finish(problem: problem, kind: kind)

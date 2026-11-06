@@ -185,6 +185,8 @@ public final class RecordingSession {
     public let directory: URL
     public private(set) var manifest: RecordingManifest
     private var writers: [String: WAVWriter] = [:]
+    // D69: independent of the range budget and producer drop counts.
+    private var writerPaddingFrames: [String: UInt64] = [:]
     private var finished = false
     /// A final session (completed, or interrupted after a close or write failure) reached disk.
     public private(set) var finalPublished = false
@@ -325,11 +327,7 @@ public final class RecordingSession {
         guard delta > 0 else { return }
         // An input gap right after a selection boundary is still that selection's prefix.
         let range = kind == "input" ? (prefixPending.contains(id) ? "prefix" : "input") : "writer"
-        recordGap(index:i,frames:UInt64(delta),kind:range,framesBefore:writer.frames)
-        prefixPending.remove(id)
-        var left = Int(delta)
-        while left > 0 { let count = min(left,1_000_000); try writer.silence(frames:count); left -= count }
-        manifest.tracks[i].frames = writer.frames
+        try pad(writer,index:i,frames:UInt64(delta),kind:range)
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
     }
 
@@ -349,14 +347,32 @@ public final class RecordingSession {
                 throw RecordingError.invalid("Audio source was interrupted for more than a minute. Start a new recording.")
             }
             let kind = prefixPending.contains(id) ? "prefix" : native ? (gapKind ?? "input") : "jump"
-            recordGap(index:i,frames:UInt64(delta),kind:kind,framesBefore:writer.frames)
-            try writer.silence(frames: Int(delta))
+            try pad(writer,index:i,frames:UInt64(delta),kind:kind)
         }
         prefixPending.remove(id)
         try writer.append(pcm)
         manifest.tracks[i].frames = writer.frames
         manifest.tracks[i].receivedFrames = (manifest.tracks[i].receivedFrames ?? 0) + UInt64(pcm.count / (track.channels * 2))
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
+    }
+
+    /// Report only samples actually written, including a partial padding write that
+    /// fails. An I/O failure must not manufacture a loss sentence for unwritten zeros.
+    private func pad(_ writer: WAVWriter, index: Int, frames: UInt64, kind: String) throws {
+        let before = writer.frames
+        defer {
+            let added = writer.frames-before
+            if added > 0 {
+                recordGap(index:index,frames:added,kind:kind,framesBefore:before)
+                prefixPending.remove(manifest.tracks[index].id)
+            }
+            manifest.tracks[index].frames = writer.frames
+        }
+        var left = frames
+        while left > 0 {
+            let count = min(left,1_000_000)
+            try writer.silence(frames:Int(count)); left -= count
+        }
     }
 
     /// D52.2: one range per padding write, up to the budget, then one overflow
@@ -370,6 +386,10 @@ public final class RecordingSession {
         if recorded < GapRange.budget { gaps.append(.init(atMs:at,durationMs:Double(frames)/rate*1000,frames:frames,kind:kind)) }
         else if !gaps.contains(where:{ $0.kind == "overflow" }) { gaps.append(.init(atMs:at,durationMs:nil,frames:nil,kind:"overflow")) }
         manifest.tracks[i].gaps = gaps
+        if kind == "writer" {
+            writerPaddingFrames[track.id, default:0] += frames
+            manifest.tracks[i].droppedFrames = (track.droppedFrames ?? 0) + frames
+        }
         if kind == "jump" || kind == "input" {
             manifest.tracks[i].gapFrames = (track.gapFrames ?? 0) + frames
             if frames >= UInt64(track.sampleRate) { longGaps.insert(track.id) }
@@ -417,22 +437,49 @@ public final class RecordingSession {
     }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {
         guard let index = manifest.tracks.firstIndex(where:{ $0.id == id }) else { return }
-        manifest.tracks[index].droppedFrames = droppedFrames > 0 ? droppedFrames : nil
+        let dropped = max(manifest.tracks[index].droppedFrames ?? 0,droppedFrames)
+        manifest.tracks[index].droppedFrames = dropped > 0 ? dropped : nil
         manifest.tracks[index].gapFrames = gapFrames > 0 ? gapFrames : nil
     }
+    /// Like RecordingDetailsReport.nativeRows, microphone/system spans belong to
+    /// their native kind across selection changes and retries. Sum before rounding;
+    /// neither truncated range lists nor producer drop counts size this text.
+    private func writerLossProblems() -> [String] {
+        enum Source: Hashable { case native(String), identified(String), track(String) }
+        var order: [Source] = [], totals: [Source:(kind:String, rates:[Int:UInt64])] = [:]
+        for track in manifest.tracks {
+            guard let frames = writerPaddingFrames[track.id], frames > 0 else { continue }
+            let key: Source = ["microphone","system"].contains(track.kind) ? .native(track.kind)
+                : track.sourceTrackId.map(Source.identified) ?? .track(track.id)
+            if totals[key] == nil { order.append(key); totals[key] = (track.kind,[:]) }
+            totals[key]!.rates[track.sampleRate, default:0] += frames
+        }
+        return order.map { key in
+            let total = totals[key]!
+            let milliseconds = WriterLossDuration.roundedMilliseconds(total.rates)
+            return "\(milliseconds) ms of \(total.kind) audio was lost because the computer could not keep up; the gaps contain silence."
+        }
+    }
+
     public func finish(problem: String? = nil) throws { try finish(problem:problem,kind:nil) }
     public func finish(problem: String?, kind: String?) throws { try finish(problem:problem,kind:kind,reason:nil) }
     public func finish(problem: String?, kind: String?, reason: CaptureEndReason?, atMs: Double? = nil) throws {
         guard !finished else { return }
         if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
         finished = true
-        var failure: Error?
-        for writer in writers.values {
-            do { try writer.close() } catch { failure = failure ?? error }
+        var closeFailures: [Error] = []
+        for track in manifest.tracks {
+            do { try writers[track.id]?.close() } catch { closeFailures.append(error) }
         }
+        let failure = closeFailures.first
         writers.removeAll()
         let empty = manifest.tracks.allSatisfy { $0.frames == 0 }
-        manifest.problem = (problem?.isEmpty == false ? problem : nil) ?? failure?.localizedDescription ?? (empty ? "No audio samples were received. Check the selected sources and permissions." : nil)
+        let diagnostics = [problem].compactMap { $0?.isEmpty == false ? $0 : nil } + closeFailures.map(\.localizedDescription)
+        manifest.problem = diagnostics.isEmpty ? (empty ? "No audio samples were received. Check the selected sources and permissions." : nil) : diagnostics.joined(separator:" ")
+        let writerProblems = writerLossProblems()
+        if !writerProblems.isEmpty {
+            manifest.problem = ([manifest.problem].compactMap { $0 } + writerProblems).joined(separator:" ")
+        }
         for i in manifest.tracks.indices {
             let track = manifest.tracks[i]
             manifest.tracks[i].ended = true
@@ -443,12 +490,12 @@ public final class RecordingSession {
             manifest.problem = "Some audio is missing: the recording has a gap of at least one second."
         }
         let gapKind: String? = kind == nil && !longGaps.isEmpty && manifest.problem != nil && (problem?.isEmpty ?? true) && failure == nil ? "gap" : nil
-        manifest.problemKind = failure != nil ? "io" : kind ?? gapKind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
+        manifest.problemKind = failure != nil || !writerProblems.isEmpty ? "io" : kind ?? gapKind ?? (empty ? "empty" : (manifest.problem == nil ? nil : "capture"))
         // A failed track's I/O loss takes precedence over a capture problem.
         if manifest.problemKind == "capture", manifest.tracks.contains(where:{ $0.problemKind == "io" }) { manifest.problemKind = "io" }
         manifest.state = manifest.problem == nil ? "completed" : "interrupted"
         let boundary = max(atMs ?? 0,manifest.events?.last?.atMs ?? 0,manifest.tracks.compactMap(\.endOffsetMs).max() ?? 0)
-        let stopReason: CaptureEndReason = failure != nil || kind == "io" ? .error : reason ?? (problem?.isEmpty == false && kind != "gap" ? .error : .user)
+        let stopReason: CaptureEndReason = failure != nil || kind == "io" || !writerProblems.isEmpty ? .error : reason ?? (problem?.isEmpty == false && kind != "gap" ? .error : .user)
         manifest.events = (manifest.events ?? []) + [.init(atMs:boundary,type:"end",reason:stopReason.rawValue)]
         let revision = metadataRevision
         defer { finalPublished = metadataRevision != revision }

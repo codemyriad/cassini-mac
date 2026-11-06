@@ -48,12 +48,34 @@ struct D52GapReaderTests {
         let session = try browserSession(parent,jumpMs:30)
         try editTrack(session) { $0["gaps"] = [Any]() }
         #expect(try scanned(parent).state.interruptedAtMs == nil,"An empty list means no gaps, whatever the counter says")
+    }
+    @Test func writerLossInterruptsAsIOWhileWriterRangesNeverSetTheGapFlag() throws {
         let writer = temporary(); defer { try? FileManager.default.removeItem(at:writer) }
         let lost = try RecordingSession(parent:writer,title:"Lost",source:"macos")
         try lost.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:48000,channels:1)
         try lost.appendNative(id:"mic",pcm:Data(repeating:1,count:96000),offsetMs:0)
         try lost.padNative(id:"mic",frames:96000,channels:1,rate:48000,offsetMs:1000)
         try lost.finish()
-        #expect(try scanned(writer).state.interruptedAtMs == nil,"Two seconds of writer padding is io, never the gap flag (R70)")
+        // SPEC.md "Gap ranges and presence" (D69): writer loss is interrupted/io
+        // with an error end, even after Stop. This is separate from the gap flag.
+        let saved = try RecordingLoader.load(directory:lost.directory)
+        #expect(saved.state == "interrupted" && saved.problemKind == "io")
+        #expect(saved.events?.last?.reason == "error")
+        #expect(saved.tracks[0].droppedFrames == 96000 && saved.tracks[0].gapFrames == nil)
+        #expect(saved.tracks[0].gaps?.map(\.kind) == ["writer"])
+        #expect(try scanned(writer).state.interruptedAtMs != nil,"D69's explicit I/O interruption must survive scanning")
+
+        // Isolate the reader's range-based flag from that explicit I/O status.
+        // Writer ranges alone still never set the ordinary gap flag (R70 / D69).
+        let file = lost.directory.appendingPathComponent("session.json")
+        var raw = try #require(JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any])
+        raw["state"] = "completed"; raw["problemKind"] = nil; raw["problem"] = nil
+        raw["events"] = (raw["events"] as? [[String:Any]] ?? []).map { event in
+            var event = event
+            if event["type"] as? String == "end" { event["reason"] = "user" }
+            return event
+        }
+        try JSONSerialization.data(withJSONObject:raw).write(to:file)
+        #expect(try scanned(writer).state.interruptedAtMs == nil,"The writer range itself is not an input/jump gap flag")
     }
 }
