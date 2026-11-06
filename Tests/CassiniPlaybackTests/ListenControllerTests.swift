@@ -64,6 +64,25 @@ extension SessionPlaybackTests {
         #expect(ended == 1 && audio.positionMs == 423 && !audio.isPlaying)
         audio.stop()
     }
+    @Test func rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() async {
+        for stopBeforePrepared in [true,false] {
+            let (meeting,audio,fake,listen) = scene()
+            #expect(listen.start("ada",in:meeting))
+            if stopBeforePrepared { listen.stopPlayback() }
+            await audio.preparation?.value; fake.sought()
+            if !stopBeforePrepared {
+                fake.position(3200)
+                let stale = fake.boundary?.1
+                listen.stopPlayback(); stale?()
+                #expect(audio.positionMs == 3200 && fake.positionMs == 3200)
+            }
+            #expect(!audio.isPlaying && !listen.active && fake.boundary == nil)
+            let plays = fake.plays
+            fake.onEnd?()
+            #expect(fake.plays == plays && !audio.isPlaying)
+            audio.stop()
+        }
+    }
     @Test func overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() async {
         let words: [LibraryTranscriptItem] = [.init(speaker:"ada",startMs:0,endMs:10000,text:"A long phrase."),
             .init(speaker:"ben",startMs:300,endMs:600,text:"Yes."),.init(speaker:"ada",startMs:700,endMs:1000,text:"Thanks.")]

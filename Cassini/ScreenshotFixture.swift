@@ -65,10 +65,11 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["recording","received","export","search"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["meeting","recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
             for _ in 0..<60 {
+                if name == "meeting" && MeetingNavigation.shared.detail != nil { break }
                 if name == "recording" && MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording { break }
                 if name == "received" && LibraryStore.shared.selected?.state.origin == .received { break }
                 if name == "export" && window.attachedSheet != nil { break }
@@ -77,6 +78,7 @@ enum ScreenshotFixture {
             }
             try? await Task.sleep(for:.seconds(1))
             guard (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
+                  (name != "meeting" || MeetingNavigation.shared.detail != nil),
                   (name != "export" || window.attachedSheet != nil),
                   (name != "search" || LibrarySearchModel.shared.hits.count == 4),
                   window.frame.size == NSSize(width:1120,height:720),

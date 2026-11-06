@@ -123,6 +123,10 @@ import Observation
         PlayerController.pauseActive()
         return listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
     }
+    func toggleSpeakerListening(_ speaker: String) {
+        if listen.speaker == speaker { listen.stopPlayback() }
+        else { listenTo(speaker) }
+    }
     #if DEBUG
     /// MeetingPreparationSelfTest: a gated preparer, so the proof controls when work proceeds.
     static var preparerForSelfTest: TurnPreparation.Prepare?

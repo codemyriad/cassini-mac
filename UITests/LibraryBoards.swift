@@ -328,6 +328,13 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(window.sliders["meeting-seek"].label,"Position")
         XCTAssertEqual(window.sliders["meeting-seek"].value as? String,"00:03:12")
         XCTAssertEqual(window.buttons["meeting-speed"].label,"Playback speed, 1×")
+        for id in ["marta","giulia","guest"] {
+            let play = window.buttons["speaker-listen-" + id]
+            XCTAssertTrue(play.waitForExistence(timeout:5),app.debugDescription)
+            XCTAssertTrue(play.isEnabled && play.isHittable,"Read-only speaker rows expose their own Play button")
+            XCTAssertTrue(play.label.hasPrefix("Play this speaker’s turns:") && play.label.contains("at 00:"),play.label)
+            XCTAssertTrue(window.frame.contains(play.frame),"The action stays within the 260-point pane")
+        }
         let turns = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-"))
         XCTAssertGreaterThan(turns.count,0,app.debugDescription)
         XCTAssertTrue(turns.firstMatch.label.contains("00:"))

@@ -73,17 +73,13 @@ struct MeetingView: View {
     private var speakersPane: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(UXText.text("common.speakers")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(.secondary)
-            ForEach(meeting.speakers, id: \.id) { speaker in
-                HStack(alignment: .top, spacing: 10) {
-                    Circle().fill(colour(speaker.colourIndex)).frame(width: 10, height: 10).padding(.top, 3)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack {
-                            Text(speaker.displayName).fontWeight(.semibold)
-                            Spacer(minLength: 2)
-                            Text(UXText.text("meeting.speakerShare", ["percent": String(shares[speaker.id, default: 0])])).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary)
-                        }
-                        if let caption = caption(speaker) { Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(meeting.speakers, id: \.id) { speaker in speakerRow(speaker).id(speaker.id) }
                     }
+                }.onChange(of: model.listen.speaker) { _, speaker in
+                    if let speaker { withAnimation { proxy.scrollTo(speaker,anchor:.center) } }
                 }
             }
             Spacer(minLength: 0)
@@ -125,14 +121,45 @@ struct MeetingView: View {
         .background(Color(nsColor: .textBackgroundColor))
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
     }
-    private func caption(_ speaker: MeetingSpeaker) -> String? {
-        switch speaker.provenance {
-        case .user: return "meeting.speakerCaption.namedByYou"
-        case .recognised: return "meeting.speakerCaption.recognised"
-        case .unnamed: return "meeting.speakerCaption.notNamed"
-        case .source: return speaker.id == "me" ? "common.yourMicrophone" : (speaker.id == "others" ? "recordFirst.sound.title" : nil)
-        case nil: return speaker.name == nil ? "meeting.speakerCaption.notNamed" : nil
-        }
+    /// D70: independent Play target, also available for directly opened/read-only meetings.
+    private func speakerRow(_ speaker: MeetingSpeaker) -> some View {
+        let turns = model.listen.turns(of:speaker.id)
+        let row = SpeakerRowPresentation(speaker:speaker,turns:turns,percent:shares[speaker.id,default:0],
+                                         language:UXText.language,locale:UXText.locale)
+        let listening = model.listen.speaker == speaker.id
+        return HStack(alignment:.top,spacing:10) {
+            Circle().fill(colour(speaker.colourIndex)).frame(width:10,height:10).padding(.top,5).accessibilityHidden(true)
+            VStack(alignment:.leading,spacing:3) {
+                HStack(spacing:6) {
+                    Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
+                    Spacer(minLength:2)
+                    Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                    Button { model.toggleSpeakerListening(speaker.id) } label: {
+                        Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
+                    }.buttonStyle(.borderless)
+                        .disabled(!model.canPlay || turns.isEmpty)
+                        .help(UXText.text(listening ? "common.stop" : "speakers.listen"))
+                        .accessibilityLabel(listening ? UXText.text("common.stop") : row.playAccessibilityLabel)
+                        .accessibilityIdentifier("speaker-listen-" + speaker.id)
+                }
+                if let caption = row.caption {
+                    HStack(spacing:0) {
+                        if let provenance = row.provenance, let suffix = row.captionSuffix {
+                            Text(provenance).truncationMode(.tail)
+                            Text(suffix).truncationMode(.head).layoutPriority(1)
+                        } else { Text(caption).truncationMode(.head) }
+                    }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                        .help(caption)
+                        .accessibilityLabel(caption)
+                }
+            }
+        }.padding(.vertical,4).padding(.horizontal,5)
+            .background(listening ? Color.accentColor.opacity(0.08) : .clear)
+            .overlay(alignment:.leading) {
+                if listening { Rectangle().fill(Color.accentColor).frame(width:3).accessibilityHidden(true) }
+            }
+            .accessibilityElement(children:.contain).accessibilityLabel(row.accessibilityLabel)
+            .accessibilityIdentifier("speaker-row-" + speaker.id)
     }
     private var autoTag: some View {
         Text(UXText.text("common.autoTag")).font(.system(size: 10.5)).foregroundStyle(.secondary).padding(.horizontal, 4)

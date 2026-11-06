@@ -58,6 +58,11 @@ import CassiniLibrary
         if playback.listener === self { playback.listener = nil; playback.clearSpan() }
         reset()
     }
+    /// Row Stop ends listening and pauses at the current position, including a queued span end.
+    public func stopPlayback() {
+        if playback.isPlaying, let meeting { playback.toggle(meeting) }
+        stop()
+    }
     /// Page close/switch, library outage, or a new recording uses the ordinary
     /// player's stop path. Its lifecycle notification also clears listening.
     public func pageChanged() { stop(); playback.stop() }
