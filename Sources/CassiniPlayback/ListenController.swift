@@ -71,7 +71,8 @@ import CassiniLibrary
         guard active, direction == -1 || direction == 1 else { return nil }
         let position = playback.playheadMs
         let current: Int?
-        if let actual = containing(position) { current = actual }
+        if finished { current = index }
+        else if let actual = containing(position) { current = actual }
         else if let explicitTurn, targets.indices.contains(explicitTurn),
            leadStart(explicitTurn) <= position, position <= Double(targets[explicitTurn].endMs)+Self.tailMs {
             current = explicitTurn
