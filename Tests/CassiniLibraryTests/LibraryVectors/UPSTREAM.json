@@ -1,10 +1,10 @@
 {
-  "commit": "5a2991de8244c3468c96cc008dce52644e81f9d9",
-  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged; 0bf0a4b R11: only main live session source gnome\u2192chromium, all 13 expected outputs unchanged; 5a2991d shared test 8 (D67): 9 T8 cases and outcome-lines.json, GNOME #210 and coordinator review; the 13 earlier expected outputs unchanged",
+  "commit": "52ea1f62854058e8160d9da18181a2236db4f941",
+  "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged; 0bf0a4b R11: only main live session source gnome\u2192chromium, all 13 expected outputs unchanged; 5a2991d shared test 8 (D67): 9 T8 cases and outcome-lines.json, GNOME #210 and coordinator review; the 13 earlier expected outputs unchanged; 52ea1f6 D58.4: t8-low-audio-silent expects details.sources.lowAudio.underSecond (outcome-lines, verify.py, README only)",
   "path": "ux-draft/library-vectors",
   "repository": "cassini-coordination",
   "sha256": {
-    "README.md": "c4d8f844db528e3dad3fbd9a8b057682b900629ed163d2b62d13580c9ecde0cc",
+    "README.md": "38220e7c4dd05b13adcaf9ac498b98d8d84e0d9180d2e0ea316495d7c272bf10",
     "assets/001-minimal-v1.opus": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
     "assets/009-bad-payload-sha256.opus": "84308e357c97df9fa8bb7371038e490d7f519b6dd3b778d21f4fe74df014dfde",
     "assets/010-stale-audio.opus": "5b771e32b554214ece95566f26483da5f780613573a16f5de8677d70ac183587",
@@ -40,7 +40,7 @@
     "expected/t8-retry-failed-stale-silent.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
     "expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d",
     "make.py": "fa5f79d027398ad62dc2c6ecefb69c3fe07cc7fac9f38d2df6f92b1e1509dae0",
-    "outcome-lines.json": "c796d227443ac2288fa947209fbc5c826a483ba43f8d703bae5996b3b1e251f2",
-    "verify.py": "5fd90f650ee1e5cbf0103dee61da0d5c6ec6cc8a40f6fc55b84220331cdb905d"
+    "outcome-lines.json": "79e7b587b02e0a66800478d16c36a6a4a567ef18998f92545e453824e44f6869",
+    "verify.py": "d3d2a864c28f6b42d77e659f3b65f60a526a93dd3575d3b6a2d6f23f11cf2348"
   }
 }

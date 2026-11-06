@@ -5,8 +5,12 @@
 // out through the worker's console, so they survive the worker closing or restarting (the
 // case these diagnostics exist to explain). Diagnostics only: the extension's own code and
 // behaviour are unchanged, and a failure to instrument is recorded instead of thrown.
+// Each entry carries `at` (when Node received it) and `t` (the worker's own Date.now() when it
+// happened): a backlog between them showed up in a failure. The app's `error` replies keep their
+// code, scope, id and message, and what the worker sends is logged too (type, id, sequence and
+// offset; never PCM), so a refused returning source names its refusal.
 const PREFIX = 'cassini-native ';
-export function attachNativeLog(context, {limit = 5000} = {}) {
+export function attachNativeLog(context, {limit = 20000} = {}) {
   const events = [];
   const note = entry => { if (events.length < limit) events.push({at:Date.now(),...entry}); };
   const instrument = async worker => {
@@ -21,12 +25,22 @@ export function attachNativeLog(context, {limit = 5000} = {}) {
     await worker.evaluate(prefix => {
       if (globalThis.__cassiniNativeLog) return;
       globalThis.__cassiniNativeLog = true;
-      const send = entry => console.debug(prefix + JSON.stringify(entry));
+      const send = entry => console.debug(prefix + JSON.stringify({t:Date.now(),...entry}));
+      const fields = message => {
+        if (!message || typeof message !== 'object') return {type:typeof message};
+        const entry = {type:message.type};
+        for (const key of ['id','sequence','code','scope','retired']) if (message[key] !== undefined) entry[key] = message[key];
+        if (Number.isFinite(message.offsetMs)) entry.offsetMs = Math.round(message.offsetMs);
+        if (message.type === 'error' && message.message !== undefined) entry.message = String(message.message).slice(0,200);
+        return entry;
+      };
       const connect = chrome.runtime.connectNative.bind(chrome.runtime);
       chrome.runtime.connectNative = name => {
         const port = connect(name); send({event:'connect',name});
         port.onDisconnect.addListener(() => send({event:'disconnect',name,error:chrome.runtime.lastError?.message ?? null}));
-        port.onMessage.addListener(message => send({event:'message',name,type:message?.type ?? typeof message}));
+        port.onMessage.addListener(message => send({event:'message',name,...fields(message)}));
+        const post = port.postMessage.bind(port);
+        port.postMessage = message => { send({event:'sent',name,...fields(message)}); return post(message); };
         return port;
       };
       self.addEventListener('error',event => send({event:'error',message:String(event.message)}));

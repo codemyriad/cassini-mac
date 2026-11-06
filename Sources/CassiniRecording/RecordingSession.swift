@@ -481,6 +481,15 @@ public final class RecordingSession {
     }
 
     private func checkpoint() throws {
+        #if DEBUG
+        // D66 mac-P0-1 (hosted evidence only): a checkpoint syncs every writer and the metadata on
+        // the queue that admits audio, so a slow disk stalls every source at once. Name it.
+        let began = ProcessInfo.processInfo.systemUptime
+        defer {
+            let ms = Int((ProcessInfo.processInfo.systemUptime - began) * 1000)
+            if ms >= 500 { FileHandle.standardError.write(Data("cassini: slow checkpoint \(ms) ms, \(writers.count) writers, at uptime \(Int(began * 1000)) ms\n".utf8)) }
+        }
+        #endif
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601

@@ -52,6 +52,12 @@ public struct LibraryFormat: Sendable {
         if s<3600 {return text("format.talkTime",["m":number(s/60,locale:locale),"s":number(s%60,locale:locale)],locale:locale,language:language)}
         return meetingDuration(ms,locale:locale,language:language)
     }
+    /// Recording details (D58.4): never rounded down to whole minutes. Whole seconds under a
+    /// minute, minutes and seconds under an hour (talkTime). A positive amount under one second
+    /// shows as 1 s, never as 0 s; the low-audio line has its own words for that (underSecond).
+    public static func detailsDuration(_ ms:Int64,locale:Locale = .current,language:CassiniLanguage = .system)->String {
+        talkTime(ms > 0 ? max(1000,ms) : ms,locale:locale,language:language)
+    }
     public static func confirmedSpeech(_ ms:Int64,locale:Locale = .current,language:CassiniLanguage = .system)->String {
         text("format.confirmedSpeech",["duration":meetingDuration(ms,locale:locale,language:language)],locale:locale,language:language)
     }

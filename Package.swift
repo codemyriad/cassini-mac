@@ -67,6 +67,8 @@ let package = Package(
         .executableTarget(name: "cassini-whistle-worker", dependencies: ["CassiniWhistle", "CassiniTranscription"]),
         .testTarget(name: "CassiniWhistleTests", dependencies: ["CassiniWhistle"], resources: [.copy("Fixtures")]),
         .testTarget(name: "CassiniPlaybackTests", dependencies: ["CassiniPlayback", "CassiniLibrary"]),
+        // Shared test 9 (D55 placement golden): every production consumer of a track's placement.
+        .testTarget(name: "SharedPlacementTests", dependencies: ["CassiniTranscription", "CassiniExport", "CassiniPlayback", "CassiniLibrary", "CassiniKit", "CassiniVAD", "CassiniWhistle"]),
         .testTarget(name: "CassiniLibraryTests", dependencies: ["CassiniLibrary", "CassiniLibraryWatchers", "CassiniRecording"], exclude: ["README.md"], resources: [.copy("Golden"), .copy("LibraryVectors"), .copy("ExportGolden")]),
         .target(name: "CassiniRecording", dependencies: ["CassiniKit"]),
         .executableTarget(name: "cassini-browser-host", dependencies: ["CassiniRecording", "CassiniLibrary","CassiniBrowserControl"]),

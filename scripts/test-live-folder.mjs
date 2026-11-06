@@ -15,6 +15,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { attachNativeLog } from './extension-native-log.mjs';
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'Never run on a user desktop');
@@ -44,7 +45,7 @@ const url = `http://127.0.0.1:${server.address().port}`;
 
 let ownsProfile = false, context = null, remoteBrowser = null, child = null, exited = false, stdout = '', stderr = '';
 const pending = new Map(), lines = [];
-let next = 0, ready = null, cleaned = null, code = 1, sampler = null;
+let next = 0, ready = null, cleaned = null, code = 1, sampler = null, nativeLog = null;
 const clock = [], load = [];
 
 function launchApp(env) {
@@ -141,6 +142,10 @@ try {
     args: [`--disable-extensions-except=${root}/BrowserExtension`, `--load-extension=${root}/BrowserExtension`, ...callArgs] });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   assert.equal(new URL(worker.url()).host, EXTENSION);
+  // D66 mac-P0-1: the extension's native traffic (worker-stamped, error codes, what it sends,
+  // worker restarts), kept in Node: a #153 run lost A for 11 s while the worker answered late.
+  nativeLog = attachNativeLog(context);
+  await nativeLog.ready;
   remoteBrowser = await chromium.launch({ headless: true, args: callArgs });
   const remote = await remoteBrowser.newPage();
   await remote.goto(`${url}/remote`);
@@ -210,6 +215,7 @@ try {
   console.log(`live-folder: wall clock minus monotonic clock over the run ${drift?.toFixed(1)} ms`);
   await writeFile(path.join(out, 'load.json'), JSON.stringify(load, null, 1) + '\n').catch(() => {});
   console.log(`live-folder: audio render clock rate meeting ${rate('meeting')?.toFixed(3)} remote ${rate('remote')?.toFixed(3)}`);
+  if (nativeLog) await writeFile(path.join(out, 'extension.json'), JSON.stringify({ events: nativeLog.events }, null, 1) + '\n').catch(() => {});
   await writeFile(path.join(out, 'app.stdout.txt'), stdout).catch(() => {});
   await writeFile(path.join(out, 'app.stderr.txt'), stderr).catch(() => {});
 }
