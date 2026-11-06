@@ -168,6 +168,8 @@ public struct LibraryMeeting: Sendable {
     /// The scanner establishes stable chronological item order. Both transcript
     /// views consume these same consecutive speaker turns.
     public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems,gaps:speakerGaps) }
+    /// D70: maximal speaker runs for listening after merges, independent of reading rows.
+    public var speakerTurns: [SpeakerTurn] { SpeakerTurn.grouping(transcriptItems) }
     /// D63 #2: each speaker's gap ranges, from the tracks its words were written from.
     /// A merge target also splits on the ranges of the speakers merged into it.
     public var speakerGaps: SpeakerGapRanges.Ranges {

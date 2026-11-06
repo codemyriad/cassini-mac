@@ -17,3 +17,9 @@ R65 (D55): library-v2/ holds verbatim copies of cassini-coordination ux-draft/li
 - name-vectors-malformed.json 5de3b0b1effc01a0bb3cd1c106b88bbee2067373b62628c9c4337bcb47a3f6d9
 - x-schema.json 214917c6e1f24936a9a97dc3b64e8fe6b4249733c67c985b11be67c2b0463f70
 - MAPPING.md 692b8f7eb5fa4bd97642eea8a8d7ccc24d642bc9be9ca4250ae13bf2702dddd8
+
+D70/D70.1: listen-by-speaker/ contains byte-for-byte copies from coordination
+ux-draft/listen-by-speaker at 998a1b0, also used by GNOME PR #241 at 6969850.
+- turns.json SHA256: 0c0d49a7f1d57f97b243d08c0558ab13506a39a93316a2e7506d228f21d75e29
+- README.md SHA256: 499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b
+The entirely synthetic English fixture is CC0-1.0; no real meeting content.
