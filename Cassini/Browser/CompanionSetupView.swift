@@ -21,6 +21,11 @@ import CassiniLibrary
     var launchFailed = false
     private(set) var selectedBrowser: BrowserSetupInstallation.Browser?
     private(set) var installedBrowsers: [BrowserSetupInstallation.Browser] = []
+    static let bundledCompanionVersion: String? = {
+        guard let url = Bundle.main.url(forResource:"manifest",withExtension:"json",subdirectory:"BrowserCompanion"),
+              let data = try? Data(contentsOf:url), let value = try? JSONSerialization.jsonObject(with:data) as? [String:Any] else { return nil }
+        return value["version"] as? String
+    }()
     static var storeListingPublic: Bool {
         let flag = Bundle.main.object(forInfoDictionaryKey:"CassiniStoreListingPublic")
         return flag as? Bool == true || flag as? String == "YES"
@@ -31,7 +36,7 @@ import CassiniLibrary
     private static var fixtureKind: String? {
         #if DEBUG
         guard MeetingRenameFixture.enabled, let kind = LibraryLaunchContext.argument("-CassiniBrowserCase"),
-              ["absent","first","lost"].contains(kind) else { return nil }
+              ["absent","first","lost","health-ready","health-idle","health-reload","health-files","health-outdated","health-legacy"].contains(kind) else { return nil }
         return kind
         #else
         return nil
@@ -186,6 +191,7 @@ struct CompanionSetupView: View {
         #endif
     }
     private var connected: Bool { !sample && captures.connected }
+    private var setupComplete: Bool { !sample && captures.setupComplete }
     private var browsers: [String] { sample ? ["Chrome"] : Array(Set(captures.peers.filter(\.reconciled).compactMap(\.browser))).sorted() }
     private var added: Bool { sample || connected }
     var body: some View {
@@ -203,7 +209,7 @@ struct CompanionSetupView: View {
                     if !added { Button(setup.addLabel) { setup.add() }.buttonStyle(.borderedProminent).disabled(!setup.canAdd).accessibilityIdentifier("companion-add") }
                 }
                 Divider()
-                step(2,done:connected,title:"companion.connectStep.title",caption:connectCaption) {
+                step(2,done:setupComplete,title:"companion.connectStep.title",caption:connectCaption) {
                     if added && !connected && setup.failed {
                         Button(UXText.text("common.tryAgain")) { setup.connect() }
                             .buttonStyle(.borderedProminent).disabled(setup.working).accessibilityIdentifier("companion-connect")
@@ -211,6 +217,7 @@ struct CompanionSetupView: View {
                 }
             }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
                 .overlay { RoundedRectangle(cornerRadius:8).stroke(Color.secondary.opacity(0.25)) }
+            BrowserCompanionHealthView(presenter:setup.presenter ?? .library)
             if CompanionSetup.storeListingPublic {
                 Button(UXText.text("companion.local.add")) { setup.showLocalGuide(from:setup.presenter ?? .library) }.buttonStyle(.link).disabled(!setup.canAdd)
             }
@@ -221,7 +228,7 @@ struct CompanionSetupView: View {
             HStack(spacing:10) {
                 Spacer()
                 Button(UXText.text("common.notNow")) { setup.close() }.keyboardShortcut(.cancelAction)
-                Button(UXText.text("common.done")) { setup.close() }.keyboardShortcut(.defaultAction).disabled(!connected)
+                Button(UXText.text("common.done")) { setup.close() }.keyboardShortcut(.defaultAction).disabled(!setupComplete).accessibilityIdentifier("companion-done")
             }.controlSize(.large)
         }.font(.system(size:13)).padding(26).frame(width:540)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("companion.title"))

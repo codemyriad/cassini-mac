@@ -14,8 +14,10 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
     public let reason: String?
     public let me: Bool?
     public let others: Bool?
-    public init(atMs: Double, type: String, source: String? = nil, reason: String, me: Bool? = nil, others: Bool? = nil) {
+    public let cause: BrowserCaptureLossCause?
+    public init(atMs: Double, type: String, source: String? = nil, reason: String, me: Bool? = nil, others: Bool? = nil, cause: BrowserCaptureLossCause? = nil) {
         self.atMs = atMs; self.type = type; self.source = source; self.reason = reason; self.me = me; self.others = others
+        self.cause = type == "othersSource" && reason == "lost" ? cause : nil
     }
     public var isKnownValid: Bool {
         guard let atMs, atMs.isFinite, atMs >= 0 else { return false }
@@ -28,10 +30,10 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
         default: return false
         }
     }
-    enum CodingKeys: String, CodingKey { case atMs, type, source, reason, me, others }
+    enum CodingKeys: String, CodingKey { case atMs, type, source, reason, me, others, cause }
     public init(from decoder: Decoder) throws {
         guard let c = try? decoder.container(keyedBy:CodingKeys.self) else {
-            atMs = nil; type = ""; source = nil; reason = nil; me = nil; others = nil; return
+            atMs = nil; type = ""; source = nil; reason = nil; me = nil; others = nil; cause = nil; return
         }
         atMs = try? c.decode(Double.self,forKey:.atMs)
         type = (try? c.decode(String.self,forKey:.type)) ?? ""
@@ -39,12 +41,16 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
         source = type == "othersSource" ? try? c.decode(String.self,forKey:.source) : nil
         me = type == "selection" ? try? c.decode(Bool.self,forKey:.me) : nil
         others = type == "selection" ? try? c.decode(Bool.self,forKey:.others) : nil
+        cause = type == "othersSource" && reason == "lost" ? (try? c.decode(String.self,forKey:.cause)).flatMap(BrowserCaptureLossCause.init(rawValue:)) : nil
     }
     public func encode(to encoder: Encoder) throws {
         guard isKnownValid else { throw EncodingError.invalidValue(self,.init(codingPath:encoder.codingPath,debugDescription:"Only valid known capture events may be written.")) }
         var c = encoder.container(keyedBy:CodingKeys.self)
         try c.encode(atMs,forKey:.atMs); try c.encode(type,forKey:.type); try c.encode(reason,forKey:.reason)
-        if type == "othersSource" { try c.encode(source,forKey:.source) }
+        if type == "othersSource" {
+            try c.encode(source,forKey:.source)
+            if reason == "lost" { try c.encodeIfPresent(cause?.rawValue,forKey:.cause) }
+        }
         else if type == "selection" { try c.encode(me,forKey:.me); try c.encode(others,forKey:.others) }
     }
     /// Preserve valid ordered provenance only. A bad entry never rewinds a later
@@ -54,7 +60,7 @@ public struct CaptureEvent: Codable, Sendable, Equatable {
         var result: [CaptureEvent] = [], previous: Double = 0
         for value in array {
             guard let time = value["atMs"]?.double, let type = value["type"]?.string else { continue }
-            let event = CaptureEvent(atMs:time,type:type,source:value["source"]?.string,reason:value["reason"]?.string ?? "",me:value["me"]?.bool,others:value["others"]?.bool)
+            let event = CaptureEvent(atMs:time,type:type,source:value["source"]?.string,reason:value["reason"]?.string ?? "",me:value["me"]?.bool,others:value["others"]?.bool,cause:value["cause"]?.string.flatMap(BrowserCaptureLossCause.init(rawValue:)))
             guard event.isKnownValid, time >= previous else { continue }
             if event.type == "othersSource", event.reason == "restored" || event.reason == "callConnected" {
                 guard CaptureSourceState(events:result,atMs:time).admitsBrowserReturn(event.reason) else { continue }

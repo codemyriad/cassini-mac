@@ -18,6 +18,34 @@ private final class Admission: @unchecked Sendable {
     func read() -> Bool { lock.withLock { allowed } }
 }
 final class ControlServiceTests: XCTestCase {
+    func testReloadRunsThroughTheRealControlPipeAndFreshHealthCompletesIt() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let reload = expectation(description:"Extension reports a reloadable tab")
+        let ready = expectation(description:"Extension reports healthy after reload")
+        let completed = expectation(description:"Correlated reload acknowledgement")
+        reload.assertForOverFulfill = false; ready.assertForOverFulfill = false
+        let keys = ReloadKey()
+        let service = BrowserControlService(changed:{ peers in
+            if let tab = peers.first?.browserHealth?.reloadTabs.first { keys.set(tab.key); reload.fulfill() }
+            if peers.first?.browserHealth?.state == .ready { ready.fulfill() }
+        },completed:{ outcome,automatic in
+            XCTAssertEqual(outcome.action,.reloadTab); XCTAssertTrue(outcome.ok); XCTAssertFalse(automatic)
+            completed.fulfill()
+        })
+        try service.start(root:root); defer { service.stop() }
+        let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
+        try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1","tab-readiness-v1"],"filesOk":true,"extensionVersion":"0.2.20"],client)
+        var needsReload = status(false)
+        needsReload["browserHealth"] = ["state":"reloadRequired","worker":"ready","nativeControl":"connected","tabs":[["tabId":2,"state":"reloadRequired","action":"reloadMeetingTab"]]]
+        try send(needsReload,client); wait(for:[reload],timeout:3)
+        service.reloadMeetingTab(try XCTUnwrap(keys.get()))
+        let request = try receive(client)
+        XCTAssertEqual(request["action"]?.string,"reloadTab"); XCTAssertEqual(request["tabId"]?.int,2)
+        XCTAssertNil(request["microphone"]); XCTAssertNil(request["captureLocal"])
+        var healthy = status(false); healthy["browserHealth"] = ["state":"ready","tabs":[["tabId":2,"state":"ready"]]]
+        try send(["type":"result","requestId":try XCTUnwrap(request["requestId"]?.string),"ok":true,"status":healthy],client)
+        wait(for:[completed,ready],timeout:3)
+    }
     func testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let oldReady = expectation(description:"Old capture status"), newReady = expectation(description:"Replacement capture status")
@@ -183,4 +211,10 @@ final class ControlServiceTests: XCTestCase {
         service.recordAll(microphone:true)
         XCTAssertEqual(try receive(healthy)["action"]?.string,"start")
     }
+}
+
+private final class ReloadKey: @unchecked Sendable {
+    private let lock = NSLock(); private var key: BrowserMeetingKey?
+    func set(_ key: BrowserMeetingKey) { lock.withLock { self.key = key } }
+    func get() -> BrowserMeetingKey? { lock.withLock { key } }
 }

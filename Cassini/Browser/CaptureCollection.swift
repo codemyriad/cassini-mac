@@ -135,9 +135,33 @@ private final class CaptureFiles: @unchecked Sendable {
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
     },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true)
+    private init() {
+        #if DEBUG
+        // Synthetic UI snapshots use the existing private fixture launch only;
+        // no control service, capture owner, or production path is opened.
+        if let kind = BrowserCompanionFixture.kind {
+            peers = BrowserCompanionFixture.peers(kind)
+        }
+        #endif
+    }
     /// D51: only a companion that speaks multi-stream-v1 (extension 0.2.12+) records browser calls.
     /// An older one is never asked to start: its calls record like a meeting without the companion
     /// (microphone and computer sound), and the companion state says it needs an update.
+    var companionHealth: BrowserCompanionSetupHealth { .init(peers:peers) }
+    var setupComplete: Bool { companionHealth.complete }
+    private var reloadInFlight: Set<BrowserMeetingKey> = []
+    private var reloadBaseline: [BrowserMeetingKey:UInt64] = [:]
+    var reloadingTabs: Set<BrowserMeetingKey> { reloadInFlight.union(reloadBaseline.keys) }
+    private(set) var reloadErrors: [BrowserMeetingKey:String] = [:]
+    func reloadMeetingTab(_ key: BrowserMeetingKey) {
+        #if DEBUG
+        guard BrowserCompanionFixture.kind == nil else { return }
+        #endif
+        guard !reloadingTabs.contains(key), peers.contains(where:{ $0.id == key.peer && $0.supportsTabReadiness && $0.browserHealth?.reloadTabs.contains(where:{ $0.key == key && $0.canReload }) == true }) else { return }
+        guard let peer = peers.first(where:{ $0.id == key.peer }) else { return }
+        reloadInFlight.insert(key); reloadBaseline[key] = peer.healthRevision
+        reloadErrors.removeValue(forKey:key); service.reloadMeetingTab(key)
+    }
     var connected: Bool { peers.contains { $0.reconciled && $0.supportsMultiStream } }
     var needsUpdate: Bool { !connected && peers.contains { $0.reconciled && !$0.supportsMultiStream } }
     var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.supportsMultiStream && $0.meetings.contains { $0.sourceCount > 0 } } }
@@ -147,7 +171,7 @@ private final class CaptureFiles: @unchecked Sendable {
     func start(root: URL? = nil) async {
         guard !started, !shuttingDown else { return }
         #if DEBUG
-        guard !LibraryLaunchContext.current.screenshot, !RecordingFixture.enabled || CaptureFixture.enabled else { return }
+        guard BrowserCompanionFixture.kind == nil, !LibraryLaunchContext.current.screenshot, !RecordingFixture.enabled || CaptureFixture.enabled else { return }
         #endif
         started = true
         let service = self.service, root = root ?? BrowserPipeServer.standardRoot
@@ -413,6 +437,9 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func replacePeers(_ peers: [BrowserControlPeerSnapshot]) {
         self.peers = peers
+        reloadBaseline = reloadBaseline.filter { key,revision in peers.contains { $0.id == key.peer && $0.healthRevision == revision } }
+        let keys = Set(companionHealth.reloadTabs.map(\.key))
+        reloadErrors = reloadErrors.filter { keys.contains($0.key) }
         if connected { CompanionSetup.shared.didConnect() }
         let meetings = Set(peers.flatMap(\.meetings).filter { $0.sourceCount > 0 }.map(\.key))
         failedMeetings = failedMeetings.filter { meetings.contains($0.key) }
@@ -431,6 +458,15 @@ private final class CaptureFiles: @unchecked Sendable {
         peers.flatMap { $0.captures + $0.interrupted }.first { $0.captureID.map { Data($0.utf8) == Data(captureID.utf8) } == true }?.key
     }
     private func completed(_ outcome: BrowserControlOutcome, automatic: Bool) {
+        if outcome.action == .reloadTab {
+            reloadInFlight.remove(outcome.key)
+            if outcome.ok { reloadErrors.removeValue(forKey:outcome.key) }
+            else {
+                reloadBaseline.removeValue(forKey:outcome.key)
+                reloadErrors[outcome.key] = outcome.error ?? UXText.text("browser.state.reason.temporary")
+            }
+            return
+        }
         // D58 #10: a resume ask's answer belongs to the recording it asked to join. A refusal
         // the browser answered is recorded there, in Details only; a timeout, a closed
         // connection or a local failure records nothing. Never a failed meeting or a banner.

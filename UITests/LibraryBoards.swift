@@ -451,6 +451,33 @@ final class LibraryBoards: XCTestCase {
         app.menuBars.menuBarItems["Playback"].click()
         XCTAssertFalse(app.menuItems["Play this turn"].isEnabled,"Leaving the page clears its focused transcript action")
     }
+    @MainActor func testCompanionHealthUsesExplicitTabAdviceAndFileCheckedSetup() throws {
+        for kind in ["health-ready","health-idle","health-reload","health-files","health-outdated","health-legacy"] {
+            let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString,"-CassiniBrowserCase",kind])
+            let window = app.windows["cassini-library-window"]
+            XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:20),app.debugDescription)
+            app.typeKey(",",modifierFlags:.command)
+            let settings = app.windows["cassini-settings-window"]
+            XCTAssertTrue(settings.waitForExistence(timeout:10))
+            settings.toolbars.buttons["Browser companion"].click()
+            let message = settings.staticTexts["companion-reload-message"]
+            if kind == "health-reload" {
+                XCTAssertTrue(message.waitForExistence(timeout:10),app.debugDescription)
+                XCTAssertEqual(message.label,"Reload the meeting tab so Cassini can record it.")
+                XCTAssertTrue(settings.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","companion-reload-tab-")).firstMatch.isEnabled)
+            } else { XCTAssertFalse(message.exists,"An idle or healthy browser must not get reload advice") }
+            let setupAgain = settings.buttons["companion-setup-again"]
+            if ["health-files","health-outdated","health-legacy"].contains(kind) {
+                XCTAssertTrue(setupAgain.waitForExistence(timeout:10)); setupAgain.click()
+                let done = settings.sheets.buttons["companion-local-done"]
+                XCTAssertTrue(done.waitForExistence(timeout:10),app.debugDescription)
+                XCTAssertEqual(done.isEnabled,kind == "health-outdated","Done requires connection and explicit filesOk; versions do not gate capabilities")
+                if kind == "health-files" { XCTAssertTrue(settings.sheets.staticTexts["companion-files-missing"].exists) }
+                app.typeKey(.escape,modifierFlags:[])
+            } else { XCTAssertFalse(setupAgain.exists) }
+            app.terminate()
+        }
+    }
     @MainActor func testMeetingAccessibility() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
