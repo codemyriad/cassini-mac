@@ -36,8 +36,8 @@ struct D70SpeakerMergesExportTests {
         let directory = URL(fileURLWithPath:try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"]))
         let hashes = try JSONDecoder().decode([String:String].self,from:Data(contentsOf:directory.appendingPathComponent("unsigned-sha256.json")))
         let assets = try OpusAssets.builtForTests(directory:directory,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
-        let url = try MeetingFileExporter.cassini(meeting,assets:assets,temporaryRoot:root,timeZone:.current,shouldCancel:{ false }).url
-        return try CassiniReader.read(contentsOf:url)
+        let artifact = try MeetingFileExporter.cassini(meeting,assets:assets,temporaryRoot:root,timeZone:.current,shouldCancel:{ false })
+        return try withExtendedLifetime(artifact) { try CassiniReader.read(contentsOf:artifact.url) }
     }
 
     @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
