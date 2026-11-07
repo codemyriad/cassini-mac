@@ -36,6 +36,10 @@ import Foundation
         }
         return RecordingController.shared.levels
     }
+    static var spectrogram: RecordingSpectrogram? {
+        if let first = CaptureCollection.shared.first, !RecordingController.shared.isRecording || first.elapsedMs > RecordingController.shared.elapsedMs { return first.spectrogram }
+        return RecordingController.shared.spectrogram
+    }
     static var diskLine: String? {
         if CaptureCollection.shared.diskStopped { return UXText.text("errors.diskStopped.line") }
         if !CaptureCollection.shared.captures.isEmpty {
