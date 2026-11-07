@@ -130,7 +130,7 @@ import ScreenCaptureKit
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
                 "lateTiming":controller.lateTiming.filter { $0.ordinal > initialLate }.map {
                     ["ordinal":Double($0.ordinal),"slot":Double($0.slot),"releasedThrough":Double($0.releasedThrough),
-                     "arrivalMs":$0.arrivalMs,"delayMs":$0.delayMs]
+                     "arrivalMs":$0.arrivalMs,"analysisStartedMs":$0.analysisStartedMs,"delayMs":$0.delayMs]
                 },
                 "viewPayloadBytes":controller.payloadBytes,"surfaceAllocationBytes":controller.surfaceBytes,
                 "surfaceRevisions":controller.surfaceRevision,"minimized":window.isMiniaturized,

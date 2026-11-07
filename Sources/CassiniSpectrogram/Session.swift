@@ -141,7 +141,7 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
     public struct LateColumn: Sendable {
         public let ordinal: UInt64
         public let slot: Int64, releasedThrough: Int64
-        public let arrivalMs: Double, delayMs: Double
+        public let arrivalMs: Double, analysisStartedMs: Double, delayMs: Double
     }
     public struct Frame: Sendable {
         public let me: [SpectrogramColumn], others: [SpectrogramColumn]
@@ -259,16 +259,20 @@ public final class SpectrogramSession: RecordedPCMObserver, @unchecked Sendable 
         mono.withUnsafeBufferPointer { samples in
             source.track.appendNormalized(.init(start:samples.baseAddress,count:count),atFrame:max(0,original),
                 analyze:analyze) { frame in
+                // The queue-entry timestamp is for source activity/selection.
+                // Readiness includes conversion, FFT work and any preemption
+                // while doing it, before this column can enter presentation.
+                let ready = clock()
                 // Release is keyed by the containing20ms slot, not the later
                 // FFT centre within it. Measure readiness on that same clock.
                 presentation.withLock { value in
                     guard value.generation == generation else { return }
-                    value.clock.observe(columnMs:Double(frame.slot)*20,arrivalMs:arrival)
+                    value.clock.observe(columnMs:Double(frame.slot)*20,arrivalMs:ready)
                     let lane = sourceLane == .me ? value.me : value.others
                     if measureCPU, frame.slot <= lane.releasedThrough {
                         if value.lateSamples.count == 16 { value.lateSamples.removeFirst() }
                         value.lateSamples.append(.init(ordinal:value.me.late+value.others.late+1,slot:frame.slot,
-                            releasedThrough:lane.releasedThrough,arrivalMs:arrival,delayMs:value.clock.delayMs))
+                            releasedThrough:lane.releasedThrough,arrivalMs:ready,analysisStartedMs:arrival,delayMs:value.clock.delayMs))
                     }
                     lane.append(slot:frame.slot,trackIndex:sourceIndex,powers:frame.powers)
                 }
