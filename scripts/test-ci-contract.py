@@ -42,6 +42,24 @@ class Selection(unittest.TestCase):
         for source in ['Cassini/Transcription/TranscriptionQueue.swift','Cassini/Cassini.entitlements','Cassini/Info.plist']:
             self.assertTrue(changes.select('pull_request','base',PATHS,[source])['whistle'])
 
+    def test_spectrogram_analysis_admission_and_fixture_changes_run_native_boards(self):
+        for path in ['Sources/CassiniSpectrogram/Spectrum.swift', 'Sources/CassiniRecording/RecordingSink.swift',
+                     'Sources/CassiniBrowserControl/OwnedBrowserCapture.swift',
+                     'Sources/CassiniBrowserControl/StagedNativeWriter.swift',
+                     'Sources/CassiniBrowserControl/CaptureInputLifecycle.swift',
+                     'Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift',
+                     'Tests/CassiniRecordingTests/SpectrogramFixtureClockTests.swift']:
+            with self.subTest(path=path):
+                self.assertTrue(changes.select('pull_request','base',PATHS,[path])['boards'])
+
+    def test_workflow_jobs_have_no_duplicate_top_level_keys(self):
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            jobs=workflow.read_text().split('\njobs:\n',1)[-1]
+            for match in re.finditer(r'^  ([\w-]+):\n(.*?)(?=^  \S|^\S|\Z)',jobs,re.M|re.S):
+                keys=re.findall(r'^    ([\w-]+):',match.group(2),re.M)
+                with self.subTest(workflow=workflow.name,job=match.group(1)):
+                    self.assertEqual(len(keys),len(set(keys)),f'Duplicate job keys: {keys}')
+
     def test_unknown_base_and_detection_failure_run_everything(self):
         self.assertTrue(all(changes.select('pull_request', '', PATHS).values()))
         with patch.object(changes.subprocess, 'check_output', side_effect=subprocess.CalledProcessError(128, 'git')):
@@ -337,22 +355,24 @@ class ReleaseOffTheCriticalPath(unittest.TestCase):
         self.assertIn('name: Cassini-${{ github.sha }}', release)
         self.assertIn("assets: 'true'", release); self.assertIn("runtime: 'true'", release)
 
-    def test_only_packaging_and_parakeet_wait_for_the_release_build(self):
+    def test_release_consumers_wait_for_the_release_build(self):
         ci = (self.WORKFLOWS/'ci.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n',1)[1], re.M | re.S))
         self.assertIn('needs: [build]', jobs['build_release'])
         self.assertIn('uses: ./.github/workflows/ci-build-release.yml', jobs['build_release'])
         waiting = {name for name, body in jobs.items() if 'build_release' in body and name != 'build_release'}
-        self.assertEqual(waiting, {'parakeet'})
+        self.assertEqual(waiting, {'parakeet','boards'})
+        self.assertIn("needs.build_release.result == 'success'", jobs['boards'])
         self.assertIn("needs.build_release.result == 'success'", jobs['parakeet'])
         for workflow in self.WORKFLOWS.glob('*.yml'):
             with self.subTest(workflow=workflow.name):
                 restores = "release: 'true'" in workflow.read_text()
-                self.assertEqual(restores, workflow.name == 'ux-parakeet.yml')
+                self.assertEqual(restores, workflow.name in {'ux-parakeet.yml','ux-boards.yml'})
                 self.assertEqual('package-release.py' in workflow.read_text(), workflow.name == 'ci-build-release.yml')
-        standalone = (self.WORKFLOWS/'ux-parakeet.yml').read_text()
-        self.assertIn('uses: ./.github/workflows/ci-build-release.yml', standalone)
-        self.assertIn('needs: [build, release]', standalone)
+        for name in ['ux-parakeet.yml','ux-boards.yml']:
+            standalone = (self.WORKFLOWS/name).read_text()
+            self.assertIn('uses: ./.github/workflows/ci-build-release.yml', standalone)
+            self.assertIn('needs: [build, release]', standalone)
 
     def test_no_workflow_publishes_a_github_release(self):
         # D58.4: a GitHub release carries only the exact QA-passed, notarized DMG that

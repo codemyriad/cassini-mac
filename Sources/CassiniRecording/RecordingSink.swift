@@ -16,9 +16,11 @@ public protocol RecordingSinkWriter: AnyObject {
     func finish(problem: String?, kind: String?) throws
     func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64)
     var recordingProblem: String? { get }
+    var recordedPCM: RecordedPCMPolicy? { get }
 }
 
 extension RecordingSinkWriter {
+    public var recordedPCM: RecordedPCMPolicy? { nil }
     public func finish(problem: String?, kind: String?) throws { try finish(problem: problem) }
     public func reportLoss(id: String, droppedFrames: UInt64, gapFrames: UInt64) {}
     public func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws { try appendNative(id:id,pcm:pcm,offsetMs:offsetMs) }
@@ -132,6 +134,7 @@ public final class RecordingSink: @unchecked Sendable {
     }
     private var warnings: Set<String> = []
     private let writer: any RecordingSinkWriter
+    private let pcmPolicy: RecordedPCMPolicy?
     private let origin: UInt64
     private let capacitySeconds: Double
     private let onFailure: @Sendable (String) -> Void
@@ -145,7 +148,7 @@ public final class RecordingSink: @unchecked Sendable {
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
                 onFailure: @escaping @Sendable (String) -> Void, admit: (@Sendable () -> Bool)? = nil) {
-        writer = session
+        writer = session; pcmPolicy = session.recordedPCM
         origin = originHostTime
         self.capacitySeconds = max(0.01, min(60, capacitySeconds))
         self.onFailure = onFailure
@@ -261,6 +264,10 @@ public final class RecordingSink: @unchecked Sendable {
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()
+        // Immutable admitted bytes are shared, not copied or analyzed here.
+        // The policy has only independent short metadata locks, never the
+        // writer's lock. Missing readiness/source metadata means no picture.
+        pcmPolicy?.offer(inputID:id,pcm:pcm,offsetMs:offset)
     }
 
     /// Close a source's reported writer-loss interval. Call only with evidence of loss,

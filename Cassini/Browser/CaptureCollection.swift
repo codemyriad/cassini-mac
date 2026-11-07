@@ -18,6 +18,7 @@ struct LiveCapture {
     let input: CaptureInputLifecycle
     let captureID: String
     let originUptime: TimeInterval
+    let spectrogram: RecordingSpectrogram?
     var snapshot: OwnedCaptureSnapshot
     var key: BrowserMeetingKey?
     var levels: [CaptureSide:Float] = [:]
@@ -223,6 +224,7 @@ private final class CaptureFiles: @unchecked Sendable {
         // or the control peer has gone away. Preserve the original capture URL.
         if userInitiated { service.rememberUserStop(captureID:value.captureID,key:value.key) }
         guard stopping[id] == nil else { return }
+        value.spectrogram?.stop(atMs:Double(value.elapsedMs))
         MeetingNavigation.shared.captureBeganSaving(at:value.snapshot.directory)
         captures[id]?.savingSinceMs = value.elapsedMs
         activity[id] = .saving
@@ -315,7 +317,9 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { try? await self.broker.finish(value.owner) }
         })
         let meetingKey = key(for:info.captureID)
-        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,snapshot:snapshot,key:meetingKey,
+        let spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:owner.pcmObservers,me:snapshot.me,others:snapshot.others) : nil
+        spectrogram?.update(events:snapshot.manifest.events ?? [])
+        captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,spectrogram:spectrogram,snapshot:snapshot,key:meetingKey,
                              peerKnown:peers.contains { $0.id == meetingKey?.peer })
         // The call this recording belongs to, as the Start named it (the broker recorded it first).
         if let generation = info.callGeneration ?? ownership.snapshot.binding(id)?.callGeneration {
@@ -345,6 +349,8 @@ private final class CaptureFiles: @unchecked Sendable {
         let id = snapshot.manifest.id
         guard captures[id] != nil else { if snapshot.phase == .saved { settle(snapshot) }; return }
         captures[id]?.snapshot = snapshot
+        captures[id]?.spectrogram?.update(events:snapshot.manifest.events ?? [])
+        if snapshot.phase != .recording, let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
         if snapshot.phase == .saving { MeetingNavigation.shared.captureBeganSaving(at:snapshot.directory) }
         if snapshot.phase == .saved {
             settle(snapshot)
@@ -384,6 +390,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
             let id = snapshot.manifest.id
+            captures[id]?.spectrogram?.stop(atMs:Double(captures[id]?.elapsedMs ?? 0))
             captures.removeValue(forKey:id); announced.remove(id); feedOwnership(id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)

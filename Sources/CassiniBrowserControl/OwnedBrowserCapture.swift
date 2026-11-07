@@ -34,6 +34,7 @@ public struct OwnedCaptureSnapshot: Sendable {
 /// budget and a native span writer; browser requests use this owner's I/O queue.
 /// No file I/O occurs under a store-wide lock or in snapshot/UI getters.
 public final class OwnedBrowserCapture: @unchecked Sendable {
+    public let pcmObservers = RecordedPCMObservers()
     private struct BrowserSource {
         let id: String, label: String, kind: String
         /// D61: the declaration's clock facts, repeated on every span of this source.
@@ -235,11 +236,12 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                         do { try recording.append(id:span,pcm:bytes,offsetMs:at) }
                         catch let error as RecordingError { throw BrowserProtocolError("chunk",error.localizedDescription) }
                         catch { throw SourceWriteError(underlying:error) }
-                    } else {
-                        try recording.append(id:span,pcm:bytes,offsetMs:at)
-                    }
+                    } else { try recording.append(id:span,pcm:bytes,offsetMs:at) }
                     source.recorded = span
-                    let admitted = pcm.dropFirst(trim*source.channels*2)
+                    let admitted = bytes
+                    if let track = recording.manifest.tracks.first(where:{ $0.id == span }), let start = track.startOffsetMs {
+                        pcmObservers.offer(source:.init(id:span,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:start),pcm:admitted,offsetMs:at)
+                    }
                     var peak: Float = 0
                     admitted.withUnsafeBytes { bytes in
                         for offset in stride(from:0,to:bytes.count-1,by:max(2,bytes.count/512*2)) {
@@ -325,7 +327,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             // The ledger changes first, so the span's checkpoint also publishes its accounting.
             if reason == "failed" { ledger!.markFailed(source.key) }
             if let span = source.span {
-                if reason == "failed" { try recording.failTrack(id:span,problemKind:"capture") }
+                if reason == "failed" { try failRecordedTrack(id:span,problemKind:"capture") }
                 else { try commitTransition(ending:[span]) }
             } else { try publishLedger() }
             retired.insert(id); browserSources.removeValue(forKey:Data(id.utf8)); browserPeaks.removeValue(forKey:Data(id.utf8))
@@ -355,7 +357,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             ledger!.markFailed(declaration.key,io:code == "io")
             if let span = browserSources[Data(id.utf8)]?.span, recording.manifest.tracks.contains(where:{ $0.id == span && $0.ended != true }) {
                 // One checkpoint carries the failed span and its accounting.
-                do { try recording.failTrack(id:span,problemKind:code == "io" ? "io" : "capture") }
+                do { try failRecordedTrack(id:span,problemKind:code == "io" ? "io" : "capture") }
                 catch { nativeProblems.append(error.localizedDescription); nativeProblemKind = "io" }
             } else { try? publishLedger() }
             retired.insert(id); browserSources.removeValue(forKey:Data(id.utf8)); browserPeaks.removeValue(forKey:Data(id.utf8))
@@ -551,9 +553,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             return id
         }
     }
-    fileprivate func nativeAudio(id: String, pcm: Data, offsetMs: Double, gapKind: String = "input") throws {
+    fileprivate func nativeAudio(id: String, pcm: Data, offsetMs: Double, gapKind: String = "input") throws -> RecordedPCMSource? {
         try sync {
-            guard phase == .recording, var span = nativeSpans[id], span.side == .me ? me : others else { return }
+            guard phase == .recording, var span = nativeSpans[id], span.side == .me ? me : others else { return nil }
             guard offsetMs.isFinite, (0...86400000).contains(offsetMs), !pcm.isEmpty,
                   pcm.count <= 262144, pcm.count % (span.channels*2) == 0 else { throw RecordingError.invalid("Invalid native audio chunk.") }
             var bytes = pcm, offset = offsetMs
@@ -562,7 +564,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 let earliest = span.side == .others ? recording.manifest.events?.last?.atMs ?? 0 : meResumeAt
                 if earliest > offsetMs {
                     let trim = min(pcm.count/(span.channels*2),max(0,Int(ceil((earliest-offsetMs)*Double(span.rate)/1000))))
-                    guard trim*span.channels*2 < pcm.count else { return }
+                    guard trim*span.channels*2 < pcm.count else { return nil }
                     bytes = Data(pcm.dropFirst(trim*span.channels*2)); offset += Double(trim)/Double(span.rate)*1000
                 }
                 // The stand-in already published system/missing; its first PCM adds no event.
@@ -575,6 +577,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 span.registered = true; nativeSpans[id] = span
             }
             try recording.appendNative(id:id,pcm:bytes,offsetMs:offset,gapKind:gapKind); publish(force:first)
+            guard let track = recording.manifest.tracks.first(where:{ $0.id == id }), let start = track.startOffsetMs else { return nil }
+            return .init(id:id,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:start)
         }
     }
     /// D52.2 selection boundaries for native spans: the microphone's selection time,
@@ -610,7 +614,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             // SPEC "Gap ranges": writer loss is padding instead of failing the source, so
             // writer loss alone (io with no diagnostic) ends the span normally (D69.2).
             if kind == "io", problem?.isEmpty == false {
-                for id in live { try recording.failTrack(id:id,problemKind:"io") }
+                for id in live { try failRecordedTrack(id:id,problemKind:"io") }
             } else if !live.isEmpty { try commitTransition(ending:live) }
             for id in ids { nativeSpans.removeValue(forKey:id) }
             reservedNative.remove(side)
@@ -690,11 +694,16 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     /// A declared wire id with a span that has not ended or been refused.
     func isLive(_ id: String) -> Bool { sync { browserSources[Data(id.utf8)] != nil } }
+    private func failRecordedTrack(id: String, problemKind: String) throws {
+        defer { pcmObservers.sourceEnded(id:id) }
+        try recording.failTrack(id:id,problemKind:problemKind)
+    }
     private func commitTransition(starting: [RecordingSource] = [], ending: [String] = [], events: [CaptureEvent] = []) throws {
         do { try recording.transition(starting:starting,ending:ending,events:events) }
         catch let error as RecordingTransitionCommittedError {
             nativeProblems.append(error.localizedDescription); nativeProblemKind = "io"
         }
+        for id in ending { pcmObservers.sourceEnded(id:id) }
     }
     private func eventTime(_ requested: Double) -> Double {
         // A device's frame count is not the control clock. Its drift must not
@@ -725,7 +734,11 @@ private final class NativeSpanWriter: RecordingSinkWriter {
     private let owner: OwnedBrowserCapture
     private let side: CaptureSide
     private var spans: [String:String] = [:]
-    init(owner: OwnedBrowserCapture, side: CaptureSide) { self.owner = owner; self.side = side }
+    let recordedPCM: RecordedPCMPolicy?
+    init(owner: OwnedBrowserCapture, side: CaptureSide) {
+        self.owner = owner; self.side = side
+        recordedPCM = RecordedPCMPolicy(observers:owner.pcmObservers)
+    }
     // Ending a span records diagnostics on its meeting owner. A preserved gap
     // or counted queue loss must not reject the user's source-off transition.
     // Actual write/checkpoint errors still throw from append/endNative.
@@ -735,10 +748,12 @@ private final class NativeSpanWriter: RecordingSinkWriter {
         spans[id] = try owner.nativeTrack(side:side,label:label,rate:sampleRate,channels:channels)
     }
     func appendNative(id: String, pcm: Data, offsetMs: Double) throws {
-        guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs)
+        guard let span = spans[id] else { return }
+        if let source = try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs) { recordedPCM?.publish(source,for:id) }
     }
     func appendNative(id: String, pcm: Data, offsetMs: Double, gapKind: String) throws {
-        guard let span = spans[id] else { return }; try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs,gapKind:gapKind)
+        guard let span = spans[id] else { return }
+        if let source = try owner.nativeAudio(id:span,pcm:pcm,offsetMs:offsetMs,gapKind:gapKind) { recordedPCM?.publish(source,for:id) }
     }
     func padNative(id: String, frames: UInt64, channels: Int, rate: Double, offsetMs: Double, kind: String) throws {
         guard let span = spans[id] else { return }; try owner.nativePadding(id:span,frames:frames,offsetMs:offsetMs,kind:kind)

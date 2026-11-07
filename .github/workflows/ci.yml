@@ -44,7 +44,7 @@ jobs:
     with:
       parakeet_models: ${{ needs.changes.outputs.parakeet != 'false' }}
   # D66 mac-P2-2: the Release app and its packaging (Cassini-<sha>), off the Debug consumers'
-  # critical path; only packaging and the Parakeet checks wait for it.
+  # critical path; packaging, Parakeet and the optimized spectrogram probe wait for it.
   build_release:
     needs: [build]
     if: ${{ always() && !cancelled() && needs.build.result == 'success' }}
@@ -199,7 +199,8 @@ jobs:
     needs:
     - changes
     - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.boards != 'false' }}
+    - build_release
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.boards != 'false' }}
     uses: ./.github/workflows/ux-boards.yml
     with:
       products_ready: true
