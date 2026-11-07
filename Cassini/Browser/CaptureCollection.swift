@@ -543,7 +543,7 @@ private final class CaptureFiles: @unchecked Sendable {
         guard calls.count == 1, let call = calls.first else { return }
         captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
         let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
-        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs) { [weak self] generation,request in
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,owner:owner) { [weak self] generation,request in
             broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
             // The generation the resume was sent with (nil: refused). After the take-over this
             // recording is that call's, so it follows and suppresses exactly that call (D52.5).
@@ -581,7 +581,7 @@ private final class CaptureFiles: @unchecked Sendable {
     private func askResume(_ value: LiveCapture, _ meeting: BrowserMeetingKey) {
         guard let identity = broker.standInIdentity(value.owner) else { return }
         let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
-        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:value.callGeneration) { generation,request in
+        service.resumeMeeting(meeting,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,owner:owner,expectedGeneration:value.callGeneration) { generation,request in
             broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
         }
     }
