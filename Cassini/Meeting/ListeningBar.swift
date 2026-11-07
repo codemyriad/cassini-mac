@@ -44,7 +44,6 @@ struct ListeningBar: View {
                     Button { model.stopListening() } label: { Image(systemName:"xmark").frame(width:24,height:28) }
                         .help(UXText.text("listen.stop")).accessibilityLabel(UXText.text("listen.stop"))
                         .accessibilityIdentifier("listen-stop")
-                        .keyboardShortcut(model.canUseListeningShortcuts ? .cancelAction : nil)
                 }.padding(.horizontal,16).frame(height:36)
             }.frame(height:36)
         }.font(.system(size:11.5)).buttonStyle(.borderless).background(.bar)

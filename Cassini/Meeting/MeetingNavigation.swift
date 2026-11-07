@@ -142,9 +142,10 @@ import Observation
         let previous = turn.index > 0 && listeningTurns.indices.contains(turn.index-1) ? listeningTurns[turn.index-1] : nil
         return .init(name:name,turn:turn,previous:previous,index:listen.index,count:listen.count,language:UXText.language,locale:UXText.locale)
     }
-    var canUseListeningShortcuts: Bool {
+    var canUseListeningShortcuts: Bool { canUseListeningShortcuts(in:NSApp.keyWindow) }
+    func canUseListeningShortcuts(in window: NSWindow?) -> Bool {
         guard listen.active, MeetingNavigation.shared.detail === self, !LibrarySearchModel.shared.visible,
-              let window = NSApp.keyWindow, window.accessibilityIdentifier() == "cassini-library-window",
+              let window, window.accessibilityIdentifier() == "cassini-library-window",
               window.attachedSheet == nil, NSApp.modalWindow == nil,
               MeetingRenameCoordinator.shared.presentation == nil, !MeetingExportCoordinator.shared.showing,
               !RecordingDetailsCoordinator.shared.showing, !RecordCoordinator.shared.showingFirst,

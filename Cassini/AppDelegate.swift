@@ -299,6 +299,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
+        // AppKit focus/sheet changes are not Observation dependencies. Decide
+        // Escape ownership from this key event, not a cached SwiftUI shortcut.
+        if event.keyCode == 53,
+           event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty,
+           trackingMenus.isEmpty,
+           let window = event.window ?? NSApp.keyWindow,
+           let detail = MeetingNavigation.shared.detail,
+           detail.canUseListeningShortcuts(in:window) {
+            detail.stopListening()
+            return nil
+        }
         // AppKit's outline consumes Return before SwiftUI onKeyPress. Treat it
         // as the Library selection's primary action, like the native row's
         // double-click; menus and editors keep their own Return behavior.
