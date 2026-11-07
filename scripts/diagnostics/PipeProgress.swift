@@ -2,6 +2,8 @@ import Foundation
 import Darwin
 
 private let outputLock = NSLock()
+private var failures = 0
+private func require(_ success: Bool) { if !success { outputLock.lock(); failures += 1; outputLock.unlock() } }
 private func note(_ message: String) {
     outputLock.lock(); defer { outputLock.unlock() }
     print(message); fflush(stdout)
@@ -30,6 +32,7 @@ private func pipeCase(_ label: String, _ executable: String, _ arguments: [Strin
         let ready = poll(&item,1,3000)
         var bytes: Int32 = -1; let counted = ioctl(fd,UInt(0x4004667f),&bytes)
         note("POLL \(label) ready=\(ready) revents=\(item.revents) queued=\(bytes) ioctl=\(counted) running=\(p.isRunning) elapsed=\(Date().timeIntervalSince(start))")
+        if label == "http-fixture" { require(ready > 0 && bytes > 0) }
         if ready == 0 { snapshot(p.processIdentifier,label) }
         _ = fcntl(fd,F_SETFL,fcntl(fd,F_GETFL)|O_NONBLOCK)
         var buffer = [UInt8](repeating:0,count:4096)
@@ -67,9 +70,10 @@ private func pipeCase(_ label: String, _ executable: String, _ arguments: [Strin
             for index in 0..<8 {
                 tasks.addTask {
                     do {
-                        let value = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/usr/bin/python3"),arguments:["-c","import sys,os,stat; print('start',os.getpid(),[(fd,os.fstat(fd).st_ino) for fd in range(3,256) if os.path.exists('/dev/fd/'+str(fd))],flush=True); sys.stderr.buffer.write(b'e'*800000); sys.stderr.flush(); print(len(sys.stdin.buffer.read()),flush=True)"],environment:["PATH":"/usr/bin:/bin"],input:Data(repeating:1,count:1048576),timeout:10)
+                        let value = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/bin/sh"),arguments:["-c","/usr/bin/head -c 800000 /dev/zero | /usr/bin/tr '\\000' e >&2; n=$(/usr/bin/wc -c); printf '%s\\n' \"$((n))\""],environment:["PATH":"/usr/bin:/bin"],input:Data(repeating:1,count:1048576),timeout:10)
+                        require(value.status == 0 && value.stdout == Data("1048576\n".utf8) && value.stderr.count == 262144 && value.inputError == nil)
                         note("WHISTLE \(index) status=\(value.status) stdout=\(String(decoding:value.stdout,as:UTF8.self)) stderrBytes=\(value.stderr.count)")
-                    } catch { note("WHISTLE \(index) error=\(error)") }
+                    } catch { require(false); note("WHISTLE \(index) error=\(error)") }
                 }
             }
         }
@@ -79,10 +83,12 @@ private func pipeCase(_ label: String, _ executable: String, _ arguments: [Strin
         pipeCase("shell","/bin/sh",["-c","printf 'ready\\n'; read value"])
         pipeCase("python-system","/usr/bin/python3",["-c",program])
         pipeCase("python-env","/usr/bin/env",["python3","-c",program])
-        pipeCase("http-fixture","/usr/bin/env",["python3","Tests/CassiniModelsTests/Fixtures/server.py","--scenario","normal","--log","build/pipe-diagnostics/requests.jsonl"])
+        pipeCase("http-fixture","/usr/bin/env",["python3","Tests/CassiniModelsTests/Fixtures/server.py","--scenario","normal","--log","build/pipe-diagnostics/requests.jsonl","--forbid-dns"])
         await withCheckedContinuation { done in
             Thread.detachNewThread { pipeCase("python-thread","/usr/bin/python3",["-c",program]); done.resume() }
         }
 
+        note("VALIDATION failures=\(failures)")
+        Darwin.exit(failures == 0 ? 0 : 1)
     }
 }
