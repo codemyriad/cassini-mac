@@ -84,13 +84,15 @@ import Observation
     @ObservationIgnored private var preparation: TurnPreparation?
     private(set) var shares: [String: Int] = [:]
     let fileURL: URL?
-    let audio = SessionPlayback()
+    let audio: SessionPlayback
+    let listen: ListenController
     private let fileAccessLease: AnyObject?
     private let frozen: Bool
     private var fixturePosition = 192_000
     private var fixturePlaying = true
     init(meeting: LibraryMeeting, fileURL: URL? = nil, lease: AnyObject? = nil, frozen: Bool = false) {
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
+        let audio = SessionPlayback(); self.audio = audio; listen = ListenController(playback:audio)
         fileAccessLease = lease
         shares = MeetingPresentation.shares(meeting)
         audio.onFailure = { NSApp.presentError($0) }
@@ -98,16 +100,28 @@ import Observation
     }
     private func prepareTurns() {
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
-        if frozen { turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps); return }
+        if frozen {
+            turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps)
+            listen.setTurns(meeting.speakerTurns); return
+        }
         if preparation == nil {
             #if DEBUG
             if let prepare = Self.preparerForSelfTest {
-                preparation = TurnPreparation(prepare:prepare) { [weak self] in self?.turns = $0 }
+                preparation = TurnPreparation(prepare:prepare) { [weak self] in self?.acceptTurns($0) }
             }
             #endif
-            if preparation == nil { preparation = TurnPreparation { [weak self] in self?.turns = $0 } }
+            if preparation == nil { preparation = TurnPreparation { [weak self] in self?.acceptTurns($0) } }
         }
         preparation?.request(meeting.transcriptItems,gaps:meeting.speakerGaps)
+    }
+    private func acceptTurns(_ turns: [MeetingPresentation.Turn]) {
+        self.turns = turns
+        if let preparation { listen.setTurns(preparation.speakerTurns) }
+    }
+    @discardableResult func listenTo(_ speaker: String, turnIndex: Int? = nil) -> Bool {
+        guard !frozen else { return false }
+        PlayerController.pauseActive()
+        return listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
     }
     #if DEBUG
     /// MeetingPreparationSelfTest: a gated preparer, so the proof controls when work proceeds.
@@ -151,6 +165,6 @@ import Observation
     }
     func reconcile(offline: Bool) { audio.reconcile(playbackMeeting,offline:offline) }
     /// A Library outage: playback stops and any preparation pauses, to resume on recovery.
-    func suspend() { preparation?.cancel(); audio.stop() }
-    func close() { preparation?.cancel(); preparation = nil; audio.stop() }
+    func suspend() { preparation?.cancel(); listen.pageChanged() }
+    func close() { preparation?.cancel(); preparation = nil; listen.pageChanged() }
 }
