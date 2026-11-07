@@ -1,4 +1,4 @@
-import { workerDeathDuringRecording, stopRecordingWorker } from '../../browser-protocol/scenarios/worker-recovery.mjs';
+import { workerDeathDuringRecording } from '../../browser-protocol/scenarios/worker-recovery.mjs';
 import { tonePower } from '../../browser-protocol/scenarios/tones.mjs';
 import { saveFailure } from './artifacts.mjs';
 // Optional integration test. See README.md for the temporary Playwright setup.
@@ -27,6 +27,17 @@ await writeFile(manifestPath,JSON.stringify(extensionManifest));
 const hostPath = process.env.CASSINI_NATIVE_HOST || path.join(root,'.build/debug/cassini-browser-host');
 assert.match(hostPath, /\/(?:debug|Debug)\//, 'The private-Library fixture requires a Debug native host');
 let context, savedPath;
+// A serviceworker target can exist before its message listener is installed.
+// Observe that registration before issuing the first RPC; never retry an RPC.
+async function ready(worker) {
+  await worker.evaluate(()=>new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{clearInterval(check);reject(Error('Worker message listener did not register'));},15000);
+    const check=setInterval(()=>{
+      if(chrome.runtime.onMessage.hasListeners()){clearInterval(check);clearTimeout(timer);resolve();}
+    },10);
+    if(chrome.runtime.onMessage.hasListeners()){clearInterval(check);clearTimeout(timer);resolve();}
+  }));
+}
 try {
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true,
@@ -37,6 +48,7 @@ try {
   let worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   console.log('Chromium', context.browser().version());
   const extensionId = new URL(worker.url()).host;
+  await ready(worker);
   // Modern Chromium looks for native hosts under this temporary user-data directory.
   // This does not install a host or an extension into the user's everyday browser profile.
   const hostDirectory = path.join(profile, 'NativeMessagingHosts');
@@ -64,11 +76,28 @@ try {
   });
   // Explicit termination is the worker lifecycle event; a fixed idle delay
   // cannot establish it while debugger attachment keeps a worker alive.
-  await stopRecordingWorker(context,page,extensionId);
+  const lifecycle=await context.newCDPSession(page);
+  let versions=[], signals=[];
+  lifecycle.on('ServiceWorker.workerVersionUpdated',event=>{
+    versions=event.versions;
+    for(const signal of [...signals])signal();
+  });
+  const versionState=predicate=>new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{signals=signals.filter(x=>x!==check);reject(Error('Worker lifecycle event did not arrive'));},15000);
+    function check(){const value=versions.find(predicate);if(value){clearTimeout(timer);signals=signals.filter(x=>x!==check);resolve(value);}}
+    signals.push(check);check();
+  });
+  await lifecycle.send('ServiceWorker.enable');
+  const running=await versionState(value=>value.scriptURL===`chrome-extension://${extensionId}/background.js` && value.runningStatus==='running');
+  const stopped=versionState(value=>value.versionId===running.versionId && value.runningStatus==='stopped');
+  await lifecycle.send('ServiceWorker.stopWorker',{versionId:running.versionId});
+  await stopped;
+  await lifecycle.detach();
   const wake = await context.newPage();
   await wake.goto(`chrome-extension://${extensionId}/popup.html`);
+  worker=context.serviceWorkers().find(item=>item.url().includes(extensionId)) || await context.waitForEvent('serviceworker');
+  await ready(worker);
   await wake.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
-  worker = context.serviceWorkers().find(item => item.url().includes(extensionId)) || await context.waitForEvent('serviceworker');
   await wake.close();
   // Simulate action invocation's activeTab metadata grant in the temporary test profile.
   // The actual MAIN/isolated scripts, service worker and Native Messaging transport run normally.
