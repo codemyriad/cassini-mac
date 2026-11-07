@@ -25,7 +25,6 @@ jobs:
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
-        release: 'true'
     - run: test "$RUNNER_ENVIRONMENT" = github-hosted
     - run: brew install displayplacer
     - uses: actions/setup-python@v5
@@ -90,18 +89,6 @@ jobs:
     - name: Real recording controls without devices
       if: always()
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
-    - name: Pure hosted budget policy boundaries (D36.2)
-      run: |
-        swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
-        "$RUNNER_TEMP/spectrogram-budget"
-    - name: Production spectrogram A–E, native views and Time Profiler without devices
-      if: always()
-      run: |
-        python3 scripts/test-spectrogram-harness.py
-        xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
-        build/check-spectrogram-clock
-        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
-        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --output build/ux-boards/spectrogram
     - name: Private stopped recording clock without devices or windows
       run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/saving-clock.json
     - name: Private import and queue lifecycle without devices
@@ -137,3 +124,45 @@ jobs:
           build/cassini-app.log
           build/display-*
     name: Library boards
+  # D66: 52 UI tests took 14.9 min, then native A–E/profiling took another
+  # ~9 min. Together they exhausted the 25 min job during cleanup despite every
+  # assertion passing (42395485443). Measure on a separate hosted display, with
+  # the same products, inputs and budgets; leave each job time to upload evidence.
+  spectrogram:
+    name: Native spectrogram and profiling
+    needs: [build, release]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        debug: 'true'
+        release: 'true'
+    - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+    - run: brew install displayplacer
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Prepare hosted display
+      run: python3 scripts/hosted-display.py
+    - name: Pure hosted budget policy boundaries (D36.2)
+      run: |
+        swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
+        "$RUNNER_TEMP/spectrogram-budget"
+    - name: Production spectrogram A–E, native views and Time Profiler without devices
+      timeout-minutes: 12
+      run: |
+        python3 scripts/test-spectrogram-harness.py
+        xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
+        build/check-spectrogram-clock
+        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --output build/ux-boards/spectrogram
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        retention-days: 14
+        name: ux-spectrogram
+        path: build/ux-boards/spectrogram
