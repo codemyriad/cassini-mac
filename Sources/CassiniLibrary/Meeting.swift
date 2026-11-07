@@ -149,6 +149,19 @@ public struct LibraryMeeting: Sendable {
     private var writtenItems: [LibraryTranscriptItem]? = nil
     /// D24: each merged-away speaker id mapped to its final target (empty without merges).
     public var mergedInto: [String: String] = [:]
+    /// Prepared snapshots can outlive a metadata merge (including a suspended
+    /// preparation). Resolve against the current metadata when rendering them.
+    public func speaker(for id: String) -> MeetingSpeaker? {
+        let resolved = mergedInto[id] ?? id
+        return speakers.first { $0.id == resolved }
+    }
+    public var speakerDisplayNames: [String:String] {
+        var names = Dictionary(uniqueKeysWithValues:speakers.map { ($0.id,$0.displayName) })
+        for (from,into) in mergedInto {
+            if let name = names[into] { names[from] = name }
+        }
+        return names
+    }
     public var transcriptLanguage: String? = nil
     public var transcriptModel: String? = nil
     /// meeting.json's transcript names a body (D67.2: a failed write-down stores none).

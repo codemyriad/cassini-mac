@@ -55,6 +55,24 @@ import Testing
 // These share SessionPlayback.stopAll's process-wide owner with the original
 // playback tests, so they belong to that same serialized suite (E1/D66).
 extension SessionPlaybackTests {
+    @Test func timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() async {
+        let (meeting,audio,fake,listen) = scene()
+        listen.start("ada",in:meeting); await audio.preparation?.value; fake.sought()
+        #expect(listen.timeline.starts == listen.turns(of:"ada").map { Double($0.startMs) })
+        let track = ListeningTimeline.Track(minX:12,width:400)
+        let target = listen.timeline.starts.last!
+        let snapped = listen.timeline.snapped(target+50,duration:20000,track:track)
+        audio.seek(toMs:snapped); fake.sought()
+        #expect(snapped == target && listen.speaker == "ada" && fake.boundary != nil)
+        let merged = SpeakerMerges.apply(meeting.transcriptItems,["ben":"ada"])
+        listen.setTurns(SpeakerTurn.grouping(merged))
+        #expect(listen.timeline.starts == listen.turns(of:"ada").map { Double($0.startMs) })
+        #expect(listen.timeline.starts.count == 1)
+        listen.stopPlayback()
+        #expect(listen.timeline.starts.isEmpty)
+        audio.stop()
+    }
+
     @Test func queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() async {
         let (meeting,audio,fake,_) = scene(); var ended = 0
         audio.play(meeting,fromMs:123,untilMs:423,onDone:{ ended += 1 })
