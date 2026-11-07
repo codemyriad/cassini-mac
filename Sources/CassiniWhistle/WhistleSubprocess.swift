@@ -15,6 +15,7 @@ public enum WhistleSubprocess {
     }
     private final class Control: @unchecked Sendable {
         let lock = NSLock()
+        let exited = DispatchSemaphore(value:0)
         private var process: Process?
         private(set) var cancelled = false
         private(set) var timedOut = false
@@ -29,8 +30,12 @@ public enum WhistleSubprocess {
         }
         private func terminate(_ process: Process) {
             if process.isRunning { process.terminate() }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            // Escalation must remain runnable even when the shared dispatch
+            // worker pool is occupied by other blocking process/pipe work.
+            Thread.detachNewThread { [exited] in
+                if exited.wait(timeout:.now()+0.3) == .timedOut, process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
             }
         }
         func outcome() -> (cancelled: Bool, timedOut: Bool) {
@@ -47,7 +52,9 @@ public enum WhistleSubprocess {
         let control = Control()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global().async {
+                // A process wait must not occupy the same finite worker pool
+                // that its pipe drains and termination watchdog need to run.
+                Thread.detachNewThread {
                     do { continuation.resume(returning: try blocking(executable, arguments, environment, input, timeout, control)) }
                     catch { continuation.resume(throwing: error) }
                 }
@@ -59,15 +66,18 @@ public enum WhistleSubprocess {
         let process = Process(); process.executableURL = executable; process.arguments = arguments; process.environment = environment
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         process.standardInput = stdin; process.standardOutput = stdout; process.standardError = stderr
+        process.terminationHandler = { [control] _ in control.exited.signal() }
         try process.run(); control.attach(process)
         let deadline = Date().addingTimeInterval(timeout)
-        let watchdog = DispatchSource.makeTimerSource(queue: .global())
-        watchdog.schedule(deadline: .now() + timeout); watchdog.setEventHandler { control.stop(timeout: true) }; watchdog.resume()
-        defer { watchdog.cancel() }
+        let finished = DispatchSemaphore(value:0)
+        Thread.detachNewThread {
+            if finished.wait(timeout:.now()+timeout) == .timedOut { control.stop(timeout:true) }
+        }
+        defer { finished.signal(); process.terminationHandler = nil }
         let group = DispatchGroup(), capture = Capture()
         for (pipe, isError, cap) in [(stdout, false, 4_194_304), (stderr, true, 262_144)] {
             group.enter()
-            DispatchQueue.global().async {
+            Thread.detachNewThread {
                 capture.put(drain(pipe.fileHandleForReading.fileDescriptor, cap: cap, until: deadline.addingTimeInterval(1)), error: isError)
                 group.leave()
             }

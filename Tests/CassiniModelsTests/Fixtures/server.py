@@ -5,6 +5,9 @@ import argparse,hashlib,http.server,json,socket,sys,threading,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--scenario',required=True);p.add_argument('--log',type=Path,required=True)
 a=p.parse_args();root=Path(__file__).resolve().parent
+if a.scenario=='no-ready':
+ sys.stdin.buffer.read()
+ raise SystemExit(0)
 state={'artifacts':0,'truncated':False};lock=threading.Lock()
 prefix_persisted=threading.Event()
 def receive_control():

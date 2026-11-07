@@ -63,6 +63,27 @@ import Testing
                 environment: ["PATH": "/usr/bin:/bin"], input: Data(), timeout: 0.2)
         }
     }
+    @Test func timeoutAlsoUnblocksAWriterWhenTheChildNeverReadsInput() async {
+        await #expect(throws: WhistleSubprocess.Failure.self) {
+            try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/usr/bin/python3"),
+                arguments:["-c","import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(60)"],
+                environment:["PATH":"/usr/bin:/bin"],input:Data(repeating:1,count:1_048_576),timeout:0.2)
+        }
+    }
+    @Test func concurrentDuplexProcessesDoNotDependOnSharedPoolDrains() async throws {
+        try await withThrowingTaskGroup(of:Void.self) { tasks in
+            for _ in 0..<8 {
+                tasks.addTask {
+                    let result = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/usr/bin/python3"),
+                        arguments:["-c","import sys; sys.stderr.buffer.write(b'e'*800000); sys.stderr.flush(); n=len(sys.stdin.buffer.read()); print(n,flush=True)"],
+                        environment:["PATH":"/usr/bin:/bin"],input:Data(repeating:1,count:1_048_576),timeout:10)
+                    #expect(result.status == 0 && result.inputError == nil)
+                    #expect(result.stdout == Data("1048576\n".utf8)); #expect(result.stderr.count == 262144)
+                }
+            }
+            try await tasks.waitForAll()
+        }
+    }
     @Test func cancellationStopsTheChild() async throws {
         let task = Task {
             try await WhistleSubprocess.run(executable: URL(fileURLWithPath: "/usr/bin/python3"),

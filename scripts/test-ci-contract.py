@@ -168,7 +168,9 @@ class FoldedJobs(unittest.TestCase):
     def test_kit_runs_the_arm64_export_checks(self):
         kit = ci_job('kit')
         self.assertIn("assets: 'true'", kit)
-        test = kit[kit.index('- name: Test\n'):kit.index('run: swift test --skip-build\n')]
+        test = kit[kit.index('- name: Test\n'):kit.index('python3 scripts/run-swift-tests.py')]
+        self.assertIn('-- swift test --skip-build',kit)
+        self.assertIn('name: unit-tests-and-stacks',kit)
         self.assertIn('CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus', test)
         self.assertIn('CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases', test)
         self.assertIn('python3 scripts/check-export-reference.py build/format-reference build/export-cases', kit)

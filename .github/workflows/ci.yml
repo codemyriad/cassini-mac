@@ -71,7 +71,16 @@ jobs:
       env:
         CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
         CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
-      run: swift test --skip-build
+      run: |
+        python3 scripts/test-swift-test-runner.py
+        python3 scripts/run-swift-tests.py --output build/unit-tests -- swift test --skip-build
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        name: unit-tests-and-stacks
+        path: build/unit-tests
+        retention-days: 14
     # Shared test 9 (D55, protocol conformance/placement): every consumer of a track's placement
     # (recognizer input, word times, export mix, playback, offsetsAssumedZero) on the golden's clean
     # folders and its three app mutants, checked by the shared oracle (placement.py check).

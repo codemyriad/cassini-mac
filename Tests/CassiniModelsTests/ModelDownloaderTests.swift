@@ -10,6 +10,7 @@ private let enough: @Sendable (URL) throws -> ModelDiskSpace = { _ in .init(free
 private let agent = "CassiniTalk/9.8.7 (macOS 15.1; arm64)"
 private final class Server: @unchecked Sendable {
     let process = Process()
+    private let exited: DispatchSemaphore
     private let control = Pipe(), prefixLock = NSLock()
     private var sentPrefix = false
     var prefixAcknowledged: Bool { prefixLock.withLock { sentPrefix } }
@@ -26,7 +27,8 @@ private final class Server: @unchecked Sendable {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniModelTests-" + UUID().uuidString)
     let origin: URL
     let log: URL
-    init(_ scenario: String) throws {
+    init(_ scenario: String, startupTimeout: TimeInterval = 10) throws {
+        let exitEvent = DispatchSemaphore(value:0); exited = exitEvent
         guard fcntl(control.fileHandleForWriting.fileDescriptor,F_SETNOSIGPIPE,1) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
         }
@@ -37,13 +39,39 @@ private final class Server: @unchecked Sendable {
         process.arguments = ["python3",Bundle.module.url(forResource:"server",withExtension:"py",subdirectory:"Fixtures")!.path,"--scenario",scenario,"--log",log.path]
         process.standardInput = control
         process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { _ in exitEvent.signal() }
+        let child = process, folder = root
+        var admitted = false
+        defer { if !admitted { Self.reap(child,exited:exitEvent); try? FileManager.default.removeItem(at:folder) } }
         try process.run()
-        var line = Data()
-        while let byte = try pipe.fileHandleForReading.read(upToCount:1), !byte.isEmpty, byte != Data([10]) { line.append(byte) }
-        guard let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else { process.terminate(); throw ModelDownloadError.response }
-        origin = url
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
+        let fd = pipe.fileHandleForReading.fileDescriptor
+        var line = Data(), published = false
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            var ready = pollfd(fd:fd,events:Int16(POLLIN | POLLHUP),revents:0)
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now < deadline else { break }
+            let remaining = deadline-now
+            let count = poll(&ready,1,Int32(min(100,remaining/1_000_000)))
+            if count < 0 { if errno == EINTR { continue }; throw ModelDownloadError.response }
+            if count == 0 { continue }
+            guard let byte = try pipe.fileHandleForReading.read(upToCount:1), !byte.isEmpty else { break }
+            if byte == Data([10]) { published = true; break }
+            line.append(byte)
+        }
+        guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else { throw ModelDownloadError.response }
+        origin = url; admitted = true
     }
-    deinit { process.terminate(); process.waitUntilExit(); try? FileManager.default.removeItem(at:root) }
+    private static func reap(_ process: Process, exited: DispatchSemaphore) {
+        guard process.processIdentifier > 0 else { return }
+        if process.isRunning { process.terminate() }
+        if exited.wait(timeout:.now()+3) == .timedOut, process.isRunning {
+            kill(process.processIdentifier,SIGKILL)
+            _ = exited.wait(timeout:.now()+2)
+        }
+        if !process.isRunning { process.waitUntilExit() }
+    }
+    deinit { Self.reap(process,exited:exited); try? FileManager.default.removeItem(at:root) }
     var appData: URL { root.appendingPathComponent("data") }
     func downloader(budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = enough) throws -> ModelDownloader { try .init(appData:appData,fixtureOrigin:origin,userAgent:agent,budget:budget) }
     var requests: [[String:Any]] { ((try? String(contentsOf:log,encoding:.utf8)) ?? "").split(separator:"\n").compactMap { try? JSONSerialization.jsonObject(with:Data($0.utf8)) as? [String:Any] } }
@@ -59,6 +87,9 @@ private final class ProgressLog: @unchecked Sendable {
 }
 
 @Suite struct ModelDownloaderTests {
+    @Test func fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() {
+        #expect(throws:ModelDownloadError.self) { _ = try Server("no-ready",startupTimeout:0.1) }
+    }
     @Test func acceptedInferenceLinksDoNotInvalidateOrRedownloadAnInstalledModel() async throws {
         let server = try Server("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)
