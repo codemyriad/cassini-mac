@@ -52,6 +52,14 @@ class Selection(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(changes.select('pull_request','base',PATHS,[path])['boards'])
 
+    def test_workflow_jobs_have_no_duplicate_top_level_keys(self):
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            jobs=workflow.read_text().split('\njobs:\n',1)[-1]
+            for match in re.finditer(r'^  ([\w-]+):\n(.*?)(?=^  \S|^\S|\Z)',jobs,re.M|re.S):
+                keys=re.findall(r'^    ([\w-]+):',match.group(2),re.M)
+                with self.subTest(workflow=workflow.name,job=match.group(1)):
+                    self.assertEqual(len(keys),len(set(keys)),f'Duplicate job keys: {keys}')
+
     def test_unknown_base_and_detection_failure_run_everything(self):
         self.assertTrue(all(changes.select('pull_request', '', PATHS).values()))
         with patch.object(changes.subprocess, 'check_output', side_effect=subprocess.CalledProcessError(128, 'git')):

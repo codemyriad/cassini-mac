@@ -136,7 +136,4 @@ jobs:
           build/ux-boards.log
           build/cassini-app.log
           build/display-*
-    needs:
-    - build
-    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
     name: Library boards
