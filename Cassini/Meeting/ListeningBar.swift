@@ -49,8 +49,9 @@ struct ListeningBar: View {
         }.font(.system(size:11.5)).buttonStyle(.borderless).background(.bar)
             .accessibilityElement(children:.contain).accessibilityLabel(presentation.accessibilityLabel)
             .accessibilityIdentifier("listening-bar")
-            .onAppear { model.announceListeningTurn() }
-            .onChange(of:model.listen.turn?.index) { _,_ in model.announceListeningTurn() }
+            .onAppear { model.resetListeningAnnouncement(); model.announceListeningTurn() }
+            .onChange(of:model.listen.turn) { _,_ in model.announceListeningTurn() }
+            .onDisappear { model.resetListeningAnnouncement() }
     }
 }
 

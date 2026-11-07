@@ -334,6 +334,16 @@ final class LibraryBoards: XCTestCase {
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)],timeout:5),.completed)
         XCTAssertTrue(bar.exists,"Escape belongs to the export sheet before listening")
+        // These must recover after AppKit finishes dismissing the sheet.
+        for (key, modifiers, label) in [
+            (XCUIKeyboardKey.downArrow, XCUIElement.KeyModifierFlags([.option,.command]), "Turn 2 of 2 · 00:03:31"),
+            (.upArrow, [.option,.command], "Turn 1 of 2 · 00:02:55"),
+            (.downArrow, [.option,.shift,.command], "Turn 1 of 1 · 00:03:08"),
+            (.upArrow, [.option,.shift,.command], "Turn 1 of 2 · 00:02:55")
+        ] {
+            app.typeKey(key,modifierFlags:modifiers)
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in self.text(label,in:window) },object:nil)],timeout:5),.completed)
+        }
         let before = window.sliders["meeting-seek"].value as? String
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:bar)],timeout:5),.completed)

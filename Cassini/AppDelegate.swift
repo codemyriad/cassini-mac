@@ -103,6 +103,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--listening-self-test") {
+            Task { @MainActor in await ListeningSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--meeting-preparation-self-test") {
             Task { @MainActor in await MeetingPreparationSelfTest.run() }; return
         }
@@ -297,6 +300,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    #if DEBUG
+    @MainActor static func handleListeningSelfTest(_ event: NSEvent) -> NSEvent? { handle(event) }
+    #endif
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
         // AppKit focus/sheet changes are not Observation dependencies. Decide
@@ -308,6 +314,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let detail = MeetingNavigation.shared.detail,
            detail.canUseListeningShortcuts(in:window) {
             detail.stopListening()
+            return nil
+        }
+        let modifiers = event.modifierFlags.intersection([.command,.option,.control,.shift])
+        if [125,126].contains(event.keyCode),
+           modifiers == [.command,.option] || modifiers == [.command,.option,.shift],
+           trackingMenus.isEmpty,
+           let window = event.window ?? NSApp.keyWindow,
+           let detail = MeetingNavigation.shared.detail,
+           detail.canUseListeningShortcuts(in:window) {
+            let direction = event.keyCode == 125 ? 1 : -1
+            if modifiers.contains(.shift) { detail.stepListeningSpeaker(direction) }
+            else { detail.stepListeningTurn(direction) }
             return nil
         }
         // AppKit's outline consumes Return before SwiftUI onKeyPress. Treat it

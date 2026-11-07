@@ -7,11 +7,12 @@ public struct ListeningBarPresentation {
     public let speakerName: String
     public let label: String
     public let announcement: String
+    public let speakerAnnouncement: String
     public let accessibilityLabel: String
     public let previousExcerpt: String
     public let currentExcerpt: String
 
-    public init(name: String, turn: SpeakerTurn, previous: SpeakerTurn?, index: Int, count: Int,
+    public init(name: String, turn: SpeakerTurn, previous: SpeakerTurn?, index: Int, count: Int, firstStartMs: Int64,
                 language: CassiniLanguage = .system, locale: Locale = .current) {
         speakerName = name
         let strings = LibraryLocalization.shared
@@ -19,6 +20,10 @@ public struct ListeningBarPresentation {
                       "position":LibraryFormat.position(turn.startMs,locale:locale,language:language)]
         label = strings.text("listen.turn",values,language:language,locale:locale)
         announcement = strings.text("listen.turn.announce",values,language:language,locale:locale)
+        let when = strings.text(count == 1 ? "speakers.when.once" : "speakers.when.times",
+                                ["position":LibraryFormat.position(firstStartMs,locale:locale,language:language),
+                                 "count":String(count),"n":String(count)],language:language,locale:locale)
+        speakerAnnouncement = [name,when].joined(separator:", ")
         accessibilityLabel = strings.text("listen.bar.a11y",["name":name],language:language,locale:locale)
         var leading: [String] = [], current: [String] = []
         if let previous {

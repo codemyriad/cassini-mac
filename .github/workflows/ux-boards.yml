@@ -77,6 +77,9 @@ jobs:
     - name: Real app meeting-page turn preparation (off the main actor, outage and recovery)
       if: always()
       run: python3 scripts/test-meeting-preparation-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/meeting-preparation-app.json
+    - name: Listening announcements and shortcuts after sheets and editing
+      if: always()
+      run: python3 scripts/test-listening-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/listening-app.json
     - name: Real recording controls without devices
       if: always()
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards

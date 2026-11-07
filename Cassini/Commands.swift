@@ -55,16 +55,16 @@ struct AppCommands: Commands {
             Divider()
             Button(UXText.text("listen.previousTurn")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningTurn(-1) } }
                 .keyboardShortcut(.upArrow,modifiers:[.option,.command])
-                .disabled(listeningMeeting?.canUseListeningShortcuts != true || listeningMeeting?.canStepListeningTurn(-1) != true)
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningTurn(-1) != true)
             Button(UXText.text("listen.nextTurn")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningTurn(1) } }
                 .keyboardShortcut(.downArrow,modifiers:[.option,.command])
-                .disabled(listeningMeeting?.canUseListeningShortcuts != true || listeningMeeting?.canStepListeningTurn(1) != true)
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningTurn(1) != true)
             Button(UXText.text("listen.previousSpeaker")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(-1) } }
                 .keyboardShortcut(.upArrow,modifiers:[.option,.shift,.command])
-                .disabled(listeningMeeting?.canUseListeningShortcuts != true || listeningMeeting?.canStepListeningSpeaker(-1) != true)
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(-1) != true)
             Button(UXText.text("listen.nextSpeaker")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(1) } }
                 .keyboardShortcut(.downArrow,modifiers:[.option,.shift,.command])
-                .disabled(listeningMeeting?.canUseListeningShortcuts != true || listeningMeeting?.canStepListeningSpeaker(1) != true)
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(1) != true)
         }
     }
 }

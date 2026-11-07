@@ -137,19 +137,23 @@ import Observation
         else { listenTo(speaker) }
     }
     var listeningPresentation: ListeningBarPresentation? {
-        guard let turn = listen.turn else { return nil }
+        guard let turn = listen.turn, let first = listen.turns(of:turn.speaker).first else { return nil }
         let name = meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"])
         let previous = turn.index > 0 && listeningTurns.indices.contains(turn.index-1) ? listeningTurns[turn.index-1] : nil
-        return .init(name:name,turn:turn,previous:previous,index:listen.index,count:listen.count,language:UXText.language,locale:UXText.locale)
+        return .init(name:name,turn:turn,previous:previous,index:listen.index,count:listen.count,firstStartMs:first.startMs,language:UXText.language,locale:UXText.locale)
     }
     var canUseListeningShortcuts: Bool { canUseListeningShortcuts(in:NSApp.keyWindow) }
+    // Commands observe model state only; AppKit focus is checked when invoked.
+    var canUseListeningCommands: Bool {
+        listen.active && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
+        MeetingRenameCoordinator.shared.presentation == nil && !MeetingExportCoordinator.shared.showing &&
+        !RecordingDetailsCoordinator.shared.showing && !RecordCoordinator.shared.showingFirst &&
+        CompanionSetup.shared.presenter != .library && !RecordingConfirmation.active
+    }
     func canUseListeningShortcuts(in window: NSWindow?) -> Bool {
-        guard listen.active, MeetingNavigation.shared.detail === self, !LibrarySearchModel.shared.visible,
+        guard canUseListeningCommands,
               let window, window.accessibilityIdentifier() == "cassini-library-window",
-              window.attachedSheet == nil, NSApp.modalWindow == nil,
-              MeetingRenameCoordinator.shared.presentation == nil, !MeetingExportCoordinator.shared.showing,
-              !RecordingDetailsCoordinator.shared.showing, !RecordCoordinator.shared.showingFirst,
-              CompanionSetup.shared.presenter != .library, !RecordingConfirmation.active else { return false }
+              window.attachedSheet == nil, NSApp.modalWindow == nil else { return false }
         return (window.firstResponder as? NSTextView)?.isEditable != true && (window.firstResponder as? NSTextField)?.isEditable != true
     }
     func canStepListeningTurn(_ direction: Int) -> Bool {
@@ -183,21 +187,33 @@ import Observation
         if frozen { if let speaker = listen.speaker { previewListening(speaker) } }
         else if listen.playAgain(), before == listen.turn?.index { announceListeningTurn() }
     }
-    func stopListening() { if frozen { fixturePlaying = false }; listen.stopPlayback() }
+    func stopListening() { resetListeningAnnouncement(); if frozen { fixturePlaying = false }; listen.stopPlayback() }
     private func previewListening(_ speaker: String, index: Int = 0, finished: Bool = false) {
         #if DEBUG
         listen.preview(speaker,index:index,finished:finished)
         if let turn = listen.turn { fixturePosition = Int(finished ? turn.endMs+500 : turn.startMs); fixturePlaying = !finished }
         #endif
     }
+    @ObservationIgnored private var announcedSpeaker: String?
+    func resetListeningAnnouncement() { announcedSpeaker = nil }
     func announceListeningTurn() {
-        guard !frozen, canUseListeningShortcuts, NSWorkspace.shared.isVoiceOverEnabled, let presentation = listeningPresentation,
-              let view = NSApp.keyWindow?.contentView else { return }
+        guard listen.active, MeetingNavigation.shared.detail === self, let presentation = listeningPresentation else { return }
+        let message = announcedSpeaker == listen.speaker ? presentation.announcement : presentation.speakerAnnouncement
+        #if DEBUG
+        if let sink = Self.announcementForSelfTest {
+            announcedSpeaker = listen.speaker; sink(message); return
+        }
+        #endif
+        guard !frozen, NSWorkspace.shared.isVoiceOverEnabled,
+              let view = NSApp.windows.first(where: { $0.accessibilityIdentifier() == "cassini-library-window" && $0.isVisible })?.contentView else { return }
+        announcedSpeaker = listen.speaker
         NSAccessibility.post(element:view,notification:.announcementRequested,userInfo:[
-            .announcement:presentation.announcement,.priority:NSAccessibilityPriorityLevel.low.rawValue])
+            .announcement:message,.priority:NSAccessibilityPriorityLevel.low.rawValue])
     }
     #if DEBUG
-    /// MeetingPreparationSelfTest: a gated preparer, so the proof controls when work proceeds.
+    /// ListeningSelfTest captures the production message without enabling VoiceOver.
+    static var announcementForSelfTest: ((String) -> Void)?
+    /// MeetingPreparationSelfTest controls when off-main preparation proceeds.
     static var preparerForSelfTest: TurnPreparation.Prepare?
     #endif
     /// After a Library update: a preparation an outage cancelled starts again.
@@ -238,6 +254,6 @@ import Observation
     }
     func reconcile(offline: Bool) { audio.reconcile(playbackMeeting,offline:offline) }
     /// A Library outage: playback stops and any preparation pauses, to resume on recovery.
-    func suspend() { preparation?.cancel(); listen.pageChanged() }
-    func close() { preparation?.cancel(); preparation = nil; listen.pageChanged() }
+    func suspend() { resetListeningAnnouncement(); preparation?.cancel(); listen.pageChanged() }
+    func close() { resetListeningAnnouncement(); preparation?.cancel(); preparation = nil; listen.pageChanged() }
 }
