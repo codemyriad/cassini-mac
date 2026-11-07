@@ -1,0 +1,29 @@
+name: D66 pipe progress diagnostic
+on:
+  push:
+    branches: [ci/d66-process-diagnostic]
+permissions:
+  contents: read
+jobs:
+  pipe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Compile isolated diagnostic against actual Whistle subprocess sources
+        run: |
+          mkdir -p build/pipe-diagnostics
+          swiftc Sources/CassiniWhistle/WhistleIO.swift Sources/CassiniWhistle/WhistleSubprocess.swift scripts/diagnostics/PipeProgress.swift -o build/pipe-diagnostics/probe
+      - name: Capture live pipe and process state
+        timeout-minutes: 3
+        run: build/pipe-diagnostics/probe | tee build/pipe-diagnostics/probe.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: pipe-progress-${{ matrix.runner }}
+          path: build/pipe-diagnostics
