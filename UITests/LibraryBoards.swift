@@ -463,7 +463,7 @@ final class LibraryBoards: XCTestCase {
             let message = settings.staticTexts["companion-reload-message"]
             if kind == "health-reload" {
                 XCTAssertTrue(message.waitForExistence(timeout:10),app.debugDescription)
-                XCTAssertEqual(message.label,"Reload the meeting tab so Cassini can record it.")
+                XCTAssertEqual(visibleText(message),"Reload the meeting tab so Cassini can record it.")
                 XCTAssertTrue(settings.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","companion-reload-tab-")).firstMatch.isEnabled)
             } else { XCTAssertFalse(message.exists,"An idle or healthy browser must not get reload advice") }
             let setupAgain = settings.buttons["companion-setup-again"]
