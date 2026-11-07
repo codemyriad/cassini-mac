@@ -444,8 +444,10 @@ final class LibraryBoards: XCTestCase {
         }
         app.typeKey(.escape,modifierFlags:[]) // menu
         app.typeKey(.escape,modifierFlags:[]) // search
-        window.buttons["meeting-back"].click()
+        // Opening search already leaves the meeting (LibrarySearchModel.open).
+        // Closing search returns to the Library preview, not the old detail page.
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
+        XCTAssertFalse(window.buttons["meeting-back"].exists,"Search already left the meeting page")
         app.menuBars.menuBarItems["Playback"].click()
         XCTAssertFalse(app.menuItems["Play this turn"].isEnabled,"Leaving the page clears its focused transcript action")
     }
