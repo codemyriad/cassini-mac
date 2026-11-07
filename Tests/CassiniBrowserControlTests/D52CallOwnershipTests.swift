@@ -165,8 +165,11 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                                     ["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[]]] {
             try state.receive(JSONSerialization.data(withJSONObject:value),from:id)
         }
-        XCTAssertThrowsError(try state.resume(.init(peer:id,tabID:2),captureID:"orig",timelineOriginMs:1,expectedGeneration:"call-A"))
-        XCTAssertEqual(try state.resume(.init(peer:id,tabID:2),captureID:"orig",timelineOriginMs:1,expectedGeneration:"call-B").1,"call-B")
+        XCTAssertThrowsError(try state.resume(.init(peer:id,tabID:2),captureID:"orig",timelineOriginMs:1,lostAtMs:0,expectedGeneration:"call-A"))
+        for invalid in [-1.0,Double.nan,Double.infinity] {
+            XCTAssertThrowsError(try state.resume(.init(peer:id,tabID:2),captureID:"orig",timelineOriginMs:1,lostAtMs:invalid,expectedGeneration:"call-B"))
+        }
+        XCTAssertEqual(try state.resume(.init(peer:id,tabID:2),captureID:"orig",timelineOriginMs:1,lostAtMs:0,expectedGeneration:"call-B").1,"call-B")
     }
 
     // MARK: event-driven regressions through the real host and control pipes
@@ -453,7 +456,7 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
                     // As the app's askResume does.
                     guard let identity = fixture.broker.standInIdentity(owner) else { return XCTFail("not a resume target") }
                     let broker = fixture.broker
-                    fixture.service.resumeMeeting(key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,expectedGeneration:"call-A") { generation,_ in
+                    fixture.service.resumeMeeting(key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,owner:owner,expectedGeneration:"call-A") { generation,_ in
                         broker.expectResume(owner,callGeneration:generation); armed.fulfill()
                     }
                 })

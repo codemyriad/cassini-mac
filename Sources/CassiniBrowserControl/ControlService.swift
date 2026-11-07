@@ -92,17 +92,25 @@ public final class BrowserControlService: @unchecked Sendable {
     /// selected call generation and the ask's fresh requestId before the command is
     /// sent, so the native resume can be validated and its refusal booked on this ask
     /// alone (D58 #10, protocol #37); a failure is reported and never retried as a fresh Start.
+    /// The owner queue hands the committed reference to this queue synchronously.
+    /// Keep `armed` nonblocking: it may arm the broker and publish asynchronously,
+    /// but must not synchronously call the owner or request its Stop.
     /// `expectedGeneration`: the call the caller judged (a lost recording's own call); a tab
     /// that moved on to another call since is refused, never resumed into the new call.
-    public func resumeMeeting(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, expectedGeneration: String? = nil,
+    public func resumeMeeting(_ key: BrowserMeetingKey, captureID: String, timelineOriginMs: Int, owner: OwnedBrowserCapture, expectedGeneration: String? = nil,
                               armed: @escaping @Sendable (String?,String?) -> Void) {
-        queue.async { [self] in
-            do {
-                guard canStart() else { throw BrowserIPCError.unavailable }
-                let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,expectedGeneration:expectedGeneration)
-                armed(generation,request.id); send([request]); publish()
+        owner.withCommittedResume { [self] reference in
+            sync {
+                do {
+                    guard let reference, canStart() else { throw BrowserIPCError.unavailable }
+                    try reference.dispatch {
+                        let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,lostAtMs:reference.lostAtMs,expectedGeneration:expectedGeneration)
+                        armed(generation,request.id); send([request])
+                    }
+                    publish()
+                }
+                catch { armed(nil,nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil,failure:BrowserControlOutcome.localFailure(error),resume:true),false) }
             }
-            catch { armed(nil,nil); completed(.init(requestID:UUID().uuidString,key:key,action:.start,ok:false,error:nil,failure:BrowserControlOutcome.localFailure(error),resume:true),false) }
         }
     }
     /// D52.5: an ownership change that may release a call (a recording saving or retired) is
