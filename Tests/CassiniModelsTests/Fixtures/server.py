@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Loopback-only model contract fixture; never contacts dist or any other host."""
-import argparse,hashlib,http.server,json,socket,threading,time
+import argparse,hashlib,http.server,json,socket,sys,threading,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--scenario',required=True);p.add_argument('--log',type=Path,required=True)
 a=p.parse_args();root=Path(__file__).resolve().parent
 state={'artifacts':0,'truncated':False};lock=threading.Lock()
+prefix_persisted=threading.Event()
+def receive_control():
+ for line in sys.stdin:
+  if line.strip()=='prefix-persisted':prefix_persisted.set()
+threading.Thread(target=receive_control,daemon=True).start()
 class Handler(http.server.BaseHTTPRequestHandler):
  def log_message(self,*_):pass
  def do_GET(self):
@@ -42,7 +47,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
   if a.scenario=='compressed-hash':data=bytes([data[0]^1])+data[1:]
   truncating=a.scenario in ('truncated','416','changed-etag','ignore-range','bad-range','503') and first
   if truncating:
-   self.wfile.write(data[:len(data)//2]);self.wfile.flush();time.sleep(.15);self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
+   self.wfile.write(data[:len(data)//2]);self.wfile.flush()
+   # Only cut the connection once the client has actually written a prefix.
+   # The deadline fails the fixture; elapsed time never supplies the event.
+   if not prefix_persisted.wait(timeout=10):raise TimeoutError('client did not acknowledge a persisted prefix')
+   self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
   if a.scenario=='slow':
    try:
     for start in range(offset,len(data),1024):self.wfile.write(data[start:start+1024]);self.wfile.flush();time.sleep(.01)
