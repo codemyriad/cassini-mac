@@ -74,9 +74,12 @@ struct MeetingPositionSlider: View {
         return report
     }
     #endif
+    static func readoutSpeaker(at value: Double, readout: TimelineReadout, names: [String:String]) -> String? {
+        readout.speaker(at:value).map { names[$0] ?? UXText.text("common.speaker.unnamed",["n":"1"]) }
+    }
     private func readoutLabel(_ value: Double, available: Double) -> some View {
         let time = LibraryFormat.position(Int64(value))
-        let name = readout.speaker(at:value).flatMap { names[$0] }
+        let name = Self.readoutSpeaker(at:value,readout:readout,names:names)
         let label = name.map { UXText.text("player.timeline.tooltip",["position":time,"name":$0]) } ?? time
         let width = min(280,available)
         let x = track.x(at:value,duration:duration)

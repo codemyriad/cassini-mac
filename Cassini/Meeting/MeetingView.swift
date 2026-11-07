@@ -12,7 +12,7 @@ struct MeetingView: View {
     private var shares: [String: Int] { model.shares }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
-    private func name(_ speaker: String) -> String { meeting.speakers.first { $0.id == speaker }?.displayName ?? "" }
+    private func name(_ speaker: String) -> String { model.speakerName(speaker) }
     private func asides(_ turn: MeetingPresentation.Turn) -> [MeetingTranscriptText.Aside] {
         turn.asides.compactMap { aside in
             model.turns.indices.contains(aside.turn) ? .init(after:aside.after,name:name(model.turns[aside.turn].speaker),items:model.turns[aside.turn].items) : nil
@@ -51,9 +51,9 @@ struct MeetingView: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 5) {
-                    Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? "")
-                        .fontWeight(.semibold).foregroundStyle(colour(meeting.speakers.first { $0.id == turn.speaker }?.colourIndex ?? 0))
-                    if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
+                    Text(name(turn.speaker))
+                        .fontWeight(.semibold).foregroundStyle(colour(meeting.speaker(for:turn.speaker)?.colourIndex ?? 0))
+                    if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
                 }.fixedSize()
                 Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
                 if let over = over(turn) {
@@ -80,9 +80,9 @@ struct MeetingView: View {
                         ForEach(meeting.speakers, id: \.id) { speaker in speakerRow(speaker).id(speaker.id) }
                     }
                 }.onChange(of: model.listen.speaker) { _, speaker in
-                    if let speaker {
-                        if reduceMotion { proxy.scrollTo(speaker,anchor:.center) }
-                        else { withAnimation { proxy.scrollTo(speaker,anchor:.center) } }
+                    if let speaker = speaker.flatMap({ meeting.speaker(for:$0) }) {
+                        if reduceMotion { proxy.scrollTo(speaker.id,anchor:.center) }
+                        else { withAnimation { proxy.scrollTo(speaker.id,anchor:.center) } }
                     }
                 }
             }
@@ -124,7 +124,7 @@ struct MeetingView: View {
             // Keep the controls in the main layout/hit-test tree. On macOS 15,
             // safeAreaInset paints this bar but its buttons fail AX hit testing.
             if let presentation = model.listeningPresentation {
-                ListeningBar(model:model,presentation:presentation,colour:colour(meeting.speakers.first { $0.id == model.listen.speaker }?.colourIndex ?? 0))
+                ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }?.colourIndex ?? 0))
                     .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
             }
             Divider()
@@ -141,7 +141,7 @@ struct MeetingView: View {
         let turns = model.listen.turns(of:speaker.id)
         let row = SpeakerRowPresentation(speaker:speaker,turns:turns,percent:shares[speaker.id,default:0],
                                          language:UXText.language,locale:UXText.locale)
-        let listening = model.listen.speaker == speaker.id
+        let listening = model.listen.speaker.map { meeting.mergedInto[$0] ?? $0 } == speaker.id
         return HStack(alignment:.top,spacing:10) {
             Circle().fill(colour(speaker.colourIndex)).frame(width:10,height:10).padding(.top,5).accessibilityHidden(true)
             VStack(alignment:.leading,spacing:3) {
@@ -152,7 +152,7 @@ struct MeetingView: View {
                     Button { model.toggleSpeakerListening(speaker.id) } label: {
                         Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
                     }.buttonStyle(.borderless)
-                        .disabled(!model.canPlay || turns.isEmpty)
+                        .disabled(!model.canPlay || (!listening && turns.isEmpty))
                         .help(UXText.text(listening ? "common.stop" : "speakers.listen"))
                         .accessibilityLabel(listening ? UXText.text("common.stop") : row.playAccessibilityLabel)
                         .accessibilityIdentifier("speaker-listen-" + speaker.id)
@@ -215,7 +215,7 @@ struct MeetingView: View {
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
             Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
-                                  readout:model.timelineReadout,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
+                                  readout:model.timelineReadout,names:meeting.speakerDisplayNames,
                                   timeline:model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
             Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5))

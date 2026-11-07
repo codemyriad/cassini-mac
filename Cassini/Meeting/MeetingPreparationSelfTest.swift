@@ -22,10 +22,15 @@ import Observation
         }
     }
     static func run() async {
-        guard let fixture = try? LibraryScanner(root:LibraryStore.shared.context.root).scan().meetings.first(where:{ $0.state.lifecycle == .saved }) else {
+        guard let fixture = try? LibraryScanner(root:LibraryStore.shared.context.root).scan().meetings.first(where:{ $0.state.lifecycle == .saved && !$0.speakers.isEmpty }) else {
             fail("no saved fixture meeting")
         }
         var meeting = fixture
+        var a = fixture.speakers[0], b = fixture.speakers[0]
+        a.id = "a"; a.name = "Ada Brooks"; a.colourIndex = 0
+        b.id = "b"; b.name = "Marta Cole"; b.colourIndex = 2; b.provenance = .user
+        meeting.speakers = [a,b]
+        meeting.mergedInto = [:]
         meeting.transcriptItems = (0..<10_000).map {
             .init(speaker:$0 % 2 == 0 ? "a" : "b",startMs:Int64($0) * 1500,endMs:Int64($0) * 1500 + 1000,text:"Word \($0).")
         }
@@ -69,6 +74,41 @@ import Observation
         await delivered.value
         report["recoveryDelivered"] = detail.turns.count == 10_000
         report["readoutDeliveredWithTurns"] = detail.timelineReadout.speaker(at:1500) == "b" && detail.timelineReadout.speaker(at:1200) == nil
+        // Hold the next preparation so every cached snapshot still has a's old
+        // identity while the metadata already contains only the merge target.
+        detail.listen.preview("a") // no transport or audio device
+        var merged = meeting
+        merged.speakers = [b]; merged.mergedInto = ["a":"b"]
+        merged.transcriptItems = SpeakerMerges.apply(meeting.transcriptItems,merged.mergedInto)
+        detail.meeting = merged
+        guard case .started? = await next.next() else { fail("merge preparation did not start") }
+        func staleSnapshotsRenderTarget() -> Bool {
+            detail.turns.first?.speaker == "a" && detail.listeningTurns.first?.speaker == "a" &&
+            detail.timelineReadout.speaker(at:0) == "a" && detail.speakerName("a") == "Marta Cole" &&
+            detail.meeting.speaker(for:"a")?.colourIndex == 2 && detail.meeting.speaker(for:"a")?.provenance == .user &&
+            MeetingPositionSlider.readoutSpeaker(at:0,readout:detail.timelineReadout,names:detail.meeting.speakerDisplayNames) == "Marta Cole"
+        }
+        report["mergeWhilePreparedResolvesReadoutAndHeaders"] = staleSnapshotsRenderTarget()
+        report["mergeWhilePreparedResolvesBar"] = detail.listen.turn?.speaker == "a" && detail.listeningPresentation?.speakerName == "Marta Cole"
+        detail.toggleSpeakerListening("b")
+        report["mergedSpeakerRowStopsCachedListening"] = !detail.listen.active
+        detail.listen.preview("a")
+        // Cancellation must not make rendering depend on a later delivery.
+        detail.suspend()
+        release.signal()
+        guard case .cancelled? = await next.next() else { fail("outage did not cancel the merge preparation") }
+        report["suspendedMergeResolvesReadoutAndHeaders"] = staleSnapshotsRenderTarget() && !detail.listen.active
+        let unknown = TimelineReadout(items:[.init(speaker:"unlisted",startMs:0,endMs:1000,text:"Yes.")])
+        report["unlistedSpeechIsNotSilence"] = MeetingPositionSlider.readoutSpeaker(at:0,readout:unknown,names:detail.meeting.speakerDisplayNames) == UXText.text("common.speaker.unnamed",["n":"1"]) &&
+            detail.speakerName("unlisted") == UXText.text("common.speaker.unnamed",["n":"1"]) &&
+            MeetingPositionSlider.readoutSpeaker(at:1000,readout:unknown,names:detail.meeting.speakerDisplayNames) == nil
+        let mergedDelivered = Task { @MainActor in await changed { _ = detail.turns } }
+        detail.resumePreparation()
+        guard case .started? = await next.next() else { fail("merge preparation did not resume") }
+        release.signal()
+        guard case .finished? = await next.next() else { fail("merge preparation did not finish") }
+        await mergedDelivered.value
+        report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
         guard report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy({ $0.value as? Bool == true }) else { fail("native scrubber or preparation regression: \(report)") }
         report["audioDevicesOpened"] = false

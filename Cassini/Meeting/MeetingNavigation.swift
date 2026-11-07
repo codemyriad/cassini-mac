@@ -138,12 +138,15 @@ import Observation
         return listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
     }
     func toggleSpeakerListening(_ speaker: String) {
-        if listen.speaker == speaker { stopListening() }
+        if let current = listen.speaker, (meeting.mergedInto[current] ?? current) == (meeting.mergedInto[speaker] ?? speaker) { stopListening() }
         else { listenTo(speaker) }
+    }
+    func speakerName(_ id: String) -> String {
+        meeting.speaker(for:id)?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"])
     }
     var listeningPresentation: ListeningBarPresentation? {
         guard let turn = listen.turn, let first = listen.turns(of:turn.speaker).first else { return nil }
-        let name = meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"])
+        let name = speakerName(turn.speaker)
         let previous = turn.index > 0 && listeningTurns.indices.contains(turn.index-1) ? listeningTurns[turn.index-1] : nil
         return .init(name:name,turn:turn,previous:previous,index:listen.index,count:listen.count,firstStartMs:first.startMs,language:UXText.language,locale:UXText.locale)
     }

@@ -33,6 +33,27 @@ import Testing
         #expect(index.speaker(at:500) == nil)
         #expect(TimelineReadout().speaker(at:0) == nil)
     }
+    @Test func stalePreparedIdsUseCurrentMergedNamesAndMetadata() throws {
+        let words = [word("old",100,200),word("target",300,400),word("unlisted",500,600)]
+        let cached = TimelineReadout(items:words)
+        let cachedTurns = SpeakerTurn.grouping(words)
+        var meeting = LibraryMeeting(id:UUID(),folder:URL(fileURLWithPath:"/synthetic"),
+            state:.init(lifecycle:.saved,origin:.own,transcript:.done),title:nil,start:nil,durationMs:1000,
+            speakers:[.init(id:"target",name:"Claire Lee",provenance:.user,colourIndex:2)],quote:nil,notes:[],audioFiles:[],issues:[])
+        meeting.mergedInto = ["old":"target","another-old":"target","orphan":"absent"]
+        #expect(cached.speaker(at:150) == "old")
+        #expect(cached.speaker(at:250) == nil)
+        let stale = try #require(cached.speaker(at:150))
+        #expect(meeting.speakerDisplayNames[stale] == "Claire Lee")
+        #expect(meeting.speaker(for:cachedTurns[0].speaker) == meeting.speakers[0])
+        #expect(meeting.speaker(for:"another-old")?.colourIndex == 2)
+        #expect(meeting.speaker(for:"old")?.provenance == .user)
+        #expect(meeting.speaker(for:"unlisted") == nil && meeting.speaker(for:"orphan") == nil)
+        #expect(meeting.speakerDisplayNames["orphan"] == nil)
+        meeting.speakers[0].name = "Claire Morgan"
+        #expect(meeting.speakerDisplayNames["old"] == "Claire Morgan")
+        #expect(meeting.speaker(for:"old")?.displayName == "Claire Morgan")
+    }
     @Test func sixPointSnapUsesNativeThumbTravelAtEveryWidth() {
         let timeline = ListeningTimeline(turns:SpeakerTurn.grouping([word("ada",10000,10300),word("sam",15000,16000),word("ada",20000,20300)]).filter { $0.speaker == "ada" })
         for width in [80.0,240,800] {
