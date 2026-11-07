@@ -17,7 +17,7 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['recording','received','export','search','settings-recording','settings-transcription'])
+parser.add_argument('board',choices=['meeting','recording','received','export','search','settings-recording','settings-transcription'])
 parser.add_argument('--output',type=Path,required=True)
 args = parser.parse_args()
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
