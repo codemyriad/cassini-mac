@@ -22,7 +22,7 @@ struct BrowserCompanionHealthView: View {
     }
     private func peerStatus(_ peer: BrowserControlPeerSnapshot) -> some View {
         let outdated = CompanionSetup.bundledCompanionVersion.map { peer.diagnostics.isOlder(than:$0) } ?? false
-        let repairs = peer.browserHealth?.reloadTabs ?? []
+        let repairs = peer.reloadTabs
         let setupAgain = peer.diagnostics.filesMissing || outdated || !peer.supportsMultiStream
         return VStack(alignment:.leading,spacing:6) {
             if setupAgain || !repairs.isEmpty {
@@ -36,7 +36,7 @@ struct BrowserCompanionHealthView: View {
                 Text(UXText.text("setup.companion.outdated",["version":version])).fixedSize(horizontal:false,vertical:true)
                     .accessibilityIdentifier("companion-outdated")
             }
-            if setupAgain {
+            if setupAgain && !setup.showingLocalGuide {
                 Button(UXText.text("setup.companion.setUpAgain")) { setup.showLocalGuide(from:presenter) }
                     .disabled(!setup.canAdd || setup.working).accessibilityIdentifier("companion-setup-again")
             }

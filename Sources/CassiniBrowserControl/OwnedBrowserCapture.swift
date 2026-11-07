@@ -434,6 +434,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let transportDied = self.transportAlive && !transportAlive
             self.transportAlive = self.transportAlive && transportAlive
             guard browserAlive else {
+                if browserLossCause == nil, let cause { browserLossCause = cause }
                 if transportDied { browserLostUptime = lost; forgetDeadTransportSources() }
                 for id in Array(browserSources.keys) { browserSources[id]?.returning = false; browserSources[id]?.current = false }
                 browserReturnAt = max(browserReturnAt,atMs)

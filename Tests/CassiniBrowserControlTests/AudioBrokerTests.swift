@@ -300,6 +300,34 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
     }
+    func testControlLossBeforeLostStopKeepsFirstNonNilCauseThroughFallbackAndDetails() async throws {
+        for cause in ["tabClosed","frameClosed"] {
+            let fixture = try AudioFixture()
+            do {
+                let client = try fixture.client(); _ = try client.request(start("ordered-"+cause,mic:false))
+                _ = try client.request(track()); _ = try client.request(audio())
+                let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
+                // Control status arrives before the extension drains its audio pipe.
+                try owner.browserLost(atMs:1000,transportAlive:true)
+                XCTAssertNil(owner.snapshot.manifest.events?.last?.cause)
+                XCTAssertEqual(try client.request(["type":"stop","failureReason":"lost","cause":cause])["type"]?.string,"stopped")
+                try owner.browserLost(atMs:1100,cause:.init(rawValue:"transportClosed"))
+                let system = owner.nativeWriter(side:.others)
+                try system.addTrack(id:"output",label:"Synthetic English system",kind:"system",sampleRate:8000,channels:1)
+                let loss = try XCTUnwrap(owner.snapshot.manifest.events?.last?.atMs)
+                try system.appendNative(id:"output",pcm:Data(repeating:1,count:1600),offsetMs:loss)
+                try system.finish(problem:nil); try await fixture.broker.finish(owner)
+                let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+                XCTAssertEqual(saved.events?.last(where:{ $0.source == "system" && $0.reason == "lost" })?.cause?.rawValue,cause)
+                let meeting = try JSONParser.parse(Data(contentsOf:owner.snapshot.directory.appendingPathComponent("meeting.json")))
+                let portable = try XCTUnwrap(meeting["recordingDetails"]?["captureRecord"])
+                XCTAssertEqual(CaptureEvent.read(portable["events"]).last(where:{ $0.source == "system" })?.cause?.rawValue,cause)
+                let details = RecordingDetailsReport(.init(lifecycle:.saved,title:"Synthetic English call",session:nil,captureRecord:portable))
+                XCTAssertEqual(details.notes.map(\.id),["details.othersFallback.cause."+cause])
+            } catch { await fixture.finish(); throw error }
+            await fixture.finish()
+        }
+    }
     func testLossKeepsTheOwnedFolderAndRejectsReuseOfItsOpaqueCaptureID() async throws {
         let fixture = try AudioFixture()
         do {

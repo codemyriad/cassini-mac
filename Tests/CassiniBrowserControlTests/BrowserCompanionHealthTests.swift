@@ -163,4 +163,38 @@ final class BrowserCompanionHealthTests: XCTestCase {
         try send(live,&capable)
         XCTAssertThrowsError(try capable.reloadTab(.init(peer:peer,tabID:2)))
     }
+    func testReloadGuidanceRequiresActionCapabilityAndNoCaptureOnTheSamePeerTab() throws {
+        for condition in ["action absent","capability absent","active capture"] {
+            var state = BrowserControlRegistry(); try connect(&state,readiness:condition != "capability absent")
+            var raw = health()
+            if condition == "action absent" {
+                var tabs = try XCTUnwrap(raw["tabs"] as? [[String:Any]])
+                tabs[0].removeValue(forKey:"action"); raw["tabs"] = tabs
+            }
+            var value = status(raw)
+            if condition == "active capture" {
+                value["recording"] = true; value["tabId"] = 2
+                value["sessions"] = [["recording":true,"tabId":2,"captureId":"active","path":NSNull(),"message":"Recording"]]
+            }
+            try send(value,&state)
+            XCTAssertTrue(BrowserCompanionSetupHealth(peers:state.snapshots).reloadTabs.isEmpty,condition)
+            XCTAssertThrowsError(try state.reloadTab(.init(peer:peer,tabID:2)),condition)
+        }
+        var state = BrowserControlRegistry(); try connect(&state)
+        let other = UUID(); try connect(&state,peer:other)
+        try send(status(health()),&state,peer:other)
+        var live = status(health()); live["recording"] = true; live["tabId"] = 2
+        live["sessions"] = [["recording":true,"tabId":2,"captureId":"active","path":NSNull(),"message":"Recording"]]
+        try send(live,&state)
+        XCTAssertEqual(BrowserCompanionSetupHealth(peers:state.snapshots).reloadTabs.map(\.key),[.init(peer:other,tabID:2)],"A different browser profile's same tab number remains repairable")
+    }
+    func testStopAllDoesNotTurnPendingReloadIntoCaptureOrUserStopMemory() throws {
+        var state = BrowserControlRegistry(); try connect(&state); try send(status(health()),&state)
+        let repair = try state.reloadTab(.init(peer:peer,tabID:2))
+        XCTAssertTrue(state.stopAll().isEmpty,"Reload is not a pending recording")
+        var ready = health("ready"); ready["tabs"] = []
+        try send(["type":"result","requestId":repair.id,"ok":true,"status":status(ready)],&state)
+        XCTAssertTrue(state.drainStops().isEmpty)
+        XCTAssertEqual(state.automaticStarts(microphone:false).map(\.key.tabID),[2],"Stopping captures must not suppress the repaired call")
+    }
 }

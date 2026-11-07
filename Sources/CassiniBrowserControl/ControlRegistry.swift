@@ -756,7 +756,7 @@ public struct BrowserControlRegistry: Sendable {
             for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }
             for peer in peers.values {
                 guard let instance = peer.peer.browserInstance else { continue }
-                for pending in peer.pending.values {
+                for pending in peer.pending.values where pending.request.action != .reloadTab {
                     if let url = pending.url { stoppedCalls.remember(.init(instance:instance,tabID:pending.request.key.tabID,url:url),now:clock()) }
                 }
             }
@@ -764,7 +764,7 @@ public struct BrowserControlRegistry: Sendable {
         var keys = Set<BrowserMeetingKey>()
         for peer in peers.values where !peer.superseded {
             keys.formUnion(peer.captures.map(\.key))
-            keys.formUnion(peer.pending.values.map { $0.request.key })
+            keys.formUnion(peer.pending.values.filter { $0.request.action != .reloadTab }.map { $0.request.key })
             keys.formUnion(peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) })
         }
         return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:userInitiated,reason:reason) }

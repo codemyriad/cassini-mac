@@ -64,7 +64,7 @@ public struct BrowserCompanionHealth: Equatable, Sendable {
     public let workerReady: Bool
     public let tabs: [BrowserTabHealth]
     /// Global idle and unknown data never manufacture a broken meeting warning.
-    public var reloadTabs: [BrowserTabHealth] { state == .idle ? [] : tabs.filter { $0.state == .reloadRequired } }
+    public var reloadTabs: [BrowserTabHealth] { state == .idle ? [] : tabs.filter { $0.state == .reloadRequired && $0.canReload } }
     static func read(_ raw: JSON?, peer: UUID) -> Self? {
         guard let raw, raw.object != nil, let state = raw["state"]?.string.flatMap(State.init(rawValue:)),
               let rows = raw["tabs"]?.array, rows.count <= 100 else { return nil }
@@ -80,6 +80,15 @@ public struct BrowserCompanionHealth: Equatable, Sendable {
     }
 }
 
+public extension BrowserControlPeerSnapshot {
+    /// Reload advice is actionable only on this capable peer's non-recording tabs.
+    var reloadTabs: [BrowserTabHealth] {
+        guard supportsTabReadiness, let browserHealth else { return [] }
+        let active = Set(captures.map(\.key))
+        return browserHealth.reloadTabs.filter { !active.contains($0.key) }
+    }
+}
+
 /// Setup completion is stricter than recording capability admission. Diagnostics
 /// never disable Start; an explicit file failure in any connected profile blocks
 /// Done, while legacy or pending self-check diagnostics remain non-blocking.
@@ -87,5 +96,5 @@ public struct BrowserCompanionSetupHealth: Sendable {
     public let peers: [BrowserControlPeerSnapshot]
     public init(peers: [BrowserControlPeerSnapshot]) { self.peers = peers.filter(\.reconciled) }
     public var complete: Bool { !peers.isEmpty && peers.allSatisfy(\.setupComplete) }
-    public var reloadTabs: [BrowserTabHealth] { peers.flatMap { $0.browserHealth?.reloadTabs ?? [] } }
+    public var reloadTabs: [BrowserTabHealth] { peers.flatMap(\.reloadTabs) }
 }
