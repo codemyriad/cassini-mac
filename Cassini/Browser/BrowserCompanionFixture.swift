@@ -19,7 +19,7 @@ enum BrowserCompanionFixture {
             try registry.connect(JSONDecoder().decode(BrowserPeer.self,from:metadata))
             let reload = kind.hasPrefix("health-reload")
             var hello: [String:Any] = ["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"] + (kind == "health-reload-no-capability" ? [] : ["tab-readiness-v1"]),
-                "extensionVersion":kind == "health-outdated" ? "0.2.19" : "0.2.20","extensionInstance":"synthetic-English-instance"]
+                "extensionVersion":kind == "health-outdated" ? "0.2.19" : "0.2.22","extensionInstance":"synthetic-English-instance"]
             if kind != "health-legacy" { hello["filesOk"] = kind != "health-files" }
             try registry.receive(JSONSerialization.data(withJSONObject:hello),from:peer)
             var tab: [String:Any] = ["tabId":2,"state":"reloadRequired","hookSeen":true,"relayAlive":false]
