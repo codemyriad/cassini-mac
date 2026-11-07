@@ -1,8 +1,8 @@
 name: Build the shared Release product
 # D66 mac-P2-2: the universal Release app is built in a job of its own, after the shared
 # producer (ci-build.yml) has staged the pinned assets and the Parakeet runtime once. Only the
-# packaging below and the Parakeet checks use it, so every Debug and SwiftPM consumer starts
-# without waiting for this build.
+# packaging below, Parakeet checks and the optimized spectrogram probe use it; other Debug
+# and SwiftPM consumers start without waiting for this build.
 on:
   workflow_call: {}
 permissions:
