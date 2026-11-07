@@ -367,9 +367,13 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"], slider = window.sliders["meeting-seek"]
         XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
-        slider.adjust(toNormalizedSliderPosition:0.8)
+        // NSSlider has no XCTest normalized-adjustment AX parameter on macOS.
+        // Exercise pointer seeking, the same path whose snapping this test proves.
+        let far = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*0.8,dy:slider.frame.height/2))
+        far.click()
         let moved = NSPredicate { _,_ in slider.value as? String != "00:03:08" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:moved,object:nil)],timeout:5),.completed)
+        let farValue = slider.value as? String
         // This fixture has 22,600,000 frames at 8 kHz (2825 seconds).
         // Native regular NSSlider uses a 24-point knob; marks share its center travel.
         let point = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*188000/2825000+5,dy:slider.frame.height/2))
@@ -378,9 +382,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:snapped,object:nil)],timeout:5),.completed,"A five-point near miss selects the exact turn")
         XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].exists)
         window.buttons["listen-stop"].click()
-        slider.adjust(toNormalizedSliderPosition:0.8)
+        far.click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in slider.value as? String == farValue },object:nil)],timeout:5),.completed)
         point.click()
-        let free = NSPredicate { _,_ in slider.value as? String != "00:03:08" && slider.value as? String != "00:37:40" }
+        let free = NSPredicate { _,_ in slider.value as? String != "00:03:08" && slider.value as? String != farValue }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:free,object:nil)],timeout:5),.completed,"Stopping listening clears pointer snapping")
     }
     @MainActor func testMeetingAccessibility() throws {
