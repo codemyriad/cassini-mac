@@ -120,15 +120,17 @@ struct MeetingView: View {
                         }
                     }
                 }
-            }.safeAreaInset(edge:.bottom,spacing:0) {
-                if let presentation = model.listeningPresentation {
-                    ListeningBar(model:model,presentation:presentation,colour:colour(meeting.speakers.first { $0.id == model.listen.speaker }?.colourIndex ?? 0))
-                        .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
-                }
-            }.animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
+            }
+            // Keep the controls in the main layout/hit-test tree. On macOS 15,
+            // safeAreaInset paints this bar but its buttons fail AX hit testing.
+            if let presentation = model.listeningPresentation {
+                ListeningBar(model:model,presentation:presentation,colour:colour(meeting.speakers.first { $0.id == model.listen.speaker }?.colourIndex ?? 0))
+                    .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
+            }
             Divider()
             playerBar
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
         .font(.system(size: 13))
         .background(Color(nsColor: .textBackgroundColor))
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")

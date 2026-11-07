@@ -321,6 +321,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(bar.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertFalse(window.buttons["listen.previousTurn"].isEnabled)
         XCTAssertTrue(window.buttons["listen.nextTurn"].isEnabled)
+        XCTAssertTrue(window.buttons["listen.nextTurn"].isHittable,"The listening bar must expose a real mouse target")
         window.buttons["listen.nextTurn"].click()
         let last = NSPredicate { _,_ in !window.buttons["listen.nextTurn"].isEnabled && self.text("Turn 2 of 2 · 00:03:20",in:window) }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:last,object:nil)],timeout:5),.completed)
@@ -346,6 +347,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Turn 1 of 1 · 00:03:08",in:window))
         XCTAssertFalse(window.buttons["listen.nextTurn"].isEnabled)
         capture(window,name:"listening-bar-finished")
+        XCTAssertTrue(again.isHittable,"Play again must expose a real mouse target")
         again.click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:again)],timeout:5),.completed)
         XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].exists)
