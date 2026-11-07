@@ -3,7 +3,8 @@ import { installZoomLikeAudio } from '../../browser-protocol/scenarios/product-t
 import { saveFailure } from './artifacts.mjs';
 // Optional integration test. See README.md for the temporary Playwright setup.
 import { createServer } from 'node:http';
-import { mkdir, writeFile, readFile, rm, mkdtemp } from 'node:fs/promises';
+import { generateKeyPairSync } from 'node:crypto';
+import { mkdir, writeFile, readFile, rm, mkdtemp, cp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,11 +18,21 @@ const server = createServer((_request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const profileRoot = process.env.CASSINI_TEST_PROFILE_ROOT || os.tmpdir();
 await mkdir(profileRoot, { recursive: true });
-const profile = await mkdtemp(path.join(profileRoot, 'cassini-tab-'));
+const sandbox = await mkdtemp(path.join(profileRoot, 'cassini-tab-'));
+const profile=path.join(sandbox,'profile'), extension=path.join(sandbox,'extension'), library=path.join(sandbox,'Library');
+await mkdir(library);
+await cp(path.join(root,'BrowserExtension'),extension,{recursive:true,filter:source=>!source.startsWith(path.join(root,'BrowserExtension/tests'))});
+const manifestPath=path.join(extension,'manifest.json');
+const extensionManifest=JSON.parse(await readFile(manifestPath,'utf8'));
+extensionManifest.key=generateKeyPairSync('rsa',{modulusLength:2048}).publicKey.export({type:'spki',format:'der'}).toString('base64');
+await writeFile(manifestPath,JSON.stringify(extensionManifest));
+const hostPath=process.env.CASSINI_NATIVE_HOST || path.join(root,'.build/debug/cassini-browser-host');
+assert.match(hostPath,/\/(?:debug|Debug)\//,'The private-Library fixture requires a Debug native host');
 const launch = extra => chromium.launchPersistentContext(profile, {
-  channel: 'chromium', headless: true, ignoreDefaultArgs: ['--mute-audio'],
-  args: [`--disable-extensions-except=${root}/BrowserExtension`,
-    `--load-extension=${root}/BrowserExtension`, '--autoplay-policy=no-user-gesture-required', ...extra]
+  channel: 'chromium', headless: true,
+  env:{...process.env,CASSINI_LIBRARY_DIR:library}, ignoreDefaultArgs: ['--mute-audio'],
+  args: [`--disable-extensions-except=${extension}`,
+    `--load-extension=${extension}`, '--autoplay-policy=no-user-gesture-required', ...extra]
 });
 let context, savedPath;
 try {
@@ -40,7 +51,7 @@ try {
   await mkdir(hostDirectory, { recursive: true });
   await writeFile(path.join(hostDirectory, 'io.codemyriad.cassini.json'), JSON.stringify({
     name: 'io.codemyriad.cassini', description: 'Cassini integration test',
-    path: process.env.CASSINI_NATIVE_HOST || path.join(root, '.build/debug/cassini-browser-host'),
+    path:hostPath,
     type: 'stdio', allowed_origins: [`chrome-extension://${extensionId}/`]
   }));
 
@@ -62,12 +73,14 @@ try {
 
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-  await popup.click('#tab');
+  const started = await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'start',mode:'tab'}));
+  assert.ok(!started.error,JSON.stringify(started));
   let ready = false;
   for (let attempt = 0; attempt < 200; attempt++) {
     const state = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
     savedPath = state.path;
     if (savedPath && state.recording && state.tracks === 1) {
+      assert.ok(path.resolve(savedPath).startsWith(path.resolve(library)+path.sep),'Capture escaped its private Library');
       const metadata = JSON.parse(await readFile(path.join(savedPath, 'session.json')));
       const track = metadata.tracks[0];
       if (track) {
@@ -81,8 +94,8 @@ try {
   const during = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   savedPath = during.path;
   assert.equal(during.recording, true, during.message);
-  await popup.click('#stop');
-  await popup.waitForFunction(() => !document.querySelector('#tracks').hidden);
+  const stopped = await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'stop'}));
+  assert.ok(!stopped.error,JSON.stringify(stopped));
   const after = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   assert.equal(after.recording, false);
   assert.equal(after.message, 'Saved on this computer.');
@@ -108,9 +121,8 @@ try {
   assert.ok(power(990) > power(660) * 100, 'spectral identity preserved');
   assert.equal(await worker.evaluate(async () => (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length > 0), false);
   assert.deepEqual(errors, []);
-  await rm(savedPath, { recursive: true, force: true }); savedPath = null;
-  const crashed = await workerDeathDuringRecording({ context, meetingPage: page, popup, extensionId, mode: 'tab' });
-  await rm(crashed.path, { recursive: true, force: true });
+  savedPath = null; // The private sandbox is removed after all scenarios.
+  const crashed = await workerDeathDuringRecording({ context, meetingPage: page, popup, extensionId, mode: 'tab', library });
   console.log('PASS: tabCapture → offscreen AudioWorklet → Chrome Native Messaging → stereo WAV; 990 Hz verified; worker death retains audio and closes offscreen capture');
 } catch (error) {
   await saveFailure('tab-capture', error, savedPath);
@@ -118,6 +130,5 @@ try {
 } finally {
   await context?.close();
   server.close();
-  if (savedPath) await rm(savedPath, { recursive: true, force: true });
-  await rm(profile, { recursive: true, force: true });
+  await rm(sandbox, { recursive: true, force: true });
 }

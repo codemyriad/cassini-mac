@@ -8,17 +8,20 @@ struct BrowserConnectionStateView: View {
     @State private var setup = CompanionSetup.shared
     @State private var captures = CaptureCollection.shared
     var body: some View {
-        HStack(alignment:.firstTextBaseline,spacing:12) {
-            Text(setup.stateLine).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier(identifier)
-            Spacer(minLength:8)
-            if !captures.connected {
-                if setup.failed {
-                    Button(UXText.text("common.tryAgain")) { setup.trigger() }.accessibilityIdentifier("browser-try-again")
-                } else if !setup.working || setup.noBrowser {
-                    Button(setup.addLabel) { setup.add(from:presenter) }.accessibilityIdentifier("browser-add")
-                        .disabled(!setup.canAdd)
+        VStack(alignment:.leading,spacing:10) {
+            HStack(alignment:.firstTextBaseline,spacing:12) {
+                Text(setup.stateLine).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier(identifier)
+                Spacer(minLength:8)
+                if !captures.connected {
+                    if setup.failed {
+                        Button(UXText.text("common.tryAgain")) { setup.trigger() }.accessibilityIdentifier("browser-try-again")
+                    } else if !setup.working || setup.noBrowser {
+                        Button(setup.addLabel) { setup.add(from:presenter) }.accessibilityIdentifier("browser-add")
+                            .disabled(!setup.canAdd)
+                    }
                 }
             }
+            BrowserCompanionHealthView(presenter:presenter)
         }
     }
 }

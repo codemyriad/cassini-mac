@@ -66,6 +66,18 @@ public final class BrowserControlService: @unchecked Sendable {
             send(requests); publish(); issued(requests)
         }
     }
+    public func reloadMeetingTab(_ key: BrowserMeetingKey) {
+        queue.async { [self] in
+            do {
+                guard connections[key.peer] != nil else { throw BrowserControlStateError.unavailable }
+                let request = try registry.reloadTab(key)
+                // A failed write must also complete the repair request, not leave its UI pending.
+                deadlines[request.id] = (request,DispatchTime.now().uptimeNanoseconds+30_000_000_000)
+                send([request]); publish()
+            }
+            catch { completed(.init(requestID:"",key:key,action:.reloadTab,ok:false,error:nil,failure:"unavailable"),false) }
+        }
+    }
     public func recordMeeting(_ key: BrowserMeetingKey, microphone: Bool) {
         queue.async { [self] in
             do {

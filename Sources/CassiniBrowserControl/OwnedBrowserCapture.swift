@@ -85,6 +85,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var freshestReturn: Double? { browserSources.values.filter { $0.returning }.compactMap(\.lastPacketAt).max() }
     private var readyForBrowser: Bool { managedBrowser && !browserAlive && transportAlive && browserSources.values.contains { $0.returning } }
     private var fallbackReason: String?
+    private var browserLossCause: BrowserCaptureLossCause?
     private var browserLostUptime: TimeInterval?
     private var systemReason = "lost"
     private var phase: OwnedCapturePhase = .recording
@@ -417,14 +418,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me ? newMe : newOthers }
             self.reservedNative = reservations
             self.me = newMe; self.others = newOthers
-            if resuming && browserAvailable { self.browserAlive = true; self.fallbackReason = nil; self.browserLostUptime = nil; self.fallbackRequested = false }
+            if resuming && browserAvailable { self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil; self.fallbackRequested = false }
             if resuming { self.resumeAt = time }
             if resuming && !self.browserAlive { self.systemReason = self.fallbackReason ?? "user" }
             if resumingMe { self.meResumeAt = time }
             self.publish()
         }
     }
-    public func browserLost(atMs: Double, transportAlive: Bool = false, allowed: @Sendable () -> Bool = { true }) throws {
+    public func browserLost(atMs: Double, transportAlive: Bool = false, cause: BrowserCaptureLossCause? = nil, allowed: @Sendable () -> Bool = { true }) throws {
         let lost = ProcessInfo.processInfo.systemUptime
         try sync {
             guard allowed() else { throw CancellationError() }
@@ -433,12 +434,13 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let transportDied = self.transportAlive && !transportAlive
             self.transportAlive = self.transportAlive && transportAlive
             guard browserAlive else {
+                if browserLossCause == nil, let cause { browserLossCause = cause }
                 if transportDied { browserLostUptime = lost; forgetDeadTransportSources() }
                 for id in Array(browserSources.keys) { browserSources[id]?.returning = false; browserSources[id]?.current = false }
                 browserReturnAt = max(browserReturnAt,atMs)
                 publish(); return
             }
-            let events: [CaptureEvent] = others ? [.init(atMs:eventTime(atMs),type:"othersSource",source:"none",reason:"lost")] : []
+            let events: [CaptureEvent] = others ? [.init(atMs:eventTime(atMs),type:"othersSource",source:"none",reason:"lost",cause:cause)] : []
             try commitTransition(ending:browserSources.values.compactMap(\.span),events:events)
             for id in Array(browserSources.keys) {
                 guard var source = browserSources[id] else { continue }
@@ -449,6 +451,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             // A committed browser loss, also of a call that took over the D49 stand-in, falls
             // back as system/lost: the stand-in's "missing" belongs to the time before the call.
             if transportDied { forgetDeadTransportSources() }
+            browserLossCause = cause
             browserAlive = false; fallbackReason = "lost"; systemReason = "lost"; browserLostUptime = lost; publish()
         }
     }
@@ -506,7 +509,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 self.browserSources[id]?.current = spans[id] != nil
             }
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me }; self.reservedNative.remove(.others)
-            self.browserAlive = true; self.fallbackReason = nil; self.browserLostUptime = nil
+            self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil
             self.fallbackRequested = false; self.resumeAt = time; self.publish()
         }
     }
@@ -570,7 +573,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 // The stand-in already published system/missing; its first PCM adds no event.
                 let current = recording.manifest.events?.last(where:{ $0.type == "othersSource" })
                 let announced = current?.source == "system" && current?.reason == systemReason
-                let events: [CaptureEvent] = span.side == .others && !announced ? [.init(atMs:offset,type:"othersSource",source:"system",reason:systemReason)] : []
+                let events: [CaptureEvent] = span.side == .others && !announced ? [.init(atMs:offset,type:"othersSource",source:"system",reason:systemReason,cause:systemReason == "lost" ? browserLossCause : nil)] : []
                 // D52.2: a native span starts at its selection boundary; the wait for its first buffer is a prefix.
                 try commitTransition(starting:[.init(id:id,label:span.label,kind:span.side == .me ? "microphone" : "system",sampleRate:span.rate,channels:span.channels,labelSource:"device",
                                                      boundaryMs:nativeBoundary(span.side).flatMap { $0 < offset ? $0 : nil })],events:events)

@@ -35,7 +35,11 @@ public struct LocalCompanionInstallation {
             defer { close(installedFD) }
             guard fstat(installedFD,&info) == 0, info.st_uid == getuid(), info.st_mode & 0o022 == 0 else { throw BrowserSetupError.unsafePath }
             let old = try manifest(installedFD)
-            if !old.components.lexicographicallyPrecedes(bundled.components) { return .init(updated:false,version:old.version) }
+            if bundled.components.lexicographicallyPrecedes(old.components) { return .init(updated:false,version:old.version) }
+            if old.components == bundled.components {
+                var checked = 0, bytes = 0
+                if try matches(sourceFD,to:installedFD,depth:0,count:&checked,bytes:&bytes) { return .init(updated:false,version:old.version) }
+            }
         } else if errno != ENOENT { throw BrowserSetupError.unsafePath }
         let stage = ".browser-companion-"+UUID().uuidString
         guard mkdirat(parentFD,stage,0o700) == 0 else { throw error() }
@@ -97,6 +101,29 @@ public struct LocalCompanionInstallation {
             if name != "." && name != ".." { result.append(name) }
         }
         return result.sorted()
+    }
+    /// Equal-version setup repairs missing/changed packaged files atomically;
+    /// a newer installation is never inspected or replaced by this older app.
+    private func matches(_ source: Int32, to destination: Int32, depth: Int, count: inout Int, bytes: inout Int) throws -> Bool {
+        guard depth <= 8 else { throw BrowserSetupError.tooLarge }
+        for name in try names(source) {
+            count += 1; guard count <= 256 else { throw BrowserSetupError.tooLarge }
+            let input = openat(source,name,O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            guard input >= 0 else { throw BrowserSetupError.unsafePath }; defer { close(input) }
+            let output = openat(destination,name,O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            guard output >= 0 else { return false }; defer { close(output) }
+            var info = stat(), target = stat()
+            guard fstat(input,&info) == 0, fstat(output,&target) == 0 else { return false }
+            if info.st_mode & S_IFMT == S_IFDIR {
+                guard target.st_mode & S_IFMT == S_IFDIR,
+                      try matches(input,to:output,depth:depth+1,count:&count,bytes:&bytes) else { return false }
+            } else {
+                let data = try read(input,limit:2_097_152)
+                bytes += data.count; guard bytes <= 16_777_216 else { throw BrowserSetupError.tooLarge }
+                guard let installed = try? read(output,limit:2_097_152), data == installed else { return false }
+            }
+        }
+        return true
     }
     private func copy(_ source: Int32, to destination: Int32, depth: Int, count: inout Int, bytes: inout Int) throws {
         guard depth <= 8 else { throw BrowserSetupError.tooLarge }

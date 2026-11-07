@@ -40,11 +40,12 @@ struct LocalCompanionGuide: View {
                 Text(setup.stateLine).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("companion-local-status")
                 if setup.failed { Button(UXText.text("common.tryAgain")) { setup.trigger() } }
             }
+            BrowserCompanionHealthView(presenter:setup.presenter ?? .library)
             HStack {
                 Spacer()
                 Button(UXText.text("common.notNow")) { setup.close() }.keyboardShortcut(.cancelAction)
                 Button(UXText.text("common.done")) { setup.close() }.keyboardShortcut(.defaultAction)
-                    .disabled(!captures.connected).accessibilityIdentifier("companion-local-done")
+                    .disabled(!captures.setupComplete).accessibilityIdentifier("companion-local-done")
             }.controlSize(.large)
         }.font(.system(size:13)).padding(26).frame(width:560)
             .accessibilityElement(children:.contain).accessibilityIdentifier("companion-local-guide")

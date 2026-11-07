@@ -50,6 +50,20 @@ private final class CompanionFiles {
         #expect(try !f.install.install().updated)
         #expect(try Data(contentsOf:file) == Data("new reviewed bytes".utf8))
     }
+    @Test(arguments:["missing","changed","symlink"])
+    func setUpAgainRepairsCurrentVersionWithoutFollowingLinks(_ damage: String) throws {
+        let f = try CompanionFiles(); _ = try f.install.install()
+        let installed = f.install.destination.appendingPathComponent("background.js")
+        let outside = f.root.appendingPathComponent("outside")
+        try Data("private outside bytes".utf8).write(to:outside)
+        try FileManager.default.removeItem(at:installed)
+        if damage == "changed" { try Data("damaged".utf8).write(to:installed) }
+        if damage == "symlink" { try FileManager.default.createSymbolicLink(at:installed,withDestinationURL:outside) }
+        #expect(try f.install.install().updated)
+        #expect(try Data(contentsOf:installed) == Data("reviewed bytes".utf8))
+        #expect(try Data(contentsOf:outside) == Data("private outside bytes".utf8))
+        #expect(try !f.install.install().updated)
+    }
     @Test func aFailedUpdateKeepsTheInstalledTreeAndCleansItsStagingFolder() throws {
         let f = try CompanionFiles(); _ = try f.install.install()
         let file = f.install.destination.appendingPathComponent("manifest.json"), before = try Data(contentsOf:file)
