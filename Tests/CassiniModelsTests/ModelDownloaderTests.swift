@@ -27,7 +27,24 @@ private final class Server: @unchecked Sendable {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniModelTests-" + UUID().uuidString)
     let origin: URL
     let log: URL
-    init(_ scenario: String, startupTimeout: TimeInterval = 10) throws {
+    /// Pipe readiness and process teardown must never occupy a cooperative executor.
+    static func start(_ scenario: String, startupTimeout: TimeInterval = 10,
+                      isolation: isolated (any Actor)? = #isolation,
+                      onLaunched: @escaping @Sendable (FileHandle) -> Void = { _ in }) async throws -> Server {
+        try await withCheckedThrowingContinuation { continuation in
+            Thread.detachNewThread {
+                do { continuation.resume(returning:try Server(scenario,startupTimeout:startupTimeout,onLaunched:onLaunched)) }
+                catch { continuation.resume(throwing:error) }
+            }
+        }
+    }
+    struct BootstrapFailure: Error, CustomStringConvertible {
+        let description: String
+        let pid: Int32
+        let folder: URL
+    }
+    private init(_ scenario: String, startupTimeout: TimeInterval,
+                 onLaunched: @Sendable (FileHandle) -> Void) throws {
         let exitEvent = DispatchSemaphore(value:0); exited = exitEvent
         guard fcntl(control.fileHandleForWriting.fileDescriptor,F_SETNOSIGPIPE,1) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
@@ -38,12 +55,17 @@ private final class Server: @unchecked Sendable {
         process.executableURL = URL(fileURLWithPath:"/usr/bin/env")
         process.arguments = ["python3",Bundle.module.url(forResource:"server",withExtension:"py",subdirectory:"Fixtures")!.path,"--scenario",scenario,"--log",log.path]
         process.standardInput = control
-        process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
+        let errors = root.appendingPathComponent("bootstrap.stderr")
+        _ = FileManager.default.createFile(atPath:errors.path,contents:nil)
+        let errorFile = try FileHandle(forWritingTo:errors)
+        defer { try? errorFile.close() }
+        process.standardOutput = pipe; process.standardError = errorFile
         process.terminationHandler = { _ in exitEvent.signal() }
         let child = process, folder = root
         var admitted = false
         defer { if !admitted { Self.reap(child,exited:exitEvent); try? FileManager.default.removeItem(at:folder) } }
         try process.run()
+        onLaunched(control.fileHandleForWriting)
         let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
         let fd = pipe.fileHandleForReading.fileDescriptor
         var line = Data(), published = false
@@ -59,7 +81,10 @@ private final class Server: @unchecked Sendable {
             if byte == Data([10]) { published = true; break }
             line.append(byte)
         }
-        guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else { throw ModelDownloadError.response }
+        guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else {
+            let diagnostic = (try? String(contentsOf:errors,encoding:.utf8)) ?? ""
+            throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root)
+        }
         origin = url; admitted = true
     }
     private static func reap(_ process: Process, exited: DispatchSemaphore) {
@@ -71,11 +96,28 @@ private final class Server: @unchecked Sendable {
         }
         if !process.isRunning { process.waitUntilExit() }
     }
-    deinit { Self.reap(process,exited:exited); try? FileManager.default.removeItem(at:root) }
+    deinit {
+        let child = process, event = exited, folder = root
+        Thread.detachNewThread {
+            Self.reap(child,exited:event)
+            try? FileManager.default.removeItem(at:folder)
+        }
+    }
     var appData: URL { root.appendingPathComponent("data") }
     func downloader(budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = enough) throws -> ModelDownloader { try .init(appData:appData,fixtureOrigin:origin,userAgent:agent,budget:budget) }
     var requests: [[String:Any]] { ((try? String(contentsOf:log,encoding:.utf8)) ?? "").split(separator:"\n").compactMap { try? JSONSerialization.jsonObject(with:Data($0.utf8)) as? [String:Any] } }
     var destination: URL { appData.appendingPathComponent("models/" + pin.id + "/" + pin.sourceSHA256) }
+}
+/// The child cannot publish readiness until this actor runs again after start suspends.
+private actor FixtureBootstrapActor {
+    func start() async throws -> Server {
+        try await Server.start("await-ready",onLaunched:{ control in
+            Task { try await self.release(control) }
+        })
+    }
+    private func release(_ control: FileHandle) throws {
+        try control.write(contentsOf:Data("start\n".utf8))
+    }
 }
 private func fails(_ run: () async throws -> Void) async -> Error? { do { try await run(); Issue.record("Expected failure"); return nil } catch { return error } }
 
@@ -87,11 +129,30 @@ private final class ProgressLog: @unchecked Sendable {
 }
 
 @Suite struct ModelDownloaderTests {
-    @Test func fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() {
-        #expect(throws:ModelDownloadError.self) { _ = try Server("no-ready",startupTimeout:0.1) }
+    @Test func fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() async throws {
+        let failure = try #require(await fails {
+            _ = try await Server.start("no-ready",startupTimeout:0.1)
+        } as? Server.BootstrapFailure)
+        #expect(kill(failure.pid,0) == -1 && errno == ESRCH)
+        #expect(!FileManager.default.fileExists(atPath:failure.folder.path))
+    }
+    @Test func fixtureBootstrapReportsTheChildsErrorAndInvalidReadinessLine() async throws {
+        let failure = try #require(await fails {
+            _ = try await Server.start("invalid-ready")
+        } as? Server.BootstrapFailure)
+        #expect(failure.description.contains("deliberate fixture startup failure"))
+        #expect(failure.description.contains("stdout=invalid readiness"))
+        #expect(kill(failure.pid,0) == -1 && errno == ESRCH)
+        #expect(!FileManager.default.fileExists(atPath:failure.folder.path))
+    }
+    @Test func readinessCanDependOnTheCallingActorMakingProgress() async throws {
+        let server = try await FixtureBootstrapActor().start()
+        let downloader = try server.downloader()
+        _ = try await downloader.plan(pin)
+        #expect(server.requests.contains { $0["path"] as? String == "/manifest.json" })
     }
     @Test func acceptedInferenceLinksDoNotInvalidateOrRedownloadAnInstalledModel() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)
         _ = try await downloader.install(pin)
         let weights = server.destination.appendingPathComponent("weights.bin"), lease = server.root.appendingPathComponent("accepted-job-weights")
@@ -114,7 +175,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(try Data(contentsOf:lease) == bytes)
     }
     @Test(arguments:["weights.bin","receipt.json","NOTICE.txt"]) func retryRepairsAnIncompleteInstallation(_ missing: String) async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)
         _ = try await downloader.install(pin)
         try FileManager.default.removeItem(at:server.destination.appendingPathComponent(missing))
@@ -124,7 +185,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(try ModelFiles.size(repaired.appendingPathComponent("receipt.json")) != nil)
     }
     @Test func retryRepairsSameSizeCorruptWeights() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)
         _ = try await downloader.install(pin)
         let weights = server.destination.appendingPathComponent("weights.bin")
@@ -133,7 +194,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(try ModelFiles.digest(weights) == plan.files[0].rawSHA256)
     }
     @Test func removeWaitsForAnExternalCancelledTransferToReleaseTheRevisionLock() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         _ = try await downloader.install(pin)
         let path = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
         let fd = open(path.path,O_RDWR | O_CLOEXEC)
@@ -143,7 +204,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
     }
     @Test func cancellationWhileWaitingForRemoveLeavesTheInstallationIntact() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         _ = try await downloader.install(pin)
         let path = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
         let fd = open(path.path,O_RDWR | O_CLOEXEC)
@@ -156,7 +217,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(FileManager.default.fileExists(atPath:server.destination.path))
     }
     @Test func inventoryRequiresReceiptAndNoticeAndNeverFetchesMetadata() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)
         _ = try await downloader.install(pin)
         let count = server.requests.count
@@ -170,7 +231,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(server.requests.count == count)
     }
     @Test func repairUnlinksAnUnsafeChildWithoutFollowingItsTarget() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         _ = try await downloader.install(pin)
         let sentinel = server.root.appendingPathComponent("sentinel"), bytes = Data("Keep this private file".utf8)
         try bytes.write(to:sentinel)
@@ -182,7 +243,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(try ModelFiles.size(weights) != nil)
     }
     @Test func staleInventoryDoesNotRemoveAnInstallationRepairedWhileWaitingForItsLock() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         let plan = try await downloader.plan(pin)
         _ = try await downloader.install(pin)
         let weights = server.destination.appendingPathComponent("weights.bin"), original = try Data(contentsOf:server.destination.appendingPathComponent("weights.bin"))
@@ -198,7 +259,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(ModelStorage.isInstalled(plan,in:server.appData))
     }
     @Test func progressReportsBytesAndMarksOnlyTheAtomicInstallComplete() async throws {
-        let server = try Server("normal"), downloader = try server.downloader(), log = ProgressLog()
+        let server = try await Server.start("normal"), downloader = try server.downloader(), log = ProgressLog()
         let plan = try await downloader.plan(pin)
         let installed = try await downloader.install(pin) { log.add($0) }
         let states = log.snapshot()
@@ -210,7 +271,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(FileManager.default.fileExists(atPath:installed.appendingPathComponent("receipt.json").path))
     }
     @Test func aBadDecodedHashNeverReportsAnInstalledModel() async throws {
-        let server = try Server("raw-hash"), downloader = try server.downloader(), log = ProgressLog()
+        let server = try await Server.start("raw-hash"), downloader = try server.downloader(), log = ProgressLog()
         let error = await fails { _ = try await downloader.install(pin) { log.add($0) } }
         #expect(error as? ModelDownloadError == .hash)
         #expect(!log.snapshot().isEmpty && !log.snapshot().contains { $0.isInstalled })
@@ -218,7 +279,7 @@ private final class ProgressLog: @unchecked Sendable {
     }
 
     @Test(arguments:["normal","no-length"]) func installVerifyReuseWithoutArtifactDownloadAndRemove(_ scenario: String) async throws {
-        let server = try Server(scenario), downloader = try server.downloader()
+        let server = try await Server.start(scenario), downloader = try server.downloader()
         #expect(server.requests.isEmpty)
         let plan = try await downloader.plan(pin)
         #expect(plan.files.count == 2)
@@ -242,7 +303,7 @@ private final class ProgressLog: @unchecked Sendable {
         _ = try await downloader.install(pin); #expect(FileManager.default.fileExists(atPath:result.path))
     }
     @Test(arguments:["truncated","416","ignore-range"]) func resumeWithRangeAndIfRange(_ scenario: String) async throws {
-        let server = try Server(scenario), downloader = try server.downloader()
+        let server = try await Server.start(scenario), downloader = try server.downloader()
         _ = await fails { _ = try await downloader.install(pin) { server.acknowledgePersistedPrefix($0) } }
         try #require(server.prefixAcknowledged,"Fault follows a real persisted-prefix event")
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
@@ -254,7 +315,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(ranged.first?["ifRange"] as? String == "\"" + digest + "\"")
     }
     @Test func transientServerFailureRetainsPreviouslyValidatedPrefix() async throws {
-        let server = try Server("503"), downloader = try server.downloader()
+        let server = try await Server.start("503"), downloader = try server.downloader()
         _ = await fails { _ = try await downloader.install(pin) { server.acknowledgePersistedPrefix($0) } }
         try #require(server.prefixAcknowledged,"Fault follows a real persisted-prefix event")
         let error = await fails { _ = try await downloader.install(pin) }
@@ -264,7 +325,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(ranges.count == 2 && ranges[0] == ranges[1])
     }
     @Test(arguments:["changed-etag","bad-range"]) func changedIdentityNeverAppends(_ scenario: String) async throws {
-        let server = try Server(scenario), downloader = try server.downloader()
+        let server = try await Server.start(scenario), downloader = try server.downloader()
         _ = await fails { _ = try await downloader.install(pin) { server.acknowledgePersistedPrefix($0) } }
         try #require(server.prefixAcknowledged,"Fault follows a real persisted-prefix event")
         let error = await fails { _ = try await downloader.install(pin) }
@@ -274,7 +335,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(server.requests.filter { $0["range"] is String }.count == 1)
     }
     @Test(arguments:["compressed-hash","raw-hash","unsafe-path","wrong-origin","redirect"]) func rejectsWithoutPublishing(_ scenario: String) async throws {
-        let server = try Server(scenario), downloader = try server.downloader()
+        let server = try await Server.start(scenario), downloader = try server.downloader()
         let error = await fails { _ = try await downloader.install(pin) }
         if scenario.contains("hash") { #expect(error as? ModelDownloadError == .hash) }
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
@@ -296,14 +357,14 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(ModelUserAgent.architecture == "arm64" || ModelUserAgent.architecture == "x86_64")
     }
     @Test func fullDiskStopsBeforeArtifact() async throws {
-        let server = try Server("normal"), downloader = try server.downloader(budget:{ _ in .init(free:1 << 30,total:100 << 30) })
+        let server = try await Server.start("normal"), downloader = try server.downloader(budget:{ _ in .init(free:1 << 30,total:100 << 30) })
         let error = await fails { _ = try await downloader.install(pin) }
         guard case .diskSpace = error as? ModelDownloadError else { Issue.record("Missing disk budget failure"); return }
         #expect(server.requests.count == 1)
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
     }
     @Test func cancelAndRemoveWaitForTransferWithoutResurrection() async throws {
-        let server = try Server("slow"), downloader = try server.downloader()
+        let server = try await Server.start("slow"), downloader = try server.downloader()
         let task = Task { try await downloader.install(pin) }
         for _ in 0..<200 { if server.requests.count >= 2 { break }; try await Task.sleep(for:.milliseconds(10)) }
         await downloader.cancel(pin)
@@ -317,7 +378,7 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(!FileManager.default.fileExists(atPath:server.appData.appendingPathComponent("model-downloads/" + pin.id + "/" + pin.sourceSHA256).path))
     }
     @Test func revisionPinMustBePresentAndOriginalInstallSurvivesBadUpdate() async throws {
-        let server = try Server("normal"), downloader = try server.downloader()
+        let server = try await Server.start("normal"), downloader = try server.downloader()
         _ = try await downloader.install(pin)
         let bytes = try Data(contentsOf:server.destination.appendingPathComponent("weights.bin"))
         let missing = ModelPin(id:pin.id,sourceSHA256:String(repeating:"b",count:64))

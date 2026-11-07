@@ -8,6 +8,12 @@ a=p.parse_args();root=Path(__file__).resolve().parent
 if a.scenario=='no-ready':
  sys.stdin.buffer.read()
  raise SystemExit(0)
+if a.scenario=='invalid-ready':
+ print('deliberate fixture startup failure',file=sys.stderr,flush=True)
+ print('invalid readiness',flush=True)
+ raise SystemExit(17)
+if a.scenario=='await-ready':
+ if sys.stdin.readline().strip()!='start':raise RuntimeError('missing actor startup event')
 state={'artifacts':0,'truncated':False};lock=threading.Lock()
 prefix_persisted=threading.Event()
 def receive_control():
