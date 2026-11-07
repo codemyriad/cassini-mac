@@ -82,12 +82,14 @@ class ProbeLaunch(unittest.TestCase):
                 self.assertEqual(arguments[arguments.index('-SpectrogramOutput')+1], str((root/'output').resolve()))
 
 class InstrumentationIsolation(unittest.TestCase):
-    def test_xctest_readiness_is_the_actual_motion_test_start(self):
-        self.assertTrue(harness.motion_driver_started("Test Case '-[CassiniWindowScreenshots.SpectrogramMotion testRealSystemSettingsMotionTransitions]' started.\n"))
+    def test_measurement_waits_for_explicit_post_setup_driver_readiness(self):
+        self.assertTrue(harness.motion_driver_ready('CASSINI_SPECTRO_MOTION_READY\n'))
         for line in ["Test Suite 'SpectrogramMotion' started.",
+                     "Test Case '-[CassiniWindowScreenshots.SpectrogramMotion testRealSystemSettingsMotionTransitions]' started.",
                      "Test Case '-[CassiniWindowScreenshots.SpectrogramMotion testRealSystemSettingsMotionTransitions]' passed.",
-                     "Test Case '-[CassiniWindowScreenshots.Other testRealSystemSettingsMotionTransitions]' started."]:
-            self.assertFalse(harness.motion_driver_started(line))
+                     'CASSINI_SPECTRO_MOTION_ACK:{"requestID":"first"}',
+                     'CASSINI_SPECTRO_MOTION_READY:pending']:
+            self.assertFalse(harness.motion_driver_ready(line))
 
     def test_allocations_and_profiling_cannot_share_one_process(self):
         with self.assertRaises(ValueError):

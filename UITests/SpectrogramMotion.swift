@@ -14,6 +14,19 @@ final class SpectrogramMotion: XCTestCase {
         }
         return nil
     }
+    @MainActor private func motionControl(_ settings: XCUIApplication) throws -> XCUIElement {
+        settings.launch()
+        let pane=try XCTUnwrap(URL(string:"x-apple.systempreferences:com.apple.Accessibility-Settings.extension?Display"))
+        XCTAssertTrue(NSWorkspace.shared.open(pane))
+        // macOS15 exposes the label as a separate static text, while its
+        // switch has this identifier and no label. Verified in the real
+        // hosted AX tree, rather than guessing from the visible caption.
+        let controls=[settings.switches["AX_REDUCE_MOTION"],settings.checkBoxes["Reduce motion"],settings.switches["Reduce motion"],settings.buttons["Reduce motion"]]
+        let exists=NSPredicate { _,_ in controls.contains { $0.exists } }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exists,object:nil)],timeout:20),.completed,settings.debugDescription)
+        let control=try XCTUnwrap(controls.first { $0.exists },settings.debugDescription)
+        return control
+    }
     @MainActor func testRealSystemSettingsMotionTransitions() async throws {
         let environment=ProcessInfo.processInfo.environment
         guard environment["CASSINI_SPECTRO_MOTION_GATE"] == "1",
@@ -23,6 +36,17 @@ final class SpectrogramMotion: XCTestCase {
         let requestURL=URL(fileURLWithPath:path)
         let settings=XCUIApplication(bundleIdentifier:"com.apple.systempreferences")
         defer { if settings.state != .notRunning { settings.terminate() } }
+        // A XCTest "started" line precedes setup/automation readiness. Initialize
+        // the actual Settings/AX path before the uninstrumented pacing interval.
+        // An explicit event, not a settling delay, releases the measurement.
+        let initial = try motionControl(settings)
+        if try XCTUnwrap(state(initial)) { initial.click() }
+        let normal = NSPredicate { _,_ in self.state(initial) == false }
+        let ready = XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:normal,object:nil)],timeout:10)
+        XCTAssertEqual(ready,.completed)
+        guard ready == .completed else { return }
+        settings.terminate()
+        FileHandle.standardOutput.write(Data("CASSINI_SPECTRO_MOTION_READY\n".utf8))
         for expected in [true,false] {
             var request:[String:Any]?
             let arrived=NSPredicate { _,_ in
@@ -33,16 +57,7 @@ final class SpectrogramMotion: XCTestCase {
             }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:arrived,object:nil)],timeout:120),.completed,"Probe requested the next OS setting")
             let body=try XCTUnwrap(request)
-            settings.launch()
-            let pane=try XCTUnwrap(URL(string:"x-apple.systempreferences:com.apple.Accessibility-Settings.extension?Display"))
-            XCTAssertTrue(NSWorkspace.shared.open(pane))
-            // macOS15 exposes the label as a separate static text, while its
-            // switch has this identifier and no label. Verified in the real
-            // hosted AX tree, rather than guessing from the visible caption.
-            let controls=[settings.switches["AX_REDUCE_MOTION"],settings.checkBoxes["Reduce motion"],settings.switches["Reduce motion"],settings.buttons["Reduce motion"]]
-            let exists=NSPredicate { _,_ in controls.contains { $0.exists } }
-            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exists,object:nil)],timeout:20),.completed,settings.debugDescription)
-            let control=try XCTUnwrap(controls.first { $0.exists },settings.debugDescription)
+            let control = try motionControl(settings)
             if try XCTUnwrap(state(control),"System setting exposes a binary value") != expected { control.click() }
             let changed=NSPredicate { _,_ in self.state(control) == expected }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:10),.completed,settings.debugDescription)

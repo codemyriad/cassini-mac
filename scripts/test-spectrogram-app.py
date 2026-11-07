@@ -47,11 +47,10 @@ def probe_command(app: Path, case: str, output: Path, allocations: bool = False,
     return command
 
 
-def motion_driver_started(line: str) -> bool:
-    # This is XCTest's actual test-start event, seen in hosted logs. A suite
-    # start or successful previous test cannot release the measurement.
-    return (line.startswith("Test Case '-[CassiniWindowScreenshots.SpectrogramMotion ") and
-            "testRealSystemSettingsMotionTransitions]' started." in line)
+def motion_driver_ready(line: str) -> bool:
+    # The current driver's explicit post-setup, post-Settings/AX initialization
+    # event. XCTest's "started" line still overlaps automation startup with B.
+    return line.strip() == 'CASSINI_SPECTRO_MOTION_READY'
 
 
 def record_profile(app: Path, output: Path):
@@ -113,7 +112,7 @@ def measure(app: Path, output: Path):
             def relay_motion_events(driver=motion_driver,log=motion_log,current=request,ready=motion_ready):
                 for line in driver.stdout:
                     log.write(line);log.flush()
-                    if motion_driver_started(line): ready.set()
+                    if motion_driver_ready(line): ready.set()
                     try:
                         relay_motion_ack(line,current)
                     except OSError as error:
@@ -124,7 +123,7 @@ def measure(app: Path, output: Path):
             process = top = None
             try:
                 if motion_driver and not motion_ready.wait(timeout=60):
-                    problems.append('B: motion test never entered execution; see motion-xctest.log')
+                    problems.append('B: motion driver never completed Settings/AX initialization; see motion-xctest.log')
                     continue
                 process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
                 top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
