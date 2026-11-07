@@ -3,6 +3,10 @@ import AppKit
 import CassiniKit
 
 extension NSAttributedString.Key {
+    /// Bool: exact words/chip of the current listening turn (D70).
+    static let cassiniListenCurrent = NSAttributedString.Key("cassiniListenCurrent")
+    /// Int: reading-turn id owned by an inline name's Listen to button.
+    static let cassiniListenSpeaker = NSAttributedString.Key("cassiniListenSpeaker")
     /// Int: index into `Timeline.words`, on a word's characters.
     static let cassiniWord = NSAttributedString.Key("cassiniWord")
     /// Int: ms to seek to, on a turn's timestamp.

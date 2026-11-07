@@ -110,6 +110,20 @@ import Observation
         await mergedDelivered.value
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
+        for (key,value) in MeetingTranscriptText.nativeSelfTest() { report[key] = value }
+        var asideMeeting = fixture
+        asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
+            .init(speaker:"guest",startMs:750,endMs:1100,text:"Yes."),.init(speaker:"claire",startMs:1000,endMs:1800,text:"Thanks.")]
+        asideMeeting.speakers = [] // the projection/action proof needs no names or speaker editor
+        let preview = MeetingDetailModel(meeting:asideMeeting,frozen:true)
+        if let aside = preview.turns.first(where:{ $0.speaker == "guest" }) {
+            preview.listenFromReadingTurn(aside.id)
+            report["asideActionSelectsOwnRunAndHost"] = preview.listen.turn?.index == 1 && preview.listeningHost == aside.host && !preview.audio.isPlaying
+            let revision = preview.followRevision
+            preview.handScrolledTranscript(); preview.playListeningAgain()
+            report["explicitReplayResumesTranscriptFollow"] = preview.followRevision > revision && preview.canFollowTranscript
+        } else { report["asideActionSelectsOwnRunAndHost"] = false }
+        preview.close()
         guard report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy({ $0.value as? Bool == true }) else { fail("native scrubber or preparation regression: \(report)") }
         report["audioDevicesOpened"] = false
 

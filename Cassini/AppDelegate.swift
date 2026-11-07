@@ -303,6 +303,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #if DEBUG
     @MainActor static func handleListeningSelfTest(_ event: NSEvent) -> NSEvent? { handle(event) }
     #endif
+    /// Native and SwiftUI focused buttons retain Space before the page player.
+    @MainActor static func pressPlaybackButton(_ element: NSAccessibilityProtocol?) -> Bool {
+        guard let element, element.accessibilityRole() == .button, element.isAccessibilityEnabled() else { return false }
+        return element.accessibilityPerformPress()
+    }
+
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
         // AppKit focus/sheet changes are not Observation dependencies. Decide
@@ -361,6 +367,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
         if window.accessibilityIdentifier() == "cassini-library-window", let detail = MeetingNavigation.shared.detail {
+            if event.keyCode == 49, event.modifierFlags.intersection([.shift,.command,.option,.control]).isEmpty {
+                if let button = window.firstResponder as? NSButton, button.isEnabled {
+                    button.performClick(nil); return nil
+                }
+                if pressPlaybackButton(window.contentView?.accessibilityFocusedUIElement as? NSAccessibilityProtocol) { return nil }
+            }
             switch event.keyCode {
             case 49: detail.toggle()
             case 123: detail.skip(-10)

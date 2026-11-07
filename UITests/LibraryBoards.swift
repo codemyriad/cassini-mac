@@ -388,6 +388,26 @@ final class LibraryBoards: XCTestCase {
         let free = NSPredicate { _,_ in slider.value as? String != "00:03:08" && slider.value as? String != farValue }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:free,object:nil)],timeout:5),.completed,"Stopping listening clears pointer snapping")
     }
+    @MainActor func testTranscriptTimePlaysAndSpeakerNameStartsListening() throws {
+        let app = try launch("meeting",fixture:"main")
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let play = window.buttons["turn-play-2"], listen = window.buttons["turn-listen-2"]
+        XCTAssertTrue(play.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(listen.isEnabled && play.isEnabled,"Read-only transcript actions stay available")
+        XCTAssertEqual(play.label,"Play from here, 00:03:08")
+        XCTAssertTrue(listen.label.hasPrefix("Listen to "))
+        play.click()
+        let played = NSPredicate { _,_ in window.sliders["meeting-seek"].value as? String == "00:03:08" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:played,object:nil)],timeout:5),.completed)
+        XCTAssertFalse(window.descendants(matching:.any)["listening-bar"].exists)
+        listen.click()
+        XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].waitForExistence(timeout:5))
+        XCTAssertTrue(text("Turn 1 of 1 · 00:03:08",in:window))
+        capture(window,name:"listening-transcript-highlight")
+        window.buttons["listen-stop"].click()
+        XCTAssertEqual(window.sliders["meeting-seek"].value as? String,"00:03:08")
+    }
     @MainActor func testMeetingAccessibility() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
