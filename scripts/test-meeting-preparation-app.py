@@ -36,7 +36,11 @@ assert all(report[name] is True for name in ('preparedOffMain','mainActorProgres
     'suspendedMergeResolvesReadoutAndHeaders','unlistedSpeechIsNotSilence','mergedPreparationRecovers',
     'asideHasExactListeningTint','asideNativeListenButton','asideButtonAccessibility','asideButtonGeometry','unchangedRowDoesNotRestyle',
     'clockKeepsSelectionAndInlineButton','bodyUsesEightPercentAndClearsAside','focusedTranscriptShiftReturnPlays',
-    'asideActionSelectsOwnRunAndHost','explicitReplayResumesTranscriptFollow')),report
+    'asideActionSelectsOwnRunAndHost','explicitReplayResumesTranscriptFollow',
+    'inlineButtonFocusableWithoutFullKeyboardAccess','tabSkipsSelectableTranscript',
+    'pointerFocusedTranscriptTabAdvances','pointerFocusedTranscriptBacktabAdvances',
+    'inlineFocusInvalidatesRing','inlineBlurInvalidatesRing','inlineReturnSpaceKeypadActivate',
+    'inlineShiftReturnKeypadPlayAndKeepFocus','disabledInlineButtonCannotFocusOrActivate','focusedInlineSpacePrecedesPlayer' )),report
 assert report['audioDevicesOpened'] is False
 args.output.write_text(json.dumps(report,indent=2)+'\n')
 print('PASS production meeting preparation/readout, native scrubber snapping, drag readout and VoiceOver seeks')

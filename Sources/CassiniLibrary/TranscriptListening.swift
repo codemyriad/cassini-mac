@@ -43,6 +43,17 @@ public struct TranscriptListening: Sendable {
         // Prefer the first chronological reading row, even when its target is a chip.
         targets[target]?.keys.sorted().first.flatMap { hosts[$0] }
     }
+    public func hosts(forListening target: Int) -> Set<Int> {
+        guard let rows = targets[target] else { return [] }
+        return Set(rows.keys.compactMap { hosts[$0] })
+    }
+    /// Ordinary playback follows the playhead. Listening follows only its own
+    /// host paragraphs; other voices in lead-in, overlap or tail cannot move it.
+    public func followHost(forReading row: Int?, listeningTo target: Int?) -> Int? {
+        guard let row, let host = hosts[row] else { return nil }
+        if let target, !hosts(forListening:target).contains(host) { return nil }
+        return host
+    }
     public func listeningIndex(forReading row: Int, at position: Int64) -> Int? {
         guard let candidates = runs[row] else { return nil }
         return candidates.last { $0.startMs <= position && position < $0.endMs }?.index ?? candidates.first?.index

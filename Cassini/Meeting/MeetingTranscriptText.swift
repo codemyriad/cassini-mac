@@ -162,6 +162,24 @@ final class MeetingTurnTextView: NSTextView {
     private var inlineButtons: [InlineListenButton] = []
     final class InlineListenButton: NSButton {
         var invoke: (() -> Void)?
+        var playFromHere: (() -> Void)?
+        override var acceptsFirstResponder: Bool { isEnabled }
+        override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+        override func becomeFirstResponder() -> Bool { defer { needsDisplay = true }; return super.becomeFirstResponder() }
+        override func resignFirstResponder() -> Bool { defer { needsDisplay = true }; return super.resignFirstResponder() }
+        @discardableResult func handlePlaybackKey(_ event: NSEvent) -> Bool {
+            guard isEnabled else { return false }
+            let modifiers = event.modifierFlags.intersection([.command,.option,.control,.shift])
+            if [36,49,76].contains(event.keyCode), modifiers.isEmpty { performClick(nil); return true }
+            if [36,76].contains(event.keyCode), modifiers == .shift, let playFromHere { playFromHere(); return true }
+            return false
+        }
+        override func keyDown(with event: NSEvent) {
+            if !handlePlaybackKey(event) { super.keyDown(with:event) }
+        }
+        override func accessibilityPerformPress() -> Bool {
+            guard isEnabled else { return false }; performClick(nil); return true
+        }
         init() {
             super.init(frame:.zero)
             title = ""; isBordered = false; focusRingType = .exterior
@@ -194,6 +212,9 @@ final class MeetingTurnTextView: NSTextView {
                 button.setAccessibilityIdentifier("aside-listen-\(name.row)")
                 button.tag = name.range.location
                 button.invoke = { [weak self] in self?.listen?(name.row) }
+                button.playFromHere = { [weak self] in
+                    guard let self, self.canPlay else { return }; self.playFromHere?()
+                }
                 inlineButtons.append(button); addSubview(button)
             }
         }
@@ -215,6 +236,9 @@ final class MeetingTurnTextView: NSTextView {
             button.frame = rect.offsetBy(dx:textContainerOrigin.x,dy:textContainerOrigin.y)
         }
     }
+    override var canBecomeKeyView: Bool { false }
+    override func insertTab(_ sender: Any?) { window?.selectNextKeyView(self) }
+    override func insertBacktab(_ sender: Any?) { window?.selectPreviousKeyView(self) }
     override func layout() { super.layout(); positionInlineButtons() }
     override func accessibilityChildren() -> [Any]? { inlineButtons }
     override func keyDown(with event: NSEvent) {
@@ -298,6 +322,55 @@ extension MeetingTranscriptText {
         report["bodyUsesEightPercentAndClearsAside"] = abs((bodyTint?.alphaComponent ?? 0)-0.08) < 0.001 && storage.attribute(.cassiniListenCurrent,at:word.location,effectiveRange:nil) == nil
         if let event = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:.shift,timestamp:0,windowNumber:0,context:nil,characters:"\r",charactersIgnoringModifiers:"\r",isARepeat:false,keyCode:36) { view.keyDown(with:event) }
         report["focusedTranscriptShiftReturnPlays"] = played == 1 && sought == -1
+        // Use an actual key-view loop without changing global keyboard settings.
+        // Selecting text by mouse stays possible; Tab skips it or leaves it.
+        let window = NSWindow(contentRect:NSRect(x:0,y:0,width:600,height:180),styleMask:[.titled],backing:.buffered,defer:false)
+        window.isReleasedWhenClosed = false; window.autorecalculatesKeyViewLoop = false
+        window.setAccessibilityIdentifier("cassini-library-window")
+        let content = NSView(frame:window.contentLayoutRect)
+        let before = MeetingTurnTextView.InlineListenButton(), after = MeetingTurnTextView.InlineListenButton()
+        before.frame = NSRect(x:0,y:0,width:30,height:20); after.frame = NSRect(x:550,y:0,width:30,height:20)
+        content.addSubview(before); content.addSubview(view); content.addSubview(after)
+        window.contentView = content; window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        if let button = button as? MeetingTurnTextView.InlineListenButton {
+            before.nextKeyView = view; view.nextKeyView = button; button.nextKeyView = after; after.nextKeyView = before
+            report["inlineButtonFocusableWithoutFullKeyboardAccess"] = button.acceptsFirstResponder && button.canBecomeKeyView
+            window.makeFirstResponder(before); window.selectNextKeyView(before)
+            report["tabSkipsSelectableTranscript"] = !view.canBecomeKeyView && window.firstResponder === button
+            window.makeFirstResponder(view); view.insertTab(nil)
+            report["pointerFocusedTranscriptTabAdvances"] = window.firstResponder === button
+            window.makeFirstResponder(view); view.insertBacktab(nil)
+            report["pointerFocusedTranscriptBacktabAdvances"] = window.firstResponder === before
+            window.makeFirstResponder(before); button.needsDisplay = false
+            window.makeFirstResponder(button)
+            report["inlineFocusInvalidatesRing"] = window.firstResponder === button && button.needsDisplay
+            button.needsDisplay = false; window.makeFirstResponder(before)
+            report["inlineBlurInvalidatesRing"] = button.needsDisplay
+            window.makeFirstResponder(button)
+            var presses = 0
+            let invoke = button.invoke; button.invoke = { presses += 1; invoke?() }
+            func key(_ code: UInt16, _ modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+                NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:modifiers,timestamp:0,windowNumber:window.windowNumber,context:nil,
+                    characters:code == 49 ? " " : (code == 76 ? "\u{03}" : "\r"),charactersIgnoringModifiers:"",isARepeat:false,keyCode:code)!
+            }
+            for code: UInt16 in [36,49,76] { button.keyDown(with:key(code)) }
+            report["inlineReturnSpaceKeypadActivate"] = presses == 3 && listened == 1 && window.firstResponder === button
+            let previousPlayed = played
+            for code: UInt16 in [36,76] { button.keyDown(with:key(code,.shift)) }
+            report["inlineShiftReturnKeypadPlayAndKeepFocus"] = played == previousPlayed+2 && window.firstResponder === button
+            button.isEnabled = false
+            report["disabledInlineButtonCannotFocusOrActivate"] = !button.acceptsFirstResponder && !button.canBecomeKeyView && !button.handlePlaybackKey(key(49))
+            button.isEnabled = true
+            if let previous = MeetingNavigation.shared.detail {
+                let frozen = MeetingDetailModel(meeting:previous.meeting,frozen:true)
+                MeetingNavigation.shared.detail = frozen
+                defer { frozen.close(); MeetingNavigation.shared.detail = previous }
+                let playing = frozen.isPlaying, count = presses
+                window.makeFirstResponder(button)
+                report["focusedInlineSpacePrecedesPlayer"] = AppDelegate.handleListeningSelfTest(key(49)) == nil && presses == count+1 && frozen.isPlaying == playing
+            } else { report["focusedInlineSpacePrecedesPlayer"] = false }
+        }
         return report
     }
 }

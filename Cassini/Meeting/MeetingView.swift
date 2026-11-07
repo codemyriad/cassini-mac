@@ -21,7 +21,8 @@ struct MeetingView: View {
     }
     /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
     private func over(_ turn: MeetingPresentation.Turn) -> String? {
-        turn.over.isEmpty ? nil : UXText.text("meeting.turn.over",["names":turn.over.map(name).joined(separator:", ")])
+        let names = meeting.overlappingSpeakerIDs(turn.over,excluding:turn.speaker).map(name)
+        return names.isEmpty ? nil : UXText.text("meeting.turn.over",["names":names.joined(separator:", ")])
     }
     /// The turn's words in reading order with each aside's text where its chip sits.
     private func spoken(_ turn: MeetingPresentation.Turn) -> String {
@@ -60,13 +61,13 @@ struct MeetingView: View {
                 }
             }
             .focusable()
-            .onKeyPress(keys:[.return],phases:.down) { event in
+            .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
                 guard event.modifiers == .shift, model.canPlay else { return .ignored }
                 model.playFrom(Int(turn.startMs)); return .handled
             }
             .accessibilityElement(children:.contain)
             .accessibilityLabel(turnLabel(turn))
-            .accessibilityHint(turn.over.isEmpty ? "" : UXText.text("meeting.turn.over.tooltip"))
+            .accessibilityHint(over(turn) == nil ? "" : UXText.text("meeting.turn.over.tooltip"))
             .accessibilityIdentifier("meeting-turn-" + String(turn.id))
             .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
     }
@@ -80,6 +81,11 @@ struct MeetingView: View {
                         .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
                         .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
                         .accessibilityIdentifier("turn-listen-\(turn.id)")
+                        .focusable()
+                        .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
+                            guard event.modifiers.isEmpty, model.canPlay else { return .ignored }
+                            model.listenFromReadingTurn(turn.id); return .handled
+                        }
                     if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
                 }.fixedSize()
                 Button { model.playFrom(Int(turn.startMs)) } label: {
@@ -88,6 +94,11 @@ struct MeetingView: View {
                     .help(UXText.text("player.playFromHere"))
                     .accessibilityLabel(UXText.text("player.playFromHere") + ", " + LibraryFormat.position(turn.startMs))
                     .accessibilityIdentifier("turn-play-\(turn.id)")
+                    .focusable()
+                    .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
+                        guard event.modifiers.isEmpty, model.canPlay else { return .ignored }
+                        model.playFrom(Int(turn.startMs)); return .handled
+                    }
                 if let over = over(turn) {
                     Text(over).font(.system(size: 11.5)).foregroundStyle(.secondary)
                         .help(UXText.text("meeting.turn.over.tooltip"))
@@ -161,7 +172,7 @@ struct MeetingView: View {
                         }
                     }
                     .onChange(of: currentTurn) { _, turn in
-                        if model.canFollowTranscript, let turn {
+                        if model.canFollowTranscript, let turn = model.transcriptListening.followHost(forReading:turn,listeningTo:model.listen.turn?.index) {
                             if reduceMotion { proxy.scrollTo(turn,anchor:.center) }
                             else { withAnimation { proxy.scrollTo(turn,anchor:.center) } }
                         }

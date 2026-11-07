@@ -155,6 +155,15 @@ public struct LibraryMeeting: Sendable {
         let resolved = mergedInto[id] ?? id
         return speakers.first { $0.id == resolved }
     }
+    /// Overlap captions use current canonical identities, preserving order and
+    /// distinct stored speakers even when their display names happen to match.
+    public func overlappingSpeakerIDs(_ ids: [String], excluding speaker: String) -> [String] {
+        var seen: Set<String> = [mergedInto[speaker] ?? speaker]
+        return ids.compactMap { id in
+            let resolved = mergedInto[id] ?? id
+            return seen.insert(resolved).inserted ? resolved : nil
+        }
+    }
     public var speakerDisplayNames: [String:String] {
         var names = Dictionary(uniqueKeysWithValues:speakers.map { ($0.id,$0.displayName) })
         for (from,into) in mergedInto {
