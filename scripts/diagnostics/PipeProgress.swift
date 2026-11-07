@@ -48,6 +48,32 @@ private func pipeCase(_ label: String, _ executable: String, _ arguments: [Strin
 @main struct PipeProgress {
     static func main() async {
         note(command("/usr/bin/sw_vers",[]))
+        let complete = DispatchSemaphore(value:0)
+        Thread.detachNewThread {
+            if complete.wait(timeout:.now()+3) == .timedOut {
+                note("WHISTLE TREE\n" + command("/bin/ps",["-axo","pid=,ppid=,state=,etime=,comm="]))
+                snapshot(getpid(),"parent")
+                var sampled = 0
+                let rows = command("/bin/ps",["-axo","pid=,ppid=,comm="]).split(separator:"\n")
+                for row in rows {
+                    let fields = row.split(separator:" ",maxSplits:2,omittingEmptySubsequences:true)
+                    if fields.count == 3, Int32(fields[1]) == getpid(), let child = Int32(fields[0]), fields[2].contains("python") {
+                        if sampled < 2 { snapshot(child,"whistle"); sampled += 1 }
+                    }
+                }
+            }
+        }
+        await withTaskGroup(of:Void.self) { tasks in
+            for index in 0..<8 {
+                tasks.addTask {
+                    do {
+                        let value = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/usr/bin/python3"),arguments:["-c","import sys,os,stat; print('start',os.getpid(),[(fd,os.fstat(fd).st_ino) for fd in range(3,256) if os.path.exists('/dev/fd/'+str(fd))],flush=True); sys.stderr.buffer.write(b'e'*800000); sys.stderr.flush(); print(len(sys.stdin.buffer.read()),flush=True)"],environment:["PATH":"/usr/bin:/bin"],input:Data(repeating:1,count:1048576),timeout:10)
+                        note("WHISTLE \(index) status=\(value.status) stdout=\(String(decoding:value.stdout,as:UTF8.self)) stderrBytes=\(value.stderr.count)")
+                    } catch { note("WHISTLE \(index) error=\(error)") }
+                }
+            }
+        }
+        complete.signal()
         note("Resolved PATH python: " + command("/usr/bin/env",["python3","-c","import sys; print(sys.executable,flush=True)"]))
         let program = "import sys; print('ready',flush=True); sys.stdin.readline()"
         pipeCase("shell","/bin/sh",["-c","printf 'ready\\n'; read value"])
@@ -57,23 +83,6 @@ private func pipeCase(_ label: String, _ executable: String, _ arguments: [Strin
         await withCheckedContinuation { done in
             Thread.detachNewThread { pipeCase("python-thread","/usr/bin/python3",["-c",program]); done.resume() }
         }
-        let complete = DispatchSemaphore(value:0)
-        Thread.detachNewThread {
-            if complete.wait(timeout:.now()+3) == .timedOut {
-                note("WHISTLE TREE\n" + command("/bin/ps",["-axo","pid=,ppid=,state=,etime=,comm="]))
-                let rows = command("/bin/ps",["-axo","pid=,ppid=,comm="]).split(separator:"\n")
-                for row in rows {
-                    let fields = row.split(separator:" ",maxSplits:2,omittingEmptySubsequences:true)
-                    if fields.count == 3, Int32(fields[1]) == getpid(), let child = Int32(fields[0]), fields[2].contains("python") {
-                        snapshot(child,"whistle")
-                    }
-                }
-            }
-        }
-        do {
-            let value = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/usr/bin/python3"),arguments:["-c","import sys; sys.stderr.buffer.write(b'e'*800000); sys.stderr.flush(); print('done',flush=True)"],environment:["PATH":"/usr/bin:/bin"],input:Data(),timeout:10)
-            note("WHISTLE status=\(value.status) stdout=\(String(decoding:value.stdout,as:UTF8.self)) stderrBytes=\(value.stderr.count)")
-        } catch { note("WHISTLE error=\(error)") }
-        complete.signal()
+
     }
 }
