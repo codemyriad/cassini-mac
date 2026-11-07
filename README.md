@@ -94,8 +94,10 @@ If your meeting runs in Chrome, Chromium, Microsoft Edge, or Brave, you can use 
 1. Make sure you have opened your browser at least once, and keep the unzipped `BrowserExtension` folder in a permanent place on your Mac.
 2. Open `chrome://extensions` in your browser, turn on **Developer mode**, click **Load unpacked**, and select the `BrowserExtension` folder. Copy the 32-letter extension ID shown on the card.
 3. Double-click `Install Browser Host.command` in the unzipped release folder, paste the 32-letter extension ID, and press Return. (If you moved `Cassini.app` somewhere other than `/Applications` or the release folder, rerun the installer after putting `Cassini.app` in `/Applications`.)
-4. Reload your meeting tab, click the **Cassini Recorder** extension in your browser toolbar, and start recording either with your microphone and the others kept separate, or by capturing what the whole tab plays. In browser recordings, each person in the call is kept apart as Speaker 1, Speaker 2, and so on.
-5. Click **Stop and save** when the meeting finishes. The meeting appears in your Library in `Music/Cassini` and is written down automatically.
+4. Reload meeting tabs opened before setup, then click **Record** in Cassini. Each active browser meeting records into its own Library entry, keeping available voices separate.
+5. Stop a meeting from its recording page, or use Cassini’s global **Stop** control to stop all recordings. Saved meetings appear in your Library in `Music/Cassini` and are written down automatically.
+
+The extension’s toolbar popup shows connection and meeting-detection status for the current tab and offers reload guidance when needed. Start and stop recordings in Cassini.
 
 To remove the browser companion registration later while keeping your meetings:
 

@@ -77,6 +77,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         "details.sources.notSelected","details.sources.gap","details.sources.computerBusy","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
         "details.end.saving","details.end.at","recording.sourceProblem","details.source.microphone","details.source.system","details.source.browser"]
+        + (knownFallbackCauses.union(["other"]).sorted().map { "details.othersFallback.cause."+$0 })
         + CaptureEndReason.allCases.map { "details.end."+$0.rawValue } + refusedCodes.sorted().map { "details.sources.refused."+$0 }
 
     public struct Inputs: Sendable {
@@ -143,8 +144,19 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         sources = rows
         // The session's list while it exists, else the captureRecord's verbatim copy.
         refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
-        notes = input.sourceSpansSeparated && input.transcriptDone ? [.init("details.sources.overlap")] : []
+        notes = (input.sourceSpansSeparated && input.transcriptDone ? [.init("details.sources.overlap")] : [])
+            + Self.fallbackCauseLines(input.session?["events"] ?? record?["events"])
         (ended,endKnown) = Self.end(input,events:input.session?["events"] ?? record?["events"])
+    }
+
+    static let knownFallbackCauses: Set<String> = ["frameError","frameClosed","tabClosed","nativeHostError","startupError","transportClosed"]
+    static func fallbackCauseLines(_ raw: JSON?) -> [Line] {
+        var shown: Set<String> = [], result: [Line] = []
+        for event in CaptureEvent.read(raw) where event.type == "othersSource" && event.source == "system" && event.reason == "lost" {
+            let code = event.cause.map { knownFallbackCauses.contains($0.rawValue) ? $0.rawValue : "other" } ?? "other"
+            if shown.insert(code).inserted { result.append(.init("details.othersFallback.cause."+code)) }
+        }
+        return result
     }
 
     // MARK: Source record

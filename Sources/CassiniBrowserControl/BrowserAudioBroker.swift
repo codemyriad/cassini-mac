@@ -508,7 +508,8 @@ private final class AudioPeer: @unchecked Sendable {
                     // PCM_STALE_AFTER and must not let the watchdog close the pipe under it.
                     accepted(frame)
                     if reason == "lost" {
-                        try owner.browserLost(atMs:lossTime)
+                        let cause = json["cause"]?.string.flatMap(BrowserCaptureLossCause.init(rawValue:))
+                        try owner.browserLost(atMs:lossTime,cause:cause)
                         // The recording runs on in its fallback. Like an EOF, this loss makes it a
                         // resume target now: the app may ask before the extension closes the pipe.
                         registerLoss()

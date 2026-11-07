@@ -5,6 +5,7 @@ import Darwin
 import AVFoundation
 import CassiniKit
 import CassiniRecording
+import CassiniLibrary
 @testable import CassiniBrowserControl
 
 final class NativeFixtureInputs: @unchecked Sendable {
@@ -29,10 +30,12 @@ final class NativeFixtureInputs: @unchecked Sendable {
 final class NativeAudioClient: @unchecked Sendable {
     let process = Process()
     let input = Pipe(), output = Pipe(), errors = Pipe()
+    private let exited = DispatchSemaphore(value:0)
     init(root: URL) throws {
         process.executableURL = Bundle(for:AudioBrokerTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("cassini-browser-host")
         process.environment = ["CASSINI_CONTROL_PIPE_ROOT":root.path]
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
+        process.terminationHandler = { [exited] _ in exited.signal() }
         try process.run()
         try FrameIO.prepare(input.fileHandleForWriting.fileDescriptor)
         try FrameIO.prepare(output.fileHandleForReading.fileDescriptor)
@@ -47,9 +50,13 @@ final class NativeAudioClient: @unchecked Sendable {
     }
     func end() {
         try? input.fileHandleForWriting.close()
-        let deadline = Date().addingTimeInterval(3)
-        while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval:0.01) }
-        if process.isRunning { process.terminate(); process.waitUntilExit() }
+        guard process.processIdentifier > 0 else { return }
+        // E1: normal EOF completion is an exit event, never a polling sleep.
+        if process.isRunning, exited.wait(timeout:.now()+3) == .timedOut, process.isRunning {
+            process.terminate()
+            if exited.wait(timeout:.now()+2) == .timedOut, process.isRunning { kill(process.processIdentifier,SIGKILL) }
+        }
+        process.waitUntilExit()
     }
     deinit { end() }
 }
@@ -239,6 +246,87 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(response["path"]?.string))).state,"completed")
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
+    }
+    func testPinnedLostStopDiagnosticVectorsThroughTheNativeHost() async throws {
+        let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let raw = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:root.appendingPathComponent("browser-protocol/conformance/control/companion-diagnostics-vectors.json"))) as? [String:Any])
+        let fixture = try AudioFixture()
+        do {
+            for vector in try XCTUnwrap(raw["stops"] as? [[String:Any]]) {
+                let client = try fixture.client()
+                let captureID = "vector-" + (vector["name"] as? String ?? UUID().uuidString)
+                _ = try client.request(start(captureID,mic:false))
+                _ = try client.request(track()); _ = try client.request(audio())
+                var packet = try XCTUnwrap(vector["packet"] as? [String:Any])
+                if packet["captureId"] != nil { packet["captureId"] = captureID }
+                XCTAssertEqual(try client.request(packet)["type"]?.string,"stopped")
+                if packet["failureReason"] as? String == "lost" {
+                    let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
+                    XCTAssertEqual(owner.snapshot.manifest.events?.last?.cause?.rawValue,packet["cause"] as? String)
+                    try await fixture.broker.finish(owner)
+                } else { XCTAssertTrue(fixture.broker.activeCaptures.isEmpty) }
+                client.end()
+            }
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+    func testLostStopCauseSurvivesRealStoppedResponseAndNativeFallbackPersistence() async throws {
+        let fixture = try AudioFixture()
+        do {
+            let client = try fixture.client(); _ = try client.request(start("cause",mic:false))
+            _ = try client.request(track()); _ = try client.request(audio())
+            let stopped = try client.request(["type":"stop","failureReason":"lost","cause":"frameError"])
+            XCTAssertEqual(stopped["type"]?.string,"stopped")
+            let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
+            XCTAssertEqual(owner.snapshot.manifest.events?.last?.cause?.rawValue,"frameError")
+            // Later transport teardown must not overwrite the first terminal cause.
+            try owner.browserLost(atMs:1000,cause:.init(rawValue:"transportClosed"))
+            let system = owner.nativeWriter(side:.others)
+            try system.addTrack(id:"output",label:"Synthetic English system",kind:"system",sampleRate:8000,channels:1)
+            let loss = try XCTUnwrap(owner.snapshot.manifest.events?.last?.atMs)
+            try system.appendNative(id:"output",pcm:Data(repeating:1,count:1600),offsetMs:loss)
+            try system.finish(problem:nil)
+            try await fixture.broker.finish(owner)
+            let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+            let event = try XCTUnwrap(saved.events?.last(where:{ $0.source == "system" && $0.reason == "lost" }))
+            XCTAssertEqual(event.cause?.rawValue,"frameError")
+            let encoded = try JSONParser.parse(JSONEncoder().encode(saved))
+            XCTAssertEqual(CaptureEvent.read(encoded["events"]).last(where:{ $0.source == "system" })?.cause?.rawValue,"frameError")
+            let meeting = try JSONParser.parse(Data(contentsOf:owner.snapshot.directory.appendingPathComponent("meeting.json")))
+            let portable = try XCTUnwrap(meeting["recordingDetails"]?["captureRecord"])
+            XCTAssertEqual(CaptureEvent.read(portable["events"]).last(where:{ $0.source == "system" })?.cause?.rawValue,"frameError")
+            let details = RecordingDetailsReport(.init(lifecycle:.saved,title:"Synthetic English call",session:nil,captureRecord:portable))
+            XCTAssertEqual(details.notes.map(\.id),["details.othersFallback.cause.frameError"])
+        } catch { await fixture.finish(); throw error }
+        await fixture.finish()
+    }
+    func testControlLossBeforeLostStopKeepsFirstNonNilCauseThroughFallbackAndDetails() async throws {
+        for cause in ["tabClosed","frameClosed"] {
+            let fixture = try AudioFixture()
+            do {
+                let client = try fixture.client(); _ = try client.request(start("ordered-"+cause,mic:false))
+                _ = try client.request(track()); _ = try client.request(audio())
+                let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
+                // Control status arrives before the extension drains its audio pipe.
+                try owner.browserLost(atMs:1000,transportAlive:true)
+                XCTAssertNil(owner.snapshot.manifest.events?.last?.cause)
+                XCTAssertEqual(try client.request(["type":"stop","failureReason":"lost","cause":cause])["type"]?.string,"stopped")
+                try owner.browserLost(atMs:1100,cause:.init(rawValue:"transportClosed"))
+                let system = owner.nativeWriter(side:.others)
+                try system.addTrack(id:"output",label:"Synthetic English system",kind:"system",sampleRate:8000,channels:1)
+                let loss = try XCTUnwrap(owner.snapshot.manifest.events?.last?.atMs)
+                try system.appendNative(id:"output",pcm:Data(repeating:1,count:1600),offsetMs:loss)
+                try system.finish(problem:nil); try await fixture.broker.finish(owner)
+                let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+                XCTAssertEqual(saved.events?.last(where:{ $0.source == "system" && $0.reason == "lost" })?.cause?.rawValue,cause)
+                let meeting = try JSONParser.parse(Data(contentsOf:owner.snapshot.directory.appendingPathComponent("meeting.json")))
+                let portable = try XCTUnwrap(meeting["recordingDetails"]?["captureRecord"])
+                XCTAssertEqual(CaptureEvent.read(portable["events"]).last(where:{ $0.source == "system" })?.cause?.rawValue,cause)
+                let details = RecordingDetailsReport(.init(lifecycle:.saved,title:"Synthetic English call",session:nil,captureRecord:portable))
+                XCTAssertEqual(details.notes.map(\.id),["details.othersFallback.cause."+cause])
+            } catch { await fixture.finish(); throw error }
+            await fixture.finish()
+        }
     }
     func testLossKeepsTheOwnedFolderAndRejectsReuseOfItsOpaqueCaptureID() async throws {
         let fixture = try AudioFixture()

@@ -49,8 +49,13 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public var supportsPageState = false
     public var supportsMultiStream = false
     public var supportsResume = false
+    public var supportsTabReadiness = false
+    public var diagnostics = BrowserCompanionDiagnostics()
+    public var browserHealth: BrowserCompanionHealth? = nil
+    public var healthRevision: UInt64 = 0
+    public var setupComplete: Bool { reconciled && supportsMultiStream && !diagnostics.filesMissing }
 }
-public enum BrowserControlAction: String, Sendable { case start, stop }
+public enum BrowserControlAction: String, Sendable { case start, stop, reloadTab }
 public struct BrowserControlRequest: Sendable {
     public let id: String
     public let key: BrowserMeetingKey
@@ -130,7 +135,10 @@ public struct BrowserControlRegistry: Sendable {
         var observedTabs: [Int:TimeInterval] = [:]
         var absentSince: [Int:TimeInterval] = [:]
         var supportsPageState = false
-        var supportsMultiStream = false, supportsResume = false
+        var supportsMultiStream = false, supportsResume = false, supportsTabReadiness = false
+        var diagnostics = BrowserCompanionDiagnostics()
+        var browserHealth: BrowserCompanionHealth?
+        var healthRevision: UInt64 = 0
         var pages: [Int:(BrowserCallLifecycle.Page,TimeInterval)] = [:]
         var stopReasons: [Int:CaptureEndReason] = [:]
     }
@@ -354,7 +362,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.filter { !$0.superseded }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume)
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
         }
     }
     /// D52.5: a call (tabId, callGeneration) that has a recording on system/lost after its
@@ -465,7 +473,9 @@ public struct BrowserControlRegistry: Sendable {
                 peer.supportsPageState = values.contains { $0.string == "page-state-v1" }
                 peer.supportsMultiStream = values.contains { $0.string == "multi-stream-v1" }
                 peer.supportsResume = values.contains { $0.string == "resume-capture-v1" }
+                peer.supportsTabReadiness = values.contains { $0.string == "tab-readiness-v1" }
             }
+            peer.diagnostics.update(json)
             peer.hello = true
         case "meetings":
             guard peer.hello, let values = json["meetings"]?.array, values.count <= 100 else { throw BrowserControlStateError.malformed }
@@ -526,10 +536,13 @@ public struct BrowserControlRegistry: Sendable {
             peer.autoAttempted.formIntersection(Set(meetings.filter { $0.sourceCount > 0 }.map { $0.key.tabID }))
             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
             peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
-            peer.autoAttempted.formUnion(peer.pending.values.map { $0.request.key.tabID })
+            peer.autoAttempted.formUnion(peer.pending.values.filter { $0.request.action != .reloadTab }.map { $0.request.key.tabID })
             peer.autoAttempted.formUnion(peer.requestedStops)
         case "status":
             guard peer.hello else { throw BrowserControlStateError.malformed }
+            peer.diagnostics.update(json["browserHealth"])
+            peer.browserHealth = BrowserCompanionHealth.read(json["browserHealth"],peer:id)
+            peer.healthRevision &+= 1
             let inventory = try Self.captures(json,peer:id,includeInactive:true,pageState:peer.supportsPageState)
             let captures = inventory.filter { $0.recording || $0.stopping }, interrupted = try Self.interrupted(json,peer:id,pageState:peer.supportsPageState)
             let reports = try Self.pageReports(json,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
@@ -576,6 +589,9 @@ public struct BrowserControlRegistry: Sendable {
                 // the same full-status baseline. Accept newer results in either
                 // arrival order; an older one cannot replace the newer snapshot.
                 if peer.statusRevision == pending.statusRevision && pending.order >= peer.lastResultOrder {
+                    peer.diagnostics.update(status["browserHealth"])
+                    peer.browserHealth = BrowserCompanionHealth.read(status["browserHealth"],peer:id)
+                    peer.healthRevision &+= 1
                     let current = Self.statusInventory(status,captures:captures,interrupted:interrupted,previous:peer,reports:reports)
                     retireMissing(peer.captures+peer.interrupted,current:current.captures+current.interrupted,peer:peer)
                     peer.captures = current.captures; peer.interrupted = current.interrupted
@@ -639,6 +655,19 @@ public struct BrowserControlRegistry: Sendable {
         peer.autoAttempted.insert(key.tabID)
         peers[key.peer] = peer
         return (request,generation)
+    }
+    /// Reload is a tab-scoped repair, never a Start/Stop or an inferred policy.
+    public mutating func reloadTab(_ key: BrowserMeetingKey) throws -> BrowserControlRequest {
+        guard var peer = peers[key.peer], !peer.superseded else { throw BrowserControlStateError.unavailable }
+        guard peer.reconciled, peer.supportsTabReadiness,
+              peer.browserHealth?.reloadTabs.contains(where:{ $0.key == key && $0.canReload }) == true else { throw BrowserControlStateError.unavailable }
+        guard !peer.pending.values.contains(where:{ $0.request.key == key }), !peer.captures.contains(where:{ $0.key == key }) else { throw BrowserControlStateError.busy }
+        guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
+        let request = try Self.command(key,action:.reloadTab,independent:false,microphone:false)
+        peer.commandOrder &+= 1
+        peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:nil)
+        peers[key.peer] = peer
+        return request
     }
     public mutating func start(_ key: BrowserMeetingKey, microphone: Bool, automatic: Bool = false) throws -> BrowserControlRequest {
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
@@ -727,7 +756,7 @@ public struct BrowserControlRegistry: Sendable {
             for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }
             for peer in peers.values {
                 guard let instance = peer.peer.browserInstance else { continue }
-                for pending in peer.pending.values {
+                for pending in peer.pending.values where pending.request.action != .reloadTab {
                     if let url = pending.url { stoppedCalls.remember(.init(instance:instance,tabID:pending.request.key.tabID,url:url),now:clock()) }
                 }
             }
@@ -735,7 +764,7 @@ public struct BrowserControlRegistry: Sendable {
         var keys = Set<BrowserMeetingKey>()
         for peer in peers.values where !peer.superseded {
             keys.formUnion(peer.captures.map(\.key))
-            keys.formUnion(peer.pending.values.map { $0.request.key })
+            keys.formUnion(peer.pending.values.filter { $0.request.action != .reloadTab }.map { $0.request.key })
             keys.formUnion(peer.requestedStops.map { BrowserMeetingKey(peer:peer.peer.id,tabID:$0) })
         }
         return keys.sorted(by:Self.ordered).compactMap { try? stop($0,userInitiated:userInitiated,reason:reason) }

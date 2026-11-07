@@ -23,6 +23,32 @@ struct D52RecordingDetailsTests {
     }
     private func text(_ line: RecordingDetailsReport.Line, _ language: CassiniLanguage = .en) -> String { line.render(language:language,locale:gb) }
 
+    @Test func fallbackCausesUseActualSystemTransitionsAndSurvivePortableRecords() throws {
+        for code in ["frameError","frameClosed","tabClosed","nativeHostError","startupError","transportClosed","lifecycle","futureCause",""] {
+            let cause = code.isEmpty ? "" : ",\"cause\":\"\(code)\""
+            let event = "[{\"atMs\":100,\"type\":\"othersSource\",\"source\":\"system\",\"reason\":\"lost\"\(cause)}]"
+            let expected = "details.othersFallback.cause." + (["lifecycle","futureCause",""].contains(code) ? "other" : code)
+            #expect(report(session([],events:event)).notes.map(\.id) == [expected])
+            let portable = json("{\"version\":1,\"sources\":[],\"events\":\(event)}")
+            #expect(report(nil,record:portable).notes.map(\.id) == [expected])
+            for language in CassiniLanguage.allCases {
+                #expect(!text(report(nil,record:portable).notes[0],language).contains("details.othersFallback"))
+            }
+        }
+        for (source,reason) in [("none","lost"),("browser","lost"),("system","missing"),("system","user")] {
+            let events = "[{\"atMs\":0,\"type\":\"othersSource\",\"source\":\"\(source)\",\"reason\":\"\(reason)\",\"cause\":\"frameError\"}]"
+            #expect(report(session([],events:events)).notes.isEmpty)
+        }
+    }
+    @Test func malformedCauseNeverInvalidatesPlayableCaptureEvents() throws {
+        for cause in ["true","123","null","[]","\"bad\\ntext\"","\"\(String(repeating:"a",count:81))\""] {
+            let raw = json("[{\"atMs\":0,\"type\":\"othersSource\",\"source\":\"system\",\"reason\":\"lost\",\"cause\":\(cause)}]")
+            let event = try #require(CaptureEvent.read(raw).first)
+            #expect(event.cause == nil); #expect(event.isKnownValid)
+            let encoded = try JSONParser.parse(JSONEncoder().encode(event))
+            #expect(encoded["cause"] == nil)
+        }
+    }
     @Test func outcomesFinalAndLive() {
         let rows = report(session([source(outcome:"captured"),source(id:"n",outcome:"neverAudio",audioMs:"0"),source(id:"l",outcome:"lowAudio",audioMs:"500"),source(id:"f",outcome:"failed",audioMs:"0")])).sources
         let english = text(rows[0].line)
