@@ -149,7 +149,8 @@ audio host: system/lost, one `resume-capture-v1`, browser/restored with new span
 under the same keys). The driver reads each resume request off the app's control
 pipe itself, copying the host's stdout through a relay while the launcher execs the
 host, which stays the browser's direct child, and records each request with the recording
-identity it names and its time (`scenario.json` `resumeObservation`).
+identity it names, the committed loss it names (`lostAtMs`, R94) and its time
+(`scenario.json` `resumeObservation`).
 `check.py check` then checks the folder against the evidence brackets and those
 requests, the scenario and corpus constants and PCM it measures itself, never
 through an app reader; `check.py compare` lines two apps' results up.
@@ -416,3 +417,13 @@ NEXTCLOUD_TEST_CALL_URL=http://127.0.0.1:28080/call/TEST_ROOM \
 This real-product gate complements the synthetic topology vectors; those vectors
 alone do not establish that current Nextcloud navigation, adapters and media
 elements work with the extension.
+
+Talk participant-name regressions match audio track objects to `.video-container`
+participant cards, including duplicate Janus labels/IDs, reordered and promoted cards,
+conflicting or missing names, sanitization and static snapshots. DOM names never grant
+RTP/capture eligibility. Production relay/worker tests preserve dom provenance in native
+track declarations and source ledgers, including failed sources; reserved wire provenance
+is refused. Real Talk CI requires the Hypatia label on the isolated440Hz source and
+Ibn al-Haytham on880Hz, with dom provenance on both tracks and source outcomes. It uses
+#70's locked Nextcloud34/fullHPB disposable-VM harness and private browser/native fixtures;
+it does not establish either product app's host adoption or verified speaker identity.

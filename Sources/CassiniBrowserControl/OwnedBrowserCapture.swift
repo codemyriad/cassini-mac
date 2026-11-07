@@ -37,6 +37,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     public let pcmObservers = RecordedPCMObservers()
     private struct BrowserSource {
         let id: String, label: String, kind: String
+        let labelSource: String
         /// D61: the declaration's clock facts, repeated on every span of this source.
         var clock: ClockFacts? = nil
         /// D52 M1: the stable wire sourceTrackId, or the wire id from older extensions.
@@ -52,7 +53,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         /// A new span of this source. D61: every span repeats the declaration's clock facts,
         /// whichever path starts it (a resumed chunk, Others turned back on, a restore).
         func start(_ span: String, boundaryMs: Double? = nil) -> RecordingSource {
-            var value = RecordingSource(id:span,label:label,kind:kind,sampleRate:rate,channels:channels,sourceTrackId:key,labelSource:"browser",boundaryMs:boundaryMs)
+            var value = RecordingSource(id:span,label:label,kind:kind,sampleRate:rate,channels:channels,sourceTrackId:key,labelSource:labelSource,boundaryMs:boundaryMs)
             value.clock = clock
             return value
         }
@@ -147,8 +148,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         lastPublished = now
         notifications.async { [changed] in changed(value) }
     }
-    public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, clock: ClockFacts? = nil) throws {
+    public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, clock: ClockFacts? = nil) throws {
         try sync {
+            guard labelSource == nil || ["browser","dom"].contains(labelSource!) else { throw BrowserProtocolError("source","Invalid browser label provenance.") }
+            var label = label, provenance = labelSource ?? "browser"
             guard phase == .recording, transportAlive, browserAlive || managedBrowser else { throw BrowserProtocolError("state","No active browser capture.") }
             guard sourceTrackId == nil || CaptureLedger.validIdentity(sourceTrackId) else { throw BrowserProtocolError("source","Invalid source identity.") }
             // Validate the declaration before it can change the ledger or be echoed.
@@ -169,9 +172,15 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 // Refused without failing or retiring anything: the live span keeps recording,
                 // and this id may be declared again once that span ends.
                 guard !browserSources.values.contains(where:{ $0.key == key }) else { throw KeptSourceRefusal("source","Overlapping live source spans.") }
-                do { try ledger!.observe(key,kind:kind,label:RecordingSession.cleanLabel(label),expected:others) }
+                do { try ledger!.observe(key,kind:kind,label:RecordingSession.cleanLabel(label),expected:others,labelSource:provenance) }
                 catch { throw BrowserProtocolError("source",error.localizedDescription) }
+                if let snapshot = ledger!.labelSnapshot(key) { label = snapshot.label; provenance = snapshot.labelSource ?? "browser" }
                 declarations[id] = declaration
+            }
+            // Legacy peers do not negotiate the ledger, but replacement spans
+            // still refer to the original registered label snapshot.
+            if ledger == nil, let original = recording.manifest.tracks.first(where:{ $0.sourceTrackId == key }) {
+                label = original.label; provenance = original.labelSource ?? "browser"
             }
             guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
@@ -184,12 +193,12 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             // returns, so it stays. A declaration while the Others are deselected keeps its inert span.
             if browserAlive || ledger == nil {
                 let span = UUID().uuidString.lowercased()
-                var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:"browser",endsImmediately:!live)
+                var start = RecordingSource(id:span,label:label,kind:kind,sampleRate:sampleRate,channels:channels,sourceTrackId:key,labelSource:provenance,endsImmediately:!live)
                 start.clock = clock
                 try commitBound([(span,key,live)],starting:[start])
-                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
+                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,labelSource:provenance,clock:clock,key:key,rate:sampleRate,channels:channels,span:live ? span : nil,current:browserAlive)
             } else {
-                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,clock:clock,key:key,rate:sampleRate,channels:channels,span:nil,current:false)
+                browserSources[Data(id.utf8)] = .init(id:id,label:label,kind:kind,labelSource:provenance,clock:clock,key:key,rate:sampleRate,channels:channels,span:nil,current:false)
             }
             publish()
         }
@@ -272,6 +281,36 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         case "missing": return "callConnected"   // the initial stand-in
         case "lost": return "restored"           // a fallback after the audio transport closed
         default: return nil
+        }
+    }
+    /// Valid only during the synchronous owner callback below. The capture queue
+    /// holds source transitions; this small fence orders the actual enqueue with Stop.
+    final class ResumeReference: @unchecked Sendable {
+        public let lostAtMs: Double
+        private let owner: OwnedBrowserCapture
+        private var active = true
+        fileprivate init(_ owner: OwnedBrowserCapture, atMs: Double) { self.owner = owner; lostAtMs = atMs }
+        public func dispatch(_ body: () throws -> Void) throws {
+            try owner.endLock.withLock {
+                guard active, owner.endIntent == nil else { throw BrowserIPCError.unavailable }
+                try body()
+            }
+        }
+        fileprivate func expire() { owner.endLock.withLock { active = false } }
+    }
+    /// Never makes the control service wait for disk. The callback must finish
+    /// synchronously (the service hops onto its queue with sync); transitions
+    /// cannot change the seam before dispatch, and Stop is checked at enqueue.
+    func withCommittedResume(_ body: @escaping @Sendable (ResumeReference?) -> Void) {
+        queue.async { [self] in
+            let current = recording.manifest.events?.last(where:{ $0.type == "othersSource" })
+            guard phase == .recording, others, !browserAlive, !transportAlive,
+                  let committed = recording.committedOthersSource, current == committed,
+                  Self.resumeSeamReason(source:committed.source,reason:committed.reason) != nil,
+                  let atMs = committed.atMs, atMs.isFinite, atMs >= 0 else { body(nil); return }
+            let reference = ResumeReference(self,atMs:atMs)
+            defer { reference.expire() }
+            body(reference)
         }
     }
     public func attachResumedBrowser() throws {

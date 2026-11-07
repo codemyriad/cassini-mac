@@ -8,6 +8,17 @@ public struct BrowserProtocolError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
+/// Browser metadata is never allowed to claim device or user provenance.
+public enum BrowserLabelSource {
+    public static func read(_ value: JSON?) throws -> String {
+        guard let value, !value.isNull else { return "browser" }
+        guard let text = value.string, ["browser","dom"].contains(text) else {
+            throw BrowserProtocolError("source","Invalid browser label provenance.")
+        }
+        return text
+    }
+}
+
 /// Native Messaging transport. Partial pipe reads are normal; bound before allocating.
 public enum NativeMessageFraming {
     public static let maximumBytes = 512 * 1024
@@ -92,7 +103,8 @@ public final class BrowserRecordingHost {
             guard session.manifest.tracks.count < 64 else { throw BrowserProtocolError("limit", "Too many audio sources.") }
             // D61: the clock facts are copied as received (each omitted when invalid);
             // documentGeneration is a liveness hint and never written.
-            var source = RecordingSource(id: id, label: label, kind: kind, sampleRate: rate, channels: channels)
+            var source = RecordingSource(id: id, label: label, kind: kind, sampleRate: rate, channels: channels,
+                                         labelSource:try BrowserLabelSource.read(message["labelSource"]))
             source.clock = ClockFacts.parse(message)
             try write("source") { try session.transition(starting: [source]) }
             sequences[id] = 0
