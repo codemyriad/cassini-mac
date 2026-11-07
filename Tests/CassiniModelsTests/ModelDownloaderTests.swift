@@ -53,7 +53,7 @@ private final class Server: @unchecked Sendable {
         log = root.appendingPathComponent("requests.jsonl")
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath:"/usr/bin/env")
-        process.arguments = ["python3",Bundle.module.url(forResource:"server",withExtension:"py",subdirectory:"Fixtures")!.path,"--scenario",scenario,"--log",log.path]
+        process.arguments = ["python3",Bundle.module.url(forResource:"server",withExtension:"py",subdirectory:"Fixtures")!.path,"--scenario",scenario,"--log",log.path,"--forbid-dns"]
         process.standardInput = control
         let errors = root.appendingPathComponent("bootstrap.stderr")
         _ = FileManager.default.createFile(atPath:errors.path,contents:nil)
@@ -110,13 +110,20 @@ private final class Server: @unchecked Sendable {
 }
 /// The child cannot publish readiness until this actor runs again after start suspends.
 private actor FixtureBootstrapActor {
+    // Exercise caller isolation without depending on unrelated CPU-heavy tests
+    // leaving room in Swift's cooperative pool for the readiness acknowledgement.
+    nonisolated let executor = DispatchSerialQueue(label:"CassiniModelFixture.bootstrap-actor")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
     func start() async throws -> Server {
         try await Server.start("await-ready",onLaunched:{ control in
-            Task { try await self.release(control) }
+            self.executor.async {
+                self.assumeIsolated { actor in actor.release(control) }
+            }
         })
     }
-    private func release(_ control: FileHandle) throws {
-        try control.write(contentsOf:Data("start\n".utf8))
+    private func release(_ control: FileHandle) {
+        do { try control.write(contentsOf:Data("start\n".utf8)) }
+        catch { Issue.record("Fixture actor could not acknowledge startup: \(error)") }
     }
 }
 private func fails(_ run: () async throws -> Void) async -> Error? { do { try await run(); Issue.record("Expected failure"); return nil } catch { return error } }

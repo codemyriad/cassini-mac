@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Loopback-only model contract fixture; never contacts dist or any other host."""
-import argparse,hashlib,http.server,json,socket,sys,threading,time
+import argparse,hashlib,http.server,json,socket,socketserver,sys,threading,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--scenario',required=True);p.add_argument('--log',type=Path,required=True)
+p=argparse.ArgumentParser();p.add_argument('--scenario',required=True);p.add_argument('--log',type=Path,required=True);p.add_argument('--forbid-dns',action='store_true')
 a=p.parse_args();root=Path(__file__).resolve().parent
+if a.forbid_dns:
+ def forbidden_lookup(*args,**kwargs):raise AssertionError('loopback fixture must not perform name lookups')
+ socket.getfqdn=socket.gethostbyaddr=forbidden_lookup
 if a.scenario=='no-ready':
  sys.stdin.buffer.read()
  raise SystemExit(0)
@@ -68,5 +71,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
   else:
    try:self.wfile.write(data[offset:])
    except (BrokenPipeError,ConnectionResetError):pass
-server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
+class LoopbackHTTPServer(http.server.ThreadingHTTPServer):
+ def server_bind(self):
+  # HTTPServer.server_bind calls getfqdn(), which can block in reverse DNS even
+  # for 127.0.0.1 on the hosted Intel image. This fixture has no hostname use.
+  socketserver.TCPServer.server_bind(self)
+  self.server_name='127.0.0.1';self.server_port=self.server_address[1]
+server=LoopbackHTTPServer(('127.0.0.1',0),Handler)
 print(f'http://127.0.0.1:{server.server_port}',flush=True);server.serve_forever()

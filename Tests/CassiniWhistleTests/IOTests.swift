@@ -43,9 +43,11 @@ import Testing
             Issue.record("Broken pipe unexpectedly accepted output")
         } catch WhistleIO.Failure.system(_, let code) { #expect(code == EPIPE) }
     }
+    // Native byte producers keep pipe-pressure coverage independent of the Apple
+    // /usr/bin/python3 shim, which starts xcodebuild per child on hosted Intel.
     @Test func concurrentStderrDrainCannotBlockStdout() async throws {
-        let result = try await WhistleSubprocess.run(executable: URL(fileURLWithPath: "/usr/bin/python3"),
-            arguments: ["-c", "import sys; sys.stderr.buffer.write(b'e'*800000); sys.stderr.flush(); sys.stdout.write('done'); sys.stdout.flush()"],
+        let result = try await WhistleSubprocess.run(executable: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "/usr/bin/head -c 800000 /dev/zero | /usr/bin/tr '\\000' e >&2; printf done"],
             environment: ["PATH": "/usr/bin:/bin"], input: Data(), timeout: 10)
         #expect(result.status == 0 && result.inputError == nil)
         #expect(result.stdout == Data("done".utf8))
@@ -74,8 +76,8 @@ import Testing
         try await withThrowingTaskGroup(of:Void.self) { tasks in
             for _ in 0..<8 {
                 tasks.addTask {
-                    let result = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/usr/bin/python3"),
-                        arguments:["-c","import sys; sys.stderr.buffer.write(b'e'*800000); sys.stderr.flush(); n=len(sys.stdin.buffer.read()); print(n,flush=True)"],
+                    let result = try await WhistleSubprocess.run(executable:URL(fileURLWithPath:"/bin/sh"),
+                        arguments:["-c","/usr/bin/head -c 800000 /dev/zero | /usr/bin/tr '\\000' e >&2; n=$(/usr/bin/wc -c); printf '%s\\n' \"$((n))\""],
                         environment:["PATH":"/usr/bin:/bin"],input:Data(repeating:1,count:1_048_576),timeout:10)
                     #expect(result.status == 0 && result.inputError == nil)
                     #expect(result.stdout == Data("1048576\n".utf8)); #expect(result.stderr.count == 262144)
