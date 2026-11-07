@@ -313,6 +313,55 @@ final class LibraryBoards: XCTestCase {
             app.terminate()
         }
     }
+    @MainActor func testListeningBarSteppingAndEscapeLeaveThePositionInPlace() throws {
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","playing","-CassiniListeningSpeaker","marta"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let bar = window.descendants(matching:.any)["listening-bar"]
+        XCTAssertTrue(bar.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertFalse(window.buttons["listen.previousTurn"].isEnabled)
+        XCTAssertTrue(window.buttons["listen.nextTurn"].isEnabled)
+        XCTAssertTrue(window.buttons["listen.nextTurn"].isHittable,"The listening bar must expose a real mouse target")
+        window.buttons["listen.nextTurn"].click()
+        let last = NSPredicate { _,_ in !window.buttons["listen.nextTurn"].isEnabled && self.text("Turn 2 of 2 · 00:03:20",in:window) }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:last,object:nil)],timeout:5),.completed)
+        app.typeKey(.downArrow,modifierFlags:[.option,.shift,.command])
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in self.text("Turn 1 of 2 · 00:02:55",in:window) },object:nil)],timeout:5),.completed)
+        XCTAssertFalse(bar.buttons["Name…"].exists)
+        XCTAssertFalse(bar.buttons["Merge into…"].exists)
+        window.buttons["meeting-export"].click()
+        XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:10))
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)],timeout:5),.completed)
+        XCTAssertTrue(bar.exists,"Escape belongs to the export sheet before listening")
+        // These must recover after AppKit finishes dismissing the sheet.
+        for (key, modifiers, label) in [
+            (XCUIKeyboardKey.downArrow, XCUIElement.KeyModifierFlags([.option,.command]), "Turn 2 of 2 · 00:03:31"),
+            (.upArrow, [.option,.command], "Turn 1 of 2 · 00:02:55"),
+            (.downArrow, [.option,.shift,.command], "Turn 1 of 1 · 00:03:08"),
+            (.upArrow, [.option,.shift,.command], "Turn 1 of 2 · 00:02:55")
+        ] {
+            app.typeKey(key,modifierFlags:modifiers)
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in self.text(label,in:window) },object:nil)],timeout:5),.completed)
+        }
+        let before = window.sliders["meeting-seek"].value as? String
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:bar)],timeout:5),.completed)
+        XCTAssertEqual(window.sliders["meeting-seek"].value as? String,before)
+    }
+    @MainActor func testListeningBarOffersPlayAgainAfterItsLastTurn() throws {
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","finished","-CassiniListeningSpeaker","guest"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"], again = window.buttons["listen-again"]
+        XCTAssertTrue(again.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(text("Turn 1 of 1 · 00:03:08",in:window))
+        XCTAssertFalse(window.buttons["listen.nextTurn"].isEnabled)
+        capture(window,name:"listening-bar-finished")
+        XCTAssertTrue(again.isHittable,"Play again must expose a real mouse target")
+        again.click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:again)],timeout:5),.completed)
+        XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].exists)
+    }
     @MainActor func testMeetingAccessibility() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]

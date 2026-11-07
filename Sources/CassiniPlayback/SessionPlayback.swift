@@ -43,6 +43,7 @@ private final class PreparationLifetime: @unchecked Sendable {
     @ObservationIgnored private var sources: [LibraryAudioTrack] = []
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var wantsPlay = false
+    @ObservationIgnored private var userPaused = false
     @ObservationIgnored private var rewinding = false
     @ObservationIgnored private var seekSerial = 0
     @ObservationIgnored private var requestedPosition: Double?
@@ -76,11 +77,10 @@ private final class PreparationLifetime: @unchecked Sendable {
     }
     public func toggle(_ meeting: LibraryMeeting) {
         if wantsPlay || isPlaying {
-            wantsPlay = false; spanSerial += 1; transport?.clearBoundary()
-            if !rewinding, let transport { positionMs = transport.positionMs; requestedPosition = positionMs }
-            transport?.pause(); isPlaying = false; return
+            pause(); return
         }
         guard meeting.canPlaySession else { return }
+        userPaused = false
         if key == meeting.libraryKey, isPreparing { wantsPlay = true; return }
         if key == meeting.libraryKey, let transport {
             wantsPlay = true; isPlaying = true
@@ -99,12 +99,18 @@ private final class PreparationLifetime: @unchecked Sendable {
         }
         prepare(meeting, autoplay: true)
     }
+    /// An explicit pause fences a queued EOF independently of the backend's natural paused state.
+    public func pause() {
+        userPaused = true; wantsPlay = false; spanSerial += 1; transport?.clearBoundary()
+        if !rewinding, let transport { positionMs = transport.positionMs; requestedPosition = positionMs }
+        transport?.pause(); isPlaying = false
+    }
     /// An explicit Play from here action must also resume paused or preparing
     /// playback. It cannot toggle an already queued Play back off.
     public func play(_ meeting: LibraryMeeting, fromMs: Double) {
         guard meeting.canPlaySession, fromMs.isFinite else { return }
         prepare(meeting)
-        wantsPlay = true
+        userPaused = false; wantsPlay = true
         seek(toMs:fromMs)
     }
     /// D70: an uncapped span, with no position restore. Its completion is delivered
@@ -115,7 +121,7 @@ private final class PreparationLifetime: @unchecked Sendable {
               untilMs > max(0,fromMs) else { return false }
         prepare(meeting)
         replaceSpan(.init(endMs:untilMs,done:onDone))
-        wantsPlay = true; isPlaying = true
+        userPaused = false; wantsPlay = true; isPlaying = true
         seek(toMs:fromMs,following:false)
         return true
     }
@@ -134,7 +140,7 @@ private final class PreparationLifetime: @unchecked Sendable {
         stop(); Self.active?.stop(); Self.active = self
         key = meeting.libraryKey; sources = meeting.audioTracks; isPreparing = true
         pendingDuration = meeting.durationMs.map { max(0,Double($0)) }
-        wantsPlay = autoplay
+        userPaused = !autoplay; wantsPlay = autoplay
         let current = generation, builder = build
         lifetime.task = Task { [weak self] in
             do {
@@ -213,15 +219,16 @@ private final class PreparationLifetime: @unchecked Sendable {
         }
     }
     private func ended(generation current: Int) {
-        guard current == generation, !rewinding, let transport else { return }
+        guard current == generation, !rewinding, !userPaused, let transport else { return }
         if let span {
             guard wantsPlay, transport.positionMs >= min(span.endMs,durationMs)-SessionBoundary.toleranceMs else { return }
             completeSpan(generation:current,seek:seekSerial,token:spanSerial,end:min(span.endMs,durationMs)); return
         }
         guard !spanEnded else { return }
-        if listener != nil {
+        if let listener {
             wantsPlay = false; isPlaying = false; spanEnded = true
             positionMs = durationMs; requestedPosition = positionMs; transport.pause()
+            listener.playbackReachedEnd()
             return // listening never rewinds, including a free seek past its last turn
         }
         wantsPlay = false; isPlaying = false; rewinding = true

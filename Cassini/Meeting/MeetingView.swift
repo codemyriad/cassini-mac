@@ -6,6 +6,7 @@ struct MeetingView: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
     @AppStorage("CassiniCompanionSuggestionDismissed") private var suggestionDismissed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
     private var shares: [String: Int] { model.shares }
@@ -79,7 +80,10 @@ struct MeetingView: View {
                         ForEach(meeting.speakers, id: \.id) { speaker in speakerRow(speaker).id(speaker.id) }
                     }
                 }.onChange(of: model.listen.speaker) { _, speaker in
-                    if let speaker { withAnimation { proxy.scrollTo(speaker,anchor:.center) } }
+                    if let speaker {
+                        if reduceMotion { proxy.scrollTo(speaker,anchor:.center) }
+                        else { withAnimation { proxy.scrollTo(speaker,anchor:.center) } }
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -110,16 +114,27 @@ struct MeetingView: View {
                         if let turn = currentTurn { proxy.scrollTo(turn,anchor:.center) }
                     }
                     .onChange(of: currentTurn) { _, turn in
-                        if let turn { withAnimation { proxy.scrollTo(turn, anchor: .center) } }
+                        if let turn {
+                            if reduceMotion { proxy.scrollTo(turn,anchor:.center) }
+                            else { withAnimation { proxy.scrollTo(turn,anchor:.center) } }
+                        }
                     }
                 }
+            }
+            // Keep the controls in the main layout/hit-test tree. On macOS 15,
+            // safeAreaInset paints this bar but its buttons fail AX hit testing.
+            if let presentation = model.listeningPresentation {
+                ListeningBar(model:model,presentation:presentation,colour:colour(meeting.speakers.first { $0.id == model.listen.speaker }?.colourIndex ?? 0))
+                    .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
             }
             Divider()
             playerBar
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
         .font(.system(size: 13))
         .background(Color(nsColor: .textBackgroundColor))
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
+        .focusedSceneValue(\.listeningMeeting,model)
     }
     /// D70: independent Play target, also available for directly opened/read-only meetings.
     private func speakerRow(_ speaker: MeetingSpeaker) -> some View {

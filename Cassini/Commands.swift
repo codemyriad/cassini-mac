@@ -5,6 +5,7 @@ import CassiniLibrary
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @FocusedValue(\.listeningMeeting) private var listeningMeeting
     private var exportMeeting: LibraryMeeting? {
         let search = LibrarySearchModel.shared
         if search.visible { return search.searching ? nil : search.selected.flatMap { search.meeting($0) } }
@@ -51,6 +52,19 @@ struct AppCommands: Commands {
                 .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.forward10")) { detail?.skip(10) }.keyboardShortcut(.rightArrow, modifiers: []).disabled(detail?.canPlay != true)
+            Divider()
+            Button(UXText.text("listen.previousTurn")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningTurn(-1) } }
+                .keyboardShortcut(.upArrow,modifiers:[.option,.command])
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningTurn(-1) != true)
+            Button(UXText.text("listen.nextTurn")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningTurn(1) } }
+                .keyboardShortcut(.downArrow,modifiers:[.option,.command])
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningTurn(1) != true)
+            Button(UXText.text("listen.previousSpeaker")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(-1) } }
+                .keyboardShortcut(.upArrow,modifiers:[.option,.shift,.command])
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(-1) != true)
+            Button(UXText.text("listen.nextSpeaker")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(1) } }
+                .keyboardShortcut(.downArrow,modifiers:[.option,.shift,.command])
+                .disabled(listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(1) != true)
         }
     }
 }

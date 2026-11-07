@@ -64,6 +64,26 @@ extension SessionPlaybackTests {
         #expect(ended == 1 && audio.positionMs == 423 && !audio.isPlaying)
         audio.stop()
     }
+    @Test func frozenListeningPreviewCreatesNoTransportOrPlayback() {
+        let (_,audio,fake,listen) = scene()
+        listen.preview("ada",index:100,finished:true)
+        #expect(listen.active && listen.finished && listen.index == listen.count-1)
+        #expect(audio.preparation == nil && !audio.isPlaying && fake.plays == 0 && fake.seeks.isEmpty)
+        listen.stopPlayback()
+        #expect(!listen.active && fake.plays == 0 && fake.closes == 0)
+    }
+    @Test func eofDistinguishesAnExplicitPauseFromANaturalBackendPause() async {
+        let (meeting,audio,fake,listen) = scene()
+        audio.toggle(meeting); await audio.preparation?.value
+        fake.position(3200); audio.pause(); fake.onEnd?()
+        #expect(audio.positionMs == 3200 && !audio.isPlaying)
+        // A stale Stop from a cleared mode must not pause ordinary playback.
+        audio.toggle(meeting); listen.stopPlayback()
+        #expect(audio.isPlaying)
+        fake.position(20000); fake.onState?(.paused); fake.onEnd?()
+        #expect(audio.positionMs == 0 && fake.seeks.last?.0 == 0,"ordinary natural EOF still rewinds")
+        audio.stop()
+    }
     @Test func rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() async {
         for stopBeforePrepared in [true,false] {
             let (meeting,audio,fake,listen) = scene()
@@ -77,9 +97,10 @@ extension SessionPlaybackTests {
                 #expect(audio.positionMs == 3200 && fake.positionMs == 3200)
             }
             #expect(!audio.isPlaying && !listen.active && fake.boundary == nil)
-            let plays = fake.plays
+            let plays = fake.plays, stoppedAt = audio.positionMs
             fake.onEnd?()
             #expect(fake.plays == plays && !audio.isPlaying)
+            #expect(audio.positionMs == stoppedAt,"an EOF queued before Stop cannot rewind its paused position")
             audio.stop()
         }
     }
@@ -244,8 +265,9 @@ extension SessionPlaybackTests {
         listen.start("cleo",in:meeting); fake.sought()
         audio.seek(toMs:2000); fake.sought()
         #expect(fake.boundary == nil && !listen.finished && listen.active)
-        fake.positionMs = 20000; fake.onEnd?()
+        fake.positionMs = 20000; fake.onState?(.paused); fake.onEnd?()
         #expect(audio.positionMs == 20000 && !audio.isPlaying,"free playback during listening also stays at EOF")
+        #expect(listen.finished,"free EOF after a seek past the target must offer Play again")
         audio.toggle(meeting); fake.sought()
         #expect(fake.seeks.last?.0 == 0 && fake.boundary?.0 == 1400)
         listen.pageChanged()
