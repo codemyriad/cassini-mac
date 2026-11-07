@@ -1,9 +1,10 @@
-import { workerDeathDuringRecording } from '../../browser-protocol/scenarios/worker-recovery.mjs';
+import { workerDeathDuringRecording, stopRecordingWorker } from '../../browser-protocol/scenarios/worker-recovery.mjs';
 import { tonePower } from '../../browser-protocol/scenarios/tones.mjs';
 import { saveFailure } from './artifacts.mjs';
 // Optional integration test. See README.md for the temporary Playwright setup.
 import { createServer } from 'node:http';
-import { mkdir, writeFile, readFile, rm, mkdtemp } from 'node:fs/promises';
+import { generateKeyPairSync } from 'node:crypto';
+import { mkdir, writeFile, readFile, rm, mkdtemp, cp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,13 +16,23 @@ const server = createServer((_request, response) => {
   response.end('<!doctype html><title>Cassini synthetic extension test</title><button>Allow audio</button>');
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const profile = await mkdtemp(path.join(os.tmpdir(), 'cassini-extension-'));
+const sandbox = await mkdtemp(path.join(os.tmpdir(), 'cassini-extension-'));
+const profile = path.join(sandbox,'profile'), extension = path.join(sandbox,'extension'), library = path.join(sandbox,'Library');
+await mkdir(library);
+await cp(path.join(root,'BrowserExtension'),extension,{recursive:true,filter:source => !source.startsWith(path.join(root,'BrowserExtension/tests'))});
+const manifestPath = path.join(extension,'manifest.json');
+const extensionManifest = JSON.parse(await readFile(manifestPath,'utf8'));
+extensionManifest.key = generateKeyPairSync('rsa',{modulusLength:2048}).publicKey.export({type:'spki',format:'der'}).toString('base64');
+await writeFile(manifestPath,JSON.stringify(extensionManifest));
+const hostPath = process.env.CASSINI_NATIVE_HOST || path.join(root,'.build/debug/cassini-browser-host');
+assert.match(hostPath, /\/(?:debug|Debug)\//, 'The private-Library fixture requires a Debug native host');
 let context, savedPath;
 try {
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true,
-    args: [`--disable-extensions-except=${root}/BrowserExtension`,
-      `--load-extension=${root}/BrowserExtension`, '--autoplay-policy=no-user-gesture-required']
+    env:{...process.env,CASSINI_LIBRARY_DIR:library},
+    args: [`--disable-extensions-except=${extension}`,
+      `--load-extension=${extension}`, '--autoplay-policy=no-user-gesture-required']
   });
   let worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   console.log('Chromium', context.browser().version());
@@ -32,7 +43,7 @@ try {
   await mkdir(hostDirectory, { recursive: true });
   await writeFile(path.join(hostDirectory, 'io.codemyriad.cassini.json'), JSON.stringify({
     name: 'io.codemyriad.cassini', description: 'Cassini integration test',
-    path: process.env.CASSINI_NATIVE_HOST || path.join(root, '.build/debug/cassini-browser-host'),
+    path: hostPath,
     type: 'stdio', allowed_origins: [`chrome-extension://${extensionId}/`]
   }));
 
@@ -51,18 +62,9 @@ try {
     document.body.append(element); await element.play();
     window.synthetic = { audio, oscillator, output, element };
   });
-  // Let the relay/worker become idle, then terminate the worker explicitly as well:
-  // debugger attachment can otherwise suppress normal idle termination during a test.
-  await page.waitForTimeout(35000);
-  const devtools = await context.newCDPSession(page);
-  let versions = [];
-  devtools.on('ServiceWorker.workerVersionUpdated', event => { versions = event.versions; });
-  await devtools.send('ServiceWorker.enable');
-  await page.waitForTimeout(200);
-  const version = versions.find(item => item.scriptURL === `chrome-extension://${extensionId}/background.js`);
-  assert.ok(version, 'found the loaded service worker');
-  await devtools.send('ServiceWorker.stopWorker', { versionId: version.versionId });
-  await devtools.detach();
+  // Explicit termination is the worker lifecycle event; a fixed idle delay
+  // cannot establish it while debugger attachment keeps a worker alive.
+  await stopRecordingWorker(context,page,extensionId);
   const wake = await context.newPage();
   await wake.goto(`chrome-extension://${extensionId}/popup.html`);
   await wake.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
@@ -81,14 +83,44 @@ try {
 
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-  await popup.click('#tracks');
-  await page.waitForTimeout(2000);
-  const during = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
-  savedPath = during.path;
-  assert.equal(during.recording, true, during.message);
-  await popup.click('#stop');
-  await popup.waitForFunction(() => !document.querySelector('#tracks').hidden);
-  const after = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
+  const rpc = (type, extra={}) => popup.evaluate(message => chrome.runtime.sendMessage(message),{target:'background',type,...extra});
+  // Product popup controls are absent. Use the same trusted fixture transport
+  // as the shared worker-recovery scenario; UI policy is tested separately.
+  await popup.exposeFunction('fixtureSamples',async (state, tracks, seconds) => {
+    if (!state.path || !state.recording || state.tracks !== tracks) return false;
+    assert.ok(path.resolve(state.path).startsWith(path.resolve(library)+path.sep),'Capture escaped its private Library');
+    const metadata=JSON.parse(await readFile(path.join(state.path,'session.json')));
+    if(metadata.tracks.length !== tracks)return false;
+    for(const track of metadata.tracks){
+      const wav=await readFile(path.join(state.path,track.file));
+      if((wav.length-44)/(track.channels*2) < track.sampleRate*seconds)return false;
+    }
+    return true;
+  });
+  async function waitStatus(options) {
+    return popup.evaluate(options=>new Promise((resolve,reject)=>{
+      let done=false;
+      const timer=setTimeout(()=>{done=true;reject(Error('Timed out waiting for saved audio/status'));},20000);
+      async function check(){
+        if(done)return;
+        try {
+          const state=await chrome.runtime.sendMessage({target:'background',type:'status'});
+          const ready=options.stopped ? !state.recording : await window.fixtureSamples(state,options.tracks,options.seconds);
+          if(ready){done=true;clearTimeout(timer);resolve(state);return;}
+          requestAnimationFrame(check);
+        } catch(error){done=true;clearTimeout(timer);reject(error);}
+      }
+      check();
+    }),options);
+  }
+  const recorded=(tracks,seconds)=>waitStatus({tracks,seconds});
+  const started=await rpc('start',{mode:'tracks'});
+  assert.ok(!started.error,JSON.stringify(started)); savedPath=started.path;
+  const during=await recorded(1,2);
+  savedPath=during.path;
+  assert.equal(during.recording,true,JSON.stringify(during));
+  const after=await rpc('stop');
+  assert.ok(!after.error,JSON.stringify(after));
   assert.equal(after.recording, false);
   assert.equal(after.message, 'Saved on this computer.');
   assert.equal(during.tracks, 1);
@@ -98,9 +130,8 @@ try {
   const wav = await readFile(path.join(savedPath, manifest.tracks[0].file));
   assert.ok(wav.subarray(44).some(byte => byte !== 0), 'recorded a generated tone');
   assert.deepEqual(errors, []);
-  await rm(savedPath, { recursive: true, force: true }); savedPath = null;
-  const crashed = await workerDeathDuringRecording({ context, meetingPage: page, popup, extensionId });
-  await rm(crashed.path, { recursive: true, force: true });
+  savedPath = null; // The private sandbox is removed after all scenarios.
+  const crashed = await workerDeathDuringRecording({ context, meetingPage: page, popup, extensionId, library });
   worker = context.serviceWorkers().find(item => item.url().includes(extensionId)) || await context.waitForEvent('serviceworker');
   await worker.evaluate(tab => { chrome.tabs.query = async () => [tab]; }, meetingTab);
   await page.evaluate(() => {
@@ -113,26 +144,14 @@ try {
     <\/script>`;
     document.body.append(frame);
   });
-  await popup.click('#tracks');
-  let sourceStatus;
-  const sourceDeadline=Date.now()+15000;
-  do {
-    sourceStatus=await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'status'}));
-    if (sourceStatus.tracks===2) break;
-    await page.waitForTimeout(50);
-  } while(Date.now()<sourceDeadline);
-  await page.waitForTimeout(1500);
-  const beforeNavigation = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
+  const next=await rpc('start',{mode:'tracks'});
+  assert.ok(!next.error,JSON.stringify(next)); savedPath=next.path;
+  const beforeNavigation=await recorded(2,1.5);
   savedPath = beforeNavigation.path;
   assert.equal(beforeNavigation.recording, true);
   assert.equal(beforeNavigation.tracks, 2, "parent and about:srcdoc frame captured");
   await page.goto(`http://127.0.0.1:${server.address().port}/navigated`);
-  let finalStatus;
-  for (let attempt = 0; attempt < 200; attempt++) {
-    finalStatus = await popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
-    if (!finalStatus.recording) break;
-    await popup.waitForTimeout(100);
-  }
+  const finalStatus=await waitStatus({stopped:true});
   assert.equal(finalStatus.recording, false, JSON.stringify(finalStatus));
 
   const interrupted = JSON.parse(await readFile(path.join(savedPath, 'session.json')));
@@ -151,13 +170,12 @@ try {
     frequencies.push(power440 > power880 ? 440 : 880);
   }
   assert.deepEqual(frequencies.sort(), [440, 880]);
-  console.log('PASS: loaded extension → Chrome Native Messaging → WAV; idle/restarted worker, normal stop, iframe separation and navigation preserve audio');
+  console.log('PASS: loaded extension → Chrome Native Messaging → WAV; restarted worker, normal stop, iframe separation and navigation preserve audio');
 } catch (error) {
   await saveFailure('extension-capture', error, savedPath);
   throw error;
 } finally {
   await context?.close();
   server.close();
-  if (savedPath) await rm(savedPath, { recursive: true, force: true });
-  await rm(profile, { recursive: true, force: true });
+  await rm(sandbox, { recursive: true, force: true });
 }
