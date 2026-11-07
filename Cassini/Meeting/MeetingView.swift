@@ -61,8 +61,11 @@ struct MeetingView: View {
                 }
             }
             .focusable()
+            .focusedValue(\.playTranscriptTurn,{
+                if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
+            })
             .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
-                guard event.modifiers == .shift, model.canPlay else { return .ignored }
+                guard event.modifiers == .shift, model.canUseTranscriptShortcuts else { return .ignored }
                 model.playFrom(Int(turn.startMs)); return .handled
             }
             .accessibilityElement(children:.contain)
@@ -83,7 +86,7 @@ struct MeetingView: View {
                         .accessibilityIdentifier("turn-listen-\(turn.id)")
                         .focusable()
                         .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
-                            guard event.modifiers.isEmpty, model.canPlay else { return .ignored }
+                            guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
                             model.listenFromReadingTurn(turn.id); return .handled
                         }
                     if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
@@ -96,7 +99,7 @@ struct MeetingView: View {
                     .accessibilityIdentifier("turn-play-\(turn.id)")
                     .focusable()
                     .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
-                        guard event.modifiers.isEmpty, model.canPlay else { return .ignored }
+                        guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
                         model.playFrom(Int(turn.startMs)); return .handled
                     }
                 if let over = over(turn) {
@@ -108,7 +111,9 @@ struct MeetingView: View {
     private func turnText(_ turn: MeetingPresentation.Turn) -> MeetingTranscriptText {
         MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek,
                                   listeningWords:model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index),
-                                  canPlay:model.canPlay,listen:model.listenFromReadingTurn,playFromHere:{ model.playFrom(Int(turn.startMs)) })
+                                  canPlay:model.canPlay,listen:model.listenFromReadingTurn,playFromHere:{
+                                      if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
+                                  })
     }
     /// The speakers column, kept out of `body` for the Xcode 16.4 type checker.
     private var speakersPane: some View {

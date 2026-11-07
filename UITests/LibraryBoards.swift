@@ -408,6 +408,49 @@ final class LibraryBoards: XCTestCase {
         window.buttons["listen-stop"].click()
         XCTAssertEqual(window.sliders["meeting-seek"].value as? String,"00:03:08")
     }
+    @MainActor func testPlaybackMenuPlaysFocusedTranscriptAndYieldsToSheetsAndSearch() throws {
+        let app = try launch("meeting",fixture:"main")
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let row = window.descendants(matching:.any).matching(identifier:"meeting-turn-0").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout:20),app.debugDescription)
+        window.buttons["meeting-play"].click() // pause the frozen fixture first
+        row.coordinate(withNormalizedOffset:CGVector(dx:0.55,dy:0.2)).click()
+        app.menuBars.menuBarItems["Playback"].click()
+        XCTAssertTrue(app.menuItems["Play this turn"].isEnabled,app.debugDescription)
+        XCTAssertFalse(app.menuItems["Next turn"].isEnabled,"Stepping remains listening-only")
+        app.menuItems["Play this turn"].click()
+        let played = NSPredicate { _,_ in window.buttons["meeting-play"].label == "Pause" && window.sliders["meeting-seek"].value as? String == "00:02:41" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:played,object:nil)],timeout:5),.completed)
+        // The same native text focus also handles the visible ⇧Return shortcut.
+        window.buttons["meeting-play"].click()
+        row.coordinate(withNormalizedOffset:CGVector(dx:0.55,dy:0.2)).click()
+        app.typeKey(.return,modifierFlags:.shift)
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:played,object:nil)],timeout:5),.completed)
+        window.buttons["meeting-export"].click()
+        XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:10))
+        app.menuBars.menuBarItems["Playback"].click()
+        for title in ["Play this turn","Previous turn","Next turn","Previous speaker","Next speaker"] {
+            XCTAssertFalse(app.menuItems[title].isEnabled,"A sheet owns keyboard input: " + title)
+        }
+        app.typeKey(.escape,modifierFlags:[]) // menu
+        app.typeKey(.escape,modifierFlags:[]) // export sheet
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)],timeout:5),.completed)
+        app.typeKey("f",modifierFlags:.command)
+        XCTAssertTrue(window.searchFields.firstMatch.waitForExistence(timeout:5))
+        app.menuBars.menuBarItems["Playback"].click()
+        for title in ["Play this turn","Previous turn","Next turn","Previous speaker","Next speaker"] {
+            XCTAssertFalse(app.menuItems[title].isEnabled,"Search owns keyboard input: " + title)
+        }
+        app.typeKey(.escape,modifierFlags:[]) // menu
+        app.typeKey(.escape,modifierFlags:[]) // search
+        // Opening search already leaves the meeting (LibrarySearchModel.open).
+        // Closing search returns to the Library preview, not the old detail page.
+        XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
+        XCTAssertFalse(window.buttons["meeting-back"].exists,"Search already left the meeting page")
+        app.menuBars.menuBarItems["Playback"].click()
+        XCTAssertFalse(app.menuItems["Play this turn"].isEnabled,"Leaving the page clears its focused transcript action")
+    }
     @MainActor func testMeetingAccessibility() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]

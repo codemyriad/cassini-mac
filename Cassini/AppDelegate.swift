@@ -3,8 +3,8 @@ import AppKit
 
 /// Routes bare-key media shortcuts (Space, ←, →). The Playback menu lists them as key
 /// equivalents so they are discoverable, but a bare key equivalent would steal typing from the
-/// search field: this monitor runs first, hands the key to an editable text view when one has
-/// focus, and otherwise acts on the key window's session, so the menu never sees those keys.
+/// search field: this monitor runs first, hands typing to editable text and Space to focused
+/// meeting buttons, then acts on the key window's session before the menu sees those keys.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
     private var menuTrackingObservers: [NSObjectProtocol] = []

@@ -6,6 +6,13 @@ struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @FocusedValue(\.listeningMeeting) private var listeningMeeting
+    @FocusedValue(\.playTranscriptTurn) private var focusedTranscriptPlay
+    private var transcriptPlay: (() -> Void)? {
+        guard listeningMeeting?.canUseTranscriptShortcuts == true else { return nil }
+        if let text = NSApp.keyWindow?.firstResponder as? MeetingTurnTextView { return text.playFromHere }
+        if let name = NSApp.keyWindow?.firstResponder as? MeetingTurnTextView.InlineListenButton { return name.playFromHere }
+        return focusedTranscriptPlay
+    }
     private var exportMeeting: LibraryMeeting? {
         let search = LibrarySearchModel.shared
         if search.visible { return search.searching ? nil : search.selected.flatMap { search.meeting($0) } }
@@ -52,6 +59,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.forward10")) { detail?.skip(10) }.keyboardShortcut(.rightArrow, modifiers: []).disabled(detail?.canPlay != true)
+            Divider()
+            Button(UXText.text("shortcuts.playTurn")) { transcriptPlay?() }
+                .keyboardShortcut(.return,modifiers:.shift).disabled(transcriptPlay == nil)
             Divider()
             Button(UXText.text("listen.previousTurn")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningTurn(-1) } }
                 .keyboardShortcut(.upArrow,modifiers:[.option,.command])
