@@ -107,6 +107,12 @@ public struct CallOwnership: Sendable, Equatable {
     }
     /// A lost recording holds this call: no other recording (a fresh Start or a D49 stand-in)
     /// may take it; only this recording's own resume.
+    /// A still-owned browser route fences signal admission through a control reconnect,
+    /// before replacement status can bind the live capture to its new peer.
+    func holdsSignal(tab: Int, generation: String?) -> Bool {
+        guard let generation else { return false }
+        return bindings.values.contains { $0.follows && $0.recording && Data(($0.callGeneration ?? "").utf8) == Data(generation.utf8) && ($0.key == nil || $0.key?.tabID == tab) }
+    }
     public func holds(meeting: BrowserMeeting) -> Bool {
         lostCalls(among:[meeting]).contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration))
     }

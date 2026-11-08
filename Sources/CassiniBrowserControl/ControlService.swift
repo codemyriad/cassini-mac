@@ -16,10 +16,15 @@ public final class BrowserControlService: @unchecked Sendable {
     private var deadlines: [String:(BrowserControlRequest,UInt64)] = [:]
     private var automatic: Set<String> = []
     private var autoRecord = false, microphone = true
+    private var signals = SignalCallPolicy()
+    private var signalStopSent: UUID?
+    private var signalInput: BrowserSignalInputGate?
+    private let signalAction: @Sendable (BrowserSignalAction) -> Void
     private let changed: @Sendable ([BrowserControlPeerSnapshot]) -> Void
     private let audio: (any BrowserAudioHandler)?
     private let completed: @Sendable (BrowserControlOutcome,Bool) -> Void
     private let canStart: @Sendable () -> Bool
+    private let canSignalStart: @Sendable () -> Bool
     /// Observes each control frame's type after the service has applied it (heartbeat
     /// liveness included), so a caller can wait on receipt instead of polling.
     private let received: @Sendable (String?) -> Void
@@ -30,7 +35,11 @@ public final class BrowserControlService: @unchecked Sendable {
                 canStart: @escaping @Sendable () -> Bool = { true },
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
                 received: @escaping @Sendable (String?) -> Void = { _ in }, ownership: CallOwnershipStore? = nil,
-                requireMultiStream: Bool = false) {
+                requireMultiStream: Bool = false,
+                signalAction: @escaping @Sendable (BrowserSignalAction) -> Void = { _ in },
+                canSignalStart: @escaping @Sendable () -> Bool = { true }) {
+        self.canSignalStart = canSignalStart
+        self.signalAction = signalAction
         self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock; self.received = received
         self.ownership = ownership; registry.requireMultiStream = requireMultiStream
         queue.setSpecific(key:key,value:1)
@@ -141,10 +150,13 @@ public final class BrowserControlService: @unchecked Sendable {
         }
     }
     public func stopRecordings(reason: CaptureEndReason = .user) {
-        queue.async { [self] in send(registry.stopAll(userInitiated:reason == .user || reason == .appQuit,reason:reason)); publish() }
+        queue.async { [self] in
+            if reason == .user || reason == .appQuit { signals.suppress(reason:reason); driveSignals() }
+            send(registry.stopAll(userInitiated:reason == .user || reason == .appQuit,reason:reason)); publish() }
     }
     public func stop() {
         sync {
+            autoRecord = false; signals.suppress(reason:.appQuit); driveSignals()
             timer?.cancel(); timer = nil
             server?.stop(); server = nil
             for id in Array(connections.keys) { disconnect(id) }
@@ -167,6 +179,9 @@ public final class BrowserControlService: @unchecked Sendable {
             try registry.receive(data,from:connection.peer.id)
             // heartbeat-v1: every inbound frame (pong included) refreshes liveness.
             if message["type"]?.string == "hello" {
+                if registry.snapshots.first(where:{ $0.id == connection.peer.id })?.supportsCallSignals == true {
+                    try connection.send(Data(#"{"type":"configure","capabilities":["call-signals-v1"]}"#.utf8))
+                }
                 heartbeats[connection.peer.id]?.hello(capabilities:message["capabilities"]?.array?.compactMap(\.string) ?? [],at:clock())
             } else { heartbeats[connection.peer.id]?.inbound(message["type"]?.string,at:clock()) }
             // D57: each status (alone or in a result) confirms its sessions' documents to the
@@ -201,8 +216,41 @@ public final class BrowserControlService: @unchecked Sendable {
         registry.setRetainedCaptureIDs(audio?.retainedCaptureIDs ?? [])
         send(registry.drainStops())
         refreshLostCalls()
+        driveSignals()
         if autoRecord && canStart() { send(registry.automaticStarts(microphone:microphone),automatic:true) }
         publish()
+    }
+    /// Called by native admission after every asynchronous permission/checkpoint boundary.
+    public func signalMayOpen(_ id: UUID) -> Bool {
+        sync { signals.mayOpen(id) && canStart() && canSignalStart() && (signals.started || autoRecord) }
+    }
+    public func signalEndReason(_ id: UUID) -> CaptureEndReason? { sync { signals.reservation == id ? signals.retiring : nil } }
+    public func signalInputGate(_ id: UUID) -> BrowserSignalInputGate? { sync { signals.reservation == id ? signalInput : nil } }
+    public func signalStarted(_ id: UUID) { queue.async { [self] in signals.didStart(id); driveSignals() } }
+    public func signalReleased(_ id: UUID, failed: Bool = false) {
+        queue.async { [self] in guard signals.reservation == id else { return }; signalInput?.update(false); signals.release(id,failed:failed); signalInput = nil; signalStopSent = nil; reconcile() }
+    }
+    public func stopSignal(_ id: UUID, userInitiated: Bool, reason: CaptureEndReason = .user) {
+        sync {
+            guard signals.reservation == id else { return }
+            if userInitiated || signals.retiring == nil { signals.suppress(reason:reason) }
+            driveSignals()
+        }
+    }
+    private func driveSignals() {
+        let peers = registry.snapshots
+        let now = TimeInterval(clock()) / 1000
+        if signalInput?.hasOpened == true, let id = signals.reservation { signals.didStart(id) }
+        signals.update(peers.compactMap { peer in peer.callSignals.map { .init(id:peer.id,order:peer.signalConnectionOrder,snapshot:$0) } },now:now)
+        signals.advance(now:now,enabled:autoRecord && canStart() && canSignalStart(),blocked:{ [registry,ownership] instance,row in registry.browserOwnsSignal(instance:instance,row:row) || ownership?.snapshot.holdsSignal(tab:row.tabID,generation:row.generation) == true })
+        signalInput?.update(signals.eligible && signals.retiring == nil && canStart() && canSignalStart() && (signals.started || autoRecord))
+        registry.signalOwnedCalls = Set(signals.calls.keys)
+        if let id = signals.reservation, let reason = signals.retiring, signalStopSent != id {
+            signalStopSent = id; signalAction(.stop(id:id,reason:reason))
+        } else if autoRecord && canStart() && canSignalStart(), let site = signals.site, let id = signals.reserve() {
+            let gate = BrowserSignalInputGate(); gate.update(true); signalInput = gate
+            signalAction(.start(id:id,site:site,microphone:microphone))
+        }
     }
     private func send(_ requests: [BrowserControlRequest], automatic isAutomatic: Bool = false) {
         for request in requests {
@@ -228,7 +276,7 @@ public final class BrowserControlService: @unchecked Sendable {
             let wasAutomatic = automatic.remove(request.id) != nil
             completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:failure,resume:request.resume),wasAutomatic)
         }
-        publish()
+        driveSignals(); publish()
     }
     /// Runs the heartbeat now, as the 1 s timer does (tests drive it with an injected clock).
     func tickHeartbeats() { sync { beat() } }

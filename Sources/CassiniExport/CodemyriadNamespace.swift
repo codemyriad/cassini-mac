@@ -267,7 +267,7 @@ enum CodemyriadNamespace {
                 for key in ["etaMinutes","error"] { if let value = raw[key] { set(key,value) } }
             }
         }
-        // The writingDown facts of Mac's own Write down (import never stores recordingDetails):
+        // The writingDown facts of Mac's own Write down (import only copies immutable othersRoute):
         // Mac's known facts replace the other writer's attempt; its unknown facts stay.
         if let mine = raw["recordingDetails"]?["writingDown"], mine.object != nil,
            copy["recordingDetails"].map({ $0.object != nil || $0 == .null }) ?? true {

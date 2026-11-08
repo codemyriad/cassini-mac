@@ -40,6 +40,8 @@ private final class SourceChangeToken: @unchecked Sendable {
     private let microphone: @MainActor () -> any CaptureInput
     private let system: @MainActor () -> any CaptureInput
     private let failure: @Sendable (String) -> Void
+    private let admission: @MainActor () -> Bool
+    private let inputGate: BrowserSignalInputGate?
     private var inputs: [CaptureSide:Input] = [:]
     private var tail: Task<Void,Never>?
     private var closed = false
@@ -96,7 +98,10 @@ private final class SourceChangeToken: @unchecked Sendable {
                 system: @escaping @MainActor () -> any CaptureInput,
                 failure: @escaping @Sendable (String) -> Void,
                 refused: @escaping @MainActor (CaptureSide,CaptureRefusal) -> Void = { _,_ in },
-                openBound: @escaping @Sendable () async -> Void = CaptureInputLifecycle.openBound) {
+                openBound: @escaping @Sendable () async -> Void = CaptureInputLifecycle.openBound,
+                admission: @escaping @MainActor () -> Bool = { true }, inputGate: BrowserSignalInputGate? = nil) {
+        self.inputGate = inputGate
+        self.admission = admission
         self.capture = capture; origin = originHostTime
         self.microphone = microphone; self.system = system; self.failure = failure
         self.refused = refused; bound = openBound
@@ -185,7 +190,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                         guard let value = self.inputs[side] else { continue }
                         do {
                             try value.sink.resume()
-                            try value.driver.start(sink:value.sink,failure:self.report(side,generation:value.generation,stage:value.stage))
+                            try self.startDriver(value.driver,sink:value.sink,failure:self.report(side,generation:value.generation,stage:value.stage))
                             self.inputs[side]?.paused = false
                         } catch { await self.restartFailed(side,value,error) }
                     }
@@ -292,7 +297,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                 if !self.closed, let input {
                     do {
                         try input.sink.resume()
-                        try input.driver.start(sink:input.sink,failure:self.report(.others,generation:input.generation,stage:input.stage))
+                        try self.startDriver(input.driver,sink:input.sink,failure:self.report(.others,generation:input.generation,stage:input.stage))
                         self.inputs[.others]?.paused = false
                     } catch { await self.restartFailed(.others,input,error) }
                 }
@@ -305,12 +310,13 @@ private final class SourceChangeToken: @unchecked Sendable {
         try await authorize(driver,side:side,source:source)
         try source?.check()
         guard !closed else { throw BrowserIPCError.closed }
+        guard admission() else { throw CancellationError() }
         let generation = UUID(), stage = StagedNativeWriter(observers:capture.pcmObservers), signal = FirstBufferSignal()
         let report = report(side,generation:generation,stage:stage)
         let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report,admit:{ signal.admit() })
         let value = Input(generation:generation,driver:driver,sink:sink,stage:stage,firstBuffer:signal,refusingAt:atMs)
         do {
-            try driver.start(sink:sink,failure:report)
+            try startDriver(driver,sink:sink,failure:report)
             await Task.detached { sink.flush() }.value
             // D58: the side opened only once its first buffer is admitted within the bound.
             // D58.1: the others' side (the system tap) is never refused for silence or a missing
@@ -470,13 +476,18 @@ private final class SourceChangeToken: @unchecked Sendable {
         }
         if let first { throw first }
     }
+    private func startDriver(_ driver: any CaptureInput, sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
+        if let inputGate { try inputGate.admit { try driver.start(sink:sink,failure:failure) } }
+        else { try driver.start(sink:sink,failure:failure) }
+    }
     private func begin(_ side: CaptureSide, driver: any CaptureInput, signal: FirstBufferSignal = FirstBufferSignal(), refusingAt atMs: Double? = nil) throws {
+        guard admission(), capture.snapshot.phase == .recording else { throw CancellationError() }
         let generation = UUID()
         let report: @Sendable (String) -> Void = { [weak self] message in
             Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
         }
         let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,onFailure:report,admit:{ signal.admit() })
-        do { try driver.start(sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }
+        do { try startDriver(driver,sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }
         catch {
             driver.stop()
             // Even a partially-started driver can have admitted callbacks.

@@ -18,6 +18,64 @@ private final class Admission: @unchecked Sendable {
     func read() -> Bool { lock.withLock { allowed } }
 }
 final class ControlServiceTests: XCTestCase {
+    func testNegotiatedSignalsOwnNativeReservationWithoutBrowserStartAndStopFencesReconnect() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let started = expectation(description:"Native reservation"), ended = expectation(description:"Last positive end")
+        let observed = expectation(description:"Signal snapshot committed"), events = SignalEvents()
+        observed.assertForOverFulfill = false
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in XCTFail("Signals must not fabricate browser command outcomes") },
+            received:{ type in if type == "callSignals" { observed.fulfill() } },signalAction:{ action in
+                events.append(action)
+                switch action { case .start: started.fulfill(); case .stop: ended.fulfill() }
+            })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
+        try send(["type":"hello","version":1,"capabilities":["call-signals-v1","multi-stream-v1"]],client)
+        let configure = try receive(client)
+        XCTAssertEqual(configure["type"]?.string,"configure")
+        XCTAssertEqual(configure["capabilities"]?.array,[.string("call-signals-v1")])
+        try send(["type":"configured","capabilities":["call-signals-v1"]],client)
+        func snapshot(_ seq: Int, _ state: String) -> [String:Any] {
+            ["type":"callSignals","browserInstance":"stable-profile","sequence":seq,"tabs":[[
+                "tabId":2,"url":"https://call.example/","documentGeneration":"document-A","remoteAudio":"mixed",
+                "callEvidence":["state":state,"reason":state == "active" ? "activeCall" : "callEnded",
+                                "adapter":["name":"Synthetic call","version":"1"],"callGeneration":"call-A"]]]]
+        }
+        try send(snapshot(0,"active"),client); wait(for:[started,observed],timeout:3)
+        let id = try XCTUnwrap(events.startID)
+        XCTAssertTrue(service.signalMayOpen(id)); service.signalStarted(id)
+        try send(snapshot(1,"inactive"),client); wait(for:[ended],timeout:3)
+        XCTAssertFalse(service.signalMayOpen(id)); XCTAssertEqual(events.stopReason,.callEnded)
+        service.signalReleased(id)
+        // A pipe round trip fences all queued app work. The only outbound frame is
+        // configure above: no browser Start/Stop is involved in this recording.
+        try send(["type":"hello","version":1],client) // duplicate hello closes this peer
+        XCTAssertNil(try client.receive(deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000))
+    }
+    func testStopAllSuppressesSnapshotBeforeCanStartAdmissionThroughRealPipe() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let snapshot = expectation(description:"Snapshot committed before admission")
+        let barrier = expectation(description:"Next frame processed after Stop and admission change")
+        let admission = Admission(), actions = SignalEvents()
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },canStart:{ admission.read() },received:{ type in
+            if type == "callSignals" { snapshot.fulfill() }
+            if type == "pong" { barrier.fulfill() }
+        },signalAction:{ actions.append($0) })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
+        try send(["type":"hello","version":1,"capabilities":["call-signals-v1"]],client)
+        XCTAssertEqual(try receive(client)["type"]?.string,"configure")
+        try send(["type":"configured","capabilities":["call-signals-v1"]],client)
+        try send(["type":"callSignals","browserInstance":"profile-A","sequence":0,"tabs":[[
+            "tabId":2,"url":"https://call.example/","documentGeneration":"doc-A","remoteAudio":"mixed",
+            "callEvidence":["state":"active","reason":"activeCall","adapter":["name":"Synthetic call","version":"1"],"callGeneration":"call-A"]]]],client)
+        wait(for:[snapshot],timeout:3); XCTAssertNil(actions.startID)
+        service.stopRecordings(); admission.set(true); service.setAutoRecord(true,microphone:false)
+        try send(["type":"pong","seq":0],client); wait(for:[barrier],timeout:3)
+        XCTAssertNil(actions.startID,"Stop covers active snapshot facts even when no recording was reserved")
+    }
     func testReloadRunsThroughTheRealControlPipeAndFreshHealthCompletesIt() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let reload = expectation(description:"Extension reports a reloadable tab")
@@ -217,4 +275,12 @@ private final class ReloadKey: @unchecked Sendable {
     private let lock = NSLock(); private var key: BrowserMeetingKey?
     func set(_ key: BrowserMeetingKey) { lock.withLock { self.key = key } }
     func get() -> BrowserMeetingKey? { lock.withLock { key } }
+}
+
+private final class SignalEvents: @unchecked Sendable {
+    private let lock = NSLock()
+    private var actions: [BrowserSignalAction] = []
+    func append(_ action: BrowserSignalAction) { lock.withLock { actions.append(action) } }
+    var startID: UUID? { lock.withLock { for action in actions { if case .start(let id,_,let microphone) = action { XCTAssertFalse(microphone); return id } }; return nil } }
+    var stopReason: CaptureEndReason? { lock.withLock { for action in actions { if case .stop(_,let reason) = action { return reason } }; return nil } }
 }

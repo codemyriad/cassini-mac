@@ -9,6 +9,17 @@ import CassiniRecording
 /// replaced; a record of another version is never downgraded. No paths, URLs or
 /// device identities are written.
 public enum CaptureRecordWriter {
+    /// Persist the actual native routing decision before admitting any input. All route
+    /// fields stay open strings in stored files; metadata transactions preserve them.
+    public static func writeMixedRoute(site: String, directory: URL, id: UUID) throws {
+        guard !site.isEmpty, site.utf8.count <= 320 else { throw BrowserControlStateError.malformed }
+        try MeetingMetadataWriter(directory:directory,id:id).transaction { metadata in
+            var details = metadata["recordingDetails"] as? [String:Any] ?? [:]
+            details["othersRoute"] = ["source":"system","reason":"mixedSiteSignal","site":site]
+            metadata["recordingDetails"] = details
+        }
+    }
+
     static let trackFields: Set<String> = ["id","kind","label","labelSource","sourceTrackId","frames","sampleRate","channels","startOffsetMs","endOffsetMs",
                                            "gapFrames","droppedFrames","problemKind","captureOutcome","receivedFrames","gaps",
                                            "clockMethod","clockUncertaintyMs","clockClampMs"]
