@@ -222,7 +222,12 @@ public final class BrowserControlService: @unchecked Sendable {
     }
     /// Called by native admission after every asynchronous permission/checkpoint boundary.
     public func signalMayOpen(_ id: UUID) -> Bool {
-        sync { signals.mayOpen(id) && canStart() && canSignalStart() && (signals.started || autoRecord) }
+        sync {
+            guard signals.mayOpen(id) else { return false }
+            // Existing inputs belong to the reservation throughout evidence-loss
+            // grace. Its disk watcher/Stop retires it; new-root admission does not.
+            return signals.started || (autoRecord && canStart() && canSignalStart())
+        }
     }
     public func signalEndReason(_ id: UUID) -> CaptureEndReason? { sync { signals.reservation == id ? signals.retiring : nil } }
     public func signalInputGate(_ id: UUID) -> BrowserSignalInputGate? { sync { signals.reservation == id ? signalInput : nil } }
@@ -242,12 +247,13 @@ public final class BrowserControlService: @unchecked Sendable {
         let now = TimeInterval(clock()) / 1000
         if signalInput?.hasOpened == true, let id = signals.reservation { signals.didStart(id) }
         signals.update(peers.compactMap { peer in peer.callSignals.map { .init(id:peer.id,order:peer.signalConnectionOrder,snapshot:$0) } },now:now)
-        signals.advance(now:now,enabled:autoRecord && canStart() && canSignalStart(),blocked:{ [registry,ownership] instance,row in registry.browserOwnsSignal(instance:instance,row:row) || ownership?.snapshot.holdsSignal(tab:row.tabID,generation:row.generation) == true })
-        signalInput?.update(signals.eligible && signals.retiring == nil && canStart() && canSignalStart() && (signals.started || autoRecord))
+        signals.advance(now:now,enabled:autoRecord,blocked:{ [registry,ownership] instance,row in registry.browserOwnsSignal(instance:instance,row:row) || ownership?.snapshot.holdsSignal(tab:row.tabID,generation:row.generation) == true })
+        signalInput?.update(signals.reservation.map { signals.mayOpen($0) && (signals.started || autoRecord) } ?? false)
         registry.signalOwnedCalls = Set(signals.calls.keys)
         if let id = signals.reservation, let reason = signals.retiring, signalStopSent != id {
             signalStopSent = id; signalAction(.stop(id:id,reason:reason))
-        } else if autoRecord && canStart() && canSignalStart(), let site = signals.site, let id = signals.reserve() {
+        } else if autoRecord, signals.reservation == nil, signals.retiring == nil,
+                  let site = signals.site, canStart(), canSignalStart(), let id = signals.reserve() {
             let gate = BrowserSignalInputGate(); gate.update(true); signalInput = gate
             signalAction(.start(id:id,site:site,microphone:microphone))
         }
