@@ -1,0 +1,30 @@
+name: Intel model fixture cold bootstrap admission experiment
+'on':
+  push:
+    branches: [ci/intel-bootstrap-cohort]
+permissions:
+  contents: read
+jobs:
+  cohort:
+    runs-on: macos-15-intel
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        admission: [1, 32]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Observe exact unchanged fixture on a fresh host
+        run: |
+          memory_pressure
+          vm_stat
+          py=/Applications/Xcode_16.4.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/Current/bin/python3
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" "$py" scripts/intel-bootstrap-cohort.py --admission ${{ matrix.admission }} --output evidence
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: intel-bootstrap-cohort-${{ matrix.admission }}
+          path: evidence
