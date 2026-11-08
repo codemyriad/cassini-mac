@@ -157,7 +157,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "15.0"
-        NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
+        NSHumanReadableCopyright: "© 2026 Codemyriad"
         NSPrincipalClass: NSApplication
         NSMicrophoneUsageDescription: Cassini records your microphone as a separate local meeting track.
         NSAudioCaptureUsageDescription: Cassini records selected application or system audio locally when you start recording.
@@ -334,7 +334,7 @@ targets:
         CFBundleDisplayName: Cassini Transcript Preview
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
+        NSHumanReadableCopyright: "© 2026 Codemyriad"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.quicklook.preview
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController

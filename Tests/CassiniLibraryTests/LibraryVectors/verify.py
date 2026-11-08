@@ -19,11 +19,11 @@ CASE_COUNT=22
 T8_STATES=['t8-control-others-spoke','t8-others-silent','t8-others-never-captured','t8-others-transcription-failed']
 T8=T8_STATES+['t8-failed-referenced-words','t8-retry-failed-stale-silent','t8-silent-per-source',
             't8-none-referenced-words','t8-low-audio-silent']
-# The 13 cases before T8, digested by legacy_digest: the additive toneFrames key left their bytes unchanged.
+# The 13 cases before T8, digested by legacy_digest. D81 changes only main/received-only onboarding speaker metadata.
 LEGACY={
     'empty':'eab928e1ec07bbfb4f34bdbd051c912df33923043ad84f244e4fc8062d846092',
     'first-record':'eab928e1ec07bbfb4f34bdbd051c912df33923043ad84f244e4fc8062d846092',
-    'main':'1b03c9b1bed9761218b38c17d340864eb0d8b6da76073fffe2eef4942b674a6b',
+    'main':'261b7eb230b79e42ad1257f36453d2e549167985db287f4c456c8177bb214ebc',
     'r1-discovery':'521eab0b1fe813791406a395b3be6f645943115354d501386cb666589ae8789a',
     'r2-whole-document':'f538d51605cb9789fa79d4b9e9d466881faa3dff8402ac5b8bd1e210c69dfb4f',
     'r3-transcript-precedence':'f8fa462560d11564ff670773e58c75e67a8864b66104264ebbbab2b9ff2e890c',
@@ -33,7 +33,7 @@ LEGACY={
     'r7-speaking-order':'2bc44134e478bc2e99a47d6c08aba5353203458cfbd029659960d6a97b1cc560',
     'r8-consecutive-quote':'f6dc0ef4cbdf7480271ce679752be82179d7a1843fd7228f86d781b38282605e',
     'r9-received-once':'927f241cc48417a9726f791c3c1434ceb41d7a74a710e9acd3ec0f29ccb48a4e',
-    'received-only':'d8d71fbb4de1ae0fe6e47ea4ffb80674d9dec8a0e4d3eccd675cd2cef2c0e343',
+    'received-only':'7fd7a2877b081d9fdf2c30a2f229b9b092dabe775c2bb6c954fe96536a852a6d',
 }
 # The seven T8 cases before D67.8, digested the same way: the two D67.8 cases are additive.
 LEGACY_T8={
@@ -212,7 +212,7 @@ def main():
         assert {name:legacy_digest(a/name) for name in LEGACY}==LEGACY,'A pre-T8 case changed bytes'
         assert {name:legacy_digest(a/name) for name in LEGACY_T8}==LEGACY_T8,'A pre-D67.8 T8 case changed bytes'
     print(f'Verified {len(cases)} hand-authored cases, R1–R9 and T8 coverage, byte-identical builds, '
-          f'{len(LEGACY)} unchanged pre-T8 trees, {len(LEGACY_T8)} unchanged pre-D67.8 T8 trees and T8 outcome lines'
+          f'{len(LEGACY)} pinned pre-T8 trees (D81 sample names), {len(LEGACY_T8)} unchanged pre-D67.8 T8 trees and T8 outcome lines'
           +(' against strings.json' if catalog_checked else ' (catalog ids checked where strings.json is beside)'))
 
 

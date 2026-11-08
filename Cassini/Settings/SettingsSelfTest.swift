@@ -197,7 +197,7 @@ import Sparkle
             let bundledCredits = ModelNotices.credits(appData:noticesRoot).string
             try check([UXText.text("app.name"),"Whistle","Silero VAD","ONNX Runtime","sherpa-onnx","Zstandard","Sparkle"].allSatisfy { bundledCredits.contains($0) },"About credits name the app and bundled projects")
             try check(!bundledCredits.contains(".txt") && !bundledCredits.contains("/"),"About credits display project names rather than packaging paths")
-            try check(Bundle.main.object(forInfoDictionaryKey:"NSHumanReadableCopyright") as? String == "© 2026 Codemyriad OÜ","About copyright names Codemyriad OÜ")
+            try check(Bundle.main.object(forInfoDictionaryKey:"NSHumanReadableCopyright") as? String == "© 2026 Codemyriad","About copyright names Codemyriad")
             try check(!ModelNotices.credits(appData:noticesRoot).string.contains(noticesLabel),"no downloaded-model label before a download")
             let notice = noticesRoot.appendingPathComponent("models/fixture-model/" + String(repeating:"a",count:64) + "/NOTICE.txt")
             try FileManager.default.createDirectory(at:notice.deletingLastPathComponent(),withIntermediateDirectories:true)
