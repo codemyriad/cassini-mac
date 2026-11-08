@@ -26,7 +26,6 @@ jobs:
       - name: Observe actual startup failures before child cleanup
         env:
           CASSINI_FIXTURE_DIAGNOSTICS: ${{ github.workspace }}/evidence/children
-          PYTHONPROFILEIMPORTTIME: '1'
         run: |
           set -euo pipefail
           mkdir -p evidence
