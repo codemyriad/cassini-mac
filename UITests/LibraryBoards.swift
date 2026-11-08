@@ -565,16 +565,16 @@ final class LibraryBoards: XCTestCase {
         let low = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString,
             "-CassiniSpeechMemoryBytes",String((UInt64(8) << 30)-1)])
         let lowWindow = low.windows["cassini-settings-window"]
-        XCTAssertTrue(lowWindow.descendants(matching:.any)["settings-speech-models-ready"].waitForExistence(timeout:20),low.debugDescription)
-        XCTAssertFalse(lowWindow.descendants(matching:.any)["settings-parakeet-suggestion"].exists)
+        XCTAssertTrue(lowWindow.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),low.debugDescription)
+        XCTAssertFalse(lowWindow.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch.exists)
         low.terminate()
         for (language,locale) in [("en-GB","en_GB"),("fr-FR","fr_FR"),("pt-PT","pt_PT")] {
             let identity = UUID().uuidString
             let arguments = ["-CassiniSettingsID",identity,"-CassiniSpeechMemoryBytes",String(UInt64(8) << 30)]
             let app = try launch("settings-transcription",fixture:"main",extra:arguments,language:language,locale:locale)
             let window = app.windows["cassini-settings-window"]
-            XCTAssertTrue(window.descendants(matching:.any)["settings-speech-models-ready"].waitForExistence(timeout:20),app.debugDescription)
-            let card = window.descendants(matching:.any)["settings-parakeet-suggestion"]
+            XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
+            let card = window.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch
             XCTAssertTrue(card.waitForExistence(timeout:5),app.debugDescription)
             XCTAssertTrue(card.descendants(matching:.staticText).allElementsBoundByIndex.contains { element in
                 String(describing:element.value ?? element.label).contains("443")
@@ -587,8 +587,8 @@ final class LibraryBoards: XCTestCase {
             app.terminate()
             let relaunched = try launch("settings-transcription",fixture:"main",extra:arguments,language:language,locale:locale)
             let restored = relaunched.windows["cassini-settings-window"]
-            XCTAssertTrue(restored.descendants(matching:.any)["settings-speech-models-ready"].waitForExistence(timeout:20),relaunched.debugDescription)
-            XCTAssertFalse(restored.descendants(matching:.any)["settings-parakeet-suggestion"].exists)
+            XCTAssertTrue(restored.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),relaunched.debugDescription)
+            XCTAssertFalse(restored.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch.exists)
             relaunched.terminate()
         }
     }

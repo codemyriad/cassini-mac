@@ -30,6 +30,7 @@ struct ParakeetRecommendationView: View {
         }
         .onAppear { claim() }
         .onChange(of:models.showsAfterFirstSuggestion) { _, available in if available { claim() } }
+        .onChange(of:models.downloaded) { _, installed in if installed { afterFirstVisible = false } }
         .onDisappear { afterFirstVisible = false }
     }
     private func claim() {
