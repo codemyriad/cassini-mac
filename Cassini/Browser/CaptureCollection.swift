@@ -314,7 +314,7 @@ private final class CaptureFiles: @unchecked Sendable {
         guard let value = captures[id] else { return }
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         if let token = value.signalReservation { service.stopSignal(token,userInitiated:userInitiated,reason:reason) }
-        captures[id]?.stoppingReason = captures[id]?.stoppingReason ?? reason
+        captures[id]?.stoppingReason = value.stoppingReason ?? reason
         captures[id]?.stoppingUserInitiated = value.stoppingUserInitiated || userInitiated
         value.owner.requestEnd(reason,atMs:Double(value.elapsedMs))
         broker.expectResume(value.owner,callGeneration:nil) // Stop fences a pending resume.
