@@ -17,9 +17,12 @@ enum BrowserCompanionFixture {
             let peer = UUID(uuidString:"b0000000-0000-4000-8000-000000000072")!
             let metadata = try JSONSerialization.data(withJSONObject:["version":1,"id":peer.uuidString,"role":"control","browser":"Chrome"])
             try registry.connect(JSONDecoder().decode(BrowserPeer.self,from:metadata))
+            guard let currentVersion = CompanionSetup.bundledCompanionVersion else {
+                preconditionFailure("Synthetic companion health requires the packaged companion manifest")
+            }
             let reload = kind.hasPrefix("health-reload")
             var hello: [String:Any] = ["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"] + (kind == "health-reload-no-capability" ? [] : ["tab-readiness-v1"]),
-                "extensionVersion":kind == "health-outdated" ? "0.2.19" : "0.2.23","extensionInstance":"synthetic-English-instance"]
+                "extensionVersion":kind == "health-outdated" ? "0.2.19" : currentVersion,"extensionInstance":"synthetic-English-instance"]
             if kind != "health-legacy" { hello["filesOk"] = kind != "health-files" }
             try registry.receive(JSONSerialization.data(withJSONObject:hello),from:peer)
             var tab: [String:Any] = ["tabId":2,"state":"reloadRequired","hookSeen":true,"relayAlive":false]
