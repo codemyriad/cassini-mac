@@ -40,7 +40,8 @@ struct SpeechModelAdoptionTests {
         #expect(!suggestion.show(capable:true,enoughDisk:false,installed:false,busy:false,afterFirst:true))
         #expect(!suggestion.show(capable:true,enoughDisk:true,installed:true,busy:false,afterFirst:true))
         #expect(!suggestion.show(capable:true,enoughDisk:true,installed:false,busy:true,afterFirst:true))
-        #expect(suggestion.takeAfterFirst()); #expect(!suggestion.takeAfterFirst())
+        let firstPresentation = suggestion.takeAfterFirst(), repeatedPresentation = suggestion.takeAfterFirst()
+        #expect(firstPresentation); #expect(!repeatedPresentation)
         let seen = SpeechModelSuggestion(completedWhistle:true,afterFirstShown:true)
         #expect(!seen.show(capable:true,enoughDisk:true,installed:false,busy:false,afterFirst:true))
         #expect(seen.show(capable:true,enoughDisk:true,installed:false,busy:false,afterFirst:false))
@@ -57,13 +58,17 @@ struct SpeechModelAdoptionTests {
         var relaunched = SpeechModelAdoption(choice:model.choice,adoptedRevision:model.adoptedRevision,
             announcedRevision:model.announcedRevision,pendingAnnouncementRevision:model.pendingAnnouncementRevision)
         #expect(!relaunched.canAnnounce)
-        relaunched.verified("pin-A"); #expect(relaunched.takeAnnouncement()); #expect(!relaunched.takeAnnouncement())
+        relaunched.verified("pin-A")
+        let firstAnnouncement = relaunched.takeAnnouncement(), repeatedAnnouncement = relaunched.takeAnnouncement()
+        #expect(firstAnnouncement); #expect(!repeatedAnnouncement)
         relaunched.unavailable(); relaunched.verified("pin-A"); #expect(!relaunched.canAnnounce)
         relaunched.unavailable(); relaunched.verified("pin-B"); #expect(relaunched.canAnnounce)
-        relaunched.choose(.whistle); #expect(!relaunched.takeAnnouncement())
+        relaunched.choose(.whistle)
+        let declinedAnnouncement = relaunched.takeAnnouncement(); #expect(!declinedAnnouncement)
         var interrupted = SpeechModelAdoption(choice:.parakeet,adoptedRevision:"pin-A",
             announcedRevision:"pin-A",pendingAnnouncementRevision:"pin-A")
-        interrupted.verified("pin-A"); #expect(!interrupted.takeAnnouncement())
+        interrupted.verified("pin-A")
+        let interruptedAnnouncement = interrupted.takeAnnouncement(); #expect(!interruptedAnnouncement)
     }
     @Test func suggestionUsesEightGiBArchitectureRuntimeAndTheExistingReserve() {
         func eligibility(_ memory: UInt64 = 8 << 30, arch: Bool = true, runtime: Bool = true,
