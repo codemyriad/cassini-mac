@@ -1,0 +1,167 @@
+{
+  "scenario": "Passive loopback WebRTC viewer; no microphone, no call controls",
+  "extensionVersion": "0.2.25",
+  "browserVersion": "149.0.7827.55",
+  "baseMain": "a137c9e",
+  "page": {
+    "hook": {
+      "protocol": 1
+    },
+    "discovery": {
+      "channel": "cassini-page",
+      "type": "discovery",
+      "sourceCount": 1,
+      "heard": true,
+      "documentGeneration": "308c2b03-6040-4d46-9739-007e267beb39",
+      "callGeneration": "0"
+    },
+    "microphoneRequests": 0,
+    "rms": 0.7099700933509969,
+    "mediaElements": 1
+  },
+  "wire": [
+    {
+      "type": "hello",
+      "version": 1,
+      "extensionVersion": "0.2.25",
+      "extensionInstance": "89028be2-fa98-4d8b-bedc-9d112181c93a",
+      "installType": "development",
+      "filesOk": true,
+      "capabilities": [
+        "independent-sessions-v1",
+        "call-evidence-v1",
+        "page-state-v1",
+        "multi-stream-v1",
+        "resume-capture-v1",
+        "heartbeat-v1",
+        "tab-readiness-v1",
+        "call-signals-v1"
+      ]
+    },
+    {
+      "type": "configured",
+      "capabilities": [
+        "call-signals-v1"
+      ]
+    },
+    {
+      "type": "meetings",
+      "meetings": []
+    },
+    {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready. Choose Separate tracks or Whole tab.",
+      "tracks": 0,
+      "stopping": false,
+      "sessions": [],
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.25",
+        "extensionInstance": "89028be2-fa98-4d8b-bedc-9d112181c93a",
+        "installType": "development",
+        "filesOk": true,
+        "state": "idle",
+        "tabs": []
+      }
+    },
+    {
+      "type": "callSignals",
+      "sequence": 0,
+      "browserInstance": "d6794f14-cd95-4ef7-93f3-22332d0da3fa",
+      "tabs": []
+    },
+    {
+      "type": "meetings",
+      "meetings": [
+        {
+          "tabId": 479303638,
+          "title": "Passive WebRTC audio viewer",
+          "url": "http://127.0.0.1:65243/",
+          "sourceCount": 1,
+          "heard": false,
+          "sourceCountKnown": true,
+          "documentGeneration": "308c2b03-6040-4d46-9739-007e267beb39",
+          "callGeneration": "7a9bea98-6858-4255-9ac0-a06369de2098",
+          "pageState": "present"
+        }
+      ]
+    },
+    {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready. Choose Separate tracks or Whole tab.",
+      "tracks": 0,
+      "stopping": false,
+      "sessions": [],
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.25",
+        "extensionInstance": "89028be2-fa98-4d8b-bedc-9d112181c93a",
+        "installType": "development",
+        "filesOk": true,
+        "state": "ready",
+        "tabs": [
+          {
+            "tabId": 479303638,
+            "state": "ready",
+            "hookSeen": true,
+            "relayAlive": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "meetings",
+      "meetings": [
+        {
+          "tabId": 479303638,
+          "title": "Passive WebRTC audio viewer",
+          "url": "http://127.0.0.1:65243/",
+          "sourceCount": 1,
+          "heard": true,
+          "sourceCountKnown": true,
+          "documentGeneration": "308c2b03-6040-4d46-9739-007e267beb39",
+          "callGeneration": "7a9bea98-6858-4255-9ac0-a06369de2098",
+          "pageState": "present"
+        }
+      ]
+    },
+    {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready. Choose Separate tracks or Whole tab.",
+      "tracks": 0,
+      "stopping": false,
+      "sessions": [],
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.25",
+        "extensionInstance": "89028be2-fa98-4d8b-bedc-9d112181c93a",
+        "installType": "development",
+        "filesOk": true,
+        "state": "ready",
+        "tabs": [
+          {
+            "tabId": 479303638,
+            "state": "ready",
+            "hookSeen": true,
+            "relayAlive": true
+          }
+        ]
+      }
+    }
+  ],
+  "sourceSHA256": "af2cdc5c5b5d0db0bbcb77ad711ec93620dacd8df10c9c1093578527892f7711",
+  "transportInstrumentation": "\nconst __proofWire=[],__proofWaiters=[];\nfunction __proofReady(){const i=__proofWire.findLastIndex(p=>p.type==='meetings'&&p.meetings.some(m=>m.sourceCount>0&&m.heard===true));return i>=0&&__proofWire.some((p,j)=>j>i&&p.type==='status');}\nfunction __proofChanged(){if(__proofReady())for(const done of __proofWaiters.splice(0))done(structuredClone(__proofWire));}\nchrome.runtime.connectNative=name=>{\n if(name!=='io.codemyriad.cassini.control')throw Error('Native audio connection forbidden in consumer proof');\n const listeners=[];\n const port={onDisconnect:{addListener(){}},onMessage:{addListener(fn){listeners.push(fn)}},disconnect(){},\n postMessage(message){__proofWire.push(structuredClone(message));__proofChanged();if(message.type==='hello')queueMicrotask(()=>listeners.forEach(fn=>fn({type:'configure',capabilities:['call-signals-v1']})));}};\n return port;\n};\nglobalThis.__cassiniConsumerProof={packets:()=>new Promise((resolve,reject)=>{if(__proofReady())return resolve(structuredClone(__proofWire));const deadline=setTimeout(()=>reject(Error('No real audible meeting published')),20000);__proofWaiters.push(value=>{clearTimeout(deadline);resolve(value)});})};\n",
+  "scope": "Actual companion published frames into an inert native-port sink; no app or native audio host connected. Mac consumer replay is a separate isolated test."
+}
