@@ -161,6 +161,7 @@ import ScreenCaptureKit
                 report["diagnosticEvidenceOnly"] = true
                 report["producerTiming"] = input.producerDiagnostics
                 report["observerOffers"] = offerEvidence.snapshot
+                report["fixtureTimerStrict"] = true
                 report["lateEvents"] = lateEvents
                 report["omittedLateEvents"] = omittedLateEvents
             }
@@ -501,7 +502,10 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
         }
     }
     func start() {
-        let timer = DispatchSource.makeTimerSource(queue:queue); self.timer = timer
+        // Generated PCM models a hardware callback, whose cadence is not a
+        // deferrable application timer. Keep the same integer sample boundary
+        // and catch-up path while preventing timer-coalescing phase changes.
+        let timer = DispatchSource.makeTimerSource(flags:.strict,queue:queue); self.timer = timer
         // A one-shot is rearmed from the next integer sample boundary. A
         // repeating fractional-nanosecond period can drift ahead of that boundary
         // and defer a ready buffer by a whole85/170ms on the next repeat.
