@@ -15,7 +15,7 @@ expected=plistlib.loads((Path(__file__).resolve().parent.parent/'Cassini/Cassini
 assert profile==expected and not profile.get('com.apple.security.network.client'),'Use the exact product sandbox profile'
 key=str(uuid.uuid4());a.report.parent.mkdir(parents=True,exist_ok=True)
 command=[str(a.app.resolve()/'Contents/MacOS/Cassini'),'--parakeet-self-test',
-         '-CassiniSettingsID',key,'-CassiniCaptureID',key,'-ApplePersistenceIgnoreState','YES']
+         '-CassiniSettingsID',key,'-CassiniCaptureID',key,'-CassiniSpeechMemoryBytes',str(8 << 30),'-ApplePersistenceIgnoreState','YES']
 with a.report.with_suffix('.stderr.txt').open('w') as errors:
     child=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,
                            env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'))
@@ -35,7 +35,8 @@ with a.report.with_suffix('.stderr.txt').open('w') as errors:
 assert status==0,(status,output.decode(errors='replace'),a.report.with_suffix('.stderr.txt').read_text())
 assert not failures and not sender.is_alive(),failures
 report=json.loads(output)
-for name in ['sandboxedBundledParakeet','installedModelDoesNotSelect','removePreservesAcceptedJob','queuedJobUsesWhistle',
+for name in ['sandboxedBundledParakeet','unverifiedModelCannotBecomeDefault','verifiedInstallationBecomesDefault','explicitWhistleChoiceSurvivesRelaunch',
+             'firstWhistleSuggestionHonorsCapability','suggestionDismissalPersists','defaultNoticeShownOnce','removePreservesAcceptedJob','queuedJobUsesWhistle',
              'invalidModelRetriesWhistle','invalidModelDeleted','choicePersisted','metadataAndAudioPreserved',
              'unusedDamagedInstallationRecovers','removeMessageFollowsDiskCommit','inventoryPreservesAcceptedModel','emptyTranscriptRetryRequeues']:
     assert report[name] is True,(name,report)

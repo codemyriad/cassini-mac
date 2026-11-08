@@ -175,6 +175,8 @@ private struct SettingsTranscriptionView: View {
             VStack(alignment:.leading,spacing:10) {
                 Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.bold)
                 Text(UXText.text("settings.transcription.speech.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                ParakeetRecommendationView(afterFirst:false)
+                ParakeetDefaultNotice()
                 HStack(alignment:.top,spacing:12) {
                     SpeechRadio(selected:!models.usesParakeet,label:UXText.text("models.whistle.name")) { models.chooseParakeet(false) }
                         .frame(width:20,height:20).accessibilityIdentifier("settings-whistle-radio")
@@ -231,6 +233,7 @@ private struct SettingsTranscriptionView: View {
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("settings-model-message")
                 }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
+                .accessibilityIdentifier(models.recommendationReady ? "settings-speech-models-ready" : "settings-speech-models-loading")
             VStack(alignment:.leading,spacing:12) {
                 Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
                 HStack(alignment:.top,spacing:10) {

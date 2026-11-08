@@ -9,6 +9,10 @@ enum SettingsFixture {
               let id = LibraryLaunchContext.argument("-CassiniSettingsID") else { return nil }
         return UUID(uuidString:id)
     }
+    @MainActor static var speechMemory: UInt64? {
+        guard id != nil, let value = LibraryLaunchContext.argument("-CassiniSpeechMemoryBytes") else { return nil }
+        return UInt64(value)
+    }
     @MainActor private static var prepared = Set<ObjectIdentifier>()
     @MainActor static func prepare(_ window: NSWindow) {
         guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), name.hasPrefix("settings-"),

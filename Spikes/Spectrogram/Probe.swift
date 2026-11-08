@@ -199,8 +199,9 @@ import ScreenCaptureKit
                 controller.update(events:events)
                 let offBoundary = events.last!.atMs!
                 try await wait("not-recorded selection fills visible history",controller:controller) { controller.fixtureHistoryStartMs >= offBoundary }
-                let dots=try await darkPixels(window:window,view:strips[2],name:"B-others-not-recorded")
-                try require((60...130).contains(dots),"not-recorded Others is a dotted line (\(dots) pixels)")
+                let dots=try await darkPixels(window:window,view:strips[2],name:"B-others-not-recorded",dottedLine:true)
+                report["notRecordedEquivalentDotPixels"] = dots
+                try require((60...130).contains(dots),"not-recorded Others is a dotted line (\(dots) equivalent ink pixels)")
                 events.append(.init(atMs:now(),type:"selection",reason:"user",me:true,others:true))
                 controller.update(events:events);controller.appearance(dark:false,silent:false)
                 let soundBoundary = input.resumeSound()
@@ -304,7 +305,7 @@ import ScreenCaptureKit
             }
         }.value
     }
-    private static func darkPixels(window: NSWindow, view: NSView, name: String) async throws -> Int {
+    private static func darkPixels(window: NSWindow, view: NSView, name: String, dottedLine: Bool = false) async throws -> Int {
         // This API only returns content already available to the current process
         // without TCC consent. Never enumerate/capture another app or a display.
         let content = try await SCShareableContent.currentProcess
@@ -331,6 +332,11 @@ import ScreenCaptureKit
             guard let context = CGContext(data:bytes.baseAddress,width:200,height:32,bitsPerComponent:8,bytesPerRow:800,
                 space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.check("own strip pixel conversion") }
             context.draw(strip,in:CGRect(x:0,y:0,width:200,height:32))
+            if dottedLine {
+                let result = SpectrogramPixelOracle.measure(Array(bytes),width:200,height:32)
+                guard result.coverage.isFinite, result.periodicity >= 0.45 else { throw Failure.check("dotted-line capture background or four-column pattern") }
+                return Int(result.coverage.rounded())
+            }
             return stride(from:0,to:bytes.count,by:4).reduce(0) { count,index in
                 count + (bytes[index] < 200 && bytes[index+1] < 200 && bytes[index+2] < 200 ? 1 : 0)
             }

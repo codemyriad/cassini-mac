@@ -38,7 +38,7 @@ sdk = subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=
 command = ['xcrun','--sdk','macosx','swiftc','-sdk',sdk,'-O','-g','-parse-as-library','-swift-version','5','-D','DEBUG','-D','SPECTROGRAM_PROBE',
            '-target',platform.machine()+'-apple-macos15.0','-I',str(products),
            str(ROOT/'Cassini/Recording/RecordingSpectrogram.swift'),
-           str(ROOT/'Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift'),str(ROOT/'Spikes/Spectrogram/Budget.swift'),str(ROOT/'Spikes/Spectrogram/Events.swift'),str(ROOT/'Spikes/Spectrogram/Probe.swift'),str(ROOT/'Spikes/Spectrogram/main.swift'),
+           str(ROOT/'Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift'),str(ROOT/'Spikes/Spectrogram/Budget.swift'),str(ROOT/'Spikes/Spectrogram/PixelOracle.swift'),str(ROOT/'Spikes/Spectrogram/Events.swift'),str(ROOT/'Spikes/Spectrogram/Probe.swift'),str(ROOT/'Spikes/Spectrogram/main.swift'),
            *map(str,objects),'-o',str(executable)]
 subprocess.run(command,check=True)
 subprocess.run(['codesign','--force','--sign','-','--timestamp=none',str(args.output)],check=True)
