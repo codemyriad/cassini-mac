@@ -581,7 +581,12 @@ final class LibraryBoards: XCTestCase {
             },card.debugDescription)
             XCTAssertTrue(window.buttons["settings-parakeet-suggestion-download"].isHittable)
             capture(window,name:"settings-parakeet-recommendation-"+language)
-            window.buttons["settings-parakeet-not-now"].click()
+            // SwiftUI's link button style exposes this action as an AX link.
+            // Match its identifier independently of the platform element role.
+            let notNow = window.descendants(matching:.any).matching(identifier:"settings-parakeet-not-now").firstMatch
+            XCTAssertTrue(notNow.waitForExistence(timeout:5),window.debugDescription)
+            XCTAssertTrue(notNow.isHittable)
+            notNow.click()
             let hidden = NSPredicate { _,_ in !card.exists }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:hidden,object:nil)],timeout:5),.completed)
             app.terminate()
