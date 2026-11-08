@@ -1,0 +1,44 @@
+name: D74 native boundary clock regression
+'on':
+  push:
+    branches: [ci/d74-boundary-order]
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Confirm physical overshoot regression on original transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          memory_pressure
+          vm_stat
+          set +e
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test -j 1 --filter AVSpanBoundaryTests.testOvershotBoundarySettlesThePhysicalClockBeforeCompletion > evidence/before.log 2>&1
+          before_status=$?
+          set -e
+          cat evidence/before.log
+          test "$before_status" -ne 0
+          grep -q 'Boundary completion must settle the physical clock' evidence/before.log
+          grep -q 'Executed 1 test, with 1 failure' evidence/before.log
+      - name: Settle actual native clock and verify boundary, Stop and listening regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply scripts/d74-boundary-candidate.patch
+          git diff --check
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test -j 1 --filter 'AVSpanBoundaryTests|SessionPlaybackTests|ListenControllerTests' 2>&1 | tee evidence/after.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d74-boundary-order
+          path: evidence

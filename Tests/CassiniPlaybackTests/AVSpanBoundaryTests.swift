@@ -60,6 +60,36 @@ import XCTest
             if finished { done = true; event.fulfill() }
         }
     }
+    @MainActor private final class Advanced {
+        let listen: ListenController, event: XCTestExpectation
+        private var done = false
+        init(_ listen: ListenController, event: XCTestExpectation) { self.listen = listen; self.event = event; watch() }
+        private func watch() {
+            guard !done else { return }
+            let index = withObservationTracking { listen.index } onChange: { [weak self] in
+                Task { @MainActor [weak self] in self?.watch() }
+            }
+            if index >= 1 { done = true; event.fulfill() }
+        }
+    }
+    func testOvershotBoundarySettlesThePhysicalClockBeforeCompletion() async throws {
+        let scene = try await fixture(); defer { scene.close() }
+        let ended = expectation(description:"overshot native boundary completes after exact seek")
+        XCTAssertTrue(scene.audio.play(scene.meeting,fromMs:123,untilMs:423) { ended.fulfill() })
+        await scene.audio.preparation?.value
+        scene.player.pause()
+        let overshot = expectation(description:"real player clock placed beyond the requested boundary")
+        scene.transport.seek(toMs:426) { ready in
+            XCTAssertTrue(ready)
+            XCTAssertGreaterThan(scene.transport.positionMs,424)
+            scene.transport.timeControlStatusChanged()
+            overshot.fulfill()
+        }
+        await fulfillment(of:[overshot,ended],timeout:10)
+        XCTAssertEqual(scene.transport.positionMs,423,accuracy:1,"Boundary completion must settle the physical clock")
+        XCTAssertEqual(scene.audio.positionMs,423)
+        XCTAssertFalse(scene.audio.isPlaying)
+    }
     func testBoundaryStopsA300msSpanWithoutPositionPolling() async throws {
         let scene = try await fixture(); defer { scene.close() }
         let ended = expectation(description:"owned boundary at fractional-sample 423 ms")
@@ -91,6 +121,8 @@ import XCTest
             // Deliver the production paused-KVO handler before queued boundary/EOS work.
             scene.player.pause()
             let paused = expectation(description:"paused-first KVO at \(rate) Hz")
+            let advanced = expectation(description:"listening advances after physical clock settles")
+            let advancement = Advanced(listen,event:advanced)
             scene.transport.seek(toMs:sampleBefore(923,rate:rate)) { ready in
                 XCTAssertTrue(ready)
                 XCTAssertEqual(scene.player.timeControlStatus,.paused)
@@ -99,7 +131,8 @@ import XCTest
                 scene.transport.timeControlStatusChanged()
                 paused.fulfill()
             }
-            await fulfillment(of:[paused],timeout:10)
+            await fulfillment(of:[paused,advanced],timeout:10)
+            withExtendedLifetime(advancement) {}
             XCTAssertEqual(listen.index,1,"paused-before-boundary must advance at \(rate) Hz")
             guard listen.index == 1 else { continue }
             XCTAssertFalse(listen.finished)
