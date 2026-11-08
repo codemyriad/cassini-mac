@@ -155,6 +155,8 @@ jobs:
       timeout-minutes: 12
       run: |
         python3 scripts/test-spectrogram-harness.py
+        xcrun swiftc -O -parse-as-library Spikes/Spectrogram/PixelOracle.swift Spikes/Spectrogram/CheckPixelOracle.swift -o build/check-spectrogram-pixels
+        build/check-spectrogram-pixels
         xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
         build/check-spectrogram-clock
         python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
