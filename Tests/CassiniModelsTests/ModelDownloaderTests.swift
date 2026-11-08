@@ -64,6 +64,7 @@ private final class Server: @unchecked Sendable {
         let child = process, folder = root
         var admitted = false
         defer { if !admitted { Self.reap(child,exited:exitEvent); try? FileManager.default.removeItem(at:folder) } }
+        let launchedAt = DispatchTime.now().uptimeNanoseconds
         try process.run()
         onLaunched(control.fileHandleForWriting)
         let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
@@ -82,10 +83,45 @@ private final class Server: @unchecked Sendable {
             line.append(byte)
         }
         guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else {
+            Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:false)
             let diagnostic = (try? String(contentsOf:errors,encoding:.utf8)) ?? ""
             throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root)
         }
         origin = url; admitted = true
+        Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:true)
+    }
+    /// Diagnostic branch only: sample the actual timed-out child BEFORE defer reaps it.
+    private static func captureBootstrap(_ child: Process, scenario: String, errors: URL,
+                                         launchedAt: UInt64, ready: Bool) {
+        guard let path = ProcessInfo.processInfo.environment["CASSINI_FIXTURE_DIAGNOSTICS"] else { return }
+        let root = URL(fileURLWithPath:path), stem = "\(child.processIdentifier)-\(scenario)"
+        do {
+            try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+            let value: [String:Any] = ["pid":Int(child.processIdentifier),"scenario":scenario,"ready":ready,
+                "running":child.isRunning,"elapsedMs":Double(DispatchTime.now().uptimeNanoseconds-launchedAt)/1_000_000,
+                "arguments":child.arguments ?? [],"PATH":child.environment?["PATH"] ?? ProcessInfo.processInfo.environment["PATH"] ?? ""]
+            try JSONSerialization.data(withJSONObject:value,options:[.prettyPrinted,.sortedKeys]).write(to:root.appendingPathComponent(stem+".json"))
+            if FileManager.default.fileExists(atPath:errors.path) {
+                try Data(contentsOf:errors).write(to:root.appendingPathComponent(stem+".stderr.txt"))
+            }
+            guard !ready, scenario != "no-ready", scenario != "invalid-ready", child.isRunning else { return }
+            func capture(_ executable: String, _ arguments: [String], name: String) throws {
+                let output = root.appendingPathComponent(stem+name)
+                _ = FileManager.default.createFile(atPath:output.path,contents:nil)
+                let handle = try FileHandle(forWritingTo:output); defer { try? handle.close() }
+                let command = Process(), ended = DispatchSemaphore(value:0)
+                command.executableURL = URL(fileURLWithPath:executable); command.arguments = arguments
+                command.standardOutput = handle; command.standardError = handle
+                command.terminationHandler = { _ in ended.signal() }
+                try command.run()
+                if ended.wait(timeout:.now()+4) == .timedOut, command.isRunning {
+                    kill(command.processIdentifier,SIGKILL); _ = ended.wait(timeout:.now()+2)
+                }
+                if !command.isRunning { command.waitUntilExit() }
+            }
+            try capture("/bin/ps",["-p",String(child.processIdentifier),"-o","pid=,ppid=,state=,etime=,time=,command="],name:".process.txt")
+            try capture("/usr/bin/sample",[String(child.processIdentifier),"1","10","-file",root.appendingPathComponent(stem+".stack.txt").path],name:".sample.log")
+        } catch { fputs("Bootstrap diagnostic failed: \(error)\n",stderr) }
     }
     private static func reap(_ process: Process, exited: DispatchSemaphore) {
         guard process.processIdentifier > 0 else { return }

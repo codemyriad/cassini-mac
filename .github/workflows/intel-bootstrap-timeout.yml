@@ -1,0 +1,41 @@
+name: Intel exact failing fixture bootstrap evidence
+'on':
+  push:
+    branches: [ci/intel-bootstrap-timeout]
+permissions:
+  contents: read
+jobs:
+  bootstrap:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: bootstrap-evidence-${{ github.sha }}
+          restore-keys: swiftpm-x86_64-xcode16.4-
+      - name: Compile diagnostic test bundle
+        run: |
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift build --build-tests -j 1
+      - name: Observe actual startup failures before child cleanup
+        env:
+          CASSINI_FIXTURE_DIAGNOSTICS: ${{ github.workspace }}/evidence/children
+          PYTHONPROFILEIMPORTTIME: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          memory_pressure
+          vm_stat
+          command -v python3 > evidence/interpreter.txt
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test --skip-build --filter ModelDownloaderTests 2>&1 | tee evidence/tests.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: intel-bootstrap-timeout
+          path: evidence
