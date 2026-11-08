@@ -1,0 +1,61 @@
+name: Stop exclusivity signed app regression proof
+'on':
+  push:
+    branches: [ci/stop-exclusivity-proof]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  regression:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      # Test the exact signed product already built before the unrelated cache-post failure.
+      - uses: actions/checkout@v5
+        with:
+          ref: f74879c7e445f27eac916330fff295509970c4c6
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-debug
+          path: build/ci-products
+          run-id: 42449935994
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact source, pins, archive and signed product
+        run: python3 scripts/ci-products.py unpack debug build/ci-products
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Chromium and shared oracle dependencies
+        run: |
+          npm ci --prefix BrowserExtension/tests
+          BrowserExtension/tests/node_modules/.bin/playwright install chromium
+          python3 -m pip install -r browser-protocol/requirements-test.txt
+      - name: Product capture ownership and repeated Stop without devices
+        run: |
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" python3 scripts/test-browser-capture-app.py build/Build/Products/Debug/Cassini.app --output build/browser-capture-app.json
+      - name: Real Chromium return and automatic Stop
+        run: |
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
+      - name: Shared live-folder recovery and Stop
+        run: |
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" node scripts/test-live-folder.mjs build/Build/Products/Debug/Cassini.app build/live-folder
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: stop-exclusivity-proof
+          path: |
+            build/browser-capture-app.json
+            build/browser-capture-app.stderr.txt
+            build/browser-return-report.json*
+            build/live-folder
