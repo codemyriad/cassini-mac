@@ -30,18 +30,21 @@ public final class BrowserControlService: @unchecked Sendable {
     private let received: @Sendable (String?) -> Void
     /// D52.5: which calls a recording waits to resume; read on this queue before any Start.
     private let ownership: CallOwnershipStore?
+    private let admission: BrowserAutomaticAdmissionStore?
     public init(changed: @escaping @Sendable ([BrowserControlPeerSnapshot]) -> Void,
                 completed: @escaping @Sendable (BrowserControlOutcome,Bool) -> Void, audio: (any BrowserAudioHandler)? = nil,
                 canStart: @escaping @Sendable () -> Bool = { true },
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
                 received: @escaping @Sendable (String?) -> Void = { _ in }, ownership: CallOwnershipStore? = nil,
-                requireMultiStream: Bool = false,
+                requireMultiStream: Bool = false, requireVerifiedAdmission: Bool = false, admission: BrowserAutomaticAdmissionStore? = nil,
                 signalAction: @escaping @Sendable (BrowserSignalAction) -> Void = { _ in },
                 canSignalStart: @escaping @Sendable () -> Bool = { true }) {
+        self.admission = admission
         self.canSignalStart = canSignalStart
         self.signalAction = signalAction
         self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock; self.received = received
-        self.ownership = ownership; registry.requireMultiStream = requireMultiStream
+        self.ownership = ownership; registry = BrowserControlRegistry(clock:{ TimeInterval(clock())/1000 })
+        registry.requireMultiStream = requireMultiStream; registry.requireVerifiedAdmission = requireVerifiedAdmission
         queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {
@@ -65,7 +68,7 @@ public final class BrowserControlService: @unchecked Sendable {
         }
     }
     public func setAutoRecord(_ enabled: Bool, microphone: Bool) {
-        queue.async { [self] in autoRecord = enabled; self.microphone = microphone; reconcile() }
+        queue.async { [self] in autoRecord = enabled; self.microphone = microphone; if !enabled { admission?.cancelAllPending(automaticOnly:true) }; reconcile() }
     }
     public func recordAll(microphone: Bool, choices: [BrowserMeetingKey:Bool] = [:], issued: @escaping @Sendable ([BrowserControlRequest]) -> Void = { _ in }) {
         queue.async { [self] in
@@ -145,18 +148,20 @@ public final class BrowserControlService: @unchecked Sendable {
                 registry.snapshots.flatMap { $0.captures + $0.interrupted }
                     .first { $0.captureID.map { Data($0.utf8) == Data(id.utf8) } == true }?.key
             } ?? meeting
+            admission?.cancel(current,reason:reason)
             if let request = try? registry.stop(current,captureID:captureID,userInitiated:userInitiated,reason:reason) { send([request]) }
             publish()
         }
     }
     public func stopRecordings(reason: CaptureEndReason = .user) {
         queue.async { [self] in
+            admission?.cancelAllPending()
             if reason == .user || reason == .appQuit { signals.suppress(reason:reason); driveSignals() }
             send(registry.stopAll(userInitiated:reason == .user || reason == .appQuit,reason:reason)); publish() }
     }
     public func stop() {
         sync {
-            autoRecord = false; signals.suppress(reason:.appQuit); driveSignals()
+            autoRecord = false; admission?.cancelAllPending(); signals.suppress(reason:.appQuit); driveSignals()
             timer?.cancel(); timer = nil
             server?.stop(); server = nil
             for id in Array(connections.keys) { disconnect(id) }
@@ -180,7 +185,9 @@ public final class BrowserControlService: @unchecked Sendable {
             // heartbeat-v1: every inbound frame (pong included) refreshes liveness.
             if message["type"]?.string == "hello" {
                 if registry.snapshots.first(where:{ $0.id == connection.peer.id })?.supportsCallSignals == true {
-                    try connection.send(Data(#"{"type":"configure","capabilities":["call-signals-v1"]}"#.utf8))
+                    let offered = message["capabilities"]?.array?.compactMap(\.string) ?? []
+                    let wanted = registry.requireVerifiedAdmission && offered.contains("verified-auto-admission-v1") ? ["call-signals-v1","verified-auto-admission-v1"] : ["call-signals-v1"]
+                    try connection.send(JSON.object([("type",.string("configure")),("capabilities",.array(wanted.map { .string($0) }))]).encoded(maximumBytes:1024))
                 }
                 heartbeats[connection.peer.id]?.hello(capabilities:message["capabilities"]?.array?.compactMap(\.string) ?? [],at:clock())
             } else { heartbeats[connection.peer.id]?.inbound(message["type"]?.string,at:clock()) }
@@ -198,8 +205,15 @@ public final class BrowserControlService: @unchecked Sendable {
                let outcome = registry.outcomes.last, outcome.requestID == id {
                 deadlines.removeValue(forKey:id)
                 let wasAutomatic = automatic.remove(id) != nil
-                completed(outcome,wasAutomatic)
+                var settled = outcome
+                if wasAutomatic, !outcome.ok, let call = request.automaticCall, admission?.hasAcceptedInput(id) != true,
+                   !autoRecord || !registry.bindingIsFresh(call) || admission?.pendingWasWithdrawn(id) == true {
+                    settled.admissionWithdrawn = true; registry.retryAfterWithdrawnAdmission(request)
+                }
+                admission?.complete(id)
+                completed(settled,wasAutomatic)
             }
+            admission?.update(pending:registry.pendingAutomaticBindings,owned:registry.currentAutomaticEvidence,ended:registry.endedAutomaticEvidence)
             reconcile()
             received(message["type"]?.string)
         } catch { connection.close(); disconnect(connection.peer.id) }
@@ -217,12 +231,14 @@ public final class BrowserControlService: @unchecked Sendable {
         send(registry.drainStops())
         refreshLostCalls()
         driveSignals()
+        admission?.update(pending:registry.pendingAutomaticBindings,owned:registry.currentAutomaticEvidence,ended:registry.endedAutomaticEvidence)
         if autoRecord && canStart() { send(registry.automaticStarts(microphone:microphone),automatic:true) }
         publish()
     }
     /// Called by native admission after every asynchronous permission/checkpoint boundary.
     public func signalMayOpen(_ id: UUID) -> Bool {
         sync {
+            driveSignals()
             guard signals.mayOpen(id) else { return false }
             // Existing inputs belong to the reservation throughout evidence-loss
             // grace. Its disk watcher/Stop retires it; new-root admission does not.
@@ -246,26 +262,35 @@ public final class BrowserControlService: @unchecked Sendable {
         let peers = registry.snapshots
         let now = TimeInterval(clock()) / 1000
         if signalInput?.hasOpened == true, let id = signals.reservation { signals.didStart(id) }
-        signals.update(peers.compactMap { peer in peer.callSignals.map { .init(id:peer.id,order:peer.signalConnectionOrder,snapshot:$0) } },now:now)
+        signals.update(peers.compactMap { peer in peer.callSignals.map { .init(id:peer.id,order:peer.signalConnectionOrder,snapshot:$0,active:registry.signalActiveKeys(peer.id),expiredAt:registry.signalDeadlines(peer.id)) } },now:now)
         signals.advance(now:now,enabled:autoRecord,blocked:{ [registry,ownership] instance,row in registry.browserOwnsSignal(instance:instance,row:row) || ownership?.snapshot.holdsSignal(tab:row.tabID,generation:row.generation) == true })
-        signalInput?.update(signals.reservation.map { signals.mayOpen($0) && (signals.started || autoRecord) } ?? false)
+        let ownerDeadlines = signals.calls.map { key,value in (value.lostAt ?? registry.signalDeadline(key)).map { $0+120 } }
+        let hardDeadline = registry.requireVerifiedAdmission && ownerDeadlines.allSatisfy({ $0 != nil }) ? ownerDeadlines.compactMap { $0 }.max() : nil
+        signalInput?.update(signals.reservation.map { signals.mayOpen($0) && (signals.started || autoRecord) } ?? false,expiresAt:registry.signalDeadline(signals.pendingCall),closesAt:hardDeadline)
         registry.signalOwnedCalls = Set(signals.calls.keys)
         if let id = signals.reservation, let reason = signals.retiring, signalStopSent != id {
             signalStopSent = id; signalAction(.stop(id:id,reason:reason))
         } else if autoRecord, signals.reservation == nil, signals.retiring == nil,
                   let site = signals.site, canStart(), canSignalStart(), let id = signals.reserve() {
-            let gate = BrowserSignalInputGate(); gate.update(true); signalInput = gate
+            let gate = BrowserSignalInputGate(clock:{ [clock] in TimeInterval(clock())/1000 }); gate.update(true,expiresAt:registry.signalDeadline(signals.pendingCall),closesAt:registry.signalDeadline(signals.pendingCall).map { $0+120 }); signalInput = gate
             signalAction(.start(id:id,site:site,microphone:microphone))
         }
     }
     private func send(_ requests: [BrowserControlRequest], automatic isAutomatic: Bool = false) {
         for request in requests {
+            if isAutomatic && (!canStart() || !registry.automaticRequestIsFresh(request)) { registry.cancelUnsent(request); continue }
             do {
                 guard let connection = connections[request.key.peer] else { throw BrowserIPCError.closed }
+                if request.action == .start, !request.resume, let context = registry.browserAdmission(request.key) {
+                    let packet = try JSONParser.parse(request.data)
+                    try admission?.issue(request,browser:context.0,generation:context.1,document:context.2,microphone:packet["microphone"]?.bool ?? true,
+                        deadline:request.automaticCall.flatMap { registry.currentAutomaticEvidence[$0] })
+                }
                 try connection.send(request.data)
                 deadlines[request.id] = (request,DispatchTime.now().uptimeNanoseconds + 30_000_000_000)
                 if isAutomatic { automatic.insert(request.id) }
-            } catch { connections[request.key.peer]?.close(); disconnect(request.key.peer) }
+            } catch is CancellationError { registry.cancelUnsent(request); admission?.complete(request.id) }
+            catch { connections[request.key.peer]?.close(); disconnect(request.key.peer) }
         }
     }
     private func disconnect(_ id: UUID, failure: String = "disconnected") {
@@ -279,9 +304,11 @@ public final class BrowserControlService: @unchecked Sendable {
         for request in requests {
             deadlines.removeValue(forKey:request.id)
             if held.contains(request.id) { continue }
+            admission?.complete(request.id)
             let wasAutomatic = automatic.remove(request.id) != nil
             completed(.init(requestID:request.id,key:request.key,action:request.action,ok:false,error:nil,failure:failure,resume:request.resume),wasAutomatic)
         }
+        admission?.update(pending:registry.pendingAutomaticBindings,owned:registry.currentAutomaticEvidence,ended:registry.endedAutomaticEvidence)
         driveSignals(); publish()
     }
     /// Runs the heartbeat now, as the 1 s timer does (tests drive it with an injected clock).

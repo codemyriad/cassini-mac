@@ -12,13 +12,14 @@ public struct BrowserCallSignal: Equatable, Sendable {
     public let reason: String
     public let site: String?
     public let generation: String?
+    public var sourceDocument: String? = nil
     public var eligible: Bool { state == "active" && remoteAudio == "mixed" }
 }
 public struct BrowserCallSignalSnapshot: Equatable, Sendable {
     public let instance: String
     public let sequence: Int
     public let tabs: [BrowserCallSignal]
-    static func read(_ json: JSON) throws -> Self {
+    static func read(_ json: JSON, verified: Bool = false) throws -> Self {
         func keys(_ value: JSON, _ expected: Set<String>) throws {
             guard let pairs = value.object, Set(pairs.map(\.0)) == expected else { throw BrowserControlStateError.malformed }
         }
@@ -33,7 +34,10 @@ public struct BrowserCallSignalSnapshot: Equatable, Sendable {
         guard let raw = json["tabs"]?.array, raw.count <= 100 else { throw BrowserControlStateError.malformed }
         var seen: Set<Int> = []
         let tabs = try raw.map { row -> BrowserCallSignal in
-            try keys(row,["tabId","url","documentGeneration","remoteAudio","callEvidence"])
+            let hasAlias = row["sourceDocumentGeneration"] != nil
+            guard !verified || hasAlias else { throw BrowserControlStateError.malformed }
+            try keys(row,hasAlias ? ["tabId","url","documentGeneration","sourceDocumentGeneration","remoteAudio","callEvidence"] : ["tabId","url","documentGeneration","remoteAudio","callEvidence"])
+            let sourceDocument = row["sourceDocumentGeneration"] == nil || row["sourceDocumentGeneration"] == .null ? nil : try text(row["sourceDocumentGeneration"])
             let tab = try integer(row["tabId"]), url = try text(row["url"],8192), document = try text(row["documentGeneration"])
             guard seen.insert(tab).inserted, url.unicodeScalars.count <= 2048, let parsed = URLComponents(string:url),
                   ["http","https"].contains(parsed.scheme), parsed.host?.isEmpty == false,
@@ -52,7 +56,11 @@ public struct BrowserCallSignalSnapshot: Equatable, Sendable {
                   (state == "active" && reason == "activeCall" && generation != nil ||
                    state == "inactive" && ["callEnded","nonCall"].contains(reason) && (reason != "callEnded" || generation != nil) ||
                    state == "unknown" && ["unverified","unsupported","evidenceConflict"].contains(reason)) else { throw BrowserControlStateError.malformed }
-            return .init(tabID:tab,url:url,document:document,remoteAudio:remote,state:state,reason:reason,site:site,generation:generation)
+            if verified || hasAlias {
+                guard !(state == "active" || reason == "callEnded") || sourceDocument != nil,
+                      state != "unknown" || generation == nil else { throw BrowserControlStateError.malformed }
+            }
+            return .init(tabID:tab,url:url,document:document,remoteAudio:remote,state:state,reason:reason,site:site,generation:generation,sourceDocument:sourceDocument)
         }
         return .init(instance:instance,sequence:sequence,tabs:tabs)
     }
@@ -63,8 +71,9 @@ public struct BrowserCallSignalSnapshot: Equatable, Sendable {
 struct SignalCallPolicy: Sendable {
     struct Key: Hashable, Sendable {
         let instance: String; let tab: Int; let document: String; let generation: String
+        var sourceDocument: String? = nil
         static func == (a: Self, b: Self) -> Bool { a.tab == b.tab && SignalCallPolicy.exact(a.instance,b.instance) && SignalCallPolicy.exact(a.document,b.document) && SignalCallPolicy.exact(a.generation,b.generation) }
-        func hash(into h: inout Hasher) { h.combine(Data(instance.utf8)); h.combine(tab); h.combine(Data(document.utf8)); h.combine(Data(generation.utf8)) }
+        func hash(into h: inout Hasher) { h.combine(Data(instance.utf8)); h.combine(tab); h.combine(Data(document.utf8)); h.combine(Data(generation.utf8)); h.combine(sourceDocument.map { Data($0.utf8) }) }
     }
     struct Suppression: Hashable, Sendable {
         let instance: String; let tab: Int; let generation: String
@@ -73,7 +82,9 @@ struct SignalCallPolicy: Sendable {
     }
     static func exact(_ a: String?, _ b: String?) -> Bool { a.map { Data($0.utf8) } == b.map { Data($0.utf8) } }
     struct Association: Sendable { let site: String; var lostAt: TimeInterval? }
-    struct Peer: Sendable { let id: UUID; let order: UInt64; let snapshot: BrowserCallSignalSnapshot }
+    struct Peer: Sendable { let id: UUID; let order: UInt64; let snapshot: BrowserCallSignalSnapshot; var active: Set<Key>? = nil; var expiredAt: [Key:TimeInterval] = [:] }
+    private struct Observation { let id: UUID; let sequence: Int; let active: Set<Key>? }
+    private var activeKeys: [Data:Set<Key>] = [:]
     static let grace: TimeInterval = 120
     private(set) var calls: [Key:Association] = [:]
     private(set) var snapshots: [Data:BrowserCallSignalSnapshot] = [:]
@@ -83,7 +94,7 @@ struct SignalCallPolicy: Sendable {
     private(set) var reservation: UUID?
     private(set) var started = false
     private(set) var retiring: CaptureEndReason?
-    private var observed: [Data:(UUID,Int)] = [:]
+    private var observed: [Data:Observation] = [:]
     var eligible: Bool {
         if !started, let admitting { return calls[admitting].map { $0.lostAt == nil } ?? false }
         return calls.values.contains { $0.lostAt == nil }
@@ -92,6 +103,7 @@ struct SignalCallPolicy: Sendable {
         calls.filter { $0.value.lostAt == nil }.sorted { String(describing:$0.key) < String(describing:$1.key) }.first
     }
     var site: String? { firstEligible?.value.site }
+    var pendingCall: Key? { admitting }
     func owns(instance: String, tab: Int, generation: String?) -> Bool {
         calls.keys.contains { Self.exact($0.instance,instance) && $0.tab == tab && (generation == nil || Self.exact($0.generation,generation)) }
     }
@@ -105,15 +117,18 @@ struct SignalCallPolicy: Sendable {
                 owners[instance] = (peer.id,peer.order); snapshots.removeValue(forKey:instance); observed.removeValue(forKey:instance)
                 lose(instance,now:now)
             }
-            guard observed[instance]?.0 != peer.id || observed[instance]?.1 != peer.snapshot.sequence else { continue }
-            observed[instance] = (peer.id,peer.snapshot.sequence); snapshots[instance] = peer.snapshot
+            guard observed[instance]?.id != peer.id || observed[instance]?.sequence != peer.snapshot.sequence || observed[instance]?.active != peer.active else { continue }
+            observed[instance] = .init(id:peer.id,sequence:peer.snapshot.sequence,active:peer.active)
+            activeKeys[instance] = peer.active
+            snapshots[instance] = peer.snapshot
             for key in Array(calls.keys) where Data(key.instance.utf8) == instance {
                 let row = peer.snapshot.tabs.first { $0.tabID == key.tab }
-                let same = Self.exact(row?.document,key.document) && Self.exact(row?.generation,key.generation)
+                let same = Self.exact(row?.document,key.document) && Self.exact(row?.generation,key.generation) && Self.exact(row?.sourceDocument,key.sourceDocument)
+                let active = row.map { value in peer.active?.contains(.init(instance:peer.snapshot.instance,tab:value.tabID,document:value.document,generation:value.generation ?? "",sourceDocument:value.sourceDocument)) ?? true } ?? false
                 if same && row?.state == "inactive" && row?.reason == "callEnded" { drop(key,reason:.callEnded) }
-                else if let row, row.state == "active", !same { drop(key,reason:.callEnded) }
-                else if same && row?.state == "active" && (started || row?.remoteAudio == "mixed") { calls[key]?.lostAt = nil }
-                else if calls[key]?.lostAt == nil { calls[key]?.lostAt = now }
+                else if let row, row.state == "active", active, !same { drop(key,reason:.callEnded) }
+                else if same && row?.state == "active" && active && (started || row?.remoteAudio == "mixed") { calls[key]?.lostAt = nil }
+                else if calls[key]?.lostAt == nil { calls[key]?.lostAt = min(now,peer.expiredAt[key] ?? now) }
             }
         }
         for (instance,owner) in owners where !peers.contains(where:{ $0.id == owner.0 }) {
@@ -123,7 +138,7 @@ struct SignalCallPolicy: Sendable {
             guard !peers.contains(where:{ Data($0.snapshot.instance.utf8) == profile }),
                   !calls.keys.contains(where:{ Data($0.instance.utf8) == profile }),
                   !suppressed.contains(where:{ Data($0.instance.utf8) == profile }) else { continue }
-            owners.removeValue(forKey:profile); observed.removeValue(forKey:profile)
+            owners.removeValue(forKey:profile); observed.removeValue(forKey:profile); activeKeys.removeValue(forKey:profile)
         }
         // Grace protects a running recording, never permission/input work that
         // has not opened yet. Fresh evidence may make a later new reservation.
@@ -145,7 +160,8 @@ struct SignalCallPolicy: Sendable {
             for row in snapshot.tabs where row.eligible {
                 guard let generation = row.generation, let site = row.site,
                       !suppressed.contains(.init(instance:instance,tab:row.tabID,generation:generation)), !blocked(instance,row) else { continue }
-                let key = Key(instance:instance,tab:row.tabID,document:row.document,generation:generation)
+                let key = Key(instance:instance,tab:row.tabID,document:row.document,generation:generation,sourceDocument:row.sourceDocument)
+                guard activeKeys[Data(instance.utf8)]?.contains(key) ?? true else { continue }
                 if calls[key] == nil { calls[key] = .init(site:site) }
             }
         }
@@ -189,11 +205,28 @@ public final class BrowserSignalInputGate: @unchecked Sendable {
     private let lock = NSLock()
     private var allowed = false
     private var opened = false
+    private var expiresAt: TimeInterval?
+    private var closesAt: TimeInterval?
+    private let clock: @Sendable () -> TimeInterval
+    init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) { self.clock = clock }
+    public var permits: Bool { lock.withLock { allowed && (closesAt.map { clock() < $0 } ?? true) && (opened || (expiresAt.map { clock() < $0 } ?? true)) } }
+    public func cancel() { lock.withLock { allowed = false } }
     var hasOpened: Bool { lock.withLock { opened } }
-    func update(_ allowed: Bool) { lock.withLock { self.allowed = allowed } }
+    func update(_ allowed: Bool, expiresAt: TimeInterval? = nil, closesAt: TimeInterval? = nil) { lock.withLock { self.allowed = allowed; self.expiresAt = expiresAt; self.closesAt = closesAt } }
+    func validate() throws {
+        try lock.withLock {
+            guard allowed, closesAt.map({ clock() < $0 }) ?? true, opened || (expiresAt.map({ clock() < $0 }) ?? true) else { throw CancellationError() }
+        }
+    }
+    func acceptOwner() throws {
+        try lock.withLock {
+            guard allowed, closesAt.map({ clock() < $0 }) ?? true, opened || (expiresAt.map({ clock() < $0 }) ?? true) else { throw CancellationError() }
+            opened = true
+        }
+    }
     @MainActor func admit(_ body: () throws -> Void) throws {
         try lock.withLock {
-            guard allowed else { throw CancellationError() }
+            guard allowed, closesAt.map({ clock() < $0 }) ?? true, opened || (expiresAt.map({ clock() < $0 }) ?? true) else { throw CancellationError() }
             try body(); opened = true
         }
     }

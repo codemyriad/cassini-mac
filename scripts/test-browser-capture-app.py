@@ -44,6 +44,7 @@ for name in [
     'realSelectionUsesOwnedInputLifecycle',
     'pageStopLeavesOtherMeetingRecording',
     'fallbackAndWorkerRecoveryKeepOneFolder',
+    'legacyAutomaticDeniedManualAllowed',
     'newCallAutoStartAndNotificationStop',
     'deniedMicKeepsOthersRecording',
     'failedNativeStartSkipsNotifications','nothingStartedLeavesNoLibraryEntry',

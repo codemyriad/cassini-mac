@@ -43,7 +43,7 @@ let package = Package(
         .executableTarget(name:"cassini-session-transition-probe",dependencies:["CassiniRecording","CassiniKit"],path:"Spikes/SessionTransitions"),
         .target(name:"CassiniBrowserControl",dependencies:["CassiniKit","CassiniLibrary","CassiniRecording"]),
         .executableTarget(name:"cassini-control-host",dependencies:["CassiniBrowserControl"]),
-        .testTarget(name:"CassiniBrowserControlTests",dependencies:["CassiniBrowserControl","CassiniKit"]),
+        .testTarget(name:"CassiniBrowserControlTests",dependencies:["CassiniBrowserControl","CassiniKit"],resources:[.copy("Fixtures")]),
         .target(name:"CassiniBrowserSetupProbe",path:"Spikes/BrowserSetup/Protocol"),
         .executableTarget(name:"cassini-browser-setup-probe-client",dependencies:["CassiniBrowserSetupProbe"],path:"Spikes/BrowserSetup/Client"),
         .executableTarget(name:"cassini-browser-setup-probe-service",dependencies:["CassiniBrowserSetupProbe"],path:"Spikes/BrowserSetup/Service"),
