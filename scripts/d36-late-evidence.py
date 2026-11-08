@@ -42,6 +42,7 @@ def run():
         proof = json.loads((output / 'D.stdout.txt').read_text())
         assert proof['diagnosticEvidenceOnly'] and proof['audioDevicesOpened'] is False
         assert not proof['omittedLateEvents'] and not proof['producerTiming']['omitted']
+        assert not proof['producerTiming']['checkpoints']['omitted']
         (output / 'D.json').write_text(json.dumps(proof, indent=2) + '\n')
         print(json.dumps({key: proof[key] for key in ['lateColumns','steadyStateColumns','lateColumnFraction','gates','diagnosticEvidenceOnly']}))
         return result.returncode or int(not all(proof['gates'].values()))

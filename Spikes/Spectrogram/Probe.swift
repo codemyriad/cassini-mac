@@ -2,8 +2,8 @@
 #if DEBUG
 import AppKit
 import AVFoundation
-import CassiniRecording
-import CassiniBrowserControl
+@_spi(Testing) import CassiniRecording
+@_spi(Testing) import CassiniBrowserControl
 import CassiniSpectrogram
 import CassiniKit
 import Darwin
@@ -373,6 +373,20 @@ import ScreenCaptureKit
 
 /// No AVAudioEngine, AudioProcessTap, browser profile or network exists here.
 /// A serial timer feeds prebuilt RAM buffers into the actual per-session paths.
+private final class CheckpointEvidence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [(String,Double)] = []
+    private var omitted = 0
+    func append(_ phase: String, atMs: Double) {
+        lock.withLock {
+            if events.count < 2048 { events.append((phase,atMs)) } else { omitted += 1 }
+        }
+    }
+    var snapshot: [String:Any] {
+        let values = lock.withLock { (events,omitted) }
+        return ["omitted":values.1,"events":values.0.map { ["phase":$0.0,"atMs":$0.1] as [String:Any] }]
+    }
+}
 private final class SpectrogramProbeInputs: @unchecked Sendable {
     let observers: RecordedPCMObservers, origin = ProcessInfo.processInfo.systemUptime
     private let sink: RecordingSink, owner: OwnedBrowserCapture?
@@ -392,9 +406,10 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     }
     private var packetEvidence: [PacketEvidence] = []
     private var omittedPacketEvidence = 0
+    private let checkpointEvidence = CheckpointEvidence()
     var producerDiagnostics: [String:Any] {
         let captured = queue.sync { (packetEvidence,omittedPacketEvidence) }
-        return ["omitted":captured.1,"packets":captured.0.map {
+        return ["omitted":captured.1,"checkpoints":checkpointEvidence.snapshot,"packets":captured.0.map {
             ["sequence":Double($0.sequence),"source":Double($0.source),"offsetMs":$0.offsetMs,"beganMs":$0.beganMs,"endedMs":$0.endedMs]
         }]
     }
@@ -449,7 +464,11 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             observers = session.pcmObservers
             sink = RecordingSink(session:session,originHostTime:AVAudioTime.hostTime(forSeconds:origin),onFailure:{ _ in })
         }
-        if producerEvidence { packetEvidence.reserveCapacity(2048) }
+        if producerEvidence {
+            packetEvidence.reserveCapacity(2048)
+            let trace = checkpointEvidence, epoch = origin
+            owner?.setCheckpointObserver { phase in trace.append(phase.rawValue,atMs:(ProcessInfo.processInfo.systemUptime-epoch)*1000) }
+        }
         let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:1)!
         for track in 0..<(browser ? 5 : 2) {
             let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(chunk))!
