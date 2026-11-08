@@ -54,10 +54,11 @@ final class RecognitionFallbackTests: XCTestCase {
     }
     /// codex #108: silence is advanced without allocating it, exactly as feeding zeros.
     func testFeedingSilenceMatchesFeedingZerosFromAnyTail() {
+        let leading = speech(2), after = speech(4)
         for lead in [0,1,300,511,512,700] {
+            let before = Array(leading.prefix(lead))
             for count in [0,1,211,511,512,513,5000] {
                 var zeros = F.ActivityMeter(), fast = F.ActivityMeter()
-                let before = speech(2).prefix(lead).map { $0 }, after = speech(4)
                 zeros.feed(before); fast.feed(before)
                 zeros.feed([Float](repeating:0,count:count)); fast.feedSilence(count)
                 zeros.feed(after); fast.feed(after)
