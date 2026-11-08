@@ -43,7 +43,15 @@ jobs:
           "$py" scripts/ci-products.py unpack assets build/ci-products
           memory_pressure
           vm_stat
-          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" "$py" observer/scripts/fixture-startup-evidence.py
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" "$py" observer/scripts/fixture-startup-evidence.py evidence/path-python
+      - name: Compare exact same fixture binaries with the Xcode framework interpreter
+        shell: bash
+        run: |
+          set -euo pipefail
+          pyroot=/Applications/Xcode_16.4.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/Current/bin
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" env PATH="$pyroot:$PATH" "$pyroot/python3" observer/scripts/fixture-startup-evidence.py evidence/xcode-python
       - uses: actions/upload-artifact@v5
         if: always()
         with:
