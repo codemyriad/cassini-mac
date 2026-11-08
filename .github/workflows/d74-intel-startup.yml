@@ -31,7 +31,8 @@ jobs:
           run-id: 42432157756
           name: ci-assets
           path: build/ci-products
-      - name: Verify exact original products and observe unchanged fixture tests
+      - name: Verify exact original products
+        id: verified
         shell: bash
         run: |
           set -euo pipefail
@@ -43,8 +44,14 @@ jobs:
           "$py" scripts/ci-products.py unpack assets build/ci-products
           memory_pressure
           vm_stat
+      - name: Observe original fixture startup from actual child exec
+        shell: bash
+        run: |
+          set -euo pipefail
+          py=/Applications/Xcode_16.4.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/Current/bin/python3
           lockf -k -t 3600 "$HOME/.cassini-heavy.lock" "$py" observer/scripts/fixture-startup-evidence.py evidence/path-python
       - name: Compare exact same fixture binaries with the Xcode framework interpreter
+        if: ${{ !cancelled() && steps.verified.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
