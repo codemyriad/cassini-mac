@@ -53,6 +53,7 @@ import Darwin
     #if DEBUG
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
     @ObservationIgnored private var failedFixtureOnce = false
+    @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
     #endif
     // Persist accepted queue intent before any inactive folder can move.
     // The active child's paths remain protected; queued folders are rediscovered.
@@ -113,6 +114,7 @@ import Darwin
         let meeting = pending.removeFirst(); active = meeting.folder
         prepared.remove(meeting.folder.path)
         task = Task {
+            var completedSuccessfully = false
             do {
                 struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String; let uiLanguage: String }
                 let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"),uiLanguage:UXText.language.rawValue)) + Data([10])
@@ -144,6 +146,8 @@ import Darwin
                 guard result.status == 0, result.inputError == nil else { throw TranscriptionFailure.runtime("worker exited") }
                 let response = try JSONDecoder().decode(Response.self, from: result.stdout)
                 if let error = response.error, !error.contains("meeting is already being written down") { throw TranscriptionFailure.runtime(error) }
+                completedSuccessfully = response.error == nil
+                SpeechModelController.shared.transcriptionFinished(engine:activeModel ?? "",succeeded:completedSuccessfully)
             } catch is CancellationError {
                 // Quit pauses work. Preserve the sidecar and its reference for
                 // next-launch recovery instead of turning cancellation into failure.
@@ -157,7 +161,11 @@ import Darwin
                 }.value
             }
             await Task.detached { SegmentedAudio.removeAbandonedScratch() }.value
+            let finishedModel = activeModel ?? ""
             active = nil; activeModel = nil; task = nil; startNext()
+            #if DEBUG
+            if SettingsFixture.id != nil { fixtureCompletion?(meeting.folder,finishedModel,completedSuccessfully) }
+            #endif
         }
     }
 }

@@ -175,6 +175,8 @@ private struct SettingsTranscriptionView: View {
             VStack(alignment:.leading,spacing:10) {
                 Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.bold)
                 Text(UXText.text("settings.transcription.speech.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                ParakeetRecommendationView(afterFirst:false)
+                ParakeetDefaultNotice()
                 HStack(alignment:.top,spacing:12) {
                     SpeechRadio(selected:!models.usesParakeet,label:UXText.text("models.whistle.name")) { models.chooseParakeet(false) }
                         .frame(width:20,height:20).accessibilityIdentifier("settings-whistle-radio")

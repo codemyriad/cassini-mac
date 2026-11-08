@@ -28,6 +28,8 @@ struct LibraryView: View {
     @State private var companionSetup = CompanionSetup.shared
     @State private var rename = MeetingRenameCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
+    @State private var speechModels = SpeechModelController.shared
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -51,10 +53,20 @@ struct LibraryView: View {
         }
         .safeAreaInset(edge:.top,spacing:0) {
             CaptureFailureBanner(); trashFailure
+            VStack(alignment:.leading,spacing:0) {
+                ParakeetRecommendationView(afterFirst:true)
+                ParakeetDefaultNotice()
+            }.padding(.horizontal,18)
+
             if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
                     .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,18).padding(.vertical,8)
             }
+        }
+
+        .task { await speechModels.refresh() }
+        .onChange(of:scenePhase) { _, phase in
+            if phase == .active { Task { await speechModels.refreshRecommendation() } }
         }
         .frame(minWidth: 760, minHeight: 480)
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("app.name"))

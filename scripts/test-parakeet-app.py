@@ -35,7 +35,8 @@ with a.report.with_suffix('.stderr.txt').open('w') as errors:
 assert status==0,(status,output.decode(errors='replace'),a.report.with_suffix('.stderr.txt').read_text())
 assert not failures and not sender.is_alive(),failures
 report=json.loads(output)
-for name in ['sandboxedBundledParakeet','installedModelDoesNotSelect','removePreservesAcceptedJob','queuedJobUsesWhistle',
+for name in ['sandboxedBundledParakeet','unverifiedModelCannotBecomeDefault','verifiedInstallationBecomesDefault','explicitWhistleChoiceSurvivesRelaunch',
+             'firstWhistleSuggestionHonorsCapability','suggestionDismissalPersists','defaultNoticeShownOnce','removePreservesAcceptedJob','queuedJobUsesWhistle',
              'invalidModelRetriesWhistle','invalidModelDeleted','choicePersisted','metadataAndAudioPreserved',
              'unusedDamagedInstallationRecovers','removeMessageFollowsDiskCommit','inventoryPreservesAcceptedModel','emptyTranscriptRetryRequeues']:
     assert report[name] is True,(name,report)

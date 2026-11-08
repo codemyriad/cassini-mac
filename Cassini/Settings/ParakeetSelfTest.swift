@@ -40,9 +40,41 @@ import CassiniModels
                 }
                 guard try FileHandle.standardInput.read(upToCount:1)?.isEmpty != false else { throw POSIXError(.EINVAL) }
             }.value
+            await models.reloadInventory()
+            let recommendationEligible = models.recommendationCapable && models.recommendationDiskAvailable
+            guard !models.downloaded, !models.usesParakeet, models.showsSettingsSuggestion == recommendationEligible,
+                  !models.showsAfterFirstSuggestion else { throw POSIXError(.EINVAL) }
+            let firstWhistle = try meeting(root:root,title:"First Whistle transcription")
+            let firstResult: (URL,String,Bool) = await withCheckedContinuation { continuation in
+                queue.fixtureCompletion = { folder,engine,succeeded in
+                    queue.fixtureCompletion = nil
+                    continuation.resume(returning:(folder,engine,succeeded))
+                }
+                queue.enqueue(firstWhistle)
+            }
+            guard firstResult.0 == firstWhistle.folder, firstResult.1 == "whistle", firstResult.2,
+                  models.hasCompletedWhistle else { throw POSIXError(.EINVAL) }
+            if recommendationEligible {
+                guard models.takeAfterFirstSuggestion() || models.hasPresentedAfterFirst,
+                      !models.takeAfterFirstSuggestion() else { throw POSIXError(.EINVAL) }
+            } else {
+                guard !models.showsAfterFirstSuggestion, !models.takeAfterFirstSuggestion() else { throw POSIXError(.EINVAL) }
+            }
+            _ = try checked(firstWhistle,model:"whistle",language:"en")
+            models.dismissSuggestion()
+            guard !models.showsSettingsSuggestion, !models.showsAfterFirstSuggestion else { throw POSIXError(.EINVAL) }
+            let relaunchedSuggestion = SpeechModelController()
+            await relaunchedSuggestion.refresh()
+            guard !relaunchedSuggestion.showsSettingsSuggestion, !relaunchedSuggestion.showsAfterFirstSuggestion else { throw POSIXError(.EINVAL) }
             try install(backup)
-            models.chooseParakeet(false); await models.refresh()
-            guard models.downloaded, !models.usesParakeet else { throw POSIXError(.EINVAL) }
+            await models.reloadInventory()
+            guard models.downloaded, models.usesParakeet,
+                  models.takeDefaultAnnouncement() || models.hasAnnouncedDefault,
+                  !models.takeDefaultAnnouncement() else { throw POSIXError(.EINVAL) }
+            models.chooseParakeet(false); await models.reloadInventory()
+            let relaunchedChoice = SpeechModelController(); await relaunchedChoice.refresh()
+            guard !models.usesParakeet, !relaunchedChoice.usesParakeet,
+                  !relaunchedChoice.takeDefaultAnnouncement() else { throw POSIXError(.EINVAL) }
             // A broken unused installation must not hide Remove and wedge
             // Download/Try again. Inventory cleans it without a network client.
             for name in ["tokens.txt","receipt.json","NOTICE.txt"] {
@@ -52,7 +84,8 @@ import CassiniModels
                       !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
                 try install(backup)
                 await models.reloadInventory()
-                guard models.downloaded,!models.usesParakeet else { throw POSIXError(.EINVAL) }
+                guard models.downloaded,models.usesParakeet else { throw POSIXError(.EINVAL) }
+                models.chooseParakeet(false)
             }
             models.chooseParakeet(true)
             let first = try meeting(root:root,title:"Parakeet active")
@@ -87,8 +120,19 @@ import CassiniModels
             _ = try checked(second,model:"whistle",language:nil)
             // Same-size corrupt tokens pass inventory, then fail the worker's
             // pinned hash check. The real queue must retry in Whistle unchanged.
+            // A same-size corrupt model must not become the new default on its
+            // first inventory verification.
             try install(backup)
             let tokens = SpeechModelController.modelDirectory.appendingPathComponent("tokens.txt")
+            try FileManager.default.removeItem(at:tokens)
+            try Data(repeating:0,count:Int(ParakeetPin.files["tokens.txt"]!.bytes)).write(to:tokens)
+            await models.reloadInventory()
+            guard !models.downloaded, !models.usesParakeet,
+                  !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
+            try install(backup); await models.reloadInventory()
+            guard models.downloaded, models.usesParakeet, !models.takeDefaultAnnouncement() else { throw POSIXError(.EINVAL) }
+            // Once verified, inventory can stay cheap; the worker must still
+            // reject files changed after that verification and fall back safely.
             try FileManager.default.removeItem(at:tokens)
             try Data(repeating:0,count:Int(ParakeetPin.files["tokens.txt"]!.bytes)).write(to:tokens)
             await models.reloadInventory(); models.chooseParakeet(true)
@@ -111,8 +155,10 @@ import CassiniModels
             try await wait { !queue.isBusy }
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })?.hasNoSpeech == true,
                   try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json")) != before else { throw POSIXError(.EINVAL) }
-            let report: [String:Any] = ["sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
-                "installedModelDoesNotSelect":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,
+            let report: [String:Any] = ["physicalMemoryBytes":ProcessInfo.processInfo.physicalMemory,"suggestionEligible":recommendationEligible,
+                "sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
+                "unverifiedModelCannotBecomeDefault":true,"verifiedInstallationBecomesDefault":true,"explicitWhistleChoiceSurvivesRelaunch":true,
+                "firstWhistleSuggestionHonorsCapability":true,"suggestionDismissalPersists":true,"defaultNoticeShownOnce":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,
                 "invalidModelRetriesWhistle":true,"invalidModelDeleted":true,"choicePersisted":true,
                 "metadataAndAudioPreserved":true,"audioDevicesOpened":false,
                 "unusedDamagedInstallationRecovers":true,"removeMessageFollowsDiskCommit":true,
