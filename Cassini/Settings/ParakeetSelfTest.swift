@@ -155,7 +155,7 @@ import CassiniModels
             try await wait { !queue.isBusy }
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })?.hasNoSpeech == true,
                   try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json")) != before else { throw POSIXError(.EINVAL) }
-            let report: [String:Any] = ["physicalMemoryBytes":ProcessInfo.processInfo.physicalMemory,"suggestionEligible":recommendationEligible,
+            let report: [String:Any] = ["physicalMemoryBytes":ProcessInfo.processInfo.physicalMemory,"suggestionMemoryBytes":models.recommendationMemoryBytes,"suggestionEligible":recommendationEligible,
                 "sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
                 "unverifiedModelCannotBecomeDefault":true,"verifiedInstallationBecomesDefault":true,"explicitWhistleChoiceSurvivesRelaunch":true,
                 "firstWhistleSuggestionHonorsCapability":true,"suggestionDismissalPersists":true,"defaultNoticeShownOnce":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,

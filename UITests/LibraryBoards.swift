@@ -561,6 +561,37 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(text("To check for updates. No meeting data is sent.",in:window))
         capture(window,name:"settings-transcription")
     }
+    @MainActor func testParakeetRecommendationCapabilityAndPersistedDismissal() throws {
+        let low = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString,
+            "-CassiniSpeechMemoryBytes",String((UInt64(8) << 30)-1)])
+        let lowWindow = low.windows["cassini-settings-window"]
+        XCTAssertTrue(lowWindow.descendants(matching:.any)["settings-speech-models-ready"].waitForExistence(timeout:20),low.debugDescription)
+        XCTAssertFalse(lowWindow.descendants(matching:.any)["settings-parakeet-suggestion"].exists)
+        low.terminate()
+        for (language,locale) in [("en-GB","en_GB"),("fr-FR","fr_FR"),("pt-PT","pt_PT")] {
+            let identity = UUID().uuidString
+            let arguments = ["-CassiniSettingsID",identity,"-CassiniSpeechMemoryBytes",String(UInt64(8) << 30)]
+            let app = try launch("settings-transcription",fixture:"main",extra:arguments,language:language,locale:locale)
+            let window = app.windows["cassini-settings-window"]
+            XCTAssertTrue(window.descendants(matching:.any)["settings-speech-models-ready"].waitForExistence(timeout:20),app.debugDescription)
+            let card = window.descendants(matching:.any)["settings-parakeet-suggestion"]
+            XCTAssertTrue(card.waitForExistence(timeout:5),app.debugDescription)
+            XCTAssertTrue(card.descendants(matching:.staticText).allElementsBoundByIndex.contains { element in
+                String(describing:element.value ?? element.label).contains("443")
+            },card.debugDescription)
+            XCTAssertTrue(window.buttons["settings-parakeet-suggestion-download"].isHittable)
+            capture(window,name:"settings-parakeet-recommendation-"+language)
+            window.buttons["settings-parakeet-not-now"].click()
+            let hidden = NSPredicate { _,_ in !card.exists }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:hidden,object:nil)],timeout:5),.completed)
+            app.terminate()
+            let relaunched = try launch("settings-transcription",fixture:"main",extra:arguments,language:language,locale:locale)
+            let restored = relaunched.windows["cassini-settings-window"]
+            XCTAssertTrue(restored.descendants(matching:.any)["settings-speech-models-ready"].waitForExistence(timeout:20),relaunched.debugDescription)
+            XCTAssertFalse(restored.descendants(matching:.any)["settings-parakeet-suggestion"].exists)
+            relaunched.terminate()
+        }
+    }
     @MainActor func testSettingsRecordingPreferenceAndTabs() throws {
         let app = try launch("settings-recording",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]

@@ -21,6 +21,8 @@ import CassiniTranscription
     var usesParakeet: Bool { adoption.choice == .parakeet }
     var canAnnounceDefault: Bool { adoption.canAnnounce }
     var hasAnnouncedDefault: Bool { adoption.announcedRevision == ParakeetPin.sourceSHA256 }
+    private(set) var recommendationReady = false
+    private(set) var recommendationMemoryBytes: UInt64 = 0
     private(set) var recommendationCapable = false
     private(set) var recommendationDiskAvailable = false
     var showsSettingsSuggestion: Bool { showsSuggestion(afterFirst:false) }
@@ -79,8 +81,14 @@ import CassiniTranscription
     }
     func refreshRecommendation() async {
         recommendationSerial &+= 1; let serial = recommendationSerial
+        recommendationReady = false
         let appData = Self.appData, manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
-        let app = Bundle.main.bundleURL, memory = ProcessInfo.processInfo.physicalMemory
+        let app = Bundle.main.bundleURL
+        #if DEBUG
+        let memory = SettingsFixture.speechMemory ?? ProcessInfo.processInfo.physicalMemory
+        #else
+        let memory = ProcessInfo.processInfo.physicalMemory
+        #endif
         #if arch(arm64) || arch(x86_64)
         let architecture = true
         #else
@@ -101,7 +109,9 @@ import CassiniTranscription
                 disk:disk,requiredStorage:plan?.spaceRequired ?? UInt64.max)
         }.value
         guard recommendationSerial == serial else { return }
+        recommendationMemoryBytes = memory
         recommendationCapable = status.capable; recommendationDiskAvailable = status.enoughDisk
+        recommendationReady = true
     }
     static var appData: URL {
         #if DEBUG

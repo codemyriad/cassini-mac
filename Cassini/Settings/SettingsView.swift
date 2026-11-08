@@ -233,6 +233,7 @@ private struct SettingsTranscriptionView: View {
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("settings-model-message")
                 }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
+                .accessibilityIdentifier(models.recommendationReady ? "settings-speech-models-ready" : "settings-speech-models-loading")
             VStack(alignment:.leading,spacing:12) {
                 Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
                 HStack(alignment:.top,spacing:10) {
