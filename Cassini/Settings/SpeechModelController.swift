@@ -138,6 +138,7 @@ import CassiniTranscription
         inventory = nil; refreshed = true; downloaded = status.valid
         if status.valid { adoptVerifiedInstallation() }
         else if usesParakeet || status.exists { await invalidModel(generation:token) }
+        else { adoption.unavailable(); persistChoice() }
     }
     func chooseParakeet(_ value: Bool) {
         guard !value || downloaded else { return }

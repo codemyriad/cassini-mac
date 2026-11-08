@@ -10,7 +10,7 @@ public struct SpeechModelAdoption: Sendable, Equatable {
     public private(set) var verifiedRevision: String?
     public private(set) var announcedRevision: String?
     public private(set) var pendingAnnouncementRevision: String?
-    public var canAnnounce: Bool { choice == .parakeet && verifiedRevision != nil && pendingAnnouncementRevision == verifiedRevision }
+    public var canAnnounce: Bool { choice == .parakeet && verifiedRevision != nil && pendingAnnouncementRevision == verifiedRevision && announcedRevision != verifiedRevision }
     public init(choice: Choice = .whistle, adoptedRevision: String? = nil,
                 announcedRevision: String? = nil, pendingAnnouncementRevision: String? = nil) {
         self.choice = choice; self.adoptedRevision = adoptedRevision
@@ -19,7 +19,7 @@ public struct SpeechModelAdoption: Sendable, Equatable {
     public mutating func verified(_ revision: String) {
         verifiedRevision = revision
         if adoptedRevision != revision {
-            if choice != .parakeet && announcedRevision != revision { pendingAnnouncementRevision = revision }
+            pendingAnnouncementRevision = choice != .parakeet && announcedRevision != revision ? revision : nil
             choice = .parakeet; adoptedRevision = revision
         }
     }

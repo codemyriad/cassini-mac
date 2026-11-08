@@ -61,6 +61,9 @@ struct SpeechModelAdoptionTests {
         relaunched.unavailable(); relaunched.verified("pin-A"); #expect(!relaunched.canAnnounce)
         relaunched.unavailable(); relaunched.verified("pin-B"); #expect(relaunched.canAnnounce)
         relaunched.choose(.whistle); #expect(!relaunched.takeAnnouncement())
+        var interrupted = SpeechModelAdoption(choice:.parakeet,adoptedRevision:"pin-A",
+            announcedRevision:"pin-A",pendingAnnouncementRevision:"pin-A")
+        interrupted.verified("pin-A"); #expect(!interrupted.takeAnnouncement())
     }
     @Test func suggestionUsesEightGiBArchitectureRuntimeAndTheExistingReserve() {
         func eligibility(_ memory: UInt64 = 8 << 30, arch: Bool = true, runtime: Bool = true,
