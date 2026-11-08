@@ -10,6 +10,17 @@ private final class VerifiedClock: @unchecked Sendable {
     func now() -> TimeInterval { lock.withLock { value } }
 }
 
+private final class VerifiedOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fulfilled = false
+    let event: XCTestExpectation
+    init(_ event: XCTestExpectation) { self.event = event }
+    func receive() {
+        let first = lock.withLock { if fulfilled { return false }; fulfilled = true; return true }
+        if first { event.fulfill() }
+    }
+}
+
 private final class VerifiedActions: @unchecked Sendable {
     private let lock = NSLock()
     private var values: [UUID] = []
@@ -232,13 +243,14 @@ final class VerifiedAdmissionTests: XCTestCase {
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         defer { try? FileManager.default.removeItem(at:root) }
         let applied = expectation(description:"verified active frame reconciled")
+        let firstFrame = VerifiedOnce(applied)
         let cancelled = expectation(description:"expired admission classified as cancellation")
         let broker = BrowserAudioBroker(make:{ _,_ in XCTFail("Expired input must not reserve a recording"); throw BrowserIPCError.unavailable },
             created:{ _,_ in XCTFail("No capture may attach") },stopNative:{ _,reply in reply(nil) },admission:store)
         let service = BrowserControlService(changed:{ _ in },completed:{ outcome,automatic in
             if outcome.admissionWithdrawn { XCTAssertTrue(automatic); cancelled.fulfill() }
         },audio:broker,clock:{ UInt64(clock.now()*1000) },
-            received:{ if $0 == "callSignals" { applied.fulfill() } },requireMultiStream:true,requireVerifiedAdmission:true,admission:store)
+            received:{ if $0 == "callSignals" { firstFrame.receive() } },requireMultiStream:true,requireVerifiedAdmission:true,admission:store)
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:true)
         let control = try PipeEndpoint(root:root,role:.control,browser:"Chromium"); defer { control.stop() }
