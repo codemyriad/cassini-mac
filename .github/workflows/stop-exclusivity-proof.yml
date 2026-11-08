@@ -13,7 +13,7 @@ jobs:
       # Test the exact signed product already built before the unrelated cache-post failure.
       - uses: actions/checkout@v5
         with:
-          ref: f74879c7e445f27eac916330fff295509970c4c6
+          ref: 7129351113b88064d29398a55eaa99515c735650
           persist-credentials: false
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - uses: actions/download-artifact@v5
