@@ -1,0 +1,48 @@
+name: D74 Intel fixture startup evidence
+'on':
+  push:
+    branches: [ci/d74-intel-startup]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  startup:
+    runs-on: macos-15-intel
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 62091f675be307155973aebb8763d5e46a4c5f09
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          path: observer
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42432157756
+          name: ci-swiftpm-x86_64
+          path: build/ci-products
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42432157756
+          name: ci-assets
+          path: build/ci-products
+      - name: Verify exact original products and observe unchanged fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          py=/Applications/Xcode_16.4.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/Current/bin/python3
+          "$py" scripts/ci-products.py unpack swiftpm build/ci-products
+          "$py" scripts/ci-products.py unpack assets build/ci-products
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" "$py" observer/scripts/fixture-startup-evidence.py
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d74-intel-startup
+          path: evidence
