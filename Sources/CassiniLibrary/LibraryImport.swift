@@ -57,12 +57,28 @@ public enum LibraryImport {
             if safeBasename(parent) { received["originalFolderName"] = parent }
             metadata["received"] = received
             metadata["notes"] = importedNotes
+            if trusted, let route = Self.importedOthersRoute(file.manifest?.raw["x"]?["codemyriad.io"]) {
+                metadata["recordingDetails"] = ["othersRoute":route]
+            }
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
             if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
         }
         guard let meeting = try scanner.scan().meetings.first(where: { $0.id == id }) else { throw POSIXError(.EINVAL) }
         committed = true; return meeting
     }
+    /// D74 immutable routing provenance travels with the recording, including future
+    /// source/reason/site strings. The original namespace remains authoritative for
+    /// re-export; this local copy lets Details work after import without a live tab.
+    public static func importedOthersRoute(_ namespace: JSON?) -> [String:Any]? {
+        guard namespace?["schema"]?.int == 1, let route = namespace?["meeting"]?["recordingDetails"]?["othersRoute"], route.object != nil else { return nil }
+        for key in ["source","reason","site"] {
+            guard let text = route[key]?.string, !text.isEmpty, text.unicodeScalars.count <= 200, text.utf8.count <= 800 else { return nil }
+        }
+        guard let bytes = try? route.encoded(maximumBytes:MeetingMetadataLimit.bytes),
+              let copy = try? JSONSerialization.jsonObject(with:bytes) as? [String:Any] else { return nil }
+        return copy
+    }
+
     /// The notes import keeps from a file's x["gocassini.com"].notes: each valid note's atMs
     /// and text, in order; invalid notes and other members are dropped.
     public static func importedNotes(_ notes: JSON?) -> [[String:Any]] {

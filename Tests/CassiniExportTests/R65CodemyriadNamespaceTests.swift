@@ -51,6 +51,33 @@ struct R65CodemyriadNamespaceTests {
         return (session,try #require(LibraryScanner(root:root).scan().meetings.first))
     }
 
+    @Test func mixedAndFutureRouteValuesSurviveCassiniExportImportAndMetadataEdits() throws {
+        for (source,reason) in [("system","mixedSiteSignal"),("future source","future reason")] {
+            let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+            let route: [String:Any] = ["source":source,"reason":reason,"site":"Synthetic call","future":true]
+            let routeJSON = String(decoding:try JSONSerialization.data(withJSONObject:route),as:UTF8.self)
+            let (_,meeting) = try foreignFile(root,schema:1,route:routeJSON)
+            let directory = meeting.folder
+            let stored = try raw(directory.appendingPathComponent("meeting.json"))
+            let id = try #require(stored["id"]?.string.flatMap(UUID.init(uuidString:)))
+            let writer = try MeetingMetadataWriter(directory:directory,id:id)
+            #expect(stored["recordingDetails"]?["othersRoute"]?["source"]?.string == source)
+            let report = RecordingDetailsReport(.load(folder:directory,lifecycle:.saved,title:"Signal meeting",transcriptDone:false))
+            #expect(report.notes.contains { $0.id == "details.othersRoute.mixedSite" } == (reason == "mixedSiteSignal"))
+            try writer.transaction { $0["title"] = "Edited signal meeting" }
+            let file = try reexportFile(root)
+            let exported = try #require(file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["recordingDetails"]?["othersRoute"])
+            #expect(exported["source"]?.string == source && exported["reason"]?.string == reason && exported["future"] == .bool(true))
+            let copy = root.appendingPathComponent("copy.opus")
+            let snapshot = try #require(LibraryScanner(root:root.appendingPathComponent("Library")).scan().meetings.first)
+            let artifact = try MeetingFileExporter.cassini(snapshot,assets:nil,temporaryRoot:root)
+            try FileManager.default.copyItem(at:artifact.url,to:copy)
+            let imported = try LibraryImport.copy(copy,into:root.appendingPathComponent("Second Library"))
+            let importedJSON = try raw(imported.folder.appendingPathComponent("meeting.json"))
+            #expect(same(importedJSON["recordingDetails"]?["othersRoute"],exported))
+        }
+    }
+
     @Test func aRecordingMirrorsMeetingJSONAndItsTracks() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let (session,meeting) = try recording(root)
@@ -111,7 +138,7 @@ struct R65CodemyriadNamespaceTests {
 
     /// Another writer's namespace (GNOME schema 1, or a future schema) in a real Cassini file,
     /// imported into a Mac Library.
-    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil, words: String = #"{"items":[]}"#, wordCount: Int = 0, moreSpeakers: String = "", title: String = "null", titleSource: String = "meeting-window") throws -> (namespace: JSON, meeting: LibraryMeeting) {
+    private func foreignFile(_ root: URL, schema: Int, cleared: Bool = false, revision: String = "7", notes: String? = nil, words: String = #"{"items":[]}"#, wordCount: Int = 0, moreSpeakers: String = "", title: String = "null", titleSource: String = "meeting-window", route: String? = nil) throws -> (namespace: JSON, meeting: LibraryMeeting) {
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         // A real Cassini file first (the fixture is plain Opus), then the namespace in it.
         let plain = try LibraryImport.copy(fixture,into:root.appendingPathComponent("Seed"))
@@ -121,7 +148,7 @@ struct R65CodemyriadNamespaceTests {
         let foreign = try JSONParser.parse(Data("""
         {"schema":\(schema),"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-10-30--18.02-","namePrefixSource":"recorded","revision":\(revision),\
         "meeting":{"version":1,"title":\(title),"titleSource":"\(titleSource)","speakers":[{"id":"spk-me","name":"Me","provenance":"source","colourIndex":0,"futureSpeakerMember":1},{"id":"spk-1","name":null,"provenance":"unnamed","colourIndex":1\(cleared ? ",\"nameCleared\":true" : "")}\(moreSpeakers)],\
-        "transcript":{"status":"none","reference":null,"futureTranscriptMember":{"a":1}},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}}},\
+        "transcript":{"status":"none","reference":null,"futureTranscriptMember":{"a":1}},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":{"writingDown":{"x":1}\(route.map { ",\"othersRoute\":"+$0 } ?? "")}},\
         "passthrough":{"later":9007199254740993},"automaticTitle":"Weekly sync","tracks":[{"id":"t","spans":[{"file":"track.wav","sampleRate":48000,"frames":10,"startOffsetMs":12.5}],"futureTrackMember":true}],"unknownTop":[1,2]}
         """.utf8))
         var x: [(String,JSON)] = [("codemyriad.io",foreign)]

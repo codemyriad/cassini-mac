@@ -34,7 +34,7 @@ public struct OwnedCaptureSnapshot: Sendable {
 /// budget and a native span writer; browser requests use this owner's I/O queue.
 /// No file I/O occurs under a store-wide lock or in snapshot/UI getters.
 public final class OwnedBrowserCapture: @unchecked Sendable {
-    public let pcmObservers = RecordedPCMObservers()
+    public let pcmObservers: RecordedPCMObservers
     private struct BrowserSource {
         let id: String, label: String, kind: String
         let labelSource: String
@@ -113,6 +113,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     public init(parent: URL, title: String, microphone: Bool, browser: Bool = true, id: UUID = UUID(), managedBrowser: Bool = false,
                 changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void = { _ in }) throws {
         recording = try RecordingSession(parent:parent,title:title,source:browser ? "chromium" : "macos",id:id)
+        pcmObservers = recording.pcmObservers
         me = microphone; self.changed = changed
         // The microphone's track slot is held from the start: browser sources declared
         // before its first buffer cannot take it (it is released if Me is turned off).
@@ -249,9 +250,6 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                     } else { try recording.append(id:span,pcm:bytes,offsetMs:at) }
                     source.recorded = span
                     let admitted = bytes
-                    if let track = recording.manifest.tracks.first(where:{ $0.id == span }), let start = track.startOffsetMs {
-                        pcmObservers.offer(source:.init(id:span,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:start),pcm:admitted,offsetMs:at)
-                    }
                     var peak: Float = 0
                     admitted.withUnsafeBytes { bytes in
                         for offset in stride(from:0,to:bytes.count-1,by:max(2,bytes.count/512*2)) {
@@ -699,6 +697,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     /// Audio is closed and the final session written; only the portable record may be pending.
     public var recordPending: Bool { snapshot.recordPending }
+    @_spi(Testing) public func requirePeriodicCheckpoint() { sync { recording.requirePeriodicCheckpoint() } }
     @_spi(Testing) public func setCheckpointObserver(_ observer: ((RecordingCheckpointPhase) throws -> Void)?) {
         sync { recording.checkpointObserver = observer }
     }

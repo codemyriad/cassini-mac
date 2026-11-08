@@ -16,13 +16,16 @@ import CassiniKit
     var failingStart = false, failingAfterSamples = false
     var onStop: (() -> Void)?
     var onStart: (() -> Void)?
+    var onAuthorize: (() -> Void)?
+    var onAuthorized: (() -> Void)?
     var firstAt: Double = 0
     let origin: UInt64
     init(_ kind: String, origin: UInt64) { self.kind = kind; self.origin = origin }
     func authorize() async throws {
         authorized += 1
         if denied { throw CaptureOpenRefusal.denied }   // As MeetingNativeInputs does.
-        if holdPermission { try await withCheckedThrowingContinuation { permission = $0 } }
+        if holdPermission { try await withCheckedThrowingContinuation { permission = $0; onAuthorize?() } }
+        onAuthorized?()
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if failingStart { throw CocoaError(.fileReadNoPermission) }
@@ -39,6 +42,73 @@ import CassiniKit
     func stop() { stops += 1; sink = nil; onStop?() }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testSignalStopBetweenEligibilityCheckAndDriverStartIsAtomic() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-open-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Signal open boundary",microphone:false,browser:false)
+        let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let gate = BrowserSignalInputGate(); gate.update(true)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in },admission:{
+            // Evidence/Stop wins after the last eligibility check but before the
+            // actual driver call. A separate boolean check cannot fence this race.
+            gate.update(false); return true
+        },inputGate:gate)
+        do { try await inputs.start(); XCTFail("Expected canceled admission") } catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(system.starts,0); XCTAssertTrue(owner.snapshot.manifest.tracks.isEmpty)
+        try await inputs.stop(); try await owner.finish()
+    }
+    @MainActor func testSignalPermissionCompletionRevalidatesEndUnknownAndStopBeforeAnyInput() async throws {
+        for transition in ["unknown","inactive","stop"] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let owner = try OwnedBrowserCapture(parent:root,title:"Signal permission race",microphone:false,browser:false)
+            let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+            let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+            let waiting = expectation(description:"Actual system permission held")
+            system.holdPermission = true; system.onAuthorize = { waiting.fulfill() }
+            let gate = SignalInputGate()
+            let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in },admission:{ gate.allowed })
+            let start = Task { try? await inputs.start() }
+            await fulfillment(of:[waiting],timeout:3)
+            // Control policy has withdrawn the pending reservation. The actual OS
+            // authorization still succeeds; it cannot open a device or write PCM.
+            gate.allowed = false
+            system.permission?.resume(); system.permission = nil
+            await start.value
+            XCTAssertEqual(system.starts,0,transition); XCTAssertEqual(mic.starts,0,transition)
+            XCTAssertFalse(inputs.hasRunningInputs); XCTAssertTrue(owner.snapshot.manifest.tracks.isEmpty)
+            XCTAssertTrue(owner.snapshot.manifest.refusals?.isEmpty ?? true,"Cancellation is not a browser or device refusal")
+            try await inputs.stop(); try await owner.finish()
+        }
+    }
+    @MainActor func testSignalWithdrawalOrStopDuringOthersPermissionNeverPromptsMeAndThrowsCancellation() async throws {
+        for stopping in [false,true] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-cancel-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let owner = try OwnedBrowserCapture(parent:root,title:"Signal permission cancellation",microphone:true,browser:false)
+            let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+            let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+            let waiting = expectation(description:"System permission pending"), late = expectation(description:"Late OS permission completed")
+            system.holdPermission = true; system.onAuthorize = { waiting.fulfill() }; system.onAuthorized = { late.fulfill() }
+            let gate = SignalInputGate()
+            let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in },admission:{ gate.allowed })
+            let start = Task { () -> Bool in
+                do { try await inputs.start(); return false } catch { return error is CancellationError }
+            }
+            await fulfillment(of:[waiting],timeout:3)
+            gate.allowed = false
+            if stopping { try await inputs.stop() }
+            system.permission?.resume(); system.permission = nil
+            let cancelled = await start.value
+            XCTAssertTrue(cancelled,"Admission cancellation must reach the owner")
+            await fulfillment(of:[late],timeout:3)
+            XCTAssertEqual(mic.authorized,0,"Me must never prompt after Others was cancelled")
+            XCTAssertEqual(mic.starts,0); XCTAssertEqual(system.starts,0)
+            XCTAssertTrue(owner.snapshot.manifest.refusals?.isEmpty ?? true)
+            try await inputs.stop(); try await owner.finish()
+        }
+    }
     /// `outcomes`: the peer negotiated source-outcomes-v1 (the capture keeps a source ledger).
     @MainActor private func returnFixture(outcomes: Bool = false) async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -812,3 +882,5 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.kind),["system"])
     }
 }
+
+@MainActor private final class SignalInputGate { var allowed = true }

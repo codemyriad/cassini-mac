@@ -25,10 +25,14 @@ jobs:
       - uses: actions/checkout@v5
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - run: swift --version
+      # Freeze the source fingerprint before generated trees exist; cache post-save
+      # otherwise evaluates hashFiles again and can time out walking build output.
+      - id: swiftpm_key
+        run: echo "hash=${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Spikes/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: .build
-          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Spikes/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}
+          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ steps.swiftpm_key.outputs.hash }}
           restore-keys: swiftpm-${{ matrix.arch }}-xcode16.4-
       - name: Compile all native Swift executables and test bundles once
         run: swift build --build-tests

@@ -109,3 +109,27 @@ fixtures; neither proof opens host devices. The app probe also requires native
 microphone and system inputs to stop after a control-only loss, fallback and
 present/zero-source reconnection, with callEnded persisted. No local app/browser
 execution or self-merge.
+
+D74 call signals are negotiated separately with `call-signals-v1`. A full,
+validated `callSignals` snapshot supplies stable profile/tab/document/call
+identities; its connection and sequence only establish freshness. Active mixed
+calls, under the existing auto-record opt-in, reserve one shared native recording
+before asynchronous file or permission work. They never send browser Start or
+resume, and they cannot become browser stand-ins. Me retains its independent
+selection. A previously owned browser route also fences signal admission.
+
+Associated calls reference-count this shared owner. A matching positive end
+removes its association immediately; a new active generation fences the old one.
+Unknown evidence, removal, navigation, connection loss, or another generation’s
+end starts a monotonic 120-second grace without extending a deadline already in
+progress. Fresh same-call active evidence can reconcile the owner; neither native
+PCM nor microphone activity can do so. A replacement connection does not duplicate
+the recording, and superseded connections cannot end its replacement.
+
+Stop suppresses associated generations and all currently active mixed snapshot
+rows, including facts committed before admission and while an old owner drains.
+A driver-open gate serializes the actual input start with Stop/evidence changes,
+after permission completion. The recording persists its actual routing decision
+in `recordingDetails.othersRoute` before admitting inputs. Its open string values
+survive metadata edits and portable copies. Only the known system/mixedSiteSignal
+route renders the approved quiet Details line; it is never a browser-loss alert.

@@ -421,7 +421,10 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
         }
     }
     func start() {
-        let timer = DispatchSource.makeTimerSource(queue:queue); self.timer = timer
+        // Generated PCM models hardware cadence. Ordinary timers can acquire
+        // a larger system leeway when process visibility changes, even with
+        // the requested1ms leeway. Keep every sample and its original deadline.
+        let timer = DispatchSource.makeTimerSource(flags:.strict,queue:queue); self.timer = timer
         // A one-shot is rearmed from the next integer sample boundary. A
         // repeating fractional-nanosecond period can drift ahead of that boundary
         // and defer a ready buffer by a whole85/170ms on the next repeat.

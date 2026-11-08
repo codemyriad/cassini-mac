@@ -30,7 +30,9 @@ struct LiveCapture {
     /// D52 M3: every browser recording follows its call by this policy (0.2.12+ only, D51).
     var callPolicy = BrowserCallPolicy()
     /// D52.1 R67: this native stand-in already asked one call to join (never retried).
-    var resumeAttempted = false
+    var standInAttempt = BrowserStandInAttempt()
+    var stoppingReason: CaptureEndReason?
+    var stoppingUserInitiated = false
     /// D52.5: the call this recording belongs to. After its audio transport closed, the
     /// recording finds that call by (tabId, callGeneration) on any control peer.
     var callGeneration: String?
@@ -42,6 +44,8 @@ struct LiveCapture {
     var lastNavigationAt: TimeInterval?
     var savingSinceMs: Int64?
     var inputsAdmitted = false
+    var signalReservation: UUID? = nil
+    var signalAdmissionCancelled = false
     @MainActor var microphoneSilent: Bool {
         snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
     }
@@ -61,6 +65,12 @@ private final class CaptureFiles: @unchecked Sendable {
     func canStart() -> Bool {
         guard lock.withLock({ !closed && !moving }) else { return false }
         return (try? LibraryRouting.withRecordingAccess(file:locationFile,defaultRoot:defaultRoot) { _,_ in true }) == true
+    }
+    func canStartSignal() -> Bool {
+        guard lock.withLock({ !closed && !moving }) else { return false }
+        return (try? LibraryRouting.withRecordingAccess(file:locationFile,defaultRoot:defaultRoot) { destination,_ in
+            RecordingDiskWatch.inspect(destination,rate:0)?.shouldStop == false
+        }) == true
     }
     func create(title: String, microphone: Bool, browser: Bool = true, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void) throws -> OwnedBrowserCapture {
         guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
@@ -88,7 +98,7 @@ private final class CaptureFiles: @unchecked Sendable {
     private(set) var captures: [UUID:LiveCapture] = [:]
     private(set) var activity: [UUID:CaptureActivity] = [:]
     private var requestingRecord = false
-    var starting: Bool { requestingRecord || preparingFiles > 0 || activity.values.contains(.preparing) }
+    var starting: Bool { requestingRecord || !pendingSignals.isEmpty || preparingFiles > 0 || activity.values.contains(.preparing) }
     private(set) var available = false
     private(set) var autoRecord = RecordingPreferences.defaults.bool(forKey:"CassiniAutoRecord")
     private(set) var recordFailed = false
@@ -103,6 +113,9 @@ private final class CaptureFiles: @unchecked Sendable {
     @ObservationIgnored private var manualCompleted: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var manualSucceeded: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var microphones: [BrowserMeetingKey:Bool] = [:]
+    @ObservationIgnored private var pendingSignals: Set<UUID> = []
+    @ObservationIgnored private var signalCaptures: [UUID:UUID] = [:]
+    @ObservationIgnored private var signalStartups: [UUID:BrowserSignalStartup] = [:]
     @ObservationIgnored private var started = false
     @ObservationIgnored private var shuttingDown = false
     @ObservationIgnored private var pendingAuto: Set<BrowserMeetingKey> = []
@@ -134,7 +147,66 @@ private final class CaptureFiles: @unchecked Sendable {
         DispatchQueue.main.async { self?.replacePeers(peers) }
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
-    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true)
+    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true,signalAction:{ [weak self] action in
+        Task { @MainActor in await self?.signalAction(action) }
+    },canSignalStart:{ [files] in files.canStartSignal() })
+    private func signalAction(_ action: BrowserSignalAction) async {
+        switch action {
+        case let .start(token,site,microphone):
+            let startup = BrowserSignalStartup(); signalStartups[token] = startup
+            pendingSignals.insert(token)
+            preparingFiles += 1
+            defer { pendingSignals.remove(token); preparingFiles -= 1 }
+            let files = self.files, title = UXText.text("library.untitled")
+            var made: OwnedBrowserCapture?
+            do {
+                guard !shuttingDown, service.signalMayOpen(token) else { throw CancellationError() }
+                let owner = try await Task.detached { [weak self] in
+                    let owner = try files.create(title:title,microphone:microphone,browser:false) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
+                    do { try CaptureRecordWriter.writeMixedRoute(site:site,directory:owner.snapshot.directory,id:owner.snapshot.manifest.id) }
+                    catch { try? FileManager.default.removeItem(at:owner.snapshot.directory); CaptureActivityStore.shared.set(owner.snapshot.manifest.id,nil); throw error }
+                    return owner
+                }.value
+                made = owner
+                guard !shuttingDown, service.signalMayOpen(token) else { throw CancellationError() }
+                let id = owner.snapshot.manifest.id
+                signalCaptures[token] = id
+                let origin = Int(Date().timeIntervalSince1970*1000)
+                try broker.ownNative(owner)
+                await created(owner,info:.init(captureID:"signal-"+id.uuidString,timelineOriginMs:origin,microphone:microphone),signal:token)
+                let cancelled = startup.isCancelled(mayOpen:service.signalMayOpen(token),ending:service.signalEndReason(token) != nil,shuttingDown:shuttingDown)
+                if !cancelled, owner.snapshot.phase == .recording, captures[id]?.savingSinceMs == nil,
+                   captures[id]?.input.hasRunningInputs == true {
+                    service.signalStarted(token)
+                    onAutomaticStart?(id)
+                } else if let value = captures[id], stopping[id] == nil, value.savingSinceMs == nil {
+                    stop(id,reason:cancelled || value.signalAdmissionCancelled ? service.signalEndReason(token) ?? .pageGone : .error,userInitiated:false)
+                } else if stopping[id] == nil {
+                    releaseSignal(token,failed:!cancelled)
+                }
+            } catch {
+                if error is CancellationError { startup.cancel() }
+                if let made { try? await made.finish(); settle(made.snapshot) }
+                if made.map({ stopping[$0.snapshot.manifest.id] == nil }) ?? true {
+                    releaseSignal(token,failed:!(error is CancellationError))
+                }
+            }
+        case let .stop(token,reason):
+            signalStartups[token]?.cancel()
+            if let id = signalCaptures[token], captures[id] != nil {
+                captures[id]?.signalAdmissionCancelled = true
+                stop(id,reason:reason,userInitiated:false)
+            }
+            // A pending file/permission completion revalidates the reservation itself.
+        }
+    }
+    private func releaseSignal(_ token: UUID, failed: Bool = false) {
+        guard let startup = signalStartups[token],
+              let failure = startup.releaseFailure(failed:failed,mayOpen:service.signalMayOpen(token),
+                    ending:service.signalEndReason(token) != nil,shuttingDown:shuttingDown) else { return }
+        signalStartups.removeValue(forKey:token); signalCaptures.removeValue(forKey:token)
+        service.signalReleased(token,failed:failure)
+    }
     private init() {
         #if DEBUG
         // Synthetic UI snapshots use the existing private fixture launch only;
@@ -164,7 +236,7 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     var connected: Bool { peers.contains { $0.reconciled && $0.supportsMultiStream } }
     var needsUpdate: Bool { !connected && peers.contains { $0.reconciled && !$0.supportsMultiStream } }
-    var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.supportsMultiStream && $0.meetings.contains { $0.sourceCount > 0 } } }
+    var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.supportsMultiStream && $0.browserRecordableMeetings.contains { $0.sourceCount > 0 } } }
     var isRecording: Bool { captures.values.contains { $0.snapshot.phase == .recording && $0.savingSinceMs == nil } }
     var isSaving: Bool { captures.values.contains { $0.snapshot.phase == .saving || $0.savingSinceMs != nil } || !stopping.isEmpty || !settling.isEmpty }
     var first: LiveCapture? { captures.values.filter { $0.snapshot.phase == .recording && $0.savingSinceMs == nil }.min { $0.originUptime < $1.originUptime } }
@@ -241,6 +313,9 @@ private final class CaptureFiles: @unchecked Sendable {
     func stop(_ id: UUID, reason: CaptureEndReason = .user, userInitiated explicitIntent: Bool? = nil) {
         guard let value = captures[id] else { return }
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
+        if let token = value.signalReservation { service.stopSignal(token,userInitiated:userInitiated,reason:reason) }
+        captures[id]?.stoppingReason = value.stoppingReason ?? reason
+        captures[id]?.stoppingUserInitiated = value.stoppingUserInitiated || userInitiated
         value.owner.requestEnd(reason,atMs:Double(value.elapsedMs))
         broker.expectResume(value.owner,callGeneration:nil) // Stop fences a pending resume.
         value.input.cancelSourceChange()
@@ -268,6 +343,9 @@ private final class CaptureFiles: @unchecked Sendable {
             }
             if let self, value.owner.snapshot.phase != .saved {
                 try? await self.broker.finish(value.owner,problem:value.owner.snapshot.browserAlive ? "browser-tail-not-flushed" : nil)
+            }
+            if let token = value.signalReservation {
+                self?.releaseSignal(token)
             }
             self?.stopping.removeValue(forKey:id)
         }
@@ -314,7 +392,7 @@ private final class CaptureFiles: @unchecked Sendable {
         // Reconcile auto-record after a move without changing its preference.
         if !blocked, started { service.setAutoRecord(autoRecord,microphone:true) }
     }
-    private func created(_ owner: OwnedBrowserCapture, info: BrowserAudioStart) async {
+    private func created(_ owner: OwnedBrowserCapture, info: BrowserAudioStart, signal: UUID? = nil) async {
         let snapshot = owner.snapshot, id = snapshot.manifest.id
         guard !shuttingDown, snapshot.phase == .recording else {
             try? await broker.finish(owner); settle(owner.snapshot); return
@@ -339,12 +417,16 @@ private final class CaptureFiles: @unchecked Sendable {
             guard let self, let value = self.captures[id], value.owner.snapshot.manifest.source == "macos",
                   !value.input.hasRunningInputs, value.input.openedSides.isEmpty else { return }
             Task { try? await self.broker.finish(value.owner) }
-        })
+        },admission:{ [weak self] in
+            guard let signal else { return true }
+            return self?.service.signalMayOpen(signal) == true
+        },inputGate:signal.flatMap { service.signalInputGate($0) })
         let meetingKey = key(for:info.captureID)
         let spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:owner.pcmObservers,me:snapshot.me,others:snapshot.others) : nil
         spectrogram?.update(events:snapshot.manifest.events ?? [])
         captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,spectrogram:spectrogram,snapshot:snapshot,key:meetingKey,
                              peerKnown:peers.contains { $0.id == meetingKey?.peer })
+        captures[id]?.signalReservation = signal
         // The call this recording belongs to, as the Start named it (the broker recorded it first).
         if let generation = info.callGeneration ?? ownership.snapshot.binding(id)?.callGeneration {
             captures[id]?.callGeneration = generation; captures[id]?.callPolicy.callGeneration = generation
@@ -359,7 +441,13 @@ private final class CaptureFiles: @unchecked Sendable {
         },update:{ [weak self] ids,budget in self?.applyDiskBudget(ids,budget) })
         LibraryStore.shared.refresh(affected:snapshot.directory)
         do { try await input.start() }
-        catch { captures[id]?.sourceProblem = true }
+        catch {
+            if let signal, error is CancellationError {
+                captures[id]?.signalAdmissionCancelled = true
+                signalStartups[signal]?.cancel()
+                owner.requestEnd(service.signalEndReason(signal) ?? .pageGone,atMs:Double(captures[id]?.elapsedMs ?? 0))
+            } else { captures[id]?.sourceProblem = true }
+        }
         if snapshot.manifest.source == "macos", !input.hasRunningInputs { try? await broker.finish(owner) }
         let current = owner.snapshot
         if current.phase == .recording, captures[id]?.savingSinceMs == nil,
@@ -398,11 +486,12 @@ private final class CaptureFiles: @unchecked Sendable {
         guard snapshot.phase == .saved, captures[id] != nil || CaptureActivityStore.shared.snapshot()[id] != nil else { return }
         if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing {
                 guard settling[id] == nil else { return }
+                let signalOwned = captures[id]?.signalReservation != nil
                 settling[id] = Task { [weak self] in
                     let removed = await Task.detached { Self.discardBlank(snapshot) }.value
                     guard let self else { return }
                     self.retire(snapshot)
-                    if removed && !self.isRecording && !self.attemptHasAudio {
+                    if removed && !signalOwned && !self.isRecording && !self.attemptHasAudio {
                         self.recordFailed = true
                         for refusal in snapshot.manifest.refusals ?? [] { self.attemptRefusals = CaptureRefusal.appending(refusal,to:self.attemptRefusals) }
                     }
@@ -415,6 +504,9 @@ private final class CaptureFiles: @unchecked Sendable {
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
             let id = snapshot.manifest.id
             captures[id]?.spectrogram?.stop(atMs:Double(captures[id]?.elapsedMs ?? 0))
+            if let token = captures[id]?.signalReservation, stopping[id] == nil {
+                releaseSignal(token,failed:captures[id]?.signalAdmissionCancelled != true)
+            }
             captures.removeValue(forKey:id); announced.remove(id); feedOwnership(id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)
@@ -529,26 +621,39 @@ private final class CaptureFiles: @unchecked Sendable {
     /// supports resume, ask it once to join this recording. No fresh Start follows.
     private func offerStandIn(_ id: UUID, _ value: LiveCapture) {
         let source = value.owner.snapshot
-        guard value.key == nil, !value.resumeAttempted, value.savingSinceMs == nil, source.phase == .recording,
+        guard value.signalReservation == nil, value.key == nil, !value.standInAttempt.attempted, !value.standInAttempt.pending, value.savingSinceMs == nil, source.phase == .recording,
               source.manifest.source == "macos", source.others, !source.transportAlive else { return }
         let state = CaptureSourceState(events:source.manifest.events ?? [],atMs:.infinity)
         guard state.source == "system", state.reason == "missing",
               let identity = broker.standInIdentity(value.owner) else { return }
         let busy = Set(captures.values.compactMap(\.key)), held = ownership.snapshot
         let calls = peers.filter { $0.reconciled && $0.supportsResume && $0.supportsMultiStream }.flatMap { peer in
-            peer.meetings.filter { meeting in meeting.sourceCount > 0 && meeting.heard && meeting.callGeneration != nil && !busy.contains(meeting.key)
+            peer.browserRecordableMeetings.filter { meeting in meeting.sourceCount > 0 && meeting.heard && meeting.callGeneration != nil && !busy.contains(meeting.key)
                 && !held.holds(meeting:meeting)
                 && !peer.captures.contains { $0.key == meeting.key } }
         }
         guard calls.count == 1, let call = calls.first else { return }
-        captures[id]?.resumeAttempted = true; captures[id]?.key = call.key
+        guard captures[id]?.standInAttempt.begin() == true else { return }
         let owner = value.owner, broker = broker, askedAt = Double(value.elapsedMs)
-        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,owner:owner) { [weak self] generation,request in
+        service.resumeMeeting(call.key,captureID:identity.captureID,timelineOriginMs:identity.timelineOriginMs,owner:owner,expectedGeneration:call.callGeneration) { [weak self] generation,request in
             broker.expectResume(owner,callGeneration:generation,ask:request.map { ($0,askedAt) })
             // The generation the resume was sent with (nil: refused). After the take-over this
             // recording is that call's, so it follows and suppresses exactly that call (D52.5).
-            guard let generation else { return }
-            Task { @MainActor in self?.bindStandIn(id,callGeneration:generation) }
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.captures[id] != nil else {
+                    if request != nil { self.service.stopMeeting(call.key,captureID:identity.captureID,userInitiated:false,reason:.pageGone) }
+                    return
+                }
+                guard let generation, self.captures[id]?.standInAttempt.complete(requestID:request) == true else {
+                    self.captures[id]?.standInAttempt.complete(requestID:nil); return
+                }
+                self.captures[id]?.key = call.key
+                self.bindStandIn(id,callGeneration:generation)
+                if let value = self.captures[id], let reason = value.stoppingReason {
+                    self.service.stopMeeting(call.key,captureID:identity.captureID,userInitiated:value.stoppingUserInitiated,reason:reason)
+                }
+            }
         }
     }
     private func bindStandIn(_ id: UUID, callGeneration: String) {

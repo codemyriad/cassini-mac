@@ -40,6 +40,11 @@ same-build Release SDK objects and the production native renderer source; it
 never rebuilds the app or SDK and is never bundled with Cassini. Debug-only app
 fixtures are excluded from that tool. `scripts/test-spectrogram-app.py` executes
 it only on disposable GitHub-hosted Macs.
+Its generated PCM uses a strict dispatch timer at the next integer sample boundary,
+with bounded catch-up that retains every sample. Ordinary application timers can
+acquire a system-controlled minimum leeway after visibility changes; that phase
+change does not model a hardware audio callback. The strict flag honors the same
+requested1ms leeway without changing timestamps, sample counts or measurement budgets.
 It feeds generated PCM through the production sink/file owner and exercises the
 production native renderer for 60 seconds per A–E case. Outputs include per-stage
 thread CPU, process CPU/delta fromE, frame intervals, late/drop counters, actual

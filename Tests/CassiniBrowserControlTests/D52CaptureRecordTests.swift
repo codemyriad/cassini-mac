@@ -8,6 +8,58 @@ import CassiniLibrary
 
 /// D52.1 R65/R69: recordingDetails.captureRecord v1 in meeting.json.
 final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
+    func testMixedRouteSurvivesFinalizationMetadataEditsAndSessionRemoval() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-route-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Mixed site meeting",microphone:false,browser:false)
+        let folder = owner.snapshot.directory, id = owner.snapshot.manifest.id
+        try CaptureRecordWriter.writeMixedRoute(site:"Synthetic call",directory:folder,id:id)
+        let writer = owner.nativeWriter(side:.others)
+        try writer.addTrack(id:"system",label:"This computer",kind:"system",sampleRate:8000,channels:1)
+        try writer.appendNative(id:"system",pcm:Data(repeating:1,count:1600),offsetMs:0)
+        let broker = BrowserAudioBroker(make:{ _,_ in throw BrowserIPCError.unavailable },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
+        try broker.ownNative(owner); try await broker.finish(owner)
+        try MeetingMetadataWriter(directory:folder,id:id).transaction { $0["title"] = "Edited meeting" }
+        let route = try XCTUnwrap((try meeting(folder)["recordingDetails"] as? [String:Any])?["othersRoute"] as? [String:String])
+        XCTAssertEqual(route,["source":"system","reason":"mixedSiteSignal","site":"Synthetic call"])
+        try FileManager.default.removeItem(at:folder.appendingPathComponent("session.json"))
+        let report = RecordingDetailsReport(.load(folder:folder,lifecycle:.saved,title:"Edited meeting",transcriptDone:false))
+        XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedSite"])
+        XCTAssertTrue(report.notes[0].render(language:.en,locale:Locale(identifier:"en_GB")).contains("Synthetic call"))
+        // Future file values stay intact and make no known-route claim.
+        try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
+            var details = metadata["recordingDetails"] as! [String:Any]
+            details["othersRoute"] = ["source":"future source","reason":"future reason","site":"future site","future":17] as [String:Any]
+            metadata["recordingDetails"] = details
+        }
+        try MeetingMetadataWriter(directory:folder,id:id).transaction { $0["title"] = "Another edit" }
+        let future = try XCTUnwrap((try meeting(folder)["recordingDetails"] as? [String:Any])?["othersRoute"] as? [String:Any])
+        XCTAssertEqual(future["source"] as? String,"future source"); XCTAssertEqual(future["future"] as? Int,17)
+        XCTAssertTrue(RecordingDetailsReport(.load(folder:folder,lifecycle:.saved,title:"Another edit",transcriptDone:false)).notes.isEmpty)
+    }
+    func testMixedRouteSiteUsesUnicodeCodePointsForWritingAndDisplay() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-unicode-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Unicode route bounds",microphone:false,browser:false)
+        let folder = owner.snapshot.directory, id = owner.snapshot.manifest.id
+        for site in [String(repeating:"🛰",count:200),"e"+String(repeating:"\u{301}",count:199)] {
+            try CaptureRecordWriter.writeMixedRoute(site:site,directory:folder,id:id)
+            XCTAssertEqual(((try meeting(folder)["recordingDetails"] as? [String:Any])?["othersRoute"] as? [String:String])?["site"],site)
+            let report = RecordingDetailsReport(.load(folder:folder,lifecycle:.recording,title:"Unicode route bounds",transcriptDone:false))
+            XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedSite"])
+            XCTAssertTrue(try XCTUnwrap(report.notes.first).render(language:.en,locale:Locale(identifier:"en_GB")).contains(site))
+        }
+        for site in [String(repeating:"a",count:201),"e"+String(repeating:"\u{301}",count:200)] {
+            XCTAssertThrowsError(try CaptureRecordWriter.writeMixedRoute(site:site,directory:folder,id:id))
+            try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
+                var details = metadata["recordingDetails"] as! [String:Any]
+                details["othersRoute"] = ["source":"system","reason":"mixedSiteSignal","site":site]
+                metadata["recordingDetails"] = details
+            }
+            XCTAssertTrue(RecordingDetailsReport(.load(folder:folder,lifecycle:.recording,title:"Unicode route bounds",transcriptDone:false)).notes.isEmpty,"Malformed imported metadata must not make a route claim")
+        }
+        try await owner.finish()
+    }
     private func meeting(_ folder: URL) throws -> [String:Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as? [String:Any])
     }

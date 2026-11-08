@@ -72,7 +72,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
 
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
-        "details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.lowAudio.underSecond","details.sources.failed","details.sources.silent",
+        "details.othersRoute.mixedSite","details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.lowAudio.underSecond","details.sources.failed","details.sources.silent",
         "details.sources.silent.othersPermissionHint",
         "details.sources.notSelected","details.sources.gap","details.sources.computerBusy","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
@@ -84,6 +84,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         public var lifecycle: Lifecycle
         public var title: String
         public var session: JSON?
+        public var othersRoute: JSON? = nil
         public var captureRecord: JSON?
         public var storedEnd: JSON?
         public var sourceSpansSeparated: Bool
@@ -91,9 +92,10 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         /// recordingDetails.writingDown.silentTracks of the last completed write-down (D56, D67.3).
         public var silentTracks: Set<String>
         public init(lifecycle: Lifecycle, title: String, session: JSON?, captureRecord: JSON? = nil, storedEnd: JSON? = nil,
-                    sourceSpansSeparated: Bool = false, transcriptDone: Bool = false, silentTracks: Set<String> = []) {
+                    sourceSpansSeparated: Bool = false, transcriptDone: Bool = false, silentTracks: Set<String> = [], othersRoute: JSON? = nil) {
             self.lifecycle = lifecycle; self.title = title; self.session = session; self.captureRecord = captureRecord
             self.storedEnd = storedEnd; self.sourceSpansSeparated = sourceSpansSeparated; self.transcriptDone = transcriptDone
+            self.othersRoute = othersRoute
             self.silentTracks = silentTracks
         }
         /// Bounded, symlink-refusing reads of session.json and meeting.json in a meeting folder.
@@ -114,7 +116,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             let silent = listed.flatMap { list in list.allSatisfy { RecordingDetailsReport.identity($0) != nil } ? Set(list.compactMap(\.string)) : nil } ?? []
             return .init(lifecycle:lifecycle,title:title,session:read("session.json",limit:SessionManifestLimit.bytes),captureRecord:details?["captureRecord"],
                          storedEnd:details?["end"],sourceSpansSeparated:details?["writingDown"]?["sourceSpansSeparated"]?.bool == true,transcriptDone:transcriptDone,
-                         silentTracks:silent)
+                         silentTracks:silent,othersRoute:details?["othersRoute"])
         }
     }
 
@@ -145,10 +147,15 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         // The session's list while it exists, else the captureRecord's verbatim copy.
         refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
         notes = (input.sourceSpansSeparated && input.transcriptDone ? [.init("details.sources.overlap")] : [])
+            + (input.othersRoute?["source"]?.string == "system" && input.othersRoute?["reason"]?.string == "mixedSiteSignal" && Self.routeSite(input.othersRoute?["site"]) != nil ? [.init("details.othersRoute.mixedSite",["site":.text(input.othersRoute?["site"]?.string ?? "")])] : [])
             + Self.fallbackCauseLines(input.session?["events"] ?? record?["events"])
         (ended,endKnown) = Self.end(input,events:input.session?["events"] ?? record?["events"])
     }
 
+    private static func routeSite(_ value: JSON?) -> String? {
+        guard let text = value?.string, !text.isEmpty, text.unicodeScalars.count <= 200, text.utf8.count <= 800 else { return nil }
+        return text
+    }
     static let knownFallbackCauses: Set<String> = ["frameError","frameClosed","tabClosed","nativeHostError","startupError","transportClosed"]
     static func fallbackCauseLines(_ raw: JSON?) -> [Line] {
         var shown: Set<String> = [], result: [Line] = []

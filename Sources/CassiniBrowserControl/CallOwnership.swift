@@ -107,6 +107,12 @@ public struct CallOwnership: Sendable, Equatable {
     }
     /// A lost recording holds this call: no other recording (a fresh Start or a D49 stand-in)
     /// may take it; only this recording's own resume.
+    /// A still-owned browser route fences signal admission through a control reconnect,
+    /// before replacement status can bind the live capture to its new peer.
+    func holdsSignal(tab: Int, generation: String?) -> Bool {
+        guard let generation else { return false }
+        return bindings.values.contains { $0.follows && $0.recording && Data(($0.callGeneration ?? "").utf8) == Data(generation.utf8) && ($0.key == nil || $0.key?.tabID == tab) }
+    }
     public func holds(meeting: BrowserMeeting) -> Bool {
         lostCalls(among:[meeting]).contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration))
     }
@@ -167,5 +173,22 @@ public final class CallOwnershipStore: @unchecked Sendable {
     public func lostCalls(among meetings: [BrowserMeeting]) -> Set<BrowserControlRegistry.LostCall> { lock.withLock { state.lostCalls(among:meetings) } }
     public func follow(_ id: UUID, captureID: String?, peers: [BrowserControlPeerSnapshot]) -> CallOwnership.Follow {
         lock.withLock { state.follow(id,captureID:captureID,peers:peers) }
+    }
+}
+
+/// A stand-in offer consumes its one takeover only after an actual request is armed.
+public struct BrowserStandInAttempt: Sendable {
+    public private(set) var pending = false
+    public private(set) var attempted = false
+    public init() {}
+    public mutating func begin() -> Bool {
+        guard !pending, !attempted else { return false }
+        pending = true; return true
+    }
+    @discardableResult public mutating func complete(requestID: String?) -> Bool {
+        guard pending else { return false }
+        pending = false
+        guard requestID != nil else { return false }
+        attempted = true; return true
     }
 }
