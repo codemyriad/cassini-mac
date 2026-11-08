@@ -56,6 +56,20 @@ final class HeldStartTests: XCTestCase {
         .init(clock:{ clock.now },instanceAlive:{ _ in clock.instanceAlive })
     }
 
+    func testUnacknowledgedBrowserStartContinuesToFenceSignalsWhileControlIsDisconnected() throws {
+        let clock = HeldClock(); var state = registry(clock)
+        let old = try ready(&state)
+        let start = try state.start(.init(peer:old,tabID:2),microphone:false)
+        let row = BrowserCallSignal(tabID:2,url:"https://meet.example/2",document:"document-A",remoteAudio:"mixed",state:"active",reason:"activeCall",site:"Synthetic call",generation:"call-A")
+        XCTAssertTrue(state.browserOwnsSignal(instance:"profile-A",row:row))
+        XCTAssertEqual(state.disconnect(old,holding:[start.id]),[start.id])
+        XCTAssertTrue(state.snapshots.isEmpty)
+        XCTAssertTrue(state.browserOwnsSignal(instance:"profile-A",row:row),"A held browser Start may already be recording")
+        clock.advance(BrowserControlRegistry.heldStartGrace)
+        _ = state.settleHeldStarts()
+        XCTAssertFalse(state.browserOwnsSignal(instance:"profile-A",row:row))
+    }
+
     func testAStartLostToAWorkerRestartSettlesOkWhenTheNewLinkReportsItsCapture() throws {
         let clock = HeldClock(); var state = registry(clock)
         let old = try ready(&state)

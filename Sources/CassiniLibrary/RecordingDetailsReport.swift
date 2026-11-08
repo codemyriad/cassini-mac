@@ -153,7 +153,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     }
 
     private static func routeSite(_ value: JSON?) -> String? {
-        guard let text = value?.string, !text.isEmpty, text.count <= 200 else { return nil }
+        guard let text = value?.string, !text.isEmpty, text.unicodeScalars.count <= 200, text.utf8.count <= 800 else { return nil }
         return text
     }
     static let knownFallbackCauses: Set<String> = ["frameError","frameClosed","tabClosed","nativeHostError","startupError","transportClosed"]

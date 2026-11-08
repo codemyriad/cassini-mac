@@ -16,6 +16,26 @@ final class CallSignalTests: XCTestCase {
         var policy = SignalCallPolicy(); policy.update([peer([row()])],now:0); policy.advance(now:0,enabled:true)
         let token = try XCTUnwrap(policy.reserve()); policy.didStart(token); return (policy,token)
     }
+    @MainActor func testStartupCancellationNeverSuppressesReturningEvidenceAndReleasesOnlyOnce() throws {
+        for transition in ["withdrawal","stop","shutdown","ending"] {
+            var p = SignalCallPolicy(); p.update([peer([row()])],now:0); p.advance(now:0,enabled:true)
+            let token = try XCTUnwrap(p.reserve()), startup = BrowserSignalStartup()
+            if transition == "withdrawal" { p.update([peer([row(state:"unknown")],seq:1)],now:1) }
+            if transition == "stop" { p.suppress(); startup.cancel() }
+            let failed = try XCTUnwrap(startup.releaseFailure(failed:true,mayOpen:p.mayOpen(token),ending:transition == "ending",shuttingDown:transition == "shutdown"))
+            XCTAssertFalse(failed,transition)
+            p.release(token,failed:failed)
+            XCTAssertNil(startup.releaseFailure(failed:true,mayOpen:true,ending:false,shuttingDown:false))
+            p.update([peer([row()],seq:2,replacement:true)],now:2); p.advance(now:2,enabled:true)
+            if transition == "stop" { XCTAssertNil(p.reserve(),"Explicit Stop retains its suppression") }
+            else { XCTAssertNotNil(p.reserve(),"A cancellation is not a device failure: " + transition) }
+        }
+        var p = SignalCallPolicy(); p.update([peer([row()])],now:0); p.advance(now:0,enabled:true)
+        let token = try XCTUnwrap(p.reserve()), startup = BrowserSignalStartup()
+        let failed = try XCTUnwrap(startup.releaseFailure(failed:true,mayOpen:p.mayOpen(token),ending:false,shuttingDown:false))
+        XCTAssertTrue(failed); p.release(token,failed:failed); p.advance(now:1,enabled:true)
+        XCTAssertNil(p.reserve(),"Genuine startup failure must not loop")
+    }
     func testOptInMixedAndPositiveProofRequired() {
         for r in [row(state:"unknown"),row(state:"inactive"),row(remote:"separated"),row(remote:"unknown")] {
             var p = SignalCallPolicy(); p.update([peer([r])],now:0); p.advance(now:0,enabled:true)

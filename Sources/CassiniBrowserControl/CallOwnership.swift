@@ -175,3 +175,20 @@ public final class CallOwnershipStore: @unchecked Sendable {
         lock.withLock { state.follow(id,captureID:captureID,peers:peers) }
     }
 }
+
+/// A stand-in offer consumes its one takeover only after an actual request is armed.
+public struct BrowserStandInAttempt: Sendable {
+    public private(set) var pending = false
+    public private(set) var attempted = false
+    public init() {}
+    public mutating func begin() -> Bool {
+        guard !pending, !attempted else { return false }
+        pending = true; return true
+    }
+    @discardableResult public mutating func complete(requestID: String?) -> Bool {
+        guard pending else { return false }
+        pending = false
+        guard requestID != nil else { return false }
+        attempted = true; return true
+    }
+}

@@ -198,3 +198,20 @@ public final class BrowserSignalInputGate: @unchecked Sendable {
         }
     }
 }
+
+/// Retained across asynchronous startup and UI retirement, so cancellation cannot
+/// become a device failure and each reservation is released at most once.
+@MainActor public final class BrowserSignalStartup {
+    public private(set) var cancelled = false
+    private var released = false
+    public init() {}
+    public func cancel() { cancelled = true }
+    public func isCancelled(mayOpen: Bool, ending: Bool, shuttingDown: Bool) -> Bool {
+        cancelled || !mayOpen || ending || shuttingDown
+    }
+    public func releaseFailure(failed: Bool, mayOpen: Bool, ending: Bool, shuttingDown: Bool) -> Bool? {
+        guard !released else { return nil }
+        released = true
+        return failed && !isCancelled(mayOpen:mayOpen,ending:ending,shuttingDown:shuttingDown)
+    }
+}

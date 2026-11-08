@@ -17,6 +17,7 @@ import CassiniKit
     var onStop: (() -> Void)?
     var onStart: (() -> Void)?
     var onAuthorize: (() -> Void)?
+    var onAuthorized: (() -> Void)?
     var firstAt: Double = 0
     let origin: UInt64
     init(_ kind: String, origin: UInt64) { self.kind = kind; self.origin = origin }
@@ -24,6 +25,7 @@ import CassiniKit
         authorized += 1
         if denied { throw CaptureOpenRefusal.denied }   // As MeetingNativeInputs does.
         if holdPermission { try await withCheckedThrowingContinuation { permission = $0; onAuthorize?() } }
+        onAuthorized?()
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if failingStart { throw CocoaError(.fileReadNoPermission) }
@@ -77,6 +79,33 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(system.starts,0,transition); XCTAssertEqual(mic.starts,0,transition)
             XCTAssertFalse(inputs.hasRunningInputs); XCTAssertTrue(owner.snapshot.manifest.tracks.isEmpty)
             XCTAssertTrue(owner.snapshot.manifest.refusals?.isEmpty ?? true,"Cancellation is not a browser or device refusal")
+            try await inputs.stop(); try await owner.finish()
+        }
+    }
+    @MainActor func testSignalWithdrawalOrStopDuringOthersPermissionNeverPromptsMeAndThrowsCancellation() async throws {
+        for stopping in [false,true] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-cancel-"+UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at:root) }
+            let owner = try OwnedBrowserCapture(parent:root,title:"Signal permission cancellation",microphone:true,browser:false)
+            let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
+            let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+            let waiting = expectation(description:"System permission pending"), late = expectation(description:"Late OS permission completed")
+            system.holdPermission = true; system.onAuthorize = { waiting.fulfill() }; system.onAuthorized = { late.fulfill() }
+            let gate = SignalInputGate()
+            let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in },admission:{ gate.allowed })
+            let start = Task { () -> Bool in
+                do { try await inputs.start(); return false } catch { return error is CancellationError }
+            }
+            await fulfillment(of:[waiting],timeout:3)
+            gate.allowed = false
+            if stopping { try await inputs.stop() }
+            system.permission?.resume(); system.permission = nil
+            let cancelled = await start.value
+            XCTAssertTrue(cancelled,"Admission cancellation must reach the owner")
+            await fulfillment(of:[late],timeout:3)
+            XCTAssertEqual(mic.authorized,0,"Me must never prompt after Others was cancelled")
+            XCTAssertEqual(mic.starts,0); XCTAssertEqual(system.starts,0)
+            XCTAssertTrue(owner.snapshot.manifest.refusals?.isEmpty ?? true)
             try await inputs.stop(); try await owner.finish()
         }
     }

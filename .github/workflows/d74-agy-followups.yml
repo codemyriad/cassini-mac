@@ -1,0 +1,33 @@
+name: D74 agy admission and cancellation regressions
+'on':
+  push:
+    branches: [ci/d74-agy-followups]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Validate signal admission, permission cancellation, grace and Unicode
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test -j 1 --filter 'ControlServiceTests|CallSignal|InputLifecycleTests|HeldStartTests|D52CaptureRecordTests' 2>&1 | tee evidence/focused.log
+      - name: Full package integration
+        run: |
+          set -euo pipefail
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test --skip-build -j 1 2>&1 | tee evidence/full.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d74-agy-followups
+          path: evidence

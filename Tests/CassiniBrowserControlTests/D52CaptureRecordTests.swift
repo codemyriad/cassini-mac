@@ -37,6 +37,29 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(future["source"] as? String,"future source"); XCTAssertEqual(future["future"] as? Int,17)
         XCTAssertTrue(RecordingDetailsReport(.load(folder:folder,lifecycle:.saved,title:"Another edit",transcriptDone:false)).notes.isEmpty)
     }
+    func testMixedRouteSiteUsesUnicodeCodePointsForWritingAndDisplay() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-unicode-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Unicode route bounds",microphone:false,browser:false)
+        let folder = owner.snapshot.directory, id = owner.snapshot.manifest.id
+        for site in [String(repeating:"🛰",count:200),"e"+String(repeating:"\u{301}",count:199)] {
+            try CaptureRecordWriter.writeMixedRoute(site:site,directory:folder,id:id)
+            XCTAssertEqual(((try meeting(folder)["recordingDetails"] as? [String:Any])?["othersRoute"] as? [String:String])?["site"],site)
+            let report = RecordingDetailsReport(.load(folder:folder,lifecycle:.recording,title:"Unicode route bounds",transcriptDone:false))
+            XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedSite"])
+            XCTAssertTrue(try XCTUnwrap(report.notes.first).render(language:.en,locale:Locale(identifier:"en_GB")).contains(site))
+        }
+        for site in [String(repeating:"a",count:201),"e"+String(repeating:"\u{301}",count:200)] {
+            XCTAssertThrowsError(try CaptureRecordWriter.writeMixedRoute(site:site,directory:folder,id:id))
+            try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
+                var details = metadata["recordingDetails"] as! [String:Any]
+                details["othersRoute"] = ["source":"system","reason":"mixedSiteSignal","site":site]
+                metadata["recordingDetails"] = details
+            }
+            XCTAssertTrue(RecordingDetailsReport(.load(folder:folder,lifecycle:.recording,title:"Unicode route bounds",transcriptDone:false)).notes.isEmpty,"Malformed imported metadata must not make a route claim")
+        }
+        try await owner.finish()
+    }
     private func meeting(_ folder: URL) throws -> [String:Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as? [String:Any])
     }

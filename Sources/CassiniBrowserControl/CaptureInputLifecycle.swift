@@ -443,7 +443,8 @@ private final class SourceChangeToken: @unchecked Sendable {
         inputs.mapValues { $0.sink.status() }
     }
     private func reconcile(preparedMicrophone: (any CaptureInput)? = nil, refusingAt atMs: Double? = nil) async throws {
-        guard !closed, capture.snapshot.phase == .recording else { return }
+        if closed { if !admission() { throw CancellationError() }; return }
+        guard capture.snapshot.phase == .recording else { return }
         var first: Error?
         // A start side that never opened is refused (D58); any later failure keeps its P10 path.
         // Both start sides are attempted together, so their refusals are written me first.
@@ -457,19 +458,31 @@ private final class SourceChangeToken: @unchecked Sendable {
         if !capture.snapshot.managedBrowser && capture.snapshot.needsSystem && inputs[.others] == nil && !failedSides.contains(.others) {
           let signal = FirstBufferSignal()
           do {
+            guard !closed, admission() else { throw CancellationError() }
             let driver = system(); try await self.authorize(driver,side:.others)
-            guard !closed, capture.snapshot.needsSystem else { return }
+            if closed { if !admission() { throw CancellationError() }; return }
+            guard admission() else { throw CancellationError() }
+            guard capture.snapshot.needsSystem else { return }
             try begin(.others,driver:driver,signal:signal,refusingAt:atMs)
-          } catch { if closed { return }; noteFailure(.others,error,opened:signal.hasFired) }
+          } catch {
+              if error is CancellationError || (closed && !admission()) { throw CancellationError() }
+              if closed { return }; noteFailure(.others,error,opened:signal.hasFired)
+          }
         }
         if capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
           let signal = FirstBufferSignal()
           do {
+            guard !closed, admission() else { throw CancellationError() }
             let driver = preparedMicrophone ?? microphone()
             if preparedMicrophone == nil { try await self.authorize(driver,side:.me) }
-            guard !closed, capture.snapshot.phase == .recording else { return }
+            if closed { if !admission() { throw CancellationError() }; return }
+            guard admission() else { throw CancellationError() }
+            guard capture.snapshot.phase == .recording else { return }
             try begin(.me,driver:driver,signal:signal,refusingAt:atMs)
-          } catch { if closed { return }; noteFailure(.me,error,opened:signal.hasFired) }
+          } catch {
+              if error is CancellationError || (closed && !admission()) { throw CancellationError() }
+              if closed { return }; noteFailure(.me,error,opened:signal.hasFired)
+          }
         }
         if let atMs {
             for (side,reason) in refusing.sorted(by:{ $0.key == .me && $1.key != .me }) { await refuse(side,reason,atMs:atMs) }
