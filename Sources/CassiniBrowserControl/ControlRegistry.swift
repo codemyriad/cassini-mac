@@ -20,6 +20,8 @@ public struct BrowserMeeting: Equatable, Sendable {
     public var sourceCountKnown = true
     public var callGeneration: String? = nil
     public var documentGeneration: String? = nil
+    /// Host admission projection; raw meeting evidence remains visible separately.
+    public var browserRecordable = true
 }
 /// Reported paths are advisory status, never filesystem destinations or grants.
 public struct BrowserCaptureStatus: Equatable, Sendable {
@@ -56,6 +58,7 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public var diagnostics = BrowserCompanionDiagnostics()
     public var browserHealth: BrowserCompanionHealth? = nil
     public var healthRevision: UInt64 = 0
+    public var browserRecordableMeetings: [BrowserMeeting] { meetings.filter(\.browserRecordable) }
     public var setupComplete: Bool { reconciled && supportsMultiStream && !diagnostics.filesMissing }
 }
 public enum BrowserControlAction: String, Sendable { case start, stop, reloadTab }
@@ -188,6 +191,7 @@ public struct BrowserControlRegistry: Sendable {
         let instance: BrowserInstance
         let connectionOrder: UInt64
         let callGeneration: String
+        let signalProfile: String?
         let deadline: TimeInterval
         let call: BrowserCallIdentity?
     }
@@ -373,7 +377,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.filter { !$0.superseded && signalPeerCurrent($0) }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:$0.meetings,captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
         }
     }
     /// D52.5: a call (tabId, callGeneration) that has a recording on system/lost after its
@@ -387,20 +391,37 @@ public struct BrowserControlRegistry: Sendable {
     private var lostCalls: Set<LostCall> = []
     var signalOwnedCalls: Set<SignalCallPolicy.Key> = []
     public mutating func setLostCalls(_ calls: Set<LostCall>) { lostCalls = calls }
+    private func recordableProjection(_ peer: PeerState) -> [BrowserMeeting] {
+        peer.meetings.map { meeting in
+            var result = meeting
+            result.browserRecordable = !signalOnly(meeting,peer:peer) && !signalOwns(meeting)
+            return result
+        }
+    }
     private func signalOnly(_ meeting: BrowserMeeting, peer: PeerState) -> Bool {
         peer.signalsConfigured && peer.callSignals?.tabs.contains { $0.tabID == meeting.key.tabID && $0.remoteAudio == "mixed" } == true
     }
     func browserOwnsSignal(instance: String, row: BrowserCallSignal) -> Bool {
-        peers.values.contains { peer in
-            guard SignalCallPolicy.exact(peer.callSignals?.instance,instance) else { return false }
+        let held = heldStarts.values.contains {
+            ($0.signalProfile == nil || SignalCallPolicy.exact($0.signalProfile,instance)) &&
+            $0.request.key.tabID == row.tabID && SignalCallPolicy.exact($0.callGeneration,row.generation)
+        }
+        if held || lostCalls.contains(.init(tabID:row.tabID,callGeneration:row.generation)) { return true }
+        return peers.values.contains { peer in
+            let profile = peer.callSignals?.instance ?? peer.signalProfile
+            guard profile == nil || SignalCallPolicy.exact(profile,instance) else { return false }
             return (peer.captures + peer.interrupted).contains { $0.key.tabID == row.tabID && ($0.callGeneration == nil || SignalCallPolicy.exact($0.callGeneration,row.generation)) }
                 || peer.pending.values.contains { $0.request.action == .start && $0.request.key.tabID == row.tabID && SignalCallPolicy.exact($0.callGeneration,row.generation) }
-                || lostCalls.contains(.init(tabID:row.tabID,callGeneration:row.generation))
         }
     }
     private func signalOwns(_ meeting: BrowserMeeting) -> Bool {
-        guard let instance = peers[meeting.key.peer]?.callSignals?.instance else { return false }
-        return signalOwnedCalls.contains { SignalCallPolicy.exact($0.instance,instance) && $0.tab == meeting.key.tabID && SignalCallPolicy.exact($0.generation,meeting.callGeneration) }
+        let profile = peers[meeting.key.peer].flatMap { $0.callSignals?.instance ?? $0.signalProfile }
+        // An opaque generation also fences the brief reconnect window before
+        // configure/callSignals supplies the stable profile. Known profiles stay scoped.
+        return signalOwnedCalls.contains {
+            (profile == nil || SignalCallPolicy.exact($0.instance,profile)) &&
+            $0.tab == meeting.key.tabID && SignalCallPolicy.exact($0.generation,meeting.callGeneration)
+        }
     }
     private func hasLostRecording(_ meeting: BrowserMeeting) -> Bool {
         lostCalls.contains(.init(tabID:meeting.key.tabID,callGeneration:meeting.callGeneration)) || signalOwns(meeting)
@@ -442,7 +463,7 @@ public struct BrowserControlRegistry: Sendable {
             if holding.contains(pending.request.id), pending.request.action == .start, !pending.request.resume, peer.supportsMultiStream,
                let instance = peer.peer.browserInstance, let generation = pending.callGeneration, heldStarts.count < 128 {
                 heldStarts[pending.request.id] = .init(request:pending.request,instance:instance,connectionOrder:peer.connectionOrder,
-                                                       callGeneration:generation,deadline:clock()+Self.heldStartGrace,
+                                                       callGeneration:generation,signalProfile:peer.callSignals?.instance ?? peer.signalProfile,deadline:clock()+Self.heldStartGrace,
                                                        // From the request itself: the instance, tab and address it was issued
                                                        // for. unboundStarts no longer has it once a status published before
                                                        // the result has bound its capture (bindCaptures, same identity).

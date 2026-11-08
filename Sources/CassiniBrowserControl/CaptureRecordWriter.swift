@@ -12,7 +12,7 @@ public enum CaptureRecordWriter {
     /// Persist the actual native routing decision before admitting any input. All route
     /// fields stay open strings in stored files; metadata transactions preserve them.
     public static func writeMixedRoute(site: String, directory: URL, id: UUID) throws {
-        guard !site.isEmpty, site.utf8.count <= 320 else { throw BrowserControlStateError.malformed }
+        guard !site.isEmpty, site.unicodeScalars.count <= 200, site.utf8.count <= 800 else { throw BrowserControlStateError.malformed }
         try MeetingMetadataWriter(directory:directory,id:id).transaction { metadata in
             var details = metadata["recordingDetails"] as? [String:Any] ?? [:]
             details["othersRoute"] = ["source":"system","reason":"mixedSiteSignal","site":site]
