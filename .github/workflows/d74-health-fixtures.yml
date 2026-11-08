@@ -1,0 +1,54 @@
+name: D74 packaged companion health fixtures
+'on':
+  push:
+    branches: [ci/d74-health-fixtures]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  health:
+    runs-on: macos-15
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-debug
+          run-id: 42442249584
+          github-token: ${{ github.token }}
+          path: debug-product
+      - name: Verify producer, pins and exact compiled app
+        run: |
+          set -euo pipefail
+          producer=$(python3 -c 'import json; print(json.load(open("debug-product/debug.json"))["commit"])')
+          git fetch --depth 1 origin "$producer"
+          git checkout --detach "$producer"
+          python3 scripts/ci-products.py unpack debug "$GITHUB_WORKSPACE/debug-product"
+          codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
+      - run: brew install displayplacer
+      - run: python3 scripts/hosted-display.py
+      - name: Existing nine-case companion health and file-checked setup test
+        timeout-minutes: 8
+        env:
+          TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+          TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+        run: |
+          set -o pipefail
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" xcodebuild test-without-building \
+            -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+            -destination 'platform=macOS' -parallel-testing-enabled NO \
+            -only-testing:CassiniWindowScreenshots/LibraryBoards/testCompanionHealthUsesExplicitTabAdviceAndFileCheckedSetup \
+            -resultBundlePath build/HealthFixture.xcresult 2>&1 | tee build/health-fixture.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d74-health-fixtures
+          path: |
+            build/health-fixture.log
+            build/HealthFixture.xcresult
