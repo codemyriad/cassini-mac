@@ -51,6 +51,16 @@ const identityReady = (async () => {
 const lostMeetings = new Map();
 const tabRepairs = new Map();
 const relayReady = frame => frame.relayAlive === true && frame.hookReady === true && !frame.obsolete;
+// Handshake and browser-document verification may finish in either order.
+// Neither can attach before the other, or attach twice to the same session.
+function attachFrame(frame) {
+  if (!frames.has(frame) || !relayReady(frame)) return;
+  const current = sessions.get(frame.tabId);
+  if (current?.ready && current.mode === "tracks" && !current.stopping && !current.frames.has(frame)) {
+    current.frames.add(frame);
+    frame.port.postMessage({type:"start",token:current.token,origin:current.origin,captureLocal:current.captureLocal,sourceOutcomes:current.sourceOutcomes});
+  }
+}
 // One decision for health, idle inventory and new track captures. Undetected
 // idle frames do not create a warning or change popup admission by themselves.
 function tabReadiness(tabId) {
@@ -79,11 +89,48 @@ function browserHealth() {
   return {worker:"ready", nativeControl:appControl.port ? "connected" : "disconnected",
     extensionVersion, extensionInstance, ...companionDiagnostics, state, tabs};
 }
+// A status-only loading event can occur without a document replacement. Only
+// Chrome's current injection metadata may restore an obsolete port; a page's
+// discovery generation is never proof of browser document identity.
+function verifyCurrentFrame(frame) {
+  if (!frame.obsolete || !frame.browserDocumentId || !chrome.scripting?.executeScript) return Promise.resolve(false);
+  const epoch = frame.obsoleteEpoch;
+  if (frame.documentCheck?.epoch === epoch) return frame.documentCheck.promise;
+  const check = {epoch}; frame.documentCheck = check;
+  check.promise = (async () => {
+    let deadline;
+    try {
+      const results = await Promise.race([
+        chrome.scripting.executeScript({target:{tabId:frame.tabId,frameIds:[frame.frameId]},world:"ISOLATED",func:()=>null}),
+        new Promise(resolve => { deadline = relayTimers.later(() => resolve(null), TAB_READY_DEADLINE_MS); })
+      ]);
+      if (!frames.has(frame) || frame.obsoleteEpoch !== epoch || pageState(frame.tabId) === "closed" ||
+          !results?.some(result => result.frameId === frame.frameId && result.documentId === frame.browserDocumentId)) return false;
+      frame.obsolete = false;
+      try { frame.port.postMessage({type:"discover"}); }
+      catch { frame.obsolete = true; return false; }
+      if (frame.frameId === 0) setPageState(frame.tabId, "present");
+      attachFrame(frame);
+      notifyControl();
+      return true;
+    } catch { return false; }
+    finally {
+      relayTimers.cancel(deadline);
+      if (frame.documentCheck === check) delete frame.documentCheck;
+    }
+  })();
+  return check.promise;
+}
+function verifyCurrentFrames(tabId, frameId = null) {
+  return Promise.all([...frames].filter(frame => frame.tabId === tabId && (frameId === null || frame.frameId === frameId))
+    .map(verifyCurrentFrame));
+}
 async function repairTab(tabId, frameId = null) {
   const key = frameId === null ? tabId : `${tabId}:${frameId}`;
   if (tabRepairs.has(key)) return tabRepairs.get(key);
   const repair = (async () => {
     await identityReady;
+    await verifyCurrentFrames(tabId, frameId);
     const probe = async () => {
       let deadline;
       try {
@@ -94,6 +141,7 @@ async function repairTab(tabId, frameId = null) {
       } finally { relayTimers.cancel(deadline); }
     };
     const current = await probe();
+    await verifyCurrentFrames(tabId, frameId);
     if ((current?.connected || current?.needsReload) && current.protocol === relayProtocol && current.instanceId === extensionInstance) return;
     // Never wrap RTCPeerConnection again on an already-running page. A fresh
     // isolated relay can reuse a compatible MAIN hook; older hooks require reload.
@@ -216,11 +264,12 @@ function sourceRecords(values) {
     if (!source || typeof source.sourceTrackId !== "string" || !source.sourceTrackId.length ||
         sourceEncoder.encode(source.sourceTrackId).length > 200 ||
         !["local", "remote", "media", "tab", "application"].includes(source.kind) ||
-        (source.failed !== undefined && typeof source.failed !== "boolean"))
+        (source.failed !== undefined && typeof source.failed !== "boolean") ||
+        (source.labelSource != null && !["browser", "dom"].includes(source.labelSource)))
       throw Object.assign(new Error("Invalid audio source record."), {scope: "command", code: "source"});
     return {sourceTrackId: source.sourceTrackId, kind: source.kind,
       label: typeof source.label === "string" ? [...source.label.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 200).join("") : source.kind,
-      failed: source.failed === true};
+      ...(source.labelSource != null ? {labelSource:source.labelSource} : {}), failed: source.failed === true};
   });
 }
 async function recordSources(session, values) {
@@ -511,11 +560,7 @@ async function start(mode, tabId = null, options = {}) {
       checkStarting();
       session.ready = true;
       if (mode === "tracks") {
-        for (const frame of frames) {
-          if (frame.tabId !== tab.id || !relayReady(frame) || session.frames.has(frame)) continue;
-          session.frames.add(frame);
-          frame.port.postMessage({ type: "start", token: session.token, origin: session.origin, captureLocal: session.captureLocal, sourceOutcomes: session.sourceOutcomes });
-        }
+        for (const frame of frames) if (frame.tabId === tab.id) attachFrame(frame);
       } else {
         if (session.sourceOutcomes) {
           session.tabSourceId = crypto.randomUUID();
@@ -567,6 +612,8 @@ function stampDocument(packet, documentGeneration) {
 // span is fenced locally: its late packets are not a failure of the live root.
 async function forwardPacket(session, packet, documentGeneration) {
   packet = stampDocument(packet, documentGeneration);
+  if (packet.type === "track" && packet.labelSource != null && !["browser", "dom"].includes(packet.labelSource))
+    throw Object.assign(new Error("Invalid label provenance."), {scope:"source", code:"source"});
   if (session.callChanged && packet.type !== "trackEnd")
     throw Object.assign(new Error("This audio belongs to a different call."), { scope: "source", code: "callChanged" });
   if (["track", "audio", "trackEnd"].includes(packet.type) &&
@@ -603,7 +650,7 @@ async function forwardPacket(session, packet, documentGeneration) {
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
-  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, sourceCount: 0, heard: false, checking:true, relayAlive:false, hookReady:false, fencedGenerations: new Set() };
+  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, browserDocumentId:typeof port.sender.documentId === "string" ? port.sender.documentId : null, obsoleteEpoch:0, sourceCount: 0, heard: false, checking:true, relayAlive:false, hookReady:false, fencedGenerations: new Set() };
   if (pageState(frame.tabId) === "closed") return;
   if (frame.frameId === 0) setPageState(frame.tabId, "present");
   frames.add(frame);
@@ -615,20 +662,16 @@ chrome.runtime.onConnect.addListener(port => {
     if (!identitiesHydrated) await recovery;
     if (!frames.has(frame)) return;
     if (message.type === "relayHello" || message.type === "relayReady" || message.type === "relayUnavailable") {
-      if (message.protocol !== relayProtocol || message.instanceId !== extensionInstance || frame.obsolete) return;
+      if (message.protocol !== relayProtocol || message.instanceId !== extensionInstance) return;
       frame.relayAlive = true;
       if (message.type !== "relayHello") {
         frame.checking = false; clearTimeout(frame.handshakeDeadline); frame.hookReady = message.type === "relayReady";
         frame.hookSeen ||= frame.hookReady;
-        if (frame.hookReady) {
-          const current = sessions.get(frame.tabId);
-          if (current?.ready && current.mode === "tracks" && !current.stopping && !current.frames.has(frame)) {
-            current.frames.add(frame);
-            port.postMessage({type:"start",token:current.token,origin:current.origin,captureLocal:current.captureLocal,sourceOutcomes:current.sourceOutcomes});
-          }
-        }
       }
-      notifyControl(); return;
+      // Cache matching readiness during verification, but do not publish or
+      // admit an obsolete frame until Chrome proves its document identity.
+      if (!frame.obsolete) { attachFrame(frame); notifyControl(); }
+      return;
     }
     if (message.type === "pageState") {
       if (!frame.obsolete && frame.frameId === 0 && ["present", "navigating"].includes(message.state)) {
@@ -705,7 +748,7 @@ chrome.runtime.onConnect.addListener(port => {
         const key = message.packet.sourceTrackId || session.trackSources.get(message.packet.id);
         if (session.sourceOutcomes && typeof key === "string") {
           const previous = session.discoveredSources.get(key);
-          try { await recordSources(session, [{sourceTrackId:key,kind:previous?.kind || message.packet.kind || "remote",label:previous?.label || message.packet.label || "Audio",failed:true}]); }
+          try { await recordSources(session, [{sourceTrackId:key,kind:previous?.kind || message.packet.kind || "remote",label:previous?.label || message.packet.label || "Audio",...(previous?.labelSource ? {labelSource:previous.labelSource} : {}),failed:true}]); }
           catch (recordError) { failure(recordError.message, session, recordError.lossCause || "nativeHostError"); }
         }
         session.warning = "One track was interrupted and has a gap. The other tracks continue."; session.problem ??= session.warning; notifyControl(); }
@@ -810,8 +853,9 @@ function tabUpdated(id, change) {
   if (change.status === "loading") {
     for (const [key, value] of lostMeetings) if (value.tabId === id) lostMeetings.delete(key);
     if (sessions.has(id) || [...frames].some(f => f.tabId === id)) setPageState(id, "navigating");
-    for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; frame.obsolete = true; }
-  }
+    for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; frame.obsolete = true; frame.obsoleteEpoch++; }
+    void verifyCurrentFrames(id);
+  } else if (change.status === "complete") void verifyCurrentFrames(id);
   if (change.status || change.title !== undefined || change.url !== undefined) notifyControl();
 }
 chrome.tabs.onUpdated.addListener(tabUpdated);

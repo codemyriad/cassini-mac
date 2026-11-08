@@ -31,27 +31,28 @@ def relay_motion_ack(line: str, request: Path) -> bool:
     return True
 
 
-def probe_command(app: Path, case: str, output: Path, allocations: bool = False, profile: bool = False):
+def probe_command(app: Path, case: str, output: Path, allocations: bool = False, profile: bool = False, motion: bool = False):
     executable = app.resolve()
     if executable.suffix == '.app':
         info = plistlib.loads((executable/'Contents/Info.plist').read_bytes())
         executable = executable/'Contents/MacOS'/info['CFBundleExecutable']
     command = [str(executable), '--spectrogram-self-test', '-SpectrogramCase', case,
                '-SpectrogramOutput', str(output.resolve()), '-ApplePersistenceIgnoreState', 'YES']
-    if allocations and profile:
-        raise ValueError('Allocation and Time Profiler are separate processes')
+    if sum([allocations,profile,motion]) > 1:
+        raise ValueError('Allocation, Time Profiler and motion diagnostics are separate processes')
     if allocations:
         command += ['-SpectrogramAllocations', '1']
     if profile:
         command += ['-SpectrogramProfileOnly', '1']
+    if motion:
+        command += ['-SpectrogramMotionOnly', '1']
     return command
 
 
-def motion_driver_started(line: str) -> bool:
-    # This is XCTest's actual test-start event, seen in hosted logs. A suite
-    # start or successful previous test cannot release the measurement.
-    return (line.startswith("Test Case '-[CassiniWindowScreenshots.SpectrogramMotion ") and
-            "testRealSystemSettingsMotionTransitions]' started." in line)
+def motion_driver_ready(line: str) -> bool:
+    # The current driver's explicit post-setup, post-Settings/AX initialization
+    # event. XCTest's "started" line still overlaps automation startup with B.
+    return line.strip() == 'CASSINI_SPECTRO_MOTION_READY'
 
 
 def record_profile(app: Path, output: Path):
@@ -84,6 +85,63 @@ def record_profile(app: Path, output: Path):
             proof.get('analyzedFrames',0) > 0 and (output/'B-TimeProfiler.trace').is_dir())
 
 
+def record_motion(app: Path, output: Path):
+    """OS accessibility automation runs AFTER all uninstrumented A–E intervals.
+
+    Even an initialized XCTest/Settings stack saturates a fresh hosted VM and
+    leaves background work after it exits. It cannot share any timing run.
+    """
+    problems = []
+    motion_ready = threading.Event()
+    process = motion_driver = None
+    request = output.resolve()/'motion-request.json'
+    request.unlink(missing_ok=True)
+    spec, = Path('build/Build/Products').glob('*.xctestrun')
+    motion_env = dict(os.environ, TEST_RUNNER_CASSINI_SPECTRO_MOTION_GATE='1',
+                      TEST_RUNNER_CASSINI_SPECTRO_MOTION_REQUEST=str(request))
+    motion_log = (output/'motion-xctest.log').open('w')
+    motion_driver = subprocess.Popen(['xcodebuild', 'test-without-building', '-xctestrun', str(spec),
+        '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
+        '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
+        '-resultBundlePath', str(output/'Motion.xcresult')],
+        env=motion_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    def relay_motion_events(driver=motion_driver,log=motion_log,current=request,ready=motion_ready):
+        for line in driver.stdout:
+            log.write(line);log.flush()
+            if motion_driver_ready(line): ready.set()
+            try:
+                relay_motion_ack(line,current)
+            except OSError as error:
+                problems.append('motion acknowledgement relay failed: '+str(error))
+    motion_relay = threading.Thread(target=relay_motion_events,daemon=True)
+    motion_relay.start()
+    try:
+        if not motion_ready.wait(timeout=60):
+            return False
+        with (output/'motion.stderr.txt').open('w') as stderr:
+            process = subprocess.Popen(probe_command(app,'B',output,motion=True),
+                env=dict(os.environ,CASSINI_SPECTRO='1'),stdout=subprocess.PIPE,stderr=stderr,text=True)
+            stdout,_ = process.communicate(timeout=100)
+        (output/'motion.stdout.txt').write_text(stdout)
+        report = json.loads(stdout)
+        (output/'motion.json').write_text(json.dumps(report,indent=2)+'\n')
+        return (process.returncode == 0 and report.get('diagnosticMotionOnly') is True and
+                report.get('realMotionTransition') is True and report.get('audioDevicesOpened') is False and
+                not problems)
+    finally:
+        if process and process.poll() is None: process.kill(); process.wait()
+        if motion_driver:
+            try: motion_driver.wait(timeout=20)
+            except subprocess.TimeoutExpired: motion_driver.terminate(); motion_driver.wait(timeout=10)
+        if motion_relay:
+            motion_relay.join(timeout=5)
+            if motion_relay.is_alive(): raise RuntimeError('Motion driver event stream did not close')
+            motion_driver.stdout.close()
+            motion_log.close()
+        if motion_driver and motion_driver.returncode != 0:
+            raise RuntimeError('Real System Settings motion driver failed; see motion-xctest.log')
+
+
 def measure(app: Path, output: Path):
     if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
@@ -94,38 +152,9 @@ def measure(app: Path, output: Path):
         subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
         command = probe_command(app, case, output)
-        motion_driver = None
-        motion_ready = threading.Event()
-        motion_log = None
-        motion_relay = None
-        if case == 'B':
-            request = output.resolve()/'motion-request.json'
-            request.unlink(missing_ok=True)
-            spec, = Path('build/Build/Products').glob('*.xctestrun')
-            motion_env = dict(os.environ, TEST_RUNNER_CASSINI_SPECTRO_MOTION_GATE='1',
-                              TEST_RUNNER_CASSINI_SPECTRO_MOTION_REQUEST=str(request))
-            motion_log = (output/'motion-xctest.log').open('w')
-            motion_driver = subprocess.Popen(['xcodebuild', 'test-without-building', '-xctestrun', str(spec),
-                '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
-                '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
-                '-resultBundlePath', str(output/'Motion.xcresult')],
-                env=motion_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            def relay_motion_events(driver=motion_driver,log=motion_log,current=request,ready=motion_ready):
-                for line in driver.stdout:
-                    log.write(line);log.flush()
-                    if motion_driver_started(line): ready.set()
-                    try:
-                        relay_motion_ack(line,current)
-                    except OSError as error:
-                        problems.append('B: motion acknowledgement relay failed: '+str(error))
-            motion_relay = threading.Thread(target=relay_motion_events,daemon=True)
-            motion_relay.start()
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
             process = top = None
             try:
-                if motion_driver and not motion_ready.wait(timeout=60):
-                    problems.append('B: motion test never entered execution; see motion-xctest.log')
-                    continue
                 process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
                 top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
                                         '-stats', 'pid,cpu'], stdout=top_log, stderr=subprocess.STDOUT)
@@ -136,19 +165,6 @@ def measure(app: Path, output: Path):
                     process.wait()
                 if top:
                     top.terminate(); top.wait(timeout=10)
-                if motion_driver:
-                    try:
-                        motion_driver.wait(timeout=20)
-                    except subprocess.TimeoutExpired:
-                        motion_driver.terminate()
-                        motion_driver.wait(timeout=10)
-                    motion_relay.join(timeout=5)
-                    if motion_relay.is_alive():
-                        problems.append('B: motion event stream did not close after its driver exited')
-                    else:
-                        motion_log.close()
-                    if motion_driver.returncode != 0:
-                        problems.append('B: actual System Settings motion transition failed; see motion-xctest.log')
             (output/f'{case}.stdout.txt').write_text(stdout)
             if process.returncode != 0:
                 try:
@@ -168,10 +184,15 @@ def measure(app: Path, output: Path):
                 problems.append(f'{case}: {name} budget failed')
         if report['audioDevicesOpened'] is not False or not report['stopDisconnectsAndFreezes'] or not report['detachReleasesSurfaces']:
             problems.append(f'{case}: fixture isolation/Stop failed')
-        if case == 'B' and (not report['hideShowReleasesAndRestarts'] or not report['realMotionTransition'] or report['liveCompositedInkPixels']['sound'] < 100 or report['liveCompositedInkPixels']['silence'] > 4):
+        if case == 'B' and (not report['hideShowReleasesAndRestarts'] or report['liveCompositedInkPixels']['sound'] < 100 or report['liveCompositedInkPixels']['silence'] > 4):
             problems.append('B: hide/show lifecycle failed')
         print(f"{case}: CPU {report['cpuCorePercent']:.4f}%, analysis {report['analysisCorePercent']:.4f}%, "
               f"draw {report['drawingCorePercent']:.4f}%, p95/max {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
+    try:
+        if not record_motion(app, output):
+            problems.append('actual System Settings motion transition failed in isolated diagnostic')
+    except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+        problems.append('Isolated motion diagnostic failed: '+str(error))
     # Backtraces contain symbols and sizes only, never heap contents or a raw
     # memory graph (which could include inherited runner credentials).
     allocation = subprocess.run(probe_command(app, 'B', output, allocations=True),
@@ -194,7 +215,7 @@ def measure(app: Path, output: Path):
     for report in reports:
         report['cpuDeltaFromE'] = None if baseline is None else report['cpuCorePercent']-baseline
     summary = {'measurements': reports, 'problems': problems,
-               'scope': 'Uninstrumented A–E production analyser/native renderer and sink/owner with generated RAM input. Time Profiler and Allocations each use a separate process. '
+               'scope': 'Uninstrumented A–E production analyser/native renderer and sink/owner with generated RAM input. Motion/Settings, Time Profiler and Allocations each use separate diagnostic processes after every timing interval. '
                         'View payload includes actual IOSurface allocation and bounded raw rings, excludes framework/object overhead. '
                         'Actual device capture, WindowServer CPU, Allocations and visual review remain separate QA evidence.'}
     (output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')

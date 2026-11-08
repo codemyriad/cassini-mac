@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Device-free tests of probe launching and the motion completion relay."""
+import ast
+import inspect
 import importlib.util
 import json
 import plistlib
@@ -82,16 +84,50 @@ class ProbeLaunch(unittest.TestCase):
                 self.assertEqual(arguments[arguments.index('-SpectrogramOutput')+1], str((root/'output').resolve()))
 
 class InstrumentationIsolation(unittest.TestCase):
-    def test_xctest_readiness_is_the_actual_motion_test_start(self):
-        self.assertTrue(harness.motion_driver_started("Test Case '-[CassiniWindowScreenshots.SpectrogramMotion testRealSystemSettingsMotionTransitions]' started.\n"))
+    def test_measurement_waits_for_explicit_post_setup_driver_readiness(self):
+        self.assertTrue(harness.motion_driver_ready('CASSINI_SPECTRO_MOTION_READY\n'))
         for line in ["Test Suite 'SpectrogramMotion' started.",
+                     "Test Case '-[CassiniWindowScreenshots.SpectrogramMotion testRealSystemSettingsMotionTransitions]' started.",
                      "Test Case '-[CassiniWindowScreenshots.SpectrogramMotion testRealSystemSettingsMotionTransitions]' passed.",
-                     "Test Case '-[CassiniWindowScreenshots.Other testRealSystemSettingsMotionTransitions]' started."]:
-            self.assertFalse(harness.motion_driver_started(line))
+                     'CASSINI_SPECTRO_MOTION_ACK:{"requestID":"first"}',
+                     'CASSINI_SPECTRO_MOTION_READY:pending']:
+            self.assertFalse(harness.motion_driver_ready(line))
 
     def test_allocations_and_profiling_cannot_share_one_process(self):
         with self.assertRaises(ValueError):
             harness.probe_command(Path('/private/probe'), 'B', Path('/private/output'), allocations=True,profile=True)
+
+    def test_all_timed_cases_finish_before_motion_automation_starts(self):
+        body=ast.parse(inspect.getsource(harness.measure)).body[0].body
+        loop=next(i for i,node in enumerate(body) if isinstance(node,ast.For))
+        def has_motion(node):
+            return any(isinstance(child,ast.Call) and isinstance(child.func,ast.Name) and child.func.id=='record_motion' for child in ast.walk(node))
+        self.assertEqual(ast.literal_eval(body[loop].iter),'ABCDE')
+        self.assertFalse(any(has_motion(node) for node in body[:loop+1]))
+        self.assertTrue(any(has_motion(node) for node in body[loop+1:]))
+
+    def test_motion_is_a_separate_diagnostic_with_current_driver_readiness(self):
+        # Real inert processes, with only the external UI driver substituted.
+        # No AppKit, System Settings or native graphics probe executes locally.
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);program=root/'inert-probe'
+            program.write_text('#!'+sys.executable+"\nimport json,sys,os\nprint(json.dumps({'diagnosticMotionOnly':'-SpectrogramMotionOnly' in sys.argv,'realMotionTransition':True,'audioDevicesOpened':False}))\n")
+            program.chmod(0o700)
+            native_popen=subprocess.Popen; launched=[]
+            def spawn(command,**kwargs):
+                if command[0] == 'xcodebuild':
+                    child=native_popen([sys.executable,'-c',"print('CASSINI_SPECTRO_MOTION_READY',flush=True)"],**kwargs)
+                else:
+                    self.assertIn('-SpectrogramMotionOnly',command)
+                    child=native_popen(command,**kwargs)
+                launched.append(child.pid);return child
+            with patch.object(harness.Path,'glob',return_value=iter([root/'private.xctestrun'])),patch.object(harness.subprocess,'Popen',side_effect=spawn):
+                self.assertTrue(harness.record_motion(program,root))
+            self.assertEqual(len(set(launched)),2)
+            self.assertTrue(json.loads((root/'motion.json').read_text())['diagnosticMotionOnly'])
+        for options in [dict(allocations=True,motion=True),dict(profile=True,motion=True)]:
+            with self.assertRaises(ValueError):
+                harness.probe_command(Path('/private/probe'),'B',Path('/private/output'),**options)
 
     def test_profiler_attaches_only_to_its_separate_diagnostic_process(self):
         # Actual inert OS processes exercise lifecycle and signal handling.

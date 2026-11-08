@@ -1,26 +1,26 @@
-tree 97235a82020a3917b7c443fa5307297b23708569
-parent 6d139e3d79613711b7cf84cbbcac67c7650c50ab
-parent 4904a26526c0ed267feb3c7d3124d6c4f7ca7795
-author Silvio Tomatis <silviot@gmail.com> 1793996073 +0100
-committer GitHub <noreply@github.com> 1793996073 +0100
+tree be67e8c68ed305ca302543ee0ab3ff4d2a9c264e
+parent fe44308e21752ab65c5ed55a4fcc5ecc871980c5
+parent 919a5a1ba35f865d45562c0deb6333902e95574f
+author Silvio Tomatis <silviot@gmail.com> 1794068106 +0100
+committer GitHub <noreply@github.com> 1794068106 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7jUpCRC1aQ7uu5UhlAAAGkEQAESVuJkQKZSzODpNjw/QNPXa
- hX7m29hezTRQejEAJMc8jj2aViQqdbUZBijqSwRSVWbofbt2Q/8f97zAp+ppZGmA
- i4ur3VrYviZnMNT6E3YZpg9Cx5DrGhQo0vbyNqYjVGzLUWPmEhrqjlzwqTh5qftY
- M9ZfK6WAamuobgEYEVeIT3GZnbuWJhoS5Ad15K5rTZGGm6bb9Efghekp+ndp5xg2
- cHlQhNBD+reR/+L3pscpsvbSPVmuO758OGONko7eJkNNzNrm/B6q9BLeQoTkJrAd
- BMnVb+3d9dsYNOLzInEVGwlAjypeR7QvJyIz4C0OA7KE62VJPprZL8GPf+X1OCY5
- 712PWYOfoRl6feYYwSMzTiQIJCQPitJW9XU70qG2zwpBDE9a+m69e8GWbyMDA4Is
- 8oC879y2h+y5ycug7MEMLaY+Xc3B2ZML1KWRzQvnxDmVTuPGOlMGt6xZ6jlJdadQ
- ZQp7+sfXwEUNMZbDDjifQlZQV6GGf/2kHVWodKbOiM7dcE5a7MIj2Tvi/CsZP3ja
- cXFt5k3DhwlphKt0tCVmoIkkqB3lYzdWaaqr67nOPylTaGXy6eIBDTTClayNQEeh
- dyMMU71yTP/rT+CWrRxSO+v8P+eKTKtoxFJTuMBZAmoF11CFg28NTfdOKfODlLwl
- 7Nv4Bquugc3tWN07ut3O
- =XhlP
+ wsFcBAABCAAQBQJq706KCRC1aQ7uu5UhlAAACLsQAGfEVwxOX+r0+Q4iajywWqZh
+ SkiCGXvqZTAQO1Ejilw7r7pT64DgcAGre6BJ/f3PG9rRaf2lkR1Ijlnvtjqv9TJu
+ FvgCZsK9PMbHPLMqaNBoME5pBocgghSNQxHfIkHaQKkIBkxbXwVezikWwuwoIZZn
+ +N7rTXmnxVTEBxTGCixLt6M38KIdd3jX8ma9XNwdyON1MTywIVuYVgGPiTHO7PsU
+ cXQwU5XINaFr+CyEAy9d0h4+c5cWOUbzUBMqhe8d7mzuRP63lA96FPCeXpimfYTh
+ 8zvtCvTPul9Ssjnv1OmqFzO+jv9jzBkxUDPUqM75KK92hkAkITX7GCCS9Qyay7aj
+ 3eyQtT7jI7HiBTgB7rmXLD/fltsmRKUbnJIi7hogenRLZz9F6ETnT1gDnF4npwky
+ F0CC+EzGLCGuejUZ81IsjUx4bY1tUpB8uSUu31cR/6YtYkHJBXpm8Z74SMCXJ+uY
+ rva9wx2QjLffoK6rf50h+HYlLwIkXK5yYjEhw7Bcn0lc8U4zJEbqfJRpK2nJsC6T
+ soIm49UXJXYaFDlce+P4x3aKsv+OLDU51l3ohSn+iOu1N6sKx1r77QPoq35oThrC
+ SLH/YDzb4ZC2RgT2B58+D6LOfTT5jpGY0GuMHi4mfsbCHnOAdQxBcdq4rWo/kYQN
+ ILiN5aVwcXdxXVPRAqi2
+ =ccqy
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #67 from codemyriad/feat/companion-status-popup
+Merge pull request #73 from codemyriad/feat/talk-participant-names
 
-feat: replace recording popup with current-tab companion status
+Land R94 resumeCapture.lostAtMs on main (follow-up to #57)

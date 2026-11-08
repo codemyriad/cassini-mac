@@ -9,7 +9,7 @@ import CassiniRecording
 /// replaced; a record of another version is never downgraded. No paths, URLs or
 /// device identities are written.
 public enum CaptureRecordWriter {
-    static let trackFields: Set<String> = ["id","kind","label","sourceTrackId","frames","sampleRate","channels","startOffsetMs","endOffsetMs",
+    static let trackFields: Set<String> = ["id","kind","label","labelSource","sourceTrackId","frames","sampleRate","channels","startOffsetMs","endOffsetMs",
                                            "gapFrames","droppedFrames","problemKind","captureOutcome","receivedFrames","gaps",
                                            "clockMethod","clockUncertaintyMs","clockClampMs"]
     public static func record(_ manifest: RecordingManifest) throws -> [String:Any] {

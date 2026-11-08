@@ -35,14 +35,16 @@ public struct SessionCaptureOutcome: Codable, Sendable, Equatable {
         public var sourceTrackId: String
         public var kind: String
         public var label: String?
+        public var labelSource: String?
         public var captureOutcome: CaptureOutcome
         public var audioMs: Double
         public var trackIds: [String]
         /// R69: false only while a source was never selected and never opened a span.
         public var captureExpected: Bool?
-        public init(sourceTrackId: String, kind: String, label: String?, captureOutcome: CaptureOutcome, audioMs: Double, trackIds: [String], captureExpected: Bool? = nil) {
+        public init(sourceTrackId: String, kind: String, label: String?, captureOutcome: CaptureOutcome, audioMs: Double, trackIds: [String], captureExpected: Bool? = nil, labelSource: String? = nil) {
             self.sourceTrackId = sourceTrackId; self.kind = kind; self.label = label; self.captureOutcome = captureOutcome
             self.audioMs = audioMs; self.trackIds = trackIds; self.captureExpected = captureExpected
+            self.labelSource = labelSource
         }
         public var expected: Bool { captureExpected != false }
     }
@@ -186,6 +188,9 @@ public final class RecordingSession {
     public let pcmObservers: RecordedPCMObservers
     public let recordedPCM: RecordedPCMPolicy?
     public private(set) var manifest: RecordingManifest
+    /// Writer-serialized reference, published only after the entire checkpoint succeeds.
+    /// A failed checkpoint cannot authorize a resume from an in-memory/renamed event.
+    public private(set) var committedOthersSource: CaptureEvent?
     private var writers: [String: WAVWriter] = [:]
     // D69: independent of the range budget and producer drop counts.
     private var writerPaddingFrames: [String: UInt64] = [:]
@@ -247,7 +252,7 @@ public final class RecordingSession {
                   (8_000...192_000).contains(source.sampleRate), (1...2).contains(source.channels),
                   ["microphone","system","application","local","remote","media","tab"].contains(source.kind),
                   source.sourceTrackId == nil || (source.sourceTrackId!.isEmpty == false && source.sourceTrackId!.utf8.count <= 200 && !["microphone","system"].contains(source.kind)),
-                  source.labelSource == nil || ["browser","device","user","recovered"].contains(source.labelSource!)
+                  source.labelSource == nil || ["browser","dom","device","user","recovered"].contains(source.labelSource!)
             else { throw RecordingError.invalid("Invalid or duplicate audio source.") }
         }
         var staged: [(RecordingTrack,WAVWriter)] = []
@@ -535,6 +540,7 @@ public final class RecordingSession {
     }
 
     private func checkpoint() throws {
+        committedOthersSource = nil
         #if DEBUG
         // D66 mac-P0-1 (hosted evidence only): a checkpoint syncs every writer and the metadata on
         // the queue that admits audio, so a slow disk stalls every source at once. Name it.
@@ -566,6 +572,7 @@ public final class RecordingSession {
         let descriptor = open(directory.path, O_RDONLY)
         if descriptor >= 0 { defer { Darwin.close(descriptor) }; if fsync(descriptor) != 0 && errno != EINVAL { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) } }
         lastCheckpoint = Date()
+        committedOthersSource = manifest.events?.last(where:{ $0.type == "othersSource" })
     }
 }
 

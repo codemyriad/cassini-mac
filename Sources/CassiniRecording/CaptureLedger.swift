@@ -8,11 +8,13 @@ import Foundation
 public struct CaptureLedger: Sendable {
     public struct Discovered: Sendable, Equatable {
         public let sourceTrackId: String, kind: String, label: String?, failed: Bool
-        public init(sourceTrackId: String, kind: String, label: String?, failed: Bool = false) {
+        public let labelSource: String?
+        public init(sourceTrackId: String, kind: String, label: String?, failed: Bool = false, labelSource: String? = nil) {
             self.sourceTrackId = sourceTrackId; self.kind = kind; self.label = label; self.failed = failed
+            self.labelSource = labelSource
         }
     }
-    struct Seen: Sendable { var kind: String, label: String, failed: Bool, expected: Bool }
+    struct Seen: Sendable { var kind: String, label: String, labelSource: String?, failed: Bool, expected: Bool }
     public static let discoverableKinds: Set<String> = ["local","remote","media","tab","application"]
     private(set) var seen: [String:Seen] = [:]
     private var order: [String] = []
@@ -23,15 +25,16 @@ public struct CaptureLedger: Sendable {
     public static func validIdentity(_ value: String?) -> Bool {
         guard let value else { return false }; return !value.isEmpty && value.utf8.count <= 200
     }
-    public mutating func observe(_ identity: String, kind: String, label: String?, failed: Bool = false, expected: Bool) throws {
+    public mutating func observe(_ identity: String, kind: String, label: String?, failed: Bool = false, expected: Bool, labelSource: String? = nil) throws {
         guard Self.validIdentity(identity), Self.discoverableKinds.contains(kind) || ["microphone","system"].contains(kind),
-              (label?.unicodeScalars.count ?? 0) <= 200 else { throw RecordingError.invalid("Invalid discovered audio source.") }
+              (label?.unicodeScalars.count ?? 0) <= 200,
+              labelSource == nil || ["browser","dom","device","user","recovered"].contains(labelSource!) else { throw RecordingError.invalid("Invalid discovered audio source.") }
         if var known = seen[identity] {
             guard known.kind == kind else { throw RecordingError.invalid("Conflicting source kind.") }
             known.failed = known.failed || failed; known.expected = known.expected || expected
             seen[identity] = known
         } else {
-            seen[identity] = .init(kind:kind,label:RecordingSession.cleanLabel(label ?? kind),failed:failed,expected:expected)
+            seen[identity] = .init(kind:kind,label:RecordingSession.cleanLabel(label ?? kind),labelSource:labelSource,failed:failed,expected:expected)
             order.append(identity)
         }
     }
@@ -40,12 +43,17 @@ public struct CaptureLedger: Sendable {
         var proposed = self
         for source in sources {
             guard Self.discoverableKinds.contains(source.kind) else { throw RecordingError.invalid("Invalid discovered audio source kind.") }
-            try proposed.observe(source.sourceTrackId,kind:source.kind,label:source.label,failed:source.failed,expected:expected(source.kind))
+            guard source.labelSource == nil || ["browser","dom"].contains(source.labelSource!) else { throw RecordingError.invalid("Invalid browser label provenance.") }
+            try proposed.observe(source.sourceTrackId,kind:source.kind,label:source.label,failed:source.failed,expected:expected(source.kind),labelSource:source.labelSource ?? "browser")
         }
         self = proposed
     }
     public func knows(_ identity: String) -> Bool { seen[identity] != nil }
     public func isFailed(_ identity: String) -> Bool { seen[identity]?.failed == true }
+    /// Registration metadata is a static snapshot, also for later physical spans.
+    public func labelSnapshot(_ identity: String) -> (label: String, labelSource: String?)? {
+        seen[identity].map { ($0.label,$0.labelSource) }
+    }
     /// A selection change makes every discovered source of that side expected.
     public mutating func select(expected: (String) -> Bool) {
         for identity in order where expected(seen[identity]!.kind) { seen[identity]!.expected = true }
@@ -95,7 +103,7 @@ public struct CaptureLedger: Sendable {
                 failed = failed || track.problemKind != nil
             }
             sources.append(.init(sourceTrackId:identity,kind:source.kind,label:source.label,captureOutcome:CaptureOutcome(failed:failed,audioMs:duration),
-                                 audioMs:duration,trackIds:tracks.map(\.id),captureExpected:source.expected ? nil : false))
+                                 audioMs:duration,trackIds:tracks.map(\.id),captureExpected:source.expected ? nil : false,labelSource:source.labelSource))
         }
         return .init(outcome:.init(sources:sources),tracks:perTrack,incomplete:sources.contains { $0.expected && $0.captureOutcome != .captured })
     }

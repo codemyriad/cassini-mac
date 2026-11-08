@@ -479,6 +479,7 @@ private final class AudioPeer: @unchecked Sendable {
                     // D61: clock facts copied as received; documentGeneration only feeds the watchdog.
                     try owner.browserTrack(id:string(json,"id")!,label:string(json,"label",optional:true) ?? string(json,"kind")!,kind:string(json,"kind")!,sampleRate:integer(json["sampleRate"]),channels:integer(json["channels"]),
                                            sourceTrackId:sourceOutcomes || json["sourceTrackId"]?.isNull == false ? string(json,"sourceTrackId",optional:true) : nil,
+                                           labelSource:BrowserLabelSource.read(json["labelSource"]),
                                            clock:ClockFacts.parse(json))
                 case "trackEnd":
                     let id = try string(json,"id")!, reason = try string(json,"reason")!
@@ -497,8 +498,10 @@ private final class AudioPeer: @unchecked Sendable {
                     if sourceOutcomes {
                         // A mismatched negotiated Stop is refused without ending this capture.
                         guard json["captureId"]?.string == captureID else { throw ScopedRefusal("state","Capture identity does not match.") }
-                        let summary = try discovered(json["discoveredSources"],required:false)
-                        if !summary.isEmpty { try owner.discover(summary) }
+                        do {
+                            let summary = try discovered(json["discoveredSources"],required:false)
+                            if !summary.isEmpty { try owner.discover(summary) }
+                        } catch let error as BrowserProtocolError { throw ScopedRefusal(error.code,error.localizedDescription) }
                     }
                     let reason = try string(json,"failureReason",optional:true), problem = try string(json,"problem",optional:true)
                     guard reason == nil || reason == "lost" else { throw BrowserProtocolError("source","Invalid failure reason.") }
@@ -588,7 +591,7 @@ private final class AudioPeer: @unchecked Sendable {
             }
             var failed = false
             if let value = row["failed"], !value.isNull { guard let flag = value.bool else { throw BrowserProtocolError("source","Invalid discovered audio source.") }; failed = flag }
-            return .init(sourceTrackId:id,kind:kind,label:label,failed:failed)
+            return .init(sourceTrackId:id,kind:kind,label:label,failed:failed,labelSource:try BrowserLabelSource.read(row["labelSource"]))
         }
     }
     private var lossTime: Double {

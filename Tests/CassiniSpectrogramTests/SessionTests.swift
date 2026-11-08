@@ -11,6 +11,12 @@ private final class SpectrumTestClock: @unchecked Sendable {
     func set(_ value: Double) { lock.withLock { self.value = value } }
     func read() -> Double { lock.withLock { value } }
 }
+private final class SpectrumReadinessClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entry = 0.0, ready = 0.0, first = true
+    func packet(entry: Double, ready: Double) { lock.withLock { self.entry=entry; self.ready=ready; first=true } }
+    func read() -> Double { lock.withLock { if first { first=false; return entry }; return ready } }
+}
 private final class RetainedPCM: @unchecked Sendable {
     private let lock = NSLock()
     private var bytes = 0, calls = 0, first = true
@@ -94,6 +100,42 @@ private final class RetainedPCM: @unchecked Sendable {
         session.setVisible(false);session.setVisible(true)
         #expect(await frame(session,at:10000).lateSamples.isEmpty)
     }
+    @Test func delayEvidenceUsesFinishedAnalysisRatherThanItsEntryTimestamp() async {
+        let time = SpectrumReadinessClock()
+        let session = SpectrogramSession(clock:{ time.read() },measureCPU:true)
+        session.setVisible(true)
+        _ = await frame(session,at:10000)
+        time.packet(entry:200,ready:10000)
+        session.offer(source:.init(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0),pcm:tone(),offsetMs:0)
+        let result = await frame(session,at:10000)
+        #expect(!result.lateSamples.isEmpty)
+        #expect(result.lateSamples.allSatisfy { $0.analysisStartedMs == 200 && $0.arrivalMs == 10000 },"Availability is when FFT results can enter the presentation mailbox, including delayed analysis work")
+    }
+    @Test func mixedBrowserChunksKeepSteadyColumnsWhenAnalysisCompletesAfterEntry() async {
+        let time = SpectrumReadinessClock(), chunk = 8192
+        let session = SpectrogramSession(clock:{ time.read() }); session.setVisible(true)
+        let sources = (0..<4).map { RecordedPCMSource(id:"track-\($0)",kind:$0 == 0 ? "microphone" : "remote",sampleRate:48000,channels:1,startOffsetMs:0) }
+        let pcm = Data(repeating:0,count:chunk*2)
+        var packet = 0, initialLate: UInt64 = 0, last: SpectrogramSession.Frame?
+        for tick in 0...3600 {
+            let now = Double(tick)*1000/60
+            while 150+Double((packet+1)*chunk)/48 <= now {
+                let ready = 150+Double((packet+1)*chunk)/48
+                for source in sources {
+                    time.packet(entry:ready-30,ready:ready)
+                    session.offer(source:source,pcm:pcm,offsetMs:Double(packet*chunk)/48)
+                    _ = await frame(session,at:ready)
+                }
+                packet += 1
+            }
+            let result = await frame(session,at:now)
+            if tick == 300 { initialLate = result.lateColumns }
+            last = result
+        }
+        #expect((last?.analyzedFrames ?? 0) > 11000 && last?.retainedTracks == 4)
+        #expect(last?.lateColumns == initialLate,"The shared delay must learn all30ms of analysis latency, rather than release columns using the queue-entry clock")
+        #expect(last?.droppedBuffers == 0 && last?.droppedColumns == 0)
+    }
     @Test(arguments:[4096,8192]) func continuousDisplayDoesNotReleaseChunkColumnsBeforeTheirSlotsArrive(_ chunk: Int) async {
         let time = SpectrumTestClock(); time.set(0)
         let session = SpectrogramSession(clock:{ time.read() }); session.setVisible(true)
@@ -170,7 +212,8 @@ private final class RetainedPCM: @unchecked Sendable {
         for n in 0..<96 { session.offer(source:tiny,pcm:Data([0,0]),offsetMs:Double(n)/48) }
         proceed.signal()
         let result = await frame(session,at:2000)
-        #expect(memory.clockCalls == 65,"At most64 pending packets per source, plus the independent held source")
+        // Clock reads now include one readiness observation per completed FFT.
+        #expect(memory.clockCalls-Int(result.analyzedFrames) == 65,"At most64 pending packets per source, plus the independent held source")
         #expect(result.droppedBuffers == 32)
     }
     @Test func repeatedHideShowCannotResetTheBudgetOfStillRetainedPackets() async throws {
@@ -202,7 +245,12 @@ private final class RetainedPCM: @unchecked Sendable {
     }
     @Test func inputBudgetDropsPictureDataWithoutBlockingOrChangingTheSourceClock() async {
         let entered = DispatchSemaphore(value:0), proceed = DispatchSemaphore(value:0)
-        let session = SpectrogramSession(clock:{ entered.signal(); proceed.wait(); return 2000 })
+        let first = OSAllocatedUnfairLock(initialState:true)
+        let session = SpectrogramSession(clock:{
+            let pause = first.withLock { value in let old=value; value=false; return old }
+            if pause { entered.signal(); proceed.wait() }
+            return 2000
+        })
         session.setVisible(true)
         let source = RecordedPCMSource(id:"mic",kind:"microphone",sampleRate:48000,channels:1,startOffsetMs:0)
         session.offer(source:source,pcm:tone(frames:48000),offsetMs:0)

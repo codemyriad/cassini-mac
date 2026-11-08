@@ -77,6 +77,30 @@ class Selection(unittest.TestCase):
             self.assertTrue(all(changes.select('pull_request', 'base', PATHS, [name]).values()))
 
 
+class NativeSpectrogramScheduling(unittest.TestCase):
+    """The measured 15 min boards + 9 min native probe must not share a 25 min job."""
+    def test_native_measurements_have_their_own_bounded_hosted_job(self):
+        body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
+        jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
+        boards, native = jobs['boards'], jobs['spectrogram']
+        self.assertIn('timeout-minutes: 25',boards)
+        self.assertNotIn('test-spectrogram-app.py',boards)
+        self.assertNotIn("release: 'true'",boards)
+        self.assertNotIn('needs: [boards]',native)
+        for requirement in ['runs-on: macos-15','needs: [build, release]',
+                            'inputs.products_ready','!cancelled()',
+                            "debug: 'true'","release: 'true'",'github-hosted',
+                            'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
+                            'if: always()','name: ux-spectrogram']:
+            self.assertIn(requirement,native)
+        # Keep every production proof exactly once, including the motion XCTest
+        # driver supplied by Debug products and the same-build optimized objects.
+        for script in ['CheckBudget.swift','test-spectrogram-harness.py',
+                       'CheckSampleClock.swift','build-spectrogram-probe.py','test-spectrogram-app.py']:
+            self.assertEqual(body.count(script),1)
+            self.assertIn(script,native)
+
+
 def ci_job(name):
     """The body of one top-level job in ci.yml (its lines up to the next two-space key)."""
     body = (ROOT/'.github/workflows/ci.yml').read_text()
@@ -144,7 +168,9 @@ class FoldedJobs(unittest.TestCase):
     def test_kit_runs_the_arm64_export_checks(self):
         kit = ci_job('kit')
         self.assertIn("assets: 'true'", kit)
-        test = kit[kit.index('- name: Test\n'):kit.index('run: swift test --skip-build\n')]
+        test = kit[kit.index('- name: Test\n'):kit.index('python3 scripts/run-swift-tests.py')]
+        self.assertIn('-- swift test --skip-build',kit)
+        self.assertIn('name: unit-tests-and-stacks',kit)
         self.assertIn('CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus', test)
         self.assertIn('CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases', test)
         self.assertIn('python3 scripts/check-export-reference.py build/format-reference build/export-cases', kit)

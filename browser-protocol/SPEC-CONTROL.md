@@ -467,7 +467,7 @@ how often an app may ask to resume a system/lost fallback (once per loss and
 control connection, D52.5) is under "Control heartbeat" below.
 
 ```json
-{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000}}
+{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000,"lostAtMs":0}}
 ```
 
 `keepOnNavigation:true` (page-state-v1) applies to a resume Start as to any
@@ -480,6 +480,26 @@ is this recording operation, not merely a call address/generation. The extension
 uses its captureId and exact origin from session construction, including status
 before the native ACK and every scoped Stop. It does not invent an alias token
 or shift timestamps. After asynchronous lookup it checks the selected generation.
+
+`resumeCapture.lostAtMs` (R94): the host MUST send it, a finite nonnegative
+number, the `atMs` of the committed othersSource seam it asks to resume: the newest
+system/lost (D52.4), or the system/missing stand-in (D49, D58 #2) when that is what
+it resumes (`0` in the example above). At send time, after the durable checkpoint completes,
+the host MUST copy the value exactly from its committed session state while
+holding the capture lock (or equivalent serialization of dispatch with Stop and
+capture transitions).
+It MUST NOT round it, recompute it from a request/transport timestamp, or guess
+an event that is not yet committed. A host without that commit does not ask.
+
+The value identifies which committed loss the ask answers. The live-folder
+oracle's O3.resumeAt checks exact reference equality without comparing the request
+stamp with the placed loss timestamp: accepted output-time frames can place that
+seam later than the commit instant. Equality alone does not independently prove
+fsync-before-send ordering; both hosts must test that ordering at their actual
+writer boundary (D52.5). The extension does not read it: it neither requires nor
+validates `lostAtMs`, ignores it like any unknown member and does not forward it in
+the native `resume` packet. Extension 0.2.13 already behaves so; no companion
+version change is required by R94.
 
 The first native packet is deliberately a distinct `type:"resume"`, version1,
 with independent:true, captureId, timelineOriginMs, callGeneration and features
@@ -614,7 +634,8 @@ the Others absent over the loss (SPEC.md, session-events `uncommitted-return` an
 `uncommitted-return-kept`).
 
 **Resuming a lost recording: ask once, never a second recording (D52.5).**
-These are app-side rules; the extension and the wire are unchanged.
+These are app-side rules; the extension is unchanged, and the wire gains only
+`resumeCapture.lostAtMs` (R94), which the extension ignores.
 
 - *Ask once.* For a recording on a `system/lost` fallback whose browser's
   hello lists `resume-capture-v1`, the app MUST send one resume-capture-v1
@@ -633,7 +654,9 @@ These are app-side rules; the extension and the wire are unchanged.
   not when the transport closes. The app MUST wait for that commit before it sends
   the resume; one sent earlier is refused and uses up the only ask for that loss on
   that connection. A fallback that fails before it commits writes no system/lost,
-  so the app never asks to resume it.
+  so the app never asks to resume it. The ask names that commit: its
+  `resumeCapture.lostAtMs` is the `atMs` of the system/lost it resumes, exactly as
+  the app wrote it (R94, above).
   After that resume is
   refused or fails (error result, refused native resume, missing or
   mismatched proof), and while it is still pending, the app MUST NOT ask
@@ -956,3 +979,53 @@ may be copied without meeting titles,
 URLs, or recording paths. Confirmed app recording state, app auto-record policy,
 and launching the native app require additional explicit app-backed interfaces;
 the popup does not infer or fabricate them.
+
+### Toolbar popup sizing (extension 0.2.21)
+
+The action popup prefers 376 CSS pixels during intrinsic sizing. The root's
+percentage maximum and the body's inherited width let it shrink to Chrome's
+final containing block, including the smaller CSS viewport at high browser zoom.
+It uses no viewport-unit cap that feeds Chrome's provisional viewport back into
+its preferred-size calculation, and no hard minimum that overflows at 300% zoom.
+There are no protocol or capture-policy changes.
+
+
+## Peer observation and same-document loading (extension 0.2.22)
+
+Peer registration also observes `getReceivers`, `getSenders` and `getTransceivers`
+for libraries that retained a constructor reference. Those getters only register
+the peer; they do not create an AudioContext or admit audio. Connected state,
+receiving transceiver direction, live audio, inbound RTP progress, call generation
+and the existing two-of-three heard votes remain required. DOM streams and local
+preview senders do not become automatic call evidence. A previously unknown peer
+first observed after an in-page call change is not assigned to the new call by a
+read-only getter/stats call; an intercepted new constructor or fresh completed
+remote-description negotiation is required. Existing pages need a tab reload to
+load the changed MAIN-world observer.
+
+Chrome can emit status-only `tabs.onUpdated` loading events for the same document.
+Frames are still invalidated first. An obsolete frame may be restored only when
+`chrome.scripting.executeScript` returns current browser metadata matching both
+its frameId and its port sender's browser-owned documentId. The script's result,
+page-posted documentGeneration, and a connected relay's own claim are not proof.
+The check is bounded at 2.5 s and rejects missing/failed metadata, a changed loading
+epoch, a disconnected frame or a closed tab. A subsequent browser loading/complete
+event or explicit repair may make a new check; no polling retry conceals failure.
+
+After verification the worker requests fresh discovery from that port and restores
+main-frame present state. It does not replay cleared source counts, erase call
+fences, create a recording or send another native Start. Repair also performs this
+check before accepting a connected relay. An unverified old document remains
+obsolete; the extension retains its existing fail-closed health/admission policy.
+No new browser permission, app wire capability or status API is introduced.
+
+
+### Talk display-label snapshots (extension 0.2.23)
+
+Eligible Talk receiver tracks may use an untrusted DOM participant-card name,
+matched by exact audio-track object identity, as their static registration label.
+The native track declaration and source ledger retain labelSource:dom under SPEC's
+proposed provenance contract. Ambiguous/missing mappings keep browser-origin labels;
+DOM names do not change call/RTP/admission gates or any control/status/health fields.
+Product hosts must adopt provenance persistence with the bundled extension; the
+private browser-test writer does not establish Swift/Python product adoption.

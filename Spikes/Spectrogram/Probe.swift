@@ -49,6 +49,16 @@ import ScreenCaptureKit
                     controller.fixtureHistoryStartMs >= 0 && controller.fixtureHasSound(0,since:0) && controller.fixtureHasSound(1,since:0)
                 }
             } else { try await input.waitForSamples(throughMs:4000) }
+            if argument("-SpectrogramMotionOnly") == "1" {
+                try require(mode == "B","motion diagnostic uses both lanes")
+                try await verifyMotion(controller:controller,window:window,view:strips[2])
+                controller.stop(atMs:(ProcessInfo.processInfo.systemUptime-input.origin)*1000)
+                strips.forEach { $0.detach() }; window.orderOut(nil)
+                try await input.finish(); try? FileManager.default.removeItem(at:root)
+                report=["diagnosticMotionOnly":true,"realMotionTransition":true,"audioDevicesOpened":false]
+                FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])+Data([10]))
+                exit(0)
+            }
             if argument("-SpectrogramProfileOnly") == "1" {
                 // Instruments may suspend an attached process. This separate
                 // diagnostic keeps that effect outside every CPU/pacing gate.
@@ -120,7 +130,7 @@ import ScreenCaptureKit
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
                 "lateTiming":controller.lateTiming.filter { $0.ordinal > initialLate }.map {
                     ["ordinal":Double($0.ordinal),"slot":Double($0.slot),"releasedThrough":Double($0.releasedThrough),
-                     "arrivalMs":$0.arrivalMs,"delayMs":$0.delayMs]
+                     "arrivalMs":$0.arrivalMs,"analysisStartedMs":$0.analysisStartedMs,"delayMs":$0.delayMs]
                 },
                 "viewPayloadBytes":controller.payloadBytes,"surfaceAllocationBytes":controller.surfaceBytes,
                 "surfaceRevisions":controller.surfaceRevision,"minimized":window.isMiniaturized,
@@ -209,16 +219,6 @@ import ScreenCaptureKit
                 try await wait("Dark palette applied",controller:controller) { controller.surfaceRevision > darkRevision }
                 _ = try await darkPixels(window:window,view:strips[2],name:"B-recording-dark")
                 report["scriptedStates"] = ["silentWarning","othersNotRecorded","dropoutAndReturn","dark"]
-                try await motion(true,controller:controller)
-                let ticks = controller.frameCallbacks, images = controller.framesApplied
-                try await wait("Reduced Motion column update",controller:controller) { controller.framesApplied > images }
-                try require(controller.usingReducedMotion && controller.frameCallbacks == ticks && controller.framesApplied > images,"real Reduced Motion uses the column timer without display-link callbacks")
-                _ = try await darkPixels(window:window,view:strips[2],name:"B-reduced-motion")
-                try await motion(false,controller:controller)
-                let resumed = controller.frameCallbacks
-                try await wait("Normal-motion display link resumes",controller:controller) { controller.frameCallbacks > resumed }
-                try require(!controller.usingReducedMotion && controller.frameCallbacks > resumed,"real normal-motion setting restores the display link")
-                report["realMotionTransition"] = true
             }
             // Freeze is exercised after measurement; layout/theme changes may
             // not clear its last image or restart its display clock.
@@ -255,6 +255,17 @@ import ScreenCaptureKit
     }
     private static func wait(_ description:String,controller:RecordingSpectrogram,until condition:@escaping () -> Bool) async throws {
         try await SpectrogramProbeEvent().wait(description,controller:controller,until:condition)
+    }
+    private static func verifyMotion(controller: RecordingSpectrogram, window: NSWindow, view: RecordingSpectrogramView) async throws {
+        try await motion(true,controller:controller)
+        let ticks = controller.frameCallbacks, images = controller.framesApplied
+        try await wait("Reduced Motion column update",controller:controller) { controller.framesApplied > images }
+        try require(controller.usingReducedMotion && controller.frameCallbacks == ticks && controller.framesApplied > images,"real Reduced Motion uses the column timer without display-link callbacks")
+        _ = try await darkPixels(window:window,view:view,name:"B-reduced-motion")
+        try await motion(false,controller:controller)
+        let resumed = controller.frameCallbacks
+        try await wait("Normal-motion display link resumes",controller:controller) { controller.frameCallbacks > resumed }
+        try require(!controller.usingReducedMotion && controller.frameCallbacks > resumed,"real normal-motion setting restores the display link")
     }
     private static func motion(_ value: Bool, controller: RecordingSpectrogram) async throws {
         guard let directory=argument("-SpectrogramOutput") else { throw Failure.check("motion request directory") }
