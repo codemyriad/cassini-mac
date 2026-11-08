@@ -203,6 +203,9 @@ public final class RecordingSession {
     /// not exposed through native messaging or any app setting.
     @_spi(Testing) public var checkpointObserver: ((RecordingCheckpointPhase) throws -> Void)?
 
+    /// Exercise the real periodic checkpoint on the next append without a wall-clock sleep.
+    @_spi(Testing) public func requirePeriodicCheckpoint() { lastCheckpoint = .distantPast }
+
     public init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
         let observers = RecordedPCMObservers(); pcmObservers = observers
         recordedPCM = RecordedPCMPolicy(observers:observers)

@@ -660,6 +660,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     /// Audio is closed and the final session written; only the portable record may be pending.
     public var recordPending: Bool { snapshot.recordPending }
+    @_spi(Testing) public func requirePeriodicCheckpoint() { sync { recording.requirePeriodicCheckpoint() } }
     @_spi(Testing) public func setCheckpointObserver(_ observer: ((RecordingCheckpointPhase) throws -> Void)?) {
         sync { recording.checkpointObserver = observer }
     }

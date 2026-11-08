@@ -1,0 +1,46 @@
+--- a/Sources/CassiniRecording/RecordingSession.swift
++++ b/Sources/CassiniRecording/RecordingSession.swift
+@@ -364,6 +364,14 @@
+         if first {
+             recordedPCM?.publish(.init(id:track.id,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:track.startOffsetMs!),for:id)
+         }
++        // Browser picture input follows the actual WAV append, not the unrelated
++        // durability checkpoint below. Native sinks already publish their admitted
++        // PCM through RecordedPCMPolicy, so emitting native bytes here would double it.
++        if !native, let start = track.startOffsetMs {
++            let firstFrame = writer.frames - UInt64(pcm.count / (track.channels * 2))
++            let writtenAt = start + Double(firstFrame) / Double(track.sampleRate) * 1000
++            pcmObservers.offer(source:.init(id:track.id,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:start),pcm:pcm,offsetMs:writtenAt)
++        }
+         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
+     }
+ 
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -34,7 +34,7 @@
+ /// budget and a native span writer; browser requests use this owner's I/O queue.
+ /// No file I/O occurs under a store-wide lock or in snapshot/UI getters.
+ public final class OwnedBrowserCapture: @unchecked Sendable {
+-    public let pcmObservers = RecordedPCMObservers()
++    public let pcmObservers: RecordedPCMObservers
+     private struct BrowserSource {
+         let id: String, label: String, kind: String
+         /// D61: the declaration's clock facts, repeated on every span of this source.
+@@ -112,6 +112,7 @@
+     public init(parent: URL, title: String, microphone: Bool, browser: Bool = true, id: UUID = UUID(), managedBrowser: Bool = false,
+                 changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void = { _ in }) throws {
+         recording = try RecordingSession(parent:parent,title:title,source:browser ? "chromium" : "macos",id:id)
++        pcmObservers = recording.pcmObservers
+         me = microphone; self.changed = changed
+         // The microphone's track slot is held from the start: browser sources declared
+         // before its first buffer cannot take it (it is released if Me is turned off).
+@@ -240,9 +241,6 @@
+                     } else { try recording.append(id:span,pcm:bytes,offsetMs:at) }
+                     source.recorded = span
+                     let admitted = bytes
+-                    if let track = recording.manifest.tracks.first(where:{ $0.id == span }), let start = track.startOffsetMs {
+-                        pcmObservers.offer(source:.init(id:span,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:start),pcm:admitted,offsetMs:at)
+-                    }
+                     var peak: Float = 0
+                     admitted.withUnsafeBytes { bytes in
+                         for offset in stride(from:0,to:bytes.count-1,by:max(2,bytes.count/512*2)) {
