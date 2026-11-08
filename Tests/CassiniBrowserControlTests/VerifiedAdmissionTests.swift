@@ -267,7 +267,7 @@ final class VerifiedAdmissionTests: XCTestCase {
         XCTAssertTrue(broker.activeCaptures.isEmpty)
         let requestID = try XCTUnwrap(issued?["requestId"]?.string)
         try control.send(JSONSerialization.data(withJSONObject:["type":"result","requestId":requestID,"ok":false,"error":"Generated expired admission",
-            "status":["recording":false,"tabId":NSNull(),"path":NSNull(),"sessions":[],"message":"Generated cancelled startup"]]))
+            "status":["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"sessions":[],"message":"Generated cancelled startup"]]))
         wait(for:[cancelled],timeout:5)
         try control.send(JSONSerialization.data(withJSONObject:signal(1)))
         let retry = try JSONParser.parse(XCTUnwrap(control.receive(deadline:DispatchTime.now().uptimeNanoseconds+5_000_000_000)))

@@ -478,7 +478,7 @@ private final class AudioPeer: @unchecked Sendable {
                 // The call this Start names: the recording holds it from its first moment, even if
                 // its audio closes before any status tells the app its tab.
                 let generation = json["callGeneration"]?.string.flatMap { !$0.isEmpty && $0.unicodeScalars.count <= 200 ? $0 : nil }
-                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation,documentGeneration:try string(json,"documentGeneration",optional:true)),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
+                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation,documentGeneration:json["documentGeneration"]?.string),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
                 owner = capture; inputGate = accepted.inputGate; captureID = id; timelineOriginMs = origin; watch(id)
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
