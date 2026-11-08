@@ -333,9 +333,9 @@ import ScreenCaptureKit
                 space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.check("own strip pixel conversion") }
             context.draw(strip,in:CGRect(x:0,y:0,width:200,height:32))
             if dottedLine {
-                let coverage = SpectrogramPixelOracle.dottedLineCoverage(Array(bytes),width:200,height:32)
-                guard coverage.isFinite else { throw Failure.check("dotted-line capture background") }
-                return Int(coverage.rounded())
+                let result = SpectrogramPixelOracle.measure(Array(bytes),width:200,height:32)
+                guard result.coverage.isFinite, result.periodicity >= 0.45 else { throw Failure.check("dotted-line capture background or four-column pattern") }
+                return Int(result.coverage.rounded())
             }
             return stride(from:0,to:bytes.count,by:4).reduce(0) { count,index in
                 count + (bytes[index] < 200 && bytes[index+1] < 200 && bytes[index+2] < 200 ? 1 : 0)
