@@ -153,14 +153,19 @@ import CassiniTranscription
         }
         self.client = client
         operation = Task {
-            defer { busy = false; progress = nil; self.client = nil; operation = nil }
+            defer {
+                if self.client === client { progress = nil; self.client = nil; operation = nil }
+                if generation == token { busy = false }
+            }
             do {
                 _ = try await client.install(appData:Self.appData)
+                guard generation == token else { return }
                 downloaded = true; refreshed = true
                 // D78: installation has verified all pinned files before adoption.
                 adoptVerifiedInstallation()
             } catch is CancellationError { }
             catch {
+                guard generation == token else { return }
                 failedDownload = true
                 message = UXText.text("errors.modelDownloadFailed.line",["model":UXText.text("models.parakeetUltra.name")])
             }
@@ -192,7 +197,7 @@ import CassiniTranscription
     /// unlinks the installation, while this accepted job keeps its exact files.
     func modelForNewJob() async throws -> JobModel? {
         await refresh()
-        guard usesParakeet else { return nil }
+        guard usesParakeet, downloaded else { return nil }
         let token = generation, model = Self.modelDirectory, jobs = Self.jobsDirectory
         do {
             let lease = try await Task.detached(priority:.userInitiated) {
