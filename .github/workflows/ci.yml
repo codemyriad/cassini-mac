@@ -245,6 +245,8 @@ jobs:
     - name: Model downloader, local HTTP fault fixtures only
       if: env.MODEL_DOWNLOAD == 'true'
       timeout-minutes: 8
+      env:
+        CASSINI_FIXTURE_DIAGNOSTICS: ${{ github.workspace }}/build/model-bootstrap
       run: |
         set -o pipefail
         swift test --skip-build --filter ModelDownloaderTests 2>&1 | tee downloader.log
@@ -254,7 +256,9 @@ jobs:
       with:
         retention-days: 14
         name: downloader-macos-15-intel
-        path: downloader.log
+        path: |
+          downloader.log
+          build/model-bootstrap
     - uses: actions/setup-python@v5
       if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
       with:
