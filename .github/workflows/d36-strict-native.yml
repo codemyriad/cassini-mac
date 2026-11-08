@@ -1,0 +1,53 @@
+name: D36 strict PCM cadence A-E
+'on':
+  push:
+    branches: [ci/d36-strict-native]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-release
+          run-id: 42435656520
+          github-token: ${{ github.token }}
+          path: release-product
+      - id: sdk
+        run: |
+          python3 - <<'PY'
+          import json,os,re
+          commit=json.load(open('release-product/release.json'))['commit']
+          assert re.fullmatch('[0-9a-f]{40}',commit)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('commit='+commit+'\n')
+          PY
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.sdk.outputs.commit }}
+          path: sdk-source
+          persist-credentials: false
+      - name: Verify SDK source, compiler, pins and archive before extraction
+        run: python3 sdk-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/release-product"
+      - run: brew install displayplacer
+      - run: python3 scripts/hosted-display.py
+      - name: Compile unchanged renderer with diagnostic probe only
+        run: |
+          python3 scripts/d36-native-cadence.py verify
+          python3 scripts/build-spectrogram-probe.py sdk-source/build/Build/Products/Release build/d36-evidence.app
+      - name: Uninstrumented production A-E with unchanged budgets
+        run: python3 scripts/d36-native-cadence.py run
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d36-strict-native
+          path: build/d36-evidence
+          retention-days: 14
