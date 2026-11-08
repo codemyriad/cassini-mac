@@ -208,6 +208,9 @@ public final class RecordingSession {
     /// not exposed through native messaging or any app setting.
     @_spi(Testing) public var checkpointObserver: ((RecordingCheckpointPhase) throws -> Void)?
 
+    /// Exercise the real periodic checkpoint on the next append without a wall-clock sleep.
+    @_spi(Testing) public func requirePeriodicCheckpoint() { lastCheckpoint = .distantPast }
+
     public init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
         let observers = RecordedPCMObservers(); pcmObservers = observers
         recordedPCM = RecordedPCMPolicy(observers:observers)
@@ -365,6 +368,14 @@ public final class RecordingSession {
         manifest.tracks[i].receivedFrames = (manifest.tracks[i].receivedFrames ?? 0) + UInt64(pcm.count / (track.channels * 2))
         if first {
             recordedPCM?.publish(.init(id:track.id,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:track.startOffsetMs!),for:id)
+        }
+        // Browser picture input follows the actual WAV append, not the unrelated
+        // durability checkpoint below. Native sinks already publish their admitted
+        // PCM through RecordedPCMPolicy, so emitting native bytes here would double it.
+        if !native, let start = track.startOffsetMs {
+            let firstFrame = writer.frames - UInt64(pcm.count / (track.channels * 2))
+            let writtenAt = start + Double(firstFrame) / Double(track.sampleRate) * 1000
+            pcmObservers.offer(source:.init(id:track.id,kind:track.kind,sampleRate:track.sampleRate,channels:track.channels,startOffsetMs:start),pcm:pcm,offsetMs:writtenAt)
         }
         if Date().timeIntervalSince(lastCheckpoint) >= 1 { try checkpoint() }
     }
