@@ -1,8 +1,8 @@
 diff --git a/Sources/CassiniPlayback/AVSessionTransport.swift b/Sources/CassiniPlayback/AVSessionTransport.swift
-index 4df290b..6bc7bf7 100644
+index 4df290b..4f271b5 100644
 --- a/Sources/CassiniPlayback/AVSessionTransport.swift
 +++ b/Sources/CassiniPlayback/AVSessionTransport.swift
-@@ -128,8 +128,25 @@ private final class PlayerResources: @unchecked Sendable {
+@@ -128,8 +128,26 @@ private final class PlayerResources: @unchecked Sendable {
      @discardableResult private func finishBoundaryIfReached() -> Bool {
          guard !seeking, let boundary, positionMs >= boundary.end - SessionBoundary.toleranceMs else { return false }
          resources.player.pause(); boundaryFinished = true
@@ -24,6 +24,7 @@ index 4df290b..6bc7bf7 100644
 +                guard token == self.boundarySerial else { return }
 +                guard finished else { self.onFailure?(CocoaError(.fileReadUnknown)); return }
 +                self.onPosition?(boundary.end)
++                guard serial == self.seekSerial, token == self.boundarySerial else { return }
 +                boundary.done()
 +            }
 +        }

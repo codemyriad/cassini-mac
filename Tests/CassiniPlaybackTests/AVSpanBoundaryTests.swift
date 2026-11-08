@@ -75,8 +75,10 @@ import XCTest
     func testOvershotBoundarySettlesThePhysicalClockBeforeCompletion() async throws {
         let scene = try await fixture(); defer { scene.close() }
         let ended = expectation(description:"overshot native boundary completes after exact seek")
+        let (playing,observation) = started(scene.player); defer { observation.invalidate() }
         XCTAssertTrue(scene.audio.play(scene.meeting,fromMs:123,untilMs:423) { ended.fulfill() })
         await scene.audio.preparation?.value
+        await fulfillment(of:[playing],timeout:10)
         scene.player.pause()
         let overshot = expectation(description:"real player clock placed beyond the requested boundary")
         scene.transport.seek(toMs:426) { ready in
@@ -89,6 +91,24 @@ import XCTest
         XCTAssertEqual(scene.transport.positionMs,423,accuracy:1,"Boundary completion must settle the physical clock")
         XCTAssertEqual(scene.audio.positionMs,423)
         XCTAssertFalse(scene.audio.isPlaying)
+    }
+    func testNewSeekCancelsTheBoundaryClockSettlementCompletion() async throws {
+        let scene = try await fixture(); defer { scene.close() }
+        var ends = 0
+        scene.transport.setBoundary(atMs:423) { ends += 1 }
+        let positioned = expectation(description:"replacement native seek completed")
+        scene.transport.seek(toMs:426) { ready in
+            XCTAssertTrue(ready)
+            scene.transport.timeControlStatusChanged()
+            scene.transport.clearBoundary()
+            scene.transport.seek(toMs:150) { ready in
+                XCTAssertTrue(ready); positioned.fulfill()
+            }
+        }
+        await fulfillment(of:[positioned],timeout:10)
+        XCTAssertEqual(ends,0,"An obsolete settlement must not complete a cleared span")
+        XCTAssertEqual(scene.transport.positionMs,150,accuracy:1)
+        XCTAssertEqual(scene.player.rate,0)
     }
     func testBoundaryStopsA300msSpanWithoutPositionPolling() async throws {
         let scene = try await fixture(); defer { scene.close() }
