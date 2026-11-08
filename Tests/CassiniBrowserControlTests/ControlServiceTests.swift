@@ -18,6 +18,104 @@ private final class Admission: @unchecked Sendable {
     func read() -> Bool { lock.withLock { allowed } }
 }
 final class ControlServiceTests: XCTestCase {
+    @MainActor func testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let frames = SignalFrameWaiter(), actions = SignalEvents(), inspections = NotificationCount(), access = Admission()
+        access.set(true)
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },
+            canStart:{ inspections.increment(); return access.read() },received:{ frames.received($0) },
+            signalAction:{ actions.append($0) },canSignalStart:{ inspections.increment(); return access.read() })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let client = try signalClient(root:root)
+        let active = expectation(description:"Mixed call reserved")
+        frames.expect("callSignals",active); try send(signalSnapshot(0),client)
+        await fulfillment(of:[active],timeout:3)
+        let id = try XCTUnwrap(actions.startID), gate = try XCTUnwrap(service.signalInputGate(id))
+        service.signalStarted(id)
+        XCTAssertTrue(service.signalMayOpen(id)) // Fences the queued started notification.
+        let lost = expectation(description:"Evidence loss starts running grace")
+        frames.expect("callSignals",lost); try send(signalSnapshot(1,state:"unknown"),client)
+        await fulfillment(of:[lost],timeout:3)
+        XCTAssertNil(service.signalEndReason(id))
+        var opened = 0
+        for operation in ["re-enable Me","Retry","selection rollback"] {
+            do { try gate.admit { opened += 1 } }
+            catch {
+                XCTFail("Running grace must allow \(operation): \(error)")
+                // This is the real rollback-failure notification that previously
+                // suppressed the generation when its input restart was refused.
+                if operation == "selection rollback" { service.stopSignal(id,userInitiated:false,reason:.error) }
+            }
+        }
+        XCTAssertEqual(opened,3)
+        // Existing inputs use the owned recording and its disk watcher. A failed
+        // new-root inspection or disabling auto-record cannot revoke that owner.
+        access.set(false); service.setAutoRecord(false,microphone:false)
+        XCTAssertTrue(service.signalMayOpen(id))
+        let before = inspections.value
+        XCTAssertTrue(service.signalMayOpen(id))
+        let returned = expectation(description:"Same generation returns within grace")
+        frames.expect("callSignals",returned); try send(signalSnapshot(2),client)
+        await fulfillment(of:[returned],timeout:3)
+        XCTAssertTrue(service.signalMayOpen(id)); XCTAssertNil(actions.stopReason)
+        XCTAssertEqual(actions.startCount,1,"Returning evidence must retain the same recording")
+        XCTAssertEqual(inspections.value,before,"Owned input restart must not inspect a new recording root")
+        service.stopRecordings()
+        XCTAssertFalse(service.signalMayOpen(id))
+        XCTAssertThrowsError(try gate.admit { XCTFail("Stop must close the running input gate") })
+        XCTAssertEqual(actions.stopReason,.user)
+    }
+    @MainActor func testSignalFilesystemChecksRequireANewEligibleReservationOrPendingInputOpen() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let frames = SignalFrameWaiter(), actions = SignalEvents(), diskChecks = NotificationCount(), access = Admission()
+        access.set(true)
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },received:{ frames.received($0) },
+            signalAction:{ actions.append($0) },canSignalStart:{ diskChecks.increment(); return access.read() })
+        try service.start(root:root); defer { service.stop() }
+        service.setAutoRecord(true,microphone:false)
+        let client = try signalClient(root:root)
+        func pongs(_ prefix: String) async throws {
+            let replies = (0..<4).map { expectation(description:"\(prefix) frame \($0)") }
+            for (index,reply) in replies.enumerated() {
+                frames.expect("pong",reply); try send(["type":"pong","seq":index],client)
+            }
+            await fulfillment(of:replies,timeout:3)
+        }
+        try await pongs("No mixed call")
+        XCTAssertEqual(diskChecks.value,0,"Ordinary frames without signal eligibility must not inspect the filesystem")
+        let active = expectation(description:"One eligible call reserves")
+        frames.expect("callSignals",active); try send(signalSnapshot(0),client)
+        await fulfillment(of:[active],timeout:3)
+        let id = try XCTUnwrap(actions.startID), gate = try XCTUnwrap(service.signalInputGate(id))
+        XCTAssertEqual(diskChecks.value,1,"New admission must inspect once, after finding a real candidate")
+        try await pongs("Pending permission")
+        XCTAssertEqual(diskChecks.value,1,"Frames and reconciliation must not repeat pending admission inspection")
+        XCTAssertTrue(service.signalMayOpen(id)); XCTAssertEqual(diskChecks.value,2)
+        access.set(false)
+        XCTAssertFalse(service.signalMayOpen(id),"Pending input opening must still revalidate filesystem access")
+        XCTAssertEqual(diskChecks.value,3)
+        let withdrawn = expectation(description:"Pending call loses evidence")
+        frames.expect("callSignals",withdrawn); try send(signalSnapshot(1,state:"unknown"),client)
+        await fulfillment(of:[withdrawn],timeout:3)
+        XCTAssertFalse(service.signalMayOpen(id)); XCTAssertEqual(diskChecks.value,3)
+        XCTAssertThrowsError(try gate.admit { XCTFail("Pending work gets no running grace") })
+        XCTAssertEqual(actions.stopReason,.pageGone)
+    }
+    private func signalClient(root: URL) throws -> PipeEndpoint {
+        let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
+        try send(["type":"hello","version":1,"capabilities":["call-signals-v1"]],client)
+        XCTAssertEqual(try receive(client)["type"]?.string,"configure")
+        try send(["type":"configured","capabilities":["call-signals-v1"]],client)
+        return client
+    }
+    private func signalSnapshot(_ sequence: Int, state: String = "active") -> [String:Any] {
+        ["type":"callSignals","browserInstance":"profile-A","sequence":sequence,"tabs":[[
+            "tabId":2,"url":"https://call.example/","documentGeneration":"doc-A","remoteAudio":"mixed",
+            "callEvidence":["state":state,"reason":state == "active" ? "activeCall" : "unverified",
+                            "adapter":["name":"Synthetic call","version":"1"],"callGeneration":"call-A"]]]]
+    }
+
     func testNegotiatedSignalsOwnNativeReservationWithoutBrowserStartAndStopFencesReconnect() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let started = expectation(description:"Native reservation"), ended = expectation(description:"Last positive end")
@@ -282,5 +380,20 @@ private final class SignalEvents: @unchecked Sendable {
     private var actions: [BrowserSignalAction] = []
     func append(_ action: BrowserSignalAction) { lock.withLock { actions.append(action) } }
     var startID: UUID? { lock.withLock { for action in actions { if case .start(let id,_,let microphone) = action { XCTAssertFalse(microphone); return id } }; return nil } }
+    var startCount: Int { lock.withLock { actions.filter { if case .start = $0 { return true }; return false }.count } }
     var stopReason: CaptureEndReason? { lock.withLock { for action in actions { if case .stop(_,let reason) = action { return reason } }; return nil } }
+}
+
+private final class SignalFrameWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: [String:[XCTestExpectation]] = [:]
+    func expect(_ type: String, _ event: XCTestExpectation) { lock.withLock { waiting[type,default:[]].append(event) } }
+    func received(_ type: String?) {
+        guard let type else { return }
+        let event: XCTestExpectation? = lock.withLock {
+            guard var queue = waiting[type], !queue.isEmpty else { return nil }
+            let first = queue.removeFirst(); waiting[type] = queue; return first
+        }
+        event?.fulfill()
+    }
 }

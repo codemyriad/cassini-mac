@@ -1,0 +1,49 @@
+name: D74 review gate and filesystem regressions
+'on':
+  push:
+    branches: [ci/d74-review-followups]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Prove both review regressions on the original service
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          memory_pressure
+          vm_stat
+          set +e
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test -j 1 --filter 'ControlServiceTests.testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback|ControlServiceTests.testSignalFilesystemChecksRequireANewEligibleReservationOrPendingInputOpen' > evidence/before.log 2>&1
+          before_status=$?
+          set -e
+          cat evidence/before.log
+          test "$before_status" -ne 0
+          grep -q 'Running grace must allow' evidence/before.log
+          grep -q 'Ordinary frames without signal eligibility must not inspect the filesystem' evidence/before.log
+          grep -q 'Executed 2 tests' evidence/before.log
+      - name: Validate grace, pending permission, Stop and lifecycle with the fix
+        run: |
+          set -euo pipefail
+          git apply scripts/d74-review-service.patch
+          git diff --check
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test -j 1 --filter 'ControlServiceTests|CallSignalTests|InputLifecycleTests' 2>&1 | tee evidence/focused.log
+      - name: Full package integration
+        run: |
+          set -euo pipefail
+          memory_pressure
+          vm_stat
+          lockf -k -t 3600 "$HOME/.cassini-heavy.lock" swift test --skip-build -j 1 2>&1 | tee evidence/full.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d74-review-followups
+          path: evidence
