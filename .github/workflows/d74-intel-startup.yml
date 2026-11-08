@@ -36,6 +36,9 @@ jobs:
         run: |
           set -euo pipefail
           py=/Applications/Xcode_16.4.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/Current/bin/python3
+          producer=$("$py" -c 'import json; print(json.load(open("build/ci-products/swiftpm.json"))["commit"])')
+          git fetch --depth 1 origin "$producer"
+          git checkout --detach "$producer"
           "$py" scripts/ci-products.py unpack swiftpm build/ci-products
           "$py" scripts/ci-products.py unpack assets build/ci-products
           memory_pressure
