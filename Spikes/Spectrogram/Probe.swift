@@ -2,8 +2,8 @@
 #if DEBUG
 import AppKit
 import AVFoundation
-import CassiniRecording
-import CassiniBrowserControl
+@_spi(Testing) import CassiniRecording
+@_spi(Testing) import CassiniBrowserControl
 import CassiniSpectrogram
 import CassiniKit
 import Darwin
@@ -24,7 +24,8 @@ import ScreenCaptureKit
         var report: [String:Any] = [:]
         var driver: SpectrogramProbeInputs?
         do {
-            let input = try await Task.detached { try SpectrogramProbeInputs(root:root,browser:mode == "D") }.value
+            let evidenceOnly = argument("-SpectrogramProducerEvidence") == "1"
+            let input = try await Task.detached { try SpectrogramProbeInputs(root:root,browser:mode == "D",producerEvidence:evidenceOnly) }.value
             driver = input
             let controller = RecordingSpectrogram(originUptime:input.origin,observers:input.observers)
             let window = NSWindow(contentRect:.init(x:50,y:50,width:1120,height:720),styleMask:[.titled,.closable,.miniaturizable],backing:.buffered,defer:false)
@@ -101,12 +102,31 @@ import ScreenCaptureKit
             let initialLate = controller.lateColumns, initialDropped = controller.droppedColumns
             let initialBufferDrops = controller.droppedBuffers
             controller.resetFrameMeasurements()
+            let offerEvidence = OfferEvidence(engine:controller.engine,origin:input.origin)
+            if evidenceOnly { input.observers.set(offerEvidence) }
+            var lateEvents: [[String:Any]] = [], omittedLateEvents = 0
+            var tracedLate = controller.lateColumns
+            if evidenceOnly {
+                lateEvents.reserveCapacity(256)
+                controller.fixtureChanged = {
+                    guard controller.lateColumns > tracedLate else { return }
+                    let previous = tracedLate; tracedLate = controller.lateColumns
+                    guard lateEvents.count < 256 else { omittedLateEvents += 1; return }
+                    let columns = controller.lateTiming.filter { $0.ordinal > previous }.map {
+                        ["ordinal":Double($0.ordinal),"slot":Double($0.slot),"releasedThrough":Double($0.releasedThrough),
+                         "arrivalMs":$0.arrivalMs,"analysisStartedMs":$0.analysisStartedMs,"delayMs":$0.delayMs]
+                    }
+                    lateEvents.append(["observedAtMs":(ProcessInfo.processInfo.systemUptime-input.origin)*1000,
+                                       "totalLate":tracedLate,"added":tracedLate-previous,"delayMs":controller.displayDelayMs,"columns":columns])
+                }
+            }
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
             let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
             // CPU duration is the subject under measurement. Completion comes
             // from a real producer callback after the sixty-second interval;
             // a separate deadline can only fail, never complete, the run.
             try await input.waitForProgress(afterUptime:began+60)
+            if evidenceOnly { controller.fixtureChanged = nil }
             let mainCPU = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-mainCPUStart
             let elapsed = ProcessInfo.processInfo.systemUptime-began, cpu = processCPU()-cpuStart
             let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
@@ -137,6 +157,13 @@ import ScreenCaptureKit
                 "reducedMotion":controller.usingReducedMotion,
                 "displayDelayMs":controller.displayDelayMs,
                 "indicatorEnabled":RecordingSpectrogram.enabled]
+            if evidenceOnly {
+                report["diagnosticEvidenceOnly"] = true
+                report["producerTiming"] = input.producerDiagnostics
+                report["observerOffers"] = offerEvidence.snapshot
+                report["lateEvents"] = lateEvents
+                report["omittedLateEvents"] = omittedLateEvents
+            }
             if hidden {
                 try require(controller.frameCallbacks == 0 && controller.analyzedFrames == initialFrames,"hidden/off does no analysis or display callbacks")
             } else {
@@ -349,6 +376,39 @@ import ScreenCaptureKit
 
 /// No AVAudioEngine, AudioProcessTap, browser profile or network exists here.
 /// A serial timer feeds prebuilt RAM buffers into the actual per-session paths.
+private final class OfferEvidence: RecordedPCMObserver, @unchecked Sendable {
+    private let engine: SpectrogramSession, origin: Double
+    private let lock = NSLock()
+    private var offers: [[String:Any]] = [], omitted = 0
+    init(engine: SpectrogramSession, origin: Double) { self.engine = engine; self.origin = origin }
+    func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
+        let at = (ProcessInfo.processInfo.systemUptime-origin)*1000
+        lock.withLock {
+            if offers.count < 4096 {
+                offers.append(["id":source.id,"kind":source.kind,"offsetMs":offsetMs,"atMs":at,
+                               "startOffsetMs":source.startOffsetMs,"rate":source.sampleRate,"channels":source.channels,
+                               "frames":pcm.count/(source.channels*2)])
+            } else { omitted += 1 }
+        }
+        engine.offer(source:source,pcm:pcm,offsetMs:offsetMs)
+    }
+    func sourceEnded(id: String) { engine.sourceEnded(id:id) }
+    var snapshot: [String:Any] { lock.withLock { ["omitted":omitted,"events":offers] } }
+}
+private final class CheckpointEvidence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [(String,Double)] = []
+    private var omitted = 0
+    func append(_ phase: String, atMs: Double) {
+        lock.withLock {
+            if events.count < 2048 { events.append((phase,atMs)) } else { omitted += 1 }
+        }
+    }
+    var snapshot: [String:Any] {
+        let values = lock.withLock { (events,omitted) }
+        return ["omitted":values.1,"events":values.0.map { ["phase":$0.0,"atMs":$0.1] as [String:Any] }]
+    }
+}
 private final class SpectrogramProbeInputs: @unchecked Sendable {
     let observers: RecordedPCMObservers, origin = ProcessInfo.processInfo.systemUptime
     private let sink: RecordingSink, owner: OwnedBrowserCapture?
@@ -361,6 +421,20 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private var othersMissing = false
     private var intentionalGapFrames: UInt64 = 0
     private let chunk: Int
+    private let producerEvidence: Bool
+    private struct PacketEvidence {
+        let sequence: Int, source: Int
+        let offsetMs: Double, beganMs: Double, endedMs: Double
+    }
+    private var packetEvidence: [PacketEvidence] = []
+    private var omittedPacketEvidence = 0
+    private let checkpointEvidence = CheckpointEvidence()
+    var producerDiagnostics: [String:Any] {
+        let captured = queue.sync { (packetEvidence,omittedPacketEvidence) }
+        return ["omitted":captured.1,"checkpoints":checkpointEvidence.snapshot,"packets":captured.0.map {
+            ["sequence":Double($0.sequence),"source":Double($0.source),"offsetMs":$0.offsetMs,"beganMs":$0.beganMs,"endedMs":$0.endedMs]
+        }]
+    }
     var chunkFrames: Int { chunk }
     var samplePositionMs: Double { queue.sync { Double(frames)/48 } }
     private struct ProgressWait {
@@ -398,7 +472,8 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             }
         }
     }
-    init(root: URL, browser: Bool) throws {
+    init(root: URL, browser: Bool, producerEvidence: Bool = false) throws {
+        self.producerEvidence = producerEvidence
         chunk = browser ? 8192 : 4096
         if browser {
             let capture = try OwnedBrowserCapture(parent:root,title:"Private generated meeting",microphone:true)
@@ -410,6 +485,11 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             let session = try RecordingSession(parent:root,title:"Private generated sound",source:"macos")
             observers = session.pcmObservers
             sink = RecordingSink(session:session,originHostTime:AVAudioTime.hostTime(forSeconds:origin),onFailure:{ _ in })
+        }
+        if producerEvidence {
+            packetEvidence.reserveCapacity(2048)
+            let trace = checkpointEvidence, epoch = origin
+            owner?.setCheckpointObserver { phase in trace.append(phase.rawValue,atMs:(ProcessInfo.processInfo.systemUptime-epoch)*1000) }
         }
         let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:1)!
         for track in 0..<(browser ? 5 : 2) {
@@ -445,7 +525,15 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
         sink.receive(buffers[0],hostTime:host,id:"mic",label:"Mic",kind:"microphone")
         if othersMissing { intentionalGapFrames += UInt64(chunk) }
         else if let owner {
-            do { for n in 0..<4 { try owner.browserAudio(id:"remote-\(n)",sequence:sequence,offsetMs:offset,pcm:pcm[n+1]) } }
+            do { for n in 0..<4 {
+                let began = producerEvidence ? (ProcessInfo.processInfo.systemUptime-origin)*1000 : 0
+                try owner.browserAudio(id:"remote-\(n)",sequence:sequence,offsetMs:offset,pcm:pcm[n+1])
+                if producerEvidence {
+                    let ended = (ProcessInfo.processInfo.systemUptime-origin)*1000
+                    if packetEvidence.count < 4096 { packetEvidence.append(.init(sequence:sequence,source:n,offsetMs:offset,beganMs:began,endedMs:ended)) }
+                    else { omittedPacketEvidence += 1 }
+                }
+            } }
             catch { errorLock.withLock { failure = String(describing:error) } }
         } else { sink.receive(buffers[1],hostTime:host,id:"system",label:"System",kind:"system") }
         frames += chunk; producedFrameCount += chunk; sequence += 1
