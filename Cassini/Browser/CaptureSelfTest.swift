@@ -418,18 +418,23 @@ final class CaptureProbeProcess: @unchecked Sendable {
             _ = try await two.performNext()
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
-            stage = "auto-start new call and notification Stop"
+            stage = "source-only auto blocked, explicit Record and notification Stop"
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
             try await one.meetings(true)
+            // This observation follows control reconciliation, not a quiet delay.
+            try await wait { collection.hasCalls }
+            try require(collection.captures.isEmpty && automatic.isEmpty,"Source/heard alone cannot start automatically")
+            try await collection.record()
             _ = try await one.performNext()
-            try await wait { collection.captures.count == 1 && automatic.count == 1 }
-            let automaticID = try collection.captures.keys.first.unwrap()
-            CaptureNotifications.handle(action:"stop",id:automaticID)
+            try await wait { collection.captures.count == 1 && !collection.starting }
+            try require(automatic.isEmpty,"Explicit Record must not consume a leaked automatic Start")
+            let recordedID = try collection.captures.keys.first.unwrap()
+            CaptureNotifications.handle(action:"stop",id:recordedID)
             _ = try await one.performNext()
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
-            report["newCallAutoStartAndNotificationStop"] = true
+            report["sourceOnlyAutoBlockedManualStartAndNotificationStop"] = true
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }

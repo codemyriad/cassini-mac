@@ -36,12 +36,14 @@ public final class BrowserControlService: @unchecked Sendable {
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
                 received: @escaping @Sendable (String?) -> Void = { _ in }, ownership: CallOwnershipStore? = nil,
                 requireMultiStream: Bool = false,
+                allowAutomaticBrowserStarts: Bool = true,
                 signalAction: @escaping @Sendable (BrowserSignalAction) -> Void = { _ in },
                 canSignalStart: @escaping @Sendable () -> Bool = { true }) {
         self.canSignalStart = canSignalStart
         self.signalAction = signalAction
         self.changed = changed; self.completed = completed; self.audio = audio; self.canStart = canStart; self.clock = clock; self.received = received
         self.ownership = ownership; registry.requireMultiStream = requireMultiStream
+        registry.allowAutomaticBrowserStarts = allowAutomaticBrowserStarts
         queue.setSpecific(key:key,value:1)
     }
     public func start(root: URL = BrowserPipeServer.standardRoot) throws {

@@ -208,6 +208,10 @@ public struct BrowserControlRegistry: Sendable {
     /// An app that follows calls only by the D52 policy starts no capture on a peer whose hello
     /// lacks multi-stream-v1 (Mac, D51: extension 0.2.12+). The protocol itself still allows them.
     public var requireMultiStream = false
+    /// D80.2: the Mac app temporarily disables RTP/source-only automatic Start
+    /// until the reviewed generic call-evidence contract is adopted. Explicit
+    /// Record and the separate positive mixed-call signal policy are unchanged.
+    public var allowAutomaticBrowserStarts = true
     public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                 instanceAlive: @escaping @Sendable (BrowserInstance) -> Bool? = { $0.isAlive }) {
         self.clock = clock; self.instanceAlive = instanceAlive
@@ -739,6 +743,7 @@ public struct BrowserControlRegistry: Sendable {
         return request
     }
     public mutating func start(_ key: BrowserMeetingKey, microphone: Bool, automatic: Bool = false) throws -> BrowserControlRequest {
+        guard !automatic || allowAutomaticBrowserStarts else { throw BrowserControlStateError.unavailable }
         guard var peer = peers[key.peer] else { throw BrowserControlStateError.unavailable }
         guard !peer.superseded, signalPeerCurrent(peer) else { throw BrowserControlStateError.unavailable }
         guard peer.reconciled else { throw BrowserControlStateError.notReconciled }
@@ -801,6 +806,7 @@ public struct BrowserControlRegistry: Sendable {
     /// Called after every replacement snapshot and when auto-record is enabled.
     /// Reconciliation and the per-call attempt set prevent reconnect/retry loops.
     public mutating func automaticStarts(microphone: Bool) -> [BrowserControlRequest] {
+        guard allowAutomaticBrowserStarts else { return [] }
         expireRememberedStops()
         var keys: [BrowserMeetingKey] = []
         for peer in peers.values where peer.reconciled && peer.independent {

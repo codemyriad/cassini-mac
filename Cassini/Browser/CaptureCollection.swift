@@ -147,7 +147,7 @@ private final class CaptureFiles: @unchecked Sendable {
         DispatchQueue.main.async { self?.replacePeers(peers) }
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
-    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true,signalAction:{ [weak self] action in
+    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true,allowAutomaticBrowserStarts:false,signalAction:{ [weak self] action in
         Task { @MainActor in await self?.signalAction(action) }
     },canSignalStart:{ [files] in files.canStartSignal() })
     private func signalAction(_ action: BrowserSignalAction) async {
