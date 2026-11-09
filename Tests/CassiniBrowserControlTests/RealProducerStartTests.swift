@@ -85,6 +85,8 @@ final class RealProducerStartTests: XCTestCase {
             XCTAssertEqual(starts.first?["tabId"]?.int,row["tabId"] as? Int)
             XCTAssertEqual(starts.first?["callGeneration"]?.string,evidence["callGeneration"] as? String)
             XCTAssertEqual(starts.first?["microphone"]?.bool,true)
+            XCTAssertEqual(starts.first?["independent"]?.bool,true)
+            XCTAssertEqual(starts.first?["keepOnNavigation"]?.bool,true)
             let facts = try XCTUnwrap(value["facts"] as? [String:Any])
             XCTAssertEqual(facts["acknowledged"] as? Bool,true)
             XCTAssertEqual(facts["splitPeerConnection"] as? Bool,true)
