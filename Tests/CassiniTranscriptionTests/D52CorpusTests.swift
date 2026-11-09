@@ -242,6 +242,15 @@ final class D52CorpusTests: XCTestCase {
         let meetings = try LibraryScanner(root:root).scan().meetings
         XCTAssertEqual(Set(meetings.map { $0.id.uuidString.lowercased() }),Set(spec.expected.sessions.keys))
         func speaker(_ person: String) -> String { ["me","others"].contains(person) ? person : "track-" + person }
+        // D84: these three D63 source-contiguous spans have separate viewer paragraphs.
+        // The pinned corpus still defines the source-gap grouping; it is not a layout vector.
+        let longPauseParagraphs: [String:Set<[[Int64]]>] = [
+            "05200000-0000-4000-8000-000000000001": [
+                [[19500,19900],[50100,50500]], [[31000,31500],[40200,40500]]],
+            "05200000-0000-4000-8000-000000000003": [
+                [[15000,15500],[24500,25000]]],
+        ]
+        var paragraphCases = 0
         for meeting in meetings {
             let key = meeting.id.uuidString.lowercased(), expected = try XCTUnwrap(spec.expected.sessions[key])
             let planned = try plan(meeting)
@@ -280,8 +289,27 @@ final class D52CorpusTests: XCTestCase {
             }
             for turn in expected.turnCases {
                 let words = turn.words.enumerated().map { LibraryTranscriptItem(speaker:speaker(turn.speaker),startMs:$0.element[0],endMs:$0.element[1],text:"w\($0.offset)") }
-                XCTAssertEqual(MeetingPresentation.turns(words,gaps:gaps).map(\.items.count),turn.turns,"\(key) \(turn.words) meeting turns")
-                XCTAssertEqual(LibraryTranscriptTurn.coalescing(words,gaps:gaps).map { $0.text.split(separator:" ").count },turn.turns,"\(key) \(turn.words) coalesced turns")
+                // Preserve the original D63 assertion independently of presentation breaks.
+                var sourceGroups: [Int] = []
+                for (i,word) in words.enumerated() {
+                    if i > 0 && !SpeakerGapRanges.splits(words[i-1],word,gaps) { sourceGroups[sourceGroups.count-1] += 1 }
+                    else { sourceGroups.append(1) }
+                }
+                XCTAssertEqual(sourceGroups,turn.turns,"\(key) \(turn.words) source-gap turns")
+                let viewerSplits = longPauseParagraphs[key]?.contains(turn.words) == true
+                if viewerSplits {
+                    paragraphCases += 1
+                    XCTAssertEqual(turn.turns,[2],"This source-contiguous span now has two readable paragraphs")
+                }
+                let readable = viewerSplits ? [1,1] : turn.turns
+                let rows = MeetingPresentation.turns(words,gaps:gaps)
+                XCTAssertEqual(rows.map(\.items.count),readable,"\(key) \(turn.words) meeting paragraphs")
+                XCTAssertEqual(LibraryTranscriptTurn.coalescing(words,gaps:gaps).map { $0.text.split(separator:" ").count },readable,"\(key) \(turn.words) preview paragraphs")
+                if viewerSplits {
+                    XCTAssertEqual(rows.map(\.continuation),[false,true])
+                    XCTAssertEqual(rows.map(\.startMs),words.map(\.startMs))
+                    XCTAssertEqual(rows.map(\.endMs),words.map(\.endMs))
+                }
             }
             // D63 #3: the word midpoints, through the write rule on each track's kept time.
             for word in expected.wordMidpoints {
@@ -289,6 +317,7 @@ final class D52CorpusTests: XCTestCase {
                 XCTAssertEqual(MeetingTranscriber.writes(startMs:word.ms[0],endMs:word.ms[1],kept:mine.kept,startSample:mine.startSample),word.keep,"\(word.track) \(word.ms)")
             }
         }
+        XCTAssertEqual(paragraphCases,3,"Every explicit D84 corpus paragraph case was exercised")
     }
 
     /// D63 mutants the synthetic vectors cannot show: a midpoint rounded to whole ms (the
