@@ -245,9 +245,15 @@ extension LibraryBoards {
         XCTAssertTrue(icon.waitForExistence(timeout:10),dock.debugDescription)
         icon.click()
     }
-    /// Return immediately once the presence condition is already satisfied.
+    /// Measurement switch only; the follow-up keeps the parent's original helper.
     @MainActor func waitForPresent(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
-        element.exists || element.waitForExistence(timeout:timeout)
+        if ProcessInfo.processInfo.environment["CASSINI_D82_ORIGINAL_PRESENCE"] == "1" {
+            print("D82 presence original")
+            return element.waitForExistence(timeout:timeout)
+        }
+        let present = element.exists
+        print("D82 presence fast \(present ? "ready" : "wait")")
+        return present || element.waitForExistence(timeout:timeout)
     }
 
     @MainActor private func backgroundClick(_ target:XCUIElement,through foreground:XCUIApplication) {

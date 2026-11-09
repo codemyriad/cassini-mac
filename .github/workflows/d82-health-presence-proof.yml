@@ -1,0 +1,43 @@
+name: D82 companion health presence wait proof
+'on':
+  push:
+    branches: [ci/d82-health-presence-proof]
+  workflow_dispatch: {}
+concurrency:
+  group: d82-health-presence-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    uses: ./.github/workflows/ci-build.yml
+    with:
+      parakeet_models: false
+  proof:
+    needs: [build]
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-products
+        with:
+          debug: 'true'
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - run: brew install displayplacer
+      - run: python3 scripts/hosted-display.py
+      - name: Complete original/fast/fast/original UI cases
+        run: python3 scripts/d82-health-presence-proof.py
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d82-health-presence-proof
+          path: |
+            build/d82-health-presence/*.log
+            build/d82-health-presence/*.json
+          retention-days: 14
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: d82-health-presence-diagnostics
+          path: build/d82-health-presence/*.xcresult
+          retention-days: 7
