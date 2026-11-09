@@ -24,6 +24,12 @@ import ScreenCaptureKit
         var report: [String:Any] = [:]
         var driver: SpectrogramProbeInputs?
         do {
+            if argument("-SpectrogramProfileOnly") == "1", e["CASSINI_SPECTRO_PROFILE_GATE"] == "1" {
+                // Subscribe/attach before creating the fixture and its origin clock.
+                // EOF cancels the diagnostic; it must never start an unprofiled run.
+                let start = await Task.detached { FileHandle.standardInput.readData(ofLength:1) }.value
+                try require(start == Data([49]),"profiler recording-start gate")
+            }
             let input = try await Task.detached { try SpectrogramProbeInputs(root:root,browser:mode == "D") }.value
             driver = input
             let controller = RecordingSpectrogram(originUptime:input.origin,observers:input.observers)
