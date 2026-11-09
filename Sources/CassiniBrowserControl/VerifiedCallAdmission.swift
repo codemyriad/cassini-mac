@@ -76,7 +76,9 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
                     gate.update(deadline.map { now < $0 } ?? false,expiresAt:deadline,closesAt:deadline.map { $0+120 })
                     if let deadline { entry.lastExpiry = deadline }
                 } else {
-                    if ended.contains(call) || owned.keys.contains(where:{ $0.tab == call.tab && SignalCallPolicy.exact($0.profile,call.profile) && $0 != call }) { entry.ending = .callEnded }
+                    // Reloaded document aliases are evidence loss for this association,
+                    // not a positive end. A genuinely new call generation still fences it.
+                    if ended.contains(call) || owned.keys.contains(where:{ $0.tab == call.tab && SignalCallPolicy.exact($0.profile,call.profile) && !SignalCallPolicy.exact($0.generation,call.generation) }) { entry.ending = .callEnded }
                     if let expiry = owned[call], now < expiry { entry.lastExpiry = expiry; entry.lostAt = nil }
                     else if entry.lostAt == nil { entry.lostAt = min(now,entry.lastExpiry ?? now) }
                     let deadline = entry.lostAt.map { $0+120 } ?? entry.lastExpiry.map { $0+120 }

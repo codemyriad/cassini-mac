@@ -126,7 +126,7 @@ struct SignalCallPolicy: Sendable {
                 let same = Self.exact(row?.document,key.document) && Self.exact(row?.generation,key.generation) && Self.exact(row?.sourceDocument,key.sourceDocument)
                 let active = row.map { value in peer.active?.contains(.init(instance:peer.snapshot.instance,tab:value.tabID,document:value.document,generation:value.generation ?? "",sourceDocument:value.sourceDocument)) ?? true } ?? false
                 if same && row?.state == "inactive" && row?.reason == "callEnded" { drop(key,reason:.callEnded) }
-                else if let row, row.state == "active", active, !same { drop(key,reason:.callEnded) }
+                else if let row, row.state == "active", active, !Self.exact(row.generation,key.generation) { drop(key,reason:.callEnded) }
                 else if same && row?.state == "active" && active && (started || row?.remoteAudio == "mixed") {
                     calls[key]?.lostAt = nil
                     if let expiry = peer.expiredAt[key] { calls[key]?.lastExpiry = expiry }
