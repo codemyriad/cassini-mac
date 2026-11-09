@@ -2,8 +2,8 @@
 #if DEBUG
 import AppKit
 import AVFoundation
-import CassiniRecording
-import CassiniBrowserControl
+@_spi(Testing) import CassiniRecording
+@_spi(Testing) import CassiniBrowserControl
 import CassiniSpectrogram
 import CassiniKit
 import Darwin
@@ -137,6 +137,7 @@ import ScreenCaptureKit
                 "reducedMotion":controller.usingReducedMotion,
                 "displayDelayMs":controller.displayDelayMs,
                 "indicatorEnabled":RecordingSpectrogram.enabled]
+            report["producerDiagnostics"] = input.producerDiagnostics
             if hidden {
                 try require(controller.frameCallbacks == 0 && controller.analyzedFrames == initialFrames,"hidden/off does no analysis or display callbacks")
             } else {
@@ -358,7 +359,21 @@ import ScreenCaptureKit
 private final class SpectrogramProbeInputs: @unchecked Sendable {
     let observers: RecordedPCMObservers, origin = ProcessInfo.processInfo.systemUptime
     private let sink: RecordingSink, owner: OwnedBrowserCapture?
-    private let queue = DispatchQueue(label:"io.codemyriad.cassini.spectro-probe")
+    private let queue = DispatchQueue(label:"io.codemyriad.cassini.spectro-probe",qos:ProcessInfo.processInfo.environment["CASSINI_SOURCE_QOS"] == "userInitiated" ? .userInitiated : .unspecified)
+    private struct InputTrace {
+        let sequence: Int, source: Int
+        let offsetMs: Double, beganMs: Double, endedMs: Double, qos: UInt32
+    }
+    private var inputTrace: [InputTrace] = []
+    private var checkpointTrace: [(String,Double)] = []
+    private let checkpointTraceLock = NSLock()
+    var producerDiagnostics: [String:Any] {
+        let input = queue.sync { inputTrace }
+        let checkpoints = checkpointTraceLock.withLock { checkpointTrace }
+        return ["requestedQoS":ProcessInfo.processInfo.environment["CASSINI_SOURCE_QOS"] ?? "unspecified",
+                "packets":input.map { ["sequence":Double($0.sequence),"source":Double($0.source),"offsetMs":$0.offsetMs,"beganMs":$0.beganMs,"endedMs":$0.endedMs,"qos":Double($0.qos)] },
+                "checkpoints":checkpoints.map { ["phase":$0.0,"atMs":$0.1] as [String:Any] }]
+    }
     private let errorLock = NSLock()
     private var failure: String?
     private var timer: DispatchSourceTimer?
@@ -417,6 +432,13 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
             observers = session.pcmObservers
             sink = RecordingSink(session:session,originHostTime:AVAudioTime.hostTime(forSeconds:origin),onFailure:{ _ in })
         }
+        inputTrace.reserveCapacity(4096)
+        owner?.setCheckpointObserver { [weak self] phase in
+            guard let self else { return }
+            self.checkpointTraceLock.withLock {
+                if self.checkpointTrace.count < 2048 { self.checkpointTrace.append((phase.rawValue,(ProcessInfo.processInfo.systemUptime-self.origin)*1000)) }
+            }
+        }
         let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:1)!
         for track in 0..<(browser ? 5 : 2) {
             let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(chunk))!
@@ -454,7 +476,11 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
         sink.receive(buffers[0],hostTime:host,id:"mic",label:"Mic",kind:"microphone")
         if othersMissing { intentionalGapFrames += UInt64(chunk) }
         else if let owner {
-            do { for n in 0..<4 { try owner.browserAudio(id:"remote-\(n)",sequence:sequence,offsetMs:offset,pcm:pcm[n+1]) } }
+            do { for n in 0..<4 {
+                let began = (ProcessInfo.processInfo.systemUptime-origin)*1000, qos = qos_class_self().rawValue
+                try owner.browserAudio(id:"remote-\(n)",sequence:sequence,offsetMs:offset,pcm:pcm[n+1])
+                if inputTrace.count < 4096 { inputTrace.append(.init(sequence:sequence,source:n,offsetMs:offset,beganMs:began,endedMs:(ProcessInfo.processInfo.systemUptime-origin)*1000,qos:qos)) }
+            } }
             catch { errorLock.withLock { failure = String(describing:error) } }
         } else { sink.receive(buffers[1],hostTime:host,id:"system",label:"System",kind:"system") }
         frames += chunk; producedFrameCount += chunk; sequence += 1
