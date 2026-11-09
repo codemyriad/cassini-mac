@@ -157,13 +157,36 @@ class FoldedJobs(unittest.TestCase):
             with self.subTest(step=marker):
                 self.assertIn("env.EXPORTS == 'true'", step_condition(job, marker))
         self.assertIn("env.MODEL_DOWNLOAD == 'true'", step_condition(job, 'name: downloader-macos-15-intel'))
-        # No other job repeats the Intel downloader or the export filter on any runner.
+        # The ARM kit job deliberately partitions its existing full-suite run;
+        # its model filter and exact complement are checked below. No other job
+        # may duplicate the downloader, and the Intel export filter stays unique.
         others = self.CI.replace(job, '')
+        model_others = others.replace(ci_job('kit'), '')
         for workflow in (ROOT/'.github/workflows').glob('*.yml'):
             text = others if workflow.name == 'ci.yml' else workflow.read_text()
+            model_text = model_others if workflow.name == 'ci.yml' else text
             with self.subTest(workflow=workflow.name):
-                self.assertNotIn('--filter ModelDownloaderTests', text)
+                self.assertNotIn('--filter ModelDownloaderTests', model_text)
                 self.assertNotIn("--filter 'ExportGoldenTests|", text)
+
+    def test_arm64_full_suite_has_one_model_partition_and_its_exact_complement(self):
+        kit = ci_job('kit')
+        self.assertIn('runs-on: macos-15\n', kit)
+        start = kit.index('    - name: Test\n')
+        end = kit.index('\n    - ', start + 1)
+        step = kit[start:end]
+        self.assertNotRegex(step, r'(?m)^\s+if:', 'Both partitions must always run')
+        commands = re.findall(
+            r'^\s+python3 scripts/run-swift-tests.py --output (\S+) -- (.+)$',
+            step, re.M)
+        self.assertEqual(commands, [
+            ('build/unit-tests/models', 'swift test --skip-build --filter ModelDownloaderTests'),
+            ('build/unit-tests/remaining', 'swift test --skip-build --skip ModelDownloaderTests'),
+        ])
+        self.assertEqual(kit.count('--filter ModelDownloaderTests'), 1)
+        self.assertEqual(kit.count('--skip ModelDownloaderTests'), 1)
+        # Separate logs/stacks stay inside the single recursively uploaded artifact.
+        self.assertIn('path: build/unit-tests\n', kit)
 
     def test_kit_runs_the_arm64_export_checks(self):
         kit = ci_job('kit')
