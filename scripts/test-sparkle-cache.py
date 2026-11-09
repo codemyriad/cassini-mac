@@ -3,6 +3,8 @@
 """Exercise verified atomic SwiftPM cache staging without network or real caches."""
 import hashlib
 import importlib.util
+import io
+import urllib.error
 from pathlib import Path
 import tempfile
 import unittest
@@ -28,6 +30,18 @@ class SparkleCache(unittest.TestCase):
                 self.assertEqual(sparkle.fetch_spm(root/'downloads', root/'cache').read_bytes(), payload)
                 fetch.assert_called_once()
                 self.assertEqual(sorted(p.name for p in target.parent.iterdir()), [target.name])
+
+    def test_gateway_error_uses_same_immutable_asset_and_verifies_it(self):
+        payload = b'API artifact'
+        with tempfile.TemporaryDirectory() as folder, patch.object(sparkle, 'SPM_SHA256', hashlib.sha256(payload).hexdigest()):
+            root = Path(folder)
+            error = urllib.error.HTTPError(sparkle.SPM_URL, 504, 'Gateway Time-out', {}, None)
+            def api(request, timeout):
+                self.assertEqual(request.full_url, sparkle.SPM_ASSET_API)
+                self.assertEqual(request.get_header('Accept'), 'application/octet-stream')
+                return io.BytesIO(payload)
+            with patch.object(sparkle.urllib.request, 'urlretrieve', side_effect=error), patch.object(sparkle.urllib.request, 'urlopen', side_effect=api):
+                self.assertEqual(sparkle.fetch_spm(root/'downloads', root/'cache').read_bytes(), payload)
 
     def test_bad_download_never_replaces_verified_cache_or_retains_partial_file(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(sparkle, 'SPM_SHA256', hashlib.sha256(b'keep').hexdigest()):
