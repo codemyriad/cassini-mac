@@ -565,7 +565,7 @@ final class LibraryBoards: XCTestCase {
         let low = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString,
             "-CassiniSpeechMemoryBytes",String((UInt64(8) << 30)-1)])
         let lowWindow = low.windows["cassini-settings-window"]
-        XCTAssertTrue(lowWindow.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),low.debugDescription)
+        XCTAssertTrue(waitForPresent(lowWindow.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch,timeout:20),low.debugDescription)
         XCTAssertFalse(lowWindow.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch.exists)
         low.terminate()
         for (language,locale) in [("en-GB","en_GB"),("fr-FR","fr_FR"),("pt-PT","pt_PT")] {
@@ -573,9 +573,9 @@ final class LibraryBoards: XCTestCase {
             let arguments = ["-CassiniSettingsID",identity,"-CassiniSpeechMemoryBytes",String(UInt64(8) << 30)]
             let app = try launch("settings-transcription",fixture:"main",extra:arguments,language:language,locale:locale)
             let window = app.windows["cassini-settings-window"]
-            XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
+            XCTAssertTrue(waitForPresent(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch,timeout:20),app.debugDescription)
             let card = window.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch
-            XCTAssertTrue(card.waitForExistence(timeout:5),app.debugDescription)
+            XCTAssertTrue(waitForPresent(card,timeout:5),app.debugDescription)
             XCTAssertTrue(card.descendants(matching:.staticText).allElementsBoundByIndex.contains { element in
                 String(describing:element.value ?? element.label).contains("443")
             },card.debugDescription)
@@ -584,7 +584,7 @@ final class LibraryBoards: XCTestCase {
             // SwiftUI's link button style exposes this action as an AX link.
             // Match its identifier independently of the platform element role.
             let notNow = window.descendants(matching:.any).matching(identifier:"settings-parakeet-not-now").firstMatch
-            XCTAssertTrue(notNow.waitForExistence(timeout:5),window.debugDescription)
+            XCTAssertTrue(waitForPresent(notNow,timeout:5),window.debugDescription)
             XCTAssertTrue(notNow.isHittable)
             notNow.click()
             let hidden = NSPredicate { _,_ in !card.exists }
@@ -592,7 +592,7 @@ final class LibraryBoards: XCTestCase {
             app.terminate()
             let relaunched = try launch("settings-transcription",fixture:"main",extra:arguments,language:language,locale:locale)
             let restored = relaunched.windows["cassini-settings-window"]
-            XCTAssertTrue(restored.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),relaunched.debugDescription)
+            XCTAssertTrue(waitForPresent(restored.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch,timeout:20),relaunched.debugDescription)
             XCTAssertFalse(restored.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch.exists)
             relaunched.terminate()
         }
