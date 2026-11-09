@@ -49,7 +49,7 @@ import Testing
             .init(speaker:"sam",startMs:0,endMs:2500,text:"Before."),
             .init(speaker:"claire",startMs:3000,endMs:4500,text:"This turn."),
             .init(speaker:"sam",startMs:4500,endMs:6000,text:"After.")]
-        let rows = MeetingPresentation.turns(words), turns = SpeakerTurn.grouping(words)
+        let rows = MeetingPresentation.turns(words,endsBoundedByAudio:true), turns = SpeakerTurn.grouping(words)
         let mapping = TranscriptListening(rows:rows,turns:turns)
         let target = try #require(rows.first { $0.speaker == "claire" })
         let lead = try #require(rows.first { $0.speaker == "sam" })
@@ -67,7 +67,7 @@ import Testing
             let start = Int64(3000) + Int64(i)*250
             overlapWords.append(.init(speaker:"sam",startMs:start,endMs:start+200,text:"Overlap."))
         }
-        let overlapRows = MeetingPresentation.turns(overlapWords)
+        let overlapRows = MeetingPresentation.turns(overlapWords,endsBoundedByAudio:true)
         let overlap = TranscriptListening(rows:overlapRows,turns:SpeakerTurn.grouping(overlapWords))
         let otherRows = overlapRows.filter { !overlap.hosts(forListening:0).contains($0.host ?? $0.id) }
         #expect(!otherRows.isEmpty)

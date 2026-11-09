@@ -38,3 +38,33 @@ The core PR introduces this tested model without changing any surface. Follow-up
 adoption replaces MeetingPresentation and the legacy Timeline adapters, then
 wires Meeting, reader/QuickLook, Search/preview and Markdown to these same rows.
 D63 speaker-gap boundaries must remain explicit at the adapter boundary.
+
+## Surface adoption
+
+The adoption branch replaces MeetingPresentation's private builder and
+Timeline.buildTurns with adapters to TranscriptRendering. Meeting paragraphs,
+inline chip selection/copy, Search indexing and context, Library and QuickLook
+previews, both document windows and Markdown now share these rows. Library
+preview/Markdown text uses MeetingPresentation.prose; QuickLook/legacy plain
+text uses Timeline.text. Chips include their name and parentheses in copy text.
+Names are hidden on continuation rows, clocks remain visible, and competing
+labels appear once per turn in descending collision order.
+
+App-owned speaker gaps remain explicit hard boundaries. The old D63 vector's
+no-gap long-pause case still describes listening-span identity; D84 now gives
+that case two readable rows. The other seven source-gap cases and gap mutants
+retain their old assertions. D84 also supersedes D38.5 quote pairing: stored
+quotes stay unchanged on all transcript surfaces, including search offsets.
+
+The Cassini-file timing attestation reaches every adapter, Search fingerprints
+and asynchronous preparation. Canonical word order is retained until readable
+blocks have been built; sorting words first changes paragraph boundaries. D70
+listening spans remain separate from reading paragraphs, and matching listening
+words uses speaker/start/text so a display-only end repair cannot erase their
+highlights. Search uses UTF16 word spans in the inline copy text, so a chip hit
+seeks its own source word. Renaming a chip speaker invalidates the index copy.
+
+The existing Mac export wrapper (localized headings, dates and clock format)
+is retained; transcript paragraph order, text, inline chips and overlap decisions
+come from the shared viewer model. Vector-driven adapter tests compare each
+expected row and the resulting prose on Meeting, preview, QuickLook and export.

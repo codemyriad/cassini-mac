@@ -118,7 +118,7 @@ import Observation
     private func prepareTurns() {
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
         if frozen {
-            turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps)
+            turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
             listeningTurns = meeting.speakerTurns; listen.setTurns(listeningTurns)
             timelineReadout = TimelineReadout(items:meeting.transcriptItems)
             transcriptListening = TranscriptListening(rows:turns,turns:listeningTurns)
@@ -139,7 +139,7 @@ import Observation
             #endif
             if preparation == nil { preparation = TurnPreparation { [weak self] in self?.acceptTurns($0) } }
         }
-        preparation?.request(meeting.transcriptItems,gaps:meeting.speakerGaps)
+        preparation?.request(meeting.transcriptItems,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
     }
     private func acceptTurns(_ turns: [MeetingPresentation.Turn]) {
         self.turns = turns

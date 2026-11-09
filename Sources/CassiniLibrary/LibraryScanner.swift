@@ -191,7 +191,7 @@ public struct LibraryScanner: Sendable {
                     if let requested = reference.transcriptId { selected = file.transcripts.first { $0.entry.id == requested } }
                     else { selected = file.defaultTranscript }
                     guard let body = selected?.load.transcript else { throw MetadataError.invalid }
-                    words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
+                    words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, lowConfidenceSpeaker:$0.lowConfidenceSpeaker ? true : nil) }
                     meeting.transcriptLanguage = body.language
                     meeting.wordEndsBoundedByAudio = file.manifest?.wordEndsBoundedByAudio == true
                     readable = true
@@ -216,9 +216,9 @@ public struct LibraryScanner: Sendable {
         }
         if ![.queued, .running].contains(meeting.state.transcript) { meeting.state.etaMinutes = nil }
         if meeting.state.transcript == .damaged { words = [] }
-        let sorted = words.enumerated().sorted {
-            $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
-        }.map(\.element)
+        // D84: readable grouping precedes display sorting in the viewer. Preserve canonical
+        // producer order here; playback/listening indices sort their own timed projections.
+        let sorted = words
         // D24: merges are applied once, here; the stored words keep their own speaker ids.
         // Known ids (GNOME parity): meeting.json speakers, the received file's speakers, and the words'.
         let known = Set((metadata?.speakers ?? []).map(\.id)).union(embeddedNames.keys).union(sorted.map(\.speaker))
@@ -239,7 +239,7 @@ public struct LibraryScanner: Sendable {
             return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
-            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(resolved)
+            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(resolved,names:meeting.speakerDisplayNames,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
         }
         return meeting
     }
@@ -392,8 +392,9 @@ private struct LibraryWords: Decodable {
 }
 public struct LibraryTranscriptItem: Codable, Equatable, Sendable {
     public let speaker: String; public let startMs: Int64; public let endMs: Int64; public let text: String
-    public init(speaker: String, startMs: Int64, endMs: Int64, text: String) {
-        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text
+    public let lowConfidenceSpeaker: Bool?
+    public init(speaker: String, startMs: Int64, endMs: Int64, text: String, lowConfidenceSpeaker: Bool? = nil) {
+        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text; self.lowConfidenceSpeaker = lowConfidenceSpeaker
     }
 }
 private func collapsed(_ text: String) -> String { text.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
@@ -405,20 +406,13 @@ private func normalizedOverride(_ quote: MeetingQuote?) -> MeetingQuote? {
     }
     return text.isEmpty ? nil : MeetingQuote(atMs: quote.atMs, text: text)
 }
-private func defaultQuote(_ words: [LibraryTranscriptItem]) -> MeetingQuote? {
-    struct Turn { var speaker: String; var start: Int64; var end: Int64; var text: [String]; var ordinal: Int }
-    var turns: [Turn] = []
-    for (index, word) in words.enumerated() {
-        if turns.last?.speaker == word.speaker {
-            turns[turns.count - 1].end = word.endMs
-            turns[turns.count - 1].text.append(word.text)
-        } else { turns.append(.init(speaker: word.speaker, start: word.startMs, end: word.endMs, text: [word.text], ordinal: index)) }
-    }
-    let selected = turns.filter { $0.start < 600000 }.sorted {
-        if $0.end - $0.start != $1.end - $1.start { return $0.end - $0.start > $1.end - $1.start }
-        return $0.start == $1.start ? $0.ordinal < $1.ordinal : $0.start < $1.start
-    }.first
-    guard let selected else { return nil }
-    let text = collapsed(selected.text.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " "))
-    return text.isEmpty ? nil : MeetingQuote(atMs: selected.start, text: text)
+private func defaultQuote(_ words: [LibraryTranscriptItem], names: [String:String], gaps: SpeakerGapRanges.Ranges, endsBoundedByAudio: Bool) -> MeetingQuote? {
+    let turns = LibraryTranscriptTurn.coalescing(words,gaps:gaps,names:names,endsBoundedByAudio:endsBoundedByAudio)
+    let selected = turns.enumerated().filter { $0.element.startMs < 600000 }.sorted {
+        let left = $0.element, right = $1.element
+        if left.endMs-left.startMs != right.endMs-right.startMs { return left.endMs-left.startMs > right.endMs-right.startMs }
+        return left.startMs == right.startMs ? $0.offset < $1.offset : left.startMs < right.startMs
+    }.first?.element
+    guard let selected, !selected.text.isEmpty else { return nil }
+    return MeetingQuote(atMs:selected.startMs,text:selected.text)
 }

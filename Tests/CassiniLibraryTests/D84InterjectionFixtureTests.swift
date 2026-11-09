@@ -54,6 +54,42 @@ struct D84InterjectionFixtureTests {
             #expect(result.words == fixture.items)
         }
     }
+    @Test(arguments:["acknowledgment","competing","monologue","overlapping-turns","brief-reply","seam-gap"])
+    func meetingAndExportAdapters(name: String) throws {
+        let url = try #require(Bundle.module.url(forResource:name,withExtension:"words.json",subdirectory:"Golden/interjections"))
+        let input = try JSONDecoder().decode(Fixture.self,from:Data(contentsOf:url)).items
+        let expected = try JSONDecoder().decode(Expected.self,from:Data(contentsOf:url.deletingLastPathComponent().appendingPathComponent(name+".expected.json")))
+        let items = input.map { LibraryTranscriptItem(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text) }
+        let all = MeetingPresentation.turns(items), visible = MeetingPresentation.visibleTurns(all)
+        func indices(_ words: [LibraryTranscriptItem]) -> [Int] {
+            words.compactMap { w in input.firstIndex { $0.speaker == w.speaker && $0.startMs == w.startMs && $0.text == w.text } }
+        }
+        let actual = visible.map { turn -> Expected.Row in
+            var members: [Expected.Member] = []
+            for fragment in turn.fragments {
+                let own = Array(turn.items[fragment])
+                members.append(.init(kind:"words",speaker:nil,crosstalk:nil,wordIndices:indices(own),text:own.map(\.text).joined(separator:" ")))
+                for chip in turn.asides where chip.after == fragment.upperBound-1 {
+                    let child = all[chip.turn]
+                    members.append(.init(kind:"interjection",speaker:child.speaker,crosstalk:false,wordIndices:indices(child.items),text:child.items.map(\.text).joined(separator:" ")))
+                }
+            }
+            return .init(speaker:turn.speaker,continuation:turn.continuation,startMs:turn.startMs,endMs:turn.endMs,over:turn.over,crosstalk:false,members:members)
+        }
+        #expect(actual == expected.rows,"Meeting/Search adapter: \(name)")
+        let expectedText = expected.rows.map { row in row.members.map { $0.kind == "words" ? $0.text : "(\($0.speaker!): \($0.text))" }.joined(separator:" ") }
+        #expect(visible.map { MeetingPresentation.prose($0,in:all).text } == expectedText)
+        #expect(LibraryTranscriptTurn.coalescing(items).map(\.text) == expectedText,"Library preview uses the same rows")
+        let legacy = Timeline(input.map { CassiniKit.Word(speaker:$0.speaker,startMs:Int($0.startMs),endMs:Int($0.endMs),text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker ?? false,attributionGapDb:nil) })
+        #expect(legacy.turns.map { legacy.text($0) } == expectedText,"Legacy/QuickLook preserve chips inline")
+        #expect(legacy.turns.map(\.over) == expected.rows.map(\.over))
+        #expect(legacy.turns.map(\.continuation) == expected.rows.map(\.continuation))
+        #expect(legacy.turns.map { Int64($0.startMs) } == expected.rows.map(\.startMs))
+        #expect(legacy.turns.map { Int64($0.endMs) } == expected.rows.map(\.endMs))
+        let markdown = MeetingMarkdown.render(title:name,start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:items,notes:[],locale:Locale(identifier:"en_GB"),language:.en)
+        for text in expectedText { #expect(markdown.contains(MeetingMarkdown.escape(text))) }
+        #expect(markdown.components(separatedBy:"** · ").count-1 == expected.rows.count,"Export has one block per readable row")
+    }
     private func w(_ speaker: String, _ start: Int64, _ end: Int64, _ text: String) -> TranscriptRendering.Word {
         .init(speaker:speaker,startMs:start,endMs:end,text:text)
     }

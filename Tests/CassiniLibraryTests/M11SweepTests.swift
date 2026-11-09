@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
+import CassiniKit
 @testable import CassiniLibrary
 
 /// #118 review: the aside and overlap passes sweep time instead of comparing every pair of
@@ -12,7 +13,7 @@ struct M11SweepTests {
     /// milliseconds.
     @Test func aLongAlternatingTranscriptPreparesQuickly() throws {
         let items = (0..<10_000).map { index in
-            LibraryTranscriptItem(speaker:index % 2 == 0 ? "a" : "b",startMs:Int64(index) * 1500,endMs:Int64(index) * 1500 + 1000,text:"Word \(index).")
+            LibraryTranscriptItem(speaker:index % 2 == 0 ? "a" : "b",startMs:Int64(index) * 1500,endMs:Int64(index) * 1500 + 1000,text:"word\(index)")
         }
         let started = ProcessInfo.processInfo.systemUptime
         let turns = try MeetingPresentation.turns(items,cancellable:true)
@@ -41,15 +42,26 @@ struct M11SweepTests {
                 at += Int64(next(900)) - 200; at = max(0,at)
                 return .init(speaker:["a","b","c"][next(3)],startMs:at,endMs:at + Int64(next(2500)),text:"w\(index)")
             }.sorted { $0.startMs < $1.startMs }
-            var swept = MeetingPresentation.turns(items)
-            for index in swept.indices { swept[index].host = nil; swept[index].asides = []; swept[index].over = [] }
-            var scanned = swept
-            MeetingPresentation.attachAsides(&swept,check:{}); MeetingPresentation.markOverlap(&swept,check:{})
+            let rendered = TranscriptRendering.render(items.map { .init(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text) })
+            var scanned: [MeetingPresentation.Turn] = rendered.runs.map { run in
+                let blocks = run.blocks.map { rendered.blocks[$0] }
+                var at = 0
+                let parts = blocks.map { block -> Range<Int> in defer { at += block.wordIndices.count }; return at..<(at+block.wordIndices.count) }
+                let words = blocks.map { $0.wordIndices.map { i in let w = rendered.words[i]; return LibraryTranscriptItem(speaker:w.speaker,startMs:w.startMs,endMs:w.endMs,text:w.text) } }
+                return .init(id:run.id,speaker:run.speaker,items:words.flatMap { $0 },startMs:run.startMs,endMs:run.endMs,fragments:parts,pools:words.map(MeetingPresentation.spans))
+            }
             Reference.attachAsides(&scanned); Reference.markOverlap(&scanned)
-            #expect(swept.map(\.host) == scanned.map(\.host))
-            #expect(swept.map { $0.asides.map { [$0.after,$0.turn] } } == scanned.map { $0.asides.map { [$0.after,$0.turn] } })
-            #expect(swept.map(\.over) == scanned.map(\.over))
-            hosted += swept.filter { $0.host != nil }.count; overlapping += swept.filter { !$0.over.isEmpty }.count
+            #expect(rendered.runs.map(\.host) == scanned.map(\.host))
+            let actualAsides = rendered.runs.map { host in
+                rendered.runs.filter { $0.host == host.id }.map { child -> [Int] in
+                    let seam = host.blocks.firstIndex(of:child.afterBlock!)!
+                    let after = host.blocks.prefix(seam+1).reduce(0) { $0+rendered.blocks[$1].wordIndices.count }-1
+                    return [after,child.id]
+                }
+            }
+            #expect(actualAsides == scanned.map { $0.asides.map { [$0.after,$0.turn] } })
+            #expect(rendered.runs.map(\.over) == scanned.map(\.over))
+            hosted += scanned.filter { $0.host != nil }.count; overlapping += scanned.filter { !$0.over.isEmpty }.count
         }
         #expect(hosted > 0 && overlapping > 0,"the samples exercise both passes")
     }
@@ -83,10 +95,11 @@ private enum Reference {
     }
     static func markOverlap(_ turns: inout [P.Turn]) {
         let pools = turns.map { P.union($0.pools) }
+        var collisions: [(i:Int,j:Int,ms:Int64)] = []
         for i in turns.indices {
             for j in turns.indices where j > i {
                 let left = turns[i], right = turns[j]
-                guard left.speaker != right.speaker, max(left.startMs,right.startMs) < min(left.endMs,right.endMs) else { continue }
+                guard left.host != j, right.host != i, left.speaker != right.speaker, max(left.startMs,right.startMs) < min(left.endMs,right.endMs) else { continue }
                 var a = 0, b = 0, overlap: Int64 = 0
                 while a < pools[i].count && b < pools[j].count {
                     let x = pools[i][a], y = pools[j][b]
@@ -94,9 +107,12 @@ private enum Reference {
                     if x.end < y.end { a += 1 } else { b += 1 }
                 }
                 guard overlap >= P.overlapMinMs else { continue }
-                if !turns[i].over.contains(right.speaker) { turns[i].over.append(right.speaker) }
-                if !turns[j].over.contains(left.speaker) { turns[j].over.append(left.speaker) }
+                collisions.append((i,j,overlap))
             }
+        }
+        collisions.sort { $0.ms == $1.ms ? ($0.i == $1.i ? $0.j < $1.j : $0.i < $1.i) : $0.ms > $1.ms }
+        for c in collisions {
+            for (i,j) in [(c.i,c.j),(c.j,c.i)] where !turns[i].over.contains(turns[j].speaker) { turns[i].over.append(turns[j].speaker) }
         }
     }
 }

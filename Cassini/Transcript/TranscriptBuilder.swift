@@ -86,14 +86,16 @@ enum TranscriptBuilder {
             let start = out.length
             layout.turnSpeaker[turn.id] = turn.speaker
             // Header: ● Name  0:00
-            out.append(NSAttributedString(string: "●", attributes: [
+            if !turn.continuation { out.append(NSAttributedString(string: "●", attributes: [
                 .font: NSFont.systemFont(ofSize: 9), .foregroundColor: color(turn.speaker),
                 .baselineOffset: 1.5, .paragraphStyle: header,
             ]))
             out.append(NSAttributedString(string: "  " + label(turn.speaker), attributes: [
                 .font: nameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: header,
-            ]))
-            out.append(NSAttributedString(string: "  " + formatClock(turn.startMs), attributes: [
+            ])) }
+            let others = turn.over.map(label)
+            let over = others.isEmpty ? "" : " " + UXText.text("meeting.turn.over",["names":TranscriptRendering.speakerList(others)])
+            out.append(NSAttributedString(string: "  " + formatClock(turn.startMs) + over, attributes: [
                 .font: timeFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: header,
                 .cassiniSeek: turn.startMs, .cursor: NSCursor.pointingHand,
                 .toolTip: "Play from \(formatClock(turn.startMs))",
@@ -103,7 +105,7 @@ enum TranscriptBuilder {
             // Body
             let chipsBefore = turn.interjections.filter { $0.anchor < 0 }
             for j in chipsBefore { appendChip(j, host: turn.id, to: out, &layout, timeline: timeline, label: label, style: body) }
-            let bodyText = TranscriptText.quotes(turn.words.map { timeline.words[$0].text })
+            let bodyText = turn.words.map { timeline.words[$0].text }
             var bodyWords: [Int] = []
             for (k, wordIndex) in turn.words.enumerated() {
                 if !bodyText[k].isEmpty {
@@ -141,16 +143,16 @@ enum TranscriptBuilder {
     private static func appendChip(_ j: Interjection, host: Int, to out: NSMutableAttributedString, _ layout: inout TranscriptLayout,
                                    timeline: Timeline, label: (String) -> String, style: NSParagraphStyle) {
         guard !j.words.isEmpty else { return }
-        let words = TranscriptText.quotes(j.words.map { timeline.words[$0].text }).filter { !$0.isEmpty }.joined(separator: nbsp)
+        let words = j.words.map { timeline.words[$0].text }.joined(separator: " ")
         guard !words.isEmpty else { return }
         let chipIndex = layout.chips.count
         out.append(NSAttributedString(string: " ", attributes: [.font: bodyFont, .paragraphStyle: style]))
         let loc = out.length
-        out.append(NSAttributedString(string: thinNbsp + label(j.speaker).replacingOccurrences(of: " ", with: nbsp), attributes: [
+        out.append(NSAttributedString(string: "(" + label(j.speaker) + ":", attributes: [
             .font: chipNameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,
         ]))
-        out.append(NSAttributedString(string: nbsp + words + thinNbsp, attributes: [
+        out.append(NSAttributedString(string: " " + words + ")", attributes: [
             .font: chipFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,
             .toolTip: "\(label(j.speaker)) at \(formatClock(j.startMs)): \(j.words.map { timeline.words[$0].text }.joined(separator: " "))",

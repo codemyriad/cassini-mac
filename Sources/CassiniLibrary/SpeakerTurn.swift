@@ -16,9 +16,7 @@ public struct SpeakerTurn: Equatable, Sendable, Identifiable {
     public let startMs: Int64
     public let endMs: Int64
     public var text: String {
-        TranscriptText.quotes(words.map(\.text))
-            .map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
-            .filter { !$0.isEmpty }.joined(separator: " ")
+        words.map(\.text).joined(separator:" ")
     }
 
     /// GNOME `speaker_turns()` parity. Callers apply speakerMerges before grouping.

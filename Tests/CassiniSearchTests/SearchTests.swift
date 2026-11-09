@@ -142,7 +142,7 @@ extension SearchTests {
         #expect(try await index.search("microphone repeat").first?.positionMs == 300)
     }
 
-    @Test func quoteCleanupKeepsSearchOffsetsAndPlaybackPositions() async throws {
+    @Test func storedQuotesKeepSearchOffsetsAndPlaybackPositions() async throws {
         let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
         meeting.transcriptItems = [
             .init(speaker:"a",startMs:100,endMs:200,text:"\"👩🏽‍💻 Café"),
@@ -151,8 +151,34 @@ extension SearchTests {
         let hits = try await index.search("budget")
         #expect(hits.count == 1 && hits.first?.positionMs == 900)
         let hit = try #require(hits.first), span = try #require(hit.spans.first)
-        #expect(hit.text == "👩🏽‍💻 Café budget returns.")
+        #expect(hit.text == "\"👩🏽‍💻 Café budget returns.")
         #expect((hit.text as NSString).substring(with:NSRange(location:span.start,length:span.length)) == "budget")
         #expect(meeting.transcriptItems[0].text.hasPrefix("\""))
+    }
+}
+
+extension SearchTests {
+    @Test func d84InlineInterjectionSearchKeepsItsWordAnchorAndRenamedCopy() async throws {
+        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
+        let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        struct Body: Decodable { let items: [LibraryTranscriptItem] }
+        meeting.transcriptItems = try JSONDecoder().decode(Body.self,from:Data(contentsOf:root.appendingPathComponent("Tests/CassiniLibraryTests/Golden/interjections/acknowledgment.words.json"))).items
+        var ada = try #require(meeting.speakers.first); ada.id = "ada"; ada.name = "Ada"; ada.provenance = .user
+        var ben = ada; ben.id = "ben"; ben.name = "Ben"; ben.colourIndex = 1
+        meeting.speakers = [ada,ben]
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        let hits = try await index.search("Sounds good",filter:.init(speaker:"Ben"))
+        #expect(hits.count == 1)
+        let hit = try #require(hits.first)
+        #expect(hit.positionMs == 3050 && hit.speaker == "ben")
+        #expect(hit.text.contains("(Ben: Sounds good.)"))
+        #expect(hit.context.count == 1 && hit.contextText[0] == hit.text)
+        #expect(hit.context.first?.turn.over.isEmpty == true)
+        meeting.speakers[1].name = "Sam"
+        try await index.replace([meeting])
+        let renamed = try await index.search("Sounds good",filter:.init(speaker:"Sam"))
+        #expect(renamed.count == 1 && renamed.first?.text.contains("(Sam: Sounds good.)") == true)
+        #expect(renamed.first?.positionMs == 3050)
     }
 }

@@ -190,7 +190,7 @@ public struct LibraryMeeting: Sendable {
     public var isBrowserCapture: Bool { captureSource == "chromium" }
     /// The scanner establishes stable chronological item order. Both transcript
     /// views consume these same consecutive speaker turns.
-    public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems,gaps:speakerGaps) }
+    public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems,gaps:speakerGaps,names:speakerDisplayNames,endsBoundedByAudio:wordEndsBoundedByAudio) }
     /// D70: maximal speaker runs for listening after merges, independent of reading rows.
     public var speakerTurns: [SpeakerTurn] { SpeakerTurn.grouping(transcriptItems) }
     /// D63 #2: each speaker's gap ranges, from the tracks its words were written from.
@@ -219,22 +219,13 @@ public struct LibraryTranscriptTurn: Equatable, Sendable {
     public let startMs: Int64
     public var endMs: Int64
     public var text: String
-    /// Consecutive words of one speaker, split where one of its gap ranges lies between them (D63 #2).
-    public static func coalescing(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:]) -> [Self] {
-        var turns: [Self] = [], previous: LibraryTranscriptItem?
-        for item in items {
-            let text = item.text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-            guard !text.isEmpty else { continue }
-            defer { previous = item }
-            if turns.last?.speaker == item.speaker, let previous, !SpeakerGapRanges.splits(previous,item,gaps) {
-                turns[turns.count - 1].text += " " + text
-                turns[turns.count - 1].endMs = item.endMs
-            } else { turns.append(.init(speaker: item.speaker, startMs: item.startMs, endMs: item.endMs, text: text)) }
-        }
-        return turns.compactMap { turn in
-            var turn = turn
-            turn.text = TranscriptText.quotes([turn.text])[0].split(whereSeparator: \.isWhitespace).joined(separator:" ")
-            return turn.text.isEmpty ? nil : turn
+    public var over: [String] = []
+    public var continuation = false
+    /// Viewer-readable words of one speaker, split where one of its gap ranges lies between them (D63 #2).
+    public static func coalescing(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:], names: [String:String] = [:], endsBoundedByAudio: Bool = false) -> [Self] {
+        let all = MeetingPresentation.turns(items,gaps:gaps,endsBoundedByAudio:endsBoundedByAudio)
+        return MeetingPresentation.visibleTurns(all).map {
+            .init(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:MeetingPresentation.prose($0,in:all,names:names).text,over:$0.over,continuation:$0.continuation)
         }
     }
 }

@@ -77,18 +77,19 @@ struct LibrarySearchView: View {
                     ForEach(hit.context,id:\.index) { index,turn in
                         HStack(alignment:.top,spacing:16) {
                             VStack(alignment:.leading,spacing:4) {
-                                HStack(spacing:5) {
+                                if !turn.continuation { HStack(spacing:5) {
                                     Text(name(turn.speaker,meeting:meeting)).fontWeight(.semibold)
                                     if meeting.speakers.first(where:{ $0.id == turn.speaker })?.provenance == .recognised {
                                         Text(UXText.text("common.autoTag")).font(.system(size:10)).padding(.horizontal,4)
                                             .overlay(RoundedRectangle(cornerRadius:4).stroke(LibraryTheme.dim.opacity(0.3)))
                                             .help(UXText.text("common.autoTag.tooltip"))
                                     }
-                                }.fixedSize()
+                                }.fixedSize() }
                                 if index == hit.turn { Text(LibraryFormat.position(hit.positionMs)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit() }
+                                if !turn.over.isEmpty { Text(UXText.text("meeting.turn.over",["names":MeetingPresentation.speakerList(turn.over.map { name($0,meeting:meeting) })])).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim) }
                             }.frame(width:110,alignment:.leading)
                             if index == hit.turn { marked(hit.text,spans:hit.spans).lineSpacing(5).frame(maxWidth:.infinity,alignment:.leading) }
-                            else { Text(turn.items.map { $0.text.split(whereSeparator:\.isWhitespace).joined(separator:" ") }.joined(separator:" ")).lineSpacing(5).frame(maxWidth:.infinity,alignment:.leading) }
+                            else { Text(hit.contextText[index] ?? "").lineSpacing(5).frame(maxWidth:.infinity,alignment:.leading) }
                         }.foregroundStyle(index == hit.turn ? Color(nsColor:.labelColor) : LibraryTheme.dim)
                     }
                 }.padding(.top,4)

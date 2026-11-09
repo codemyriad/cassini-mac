@@ -34,6 +34,7 @@ public struct SearchHit: Sendable, Identifiable {
     /// The hit's turn and its neighbours (index, turn), from the index's prepared turns, so the
     /// context view never prepares a transcript on the main actor (#118 review).
     public var context: [(index: Int, turn: MeetingPresentation.Turn)] = []
+    public var contextText: [Int:String] = [:]
     public var id: String { meetingKey + ":\(turn):\(occurrence)" }
     public var excerpt: (text: String, spans: [SearchSpan]) {
         guard let selected = spans.dropFirst(occurrence).first,
@@ -59,6 +60,7 @@ public actor SearchIndex {
     private var meetings: [String:LibraryMeeting] = [:]
     private var fingerprints: [String:Data] = [:]
     private var turns: [String:[MeetingPresentation.Turn]] = [:]
+    private var prose: [String:[MeetingPresentation.Prose]] = [:]
     public init(cache: URL) throws { database = try SearchDatabase(cache:cache) }
     public static func names(_ meetings: [LibraryMeeting]) -> [String] {
         var names: [String:String] = [:]
@@ -74,23 +76,27 @@ public actor SearchIndex {
         try database.execute("BEGIN IMMEDIATE")
         do {
             for removed in Set(meetings.keys).subtracting(incoming.keys) { try database.remove(removed) }
-            var nextFingerprints: [String:Data] = [:], nextTurns: [String:[MeetingPresentation.Turn]] = [:]
+            var nextFingerprints: [String:Data] = [:], nextTurns: [String:[MeetingPresentation.Turn]] = [:], nextProse: [String:[MeetingPresentation.Prose]] = [:]
             for meeting in snapshot {
                 // D63 #2: the turns also follow the speakers' gap ranges, so they are in the fingerprint.
                 let gaps = meeting.speakerGaps
                 let ranges = gaps.keys.sorted().map { key in [key] + gaps[key]!.map { "\($0.lowerBound)-\($0.upperBound)" } }
-                let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems) + JSONEncoder().encode(ranges)))
+                let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems) + JSONEncoder().encode(ranges) + JSONEncoder().encode(meeting.speakers.map(\.displayName)) + JSONEncoder().encode(meeting.wordEndsBoundedByAudio)))
                 nextFingerprints[meeting.libraryKey] = hash
-                if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; continue }
-                let grouped = MeetingPresentation.turns(meeting.transcriptItems,gaps:gaps)
+                if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; nextProse[meeting.libraryKey] = prose[meeting.libraryKey]; continue }
+                let all = MeetingPresentation.turns(meeting.transcriptItems,gaps:gaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
+                let grouped = MeetingPresentation.visibleTurns(all)
+                let names = Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) })
+                let text = grouped.map { MeetingPresentation.prose($0,in:all,names:names) }
                 try database.remove(meeting.libraryKey)
-                for (index,turn) in grouped.enumerated() {
-                    try database.insert(text:turn.items.map { Self.normalise($0.text) }.joined(separator:" "),meeting:meeting.libraryKey,turn:index)
+                for (index,paragraph) in text.enumerated() {
+                    try database.insert(text:paragraph.text,meeting:meeting.libraryKey,turn:index)
                 }
                 nextTurns[meeting.libraryKey] = grouped
+                nextProse[meeting.libraryKey] = text
             }
             try database.execute("COMMIT")
-            fingerprints = nextFingerprints; turns = nextTurns; meetings = incoming
+            fingerprints = nextFingerprints; turns = nextTurns; prose = nextProse; meetings = incoming
         } catch { try? database.execute("ROLLBACK"); throw error }
     }
     public func search(_ query: String, filter: SearchFilter = .init(), now: Date = Date(), timeZone: TimeZone = .current) throws -> [SearchHit] {
@@ -108,23 +114,25 @@ public actor SearchIndex {
             guard index >= 0, let meeting = meetings[key], !filter.own || meeting.state.origin == .own,
                   filter.date.contains(meeting.start,now:now,timeZone:timeZone),
                   let turn = turns[key]?.dropFirst(index).first else { continue }
-            if let name = filter.speaker {
-                guard let speaker = meeting.speakers.first(where:{ $0.id == turn.speaker }), speaker.provenance != .unnamed,
-                      speaker.name?.compare(name,options:.caseInsensitive) == .orderedSame else { continue }
-            }
             let highlighted = statement.text(2)
             let parsed = Self.unmark(highlighted,begin:begin,end:end)
             // An occurrence is a place. Multiple mentions in a long turn must
             // remain separately seekable, rather than collapsing to one result.
             for (occurrence,span) in parsed.spans.enumerated() {
-                var at = 0, position = turn.startMs
-                for item in turn.items {
-                    let length = Self.normalise(item.text).utf16.count
-                    if span.start < at + length { position = item.startMs; break }
-                    at += length + 1
+                let paragraph = prose[key]?[index]
+                let matched = paragraph?.seeks.first { span.start < $0.range.upperBound }
+                let position = matched?.item.startMs ?? turn.startMs
+                let speakerID = matched?.item.speaker ?? turn.speaker
+                if let name = filter.speaker {
+                    guard let speaker = meeting.speakers.first(where:{ $0.id == speakerID }), speaker.provenance != .unnamed,
+                          speaker.name?.compare(name,options:.caseInsensitive) == .orderedSame else { continue }
                 }
-                var hit = SearchHit(meetingKey:key,turn:index,positionMs:position,speaker:turn.speaker,text:parsed.text,spans:parsed.spans,occurrence:occurrence)
-                if let all = turns[key] { hit.context = (max(0,index - 1)...min(all.count - 1,index + 1)).map { ($0,all[$0]) } }
+                var hit = SearchHit(meetingKey:key,turn:index,positionMs:position,speaker:speakerID,text:parsed.text,spans:parsed.spans,occurrence:occurrence)
+                if let all = turns[key] {
+                    let range = max(0,index-1)...min(all.count-1,index+1)
+                    hit.context = range.map { ($0,all[$0]) }
+                    hit.contextText = Dictionary(uniqueKeysWithValues:range.map { ($0,prose[key]?[$0].text ?? "") })
+                }
                 hits.append(hit)
             }
         }

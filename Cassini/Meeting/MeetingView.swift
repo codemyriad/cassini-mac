@@ -22,7 +22,7 @@ struct MeetingView: View {
     /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
     private func over(_ turn: MeetingPresentation.Turn) -> String? {
         let names = meeting.overlappingSpeakerIDs(turn.over,excluding:turn.speaker).map(name)
-        return names.isEmpty ? nil : UXText.text("meeting.turn.over",["names":names.joined(separator:", ")])
+        return names.isEmpty ? nil : UXText.text("meeting.turn.over",["names":MeetingPresentation.speakerList(names)])
     }
     /// The turn's words in reading order with each aside's text where its chip sits.
     private func spoken(_ turn: MeetingPresentation.Turn) -> String {
@@ -76,7 +76,7 @@ struct MeetingView: View {
     }
     private func turnHeader(_ turn: MeetingPresentation.Turn) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
+                if !turn.continuation { HStack(spacing: 5) {
                     Button { model.listenFromReadingTurn(turn.id) } label: {
                         Text(name(turn.speaker)).fontWeight(.semibold)
                             .foregroundStyle(colour(meeting.speaker(for:turn.speaker)?.colourIndex ?? 0))
@@ -90,7 +90,7 @@ struct MeetingView: View {
                             model.listenFromReadingTurn(turn.id); return .handled
                         }
                     if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
-                }.fixedSize()
+                }.fixedSize() }
                 Button { model.playFrom(Int(turn.startMs)) } label: {
                     Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(.secondary).monospacedDigit()
                 }.buttonStyle(.borderless).disabled(!model.canPlay)

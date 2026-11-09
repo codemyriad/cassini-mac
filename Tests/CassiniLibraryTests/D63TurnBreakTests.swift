@@ -31,10 +31,13 @@ final class D63TurnBreakTests: XCTestCase {
         XCTAssertEqual(vectors.turns.count,8)
         for item in vectors.turns {
             let gaps = Self.ranges(item.gaps), words = Self.items(item.words)
-            XCTAssertEqual(MeetingPresentation.turns(words,gaps:gaps).map(\.items.count),item.turns,"\(item.name): meeting turns")
-            XCTAssertEqual(LibraryTranscriptTurn.coalescing(words,gaps:gaps).map { $0.text.split(separator:" ").count },item.turns,"\(item.name): coalesced turns")
+            // D84 adds viewer readable paragraphs; D63's explicit source-gap rule stays unchanged.
+            // This one no-gap long pause is now two readable rows, while the D70 listening run remains one.
+            let readable = item.name == "a-long-pause-without-a-gap-range-joins" ? [1,2] : item.turns
+            XCTAssertEqual(MeetingPresentation.turns(words,gaps:gaps).map(\.items.count),readable,"\(item.name): meeting turns")
+            XCTAssertEqual(LibraryTranscriptTurn.coalescing(words,gaps:gaps).map { $0.text.split(separator:" ").count },readable,"\(item.name): coalesced turns")
             let markdown = MeetingMarkdown.render(title:"T",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:["track-x":"X"],items:words,notes:[],gaps:gaps,language:.en)
-            XCTAssertEqual(markdown.components(separatedBy:"**X** · ").count - 1,item.turns.count,"\(item.name): Markdown turns")
+            XCTAssertEqual(markdown.components(separatedBy:"**X** · ").count - 1,readable.count,"\(item.name): Markdown turns")
         }
     }
     /// The seam rejoin never joins across a gap range, even with another speaker in between.

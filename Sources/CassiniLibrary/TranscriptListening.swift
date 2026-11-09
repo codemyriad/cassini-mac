@@ -7,8 +7,8 @@ public struct TranscriptListening: Sendable {
     private struct Word: Hashable {
         let speaker: String
         let start: Int64
-        let end: Int64
-        init(_ item: LibraryTranscriptItem) { speaker = item.speaker; start = item.startMs; end = item.endMs }
+        let text: String
+        init(_ item: LibraryTranscriptItem) { speaker = item.speaker; start = item.startMs; text = item.text }
     }
     private var targets: [Int:[Int:Set<Int>]] = [:] // listening index → reading id → local words
     private var runs: [Int:[SpeakerTurn]] = [:]

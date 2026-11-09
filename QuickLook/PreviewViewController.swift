@@ -51,7 +51,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
 enum PreviewText {
     static let maxTurns = 12
-    static let maxWordsPerTurn = 40
 
     static func build(_ file: CassiniFile, fileName: String) -> NSAttributedString {
         let out = NSMutableAttributedString()
@@ -80,21 +79,23 @@ enum PreviewText {
                 .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: p,
             ]))
         }
-        let timeline = Timeline(t.items)
+        let timeline = Timeline(t.items,endsBoundedByAudio:m.provenance?["wordTimings"]?["endsBoundedByAudio"]?.bool == true)
         let body = NSMutableParagraphStyle()
         body.paragraphSpacing = 10
         body.lineHeightMultiple = 1.2
         for turn in timeline.turns.prefix(maxTurns) {
             // D53.3: an unnamed speaker is written in the UI language.
             let label = m.speaker(turn.speaker)?.label ?? PreviewCopy.text("common.speaker.unnamed", ["n": String(m.speakers.count + 1)])
-            out.append(NSAttributedString(string: "\(label)  ", attributes: [
+            out.append(NSAttributedString(string: turn.continuation ? "" : "\(label)  ", attributes: [
                 .font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
             ]))
-            out.append(NSAttributedString(string: formatClock(turn.startMs) + "\n", attributes: [
+            let others = turn.over.map { m.speaker($0)?.label ?? $0 }
+            let over = others.isEmpty ? "" : " " + PreviewCopy.text("meeting.turn.over",["names":TranscriptRendering.speakerList(others)])
+            out.append(NSAttributedString(string: formatClock(turn.startMs) + over + "\n", attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: body,
             ]))
-            var words = turn.words.prefix(maxWordsPerTurn).map { timeline.words[$0].text }.joined(separator: " ")
-            if turn.words.count > maxWordsPerTurn { words += " …" }
+            let names = Dictionary(uniqueKeysWithValues:m.speakers.map { ($0.id,$0.label) })
+            let words = timeline.text(turn,names:names)
             out.append(NSAttributedString(string: words + "\n", attributes: [
                 .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
             ]))

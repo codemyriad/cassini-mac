@@ -12,7 +12,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
         var listeningWords: Set<Int> = []
         let after: Int, name: String, items: [LibraryTranscriptItem]
         /// D55.1 meeting.turn.aside: the visible text and accessible label.
-        var label: String { UXText.text("meeting.turn.aside",["name":name,"text":items.map(\.text).joined(separator:" ")]) }
+        var label: String { "(" + UXText.text("meeting.turn.aside",["name":name,"text":items.map(\.text).joined(separator:" ")]) + ")" }
     }
     let items: [LibraryTranscriptItem]
     var asides: [Aside] = []
@@ -77,7 +77,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
                 attributes[.backgroundColor] = NSColor.controlAccentColor.withAlphaComponent(chip == nil ? 0.08 : 0.18)
             }
             if item.startMs <= positionMs && positionMs < item.endMs { attributes[.backgroundColor] = current }
-            return NSAttributedString(string: item.text.trimmingCharacters(in: .whitespacesAndNewlines), attributes: attributes)
+            return NSAttributedString(string: item.text, attributes: attributes)
         }
         /// GNOME's chip: smaller text on a light tint (the accent while it plays), the name in bold.
         func chip(_ aside: Aside) -> NSAttributedString {
@@ -93,7 +93,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
             var bold = plain; bold[.font] = NSFont.boldSystemFont(ofSize: 11.5)
             // The catalog orders the name and the words per language; the words stay seekable.
             let marker = "\u{E000}"
-            let format = UXText.text("meeting.turn.aside",["name":aside.name,"text":marker])
+            let format = "(" + UXText.text("meeting.turn.aside",["name":aside.name,"text":marker]) + ")"
             let result = NSMutableAttributedString(string: " ", attributes: plain)
             let parts = format.components(separatedBy: marker)
             for (index,part) in parts.enumerated() {
