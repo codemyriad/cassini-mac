@@ -7,10 +7,10 @@ output=root/'build/d36-evidence';output.mkdir(parents=True,exist_ok=True)
 old=subprocess.run(['defaults','read','com.apple.universalaccess','reduceMotion'],capture_output=True,text=True)
 try:
     subprocess.run(['defaults','write','com.apple.universalaccess','reduceMotion','-bool','false'],check=True)
-    for qos in ['unspecified','userInitiated']:
+    for qos in ['before','after']:
         folder=output/qos;folder.mkdir(exist_ok=True)
         with (folder/'stderr.txt').open('w') as err:
-            result=subprocess.run(driver.probe_command(root/'build/d36-evidence.app','D',folder),env=dict(os.environ,CASSINI_SPECTRO='1',CASSINI_SOURCE_QOS=qos),capture_output=False,stdout=subprocess.PIPE,stderr=err,text=True,timeout=100)
+            result=subprocess.run(driver.probe_command(root/f'build/d36-{qos}.app','D',folder),env=dict(os.environ,CASSINI_SPECTRO='1',CASSINI_SOURCE_QOS="unspecified"),capture_output=False,stdout=subprocess.PIPE,stderr=err,text=True,timeout=100)
         (folder/'stdout.txt').write_text(result.stdout)
         assert result.returncode==0,result.returncode
         report=json.loads(result.stdout);(folder/'D.json').write_text(json.dumps(report,indent=2)+'\n')

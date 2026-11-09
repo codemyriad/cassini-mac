@@ -1,15 +1,17 @@
-name: D36 recurrence source timing evidence
+name: D36 paired checkpoint barrier evidence
 'on':
-  push:
-    branches: [ci/d36-recurrence-176]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: Successful Release SDK run for candidate
+        required: true
 permissions:
   contents: read
   actions: read
 jobs:
   evidence:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
@@ -21,36 +23,52 @@ jobs:
           name: ci-release
           run-id: 42566493594
           github-token: ${{ github.token }}
-          path: release-product
+          path: before-product
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-release
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+          path: after-product
       - id: sdk
         run: |
-          python3 - <<'PY'
+          python3 - <<'PYTHON'
           import json,os,re
-          commit=json.load(open('release-product/release.json'))['commit']
-          assert re.fullmatch('[0-9a-f]{40}',commit)
-          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('commit='+commit+'\n')
-          PY
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+            for label in ['before','after']:
+              commit=json.load(open(label+'-product/release.json'))['commit']
+              assert re.fullmatch('[0-9a-f]{40}',commit)
+              out.write(label+'='+commit+'\n')
+          PYTHON
       - uses: actions/checkout@v5
         with:
-          ref: ${{ steps.sdk.outputs.commit }}
-          path: sdk-source
+          ref: ${{ steps.sdk.outputs.before }}
+          path: before-source
           persist-credentials: false
-      - run: python3 sdk-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/release-product"
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.sdk.outputs.after }}
+          path: after-source
+          persist-credentials: false
+      - run: python3 before-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/before-product"
+      - run: python3 after-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/after-product"
       - run: brew install displayplacer
       - run: python3 scripts/hosted-display.py
-      - name: Verify unchanged renderer, clock and budgets; compile probe-only instrumentation
+      - name: Verify identical renderer, clock and budgets; compile same diagnostic for both SDKs
         run: |
-          python3 - <<'PY'
+          python3 - <<'PYTHON'
           from pathlib import Path
           for name in ['Cassini/Recording/RecordingSpectrogram.swift','Spikes/Spectrogram/Budget.swift','Spikes/Spectrogram/Events.swift','Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift']:
-              assert Path(name).read_bytes()==(Path('sdk-source')/name).read_bytes(),name
-          PY
-          python3 scripts/build-spectrogram-probe.py sdk-source/build/Build/Products/Release build/d36-evidence.app
-      - name: Paired source QoS evidence with original D case and gates
+            for label in ['before','after']:
+              assert Path(name).read_bytes()==(Path(label+'-source')/name).read_bytes(),name
+          PYTHON
+          python3 scripts/build-spectrogram-probe.py before-source/build/Build/Products/Release build/d36-before.app
+          python3 scripts/build-spectrogram-probe.py after-source/build/Build/Products/Release build/d36-after.app
+      - name: Paired checkpoint evidence with original D case and gates
         run: python3 scripts/d36-recurrence.py
       - uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: d36-recurrence-176
+          name: d36-checkpoint-barriers
           path: build/d36-evidence
           retention-days: 14
