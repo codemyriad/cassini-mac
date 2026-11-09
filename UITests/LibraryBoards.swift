@@ -198,10 +198,10 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
-        XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
+        XCTAssertTrue(waitForPresent(budget,timeout:20),app.debugDescription); budget.click()
         app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click()
         let field = app.textFields["rename-name"]
-        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(field,timeout:10),app.debugDescription)
         XCTAssertEqual(field.value as? String,"Budget review")
         XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
         field.typeText("Project review") // Initial contents must be selected.
@@ -212,20 +212,20 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:nil)],timeout:10),.completed,app.debugDescription)
         window.buttons["preview-read-transcript"].click()
         let title = window.staticTexts["meeting-title"]
-        XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(title,timeout:10),app.debugDescription)
         title.click()
-        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(field,timeout:10),app.debugDescription)
         // Avoid macOS's double-space-to-period substitution while still
         // proving the UI trims both ends. Core cases cover repeated whitespace.
         field.typeText(" Board notes "); app.typeKey(.return,modifierFlags:[])
         let renamed = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Board notes" && !field.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:10),.completed,app.debugDescription)
-        title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))
+        title.click(); XCTAssertTrue(waitForPresent(field,timeout:10))
         field.typeText(" "); app.typeKey(.return,modifierFlags:[])
         let blank = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Budget review" && !field.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:blank,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertTrue(window.staticTexts["meeting-subtitle"].exists,"Restoring the automatic name retains the date/duration subtitle")
-        title.click(); XCTAssertTrue(field.waitForExistence(timeout:10))
+        title.click(); XCTAssertTrue(waitForPresent(field,timeout:10))
         XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
         field.typeText("Cancelled name"); app.typeKey(.escape,modifierFlags:[])
         let cancelled = NSPredicate { _,_ in !field.exists && (title.value as? String ?? title.label) == "Budget review" }
@@ -697,7 +697,7 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testSearchBoardFiltersAndOpeningTheHit() throws {
         let app = try launch("search",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"], count = window.staticTexts["search-count"]
-        XCTAssertTrue(count.waitForExistence(timeout:20),window.debugDescription)
+        XCTAssertTrue(waitForPresent(count,timeout:20),window.debugDescription)
         let ready = NSPredicate { _,_ in self.visibleText(count) == "4 places in 3 meetings" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:10),.completed)
         XCTAssertFalse(window.buttons["Has summary"].exists)
@@ -716,16 +716,16 @@ final class LibraryBoards: XCTestCase {
         let hit = window.buttons.matching(NSPredicate(format:"identifier CONTAINS %@",":4:0")).firstMatch
         XCTAssertTrue(hit.exists); hit.click()
         window.buttons["search-open-meeting"].click()
-        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:5))
+        XCTAssertTrue(waitForPresent(window.buttons["meeting-back"],timeout:5))
         XCTAssertTrue(text("00:14:32",in:window),window.debugDescription)
         app.typeKey("f",modifierFlags:.command)
-        XCTAssertTrue(window.searchFields["library-search-field"].waitForExistence(timeout:5))
+        XCTAssertTrue(waitForPresent(window.searchFields["library-search-field"],timeout:5))
         XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"")
         // Cmd-F must focus the newly attached native field without a mouse click.
         app.typeText("budget")
         XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"budget")
         app.typeKey(.escape,modifierFlags:[])
-        XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:5),window.debugDescription)
+        XCTAssertTrue(waitForPresent(window.buttons["preview-play"],timeout:5),window.debugDescription)
     }
     @MainActor func testReceivedBoard() throws {
         let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
