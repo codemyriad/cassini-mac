@@ -3,6 +3,9 @@ name: D82 actual Mac placement stream reads
   push:
     branches: [ci/d82-placement-stream-proof]
   workflow_dispatch: {}
+concurrency:
+  group: d82-placement-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   actions: read
@@ -19,7 +22,7 @@ jobs:
           cp scripts/d82-placement-evidence.py "$RUNNER_TEMP/d82-placement/helper.py"
       - uses: actions/checkout@v5
         with:
-          ref: a52845b067a3246382c9b3b896654a1190497548
+          ref: 023c443f07779b660c1cbde157c598b6da143271
       - run: sudo xcode-select -s /Applications/Xcode_16.4.app
       - uses: actions/download-artifact@v5
         with:

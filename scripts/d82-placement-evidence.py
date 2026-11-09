@@ -43,7 +43,7 @@ def measure(base,output,manifest,result):
                mediansSeconds={label:statistics.median(values) for label,values in timings.items()},
                resultSHA256=hashlib.sha256(expected).hexdigest(),
                sourceSHA256={label:hashlib.sha256((base/(label+'.py')).read_bytes()).hexdigest() for label in modules},
-               architecture=os.uname().machine,sdkCommit='a52845b067a3246382c9b3b896654a1190497548')
+               architecture=os.uname().machine,sdkCommit='023c443f07779b660c1cbde157c598b6da143271')
     (output/((value['mutant'] or 'clean')+'.json')).write_text(json.dumps(value,indent=2)+'\n')
     print(json.dumps(value),flush=True)
 
