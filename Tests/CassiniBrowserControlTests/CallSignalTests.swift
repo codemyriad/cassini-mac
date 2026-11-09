@@ -179,6 +179,12 @@ final class CallSignalTests: XCTestCase {
             p.update([peer([next],seq:1,profile:field == "profile" ? decomposed : "profile-A")],now:1)
             if field == "profile" {
                 p.advance(now:1,enabled:true); XCTAssertEqual(p.calls.count,2,"Distinct profiles may share one system owner")
+            } else if field == "document" {
+                XCTAssertNil(p.retiring,"A distinct document is loss, not affirmative callEnded")
+                XCTAssertEqual(p.calls.values.first?.lostAt,1)
+                p.advance(now:1,enabled:true)
+                XCTAssertEqual(p.calls.count,2,"Opaque documents remain distinct stable associations")
+                XCTAssertTrue(p.mayOpen(token),"Both associations share the existing fixed-route owner")
             } else { XCTAssertEqual(p.retiring,.callEnded,"A distinct opaque generation must fence its predecessor") }
         }
     }

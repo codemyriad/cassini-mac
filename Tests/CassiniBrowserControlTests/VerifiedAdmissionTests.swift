@@ -66,16 +66,16 @@ final class VerifiedAdmissionTests: XCTestCase {
         try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"sessions":[],"message":"Generated ready status"],&state,id)
         return state
     }
-    private func row(_ remote: String = "separated") -> [String:Any] {
-        ["tabId":2,"url":"https://generated.example/call","documentGeneration":"chrome-A","sourceDocumentGeneration":"hook-A",
-         "remoteAudio":remote,"callEvidence":["state":"active","reason":"activeCall","adapter":["name":"webrtc-interactive","version":"1"],"callGeneration":"call-A"]]
+    private func row(_ remote: String = "separated", document: String = "chrome-A", source: String = "hook-A", state: String = "active", reason: String = "activeCall", generation: String? = "call-A") -> [String:Any] {
+        ["tabId":2,"url":"https://generated.example/call","documentGeneration":document,"sourceDocumentGeneration":source,
+         "remoteAudio":remote,"callEvidence":["state":state,"reason":reason,"adapter":["name":"webrtc-interactive","version":"1"],"callGeneration":generation as Any? ?? NSNull()]]
     }
-    private func signal(_ sequence: Int, remote: String = "separated") -> [String:Any] {
-        ["type":"callSignals","browserInstance":"profile-A","sequence":sequence,"tabs":[row(remote)]]
+    private func signal(_ sequence: Int, remote: String = "separated", document: String = "chrome-A", source: String = "hook-A", state: String = "active", reason: String = "activeCall", generation: String? = "call-A") -> [String:Any] {
+        ["type":"callSignals","browserInstance":"profile-A","sequence":sequence,"tabs":[row(remote,document:document,source:source,state:state,reason:reason,generation:generation)]]
     }
-    private func meeting() -> [String:Any] {
+    private func meeting(document: String = "chrome-A", source: String = "hook-A") -> [String:Any] {
         ["tabId":2,"title":"Generated interactive session","url":"https://generated.example/call","sourceCount":1,"sourceCountKnown":true,
-         "heard":true,"pageState":"present","browserDocumentId":"chrome-A","documentGeneration":"hook-A","callGeneration":"call-A"]
+         "heard":true,"pageState":"present","browserDocumentId":document,"documentGeneration":source,"callGeneration":"call-A"]
     }
     private func peer(_ state: BrowserControlRegistry, _ id: UUID, sequence: Int? = nil) throws -> SignalCallPolicy.Peer {
         let snapshot = try XCTUnwrap(state.snapshots.first { $0.id == id }?.callSignals)
@@ -588,6 +588,123 @@ final class VerifiedAdmissionTests: XCTestCase {
         clock.set(5); store.update(pending:[:],owned:[:],ended:[])
         XCTAssertFalse(pending.inputGate?.permits ?? true)
         XCTAssertEqual(store.endReason("still-preparing"),.pageGone,"No evidence-loss grace before the first input is admitted")
+    }
+
+
+    private func runningSeparatedOwner(_ state: inout BrowserControlRegistry, clock: VerifiedClock) throws -> (BrowserAutomaticAdmissionStore,BrowserAudioStart,BrowserControlRequest) {
+        let request = try XCTUnwrap(state.automaticStarts(microphone:true).first)
+        let store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
+        try store.issue(request,browser:nil,generation:"call-A",document:"hook-A",microphone:true,verifiedConfigured:true,deadline:5)
+        let start = try store.authorize(.init(captureID:"owned-before-reload",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A",requestID:.string(request.id)),browser:nil)
+        try XCTUnwrap(start.inputGate).acceptOwner()
+        return (store,start,request)
+    }
+    func testCurrentReloadEndRetiresAllMixedAssociationsOfTheSameCall() throws {
+        let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
+        try send(["type":"meetings","meetings":[meeting()]],&state,id)
+        try send(signal(0,remote:"mixed"),&state,id)
+        var policy = SignalCallPolicy()
+        policy.update([try peer(state,id)],now:0); policy.advance(now:0,enabled:true)
+        let reservation = try XCTUnwrap(policy.reserve()); policy.didStart(reservation)
+        clock.set(1)
+        try send(["type":"meetings","meetings":[meeting(document:"chrome-B",source:"hook-B")]],&state,id)
+        try send(signal(1,remote:"mixed",document:"chrome-B",source:"hook-B"),&state,id)
+        policy.update([try peer(state,id)],now:1); policy.advance(now:1,enabled:true)
+        XCTAssertEqual(policy.calls.count,2,"The old lost association and the fresh reloaded document share this owner")
+        XCTAssertNil(policy.retiring)
+        // A replayed end is not current and has no authority over either alias.
+        try send(signal(1,remote:"mixed",document:"chrome-B",source:"hook-B",state:"inactive",reason:"callEnded"),&state,id)
+        policy.update([try peer(state,id)],now:1); XCTAssertNil(policy.retiring)
+        clock.set(2)
+        try send(signal(2,remote:"mixed",document:"chrome-B",source:"hook-B",state:"inactive",reason:"callEnded"),&state,id)
+        policy.update([try peer(state,id)],now:2); policy.advance(now:2,enabled:true)
+        XCTAssertTrue(policy.calls.isEmpty,"A current end retires both aliases immediately")
+        XCTAssertEqual(policy.retiring,.callEnded); XCTAssertFalse(policy.mayOpen(reservation))
+        clock.set(3); try send(signal(3,remote:"mixed",document:"chrome-B",source:"hook-B"),&state,id)
+        policy.update([try peer(state,id)],now:3); policy.advance(now:3,enabled:true)
+        XCTAssertEqual(policy.retiring,.callEnded,"Later proof cannot resurrect the ended owner")
+    }
+    func testCurrentReloadEndImmediatelyFencesSeparatedFallbackOwner() throws {
+        let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
+        try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0),&state,id)
+        let (store,start,_) = try runningSeparatedOwner(&state,clock:clock), gate = try XCTUnwrap(start.inputGate)
+        clock.set(1)
+        try send(["type":"meetings","meetings":[meeting(document:"chrome-B",source:"hook-B")]],&state,id)
+        try send(signal(1,document:"chrome-B",source:"hook-B"),&state,id)
+        store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
+        XCTAssertNil(store.endReason(start.captureID)); XCTAssertTrue(gate.permits)
+        try send(signal(1,document:"chrome-B",source:"hook-B",state:"inactive",reason:"callEnded"),&state,id)
+        store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
+        XCTAssertNil(store.endReason(start.captureID),"The stale end is ignored by the current signal ledger")
+        clock.set(2)
+        try send(signal(2,document:"chrome-B",source:"hook-B",state:"inactive",reason:"callEnded"),&state,id)
+        XCTAssertEqual(state.endedAutomaticEvidence.first?.browserDocument,"chrome-B")
+        store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
+        XCTAssertEqual(store.endReason(start.captureID),.callEnded); XCTAssertFalse(gate.permits)
+        XCTAssertThrowsError(try gate.acceptOwner(),"System fallback and Me cannot reopen after the positive end")
+        clock.set(3); try send(signal(3,document:"chrome-B",source:"hook-B"),&state,id)
+        store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
+        XCTAssertEqual(store.endReason(start.captureID),.callEnded); XCTAssertFalse(gate.permits)
+    }
+    func testContinuousFreshReloadProofDoesNotRebindSeparatedOwnerOrExtendItsGrace() throws {
+        let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
+        try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0),&state,id)
+        let (store,start,_) = try runningSeparatedOwner(&state,clock:clock), gate = try XCTUnwrap(start.inputGate)
+        try send(["type":"meetings","meetings":[meeting(document:"chrome-B",source:"hook-B")]],&state,id)
+        for tick in 0...30 {
+            let now = Double(tick*4+1); clock.set(now)
+            try send(signal(tick+1,document:"chrome-B",source:"hook-B"),&state,id)
+            XCTAssertEqual(state.currentAutomaticEvidence.count,1)
+            XCTAssertEqual(state.currentAutomaticEvidence.keys.first?.browserDocument,"chrome-B")
+            store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
+            if now < 121 { XCTAssertNil(store.endReason(start.captureID)); XCTAssertTrue(gate.permits) }
+            else { XCTAssertEqual(store.endReason(start.captureID),.pageGone); XCTAssertFalse(gate.permits) }
+        }
+        XCTAssertEqual(start.automaticCall?.browserDocument,"chrome-A","Fresh proof does not transfer the accepted binding")
+    }
+    func testPassiveReloadWithAutoOnCannotAdmitOrRefreshEitherRoute() throws {
+        for remote in ["mixed","separated"] {
+            let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
+            try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0,remote:remote),&state,id)
+            var policy = SignalCallPolicy()
+            policy.update([try peer(state,id)],now:0); policy.advance(now:0,enabled:true)
+            let reservation = policy.reserve()
+            if let reservation { policy.didStart(reservation) }
+            let separated: (BrowserAutomaticAdmissionStore,BrowserAudioStart,BrowserControlRequest)? = remote == "separated" ? try runningSeparatedOwner(&state,clock:clock) : nil
+            clock.set(1)
+            try send(["type":"meetings","meetings":[meeting(document:"chrome-B",source:"hook-B")]],&state,id)
+            try send(signal(1,remote:"unknown",document:"chrome-B",source:"hook-B",state:"unknown",reason:"unverified",generation:nil),&state,id)
+            XCTAssertTrue(state.currentAutomaticEvidence.isEmpty); XCTAssertTrue(state.endedAutomaticEvidence.isEmpty)
+            // Clear only the observer copy's bookkeeping: no pending ask may mask an illicit Start.
+            var unblocked = state
+            if let (_,_,request) = separated { unblocked.cancelUnsent(request) }
+            XCTAssertTrue(unblocked.automaticStarts(microphone:true).isEmpty,"Auto-record is on; passive inventory cannot Start")
+            if let (store,start,_) = separated {
+                store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
+                XCTAssertNil(store.endReason(start.captureID)); XCTAssertTrue(start.inputGate?.permits == true)
+                clock.set(121); XCTAssertEqual(store.endReason(start.captureID),.pageGone); XCTAssertFalse(start.inputGate?.permits == true)
+            } else {
+                XCTAssertNotNil(reservation)
+                policy.update([try peer(state,id)],now:1); policy.advance(now:1,enabled:true)
+                XCTAssertEqual(policy.calls.count,1); XCTAssertTrue(policy.calls.keys.allSatisfy { $0.document == "chrome-A" })
+                XCTAssertNil(policy.retiring); XCTAssertFalse(policy.eligible)
+                policy.advance(now:121,enabled:true); XCTAssertEqual(policy.retiring,.pageGone)
+                XCTAssertNil(policy.reserve(),"A passive reload cannot reserve a replacement owner")
+            }
+        }
+    }
+
+
+    func testReloadEndCannotFenceAnotherProfileTabOrGeneration() throws {
+        for changed in ["profile","tab","generation"] {
+            let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
+            try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0),&state,id)
+            let (store,start,_) = try runningSeparatedOwner(&state,clock:clock), gate = try XCTUnwrap(start.inputGate)
+            let unrelated = BrowserVerifiedCall(profile:changed == "profile" ? "profile-B" : "profile-A",tab:changed == "tab" ? 3 : 2,
+                browserDocument:"chrome-B",sourceDocument:"hook-B",generation:changed == "generation" ? "call-B" : "call-A")
+            clock.set(1); store.update(pending:[:],owned:[:],ended:[unrelated])
+            XCTAssertNil(store.endReason(start.captureID),changed); XCTAssertTrue(gate.permits,changed)
+        }
     }
 
 }
