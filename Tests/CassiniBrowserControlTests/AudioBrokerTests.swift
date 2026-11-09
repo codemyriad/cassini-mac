@@ -116,7 +116,7 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(client.process.terminationStatus,0)
             let saved = try RecordingLoader.load(directory:URL(fileURLWithPath:path))
             XCTAssertEqual(saved.state,"completed"); XCTAssertEqual(saved.tracks.first?.frames,8000)
-        } catch { await fixture.finish(); throw error }
+        } catch { pending.release(); await fixture.finish(); throw error }
         await fixture.finish()
     }
     func testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory() async throws {
