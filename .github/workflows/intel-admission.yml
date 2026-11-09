@@ -1,0 +1,27 @@
+name: Intel full-suite bootstrap admission evidence
+'on':
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  evidence:
+    runs-on: macos-15-intel
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [unlimited-first, limited-first]
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: python3 scripts/intel-admission-evidence.py '${{ matrix.order }}'
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: intel-admission-${{ matrix.order }}
+          path: |
+            build/intel-admission/*.json
+            build/intel-admission/*.log
+            build/intel-admission/unlimited
+            build/intel-admission/limited
+          retention-days: 14

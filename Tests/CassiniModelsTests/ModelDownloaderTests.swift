@@ -10,6 +10,12 @@ private let enough: @Sendable (URL) throws -> ModelDiskSpace = { _ in .init(free
 /// D54: the exact header the app layer would build for CassiniTalk 9.8.7 on macOS 15.1, arm64.
 private let agent = "CassiniTalk/9.8.7 (macOS 15.1; arm64)"
 private final class Server: @unchecked Sendable {
+    // Diagnostic experiment only. Default CI/test behavior stays unlimited.
+    private static let bootstrapAdmission: DispatchSemaphore? = {
+        guard let value = ProcessInfo.processInfo.environment["CASSINI_FIXTURE_BOOTSTRAP_LIMIT"],
+              let limit = Int(value), limit > 0 else { return nil }
+        return DispatchSemaphore(value:limit)
+    }()
     let process = Process()
     private let exited: DispatchSemaphore
     private let diagnosticRoot: URL?
@@ -35,6 +41,8 @@ private final class Server: @unchecked Sendable {
                       onLaunched: @escaping @Sendable (FileHandle) -> Void = { _ in }) async throws -> Server {
         try await withCheckedThrowingContinuation { continuation in
             Thread.detachNewThread {
+                Self.bootstrapAdmission?.wait()
+                defer { Self.bootstrapAdmission?.signal() }
                 do { continuation.resume(returning:try Server(scenario,startupTimeout:startupTimeout,diagnostics:diagnostics,onLaunched:onLaunched)) }
                 catch { continuation.resume(throwing:error) }
             }
