@@ -52,7 +52,7 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
     }
     private let lock = NSLock()
     private let clock: @Sendable () -> TimeInterval
-    private var entries: [String:Entry] = [:]
+    private var entries: [Data:Entry] = [:]
     public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) { self.clock = clock }
     func issue(_ request: BrowserControlRequest, browser: BrowserInstance?, generation: String?, document: String?, microphone: Bool,
                deadline: TimeInterval?) throws {
@@ -61,7 +61,7 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
             guard entries.count < 1024 else { throw BrowserIPCError.unavailable }
             let gate = request.automaticCall.map { _ in BrowserSignalInputGate(clock:clock) }
             if gate != nil { guard let deadline, clock() < deadline else { throw CancellationError() }; gate?.update(true,expiresAt:deadline,closesAt:deadline+120) }
-            entries[request.id] = .init(key:request.key,browser:browser,generation:generation,document:document,microphone:microphone,call:request.automaticCall,gate:gate,lastExpiry:deadline)
+            entries[Data(request.id.utf8)] = .init(key:request.key,browser:browser,generation:generation,document:document,microphone:microphone,call:request.automaticCall,gate:gate,lastExpiry:deadline)
         }
     }
     func update(pending: [BrowserVerifiedCall:TimeInterval], owned: [BrowserVerifiedCall:TimeInterval], ended: Set<BrowserVerifiedCall>) {
@@ -88,22 +88,25 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
     }
     func authorize(_ info: BrowserAudioStart, browser: BrowserInstance?) throws -> BrowserAudioStart {
         try lock.withLock {
-            let candidates = entries.filter { _,entry in
-                entry.capture == nil && entry.browser == browser && entry.microphone == info.microphone &&
-                    SignalCallPolicy.exact(entry.generation,info.callGeneration) && SignalCallPolicy.exact(entry.document,info.documentGeneration)
-            }
-            guard candidates.count == 1, let (id,entry) = candidates.first else { throw BrowserIPCError.unavailable }
+            // Mac commands use string IDs. A numeric ID (including zero) cannot
+            // answer a string ask. Compare exact bytes, including Unicode identity.
+            guard let request = info.requestID?.string else { throw BrowserIPCError.unavailable }
+            let id = Data(request.utf8)
+            guard let entry = entries[id], entry.capture == nil,
+                  entry.browser == browser, entry.microphone == info.microphone,
+                  SignalCallPolicy.exact(entry.generation,info.callGeneration),
+                  SignalCallPolicy.exact(entry.document,info.documentGeneration) else { throw BrowserIPCError.unavailable }
             try entry.gate?.validate()
             entries[id]?.capture = info.captureID
             return .init(captureID:info.captureID,timelineOriginMs:info.timelineOriginMs,microphone:info.microphone,
-                         callGeneration:info.callGeneration,documentGeneration:info.documentGeneration,inputGate:entry.gate,automaticCall:entry.call)
+                         callGeneration:info.callGeneration,documentGeneration:info.documentGeneration,inputGate:entry.gate,automaticCall:entry.call,requestID:info.requestID)
         }
     }
     func complete(_ id: String) {
-        lock.withLock { if entries[id]?.capture == nil { entries.removeValue(forKey:id)?.gate?.cancel() } }
+        lock.withLock { if entries[Data(id.utf8)]?.capture == nil { entries.removeValue(forKey:Data(id.utf8))?.gate?.cancel() } }
     }
-    func hasAcceptedInput(_ id: String) -> Bool { lock.withLock { entries[id]?.gate?.hasOpened == true } }
-    func pendingWasWithdrawn(_ id: String) -> Bool { lock.withLock { entries[id]?.call != nil && entries[id]?.gate?.hasOpened == false && entries[id]?.gate?.permits == false } }
+    func hasAcceptedInput(_ id: String) -> Bool { lock.withLock { entries[Data(id.utf8)]?.gate?.hasOpened == true } }
+    func pendingWasWithdrawn(_ id: String) -> Bool { lock.withLock { entries[Data(id.utf8)]?.call != nil && entries[Data(id.utf8)]?.gate?.hasOpened == false && entries[Data(id.utf8)]?.gate?.permits == false } }
     func cancelAllPending(automaticOnly: Bool = false) {
         lock.withLock { for (id,var entry) in entries where (!automaticOnly || entry.call != nil) && (entry.capture == nil || entry.gate?.hasOpened == false) {
             entry.gate?.cancel()

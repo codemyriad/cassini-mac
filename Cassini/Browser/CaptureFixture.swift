@@ -11,6 +11,7 @@ import CassiniBrowserControl
             || CommandLine.arguments.contains(LiveFolderSelfTest.argument))
     }
     static var beforeBrowserLoss: (@MainActor () async -> Void)?
+    static var stopRequests = 0
     static var systemAuthorizationCompletions = 0
     static var microphoneAllowed = true
     static var microphoneAuthorizationFixture: (() async -> Void)?

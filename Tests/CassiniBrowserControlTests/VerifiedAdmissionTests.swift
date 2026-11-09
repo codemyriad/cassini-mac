@@ -191,13 +191,111 @@ final class VerifiedAdmissionTests: XCTestCase {
         XCTAssertTrue(running.permits,"Accepted owner keeps inputs through its separate grace")
         running.cancel(); XCTAssertFalse(running.permits)
     }
+    func testNativeStartCorrelationVectorsAtActualBrokerBoundary() throws {
+        let cases = try XCTUnwrap(try vectors()["nativeStartCorrelation"] as? [String:Any])["cases"]
+        let correlationCases = try XCTUnwrap(cases as? [[String:Any]])
+        XCTAssertFalse(correlationCases.isEmpty)
+        for vector in correlationCases {
+            let starts = try XCTUnwrap(vector["expectedNativeStarts"] as? [[String:Any]])
+            let manualID = try XCTUnwrap(vector["pendingManualRequestId"] as? String)
+            let vectorOrder = try XCTUnwrap(vector["nativeArrivalOrder"] as? [Int])
+            // Exercise the shared manual-first order and the reported late-auto-first race.
+            for order in [vectorOrder,[0,1]] {
+                let root = FileManager.default.temporaryDirectory.appendingPathComponent("NativeCorrelation-"+UUID().uuidString)
+                try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+                defer { try? FileManager.default.removeItem(at:root) }
+                let library = root.appendingPathComponent("Recordings",isDirectory:true)
+                try FileManager.default.createDirectory(at:library,withIntermediateDirectories:false)
+                let store = BrowserAutomaticAdmissionStore(), key = BrowserMeetingKey(peer:UUID(),tabID:2)
+                if let automaticID = vector["retiredAutomaticRequestId"] as? String {
+                    let call = BrowserVerifiedCall(profile:"profile-A",tab:2,browserDocument:"chrome-A",sourceDocument:"hook-A",generation:"call-A")
+                    let automatic = BrowserControlRequest(id:automaticID,key:key,action:.start,data:Data(),automaticCall:call)
+                    try store.issue(automatic,browser:nil,generation:"call-A",document:"hook-A",microphone:false,deadline:ProcessInfo.processInfo.systemUptime+5)
+                }
+                store.cancelAllPending(automaticOnly:true)
+                let manual = BrowserControlRequest(id:manualID,key:key,action:.start,data:Data())
+                try store.issue(manual,browser:nil,generation:"call-A",document:"hook-A",microphone:false,deadline:nil)
+                let broker = BrowserAudioBroker(make:{ title,mic in
+                    XCTAssertEqual(title,manualID,"Retired or numeric IDs must not create outputs")
+                    XCTAssertFalse(mic)
+                    return try OwnedBrowserCapture(parent:library,title:title,microphone:mic)
+                },created:{ _,info in
+                    XCTAssertNil(info.automaticCall); XCTAssertNil(info.inputGate)
+                    XCTAssertEqual(info.requestID,.string(manualID))
+                },stopNative:{ _,reply in reply(nil) },admission:store)
+                let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)
+                try service.start(root:root); defer { service.stop() }
+                var clients: [PipeEndpoint] = []
+                defer { for client in clients { client.stop() } }
+                for invalidID: JSON? in [nil,.null,.string("unknown-ask")] {
+                    let client = try PipeEndpoint(root:root,role:.audio,browser:"Chromium"); clients.append(client)
+                    var fields: [(String,JSON)] = [("type",.string("start")),("independent",.bool(true)),
+                        ("captureId",.string(UUID().uuidString)),("timelineOriginMs",.number("0")),("microphone",.bool(false)),
+                        ("callGeneration",.string("call-A")),("documentGeneration",.string("hook-A"))]
+                    if let invalidID { fields.append(("requestId",invalidID)) }
+                    try client.send(JSON.object(fields).encoded(maximumBytes:1<<20))
+                    let rejected = try JSONParser.parse(XCTUnwrap(client.receive(deadline:DispatchTime.now().uptimeNanoseconds+5_000_000_000)))
+                    XCTAssertEqual(rejected["type"]?.string,"error")
+                    XCTAssertTrue(broker.activeCaptures.isEmpty)
+                    XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath:library.path).isEmpty)
+                }
+                let commandClientOffset = clients.count
+                for index in order {
+                    var packet = starts[index]
+                    packet["independent"] = true; packet["microphone"] = false
+                    packet["captureId"] = "generated-\(index)"; packet["timelineOriginMs"] = 0
+                    packet["title"] = index == 1 ? manualID : "Retired automatic packet"
+                    let client = try PipeEndpoint(root:root,role:.audio,browser:"Chromium"); clients.append(client)
+                    try client.send(JSONSerialization.data(withJSONObject:packet))
+                    let response = try JSONParser.parse(XCTUnwrap(client.receive(deadline:DispatchTime.now().uptimeNanoseconds+5_000_000_000)))
+                    XCTAssertEqual(response["type"]?.string,index == 1 ? "started" : "error")
+                    XCTAssertEqual(broker.activeCaptures.count,order.first == 1 || index == 1 ? 1 : 0)
+                }
+                XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:library.path).count,1)
+                let manualClient = clients[commandClientOffset + (try XCTUnwrap(order.firstIndex(of:1)))]
+                try manualClient.send(JSONSerialization.data(withJSONObject:["type":"stop"]))
+                let stopped = try JSONParser.parse(XCTUnwrap(manualClient.receive(deadline:DispatchTime.now().uptimeNanoseconds+5_000_000_000)))
+                XCTAssertEqual(stopped["type"]?.string,"stopped")
+            }
+        }
+    }
+    func testVerifiedNegotiationIsVisibleToSetupHealth() throws {
+        let clock = VerifiedClock(), id = UUID()
+        for ack in [[],["call-signals-v1"],pair] {
+            let state = try initial(clock,id:id,ack:ack)
+            let peer = try XCTUnwrap(state.snapshots.first)
+            XCTAssertTrue(peer.supportsVerified)
+            XCTAssertEqual(peer.verifiedConfigured,ack == pair)
+            XCTAssertEqual(peer.automaticUnverified,ack != pair)
+        }
+        var legacy = BrowserControlRegistry()
+        try legacy.connect(.init(id:id,role:.control,browser:"Chromium"))
+        try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"]],&legacy,id)
+        try send(["type":"meetings","meetings":[meeting()]],&legacy,id)
+        try send(["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"sessions":[],"message":"Generated ready"],&legacy,id)
+        let old = try XCTUnwrap(legacy.snapshots.first)
+        XCTAssertFalse(old.supportsVerified); XCTAssertFalse(old.verifiedConfigured); XCTAssertTrue(old.automaticUnverified)
+    }
+    func testSignalKeyEqualityIncludesExactSourceDocumentBytes() {
+        func key(_ source: String?) -> SignalCallPolicy.Key {
+            .init(instance:"profile",tab:2,document:"chrome",generation:"call",sourceDocument:source)
+        }
+        let composed = key("\u{e9}"), decomposed = key("e\u{301}")
+        XCTAssertEqual(composed,key("\u{e9}"))
+        XCTAssertNotEqual(composed,decomposed)
+        XCTAssertNotEqual(composed,key(nil))
+        XCTAssertEqual(Set([composed,decomposed,key(nil),key("\u{e9}")]).count,3)
+        let dictionary = [composed:1,decomposed:2,key(nil):3]
+        XCTAssertEqual(dictionary[key("\u{e9}")],1)
+        XCTAssertEqual(dictionary[key("e\u{301}")],2)
+    }
     func testBrowserReservationLeaseAndAcceptedOwnerGrace() throws {
         let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
         try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0),&state,id)
         let request = try XCTUnwrap(state.automaticStarts(microphone:true).first)
         let store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
         try store.issue(request,browser:nil,generation:"call-A",document:"hook-A",microphone:true,deadline:5)
-        let info = BrowserAudioStart(captureID:"generated-auto",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A")
+        let info = BrowserAudioStart(captureID:"generated-auto",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A",requestID:.string(request.id))
         clock.set(5); XCTAssertThrowsError(try store.authorize(info,browser:nil))
         try send(signal(1),&state,id)
         store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:state.endedAutomaticEvidence)
@@ -218,14 +316,14 @@ final class VerifiedAdmissionTests: XCTestCase {
         let request = try XCTUnwrap(state.automaticStarts(microphone:true).first)
         let store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
         try store.issue(request,browser:nil,generation:"call-A",document:"hook-A",microphone:true,deadline:5)
-        let info = try store.authorize(.init(captureID:"stopped-pending",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A"),browser:nil)
+        let info = try store.authorize(.init(captureID:"stopped-pending",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A",requestID:.string(request.id)),browser:nil)
         store.cancel(info.captureID,reason:.user)
         try send(signal(1),&state,id)
         store.update(pending:state.pendingAutomaticBindings,owned:state.currentAutomaticEvidence,ended:[])
         XCTAssertThrowsError(try info.inputGate?.acceptOwner())
         XCTAssertEqual(store.endReason(info.captureID),.user)
     }
-    func testExplicitOldCompanionInputDoesNotNeedAutomaticLease() throws {
+    func testExplicitManualInputDoesNotNeedAutomaticLeaseButRequiresItsRequestID() throws {
         let id = UUID(), clock = VerifiedClock(), store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
         var state = try initial(clock,id:id,ack:["call-signals-v1"])
         try send(["type":"meetings","meetings":[meeting()]],&state,id)
@@ -233,9 +331,10 @@ final class VerifiedAdmissionTests: XCTestCase {
         let request = try state.start(.init(peer:id,tabID:2),microphone:false)
         try store.issue(request,browser:nil,generation:"call-A",document:"hook-A",microphone:false,deadline:nil)
         store.cancelAllPending(automaticOnly:true)
-        let accepted = try store.authorize(.init(captureID:"generated-manual",timelineOriginMs:0,microphone:false,callGeneration:"call-A",documentGeneration:"hook-A"),browser:nil)
+        XCTAssertThrowsError(try store.authorize(.init(captureID:"legacy-missing-id",timelineOriginMs:0,microphone:false,callGeneration:"call-A",documentGeneration:"hook-A"),browser:nil),"A missing native requestId cannot answer even an explicit host ask")
+        let accepted = try store.authorize(.init(captureID:"generated-manual",timelineOriginMs:0,microphone:false,callGeneration:"call-A",documentGeneration:"hook-A",requestID:.string(request.id)),browser:nil)
         XCTAssertNil(accepted.inputGate); XCTAssertNil(accepted.automaticCall)
-        XCTAssertThrowsError(try store.authorize(.init(captureID:"unsolicited",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A"),browser:nil))
+        XCTAssertThrowsError(try store.authorize(.init(captureID:"unsolicited",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A",requestID:.string(request.id)),browser:nil))
     }
     func testDelayedNativeStartAtExactExpiryCannotReachRecordingFactory() throws {
         let clock = VerifiedClock(), store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
@@ -272,7 +371,7 @@ final class VerifiedAdmissionTests: XCTestCase {
         clock.set(5)
         let audio = try PipeEndpoint(root:root,role:.audio,browser:"Chromium"); defer { audio.stop() }
         let late: [String:Any] = ["type":"start","version":1,"independent":true,"captureId":"generated-expired",
-            "timelineOriginMs":0,"microphone":true,"callGeneration":"call-A","documentGeneration":"hook-A"]
+            "timelineOriginMs":0,"requestId":try XCTUnwrap(issued?["requestId"]?.string),"microphone":true,"callGeneration":"call-A","documentGeneration":"hook-A"]
         try audio.send(JSONSerialization.data(withJSONObject:late))
         let refusal = try JSONParser.parse(XCTUnwrap(audio.receive(deadline:DispatchTime.now().uptimeNanoseconds+5_000_000_000)))
         XCTAssertEqual(refusal["type"]?.string,"error")
@@ -348,7 +447,7 @@ final class VerifiedAdmissionTests: XCTestCase {
         try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0),&state,id)
         let request = try XCTUnwrap(state.automaticStarts(microphone:true).first), store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
         try store.issue(request,browser:nil,generation:"call-A",document:"hook-A",microphone:true,deadline:5)
-        let pending = try store.authorize(.init(captureID:"still-preparing",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A"),browser:nil)
+        let pending = try store.authorize(.init(captureID:"still-preparing",timelineOriginMs:0,microphone:true,callGeneration:"call-A",documentGeneration:"hook-A",requestID:.string(request.id)),browser:nil)
         XCTAssertFalse(try XCTUnwrap(pending.inputGate).hasOpened)
         clock.set(5); store.update(pending:[:],owned:[:],ended:[])
         XCTAssertFalse(pending.inputGate?.permits ?? true)

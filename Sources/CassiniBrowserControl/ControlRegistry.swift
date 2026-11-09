@@ -51,6 +51,9 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public let interrupted: [BrowserCaptureStatus]
     public var callSignals: BrowserCallSignalSnapshot? = nil
     public var signalConnectionOrder: UInt64 = 0
+    public var supportsVerified = false
+    public var verifiedConfigured = false
+    public var automaticUnverified: Bool { reconciled && (!supportsVerified || !verifiedConfigured) }
     public var supportsCallSignals = false
     public var supportsPageState = false
     public var supportsMultiStream = false
@@ -383,7 +386,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.filter { !$0.superseded && signalPeerCurrent($0) }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsVerified:$0.supportsVerified,verifiedConfigured:$0.verifiedConfigured,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
         }
     }
     /// D52.5: a call (tabId, callGeneration) that has a recording on system/lost after its

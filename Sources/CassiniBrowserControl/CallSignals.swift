@@ -72,7 +72,7 @@ struct SignalCallPolicy: Sendable {
     struct Key: Hashable, Sendable {
         let instance: String; let tab: Int; let document: String; let generation: String
         var sourceDocument: String? = nil
-        static func == (a: Self, b: Self) -> Bool { a.tab == b.tab && SignalCallPolicy.exact(a.instance,b.instance) && SignalCallPolicy.exact(a.document,b.document) && SignalCallPolicy.exact(a.generation,b.generation) }
+        static func == (a: Self, b: Self) -> Bool { a.tab == b.tab && SignalCallPolicy.exact(a.instance,b.instance) && SignalCallPolicy.exact(a.document,b.document) && SignalCallPolicy.exact(a.generation,b.generation) && SignalCallPolicy.exact(a.sourceDocument,b.sourceDocument) }
         func hash(into h: inout Hasher) { h.combine(Data(instance.utf8)); h.combine(tab); h.combine(Data(document.utf8)); h.combine(Data(generation.utf8)); h.combine(sourceDocument.map { Data($0.utf8) }) }
     }
     struct Suppression: Hashable, Sendable {

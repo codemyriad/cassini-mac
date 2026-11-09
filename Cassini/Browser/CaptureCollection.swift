@@ -313,6 +313,9 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func stop(_ id: UUID, reason: CaptureEndReason = .user, userInitiated explicitIntent: Bool? = nil) {
         guard let value = captures[id] else { return }
+        #if DEBUG
+        if CaptureFixture.enabled { CaptureFixture.stopRequests += 1 }
+        #endif
         automaticAdmission.cancel(value.captureID,reason:reason)
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         if let token = value.signalReservation { service.stopSignal(token,userInitiated:userInitiated,reason:reason) }
@@ -711,7 +714,7 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { await broker.retryPendingRecords() }
         }
         for id in Array(captures.keys) {
-            guard let current = captures[id] else { continue }
+            guard stopping[id] == nil, let current = captures[id], current.stoppingReason == nil else { continue }
             if let reason = automaticAdmission.endReason(current.captureID) { stop(id,reason:reason); continue }
             // Every lost-call decision for this poll comes from the shared ownership, fed first
             // with what this collection knows now (a key replacePeers just learned included).

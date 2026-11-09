@@ -23,10 +23,11 @@ public struct BrowserAudioStart: Sendable {
     public let documentGeneration: String?
     public let inputGate: BrowserSignalInputGate?
     public let automaticCall: BrowserVerifiedCall?
+    public let requestID: JSON?
     public init(captureID: String, timelineOriginMs: Int, microphone: Bool, callGeneration: String? = nil,
-                documentGeneration: String? = nil, inputGate: BrowserSignalInputGate? = nil, automaticCall: BrowserVerifiedCall? = nil) {
+                documentGeneration: String? = nil, inputGate: BrowserSignalInputGate? = nil, automaticCall: BrowserVerifiedCall? = nil, requestID: JSON? = nil) {
         self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone; self.callGeneration = callGeneration
-        self.documentGeneration = documentGeneration; self.inputGate = inputGate; self.automaticCall = automaticCall
+        self.documentGeneration = documentGeneration; self.inputGate = inputGate; self.automaticCall = automaticCall; self.requestID = requestID
     }
 }
 public typealias BrowserNativeStop = @Sendable (OwnedBrowserCapture,@escaping @Sendable (String?) -> Void) -> Void
@@ -478,7 +479,12 @@ private final class AudioPeer: @unchecked Sendable {
                 // The call this Start names: the recording holds it from its first moment, even if
                 // its audio closes before any status tells the app its tab.
                 let generation = json["callGeneration"]?.string.flatMap { !$0.isEmpty && $0.unicodeScalars.count <= 200 ? $0 : nil }
-                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation,documentGeneration:json["documentGeneration"]?.string),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
+                if let request = json["requestId"] {
+                    if let number = request.int, (0...9007199254740991).contains(number) { }
+                    else if let text = request.string, !text.isEmpty, text.unicodeScalars.count <= 128 { }
+                    else { throw BrowserProtocolError("source","Invalid Start request.") }
+                }
+                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation,documentGeneration:json["documentGeneration"]?.string,requestID:json["requestId"]),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
                 owner = capture; inputGate = accepted.inputGate; captureID = id; timelineOriginMs = origin; watch(id)
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
