@@ -12,6 +12,7 @@ private let agent = "CassiniTalk/9.8.7 (macOS 15.1; arm64)"
 private final class Server: @unchecked Sendable {
     let process = Process()
     private let exited: DispatchSemaphore
+    private let diagnosticRoot: URL?
     private let control = Pipe(), prefixLock = NSLock()
     private var sentPrefix = false
     var prefixAcknowledged: Bool { prefixLock.withLock { sentPrefix } }
@@ -29,12 +30,12 @@ private final class Server: @unchecked Sendable {
     let origin: URL
     let log: URL
     /// Pipe readiness and process teardown must never occupy a cooperative executor.
-    static func start(_ scenario: String, startupTimeout: TimeInterval = 10,
+    static func start(_ scenario: String, startupTimeout: TimeInterval = 10, diagnostics: URL? = nil,
                       isolation: isolated (any Actor)? = #isolation,
                       onLaunched: @escaping @Sendable (FileHandle) -> Void = { _ in }) async throws -> Server {
         try await withCheckedThrowingContinuation { continuation in
             Thread.detachNewThread {
-                do { continuation.resume(returning:try Server(scenario,startupTimeout:startupTimeout,onLaunched:onLaunched)) }
+                do { continuation.resume(returning:try Server(scenario,startupTimeout:startupTimeout,diagnostics:diagnostics,onLaunched:onLaunched)) }
                 catch { continuation.resume(throwing:error) }
             }
         }
@@ -44,7 +45,7 @@ private final class Server: @unchecked Sendable {
         let pid: Int32
         let folder: URL
     }
-    private init(_ scenario: String, startupTimeout: TimeInterval,
+    private init(_ scenario: String, startupTimeout: TimeInterval, diagnostics: URL?,
                  onLaunched: @Sendable (FileHandle) -> Void) throws {
         let exitEvent = DispatchSemaphore(value:0); exited = exitEvent
         guard fcntl(control.fileHandleForWriting.fileDescriptor,F_SETNOSIGPIPE,1) == 0 else {
@@ -55,6 +56,13 @@ private final class Server: @unchecked Sendable {
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath:"/usr/bin/env")
         process.arguments = ["python3",Bundle.module.url(forResource:"server",withExtension:"py",subdirectory:"Fixtures")!.path,"--scenario",scenario,"--log",log.path,"--forbid-dns"]
+        let diagnostics = diagnostics ?? ProcessInfo.processInfo.environment["CASSINI_FIXTURE_DIAGNOSTICS"].map { URL(fileURLWithPath:$0) }
+        diagnosticRoot = diagnostics
+        if let diagnostics {
+            var environment = ProcessInfo.processInfo.environment
+            environment["CASSINI_FIXTURE_DIAGNOSTICS"] = diagnostics.path
+            process.environment = environment
+        }
         process.standardInput = control
         let errors = root.appendingPathComponent("bootstrap.stderr")
         _ = FileManager.default.createFile(atPath:errors.path,contents:nil)
@@ -84,18 +92,24 @@ private final class Server: @unchecked Sendable {
             line.append(byte)
         }
         guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else {
-            Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:false)
+            Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:false,diagnostics:diagnostics,exited:exitEvent)
             let diagnostic = (try? String(contentsOf:errors,encoding:.utf8)) ?? ""
             throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root)
         }
         origin = url; admitted = true
-        Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:true)
+        Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:true,diagnostics:diagnostics,exited:exitEvent)
+    }
+    /// Exercise the real failure capture after a positive readiness handshake,
+    /// without waiting for a deliberately expired startup deadline in this test.
+    func captureFailureDiagnostics() {
+        Self.captureBootstrap(process,scenario:"normal",errors:root.appendingPathComponent("bootstrap.stderr"),
+                              launchedAt:DispatchTime.now().uptimeNanoseconds,ready:false,diagnostics:diagnosticRoot,exited:exited)
     }
     /// CI evidence: sample the actual timed-out child before defer reaps it.
     private static func captureBootstrap(_ child: Process, scenario: String, errors: URL,
-                                         launchedAt: UInt64, ready: Bool) {
-        guard let path = ProcessInfo.processInfo.environment["CASSINI_FIXTURE_DIAGNOSTICS"] else { return }
-        let root = URL(fileURLWithPath:path), stem = "\(child.processIdentifier)-\(scenario)"
+                                         launchedAt: UInt64, ready: Bool, diagnostics: URL?, exited: DispatchSemaphore) {
+        guard let root = diagnostics else { return }
+        let stem = "\(child.processIdentifier)-\(scenario)"
         do {
             try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
             let value: [String:Any] = ["pid":Int(child.processIdentifier),"scenario":scenario,"ready":ready,
@@ -106,6 +120,15 @@ private final class Server: @unchecked Sendable {
                 try Data(contentsOf:errors).write(to:root.appendingPathComponent(stem+".stderr.txt"))
             }
             guard !ready, scenario != "no-ready", scenario != "invalid-ready", child.isRunning else { return }
+            // The registered native handler writes every Python thread stack,
+            // then chains SIGUSR1's default termination. Child exit is the
+            // completion event; no sleep or racing stderr-prefix read is needed.
+            let registered = root.appendingPathComponent("\(child.processIdentifier).python-handler-ready")
+            if FileManager.default.fileExists(atPath:registered.path), kill(child.processIdentifier,SIGUSR1) == 0,
+               exited.wait(timeout:.now()+2) == .success {
+                exited.signal() // Preserve the existing cleanup's exit event.
+                return
+            }
             func capture(_ executable: String, _ arguments: [String], name: String) throws {
                 let output = root.appendingPathComponent(stem+name)
                 _ = FileManager.default.createFile(atPath:output.path,contents:nil)
@@ -192,6 +215,19 @@ private final class PendingTransfer: @unchecked Sendable {
 }
 
 @Suite struct ModelDownloaderTests {
+    @Test func failureCaptureRetainsTheRealChildsPythonStackAndWaitsForItsExit() async throws {
+        let diagnostics = FileManager.default.temporaryDirectory.appendingPathComponent("PythonStack-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:diagnostics) }
+        let server = try await Server.start("normal",diagnostics:diagnostics)
+        // The ordinary readiness event proves the handler is installed. Invoke
+        // the same failure capture used after a timeout; no settling sleep or
+        // shorter startup deadline introduces another race under CI load.
+        server.captureFailureDiagnostics()
+        let pid = server.process.processIdentifier
+        let stack = try String(contentsOf:diagnostics.appendingPathComponent("\(pid).python-stack.txt"),encoding:.utf8)
+        #expect(stack.contains("server.py"))
+        #expect(kill(pid,0) == -1 && errno == ESRCH)
+    }
     @Test func fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() async throws {
         let failure = try #require(await fails {
             _ = try await Server.start("no-ready",startupTimeout:0.1)
