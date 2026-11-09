@@ -1,0 +1,60 @@
+name: D82 actual Mac placement stream reads
+'on':
+  push:
+    branches: [ci/d82-placement-stream-proof]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  proof:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Preserve measured candidate and helper
+        run: |
+          mkdir -p "$RUNNER_TEMP/d82-placement"
+          cp scripts/d82-placement-candidate.py "$RUNNER_TEMP/d82-placement/candidate.py"
+          cp scripts/d82-placement-evidence.py "$RUNNER_TEMP/d82-placement/helper.py"
+      - uses: actions/checkout@v5
+        with:
+          ref: a52845b067a3246382c9b3b896654a1190497548
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-swiftpm-arm64
+          run-id: 42585806491
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build/ci-products
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-assets
+          run-id: 42585806491
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build/ci-products
+      - name: Verify original SDK revision, architecture, pins and archive digest
+        run: |
+          python3 scripts/ci-products.py unpack swiftpm build/ci-products
+          python3 scripts/ci-products.py unpack assets build/ci-products
+      - name: Paired readers on real clean and mutant Mac output
+        env:
+          CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+          CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+          CASSINI_PLACEMENT_REPORT_DIR: ${{ github.workspace }}/build/d82-oracle
+          NEEDLE_TELEMETRY: '0'
+          DO_NOT_TRACK: '1'
+          ORT_DISABLE_TELEMETRY: '1'
+        run: |
+          python3 "$RUNNER_TEMP/d82-placement/helper.py" install "$RUNNER_TEMP/d82-placement" "$GITHUB_WORKSPACE/build/d82-placement"
+          mkdir -p build/d82-placement
+          swift test --skip-build --filter SharedPlacementTests > build/d82-placement/tests.log 2>&1
+          cat build/d82-placement/tests.log
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: d82-placement-stream-proof
+          path: |
+            build/d82-placement
+            build/d82-oracle
+          retention-days: 14
