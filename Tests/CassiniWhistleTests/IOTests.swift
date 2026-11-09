@@ -87,11 +87,29 @@ import Testing
         }
     }
     @Test func cancellationStopsTheChild() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let ready = root.appendingPathComponent("ready")
+        try #require(mkfifo(ready.path,0o600) == 0)
+        let fd = open(ready.path,O_RDWR | O_NONBLOCK | O_CLOEXEC)
+        try #require(fd >= 0)
+        defer { close(fd) }
         let task = Task {
             try await WhistleSubprocess.run(executable: URL(fileURLWithPath: "/usr/bin/python3"),
-                arguments: ["-c", "import time; time.sleep(60)"], environment: ["PATH": "/usr/bin:/bin"], input: Data())
+                arguments: ["-c", "import signal,sys\nwith open(sys.argv[1],'wb',buffering=0) as ready: ready.write(b'1')\nsignal.pause()",ready.path],
+                environment: ["PATH": "/usr/bin:/bin"], input: Data())
         }
-        try await Task.sleep(for: .milliseconds(100)); task.cancel()
+        defer { task.cancel() }
+        // A real child handshake makes cancellation exercise the running child,
+        // independently of process startup speed. Five seconds is only a bound.
+        try await Task.detached {
+            var event = pollfd(fd:fd,events:Int16(POLLIN),revents:0)
+            try #require(poll(&event,1,5000) == 1)
+            var byte: UInt8 = 0
+            try #require(read(fd,&byte,1) == 1 && byte == 49)
+        }.value
+        task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
     }
 }
