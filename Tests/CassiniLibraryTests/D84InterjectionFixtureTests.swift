@@ -71,10 +71,10 @@ struct D84InterjectionFixtureTests {
                 members.append(.init(kind:"words",speaker:nil,crosstalk:nil,wordIndices:indices(own),text:own.map(\.text).joined(separator:" ")))
                 for chip in turn.asides where chip.after == fragment.upperBound-1 {
                     let child = all[chip.turn]
-                    members.append(.init(kind:"interjection",speaker:child.speaker,crosstalk:false,wordIndices:indices(child.items),text:child.items.map(\.text).joined(separator:" ")))
+                    members.append(.init(kind:"interjection",speaker:child.speaker,crosstalk:!child.items.isEmpty && child.items.allSatisfy { $0.lowConfidenceSpeaker == true },wordIndices:indices(child.items),text:child.items.map(\.text).joined(separator:" ")))
                 }
             }
-            return .init(speaker:turn.speaker,continuation:turn.continuation,startMs:turn.startMs,endMs:turn.endMs,over:turn.over,crosstalk:false,members:members)
+            return .init(speaker:turn.speaker,continuation:turn.continuation,startMs:turn.startMs,endMs:turn.endMs,over:turn.over,crosstalk:turn.crosstalk,members:members)
         }
         #expect(actual == expected.rows,"Meeting/Search adapter: \(name)")
         let expectedText = expected.rows.map { row in row.members.map { $0.kind == "words" ? $0.text : "(\($0.speaker!): \($0.text))" }.joined(separator:" ") }

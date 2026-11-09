@@ -34,6 +34,7 @@ final class D63TurnBreakTests: XCTestCase {
             // D84 adds viewer readable paragraphs; D63's explicit source-gap rule stays unchanged.
             // This one no-gap long pause is now two readable rows, while the D70 listening run remains one.
             let readable = item.name == "a-long-pause-without-a-gap-range-joins" ? [1,2] : item.turns
+            if item.name == "a-long-pause-without-a-gap-range-joins" { XCTAssertEqual(SpeakerTurn.grouping(words).map(\.words.count),item.turns,"Listening spans retain their original identity") }
             XCTAssertEqual(MeetingPresentation.turns(words,gaps:gaps).map(\.items.count),readable,"\(item.name): meeting turns")
             XCTAssertEqual(LibraryTranscriptTurn.coalescing(words,gaps:gaps).map { $0.text.split(separator:" ").count },readable,"\(item.name): coalesced turns")
             let markdown = MeetingMarkdown.render(title:"T",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:["track-x":"X"],items:words,notes:[],gaps:gaps,language:.en)
