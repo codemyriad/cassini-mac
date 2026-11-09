@@ -30,7 +30,22 @@ with a.report.with_suffix('.stderr.txt').open('w') as errors:
     sender=threading.Thread(target=send,daemon=True);sender.start()
     try:status=child.wait(timeout=180)
     except subprocess.TimeoutExpired:
-        child.kill();child.wait();raise
+        # Preserve the actual hung signed-app PID before cleanup destroys the
+        # only evidence (D66 run42580139946, Intel). No deadline extension or
+        # retry: sampling is diagnostic work after the original180s failure.
+        try:
+            with a.report.with_suffix('.timeout-process.txt').open('w') as diagnostic:
+                subprocess.run(['/bin/ps','-p',str(child.pid),'-o','pid=,ppid=,state=,etime=,time=,comm='],
+                               stdout=diagnostic,stderr=subprocess.STDOUT,timeout=5)
+            with a.report.with_suffix('.sample.log').open('w') as diagnostic:
+                subprocess.run(['/usr/bin/sample',str(child.pid),'1','10','-file',
+                                str(a.report.with_suffix('.stack.txt'))],
+                               stdout=diagnostic,stderr=subprocess.STDOUT,timeout=5)
+        except (OSError,subprocess.SubprocessError) as error:
+            a.report.with_suffix('.diagnostic-error.txt').write_text(str(error))
+        finally:
+            child.kill();child.wait()
+        raise
     sender.join(timeout=5);output=child.stdout.read();child.stdout.close()
 assert status==0,(status,output.decode(errors='replace'),a.report.with_suffix('.stderr.txt').read_text())
 assert not failures and not sender.is_alive(),failures
