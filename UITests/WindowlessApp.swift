@@ -7,30 +7,30 @@ extension LibraryBoards {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
         defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
-        XCTAssertTrue(library.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(waitForPresent(library,timeout:20),app.debugDescription)
         XCTAssertFalse(app.descendants(matching:.any)["idle-menu-bar"].exists)
         app.typeKey(",",modifierFlags:.command)
         let settings = app.windows["cassini-settings-window"]
         let show = settings.descendants(matching:.any).matching(identifier:"settings-show-menu-bar").matching(NSPredicate(format:"value != nil")).firstMatch
         let auto = settings.descendants(matching:.any).matching(identifier:"settings-auto-record").matching(NSPredicate(format:"value != nil")).firstMatch
-        XCTAssertTrue(show.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(show,timeout:10),app.debugDescription)
         XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"1","Idle item defaults on")
         XCTAssertEqual(String(describing:try XCTUnwrap(auto.value)),"0")
         auto.click()
         let idle = app.descendants(matching:.any)["idle-menu-bar"]
-        XCTAssertTrue(idle.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(idle,timeout:10),app.debugDescription)
         settings.buttons["_XCUI:CloseWindow"].click()
         library.buttons["_XCUI:CloseWindow"].click()
         waitForWindowless { !library.exists && !settings.exists }
         XCTAssertNotEqual(app.state,.notRunning)
         idle.click()
-        XCTAssertTrue(app.staticTexts["Ready to record browser meetings"].waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(waitForPresent(app.staticTexts["Ready to record browser meetings"],timeout:5),app.debugDescription)
         app.buttons["idle-menu-open"].click()
-        XCTAssertTrue(library.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(library,timeout:10),app.debugDescription)
         library.buttons["_XCUI:CloseWindow"].click()
         waitForWindowless { !library.exists }
         idle.click()
-        XCTAssertTrue(app.buttons["idle-menu-open"].waitForExistence(timeout:5))
+        XCTAssertTrue(waitForPresent(app.buttons["idle-menu-open"],timeout:5))
         // LaunchServices sends the same reopen event as clicking the Dock icon,
         // unlike XCUIApplication.activate(), which only activates the process.
         let bundle = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier:"io.codemyriad.cassini").first?.bundleURL)
@@ -39,26 +39,26 @@ extension LibraryBoards {
                 if let error { reply.resume(throwing:error) } else { reply.resume() }
             }
         }
-        XCTAssertTrue(library.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(library,timeout:10),app.debugDescription)
         XCTAssertEqual(app.windows.matching(identifier:"cassini-library-window").count,1)
         // Dock reopen may leave the already-expanded status popup in place.
         // Clicking its label again would close it instead of opening Settings.
         if !app.buttons["idle-menu-settings"].exists { idle.click() }
-        XCTAssertTrue(app.buttons["idle-menu-settings"].waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(waitForPresent(app.buttons["idle-menu-settings"],timeout:5),app.debugDescription)
         app.buttons["idle-menu-settings"].click()
-        XCTAssertTrue(show.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(show,timeout:10),app.debugDescription)
         show.click()
         waitForWindowless { !idle.exists }
         XCTAssertEqual(String(describing:try XCTUnwrap(auto.value)),"1","Hiding the idle item does not disable automatic recording")
         app.terminate(); app.launch()
         // Normal launch must recover on its own, without Window > Library.
-        XCTAssertTrue(library.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(waitForPresent(library,timeout:20),app.debugDescription)
         XCTAssertFalse(idle.exists,"The hidden-idle preference persists")
         app.typeKey(",",modifierFlags:.command)
-        XCTAssertTrue(show.waitForExistence(timeout:10)); XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"0")
-        show.click(); XCTAssertTrue(idle.waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(show,timeout:10)); XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"0")
+        show.click(); XCTAssertTrue(waitForPresent(idle,timeout:10))
         auto.click(); waitForWindowless { !idle.exists }
-        auto.click(); XCTAssertTrue(idle.waitForExistence(timeout:10))
+        auto.click(); XCTAssertTrue(waitForPresent(idle,timeout:10))
         settings.buttons["_XCUI:CloseWindow"].click(); library.buttons["_XCUI:CloseWindow"].click()
         waitForWindowless { !library.exists && !settings.exists }
         idle.click(); app.buttons["idle-menu-quit"].click()
@@ -247,7 +247,13 @@ extension LibraryBoards {
     }
     /// Return immediately once the presence condition is already satisfied.
     @MainActor func waitForPresent(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
-        element.exists || element.waitForExistence(timeout:timeout)
+        if ProcessInfo.processInfo.environment["CASSINI_D82_ORIGINAL_PRESENCE"] == "1" {
+            print("D82 presence original")
+            return element.waitForExistence(timeout:timeout)
+        }
+        let present = element.exists
+        print("D82 presence fast \(present ? "ready" : "wait")")
+        return present || element.waitForExistence(timeout:timeout)
     }
 
     @MainActor private func backgroundClick(_ target:XCUIElement,through foreground:XCUIApplication) {
