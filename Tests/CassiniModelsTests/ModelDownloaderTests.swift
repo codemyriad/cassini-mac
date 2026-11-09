@@ -9,6 +9,25 @@ private let pin = ModelPin(id:"fixture-model",sourceSHA256:String(repeating:"a",
 private let enough: @Sendable (URL) throws -> ModelDiskSpace = { _ in .init(free:20 << 30,total:100 << 30) }
 /// D54: the exact header the app layer would build for CassiniTalk 9.8.7 on macOS 15.1, arm64.
 private let agent = "CassiniTalk/9.8.7 (macOS 15.1; arm64)"
+/// Model a fork's shared open-file descriptions without forking Swift's
+/// multithreaded test process. CLOEXEC copies still exist until child exec.
+private final class InheritedModelLocks: @unchecked Sendable {
+    private let lock = NSLock()
+    private var copies: [Int32] = []
+    private var failed = false
+    func retain(_ descriptors: [Int32]) {
+        lock.withLock {
+            for fd in descriptors {
+                let copy = fcntl(fd,F_DUPFD_CLOEXEC,0)
+                if copy < 0 { failed = true } else { copies.append(copy) }
+            }
+        }
+    }
+    var count: Int { lock.withLock { copies.count } }
+    var succeeded: Bool { lock.withLock { !failed } }
+    func closeAll() { lock.withLock { for fd in copies { close(fd) }; copies.removeAll() } }
+    deinit { closeAll() }
+}
 private final class Server: @unchecked Sendable {
     // Bound cold starts only where CI opts in; ready servers remain concurrent.
     private static let bootstrapAdmission: DispatchSemaphore? = {
@@ -464,6 +483,27 @@ private final class RemovalLockEvent: @unchecked Sendable {
         _ = try await downloader.install(pin)
         let ranges = server.requests.compactMap { $0["range"] as? String }
         #expect(ranges.count == 2 && ranges[0] == ranges[1])
+    }
+    @Test func completedTransfersAndRemovalReleaseLocksBeforeRetryEvenWithInheritedDescriptors() async throws {
+        let server = try await Server.start("bad-range"), inherited = InheritedModelLocks()
+        defer { inherited.closeAll() }
+        func downloader() throws -> ModelDownloader {
+            try .init(appData:server.appData,fixtureOrigin:server.origin,userAgent:agent,budget:enough,
+                      lockAcquired:{ inherited.retain($0) })
+        }
+        let first = try downloader()
+        _ = await fails { _ = try await first.install(pin) { server.acknowledgePersistedPrefix($0) } }
+        try #require(server.prefixAcknowledged)
+        try #require(inherited.succeeded && inherited.count == 2)
+        // A fresh actor excludes stale actor bookkeeping as the cause of busy.
+        let retry = try downloader()
+        let error = await fails { _ = try await retry.install(pin) }
+        try #require(error as? ModelDownloadError == .range)
+        _ = try await retry.install(pin)
+        try await first.remove(pin)
+        _ = try await retry.install(pin)
+        #expect(inherited.succeeded && inherited.count == 9)
+        #expect(server.requests.filter { $0["range"] is String }.count == 1)
     }
     @Test(arguments:["changed-etag","bad-range"]) func changedIdentityNeverAppends(_ scenario: String) async throws {
         let server = try await Server.start(scenario), downloader = try server.downloader()

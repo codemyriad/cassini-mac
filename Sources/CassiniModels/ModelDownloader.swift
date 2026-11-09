@@ -31,6 +31,7 @@ public actor ModelDownloader {
     private let origin: ModelOrigin
     private let budget: @Sendable (URL) throws -> ModelDiskSpace
     private let removalLockWaiting: (@Sendable () -> Void)?
+    private let lockAcquired: (@Sendable ([Int32]) -> Void)?
     /// D54: sent on every request (manifest, NOTICE, artifacts and any redirect hop).
     private let userAgent: String
     private struct Operation { let id: UUID; let task: Task<URL,Error> }
@@ -41,13 +42,13 @@ public actor ModelDownloader {
         dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent
         origin = try! ModelOrigin(URL(string:"https://dist.gocassini.com")!)
         budget = ModelDiskSpace.measured
-        removalLockWaiting = nil
+        removalLockWaiting = nil; lockAcquired = nil
     }
     // Loopback HTTP is available only to module tests, never the app consumer.
     init(appData: URL, fixtureOrigin: URL, userAgent: String, budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = ModelDiskSpace.measured,
-         removalLockWaiting: (@Sendable () -> Void)? = nil) throws {
+         removalLockWaiting: (@Sendable () -> Void)? = nil, lockAcquired: (@Sendable ([Int32]) -> Void)? = nil) throws {
         dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent; origin = try ModelOrigin(fixtureOrigin,fixture:true); self.budget = budget
-        self.removalLockWaiting = removalLockWaiting
+        self.removalLockWaiting = removalLockWaiting; self.lockAcquired = lockAcquired
     }
     public func plan(_ pin: ModelPin) async throws -> ModelPlan {
         guard pin.valid else { throw ModelDownloadError.manifest }
@@ -66,8 +67,8 @@ public actor ModelDownloader {
         guard !removing.contains(pin) else { throw ModelDownloadError.busy }
         if let operation = operations[pin] { return try await operation.task.value }
         guard operations.isEmpty else { throw ModelDownloadError.busy }
-        let id = UUID(), root = dataRoot, origin = origin, budget = budget, userAgent = userAgent
-        let task = Task.detached(priority:.utility) { try await Self.perform(pin,root:root,origin:origin,userAgent:userAgent,budget:budget,progress:progress) }
+        let id = UUID(), root = dataRoot, origin = origin, budget = budget, userAgent = userAgent, locked = lockAcquired
+        let task = Task.detached(priority:.utility) { try await Self.perform(pin,root:root,origin:origin,userAgent:userAgent,budget:budget,progress:progress,locked:locked) }
         operations[pin] = .init(id:id,task:task)
         defer { if operations[pin]?.id == id { operations[pin] = nil } }
         return try await withTaskCancellationHandler(operation:{ try await task.value },onCancel:{ task.cancel() })
@@ -90,7 +91,8 @@ public actor ModelDownloader {
         try ModelFiles.directory(dataRoot)
         let modelRoot = dataRoot.appendingPathComponent("models/" + pin.id,isDirectory:true)
         try ModelFiles.directory(modelRoot)
-        let lock = try await Self.removalLock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock"),waiting:removalLockWaiting); defer { close(lock) }
+        let lock = try await Self.removalLock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock"),waiting:removalLockWaiting); defer { Self.releaseLock(lock) }
+        lockAcquired?([lock])
         let installed = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
         if FileManager.default.fileExists(atPath:installed.path) {
             try ModelFiles.directory(installed)
@@ -114,6 +116,13 @@ public actor ModelDownloader {
         guard fstat(fd,&info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { close(fd); throw ModelDownloadError.unsafePath }
         guard flock(fd,LOCK_EX | LOCK_NB) == 0 else { close(fd); throw ModelDownloadError.busy }
         return fd
+    }
+    private static func releaseLock(_ fd: Int32) {
+        // flock is shared by dup/fork references. CLOEXEC copies can retain
+        // the lock until child exec even after this operation closes its FD.
+        // End ownership explicitly before publishing completion to a retry.
+        _ = flock(fd,LOCK_UN)
+        close(fd)
     }
     private static func removalLock(_ file: URL, waiting: (@Sendable () -> Void)?) async throws -> Int32 {
         let deadline = DispatchTime.now().uptimeNanoseconds + 5_000_000_000
@@ -154,14 +163,15 @@ public actor ModelDownloader {
               String(data:try Data(contentsOf:notice),encoding:.utf8) != nil else { throw ModelDownloadError.installation }
     }
     private static func perform(_ pin: ModelPin, root: URL, origin: ModelOrigin, userAgent: String,
-                                budget: @Sendable (URL) throws -> ModelDiskSpace, progress: @escaping @Sendable (ModelDownloadProgress) -> Void) async throws -> URL {
+                                budget: @Sendable (URL) throws -> ModelDiskSpace, progress: @escaping @Sendable (ModelDownloadProgress) -> Void, locked: (@Sendable ([Int32]) -> Void)?) async throws -> URL {
         try ModelFiles.directory(root)
         let modelsRoot = root.appendingPathComponent("models",isDirectory:true)
         try ModelFiles.directory(modelsRoot)
-        let globalLock = try lock(modelsRoot.appendingPathComponent(".download.lock")); defer { close(globalLock) }
+        let globalLock = try lock(modelsRoot.appendingPathComponent(".download.lock")); defer { Self.releaseLock(globalLock) }
         let modelRoot = modelsRoot.appendingPathComponent(pin.id,isDirectory:true)
         try ModelFiles.directory(modelRoot)
-        let lock = try lock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock")); defer { close(lock) }
+        let lock = try lock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock")); defer { Self.releaseLock(lock) }
+        locked?([globalLock,lock])
         let destination = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
         let manifest = try await metadata(origin.endpoint("manifest.json"),origin:origin,userAgent:userAgent,temporary:root,limit:4 << 20)
         let plan = try ModelManifest.plan(manifest,pin:pin,origin:origin)
