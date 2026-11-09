@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -15,10 +16,24 @@ PROFILES = {'':'Cassini/Cassini.entitlements','.quicklook':'QuickLook/CassiniQui
     '.whistle-worker':'Whistle/worker.entitlements','.parakeet-worker':'Whistle/worker.entitlements'}
 
 class SigningIdentifiersTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Sign once, then give every mutation/check a separate writable bundle.
+        temporary = tempfile.TemporaryDirectory(prefix='cassini-signing-template-')
+        cls.addClassCleanup(temporary.cleanup)
+        fixture = cls()
+        fixture.root = Path(temporary.name)
+        fixture.buildFixture()
+        cls.template = fixture.app
+
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix='cassini-signing-contract-')
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        temporary = tempfile.TemporaryDirectory(prefix='cassini-signing-contract-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.app = self.root/'Fixture.app'
+        shutil.copytree(type(self).template, self.app)
+
+    def buildFixture(self):
         source = self.root/'fixture.c'; source.write_text('int main(void) { return 0; }\n')
         self.binary = self.root/'fixture'
         subprocess.run(['clang', str(source), '-o', str(self.binary)], check=True, capture_output=True)
