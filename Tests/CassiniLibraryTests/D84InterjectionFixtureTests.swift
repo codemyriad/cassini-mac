@@ -251,6 +251,13 @@ struct D84InterjectionFixtureTests {
         let library = root.appendingPathComponent("Imported")
         let imported = try LibraryImport.copy(source,into:library)
         #expect(imported.state.transcript == .done && imported.wordEndsBoundedByAudio == attested)
+        let expectedEnd: Int64 = attested ? 5000 : 1000
+        #expect(imported.transcriptTurns.first?.endMs == expectedEnd,"Library preview uses the manifest attestation")
+        let external = MeetingPresentation.external(file,url:source)
+        let turns = MeetingPresentation.turns(external.transcriptItems,endsBoundedByAudio:external.wordEndsBoundedByAudio)
+        #expect(MeetingPresentation.visibleTurns(turns).first?.endMs == expectedEnd,"Meeting/Search rows use the manifest attestation")
+        let words = try #require(file.defaultTranscript?.load.transcript?.items)
+        #expect(Timeline(words,endsBoundedByAudio:file.manifest?.wordEndsBoundedByAudio == true).turns.first?.endMs == Int(expectedEnd),"Document and QuickLook adapter uses the manifest attestation")
         // An unrelated sidecar transcription cannot inherit the original's flag.
         try body.write(to:imported.folder.appendingPathComponent("transcript.json"))
         try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
@@ -258,6 +265,7 @@ struct D84InterjectionFixtureTests {
         }
         let sidecar = try #require(LibraryScanner(root:library).scan().meetings.first)
         #expect(sidecar.state.transcript == .done && !sidecar.wordEndsBoundedByAudio)
+        #expect(sidecar.transcriptTurns.first?.endMs == 1000,"Sidecar rows still repair unattested ends")
     }
 
     @Test func asideBeforeLegacyRunStartUsesAudibleHostAdmission() throws {

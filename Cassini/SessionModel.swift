@@ -173,7 +173,7 @@ final class SessionModel {
                 // D53.3: an unnamed speaker written in the UI language.
                 speakers.append(Speaker(id: w.speaker, label: UXText.text("common.speaker.unnamed",["n":String(speakers.count + 1)])))
             }
-            timeline = Timeline(t.items,endsBoundedByAudio:file.manifest?.provenance?["wordTimings"]?["endsBoundedByAudio"]?.bool == true)
+            timeline = Timeline(t.items,endsBoundedByAudio:file.manifest?.wordEndsBoundedByAudio == true)
         case .unavailable(let f):
             transcriptProblem = UXText.text("mac.legacy.transcriptUnreadable")
         }

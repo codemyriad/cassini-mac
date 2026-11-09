@@ -79,7 +79,7 @@ enum PreviewText {
                 .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: p,
             ]))
         }
-        let timeline = Timeline(t.items,endsBoundedByAudio:m.provenance?["wordTimings"]?["endsBoundedByAudio"]?.bool == true)
+        let timeline = Timeline(t.items,endsBoundedByAudio:m.wordEndsBoundedByAudio)
         let body = NSMutableParagraphStyle()
         body.paragraphSpacing = 10
         body.lineHeightMultiple = 1.2
