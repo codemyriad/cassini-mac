@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Hosted-only, same-bundle ABBA proof; preserve recording duration, Quit/persisted pause, real relaunch and enabled-transcript assertions."""
+"""Hosted-only, same-bundle ABBA proof; preserve recording duration, Stop/retry/audio integrity, Quit/persisted pause, real relaunch and enabled-transcript assertions."""
 from pathlib import Path
 import hashlib,json,os,re,statistics,subprocess
 assert os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted'
 ROOT=Path.cwd();OUT=ROOT/'build/d82-quit-presence';OUT.mkdir(parents=True,exist_ok=True)
-CASES=['testQuitPausesWritingDownAndResumesOnRelaunch']
+CASES=['testQuitPausesWritingDownAndResumesOnRelaunch','testStopWritesDownAndRetryKeepsAudio']
 specs=list((ROOT/'build/Build/Products').glob('*.xctestrun'));assert len(specs)==1,specs
 report=dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),sourceSHA256={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in ['UITests/WindowlessApp.swift','UITests/LibraryBoards.swift']},phases=[])
 for index,mode in enumerate(['original','fast','fast','original']):

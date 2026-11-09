@@ -1,4 +1,4 @@
-name: D82 transcription Quit and resume presence wait proof
+name: D82 transcription lifecycle presence wait proof
 'on':
   push:
     branches: [ci/d82-quit-presence-proof]
