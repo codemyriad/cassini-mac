@@ -98,15 +98,17 @@ final class AudioFixture {
 }
 final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
     func testPipelinedRequestsDrainAllRepliesBeforeInputEOFExitsZero() async throws {
-        let fixture = try AudioFixture(stop:{ _,reply in
-            DispatchQueue.global().asyncAfter(deadline:.now()+0.1) { reply(nil) }
-        })
+        let pending = PendingNativeStop()
+        defer { pending.release() }
+        let fixture = try AudioFixture(stop:{ _,reply in pending.hold(reply) })
         do {
             let client = try fixture.client()
             for request in [start("pipelined-eof"),track(),audio(),["type":"stop"]] {
                 try FrameIO.writeFrame(client.input.fileHandleForWriting.fileDescriptor,data:JSONSerialization.data(withJSONObject:request),cancel:Cancellation())
             }
             try client.input.fileHandleForWriting.close()
+            await fulfillment(of:[pending.entered],timeout:3)
+            pending.release()
             let responses = try (0..<4).map { _ in try client.read() }
             XCTAssertEqual(responses.compactMap { $0["type"]?.string },["started","ack","ack","stopped"])
             let path = try XCTUnwrap(responses.first?["path"]?.string)
@@ -356,4 +358,30 @@ private final class StopCount: @unchecked Sendable {
     private var count = 0
     var value: Int { lock.withLock { count } }
     func increment() { lock.withLock { count += 1 } }
+}
+
+/// Hold the real native Stop callback until EOF has been sent and the test has
+/// observed the pending drain. Cleanup also releases callbacks arriving late.
+private final class PendingNativeStop: @unchecked Sendable {
+    let entered = XCTestExpectation(description:"native Stop is pending")
+    private let lock = NSLock()
+    private var released = false
+    private var reply: (@Sendable (String?) -> Void)?
+    func hold(_ callback: @escaping @Sendable (String?) -> Void) {
+        let immediate = lock.withLock {
+            if released { return true }
+            reply = callback
+            return false
+        }
+        entered.fulfill()
+        if immediate { callback(nil) }
+    }
+    func release() {
+        let callback = lock.withLock {
+            released = true
+            defer { reply = nil }
+            return reply
+        }
+        callback?(nil)
+    }
 }
