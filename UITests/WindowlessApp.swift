@@ -140,51 +140,51 @@ extension LibraryBoards {
         app.typeKey(",",modifierFlags:.command)
         let settings=app.windows["cassini-settings-window"]
         let auto=settings.descendants(matching:.any).matching(identifier:"settings-auto-record").matching(NSPredicate(format:"value != nil")).firstMatch
-        XCTAssertTrue(auto.waitForExistence(timeout:10));auto.click()
+        XCTAssertTrue(waitForPresent(auto,timeout:10));auto.click()
         settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
         let idle=app.descendants(matching:.any)["idle-menu-bar"]
-        XCTAssertTrue(idle.waitForExistence(timeout:10));idle.click()
+        XCTAssertTrue(waitForPresent(idle,timeout:10));idle.click()
         app.buttons["idle-menu-quit"].click();waitForWindowless { app.state == .notRunning }
         app.launchArguments.append("--fixture-windowless-launch")
         // Suppress only the test's initial scene presentation. Each fresh
         // process must route requests before any Library onAppear has run.
         for route in ["dock","idle"] {
-            app.launch();XCTAssertTrue(idle.waitForExistence(timeout:10))
+            app.launch();XCTAssertTrue(waitForPresent(idle,timeout:10))
             XCTAssertFalse(library.exists,"Cold launch has no mounted Library")
             if route == "dock" { try await dockReopen(app) }
             else { idle.click();app.buttons["idle-menu-open"].click() }
-            XCTAssertTrue(library.waitForExistence(timeout:15),app.debugDescription)
+            XCTAssertTrue(waitForPresent(library,timeout:15),app.debugDescription)
             XCTAssertEqual(app.windows.matching(identifier:"cassini-library-window").count,1)
             library.buttons["_XCUI:CloseWindow"].click()
             waitForWindowless { !library.exists }
             idle.click();app.buttons["idle-menu-quit"].click();waitForWindowless { app.state == .notRunning }
         }
         // No menu-bar host and no Library view: Dock routing still works.
-        app.launch();XCTAssertTrue(idle.waitForExistence(timeout:10))
+        app.launch();XCTAssertTrue(waitForPresent(idle,timeout:10))
         idle.click();app.buttons["idle-menu-open"].click()
-        XCTAssertTrue(library.waitForExistence(timeout:15))
+        XCTAssertTrue(waitForPresent(library,timeout:15))
         app.typeKey(",",modifierFlags:.command)
         let show=settings.descendants(matching:.any).matching(identifier:"settings-show-menu-bar").matching(NSPredicate(format:"value != nil")).firstMatch
-        XCTAssertTrue(show.waitForExistence(timeout:10));show.click()
+        XCTAssertTrue(waitForPresent(show,timeout:10));show.click()
         settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
         app.typeKey("q",modifierFlags:.command);waitForWindowless { app.state == .notRunning }
         app.launch();XCTAssertFalse(idle.waitForExistence(timeout:2));XCTAssertFalse(library.exists)
         try await dockReopen(app)
-        XCTAssertTrue(library.waitForExistence(timeout:15),app.debugDescription)
-        app.typeKey(",",modifierFlags:.command);XCTAssertTrue(show.waitForExistence(timeout:10));show.click()
+        XCTAssertTrue(waitForPresent(library,timeout:15),app.debugDescription)
+        app.typeKey(",",modifierFlags:.command);XCTAssertTrue(waitForPresent(show,timeout:10));show.click()
         settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
         idle.click();app.buttons["idle-menu-quit"].click();waitForWindowless { app.state == .notRunning }
         app.launchArguments.append("--fixture-recording-on-launch")
         app.launch()
         let recording=app.descendants(matching:.any)["recording-menu-bar"]
-        XCTAssertTrue(recording.waitForExistence(timeout:15),app.debugDescription)
+        XCTAssertTrue(waitForPresent(recording,timeout:15),app.debugDescription)
         XCTAssertFalse(library.exists)
-        recording.click();XCTAssertTrue(app.buttons["recording-menu-open"].waitForExistence(timeout:5))
+        recording.click();XCTAssertTrue(waitForPresent(app.buttons["recording-menu-open"],timeout:5))
         app.buttons["recording-menu-open"].click()
-        XCTAssertTrue(library.waitForExistence(timeout:15),app.debugDescription)
-        XCTAssertTrue(library.buttons["recording-stop"].waitForExistence(timeout:15),app.debugDescription)
+        XCTAssertTrue(waitForPresent(library,timeout:15),app.debugDescription)
+        XCTAssertTrue(waitForPresent(library.buttons["recording-stop"],timeout:15),app.debugDescription)
         library.buttons["recording-stop"].click()
-        XCTAssertTrue(library.buttons["preview-play"].waitForExistence(timeout:15))
+        XCTAssertTrue(waitForPresent(library.buttons["preview-play"],timeout:15))
     }
 
     @MainActor func testInsertedIdleMenuTracksRecordingStartAndStop() throws {
@@ -247,7 +247,13 @@ extension LibraryBoards {
     }
     /// Return immediately once the presence condition is already satisfied.
     @MainActor func waitForPresent(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
-        element.exists || element.waitForExistence(timeout:timeout)
+        if ProcessInfo.processInfo.environment["CASSINI_D82_ORIGINAL_PRESENCE"] == "1" {
+            print("D82 presence original")
+            return element.waitForExistence(timeout:timeout)
+        }
+        let present = element.exists
+        print("D82 presence fast \(present ? "ready" : "wait")")
+        return present || element.waitForExistence(timeout:timeout)
     }
 
     @MainActor private func backgroundClick(_ target:XCUIElement,through foreground:XCUIApplication) {
