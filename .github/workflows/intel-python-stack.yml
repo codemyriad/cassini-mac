@@ -1,7 +1,5 @@
 name: Intel fixture native traceback evidence
 'on':
-  push:
-    branches: [ci/intel-bootstrap-python-stack]
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -18,5 +16,8 @@ jobs:
         if: always()
         with:
           name: intel-python-stack
-          path: build/intel-python-stack
+          path: |
+            build/intel-python-stack/tests.log
+            build/intel-python-stack/host.top.txt
+            build/intel-python-stack/children
           retention-days: 14
