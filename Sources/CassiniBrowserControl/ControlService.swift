@@ -285,7 +285,7 @@ public final class BrowserControlService: @unchecked Sendable {
                 if request.action == .start, !request.resume, let context = registry.browserAdmission(request.key) {
                     let packet = try JSONParser.parse(request.data)
                     try admission?.issue(request,browser:context.0,generation:context.1,document:context.2,microphone:packet["microphone"]?.bool ?? true,
-                        deadline:request.automaticCall.flatMap { registry.currentAutomaticEvidence[$0] })
+                        verifiedConfigured:context.3,deadline:request.automaticCall.flatMap { registry.currentAutomaticEvidence[$0] })
                 }
                 try connection.send(request.data)
                 deadlines[request.id] = (request,DispatchTime.now().uptimeNanoseconds + 30_000_000_000)

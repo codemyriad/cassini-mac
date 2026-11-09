@@ -427,9 +427,9 @@ public struct BrowserControlRegistry: Sendable {
         guard requireVerifiedAdmission, let key else { return nil }
         return peers.values.filter { !$0.superseded && signalPeerCurrent($0) && $0.verifiedConfigured }.compactMap { signalDeadlines($0.peer.id)[key] }.max()
     }
-    func browserAdmission(_ key: BrowserMeetingKey) -> (BrowserInstance?,String?,String?)? {
+    func browserAdmission(_ key: BrowserMeetingKey) -> (BrowserInstance?,String?,String?,Bool)? {
         guard let peer = peers[key.peer], let row = peer.meetings.first(where:{ $0.key == key }) else { return nil }
-        return (peer.peer.browserInstance,row.callGeneration,row.documentGeneration)
+        return (peer.peer.browserInstance,row.callGeneration,row.documentGeneration,peer.verifiedConfigured)
     }
     var pendingAutomaticBindings: [BrowserVerifiedCall:TimeInterval] {
         var result: [BrowserVerifiedCall:TimeInterval] = [:]

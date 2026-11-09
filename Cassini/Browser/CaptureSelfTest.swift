@@ -157,8 +157,8 @@ final class CaptureProbeProcess: @unchecked Sendable {
             self.audio = audio; captureID = token; sequence = 0; sourceID = "remote"; offsetBaseMs = 0
             try CaptureSelfTest.require(command["keepOnNavigation"]?.bool == true,"Start must retain the original audio transport")
             try CaptureSelfTest.require(command["callGeneration"]?.string == callGeneration,"Start names the probe's call")
-            var start: [String:Any] = ["type":"start","version":1,"requestId":request,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
-            if verified { start["documentGeneration"] = sourceDocument }
+            var start: [String:Any] = ["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
+            if verified { start["requestId"] = request; start["documentGeneration"] = sourceDocument }
             let started = try await audio.request(start)
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
             path = started["path"]?.string

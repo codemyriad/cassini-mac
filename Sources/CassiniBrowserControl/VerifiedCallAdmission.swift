@@ -34,8 +34,8 @@ struct BrowserActiveProof: Sendable {
 }
 
 /// Authorizes the app-managed independent native Start from its issued control
-/// command. Unknown/late independent Starts fail closed; popup/manual legacy
-/// captures do not enter this broker. No I/O or device operation runs under this lock.
+/// command. Verified peers require the exact issued ask. Legacy manual Starts
+/// retain the unique call binding because their producer has no Start requestId. No I/O or device operation runs under this lock.
 public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
     private struct Entry {
         let key: BrowserMeetingKey
@@ -45,6 +45,7 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
         let microphone: Bool
         let call: BrowserVerifiedCall?
         let gate: BrowserSignalInputGate?
+        let verifiedConfigured: Bool
         var capture: String?
         var lastExpiry: TimeInterval?
         var lostAt: TimeInterval?
@@ -55,12 +56,13 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
     private var entries: [Data:Entry] = [:]
     public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) { self.clock = clock }
     func issue(_ request: BrowserControlRequest, browser: BrowserInstance?, generation: String?, document: String?, microphone: Bool,
-               deadline: TimeInterval?) throws {
+               verifiedConfigured: Bool, deadline: TimeInterval?) throws {
         try lock.withLock {
+            guard request.automaticCall == nil || verifiedConfigured else { throw BrowserIPCError.unavailable }
             guard entries.count < 1024 else { throw BrowserIPCError.unavailable }
             let gate = request.automaticCall.map { _ in BrowserSignalInputGate(clock:clock) }
             if gate != nil { guard let deadline, clock() < deadline else { throw CancellationError() }; gate?.update(true,expiresAt:deadline,closesAt:deadline+120) }
-            entries[Data(request.id.utf8)] = .init(key:request.key,browser:browser,generation:generation,document:document,microphone:microphone,call:request.automaticCall,gate:gate,lastExpiry:deadline)
+            entries[Data(request.id.utf8)] = .init(key:request.key,browser:browser,generation:generation,document:document,microphone:microphone,call:request.automaticCall,gate:gate,verifiedConfigured:verifiedConfigured,lastExpiry:deadline)
         }
     }
     func update(pending: [BrowserVerifiedCall:TimeInterval], owned: [BrowserVerifiedCall:TimeInterval], ended: Set<BrowserVerifiedCall>) {
@@ -87,14 +89,25 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
     }
     func authorize(_ info: BrowserAudioStart, browser: BrowserInstance?) throws -> BrowserAudioStart {
         try lock.withLock {
-            // Mac commands use string IDs. A numeric ID (including zero) cannot
-            // answer a string ask. Compare exact bytes, including Unicode identity.
-            guard let request = info.requestID?.string else { throw BrowserIPCError.unavailable }
-            let id = Data(request.utf8)
-            guard let entry = entries[id], entry.capture == nil, entry.ending == nil,
-                  entry.browser == browser, entry.microphone == info.microphone,
-                  SignalCallPolicy.exact(entry.generation,info.callGeneration),
-                  SignalCallPolicy.exact(entry.document,info.documentGeneration) else { throw BrowserIPCError.unavailable }
+            func matches(_ entry: Entry) -> Bool {
+                entry.capture == nil && entry.ending == nil && entry.browser == browser && entry.microphone == info.microphone &&
+                    SignalCallPolicy.exact(entry.generation,info.callGeneration) && SignalCallPolicy.exact(entry.document,info.documentGeneration)
+            }
+            let id: Data
+            if let request = info.requestID {
+                // A present ID must match exactly, preserving JSON type and UTF-8 bytes.
+                // Mac-issued IDs are strings; a number can never answer one.
+                guard let text = request.string else { throw BrowserIPCError.unavailable }
+                id = Data(text.utf8)
+            } else {
+                // Coordinator's legacy exception: automatic work is forbidden without
+                // the v1 ACK. Only one pending legacy manual ask may match this packet.
+                let candidates = entries.filter { _,entry in matches(entry) }
+                guard candidates.count == 1, let candidate = candidates.first,
+                      !candidate.value.verifiedConfigured, candidate.value.call == nil else { throw BrowserIPCError.unavailable }
+                id = candidate.key
+            }
+            guard let entry = entries[id], matches(entry) else { throw BrowserIPCError.unavailable }
             try entry.gate?.validate()
             entries[id]?.capture = info.captureID
             return .init(captureID:info.captureID,timelineOriginMs:info.timelineOriginMs,microphone:info.microphone,
