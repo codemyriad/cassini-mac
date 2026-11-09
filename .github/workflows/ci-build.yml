@@ -104,6 +104,8 @@ jobs:
         if: matrix.arch == 'arm64'
         run: |
           python3 scripts/fetch-sparkle.py
+          python3 scripts/fetch-sparkle.py --spm-cache "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
+          python3 scripts/test-sparkle-cache.py
           python3 scripts/test-release.py
           python3 scripts/test-publish-release.py
           python3 scripts/test-signing-keychain.py
