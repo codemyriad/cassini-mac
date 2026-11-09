@@ -24,8 +24,8 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(route,["source":"system","reason":"mixedSiteSignal","site":"Synthetic call"])
         try FileManager.default.removeItem(at:folder.appendingPathComponent("session.json"))
         let report = RecordingDetailsReport(.load(folder:folder,lifecycle:.saved,title:"Edited meeting",transcriptDone:false))
-        XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedSite"])
-        XCTAssertTrue(report.notes[0].render(language:.en,locale:Locale(identifier:"en_GB")).contains("Synthetic call"))
+        XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedGeneric"])
+        XCTAssertEqual(report.notes[0].render(language:.en,locale:Locale(identifier:"en_GB")),"This call mixed all remote voices into one stream, so Cassini recorded them from the computer’s audio.")
         // Future file values stay intact and make no known-route claim.
         try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
             var details = metadata["recordingDetails"] as! [String:Any]
@@ -37,7 +37,7 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(future["source"] as? String,"future source"); XCTAssertEqual(future["future"] as? Int,17)
         XCTAssertTrue(RecordingDetailsReport(.load(folder:folder,lifecycle:.saved,title:"Another edit",transcriptDone:false)).notes.isEmpty)
     }
-    func testMixedRouteSiteUsesUnicodeCodePointsForWritingAndDisplay() async throws {
+    func testMixedRouteSiteUsesUnicodeCodePointsForMetadataAndGenericDisplay() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-unicode-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Unicode route bounds",microphone:false,browser:false)
@@ -46,8 +46,8 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
             try CaptureRecordWriter.writeMixedRoute(site:site,directory:folder,id:id)
             XCTAssertEqual(((try meeting(folder)["recordingDetails"] as? [String:Any])?["othersRoute"] as? [String:String])?["site"],site)
             let report = RecordingDetailsReport(.load(folder:folder,lifecycle:.recording,title:"Unicode route bounds",transcriptDone:false))
-            XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedSite"])
-            XCTAssertTrue(try XCTUnwrap(report.notes.first).render(language:.en,locale:Locale(identifier:"en_GB")).contains(site))
+            XCTAssertEqual(report.notes.map(\.id),["details.othersRoute.mixedGeneric"])
+            XCTAssertTrue(try XCTUnwrap(report.notes.first).values.isEmpty,"Adapter IDs remain metadata, never displayed arguments")
         }
         for site in [String(repeating:"a",count:201),"e"+String(repeating:"\u{301}",count:200)] {
             XCTAssertThrowsError(try CaptureRecordWriter.writeMixedRoute(site:site,directory:folder,id:id))

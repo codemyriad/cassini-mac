@@ -92,7 +92,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
     let callGeneration: String
     var offsetBaseMs = 0
     var nextStartFails = false
-    init(root: URL, title: String) throws {
+    var sendAudioOnStart = true
+    let verified: Bool
+    private let browserDocument = "generated-chrome-"+UUID().uuidString.lowercased()
+    private let sourceDocument = "generated-hook-"+UUID().uuidString.lowercased()
+    private var signalSequence = 0
+    init(root: URL, title: String, verified: Bool = false) throws {
+        self.verified = verified
         self.root = root; self.title = title; callGeneration = "call-" + UUID().uuidString.lowercased()
         control = try CaptureProbeProcess("cassini-control-host",root:root)
     }
@@ -100,14 +106,28 @@ final class CaptureProbeProcess: @unchecked Sendable {
     /// longer than the app's heartbeat allows) and resume-capture-v1 (no stage answers a resume).
     static let capabilities = ["independent-sessions-v1","call-evidence-v1","page-state-v1","multi-stream-v1"]
     func ready(active: Bool = true, interrupted: Bool = false) async throws {
-        try await control.send(["type":"hello","version":1,"capabilities":Self.capabilities])
+        let capabilities = Self.capabilities + (verified ? ["call-signals-v1","verified-auto-admission-v1"] : [])
+        try await control.send(["type":"hello","version":1,"capabilities":capabilities])
+        if verified {
+            let configure = try await control.read()
+            try CaptureSelfTest.require(configure["type"]?.string == "configure","Verified profile requires negotiation")
+            try await control.send(["type":"configured","capabilities":["call-signals-v1","verified-auto-admission-v1"]])
+        }
         try await control.send(status(interrupted:interrupted))
         try await meetings(active)
     }
     func meetings(_ active: Bool) async throws {
-        let entry: [String:Any] = ["tabId":2,"title":title,"url":meetingURL,"sourceCount":active ? 1 : 0,"sourceCountKnown":countKnown,"heard":active,
+        var entry: [String:Any] = ["tabId":2,"title":title,"url":meetingURL,"sourceCount":active ? 1 : 0,"sourceCountKnown":countKnown,"heard":active,
                                    "pageState":pageState,"callGeneration":callGeneration]
+        if verified { entry["browserDocumentId"] = browserDocument; entry["documentGeneration"] = sourceDocument }
         try await control.send(["type":"meetings","meetings":active || audio != nil ? [entry] : []])
+        if verified {
+            let row: [String:Any] = ["tabId":2,"url":meetingURL,"documentGeneration":browserDocument,"sourceDocumentGeneration":sourceDocument,
+                "remoteAudio":"separated","callEvidence":["state":active ? "active" : "inactive","reason":active ? "activeCall" : "callEnded",
+                "adapter":["name":"Generated verified session","version":"1"],"callGeneration":callGeneration]]
+            try await control.send(["type":"callSignals","browserInstance":"generated-profile-"+callGeneration,"sequence":signalSequence,"tabs":[row]])
+            signalSequence += 1
+        }
     }
     func status(interrupted: Bool = false) -> [String:Any] {
         var packet: [String:Any] = ["type":"status","recording":audio != nil,"tabId":audio == nil ? NSNull() : 2,"path":path as Any? ?? NSNull(),"message":"Fixture status"]
@@ -137,12 +157,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
             self.audio = audio; captureID = token; sequence = 0; sourceID = "remote"; offsetBaseMs = 0
             try CaptureSelfTest.require(command["keepOnNavigation"]?.bool == true,"Start must retain the original audio transport")
             try CaptureSelfTest.require(command["callGeneration"]?.string == callGeneration,"Start names the probe's call")
-            let started = try await audio.request(["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title,
-                                                   "callGeneration":callGeneration])
+            var start: [String:Any] = ["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
+            if verified { start["requestId"] = request; start["documentGeneration"] = sourceDocument }
+            let started = try await audio.request(start)
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
             path = started["path"]?.string
-            _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
-            try await emit()
+            if sendAudioOnStart {
+                _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
+                try await emit()
+            }
         } else {
             if let audio {
                 var stop: [String:Any] = ["type":"stop"]
@@ -421,18 +444,87 @@ final class CaptureProbeProcess: @unchecked Sendable {
             stage = "auto-start new call and notification Stop"
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
-            try await one.meetings(true)
-            _ = try await one.performNext()
+            stage = "legacy companion requires manual Record"
+            let legacy = try CaptureProbeProfile(root:pipe,title:"Generated legacy manual session")
+            profiles.append(legacy)
+            try await legacy.ready()
+            try await wait { collection.hasCalls }
+            try require(collection.captures.isEmpty && automatic.isEmpty,"Unverified inventory never starts automatically")
+            try await collection.record()
+            _ = try await legacy.performNext()
+            try await wait { collection.captures.count == 1 && !collection.starting }
+            try require(automatic.isEmpty,"Explicit Record remains manual with a legacy companion")
+            collection.stop(try collection.captures.keys.first.unwrap())
+            _ = try await legacy.performNext()
+            await collection.stopAndWait()
+            try await legacy.meetings(false)
+            try await wait { collection.captures.isEmpty && !collection.hasCalls }
+            report["legacyAutomaticDeniedManualAllowed"] = true
+            stage = "verified auto-start and notification Stop"
+            let verified = try CaptureProbeProfile(root:pipe,title:"Generated verified automatic session",verified:true)
+            profiles.append(verified)
+            try await verified.ready()
+            _ = try await verified.performNext()
             try await wait { collection.captures.count == 1 && automatic.count == 1 }
             let automaticID = try collection.captures.keys.first.unwrap()
+            let stopsBeforeDrain = CaptureFixture.stopRequests
             CaptureNotifications.handle(action:"stop",id:automaticID)
-            _ = try await one.performNext()
+            // No suspension: the Stop task cannot finish before these polls.
+            collection.pollLifetimeForTesting(at:ProcessInfo.processInfo.systemUptime)
+            collection.pollLifetimeForTesting(at:ProcessInfo.processInfo.systemUptime)
+            try require(CaptureFixture.stopRequests == stopsBeforeDrain+1,"Polling an ending automatic capture must not request Stop again")
+            report["endingAutomaticCaptureStopsOnce"] = true
+            _ = try await verified.performNext()
             await collection.stopAndWait()
             try await wait { collection.captures.isEmpty }
             report["newCallAutoStartAndNotificationStop"] = true
+            try await verified.meetings(false)
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            for transition in ["expiry","cancel"] {
+                stage = "separated automatic admission closes during microphone permission: "+transition
+                try await collection.setAutoRecord(true)
+                let announcementCount = automatic.count, microphoneStarts = CaptureFixture.microphoneStarts
+                let (entered, enteredEvent) = AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1))
+                let (finished, finishedEvent) = AsyncStream<(Bool,Bool)>.makeStream(bufferingPolicy:.bufferingNewest(1))
+                var permission: CheckedContinuation<Void,Never>?
+                CaptureFixture.microphoneAuthorizationFixture = {
+                    await withCheckedContinuation { reply in
+                        permission = reply; enteredEvent.yield(()); enteredEvent.finish()
+                    }
+                }
+                CaptureFixture.createdFinished = { _,problem,admitted in
+                    finishedEvent.yield((problem,admitted)); finishedEvent.finish()
+                }
+                defer {
+                    CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
+                    CaptureFixtureAdmissionClock.shared.reset()
+                }
+                let pending = try CaptureProbeProfile(root:pipe,title:"Generated pending "+transition,verified:true)
+                pending.sendAudioOnStart = false; profiles.append(pending)
+                try await pending.ready(); _ = try await pending.performNext()
+                for await _ in entered { break } // Actual permission suspension, not a settling delay.
+                try await wait { collection.peers.flatMap(\.captures).contains { $0.captureID == pending.captureID } }
+                let pendingID = try collection.captures.keys.first.unwrap()
+                if transition == "expiry" { CaptureFixtureAdmissionClock.shared.advance(by:10) }
+                else { collection.stop(pendingID) }
+                permission?.resume(); permission = nil
+                for await (problem,admitted) in finished {
+                    try require(!problem && !admitted,"Withdrawn automatic startup is cancellation, never a source failure or accepted input")
+                }
+                try require(automatic.count == announcementCount,"No automatic-start announcement before an accepted input")
+                try require(CaptureFixture.microphoneStarts == microphoneStarts,"No microphone input may start after withdrawal")
+                try await collection.setAutoRecord(false)
+                _ = try await pending.performNext()
+                await collection.stopAndWait()
+                CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
+                CaptureFixtureAdmissionClock.shared.reset()
+                try await pending.meetings(false)
+                try await wait { collection.captures.isEmpty && !collection.isSaving && !collection.hasCalls }
+                try require(!collection.recordFailed,"A withdrawn automatic startup is not a failed manual Record")
+            }
+            report["separatedAdmissionCancellationIsQuiet"] = true
             stage = "partial failure: discover both calls"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)

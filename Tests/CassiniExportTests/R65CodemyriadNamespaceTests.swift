@@ -63,7 +63,7 @@ struct R65CodemyriadNamespaceTests {
             let writer = try MeetingMetadataWriter(directory:directory,id:id)
             #expect(stored["recordingDetails"]?["othersRoute"]?["source"]?.string == source)
             let report = RecordingDetailsReport(.load(folder:directory,lifecycle:.saved,title:"Signal meeting",transcriptDone:false))
-            #expect(report.notes.contains { $0.id == "details.othersRoute.mixedSite" } == (reason == "mixedSiteSignal"))
+            #expect(report.notes.contains { $0.id == "details.othersRoute.mixedGeneric" } == (reason == "mixedSiteSignal"))
             try writer.transaction { $0["title"] = "Edited signal meeting" }
             let file = try reexportFile(root)
             let exported = try #require(file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["recordingDetails"]?["othersRoute"])

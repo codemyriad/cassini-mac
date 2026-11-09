@@ -25,8 +25,12 @@ struct BrowserCompanionHealthView: View {
         let repairs = peer.reloadTabs
         let setupAgain = peer.diagnostics.filesMissing || outdated || !peer.supportsMultiStream
         return VStack(alignment:.leading,spacing:6) {
-            if setupAgain || !repairs.isEmpty {
+            if setupAgain || !repairs.isEmpty || peer.automaticUnverified {
                 if let name = peer.browser { Text(name).fontWeight(.semibold) }
+            }
+            if peer.automaticUnverified {
+                Text(UXText.text("setup.companion.autoUnverified")).fixedSize(horizontal:false,vertical:true)
+                    .accessibilityIdentifier("companion-auto-unverified")
             }
             if peer.diagnostics.filesMissing {
                 Text(UXText.text("setup.companion.filesMissing")).fixedSize(horizontal:false,vertical:true)

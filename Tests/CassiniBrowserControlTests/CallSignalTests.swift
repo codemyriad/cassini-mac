@@ -16,6 +16,37 @@ final class CallSignalTests: XCTestCase {
         var policy = SignalCallPolicy(); policy.update([peer([row()])],now:0); policy.advance(now:0,enabled:true)
         let token = try XCTUnwrap(policy.reserve()); policy.didStart(token); return (policy,token)
     }
+    func testUnknownOrDisconnectAfterUntickedProofExpiryKeepsOriginalGrace() throws {
+        for transition in ["unknown","disconnect"] {
+            var policy = SignalCallPolicy()
+            let key = SignalCallPolicy.Key(instance:"profile-A",tab:2,document:"doc-A",generation:"call-A")
+            var active = peer([row()]); active.active = [key]; active.expiredAt = [key:5]
+            policy.update([active],now:0); policy.advance(now:0,enabled:true)
+            let token = try XCTUnwrap(policy.reserve()); policy.didStart(token)
+            XCTAssertEqual(policy.calls[key]?.lastExpiry,5)
+            // No timer at t=5; the next producer event has already removed the old proof.
+            if transition == "unknown" {
+                var unknown = peer([row(state:"unknown")],seq:1); unknown.active = []
+                policy.update([unknown],now:6)
+            } else { policy.update([],now:6) }
+            XCTAssertEqual(policy.calls[key]?.lostAt,5)
+            policy.advance(now:124.999,enabled:true); XCTAssertNil(policy.retiring)
+            policy.advance(now:125,enabled:true); XCTAssertEqual(policy.retiring,.pageGone)
+        }
+    }
+    func testRenewedActiveProofMovesGraceOriginButInventoryDoesNot() throws {
+        var policy = SignalCallPolicy()
+        let key = SignalCallPolicy.Key(instance:"profile-A",tab:2,document:"doc-A",generation:"call-A")
+        var active = peer([row()]); active.active = [key]; active.expiredAt = [key:5]
+        policy.update([active],now:0); policy.advance(now:0,enabled:true)
+        policy.didStart(try XCTUnwrap(policy.reserve()))
+        var renewed = peer([row()],seq:1); renewed.active = [key]; renewed.expiredAt = [key:9]
+        policy.update([renewed],now:4)
+        var unknown = peer([row(state:"unknown")],seq:2); unknown.active = []
+        policy.update([unknown],now:10)
+        XCTAssertEqual(policy.calls[key]?.lastExpiry,9); XCTAssertEqual(policy.calls[key]?.lostAt,9)
+        policy.advance(now:129,enabled:true); XCTAssertEqual(policy.retiring,.pageGone)
+    }
     @MainActor func testStartupCancellationNeverSuppressesReturningEvidenceAndReleasesOnlyOnce() throws {
         for transition in ["withdrawal","stop","shutdown","ending"] {
             var p = SignalCallPolicy(); p.update([peer([row()])],now:0); p.advance(now:0,enabled:true)

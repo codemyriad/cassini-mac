@@ -5,12 +5,23 @@ import AVFoundation
 import CassiniRecording
 import CassiniBrowserControl
 
+/// Debug self-test clock: advancing a lease never waits for wall-clock time.
+final class CaptureFixtureAdmissionClock: @unchecked Sendable {
+    static let shared = CaptureFixtureAdmissionClock()
+    private let lock = NSLock()
+    private var offset: TimeInterval = 0
+    func now() -> TimeInterval { lock.withLock { ProcessInfo.processInfo.systemUptime + offset } }
+    func advance(by value: TimeInterval) { lock.withLock { offset += value } }
+    func reset() { lock.withLock { offset = 0 } }
+}
 @MainActor enum CaptureFixture {
     nonisolated static var enabled: Bool {
         RecordingFixture.enabled && RecordingFixture.root != nil && (CommandLine.arguments.contains("--browser-capture-self-test") || CommandLine.arguments.contains("--browser-return-self-test")
             || CommandLine.arguments.contains(LiveFolderSelfTest.argument))
     }
     static var beforeBrowserLoss: (@MainActor () async -> Void)?
+    static var createdFinished: ((UUID,Bool,Bool) -> Void)?
+    static var stopRequests = 0
     static var systemAuthorizationCompletions = 0
     static var microphoneAllowed = true
     static var microphoneAuthorizationFixture: (() async -> Void)?

@@ -20,6 +20,7 @@ public struct BrowserMeeting: Equatable, Sendable {
     public var sourceCountKnown = true
     public var callGeneration: String? = nil
     public var documentGeneration: String? = nil
+    public var browserDocumentId: String? = nil
     /// Host admission projection; raw meeting evidence remains visible separately.
     public var browserRecordable = true
 }
@@ -50,6 +51,9 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public let interrupted: [BrowserCaptureStatus]
     public var callSignals: BrowserCallSignalSnapshot? = nil
     public var signalConnectionOrder: UInt64 = 0
+    public var supportsVerified = false
+    public var verifiedConfigured = false
+    public var automaticUnverified: Bool { reconciled && (!supportsVerified || !verifiedConfigured) }
     public var supportsCallSignals = false
     public var supportsPageState = false
     public var supportsMultiStream = false
@@ -69,8 +73,10 @@ public struct BrowserControlRequest: Sendable {
     public let data: Data
     /// D58 #10: a resume ask. Its refusal belongs to the recording it would join.
     public var resume = false
+    public var automaticCall: BrowserVerifiedCall? = nil
 }
 public struct BrowserControlOutcome: Equatable, Sendable {
+    public var admissionWithdrawn = false
     public let requestID: String
     public let key: BrowserMeetingKey
     public let action: BrowserControlAction
@@ -141,6 +147,8 @@ public struct BrowserControlRegistry: Sendable {
         var observedTabs: [Int:TimeInterval] = [:]
         var absentSince: [Int:TimeInterval] = [:]
         var supportsCallSignals = false, signalsConfigured = false
+        var supportsVerified = false, verifiedConfigured = false
+        var activeProofs: [Int:BrowserActiveProof] = [:]
         var signalProfile: String?
         var callSignals: BrowserCallSignalSnapshot?
         var supportsPageState = false
@@ -208,6 +216,7 @@ public struct BrowserControlRegistry: Sendable {
     /// An app that follows calls only by the D52 policy starts no capture on a peer whose hello
     /// lacks multi-stream-v1 (Mac, D51: extension 0.2.12+). The protocol itself still allows them.
     public var requireMultiStream = false
+    public var requireVerifiedAdmission = false
     public init(clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                 instanceAlive: @escaping @Sendable (BrowserInstance) -> Bool? = { $0.isAlive }) {
         self.clock = clock; self.instanceAlive = instanceAlive
@@ -377,7 +386,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.filter { !$0.superseded && signalPeerCurrent($0) }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsVerified:$0.supportsVerified,verifiedConfigured:$0.verifiedConfigured,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
         }
     }
     /// D52.5: a call (tabId, callGeneration) that has a recording on system/lost after its
@@ -397,6 +406,78 @@ public struct BrowserControlRegistry: Sendable {
             result.browserRecordable = !signalOnly(meeting,peer:peer) && !signalOwns(meeting)
             return result
         }
+    }
+    func signalActiveKeys(_ id: UUID) -> Set<SignalCallPolicy.Key>? {
+        guard requireVerifiedAdmission else { return nil }
+        guard let peer = peers[id], peer.verifiedConfigured, peer.signalsConfigured, !peer.superseded, signalPeerCurrent(peer) else { return [] }
+        return Set(peer.activeProofs.values.filter { proof in
+            guard proof.fresh(at:clock()) else { return false }
+            if let metadata = peer.meetings.first(where:{ $0.key.tabID == proof.call.tab }) {
+                return SignalCallPolicy.exact(metadata.browserDocumentId,proof.call.browserDocument) &&
+                    SignalCallPolicy.exact(metadata.documentGeneration,proof.call.sourceDocument) && SignalCallPolicy.exact(metadata.callGeneration,proof.call.generation)
+            }
+            return true // Mixed signal-only calls need no legacy inventory row.
+        }.map { $0.call.signalKey })
+    }
+    func signalDeadlines(_ id: UUID) -> [SignalCallPolicy.Key:TimeInterval] {
+        guard requireVerifiedAdmission, let peer = peers[id], peer.verifiedConfigured else { return [:] }
+        return Dictionary(uniqueKeysWithValues:peer.activeProofs.values.map { ($0.call.signalKey,$0.receivedAt+BrowserActiveProof.lifetime) })
+    }
+    func signalDeadline(_ key: SignalCallPolicy.Key?) -> TimeInterval? {
+        guard requireVerifiedAdmission, let key else { return nil }
+        return peers.values.filter { !$0.superseded && signalPeerCurrent($0) && $0.verifiedConfigured }.compactMap { signalDeadlines($0.peer.id)[key] }.max()
+    }
+    func browserAdmission(_ key: BrowserMeetingKey) -> (BrowserInstance?,String?,String?,Bool)? {
+        guard let peer = peers[key.peer], let row = peer.meetings.first(where:{ $0.key == key }) else { return nil }
+        return (peer.peer.browserInstance,row.callGeneration,row.documentGeneration,peer.verifiedConfigured)
+    }
+    var pendingAutomaticBindings: [BrowserVerifiedCall:TimeInterval] {
+        var result: [BrowserVerifiedCall:TimeInterval] = [:]
+        for peer in peers.values { for row in peer.meetings {
+            if let call = automaticBinding(row.key), let proof = peer.activeProofs[row.key.tabID] { result[call] = proof.receivedAt+BrowserActiveProof.lifetime }
+        } }
+        return result
+    }
+    var currentAutomaticEvidence: [BrowserVerifiedCall:TimeInterval] {
+        var result: [BrowserVerifiedCall:TimeInterval] = [:]
+        for peer in peers.values where !peer.superseded && signalPeerCurrent(peer) && peer.verifiedConfigured {
+            for proof in peer.activeProofs.values where proof.fresh(at:clock()) { result[proof.call] = proof.receivedAt+BrowserActiveProof.lifetime }
+        }
+        return result
+    }
+    var endedAutomaticEvidence: Set<BrowserVerifiedCall> {
+        Set(peers.values.filter { !$0.superseded && signalPeerCurrent($0) && $0.verifiedConfigured }.flatMap { peer in
+            peer.callSignals?.tabs.compactMap { row in row.state == "inactive" && row.reason == "callEnded" ? BrowserVerifiedCall.read(profile:peer.signalProfile ?? "",row:row) : nil } ?? []
+        })
+    }
+    func bindingIsFresh(_ call: BrowserVerifiedCall) -> Bool {
+        peers.values.contains { peer in
+            guard !peer.superseded, signalPeerCurrent(peer), peer.verifiedConfigured, peer.signalsConfigured,
+                  let proof = peer.activeProofs[call.tab] else { return false }
+            return proof.call == call && proof.fresh(at:clock())
+        }
+    }
+    func automaticBinding(_ key: BrowserMeetingKey) -> BrowserVerifiedCall? {
+        guard let peer = peers[key.peer], !peer.superseded, signalPeerCurrent(peer), peer.verifiedConfigured, peer.signalsConfigured,
+              let meeting = peer.meetings.first(where:{ $0.key == key }), meeting.sourceCount > 0, meeting.sourceCountKnown, !signalOwns(meeting),
+              (!peer.callEvidence || meeting.heard), meeting.pageState == .present,
+              let row = peer.callSignals?.tabs.first(where:{ $0.tabID == key.tabID && $0.state == "active" && $0.remoteAudio == "separated" }),
+              let proof = peer.activeProofs[key.tabID], proof.fresh(at:clock()),
+              let call = BrowserVerifiedCall.read(profile:peer.callSignals!.instance,row:row), proof.call == call,
+              SignalCallPolicy.exact(meeting.browserDocumentId,call.browserDocument), SignalCallPolicy.exact(meeting.documentGeneration,call.sourceDocument),
+              SignalCallPolicy.exact(meeting.callGeneration,call.generation) else { return nil }
+        return call
+    }
+    func automaticRequestIsFresh(_ request: BrowserControlRequest) -> Bool {
+        !requireVerifiedAdmission || request.automaticCall.map { automaticBinding(request.key) == $0 } == true
+    }
+    mutating func retryAfterWithdrawnAdmission(_ request: BrowserControlRequest) {
+        guard var peer = peers[request.key.peer] else { return }
+        peer.autoAttempted.remove(request.key.tabID); unboundStarts.removeValue(forKey:request.id); peers[request.key.peer] = peer
+    }
+    mutating func cancelUnsent(_ request: BrowserControlRequest) {
+        guard var peer = peers[request.key.peer], peer.pending.removeValue(forKey:request.id) != nil else { return }
+        peer.autoAttempted.remove(request.key.tabID); unboundStarts.removeValue(forKey:request.id); peers[request.key.peer] = peer
     }
     private func signalOnly(_ meeting: BrowserMeeting, peer: PeerState) -> Bool {
         peer.signalsConfigured && peer.callSignals?.tabs.contains { $0.tabID == meeting.key.tabID && $0.remoteAudio == "mixed" } == true
@@ -520,6 +601,7 @@ public struct BrowserControlRegistry: Sendable {
             if let raw = json["capabilities"], !raw.isNull {
                 guard let values = raw.array, values.allSatisfy({ $0.string != nil }) else { throw BrowserControlStateError.malformed }
                 peer.supportsCallSignals = values.contains { $0.string == "call-signals-v1" }
+                peer.supportsVerified = values.contains { $0.string == "verified-auto-admission-v1" }
                 peer.independent = values.contains { $0.string == "independent-sessions-v1" }
                 peer.callEvidence = values.contains { $0.string == "call-evidence-v1" }
                 peer.supportsPageState = values.contains { $0.string == "page-state-v1" }
@@ -531,12 +613,16 @@ public struct BrowserControlRegistry: Sendable {
             peer.hello = true
         case "configured":
             guard peer.hello, peer.supportsCallSignals, let values = json["capabilities"]?.array,
-                  values.allSatisfy({ $0.string == "call-signals-v1" }), values.count <= 1 else { throw BrowserControlStateError.malformed }
-            peer.signalsConfigured = !values.isEmpty
-            peer.callSignals = nil
+                  values.allSatisfy({ $0.string == "call-signals-v1" || $0.string == "verified-auto-admission-v1" }), values.count <= 2,
+                  Set(values.compactMap(\.string)).count == values.count else { throw BrowserControlStateError.malformed }
+            let verified = values.contains { $0.string == "verified-auto-admission-v1" }
+            guard !verified || peer.supportsVerified && values.contains(where:{ $0.string == "call-signals-v1" }) else { throw BrowserControlStateError.malformed }
+            peer.signalsConfigured = values.contains { $0.string == "call-signals-v1" }
+            peer.verifiedConfigured = verified
+            peer.callSignals = nil; peer.activeProofs = [:]
         case "callSignals":
             guard peer.hello, peer.signalsConfigured else { throw BrowserControlStateError.malformed }
-            let snapshot = try BrowserCallSignalSnapshot.read(json)
+            let snapshot = try BrowserCallSignalSnapshot.read(json,verified:peer.verifiedConfigured)
             guard peer.signalProfile == nil || SignalCallPolicy.exact(peer.signalProfile,snapshot.instance) else { throw BrowserControlStateError.malformed }
             peer.signalProfile = snapshot.instance
             let profile = Data(snapshot.instance.utf8)
@@ -546,6 +632,16 @@ public struct BrowserControlRegistry: Sendable {
                 if snapshot.sequence <= previous.sequence { return }
             }
             peer.callSignals = snapshot
+            peer.activeProofs = [:]
+            if peer.verifiedConfigured {
+                for row in snapshot.tabs where row.state == "active" {
+                    if let call = BrowserVerifiedCall.read(profile:snapshot.instance,row:row) {
+                        // Evidence and inventory arrive independently. Retain the receipt
+                        // lease here; admission joins it to the matching inventory below.
+                        peer.activeProofs[row.tabID] = .init(call:call,receivedAt:clock())
+                    }
+                }
+            }
         case "meetings":
             guard peer.hello, let values = json["meetings"]?.array, values.count <= 100 else { throw BrowserControlStateError.malformed }
             var found = Set<Int>()
@@ -570,8 +666,17 @@ public struct BrowserControlRegistry: Sendable {
                     }
                     meeting.callGeneration = try Self.generation(value["callGeneration"])
                     meeting.documentGeneration = try Self.generation(value["documentGeneration"])
+                    meeting.browserDocumentId = try Self.generation(value["browserDocumentId"])
                 }
                 return meeting
+            }
+            if peer.verifiedConfigured {
+                for row in meetings {
+                    if let proof = peer.activeProofs[row.key.tabID],
+                       !SignalCallPolicy.exact(row.browserDocumentId,proof.call.browserDocument) || !SignalCallPolicy.exact(row.documentGeneration,proof.call.sourceDocument) || !SignalCallPolicy.exact(row.callGeneration,proof.call.generation) {
+                        peer.activeProofs.removeValue(forKey:row.key.tabID)
+                    }
+                }
             }
             let previous = Dictionary(uniqueKeysWithValues:peer.meetings.map { ($0.key.tabID,($0.url,$0.callGeneration)) })
             let incomingTabs = Set(meetings.map { $0.key.tabID })
@@ -745,13 +850,15 @@ public struct BrowserControlRegistry: Sendable {
         guard peer.independent, !requireMultiStream || peer.supportsMultiStream else { throw BrowserControlStateError.incompatible }
         guard !peer.interrupted.contains(where:{ $0.key == key && Self.retained($0,ids:retainedCaptureIDs) }) else { throw BrowserControlStateError.busy }
         guard let meeting = peer.meetings.first(where:{ $0.key == key && $0.sourceCount > 0 }), !signalOnly(meeting,peer:peer) else { throw BrowserControlStateError.noSources }
+        if automatic && requireVerifiedAdmission, automaticBinding(meeting.key) == nil { throw BrowserControlStateError.noSources }
         // D52.5: the call already has a recording on a lost transport; it is resumed, not started.
         guard !hasLostRecording(meeting) else { throw BrowserControlStateError.busy }
         guard !holdsStart(meeting,peer:peer) else { throw BrowserControlStateError.busy }
         if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
-        let request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
+        var request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
                                        callGeneration:peer.supportsMultiStream ? meeting.callGeneration : nil)
+        if automatic && requireVerifiedAdmission { request.automaticCall = automaticBinding(key) }
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
         peer.commandOrder &+= 1
         peer.pending[request.id] = .init(request:request,statusRevision:peer.statusRevision,order:peer.commandOrder,stopCaptureID:nil,url:peer.meetings.first(where:{ $0.key == key })?.url,
@@ -888,7 +995,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     private static func generation(_ value: JSON?) throws -> String? {
         guard let value, !value.isNull else { return nil }
-        guard let text = value.string, !text.isEmpty, text.unicodeScalars.count <= 200 else { throw BrowserControlStateError.malformed }
+        guard let text = value.string, !text.isEmpty, text.utf8.count <= 200 else { throw BrowserControlStateError.malformed }
         return text
     }
     private static func page(_ value: JSON?, enabled: Bool) throws -> BrowserCallLifecycle.Page? {
@@ -948,7 +1055,7 @@ public struct BrowserControlRegistry: Sendable {
             var updated = BrowserMeeting(key:row.key,title:row.title,url:row.url,
                 sourceCount:invalidated ? 0 : row.sourceCount,heard:invalidated ? false : row.heard,
                 pageState:observed.0,pageStateAt:observed.1)
-            updated.sourceCountKnown = row.sourceCountKnown; updated.callGeneration = row.callGeneration; updated.documentGeneration = row.documentGeneration
+            updated.sourceCountKnown = row.sourceCountKnown; updated.callGeneration = row.callGeneration; updated.documentGeneration = row.documentGeneration; updated.browserDocumentId = row.browserDocumentId
             peer.meetings[index] = updated
         }
         for index in peer.captures.indices {

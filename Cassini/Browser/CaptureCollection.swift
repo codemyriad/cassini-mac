@@ -45,7 +45,7 @@ struct LiveCapture {
     var savingSinceMs: Int64?
     var inputsAdmitted = false
     var signalReservation: UUID? = nil
-    var signalAdmissionCancelled = false
+    var admissionCancelled = false
     @MainActor var microphoneSilent: Bool {
         snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
     }
@@ -134,6 +134,12 @@ private final class CaptureFiles: @unchecked Sendable {
     /// D52.5: the only lost-call state. This collection feeds each recording's binding; the
     /// broker feeds transport loss and resume; the service reads it before admitting a Start.
     @ObservationIgnored private let ownership = CallOwnershipStore()
+    @ObservationIgnored private let automaticAdmission = BrowserAutomaticAdmissionStore(clock:{
+        #if DEBUG
+        if CaptureFixture.enabled { return CaptureFixtureAdmissionClock.shared.now() }
+        #endif
+        return ProcessInfo.processInfo.systemUptime
+    })
     @ObservationIgnored private lazy var files = CaptureFiles(file:LibraryLaunchContext.locationFile,root:RecordingFixture.root ?? LibraryLocation.standardRoot)
     @ObservationIgnored private lazy var broker = BrowserAudioBroker(make:{ [weak self,files] title,mic in
         try files.create(title:title,microphone:mic) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
@@ -142,12 +148,12 @@ private final class CaptureFiles: @unchecked Sendable {
             guard let self, let value = self.captures[owner.snapshot.manifest.id] else { reply(nil); return }
             do { try await value.input.stop(); reply(nil) } catch { reply(error.localizedDescription) }
         }
-    },ownership:ownership)
+    },ownership:ownership,admission:automaticAdmission)
     @ObservationIgnored private lazy var service = BrowserControlService(changed:{ [weak self] peers in
         DispatchQueue.main.async { self?.replacePeers(peers) }
     },completed:{ [weak self] outcome,automatic in
         DispatchQueue.main.async { self?.completed(outcome,automatic:automatic) }
-    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true,signalAction:{ [weak self] action in
+    },audio:broker,canStart:{ [files] in files.canStart() },ownership:ownership,requireMultiStream:true,requireVerifiedAdmission:true,admission:automaticAdmission,signalAction:{ [weak self] action in
         Task { @MainActor in await self?.signalAction(action) }
     },canSignalStart:{ [files] in files.canStartSignal() })
     private func signalAction(_ action: BrowserSignalAction) async {
@@ -180,7 +186,7 @@ private final class CaptureFiles: @unchecked Sendable {
                     service.signalStarted(token)
                     onAutomaticStart?(id)
                 } else if let value = captures[id], stopping[id] == nil, value.savingSinceMs == nil {
-                    stop(id,reason:cancelled || value.signalAdmissionCancelled ? service.signalEndReason(token) ?? .pageGone : .error,userInitiated:false)
+                    stop(id,reason:cancelled || value.admissionCancelled ? service.signalEndReason(token) ?? .pageGone : .error,userInitiated:false)
                 } else if stopping[id] == nil {
                     releaseSignal(token,failed:!cancelled)
                 }
@@ -194,7 +200,7 @@ private final class CaptureFiles: @unchecked Sendable {
         case let .stop(token,reason):
             signalStartups[token]?.cancel()
             if let id = signalCaptures[token], captures[id] != nil {
-                captures[id]?.signalAdmissionCancelled = true
+                captures[id]?.admissionCancelled = true
                 stop(id,reason:reason,userInitiated:false)
             }
             // A pending file/permission completion revalidates the reservation itself.
@@ -312,6 +318,10 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func stop(_ id: UUID, reason: CaptureEndReason = .user, userInitiated explicitIntent: Bool? = nil) {
         guard let value = captures[id] else { return }
+        #if DEBUG
+        if CaptureFixture.enabled { CaptureFixture.stopRequests += 1 }
+        #endif
+        automaticAdmission.cancel(value.captureID,reason:reason)
         let userInitiated = explicitIntent ?? (reason == .user || reason == .appQuit)
         if let token = value.signalReservation { service.stopSignal(token,userInitiated:userInitiated,reason:reason) }
         captures[id]?.stoppingReason = value.stoppingReason ?? reason
@@ -394,7 +404,11 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func created(_ owner: OwnedBrowserCapture, info: BrowserAudioStart, signal: UUID? = nil) async {
         let snapshot = owner.snapshot, id = snapshot.manifest.id
-        guard !shuttingDown, snapshot.phase == .recording else {
+        #if DEBUG
+        defer { if CaptureFixture.enabled { CaptureFixture.createdFinished?(id,captures[id]?.sourceProblem ?? false,captures[id]?.inputsAdmitted ?? false) } }
+        #endif
+        guard !shuttingDown, snapshot.phase == .recording, info.inputGate?.permits != false else {
+            automaticAdmission.retire(info.captureID)
             try? await broker.finish(owner); settle(owner.snapshot); return
         }
         let now = ProcessInfo.processInfo.systemUptime
@@ -418,9 +432,10 @@ private final class CaptureFiles: @unchecked Sendable {
                   !value.input.hasRunningInputs, value.input.openedSides.isEmpty else { return }
             Task { try? await self.broker.finish(value.owner) }
         },admission:{ [weak self] in
+            if let gate = info.inputGate { return gate.permits }
             guard let signal else { return true }
             return self?.service.signalMayOpen(signal) == true
-        },inputGate:signal.flatMap { service.signalInputGate($0) })
+        },inputGate:signal.flatMap { service.signalInputGate($0) } ?? info.inputGate)
         let meetingKey = key(for:info.captureID)
         let spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:owner.pcmObservers,me:snapshot.me,others:snapshot.others) : nil
         spectrogram?.update(events:snapshot.manifest.events ?? [])
@@ -443,10 +458,19 @@ private final class CaptureFiles: @unchecked Sendable {
         do { try await input.start() }
         catch {
             if let signal, error is CancellationError {
-                captures[id]?.signalAdmissionCancelled = true
+                captures[id]?.admissionCancelled = true
                 signalStartups[signal]?.cancel()
                 owner.requestEnd(service.signalEndReason(signal) ?? .pageGone,atMs:Double(captures[id]?.elapsedMs ?? 0))
+            } else if error is CancellationError, info.inputGate != nil {
+                captures[id]?.admissionCancelled = true
+                stop(id,reason:automaticAdmission.endReason(info.captureID) ?? .pageGone,userInitiated:false)
+                return
             } else { captures[id]?.sourceProblem = true }
+        }
+        guard info.inputGate?.permits != false else {
+            captures[id]?.admissionCancelled = true
+            stop(id,reason:automaticAdmission.endReason(info.captureID) ?? .pageGone,userInitiated:false)
+            return
         }
         if snapshot.manifest.source == "macos", !input.hasRunningInputs { try? await broker.finish(owner) }
         let current = owner.snapshot
@@ -487,11 +511,12 @@ private final class CaptureFiles: @unchecked Sendable {
         if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing {
                 guard settling[id] == nil else { return }
                 let signalOwned = captures[id]?.signalReservation != nil
+                let admissionCancelled = captures[id]?.admissionCancelled == true
                 settling[id] = Task { [weak self] in
                     let removed = await Task.detached { Self.discardBlank(snapshot) }.value
                     guard let self else { return }
                     self.retire(snapshot)
-                    if removed && !signalOwned && !self.isRecording && !self.attemptHasAudio {
+                    if removed && !signalOwned && !admissionCancelled && !self.isRecording && !self.attemptHasAudio {
                         self.recordFailed = true
                         for refusal in snapshot.manifest.refusals ?? [] { self.attemptRefusals = CaptureRefusal.appending(refusal,to:self.attemptRefusals) }
                     }
@@ -502,10 +527,11 @@ private final class CaptureFiles: @unchecked Sendable {
         retire(snapshot)
     }
     private func retire(_ snapshot: OwnedCaptureSnapshot) {
+            if let value = captures[snapshot.manifest.id] { automaticAdmission.retire(value.captureID) }
             let id = snapshot.manifest.id
             captures[id]?.spectrogram?.stop(atMs:Double(captures[id]?.elapsedMs ?? 0))
             if let token = captures[id]?.signalReservation, stopping[id] == nil {
-                releaseSignal(token,failed:captures[id]?.signalAdmissionCancelled != true)
+                releaseSignal(token,failed:captures[id]?.admissionCancelled != true)
             }
             captures.removeValue(forKey:id); announced.remove(id); feedOwnership(id)
             activity.removeValue(forKey:id)
@@ -563,6 +589,7 @@ private final class CaptureFiles: @unchecked Sendable {
         // the browser answered is recorded there, in Details only; a timeout, a closed
         // connection or a local failure records nothing. Never a failed meeting or a banner.
         if outcome.resume { broker.resumeAnswered(outcome); return }
+        if outcome.admissionWithdrawn { return } // Cancellation is not a device failure or user Stop.
         // A held Start whose call the user stopped meanwhile: the attempt ends, nothing to report.
         if outcome.action == .start, outcome.userStopped {
             if !automatic, !manualIssued || manualPending.contains(outcome.key) {
@@ -705,7 +732,8 @@ private final class CaptureFiles: @unchecked Sendable {
             Task { await broker.retryPendingRecords() }
         }
         for id in Array(captures.keys) {
-            guard let current = captures[id] else { continue }
+            guard stopping[id] == nil, let current = captures[id], current.stoppingReason == nil else { continue }
+            if let reason = automaticAdmission.endReason(current.captureID) { stop(id,reason:reason); continue }
             // Every lost-call decision for this poll comes from the shared ownership, fed first
             // with what this collection knows now (a key replacePeers just learned included).
             feedOwnership(id)

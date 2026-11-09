@@ -27,6 +27,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      # D66 run 42559654278: Spotlight workers saturated the disposable VM
+      # while Chromium produced two real timestamp gaps during the mute test.
+      # Stop indexing before product extraction feeds that queue; keep the
+      # audio oracle and production capture behavior unchanged.
+      - name: Disable Spotlight indexing on the disposable audio runner
+        if: matrix.runner == 'macos-15'
+        run: |
+          sudo mdutil -a -i off
+          mdutil -a -s
       - uses: ./.github/actions/ci-products
         with:
           swiftpm: 'true'

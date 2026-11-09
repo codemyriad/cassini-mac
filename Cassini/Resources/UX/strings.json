@@ -21034,6 +21034,126 @@
      "text": "As novas reuniões passam a usar o Parakeet Ultra."
     }
    }
+  },
+  {
+   "id": "companion.local.removeOlder",
+   "en": "Remove any older Cassini Recorder first.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "companion-local-help",
+   "note": "Coordinator. Shown in the local install steps while waiting for the companion.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Rimuovi prima eventuali versioni precedenti di Cassini Recorder."
+    },
+    "fr": {
+     "text": "Supprimez d’abord toute ancienne version de Cassini Recorder."
+    },
+    "es": {
+     "text": "Primero quita cualquier versión anterior de Cassini Recorder."
+    },
+    "pt-BR": {
+     "text": "Primeiro remova qualquer versão anterior do Cassini Recorder."
+    },
+    "pt-PT": {
+     "text": "Primeiro remova qualquer versão anterior do Cassini Recorder."
+    }
+   }
+  },
+  {
+   "id": "companion.local.restartBrowser",
+   "en": "Restart the browser.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "companion-local-help",
+   "note": "Coordinator. Last local install step, after Load unpacked.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Riavvia il browser."
+    },
+    "fr": {
+     "text": "Redémarrez le navigateur."
+    },
+    "es": {
+     "text": "Reinicia el navegador."
+    },
+    "pt-BR": {
+     "text": "Reinicie o navegador."
+    },
+    "pt-PT": {
+     "text": "Reinicie o navegador."
+    }
+   }
+  },
+  {
+   "id": "setup.companion.autoUnverified",
+   "en": "Automatic call detection is not verified with this browser companion. You can still record manually.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D80",
+   "note": "Coordinator (D80). Shown when the paired companion lacks verified-auto-admission-v1 (e.g. 0.2.25): automatic browser Start is off, manual recording works. Neutral, not an error.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Il rilevamento automatico delle chiamate non è verificato con questo componente del browser. Puoi comunque registrare manualmente."
+    },
+    "fr": {
+     "text": "La détection automatique des appels n’est pas vérifiée avec ce compagnon de navigateur. Vous pouvez toujours enregistrer manuellement."
+    },
+    "es": {
+     "text": "La detección automática de llamadas no está verificada con este complemento del navegador. Aun así puedes grabar manualmente."
+    },
+    "pt-BR": {
+     "text": "A detecção automática de chamadas não está verificada com este complemento do navegador. Você ainda pode gravar manualmente."
+    },
+    "pt-PT": {
+     "text": "A deteção automática de chamadas não está verificada com este complemento do navegador. Ainda pode gravar manualmente."
+    }
+   }
+  },
+  {
+   "id": "details.othersRoute.mixedGeneric",
+   "en": "This call mixed all remote voices into one stream, so Cassini recorded them from the computer’s audio.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D80.1",
+   "note": "Coordinator (D80.1: no site names). Recording details line when othersRoute.reason is mixedSiteSignal and the adapter is generic (webrtc-interactive) or has no display name. Never show machine adapter IDs. details.othersRoute.mixedSite remains for a future named adapter only.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Questa chiamata univa tutte le voci remote in un unico flusso, quindi Cassini le ha registrate dall’audio del computer."
+    },
+    "fr": {
+     "text": "Cet appel mélangeait toutes les voix distantes en un seul flux, donc Cassini les a enregistrées depuis le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Esta llamada mezclaba todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del ordenador."
+    },
+    "pt-BR": {
+     "text": "Esta chamada misturava todas as vozes remotas em um único fluxo, então o Cassini as gravou pelo áudio do computador."
+    },
+    "pt-PT": {
+     "text": "Esta chamada misturava todas as vozes remotas num único fluxo, por isso o Cassini gravou-as a partir do áudio do computador."
+    }
+   }
   }
  ]
 }

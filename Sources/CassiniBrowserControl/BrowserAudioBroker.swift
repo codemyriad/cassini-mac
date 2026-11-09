@@ -20,8 +20,14 @@ public struct BrowserAudioStart: Sendable {
     public let microphone: Bool
     /// The call the Start names (D52.5: its identity), recorded before the app hears of it.
     public let callGeneration: String?
-    public init(captureID: String, timelineOriginMs: Int, microphone: Bool, callGeneration: String? = nil) {
+    public let documentGeneration: String?
+    public let inputGate: BrowserSignalInputGate?
+    public let automaticCall: BrowserVerifiedCall?
+    public let requestID: JSON?
+    public init(captureID: String, timelineOriginMs: Int, microphone: Bool, callGeneration: String? = nil,
+                documentGeneration: String? = nil, inputGate: BrowserSignalInputGate? = nil, automaticCall: BrowserVerifiedCall? = nil, requestID: JSON? = nil) {
         self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone; self.callGeneration = callGeneration
+        self.documentGeneration = documentGeneration; self.inputGate = inputGate; self.automaticCall = automaticCall; self.requestID = requestID
     }
 }
 public typealias BrowserNativeStop = @Sendable (OwnedBrowserCapture,@escaping @Sendable (String?) -> Void) -> Void
@@ -46,6 +52,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private let finalization = CaptureFinalization()
     private let creating = DispatchGroup()
     private var admissionClosed = false
+    private let admission: BrowserAutomaticAdmissionStore?
     private let make: @Sendable (String,Bool) throws -> OwnedBrowserCapture
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
@@ -67,7 +74,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
                 stopNative: @escaping BrowserNativeStop,
                 persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) },
                 clock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds / 1_000_000 },
-                transportClosed: @escaping @Sendable () -> Void = {}, ownership: CallOwnershipStore? = nil) {
+                transportClosed: @escaping @Sendable () -> Void = {}, ownership: CallOwnershipStore? = nil, admission: BrowserAutomaticAdmissionStore? = nil) {
+        self.admission = admission
         self.make = make; self.created = created; self.stopNative = stopNative; self.persistRecord = persistRecord; self.clock = clock
         self.transportClosed = transportClosed; self.ownership = ownership
         let timer = DispatchSource.makeTimerSource(queue:.global(qos:.utility))
@@ -221,15 +229,22 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         lock.unlock()
         value?.disconnected()
     }
-    fileprivate func begin(_ info: BrowserAudioStart, title: String, peer: UUID) throws -> OwnedBrowserCapture {
-        let identity = Data(info.captureID.utf8)
+    fileprivate func begin(_ incoming: BrowserAudioStart, title: String, peer: UUID, browser: BrowserInstance?) throws -> (OwnedBrowserCapture,BrowserAudioStart) {
+        let identity = Data(incoming.captureID.utf8)
         lock.lock()
         guard !admissionClosed, reservations[identity] == nil, standIns[identity] == nil else { lock.unlock(); throw BrowserProtocolError("state","Capture is unavailable or already active.") }
         reservations[identity] = peer; creating.enter(); lock.unlock()
         defer { creating.leave() }
+        let info: BrowserAudioStart
+        do { info = try admission?.authorize(incoming,browser:browser) ?? incoming }
+        catch {
+            lock.withLock { if reservations[identity] == peer { reservations.removeValue(forKey:identity) } }
+            throw error
+        }
         let capture: OwnedBrowserCapture
         do { capture = try make(title,info.microphone) }
         catch {
+            info.inputGate?.cancel(); admission?.retire(info.captureID)
             lock.lock(); if reservations[identity] == peer { reservations.removeValue(forKey:identity) }; lock.unlock(); throw error
         }
         capture.setTimelineOrigin(ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000-Double(info.timelineOriginMs))/1000)
@@ -237,7 +252,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         // The recording holds its call before anyone hears of it (No second recording).
         if let generation = info.callGeneration { ownership?.update { $0.started(capture.snapshot.manifest.id,callGeneration:generation) } }
         DispatchQueue.global().async { [created] in if capture.snapshot.phase == .recording { created(capture,info) } }
-        return capture
+        return (capture,info)
     }
     public func finish(_ capture: OwnedBrowserCapture, problem: String? = nil, reason: CaptureEndReason? = nil, atMs: Double? = nil) async throws {
         if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
@@ -331,6 +346,7 @@ private final class AudioPeer: @unchecked Sendable {
     private var originUptime: TimeInterval?
     /// D52: this connection negotiated source-outcomes-v1.
     private var sourceOutcomes = false
+    private var inputGate: BrowserSignalInputGate?
     private var captureID: String?
     private var resumed = false
     private var timelineOriginMs: Int?
@@ -463,9 +479,14 @@ private final class AudioPeer: @unchecked Sendable {
                 // The call this Start names: the recording holds it from its first moment, even if
                 // its audio closes before any status tells the app its tab.
                 let generation = json["callGeneration"]?.string.flatMap { !$0.isEmpty && $0.unicodeScalars.count <= 200 ? $0 : nil }
-                let capture = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id)
+                if let request = json["requestId"] {
+                    if let number = request.int, (0...9007199254740991).contains(number) { }
+                    else if let text = request.string, !text.isEmpty, text.unicodeScalars.count <= 128 { }
+                    else { throw BrowserProtocolError("source","Invalid Start request.") }
+                }
+                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation,documentGeneration:json["documentGeneration"]?.string,requestID:json["requestId"]),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
-                owner = capture; captureID = id; timelineOriginMs = origin; watch(id)
+                owner = capture; inputGate = accepted.inputGate; captureID = id; timelineOriginMs = origin; watch(id)
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]
                 if features.contains("source-outcomes-v1") {
                     capture.enableSourceOutcomes(); sourceOutcomes = true
@@ -476,6 +497,7 @@ private final class AudioPeer: @unchecked Sendable {
                 guard let owner else { throw BrowserProtocolError("state","No active recording.") }
                 switch type {
                 case "track":
+                    try inputGate?.validate()
                     // D61: clock facts copied as received; documentGeneration only feeds the watchdog.
                     try owner.browserTrack(id:string(json,"id")!,label:string(json,"label",optional:true) ?? string(json,"kind")!,kind:string(json,"kind")!,sampleRate:integer(json["sampleRate"]),channels:integer(json["channels"]),
                                            sourceTrackId:sourceOutcomes || json["sourceTrackId"]?.isNull == false ? string(json,"sourceTrackId",optional:true) : nil,
@@ -493,6 +515,9 @@ private final class AudioPeer: @unchecked Sendable {
                     let id = try string(json,"id")!, sequence = try integer(json["sequence"],code:"sequence")
                     guard let encoded = try string(json,"pcm",code:"chunk"), encoded.utf8.count <= 349528,
                           let pcm = Data(base64Encoded:encoded), let offset = json["offsetMs"]?.double, offset.isFinite else { throw BrowserProtocolError("chunk","Invalid audio chunk.") }
+                    // This first real input reservation, or a native driver open,
+                    // commits the owner; file creation alone does not spend grace.
+                    try inputGate?.acceptOwner()
                     try owner.browserAudio(id:id,sequence:sequence,offsetMs:offset,pcm:pcm)
                 case "stop":
                     if sourceOutcomes {

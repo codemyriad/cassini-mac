@@ -72,7 +72,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
 
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
-        "details.othersRoute.mixedSite","details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.lowAudio.underSecond","details.sources.failed","details.sources.silent",
+        "details.othersRoute.mixedGeneric","details.sources.title","details.sources.captured","details.sources.neverAudio","details.sources.lowAudio","details.sources.lowAudio.underSecond","details.sources.failed","details.sources.silent",
         "details.sources.silent.othersPermissionHint",
         "details.sources.notSelected","details.sources.gap","details.sources.computerBusy","details.sources.empty","details.sources.overlap","details.health.dropped",
         "common.yourMicrophone","recordFirst.sound.title","details.source.unknown","details.end.title","details.end.recording",
@@ -147,7 +147,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         // The session's list while it exists, else the captureRecord's verbatim copy.
         refusals = Self.refusalLines(input.session != nil ? input.session?["refusals"] : input.captureRecord?["refusals"])
         notes = (input.sourceSpansSeparated && input.transcriptDone ? [.init("details.sources.overlap")] : [])
-            + (input.othersRoute?["source"]?.string == "system" && input.othersRoute?["reason"]?.string == "mixedSiteSignal" && Self.routeSite(input.othersRoute?["site"]) != nil ? [.init("details.othersRoute.mixedSite",["site":.text(input.othersRoute?["site"]?.string ?? "")])] : [])
+            + (input.othersRoute?["source"]?.string == "system" && input.othersRoute?["reason"]?.string == "mixedSiteSignal" && Self.routeSite(input.othersRoute?["site"]) != nil ? [.init("details.othersRoute.mixedGeneric")] : [])
             + Self.fallbackCauseLines(input.session?["events"] ?? record?["events"])
         (ended,endKnown) = Self.end(input,events:input.session?["events"] ?? record?["events"])
     }
