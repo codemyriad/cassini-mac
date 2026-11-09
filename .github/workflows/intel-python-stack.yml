@@ -19,5 +19,6 @@ jobs:
           path: |
             build/intel-python-stack/tests.log
             build/intel-python-stack/host.top.txt
+            build/intel-python-stack/parent*
             build/intel-python-stack/children
           retention-days: 14
