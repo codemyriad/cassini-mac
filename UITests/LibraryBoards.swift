@@ -820,13 +820,13 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
+        XCTAssertTrue(waitForPresent(window.buttons["first-run-record"],timeout:20))
         window.buttons["first-run-record"].click()
-        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(window.sheets.buttons["record-first-start"],timeout:10))
         window.sheets.checkBoxes["Don’t show again"].click()
         window.sheets.buttons["record-first-start"].click()
         let title = window.textFields["recording-title"]
-        XCTAssertTrue(title.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(title,timeout:10),app.debugDescription)
         app.menuBars.menuBarItems["File"].click()
         XCTAssertFalse(app.menuItems["Rename…"].isEnabled,"Use the Recording page field while live")
         app.typeKey(.escape,modifierFlags:[])
@@ -835,7 +835,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(window.buttons["recording-stop"].label,"Stop recording")
         for key in ["w","q"] {
             app.typeKey(key,modifierFlags:.command)
-            XCTAssertTrue(window.sheets.staticTexts["A recording is running"].waitForExistence(timeout:10),app.debugDescription)
+            XCTAssertTrue(waitForPresent(window.sheets.staticTexts["A recording is running"],timeout:10),app.debugDescription)
             app.typeKey(.escape,modifierFlags:[])
             let stayed = NSPredicate { _,_ in window.exists && !window.sheets.firstMatch.exists && window.buttons["recording-page-stop"].exists }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stayed,object:nil)],timeout:5),.completed,app.debugDescription)
@@ -845,18 +845,18 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
         window.buttons["recording-open-current"].click()
-        XCTAssertTrue(title.waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(title,timeout:10))
         XCTAssertEqual(title.value as? String,"Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         app.typeKey("q",modifierFlags:.command)
-        XCTAssertTrue(window.sheets.buttons["Keep recording"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(window.sheets.buttons["Keep recording"],timeout:10),app.debugDescription)
         window.sheets.buttons["Keep recording"].click()
         let backgrounded = NSPredicate { _,_ in !window.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:backgrounded,object:nil)],timeout:10),.completed,app.debugDescription)
         let status = app.descendants(matching:.any)["recording-menu-bar"]
-        XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription); status.click()
+        XCTAssertTrue(waitForPresent(status,timeout:10),app.debugDescription); status.click()
         let payload = app.staticTexts["recording-menu-fixture-payload"]
-        XCTAssertTrue(payload.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(payload,timeout:10),app.debugDescription)
         let json = try XCTUnwrap(payload.value as? String)
         let data = try XCTUnwrap(json.data(using:.utf8))
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with:data) as? [String:Any])
@@ -869,7 +869,7 @@ final class LibraryBoards: XCTestCase {
         let dump = XCTAttachment(data:data,uniformTypeIdentifier:"public.json")
         dump.name = "recording-menu.json"; dump.lifetime = .keepAlways; add(dump)
         app.buttons["recording-menu-open"].click()
-        XCTAssertTrue(title.waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(title,timeout:10))
         app.typeKey("h",modifierFlags:.command)
         let finder = XCUIApplication(bundleIdentifier:"com.apple.finder"); finder.activate()
         finder.typeKey("r",modifierFlags:[.option,.command])
@@ -885,7 +885,7 @@ final class LibraryBoards: XCTestCase {
         // Start from another app too; persisted first-record consent is reused.
         app.typeKey("h",modifierFlags:.command); finder.activate()
         finder.typeKey("r",modifierFlags:[.option,.command]); app.activate()
-        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(window.buttons["recording-stop"],timeout:10),app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
         window.buttons["recording-stop"].click()
     }
