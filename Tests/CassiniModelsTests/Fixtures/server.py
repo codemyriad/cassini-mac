@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Loopback-only model contract fixture; never contacts dist or any other host."""
-import argparse,hashlib,http.server,json,socket,socketserver,sys,threading
+import os,sys
+# Optional failure-only diagnostics. Register before the heavier HTTP imports;
+# the ready marker prevents the parent signalling an unregistered handler.
+if directory:=os.environ.get('CASSINI_FIXTURE_DIAGNOSTICS'):
+ import faulthandler,signal
+ os.makedirs(directory,mode=0o700,exist_ok=True)
+ diagnostic=open(os.path.join(directory,f'{os.getpid()}.python-stack.txt'),'w')
+ signal.signal(signal.SIGUSR1,signal.SIG_DFL)
+ faulthandler.register(signal.SIGUSR1,file=diagnostic,all_threads=True,chain=True)
+ with open(os.path.join(directory,f'{os.getpid()}.python-handler-ready'),'x') as marker:marker.write('ready\n')
+import argparse,hashlib,http.server,json,socket,socketserver,threading
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--scenario',required=True);p.add_argument('--log',type=Path,required=True);p.add_argument('--forbid-dns',action='store_true')
 a=p.parse_args();root=Path(__file__).resolve().parent
