@@ -28,7 +28,7 @@ public struct SearchHit: Sendable, Identifiable {
     public let positionMs: Int64
     public let speaker: String
     public let text: String
-    /// UTF16 positions in the original normalised turn, including all matches.
+    /// UTF16 positions in the inline paragraph text, including all matches.
     public let spans: [SearchSpan]
     public let occurrence: Int
     /// The hit's turn and its neighbours (index, turn), from the index's prepared turns, so the
@@ -144,7 +144,6 @@ public actor SearchIndex {
             return $0.turn == $1.turn ? $0.occurrence < $1.occurrence : $0.turn < $1.turn
         }
     }
-    private static func normalise(_ text: String) -> String { text.split(whereSeparator:\.isWhitespace).joined(separator:" ") }
     private static func unmark(_ value: String, begin: String, end: String) -> (text: String, spans: [SearchSpan]) {
         var text = "", spans: [SearchSpan] = [], rest = value[...]
         while let open = rest.range(of:begin) {

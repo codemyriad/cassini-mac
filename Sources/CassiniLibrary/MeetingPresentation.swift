@@ -27,14 +27,14 @@ public enum MeetingPresentation {
         public let id: Int
         public let speaker: String
         public var items: [LibraryTranscriptItem]
-        /// The first word of the first fragment, and the latest word end.
+        /// Viewer row bounds, including its inline chips; child turns retain their own bounds.
         public internal(set) var startMs: Int64
         public internal(set) var endMs: Int64
         /// Displayed-item ranges of the consecutive runs rejoined into this turn.
         public internal(set) var fragments: [Range<Int>]
         /// Audible spans of each fragment's words (zero-length words excluded).
         var pools: [[Span]]
-        /// M11 (GNOME transcript.py): short turns of other speakers shown inline, each after
+        /// D84: short turns of other speakers shown inline, each after
         /// the displayed item `after`; `host` is set on a turn shown inside another one.
         public internal(set) var asides: [(after: Int, turn: Int)] = []
         public internal(set) var host: Int?

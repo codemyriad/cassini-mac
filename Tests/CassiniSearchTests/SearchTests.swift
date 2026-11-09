@@ -159,7 +159,7 @@ extension SearchTests {
 
 extension SearchTests {
     @Test func d84InlineInterjectionSearchKeepsItsWordAnchorAndRenamedCopy() async throws {
-        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
+        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first(where:{ !$0.speakers.isEmpty }))
         let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         struct Body: Decodable { let items: [LibraryTranscriptItem] }
         meeting.transcriptItems = try JSONDecoder().decode(Body.self,from:Data(contentsOf:root.appendingPathComponent("Tests/CassiniLibraryTests/Golden/interjections/acknowledgment.words.json"))).items

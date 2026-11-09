@@ -76,7 +76,7 @@ struct D70SpeakerTurnsTests {
         let turns = SpeakerTurn.grouping(words)
         #expect(turns.count == 1)
         #expect(turns.first?.endMs == 1000)
-        #expect(turns.first?.text == "He said “hello world”.")
+        #expect(turns.first?.text == "He said \"hello world\".")
         #expect(turns.first?.words == words)
     }
 

@@ -88,7 +88,7 @@ private enum Reference {
             if let best { candidates.append((turn.id,best.host,best.after)) }
         }
         let asides = Set(candidates.map(\.turn))
-        for candidate in candidates where !asides.contains(candidate.host) {
+        for candidate in candidates.sorted(by:{ turns[$0.turn].startMs == turns[$1.turn].startMs ? $0.turn < $1.turn : turns[$0.turn].startMs < turns[$1.turn].startMs }) where !asides.contains(candidate.host) {
             turns[candidate.turn].host = candidate.host
             turns[candidate.host].asides.append((candidate.after,candidate.turn))
         }

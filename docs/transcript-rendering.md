@@ -68,3 +68,9 @@ The existing Mac export wrapper (localized headings, dates and clock format)
 is retained; transcript paragraph order, text, inline chips and overlap decisions
 come from the shared viewer model. Vector-driven adapter tests compare each
 expected row and the resulting prose on Meeting, preview, QuickLook and export.
+
+Stored R3 pull-quote selection and first-speaking roster order remain unchanged;
+they are Library metadata derivation rules frozen by the shared S-3a vectors.
+D84 changes the preview's transcript paragraphs, rather than replacing an
+explicitly stored quote or the Library's quote-selection policy. All 22 Library
+vectors continue to assert their complete expected fields without alterations.

@@ -227,8 +227,11 @@ public struct LibraryScanner: Sendable {
         let resolved = SpeakerMerges.apply(sorted, meeting.mergedInto)
         meeting.writtenTranscriptItems = sorted
         meeting.transcriptItems = resolved
+        // R3 first-speaking roster and stored pull-quote selection keep their chronological
+        // semantics. D84 display grouping consumes canonical word order instead.
+        let chronological = resolved.enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
         var ids: [String] = []
-        for word in resolved where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        for word in chronological where !ids.contains(word.speaker) { ids.append(word.speaker) }
         let overrides = Dictionary(uniqueKeysWithValues: (metadata?.speakers ?? []).map { ($0.id, $0) })
         meeting.speakers = ids.enumerated().map { index, id in
             let override = overrides[id]
@@ -239,7 +242,7 @@ public struct LibraryScanner: Sendable {
             return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
-            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(resolved,names:meeting.speakerDisplayNames,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
+            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)
         }
         return meeting
     }
@@ -406,13 +409,20 @@ private func normalizedOverride(_ quote: MeetingQuote?) -> MeetingQuote? {
     }
     return text.isEmpty ? nil : MeetingQuote(atMs: quote.atMs, text: text)
 }
-private func defaultQuote(_ words: [LibraryTranscriptItem], names: [String:String], gaps: SpeakerGapRanges.Ranges, endsBoundedByAudio: Bool) -> MeetingQuote? {
-    let turns = LibraryTranscriptTurn.coalescing(words,gaps:gaps,names:names,endsBoundedByAudio:endsBoundedByAudio)
-    let selected = turns.enumerated().filter { $0.element.startMs < 600000 }.sorted {
-        let left = $0.element, right = $1.element
-        if left.endMs-left.startMs != right.endMs-right.startMs { return left.endMs-left.startMs > right.endMs-right.startMs }
-        return left.startMs == right.startMs ? $0.offset < $1.offset : left.startMs < right.startMs
-    }.first?.element
-    guard let selected, !selected.text.isEmpty else { return nil }
-    return MeetingQuote(atMs:selected.startMs,text:selected.text)
+private func defaultQuote(_ words: [LibraryTranscriptItem]) -> MeetingQuote? {
+    struct Turn { var speaker: String; var start: Int64; var end: Int64; var text: [String]; var ordinal: Int }
+    var turns: [Turn] = []
+    for (index, word) in words.enumerated() {
+        if turns.last?.speaker == word.speaker {
+            turns[turns.count - 1].end = word.endMs
+            turns[turns.count - 1].text.append(word.text)
+        } else { turns.append(.init(speaker: word.speaker, start: word.startMs, end: word.endMs, text: [word.text], ordinal: index)) }
+    }
+    let selected = turns.filter { $0.start < 600000 }.sorted {
+        if $0.end - $0.start != $1.end - $1.start { return $0.end - $0.start > $1.end - $1.start }
+        return $0.start == $1.start ? $0.ordinal < $1.ordinal : $0.start < $1.start
+    }.first
+    guard let selected else { return nil }
+    let text = collapsed(selected.text.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " "))
+    return text.isEmpty ? nil : MeetingQuote(atMs: selected.start, text: text)
 }
