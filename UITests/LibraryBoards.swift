@@ -1003,15 +1003,15 @@ final class LibraryBoards: XCTestCase {
         var app = try launch("first-run",fixture:"empty",extra:base + ["-CassiniSlowTranscription","YES"])
         defer { if app.state != .notRunning { app.terminate() } }
         var window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(waitForPresent(window.buttons["first-run-record"],timeout:20),app.debugDescription)
         window.buttons["first-run-record"].click()
-        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(window.sheets.buttons["record-first-start"],timeout:10))
         window.sheets.buttons["record-first-start"].click()
-        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(window.buttons["recording-stop"],timeout:10))
         let speech = NSPredicate { _,_ in self.recordedSeconds(window) >= 5 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:speech,object:nil)],timeout:10),.completed)
         window.buttons["recording-stop"].click()
-        XCTAssertTrue(window.staticTexts["Transcribing…"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(window.staticTexts["Transcribing…"],timeout:10),app.debugDescription)
         app.typeKey("q",modifierFlags:.command)
         let exited = NSPredicate { _,_ in app.state == .notRunning }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exited,object:nil)],timeout:5),.completed)
