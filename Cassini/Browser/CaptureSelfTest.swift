@@ -92,6 +92,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
     let callGeneration: String
     var offsetBaseMs = 0
     var nextStartFails = false
+    var sendAudioOnStart = true
     let verified: Bool
     private let browserDocument = "generated-chrome-"+UUID().uuidString.lowercased()
     private let sourceDocument = "generated-hook-"+UUID().uuidString.lowercased()
@@ -161,8 +162,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let started = try await audio.request(start)
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
             path = started["path"]?.string
-            _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
-            try await emit()
+            if sendAudioOnStart {
+                _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
+                try await emit()
+            }
         } else {
             if let audio {
                 var stop: [String:Any] = ["type":"stop"]
@@ -479,6 +482,49 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
+            for transition in ["expiry","cancel"] {
+                stage = "separated automatic admission closes during microphone permission: "+transition
+                try await collection.setAutoRecord(true)
+                let announcementCount = automatic.count, microphoneStarts = CaptureFixture.microphoneStarts
+                let (entered, enteredEvent) = AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1))
+                let (finished, finishedEvent) = AsyncStream<(Bool,Bool)>.makeStream(bufferingPolicy:.bufferingNewest(1))
+                var permission: CheckedContinuation<Void,Never>?
+                CaptureFixture.microphoneAuthorizationFixture = {
+                    await withCheckedContinuation { reply in
+                        permission = reply; enteredEvent.yield(()); enteredEvent.finish()
+                    }
+                }
+                CaptureFixture.createdFinished = { _,problem,admitted in
+                    finishedEvent.yield((problem,admitted)); finishedEvent.finish()
+                }
+                defer {
+                    CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
+                    CaptureFixtureAdmissionClock.shared.reset()
+                }
+                let pending = try CaptureProbeProfile(root:pipe,title:"Generated pending "+transition,verified:true)
+                pending.sendAudioOnStart = false; profiles.append(pending)
+                try await pending.ready(); _ = try await pending.performNext()
+                for await _ in entered { break } // Actual permission suspension, not a settling delay.
+                try await wait { collection.peers.flatMap(\.captures).contains { $0.captureID == pending.captureID } }
+                let pendingID = try collection.captures.keys.first.unwrap()
+                if transition == "expiry" { CaptureFixtureAdmissionClock.shared.advance(by:10) }
+                else { collection.stop(pendingID) }
+                permission?.resume(); permission = nil
+                for await (problem,admitted) in finished {
+                    try require(!problem && !admitted,"Withdrawn automatic startup is cancellation, never a source failure or accepted input")
+                }
+                try require(automatic.count == announcementCount,"No automatic-start announcement before an accepted input")
+                try require(CaptureFixture.microphoneStarts == microphoneStarts,"No microphone input may start after withdrawal")
+                try await collection.setAutoRecord(false)
+                _ = try await pending.performNext()
+                await collection.stopAndWait()
+                CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
+                CaptureFixtureAdmissionClock.shared.reset()
+                try await pending.meetings(false)
+                try await wait { collection.captures.isEmpty && !collection.isSaving && !collection.hasCalls }
+                try require(!collection.recordFailed,"A withdrawn automatic startup is not a failed manual Record")
+            }
+            report["separatedAdmissionCancellationIsQuiet"] = true
             stage = "partial failure: discover both calls"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)

@@ -636,8 +636,8 @@ public struct BrowserControlRegistry: Sendable {
             if peer.verifiedConfigured {
                 for row in snapshot.tabs where row.state == "active" {
                     if let call = BrowserVerifiedCall.read(profile:snapshot.instance,row:row) {
-                        if let metadata = peer.meetings.first(where:{ $0.key.tabID == row.tabID }),
-                           !SignalCallPolicy.exact(metadata.browserDocumentId,call.browserDocument) || !SignalCallPolicy.exact(metadata.documentGeneration,call.sourceDocument) || !SignalCallPolicy.exact(metadata.callGeneration,call.generation) { continue }
+                        // Evidence and inventory arrive independently. Retain the receipt
+                        // lease here; admission joins it to the matching inventory below.
                         peer.activeProofs[row.tabID] = .init(call:call,receivedAt:clock())
                     }
                 }

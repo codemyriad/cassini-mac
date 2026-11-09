@@ -57,7 +57,6 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
     func issue(_ request: BrowserControlRequest, browser: BrowserInstance?, generation: String?, document: String?, microphone: Bool,
                deadline: TimeInterval?) throws {
         try lock.withLock {
-            entries = entries.filter { _,value in value.capture != nil || value.browser != browser || !SignalCallPolicy.exact(value.generation,generation) }
             guard entries.count < 1024 else { throw BrowserIPCError.unavailable }
             let gate = request.automaticCall.map { _ in BrowserSignalInputGate(clock:clock) }
             if gate != nil { guard let deadline, clock() < deadline else { throw CancellationError() }; gate?.update(true,expiresAt:deadline,closesAt:deadline+120) }
@@ -92,7 +91,7 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
             // answer a string ask. Compare exact bytes, including Unicode identity.
             guard let request = info.requestID?.string else { throw BrowserIPCError.unavailable }
             let id = Data(request.utf8)
-            guard let entry = entries[id], entry.capture == nil,
+            guard let entry = entries[id], entry.capture == nil, entry.ending == nil,
                   entry.browser == browser, entry.microphone == info.microphone,
                   SignalCallPolicy.exact(entry.generation,info.callGeneration),
                   SignalCallPolicy.exact(entry.document,info.documentGeneration) else { throw BrowserIPCError.unavailable }
@@ -102,6 +101,7 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
                          callGeneration:info.callGeneration,documentGeneration:info.documentGeneration,inputGate:entry.gate,automaticCall:entry.call,requestID:info.requestID)
         }
     }
+    var pendingRequestCount: Int { lock.withLock { entries.values.filter { $0.capture == nil }.count } }
     func complete(_ id: String) {
         lock.withLock { if entries[Data(id.utf8)]?.capture == nil { entries.removeValue(forKey:Data(id.utf8))?.gate?.cancel() } }
     }

@@ -289,6 +289,70 @@ final class VerifiedAdmissionTests: XCTestCase {
         XCTAssertEqual(dictionary[key("\u{e9}")],1)
         XCTAssertEqual(dictionary[key("e\u{301}")],2)
     }
+    func testSignalsBeforeMatchingMeetingsRetainReceiptTimeForBothRoutes() throws {
+        for remote in ["separated","mixed"] {
+            for previous in ["pre-configure","previous-call"] {
+                let clock = VerifiedClock(), id = UUID(), key = BrowserMeetingKey(peer:id,tabID:2)
+                var state = try initial(clock,id:id,ack:[])
+                var old = meeting()
+                if previous == "pre-configure" { old.removeValue(forKey:"browserDocumentId") }
+                else { old["callGeneration"] = "old-call"; old["documentGeneration"] = "old-hook"; old["browserDocumentId"] = "old-chrome" }
+                try send(["type":"meetings","meetings":[old]],&state,id)
+                try send(["type":"configured","capabilities":pair],&state,id)
+                try send(signal(0,remote:remote),&state,id)
+                XCTAssertTrue(state.automaticStarts(microphone:true).isEmpty,"Old inventory cannot authorize the new call")
+                XCTAssertTrue(try XCTUnwrap(state.signalActiveKeys(id)).isEmpty)
+                clock.set(4)
+                try send(["type":"meetings","meetings":[meeting()]],&state,id)
+                if remote == "separated" {
+                    XCTAssertNotNil(state.automaticBinding(key),"Matching inventory must use the retained active frame without another signal poll")
+                    XCTAssertEqual(state.automaticStarts(microphone:true).count,1)
+                } else {
+                    var policy = SignalCallPolicy()
+                    policy.update([try peer(state,id)],now:clock.now()); policy.advance(now:clock.now(),enabled:true)
+                    XCTAssertNotNil(policy.reserve(),"Mixed admission must use the retained active frame too")
+                }
+                XCTAssertEqual(state.signalDeadlines(id).values.first,5,"Inventory does not renew the receipt lease")
+                clock.set(5)
+                XCTAssertNil(state.automaticBinding(key)); XCTAssertTrue(try XCTUnwrap(state.signalActiveKeys(id)).isEmpty)
+            }
+        }
+    }
+    func testHeldDisconnectedManualStartRetiresItsNativeAuthorization() throws {
+        let clock = VerifiedClock(), store = BrowserAutomaticAdmissionStore(clock:{ clock.now() })
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("HeldNativeStart-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at:root) }
+        let ready = expectation(description:"Manual inventory reconciled"), gone = expectation(description:"Unanswered Start held after EOF")
+        let held = expectation(description:"Held Start expired"), onceReady = VerifiedOnce(ready), onceGone = VerifiedOnce(gone)
+        let service = BrowserControlService(changed:{ peers in
+            if peers.isEmpty && store.pendingRequestCount == 1 { onceGone.receive() }
+        },completed:{ outcome,automatic in
+            XCTAssertFalse(automatic); XCTAssertEqual(outcome.failure,"disconnected"); XCTAssertFalse(outcome.ok)
+            held.fulfill()
+        },clock:{ UInt64(clock.now()*1000) },received:{ if $0 == "status" { onceReady.receive() } },admission:store)
+        try service.start(root:root); defer { service.stop() }
+        let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
+        var client: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chromium",browserInstance:instance)
+        for packet: [String:Any] in [
+            ["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"]],
+            ["type":"meetings","meetings":[meeting()]],
+            ["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"sessions":[],"message":"Generated ready"]] {
+            try XCTUnwrap(client).send(JSONSerialization.data(withJSONObject:packet))
+        }
+        wait(for:[ready],timeout:5)
+        service.recordAll(microphone:false)
+        let request = try JSONParser.parse(XCTUnwrap(try XCTUnwrap(client).receive(deadline:DispatchTime.now().uptimeNanoseconds+5_000_000_000)))
+        XCTAssertEqual(request["action"]?.string,"start"); XCTAssertEqual(store.pendingRequestCount,1)
+        client = nil; wait(for:[gone],timeout:5)
+        XCTAssertEqual(store.pendingRequestCount,1,"A held manual ask survives EOF until its settlement")
+        clock.set(BrowserControlRegistry.heldStartGrace)
+        service.setAutoRecord(false,microphone:false) // Queue reconciliation at the exact injected deadline.
+        wait(for:[held],timeout:5)
+        XCTAssertEqual(store.pendingRequestCount,0)
+        XCTAssertThrowsError(try store.authorize(.init(captureID:"retired-held",timelineOriginMs:0,microphone:false,
+            callGeneration:"call-A",documentGeneration:"hook-A",requestID:request["requestId"]),browser:instance))
+    }
     func testBrowserReservationLeaseAndAcceptedOwnerGrace() throws {
         let clock = VerifiedClock(), id = UUID(); var state = try initial(clock,id:id)
         try send(["type":"meetings","meetings":[meeting()]],&state,id); try send(signal(0),&state,id)

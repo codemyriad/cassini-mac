@@ -81,9 +81,9 @@ struct SignalCallPolicy: Sendable {
         func hash(into h: inout Hasher) { h.combine(Data(instance.utf8)); h.combine(tab); h.combine(Data(generation.utf8)) }
     }
     static func exact(_ a: String?, _ b: String?) -> Bool { a.map { Data($0.utf8) } == b.map { Data($0.utf8) } }
-    struct Association: Sendable { let site: String; var lostAt: TimeInterval? }
+    struct Association: Sendable { let site: String; var lostAt: TimeInterval?; var lastExpiry: TimeInterval? }
     struct Peer: Sendable { let id: UUID; let order: UInt64; let snapshot: BrowserCallSignalSnapshot; var active: Set<Key>? = nil; var expiredAt: [Key:TimeInterval] = [:] }
-    private struct Observation { let id: UUID; let sequence: Int; let active: Set<Key>? }
+    private struct Observation { let id: UUID; let sequence: Int; let active: Set<Key>?; let expiredAt: [Key:TimeInterval] }
     private var activeKeys: [Data:Set<Key>] = [:]
     static let grace: TimeInterval = 120
     private(set) var calls: [Key:Association] = [:]
@@ -118,7 +118,7 @@ struct SignalCallPolicy: Sendable {
                 lose(instance,now:now)
             }
             guard observed[instance]?.id != peer.id || observed[instance]?.sequence != peer.snapshot.sequence || observed[instance]?.active != peer.active else { continue }
-            observed[instance] = .init(id:peer.id,sequence:peer.snapshot.sequence,active:peer.active)
+            observed[instance] = .init(id:peer.id,sequence:peer.snapshot.sequence,active:peer.active,expiredAt:peer.expiredAt)
             activeKeys[instance] = peer.active
             snapshots[instance] = peer.snapshot
             for key in Array(calls.keys) where Data(key.instance.utf8) == instance {
@@ -127,8 +127,14 @@ struct SignalCallPolicy: Sendable {
                 let active = row.map { value in peer.active?.contains(.init(instance:peer.snapshot.instance,tab:value.tabID,document:value.document,generation:value.generation ?? "",sourceDocument:value.sourceDocument)) ?? true } ?? false
                 if same && row?.state == "inactive" && row?.reason == "callEnded" { drop(key,reason:.callEnded) }
                 else if let row, row.state == "active", active, !same { drop(key,reason:.callEnded) }
-                else if same && row?.state == "active" && active && (started || row?.remoteAudio == "mixed") { calls[key]?.lostAt = nil }
-                else if calls[key]?.lostAt == nil { calls[key]?.lostAt = min(now,peer.expiredAt[key] ?? now) }
+                else if same && row?.state == "active" && active && (started || row?.remoteAudio == "mixed") {
+                    calls[key]?.lostAt = nil
+                    if let expiry = peer.expiredAt[key] { calls[key]?.lastExpiry = expiry }
+                }
+                else if calls[key]?.lostAt == nil {
+                    let lostAt = min(now,calls[key]?.lastExpiry ?? peer.expiredAt[key] ?? now)
+                    calls[key]?.lostAt = lostAt
+                }
             }
         }
         for (instance,owner) in owners where !peers.contains(where:{ $0.id == owner.0 }) {
@@ -145,7 +151,10 @@ struct SignalCallPolicy: Sendable {
         if reservation != nil && !started && !eligible { retiring = retiring ?? .pageGone }
     }
     private mutating func lose(_ instance: Data, now: TimeInterval) {
-        for key in Array(calls.keys) where Data(key.instance.utf8) == instance && calls[key]?.lostAt == nil { calls[key]?.lostAt = now }
+        for key in Array(calls.keys) where Data(key.instance.utf8) == instance && calls[key]?.lostAt == nil {
+            let lostAt = min(now,calls[key]?.lastExpiry ?? now)
+            calls[key]?.lostAt = lostAt
+        }
     }
     private mutating func drop(_ key: Key, reason: CaptureEndReason) {
         calls.removeValue(forKey:key)
@@ -162,7 +171,7 @@ struct SignalCallPolicy: Sendable {
                       !suppressed.contains(.init(instance:instance,tab:row.tabID,generation:generation)), !blocked(instance,row) else { continue }
                 let key = Key(instance:instance,tab:row.tabID,document:row.document,generation:generation,sourceDocument:row.sourceDocument)
                 guard activeKeys[Data(instance.utf8)]?.contains(key) ?? true else { continue }
-                if calls[key] == nil { calls[key] = .init(site:site) }
+                if calls[key] == nil { calls[key] = .init(site:site,lastExpiry:observed[Data(instance.utf8)]?.expiredAt[key]) }
             }
         }
     }

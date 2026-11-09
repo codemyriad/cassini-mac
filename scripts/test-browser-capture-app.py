@@ -45,7 +45,7 @@ for name in [
     'pageStopLeavesOtherMeetingRecording',
     'fallbackAndWorkerRecoveryKeepOneFolder',
     'legacyAutomaticDeniedManualAllowed',
-    'newCallAutoStartAndNotificationStop','endingAutomaticCaptureStopsOnce',
+    'newCallAutoStartAndNotificationStop','endingAutomaticCaptureStopsOnce','separatedAdmissionCancellationIsQuiet',
     'deniedMicKeepsOthersRecording',
     'failedNativeStartSkipsNotifications','nothingStartedLeavesNoLibraryEntry',
     'partialFailureRetriesOnlyThatMeeting',

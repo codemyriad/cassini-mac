@@ -222,6 +222,7 @@ public final class BrowserControlService: @unchecked Sendable {
     /// reports its capture, disconnected at the deadline (checked on every tick) or at shutdown.
     private func settleHeldStarts(shutdown: Bool = false) {
         for outcome in registry.settleHeldStarts(shutdown:shutdown) {
+            if !outcome.ok || outcome.userStopped { admission?.complete(outcome.requestID) }
             completed(outcome,automatic.remove(outcome.requestID) != nil)
         }
     }
