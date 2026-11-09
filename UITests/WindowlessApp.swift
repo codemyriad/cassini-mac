@@ -69,56 +69,56 @@ extension LibraryBoards {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
         defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
-        XCTAssertTrue(library.waitForExistence(timeout:20))
+        XCTAssertTrue(waitForPresent(library,timeout:20))
         app.typeKey(",",modifierFlags:.command)
         let settings = app.windows["cassini-settings-window"]
         let show = settings.descendants(matching:.any).matching(identifier:"settings-show-menu-bar").matching(NSPredicate(format:"value != nil")).firstMatch
-        XCTAssertTrue(show.waitForExistence(timeout:10)); show.click()
+        XCTAssertTrue(waitForPresent(show,timeout:10)); show.click()
         settings.buttons["_XCUI:CloseWindow"].click()
         library.buttons["first-run-record"].click()
-        XCTAssertTrue(app.buttons["record-first-start"].waitForExistence(timeout:10)); app.buttons["record-first-start"].click()
-        XCTAssertTrue(library.buttons["recording-stop"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(app.buttons["record-first-start"],timeout:10)); app.buttons["record-first-start"].click()
+        XCTAssertTrue(waitForPresent(library.buttons["recording-stop"],timeout:10),app.debugDescription)
         let finder=XCUIApplication(bundleIdentifier:"com.apple.finder")
         let firstStatus=app.descendants(matching:.any)["recording-menu-bar"]
-        XCTAssertTrue(firstStatus.waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(firstStatus,timeout:10))
         finder.activate();backgroundClick(firstStatus,through:finder)
-        XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5))
+        XCTAssertTrue(waitForPresent(app.buttons["recording-menu-quit"],timeout:5))
         backgroundClick(app.buttons["recording-menu-quit"],through:finder)
-        XCTAssertTrue(library.sheets.buttons["Stop and keep it"].waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(library.sheets.buttons["Stop and keep it"],timeout:10))
         waitForWindowless { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "io.codemyriad.cassini" }
         app.typeKey(.escape,modifierFlags:[])
         waitForWindowless { !library.sheets.firstMatch.exists }
         app.typeKey("q",modifierFlags:.command)
         let background = library.sheets.firstMatch.buttons["Keep recording"]
-        XCTAssertTrue(background.waitForExistence(timeout:10)); background.click()
+        XCTAssertTrue(waitForPresent(background,timeout:10)); background.click()
         waitForWindowless { !library.exists }
         let status = app.descendants(matching:.any)["recording-menu-bar"]
-        XCTAssertTrue(status.waitForExistence(timeout:10),"The idle preference never hides a recording")
+        XCTAssertTrue(waitForPresent(status,timeout:10),"The idle preference never hides a recording")
         status.click()
         let payload = app.staticTexts["recording-menu-fixture-payload"]
-        XCTAssertTrue(payload.waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(payload,timeout:10))
         let json = try XCTUnwrap((payload.value as? String)?.data(using:.utf8))
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with:json) as? [String:Any])
         let folder = URL(fileURLWithPath:try XCTUnwrap(body["fixtureDirectory"] as? String))
         app.buttons["recording-menu-settings"].click()
-        XCTAssertTrue(show.waitForExistence(timeout:10)); XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"0")
+        XCTAssertTrue(waitForPresent(show,timeout:10)); XCTAssertEqual(String(describing:try XCTUnwrap(show.value)),"0")
         settings.buttons["_XCUI:CloseWindow"].click()
         // Target coordinates through Finder so XCTest cannot activate Cassini
         // for us before the product's menu action does so.
         finder.activate();backgroundClick(status,through:finder)
-        XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5))
+        XCTAssertTrue(waitForPresent(app.buttons["recording-menu-quit"],timeout:5))
         backgroundClick(app.buttons["recording-menu-quit"],through:finder)
         let keep = app.dialogs.firstMatch.buttons["Stop and keep it"]
-        XCTAssertTrue(keep.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(keep,timeout:10),app.debugDescription)
         waitForWindowless { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "io.codemyriad.cassini" }
         XCTAssertFalse(library.exists,"Windowless Quit presents its own dialog, not a sheet on a disappearing menu")
         app.typeKey(.escape,modifierFlags:[])
         waitForWindowless { !keep.exists }
         XCTAssertTrue(status.exists,"Escape cancels Quit and keeps recording")
         finder.activate();backgroundClick(status,through:finder)
-        XCTAssertTrue(app.buttons["recording-menu-quit"].waitForExistence(timeout:5))
+        XCTAssertTrue(waitForPresent(app.buttons["recording-menu-quit"],timeout:5))
         backgroundClick(app.buttons["recording-menu-quit"],through:finder)
-        XCTAssertTrue(keep.waitForExistence(timeout:10))
+        XCTAssertTrue(waitForPresent(keep,timeout:10))
         waitForWindowless { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "io.codemyriad.cassini" }
         app.typeKey(.return,modifierFlags:[])
         waitForWindowless { app.state == .notRunning }
@@ -245,6 +245,17 @@ extension LibraryBoards {
         XCTAssertTrue(icon.waitForExistence(timeout:10),dock.debugDescription)
         icon.click()
     }
+    /// Measurement switch only; final candidate keeps the fast branch.
+    @MainActor func waitForPresent(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        if ProcessInfo.processInfo.environment["CASSINI_D82_ORIGINAL_PRESENCE"] == "1" {
+            print("D82 presence original")
+            return element.waitForExistence(timeout:timeout)
+        }
+        let present = element.exists
+        print("D82 presence fast \(present ? "ready" : "wait")")
+        return present || element.waitForExistence(timeout:timeout)
+    }
+
     @MainActor private func backgroundClick(_ target:XCUIElement,through foreground:XCUIApplication) {
         let anchor=foreground.menuBars.firstMatch
         XCTAssertTrue(anchor.exists,"Foreground app has a real menu-bar coordinate anchor")
