@@ -129,34 +129,73 @@ class InstrumentationIsolation(unittest.TestCase):
             with self.assertRaises(ValueError):
                 harness.probe_command(Path('/private/probe'),'B',Path('/private/output'),**options)
 
-    def test_profiler_attaches_only_to_its_separate_diagnostic_process(self):
-        # Actual inert OS processes exercise lifecycle and signal handling.
-        # Substitute only the external xctrace tool; no AppKit/devices run.
+    def exercise_profiler(self, probe_exit=0, trace_exit=0, create_trace=True):
+        # Real inert processes + Darwin notification; substitute only xctrace.
+        # Popen returns BEFORE the recorder installs its handler/posts readiness.
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);program=root/'inert-probe'
-            program.write_text('#!'+sys.executable+"\nimport json,sys,os\nprint(json.dumps({'diagnosticProfileOnly':'-SpectrogramProfileOnly' in sys.argv,'audioDevicesOpened':False,'analyzedFrames':12 if os.environ.get('CASSINI_SPECTRO')=='1' else 0}))\n")
+            root=Path(temporary);program=root/'inert-probe';started=root/'fixture-started'
+            program.write_text('#!'+sys.executable+"\nimport json,sys,os,pathlib\nassert os.environ['CASSINI_SPECTRO_PROFILE_GATE']=='1'\nassert sys.stdin.read(1)=='1'\npathlib.Path("+repr(str(started))+").touch()\nprint(json.dumps({'diagnosticProfileOnly':'-SpectrogramProfileOnly' in sys.argv,'audioDevicesOpened':False,'analyzedFrames':12 if os.environ.get('CASSINI_SPECTRO')=='1' else 0})); sys.exit("+str(probe_exit)+")\n")
             program.chmod(0o700)
-            native_popen=subprocess.Popen
-            launched=[]
+            native_popen=subprocess.Popen;subscribe=harness.tracing_started
+            launched=[];recorders=[]
             def spawn(command,**kwargs):
                 if command[:3] != ['xcrun','xctrace','record']:
-                    child=native_popen(command,**kwargs);launched.append(child.pid);return child
-                self.assertEqual(command[command.index('--attach')+1],str(launched[-1]))
+                    child=native_popen(command,**kwargs);launched.append(child);return child
+                self.assertEqual(command[command.index('--attach')+1],str(launched[-1].pid))
+                self.assertIn('--no-prompt',command)
                 trace=command[command.index('--output')+1]
-                code="import signal,sys,pathlib; signal.signal(signal.SIGINT,lambda *_:(pathlib.Path(sys.argv[1]).mkdir(),sys.exit(0))); print('ready',flush=True); signal.pause()"
-                child=native_popen([sys.executable,'-c',code,trace],stdout=subprocess.PIPE,text=True)
-                ready,_,_=select.select([child.stdout],[],[],5)
-                if not ready:
-                    child.kill();child.wait();self.fail('Inert trace did not install its signal handler')
-                self.assertEqual(child.stdout.readline().strip(),'ready');child.stdout.close()
-                return child
-            with patch.dict(harness.os.environ,{'CASSINI_SPECTRO':'0'}), patch.object(harness.subprocess,'Popen',side_effect=spawn):
-                self.assertTrue(harness.record_profile(program,root))
-            self.assertEqual(len(launched),1)
+                name=command[command.index('--notify-tracing-started')+1]
+                code="import signal,sys,pathlib,ctypes; assert sys.stdin.read(1)=='r'; signal.signal(signal.SIGINT,lambda *_:(pathlib.Path(sys.argv[1]).mkdir() if sys.argv[4]=='True' else None,sys.exit(int(sys.argv[3])))); n=ctypes.CDLL('/usr/lib/system/libsystem_notify.dylib'); assert n.notify_post(sys.argv[2].encode())==0; signal.pause()"
+                child=native_popen([sys.executable,'-c',code,trace,name,str(trace_exit),str(create_trace)],stdin=subprocess.PIPE,text=True)
+                recorders.append(child);return child
+            from contextlib import contextmanager
+            @contextmanager
+            def delayed_recorder():
+                with subscribe() as (name,wait):
+                    def release_and_wait():
+                        self.assertIsNone(launched[0].poll())
+                        self.assertFalse(started.exists())
+                        # Event, not a sleep: allow cold recorder initialization now.
+                        recorders[0].stdin.write('r');recorders[0].stdin.close()
+                        return wait(timeout=5)
+                    yield name,release_and_wait
+            with patch.dict(harness.os.environ,{'CASSINI_SPECTRO':'0'}), patch.object(harness.subprocess,'Popen',side_effect=spawn), patch.object(harness,'tracing_started',delayed_recorder):
+                self.assertEqual(harness.record_profile(program,root),probe_exit==0 and trace_exit==0 and create_trace)
+            self.assertTrue(started.exists());self.assertEqual(len(launched),1)
             report=json.loads((root/'profile.json').read_text())
             self.assertTrue(report['diagnosticProfileOnly'])
-            self.assertEqual(report['processExitStatus'],0)
-            self.assertEqual(report['traceExitStatus'],0)
+            self.assertEqual(report['processExitStatus'],probe_exit)
+            self.assertEqual(report['traceExitStatus'],trace_exit)
+            launched[0].stdout.close()
+
+    def test_profiler_waits_for_real_recording_event_before_starting_fixture(self):
+        self.exercise_profiler()
+
+    def test_failed_probe_cannot_pass_after_recording_started(self):
+        self.exercise_profiler(probe_exit=7)
+
+    def test_failed_recorder_cannot_pass_with_successful_probe(self):
+        self.exercise_profiler(trace_exit=9)
+
+    def test_missing_trace_cannot_pass_with_successful_exit_statuses(self):
+        self.exercise_profiler(create_trace=False)
+
+    def test_missing_recorder_event_fails_without_starting_fixture(self):
+        from contextlib import contextmanager
+        @contextmanager
+        def no_event():
+            yield 'missing-event',lambda:False
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);native_popen=subprocess.Popen;children=[]
+            def spawn(command,**kwargs):
+                code="import sys; sys.stdin.read(1); sys.exit(7)" if command[0]!='xcrun' else "import signal; signal.pause()"
+                child=native_popen([sys.executable,'-c',code],**kwargs);children.append(child);return child
+            with patch.object(harness,'tracing_started',no_event),patch.object(harness.subprocess,'Popen',side_effect=spawn):
+                self.assertFalse(harness.record_profile(root/'inert-probe',root))
+            report=json.loads((root/'profile.json').read_text())
+            self.assertIn('did not report recording started',report['error'])
+            self.assertTrue(all(child.poll() is not None for child in children))
+            children[0].stdin.close();children[0].stdout.close()
 
 
 if __name__ == '__main__':

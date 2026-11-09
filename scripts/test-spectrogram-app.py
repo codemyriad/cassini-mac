@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Hosted-only production native-view A–E spectrogram measurements, no devices."""
 import argparse
+from contextlib import contextmanager
+import ctypes
+import select
+import uuid
 import json
 import os
 import plistlib
@@ -55,18 +59,51 @@ def motion_driver_ready(line: str) -> bool:
     return line.strip() == 'CASSINI_SPECTRO_MOTION_READY'
 
 
+@contextmanager
+def tracing_started():
+    """Subscribe before spawning xctrace; its Darwin event means recording began."""
+    notify = ctypes.CDLL('/usr/lib/system/libsystem_notify.dylib')
+    notify.notify_register_file_descriptor.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int),
+                                                       ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+    notify.notify_register_file_descriptor.restype = ctypes.c_uint32
+    notify.notify_cancel.argtypes = [ctypes.c_int]
+    name = 'io.codemyriad.cassini.profiler.' + uuid.uuid4().hex
+    fd, token = ctypes.c_int(-1), ctypes.c_int()
+    status = notify.notify_register_file_descriptor(name.encode(), ctypes.byref(fd), 0, ctypes.byref(token))
+    if status != 0:
+        raise RuntimeError(f'Cannot subscribe to recorder start: notify status {status}')
+    try:
+        def wait(timeout=90):
+            ready, _, _ = select.select([fd.value], [], [], timeout)
+            return bool(ready) and len(os.read(fd.value, 4)) == 4
+        yield name, wait
+    finally:
+        # notify_cancel closes the descriptor allocated by libnotify.
+        notify.notify_cancel(token.value)
+
+
 def record_profile(app: Path, output: Path):
     """A second generated-input process: profile overhead never enters A–E."""
     process = trace = None
     stdout = ''
+    proof = {'recordingStarted': False}
     with (output/'profile.stderr.txt').open('w') as stderr:
         try:
-            process = subprocess.Popen(probe_command(app, 'B', output, profile=True),
-                                       env=dict(os.environ,CASSINI_SPECTRO='1'), stdout=subprocess.PIPE, stderr=stderr, text=True)
-            trace = subprocess.Popen(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler',
-                '--attach', str(process.pid), '--output', str(output/'B-TimeProfiler.trace')],
-                stdout=stderr, stderr=subprocess.STDOUT)
-            stdout, _ = process.communicate(timeout=100)
+            with tracing_started() as (notification, wait_started):
+                process = subprocess.Popen(probe_command(app, 'B', output, profile=True),
+                    env=dict(os.environ,CASSINI_SPECTRO='1',CASSINI_SPECTRO_PROFILE_GATE='1'),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, text=True)
+                trace = subprocess.Popen(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler',
+                    '--attach', str(process.pid), '--output', str(output/'B-TimeProfiler.trace'),
+                    '--notify-tracing-started', notification, '--no-prompt'], stdout=stderr, stderr=subprocess.STDOUT)
+                # A cold recorder can outlive the entire generated-input interval.
+                # Start the fixture clock only after Instruments confirms recording.
+                if not wait_started():
+                    raise TimeoutError('Time Profiler did not report recording started')
+                stdout, _ = process.communicate(input='1', timeout=100)
+                proof = dict(json.loads(stdout), recordingStarted=True)
+        except (TimeoutError, subprocess.TimeoutExpired, ValueError, OSError, RuntimeError) as error:
+            proof['error'] = str(error)
         finally:
             if process and process.poll() is None:
                 process.kill(); process.wait()
@@ -76,12 +113,11 @@ def record_profile(app: Path, output: Path):
                 try: trace.wait(timeout=20)
                 except subprocess.TimeoutExpired: trace.kill(); trace.wait()
     (output/'profile.stdout.txt').write_text(stdout)
-    proof = json.loads(stdout)
-    proof['traceExitStatus'] = trace.returncode
-    proof['processExitStatus'] = process.returncode
+    proof['traceExitStatus'] = trace.returncode if trace else None
+    proof['processExitStatus'] = process.returncode if process else None
     (output/'profile.json').write_text(json.dumps(proof, indent=2)+'\n')
-    return (process.returncode == 0 and trace.returncode == 0 and
-            proof.get('diagnosticProfileOnly') is True and proof.get('audioDevicesOpened') is False and
+    return (proof['processExitStatus'] == 0 and proof['traceExitStatus'] == 0 and
+            proof.get('recordingStarted') is True and proof.get('diagnosticProfileOnly') is True and proof.get('audioDevicesOpened') is False and
             proof.get('analyzedFrames',0) > 0 and (output/'B-TimeProfiler.trace').is_dir())
 
 
