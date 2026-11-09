@@ -140,7 +140,7 @@ public enum TranscriptRendering {
         var blocks = readable(words)
         if !endsBoundedByAudio {
             var population: [String:[Int64]] = [:], excluded: Set<Int> = []
-            let repairs = blocks.map { candidates($0.wordIndices,words) }
+            let repairs = blocks.map { Self.candidates($0.wordIndices,words) }
             for run in repairs.flatMap({ $0 }) { excluded.formUnion(run) }
             for w in words where population[w.speaker] == nil { population[w.speaker] = [] }
             for i in words.indices where !excluded.contains(i) && wordLike(words[i].text) && words[i].endMs > words[i].startMs {
