@@ -1,17 +1,15 @@
-name: D36 paired checkpoint barrier evidence
+name: D36 cold native host evidence
 'on':
-  workflow_dispatch:
-    inputs:
-      candidate_run:
-        description: Successful Release SDK run for candidate
-        required: true
+  push:
+    branches: [ci/d36-native-host-169]
+  workflow_dispatch: {}
 permissions:
   contents: read
   actions: read
 jobs:
   evidence:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v5
         with:
@@ -21,54 +19,42 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: ci-release
-          run-id: 42566493594
+          run-id: 42580139946
           github-token: ${{ github.token }}
-          path: before-product
+          path: release-product
       - uses: actions/download-artifact@v5
         with:
-          name: ci-release
-          run-id: ${{ inputs.candidate_run }}
+          name: ci-debug
+          run-id: 42580139946
           github-token: ${{ github.token }}
-          path: after-product
-      - id: sdk
-        run: |
-          python3 - <<'PYTHON'
-          import json,os,re
-          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
-            for label in ['before','after']:
-              commit=json.load(open(label+'-product/release.json'))['commit']
-              assert re.fullmatch('[0-9a-f]{40}',commit)
-              out.write(label+'='+commit+'\n')
-          PYTHON
+          path: debug-product
       - uses: actions/checkout@v5
         with:
-          ref: ${{ steps.sdk.outputs.before }}
-          path: before-source
+          ref: f0d0d43a82a87a65e4bbd07b6fa5cb3f13a4c22c
+          path: sdk-source
           persist-credentials: false
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ steps.sdk.outputs.after }}
-          path: after-source
-          persist-credentials: false
-      - run: python3 before-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/before-product"
-      - run: python3 after-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/after-product"
+      - run: mdutil -a -s
+      - run: python3 sdk-source/scripts/ci-products.py unpack debug "$GITHUB_WORKSPACE/debug-product"
+      - run: python3 sdk-source/scripts/ci-products.py unpack release "$GITHUB_WORKSPACE/release-product"
       - run: brew install displayplacer
-      - run: python3 scripts/hosted-display.py
-      - name: Verify identical renderer, clock and budgets; compile same diagnostic for both SDKs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 sdk-source/scripts/hosted-display.py
+      - name: Build original production probe against exact failed-job SDK
         run: |
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          for name in ['Cassini/Recording/RecordingSpectrogram.swift','Spikes/Spectrogram/Budget.swift','Spikes/Spectrogram/Events.swift','Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift']:
-            for label in ['before','after']:
-              assert Path(name).read_bytes()==(Path(label+'-source')/name).read_bytes(),name
-          PYTHON
-          python3 scripts/build-spectrogram-probe.py before-source/build/Build/Products/Release build/d36-before.app
-          python3 scripts/build-spectrogram-probe.py after-source/build/Build/Products/Release build/d36-after.app
-      - name: Paired checkpoint evidence with original D case and gates
-        run: python3 scripts/d36-recurrence.py
+          swiftc sdk-source/Spikes/Spectrogram/Budget.swift sdk-source/Spikes/Spectrogram/CheckBudget.swift -o build/check-budget
+          build/check-budget
+          xcrun swiftc -O -parse-as-library sdk-source/Spikes/Spectrogram/PixelOracle.swift sdk-source/Spikes/Spectrogram/CheckPixelOracle.swift -o build/check-pixels
+          build/check-pixels
+          xcrun swiftc -O -parse-as-library sdk-source/Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift sdk-source/Spikes/Spectrogram/CheckSampleClock.swift -o build/check-clock
+          build/check-clock
+          python3 sdk-source/scripts/build-spectrogram-probe.py sdk-source/build/Build/Products/Release build/native-host.app
+      - name: Observe original B plus every busy host process
+        run: python3 scripts/d36-host-evidence.py
       - uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: d36-checkpoint-barriers
-          path: build/d36-evidence
+          name: d36-native-host-169
+          path: build/host-evidence
           retention-days: 14
