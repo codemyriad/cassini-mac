@@ -2,6 +2,8 @@
 
 Cassini is a Mac app that records your meetings, writes them down, and lets you read and search them on this computer.
 
+Developed by Codemyriad and contributors.
+
 ![The Cassini Library window with a list of sample meetings on the left and a meeting preview on the right.](docs/screenshots/library.png)
 
 *The Library with sample meetings. The small `auto` tag next to a name comes from the sample data: recognising saved voices is not available yet.*

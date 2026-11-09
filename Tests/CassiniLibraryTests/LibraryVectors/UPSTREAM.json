@@ -4,22 +4,22 @@
   "path": "ux-draft/library-vectors",
   "repository": "cassini-coordination",
   "sha256": {
-    "README.md": "38220e7c4dd05b13adcaf9ac498b98d8d84e0d9180d2e0ea316495d7c272bf10",
+    "README.md": "8d8f78149c2771002e9361b89fe8f004c2f5841ed52f709f23e5d48cc1ce51b9",
     "assets/001-minimal-v1.opus": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
     "assets/009-bad-payload-sha256.opus": "84308e357c97df9fa8bb7371038e490d7f519b6dd3b778d21f4fe74df014dfde",
     "assets/010-stale-audio.opus": "5b771e32b554214ece95566f26483da5f780613573a16f5de8677d70ac183587",
     "assets/015-unknown-major-version.opus": "c251ec856dec2683126cc5365151967a014e87f2385023d2945305557413a113",
     "assets/016-two-transcripts.opus": "70378c87ce08edff20c96ba6e2806e205703a29cc77778ad51bcda66a5b8326a",
     "assets/LICENSE-CC0-1.0.txt": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
-    "assets/SHA256.json": "68aea4f4846229acfd6c0fbeaabb5de6fed58cb2d1452ded31795ac6f0628df8",
-    "assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "assets/onboarding.opus": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
+    "assets/SHA256.json": "f48983136c0ecb642cbb9e0963184a5e379e24eff88ffe8ea2abfae0c484b7a9",
+    "assets/build.py": "3902f6c9339ac9022ee1f00d30bf2978a582872d11b99082bce8b096ab104179",
+    "assets/onboarding.opus": "d780248dedcaad305dc4e741e9fdef7035128150dacc94da7394bdd0d9d6e54f",
     "assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
-    "cases.json": "59d65ca32ab38882d9783f02fd8e45a8c4ce23b9444783c3b18c752a5ed65fd4",
+    "cases.json": "93c82fd60f5c203fb5aaaeb538ab6891564b24159b0fc9d101761614a106db45",
     "expected/empty.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
-    "expected/main.json": "e5cb374351532dbfa9137abf17d24c3ea0362408e0e740b6e65ffbd4a2b5fa39",
+    "expected/main.json": "bb5898e956598c4072dd57dd7563df9407a920b58213c13c6c4067bfa6d5d3a9",
     "expected/r1-discovery.json": "17dea0af5157118dd95147195522d81083f33bff1dac3cd944f50180f190a7b3",
     "expected/r2-whole-document.json": "f220c0f7612b9af24b0db6e2d1777146446857bd4adb8268e233198b8544c5d4",
     "expected/r3-transcript-precedence.json": "4ae9677b03f1eb05c917cdf776012048fb08ad07696f68ca55785ba8ced29f76",
@@ -29,7 +29,7 @@
     "expected/r7-speaking-order.json": "d5064edd10330a2301dde2036770b70f85d2f08db8e28c0231f202171499cb17",
     "expected/r8-consecutive-quote.json": "684da672bcb73418a5243d093aa682a93c8b856d6af9cd90156e2fd293fa86c7",
     "expected/r9-received-once.json": "296890651d48b3809b13b5bb59ac4018045cfb3cd642ebdccecbf5c69f5d65b7",
-    "expected/received-only.json": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709",
+    "expected/received-only.json": "67d41e8dd1b305aa35a5818863ae118d66d048828ee7cea6bd97c38c286bee01",
     "expected/t8-control-others-spoke.json": "28f0a68a6355cbadd8c5252e15eb33ecf86c03bf9640d99336af0fb30f013ed4",
     "expected/t8-failed-referenced-words.json": "7f6e4296b7a117f116c021f65c9e6e611e620500b137536e614df3727756644b",
     "expected/t8-low-audio-silent.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
@@ -41,6 +41,7 @@
     "expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d",
     "make.py": "fa5f79d027398ad62dc2c6ecefb69c3fe07cc7fac9f38d2df6f92b1e1509dae0",
     "outcome-lines.json": "79e7b587b02e0a66800478d16c36a6a4a567ef18998f92545e453824e44f6869",
-    "verify.py": "d3d2a864c28f6b42d77e659f3b65f60a526a93dd3575d3b6a2d6f23f11cf2348"
-  }
+    "verify.py": "cfef6da6561eda417f505f32afd8decb90b9227cf6ee457b0457ada4300143b5"
+  },
+  "localChanges": "D81: replace the personal onboarding speaker with English sample Alex (alex), regenerate only onboarding metadata and update its asset/expected/tree pins; no audio or rule changes."
 }

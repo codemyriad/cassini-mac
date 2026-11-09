@@ -91,3 +91,8 @@ covers exactly the T8 cases, its catalog ids and placeholders against
 `../strings.json` where that file is beside the vectors (ux-draft), that the
 four outcome cases' lines differ pairwise, with the silent case's Details lines
 differing from the control's, and the shape each guard case relies on.
+
+D81 local sample sanitisation: the generated onboarding speaker is Alex (`alex`),
+including its embedded transcript and the main/received-only expectations. Only
+those two pre-T8 tree pins change; Opus audio packets and timing stay unchanged.
+`UPSTREAM.json` records this explicit local delta from the shared snapshot.

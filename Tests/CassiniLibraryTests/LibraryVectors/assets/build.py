@@ -59,7 +59,7 @@ def build(name, duration_ms, *, title=None, portable=False):
     tags = {} if title is None else {'TITLE':title}
     if portable:
         words = {'format':'cassini.words.v1','language':'en','items':[
-            {'speaker':'silvio','startMs':2000,'endMs':8000,'text':'This is where every meeting you record ends up. Click any word and it plays from there.'},
+            {'speaker':'alex','startMs':2000,'endMs':8000,'text':'This is where every meeting you record ends up. Click any word and it plays from there.'},
             {'speaker':'guest','startMs':9000,'endMs':13000,'text':'And I do not need to set anything up to record my own?'}]}
         word_tags = chunk('CASSINI_TX_MAIN_PAYLOAD_', words)
         ref = {'prefix':'CASSINI_TX_MAIN_PAYLOAD_','chunkCount':1,'sha256':word_tags['CASSINI_TX_MAIN_PAYLOAD_SHA256'],'rawBytes':int(word_tags['CASSINI_TX_MAIN_PAYLOAD_RAW_BYTES']),'gzipBytes':int(word_tags['CASSINI_TX_MAIN_PAYLOAD_GZIP_BYTES']),'mime':'application/vnd.cassini.transcript-words+json','encoding':'base64url+gzip+utf8json'}
@@ -67,7 +67,7 @@ def build(name, duration_ms, *, title=None, portable=False):
             'meeting':{'id':'mtg_'+digest.hexdigest(),'title':title,'createdAtUtc':'2026-10-23T13:00:00Z','durationMs':duration_ms},
             'audio':{'container':'ogg','codec':'opus','sampleRate':48000,'channels':1,'sampleCount':samples,'durationMs':duration_ms},
             'integrity':{'matchPolicy':'exact-opus-audio-v1','opusAudioSha256':digest.hexdigest(),'sampleRate':48000,'channels':1,'sampleCount':samples,'durationMs':duration_ms},
-            'speakers':[{'id':'silvio','label':'Silvio'},{'id':'guest','label':'Speaker 2'}],
+            'speakers':[{'id':'alex','label':'Alex'},{'id':'guest','label':'Speaker 2'}],
             'transcripts':[{'id':'main','role':'raw-asr','default':True,'format':'cassini.words.v1','wordCount':2,'payloadRef':ref}]}
         tags.update({
             'CASSINI_FORMAT':'org.cassini.portable-meeting/1',
