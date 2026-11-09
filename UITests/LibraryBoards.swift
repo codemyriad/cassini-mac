@@ -279,19 +279,19 @@ final class LibraryBoards: XCTestCase {
         for kind in ["absent","first","lost"] {
             let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString,"-CassiniBrowserCase",kind])
             let window = app.windows["cassini-library-window"]
-            XCTAssertTrue(window.buttons["preview-play"].waitForExistence(timeout:20),app.debugDescription)
+            XCTAssertTrue(waitForPresent(window.buttons["preview-play"],timeout:20),app.debugDescription)
             XCTAssertFalse(window.descendants(matching:.any)["capture-failure-banner"].exists)
             if kind == "lost" {
-                XCTAssertTrue(window.buttons["browser-try-again"].waitForExistence(timeout:10),app.debugDescription)
+                XCTAssertTrue(waitForPresent(window.buttons["browser-try-again"],timeout:10),app.debugDescription)
                 XCTAssertTrue(window.staticTexts["library-browser-status"].exists)
             } else { XCTAssertFalse(window.staticTexts["library-browser-status"].exists) }
             app.typeKey(",",modifierFlags:.command)
             let settings = app.windows["cassini-settings-window"]
-            XCTAssertTrue(settings.waitForExistence(timeout:10))
+            XCTAssertTrue(waitForPresent(settings,timeout:10))
             settings.toolbars.buttons["Browser companion"].click()
             if kind == "absent" {
                 let add = settings.buttons["browser-add"]
-                XCTAssertTrue(add.waitForExistence(timeout:10),app.debugDescription); XCTAssertFalse(add.isEnabled)
+                XCTAssertTrue(waitForPresent(add,timeout:10),app.debugDescription); XCTAssertFalse(add.isEnabled)
                 XCTAssertTrue(text("Browser meetings need Chrome, Edge, Brave or Chromium.",in:settings))
                 XCTAssertFalse(settings.buttons["browser-try-again"].exists)
                 app.typeKey("w",modifierFlags:.command)
@@ -299,17 +299,17 @@ final class LibraryBoards: XCTestCase {
                 budget.click()
                 XCTAssertTrue(window.buttons["preview-read-transcript"].isEnabled)
                 window.buttons["preview-read-transcript"].click()
-                XCTAssertTrue(window.buttons["Set up"].waitForExistence(timeout:15),app.debugDescription)
+                XCTAssertTrue(waitForPresent(window.buttons["Set up"],timeout:15),app.debugDescription)
                 window.buttons["Set up"].click()
-                XCTAssertTrue(window.sheets.buttons["companion-add"].waitForExistence(timeout:10),app.debugDescription)
+                XCTAssertTrue(waitForPresent(window.sheets.buttons["companion-add"],timeout:10),app.debugDescription)
                 XCTAssertFalse(window.sheets.buttons["companion-add"].isEnabled)
                 XCTAssertFalse(window.sheets.buttons["companion-connect"].exists)
                 XCTAssertFalse(text("Couldn’t connect.",in:window.sheets.firstMatch))
                 window.sheets.buttons["Not now"].click()
             } else if kind == "first" {
-                XCTAssertTrue(settings.buttons["browser-add"].waitForExistence(timeout:10)); XCTAssertTrue(settings.buttons["browser-add"].isEnabled)
+                XCTAssertTrue(waitForPresent(settings.buttons["browser-add"],timeout:10)); XCTAssertTrue(settings.buttons["browser-add"].isEnabled)
                 XCTAssertFalse(settings.buttons["browser-try-again"].exists)
-            } else { XCTAssertTrue(settings.buttons["browser-try-again"].waitForExistence(timeout:10)) }
+            } else { XCTAssertTrue(waitForPresent(settings.buttons["browser-try-again"],timeout:10)) }
             app.terminate()
         }
     }
