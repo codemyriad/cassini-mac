@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
+import XCTest
 import Darwin
 @testable import CassiniModels
 
@@ -169,6 +170,25 @@ private final class ProgressLog: @unchecked Sendable {
     private var values: [ModelDownloadProgress] = []
     func add(_ value: ModelDownloadProgress) { lock.lock(); values.append(value); lock.unlock() }
     func snapshot() -> [ModelDownloadProgress] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
+/// Progress is emitted only after the production delegate writes the bytes.
+/// A cached prefix is insufficient to signal that a resumed transfer started.
+private final class PendingTransfer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var signalled = false
+    private let minimumBytes: UInt64
+    private let event = XCTestExpectation(description:"Pending transfer wrote new bytes")
+    init(after bytes: UInt64 = 0) { minimumBytes = bytes }
+    func receive(_ progress: ModelDownloadProgress) {
+        guard !progress.isInstalled, progress.receivedBytes > minimumBytes else { return }
+        let first = lock.withLock { if signalled { return false }; signalled = true; return true }
+        if first { event.fulfill() }
+    }
+    func wait() async throws {
+        let result = await XCTWaiter.fulfillment(of:[event],timeout:2)
+        try #require(result == .completed,"The transfer must write bytes before cancellation")
+    }
 }
 
 @Suite struct ModelDownloaderTests {
@@ -407,18 +427,31 @@ private final class ProgressLog: @unchecked Sendable {
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
     }
     @Test func cancelAndRemoveWaitForTransferWithoutResurrection() async throws {
-        let server = try await Server.start("slow"), downloader = try server.downloader()
-        let task = Task { try await downloader.install(pin) }
-        for _ in 0..<200 { if server.requests.count >= 2 { break }; try await Task.sleep(for:.milliseconds(10)) }
+        let server = try await Server.start("pending"), downloader = try server.downloader()
+        let first = PendingTransfer()
+        let task = Task { try await downloader.install(pin) { first.receive($0) } }
+        defer { task.cancel() }
+        try await first.wait()
         await downloader.cancel(pin)
-        _ = await fails { _ = try await task.value }
+        let cancelled = await fails { _ = try await task.value }
+        #expect(cancelled is CancellationError || (cancelled as? URLError)?.code == .cancelled)
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
-        let task2 = Task { try await downloader.install(pin) }
-        try await Task.sleep(for:.milliseconds(30))
+        let cache = server.appData.appendingPathComponent("model-downloads/" + pin.id + "/" + pin.sourceSHA256)
+        let files = try FileManager.default.contentsOfDirectory(at:cache,includingPropertiesForKeys:nil)
+        let partial = try #require(files.first { $0.pathExtension == "part" })
+        let size = try ModelFiles.size(partial)
+        let prefix = try #require(size)
+        #expect(prefix > 0)
+        let second = PendingTransfer(after:prefix)
+        let task2 = Task { try await downloader.install(pin) { second.receive($0) } }
+        defer { task2.cancel() }
+        try await second.wait()
+        #expect(server.requests.contains { $0["range"] as? String == "bytes=\(prefix)-" })
         try await downloader.remove(pin)
-        _ = await fails { _ = try await task2.value }
+        let removed = await fails { _ = try await task2.value }
+        #expect(removed is CancellationError || (removed as? URLError)?.code == .cancelled)
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
-        #expect(!FileManager.default.fileExists(atPath:server.appData.appendingPathComponent("model-downloads/" + pin.id + "/" + pin.sourceSHA256).path))
+        #expect(!FileManager.default.fileExists(atPath:cache.path))
     }
     @Test func revisionPinMustBePresentAndOriginalInstallSurvivesBadUpdate() async throws {
         let server = try await Server.start("normal"), downloader = try server.downloader()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Loopback-only model contract fixture; never contacts dist or any other host."""
-import argparse,hashlib,http.server,json,socket,socketserver,sys,threading,time
+import argparse,hashlib,http.server,json,socket,socketserver,sys,threading
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--scenario',required=True);p.add_argument('--log',type=Path,required=True);p.add_argument('--forbid-dns',action='store_true')
 a=p.parse_args();root=Path(__file__).resolve().parent
@@ -64,9 +64,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
    # The deadline fails the fixture; elapsed time never supplies the event.
    if not prefix_persisted.wait(timeout=10):raise TimeoutError('client did not acknowledge a persisted prefix')
    self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
-  if a.scenario=='slow':
+  if a.scenario=='pending':
+   # Publish real progress but never complete the response: cancellation must
+   # close the client's socket. A deadline fails the fixture, never releases it.
    try:
-    for start in range(offset,len(data),1024):self.wfile.write(data[start:start+1024]);self.wfile.flush();time.sleep(.01)
+    self.wfile.write(data[offset:offset+65536]);self.wfile.flush()
+    self.connection.settimeout(10)
+    if self.connection.recv(1):raise AssertionError('unexpected bytes while transfer is pending')
    except (BrokenPipeError,ConnectionResetError):pass
   else:
    try:self.wfile.write(data[offset:])
