@@ -30,6 +30,7 @@ public actor ModelDownloader {
     private let dataRoot: URL
     private let origin: ModelOrigin
     private let budget: @Sendable (URL) throws -> ModelDiskSpace
+    private let removalLockWaiting: (@Sendable () -> Void)?
     /// D54: sent on every request (manifest, NOTICE, artifacts and any redirect hop).
     private let userAgent: String
     private struct Operation { let id: UUID; let task: Task<URL,Error> }
@@ -40,10 +41,13 @@ public actor ModelDownloader {
         dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent
         origin = try! ModelOrigin(URL(string:"https://dist.gocassini.com")!)
         budget = ModelDiskSpace.measured
+        removalLockWaiting = nil
     }
     // Loopback HTTP is available only to module tests, never the app consumer.
-    init(appData: URL, fixtureOrigin: URL, userAgent: String, budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = ModelDiskSpace.measured) throws {
+    init(appData: URL, fixtureOrigin: URL, userAgent: String, budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = ModelDiskSpace.measured,
+         removalLockWaiting: (@Sendable () -> Void)? = nil) throws {
         dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent; origin = try ModelOrigin(fixtureOrigin,fixture:true); self.budget = budget
+        self.removalLockWaiting = removalLockWaiting
     }
     public func plan(_ pin: ModelPin) async throws -> ModelPlan {
         guard pin.valid else { throw ModelDownloadError.manifest }
@@ -86,7 +90,7 @@ public actor ModelDownloader {
         try ModelFiles.directory(dataRoot)
         let modelRoot = dataRoot.appendingPathComponent("models/" + pin.id,isDirectory:true)
         try ModelFiles.directory(modelRoot)
-        let lock = try await Self.removalLock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock")); defer { close(lock) }
+        let lock = try await Self.removalLock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock"),waiting:removalLockWaiting); defer { close(lock) }
         let installed = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
         if FileManager.default.fileExists(atPath:installed.path) {
             try ModelFiles.directory(installed)
@@ -111,13 +115,14 @@ public actor ModelDownloader {
         guard flock(fd,LOCK_EX | LOCK_NB) == 0 else { close(fd); throw ModelDownloadError.busy }
         return fd
     }
-    private static func removalLock(_ file: URL) async throws -> Int32 {
+    private static func removalLock(_ file: URL, waiting: (@Sendable () -> Void)?) async throws -> Int32 {
         let deadline = DispatchTime.now().uptimeNanoseconds + 5_000_000_000
         while true {
             try Task.checkCancellation()
             do { return try lock(file) }
             catch ModelDownloadError.busy {
                 guard DispatchTime.now().uptimeNanoseconds < deadline else { throw ModelDownloadError.busy }
+                waiting?() // Internal fixture observer; public app initialisation disables it.
                 try await Task.sleep(for:.milliseconds(50))
             }
         }
