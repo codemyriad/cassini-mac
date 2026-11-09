@@ -1,0 +1,33 @@
+name: PR181 current positive end after reload
+'on':
+  push:
+    branches: [ci/181-reload-end-proof]
+  workflow_dispatch: {}
+concurrency:
+  group: 181-reload-end-proof-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Preserve hosted proof runner
+        run: cp scripts/181-reload-end-proof.py "$RUNNER_TEMP/181-reload-end-proof.py"
+      - uses: actions/checkout@v5
+        with:
+          ref: 4e80d3a55755ecfdf491752e94268c959514aafc
+          fetch-depth: 0
+      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Actual old-code failures and fixed consumer regressions
+        run: python3 "$RUNNER_TEMP/181-reload-end-proof.py"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: 181-reload-end-proof
+          path: |
+            build/181-reload-end-proof/*.log
+            build/181-reload-end-proof/*.json
+          retention-days: 14
