@@ -13,11 +13,16 @@ import subprocess
 import tarfile
 import urllib.request
 
+DOWNLOAD_TIMEOUT = 60  # Bound stalled connects and socket reads.
 VERSION = '2.10.1'
 SPM_SHA256 = '4c2e48a3e50ebcc2c88a58a4c7264a1a99c3c31857ce754357afb9cdb323022a'
 SPM_ASSET_API = 'https://api.github.com/repos/sparkle-project/Sparkle/releases/assets/673946482'
 SPM_URL = 'https://github.com/sparkle-project/Sparkle/releases/download/' + VERSION + '/Sparkle-for-Swift-Package-Manager.zip'
 SHA256 = '1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27'
+
+def _download(url, destination):
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as source, destination.open('wb') as output:
+        shutil.copyfileobj(source, output)
 
 def fetch(destination):
     destination.mkdir(parents=True, exist_ok=True)
@@ -25,7 +30,7 @@ def fetch(destination):
     if not archive.exists() or hashlib.sha256(archive.read_bytes()).hexdigest() != SHA256:
         temporary = archive.with_suffix('.download')
         try:
-            urllib.request.urlretrieve('https://github.com/sparkle-project/Sparkle/releases/download/' + VERSION + '/' + archive.name, temporary)
+            _download('https://github.com/sparkle-project/Sparkle/releases/download/' + VERSION + '/' + archive.name, temporary)
             if hashlib.sha256(temporary.read_bytes()).hexdigest() != SHA256:
                 raise ValueError('Sparkle distribution digest mismatch')
             temporary.replace(archive)
@@ -63,15 +68,14 @@ def fetch_spm(destination, cache):
         temporary = Path(name)
         try:
             try:
-                urllib.request.urlretrieve(SPM_URL, temporary)
+                _download(SPM_URL, temporary)
             except urllib.error.HTTPError as error:
                 if not 500 <= error.code < 600:
                     raise
                 # The release URL can return a gateway error. Fetch the same
                 # immutable asset through GitHub's API, still checking the pin.
                 request = urllib.request.Request(SPM_ASSET_API, headers={'Accept': 'application/octet-stream'})
-                with urllib.request.urlopen(request, timeout=60) as source, temporary.open('wb') as output:
-                    shutil.copyfileobj(source, output)
+                _download(request, temporary)
             if hashlib.sha256(temporary.read_bytes()).hexdigest() != SPM_SHA256:
                 raise ValueError('Sparkle SPM digest mismatch')
             temporary.replace(archive)

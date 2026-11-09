@@ -569,6 +569,9 @@ public final class RecordingSession {
         // F_FULLFSYNC drains the whole device queue, including earlier fsyncs on
         // that device (Darwin fcntl(2)). Flush every WAV first, then issue one
         // device barrier per device instead of draining it once per track.
+        // This assumes a local-disk filesystem whose F_FULLFSYNC flushes the
+        // whole device cache. FUSE/network volumes may provide weaker guarantees;
+        // st_dev grouping does not strengthen their filesystem's durability.
         // Metadata must still wait for every device barrier to succeed.
         var devices: [dev_t: WAVWriter] = [:]
         for writer in writers.values {
