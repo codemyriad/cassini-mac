@@ -44,9 +44,12 @@ def main(manifest_path, results_path):
         session_id, track_id = key.split('/')
         if key not in manifest['rec16']:
             continue  # a missing track fails in the checker, not here
-        legs['rec16'][key] = [placement.onset(stream(manifest['rec16'][key]), 16000, e) for e in want['rec16']['frames']]
+        recognizer = stream(manifest['rec16'][key])
+        legs['rec16'][key] = [placement.onset(recognizer, 16000, e) for e in want['rec16']['frames']]
         if session_id in manifest['mix48']:
-            mix = mixes.setdefault(session_id, stream(manifest['mix48'][session_id]))
+            if session_id not in mixes:
+                mixes[session_id] = stream(manifest['mix48'][session_id])
+            mix = mixes[session_id]
             legs['mix48'][key] = [placement.onset(mix, 48000, e) for e in want['mix48']['frames']]
         played = manifest['playback'].get(key)
         if played == 'refused':
@@ -56,7 +59,8 @@ def main(manifest_path, results_path):
             track = next(t for t in sessions[session_id]['tracks'] if t['id'] == track_id)
             rate, at = played['rate'], track['startOffsetMs'] or 0
             frames = [placement.frame(at, rate) + ms * rate // 1000 for ms in track['burstsMs']]
-            legs['playback'][key] = [placement.onset(stream(played['stream']), rate, e) for e in frames]
+            playback = stream(played['stream'])
+            legs['playback'][key] = [placement.onset(playback, rate, e) for e in frames]
     results = {'vector': golden['vector'], 'protocolCommit': manifest['protocolCommit'], 'app': manifest['app'], 'legs': legs}
     Path(results_path).write_text(json.dumps(results, indent=1, sort_keys=True) + '\n')
     command = [sys.executable, '-I', str(golden_dir / 'placement.py'), 'check']
