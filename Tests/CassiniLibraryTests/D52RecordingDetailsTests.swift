@@ -23,6 +23,32 @@ struct D52RecordingDetailsTests {
     }
     private func text(_ line: RecordingDetailsReport.Line, _ language: CassiniLanguage = .en) -> String { line.render(language:language,locale:gb) }
 
+    @Test func genericMixedRouteNeverDisplaysAnAdapterIDInAnyLanguage() throws {
+        let expected: [(CassiniLanguage,String)] = [
+            (.en,"This call mixed all remote voices into one stream, so Cassini recorded them from the computer’s audio."),
+            (.it,"Questa chiamata univa tutte le voci remote in un unico flusso, quindi Cassini le ha registrate dall’audio del computer."),
+            (.fr,"Cet appel mélangeait toutes les voix distantes en un seul flux, donc Cassini les a enregistrées depuis le son de l’ordinateur."),
+            (.es,"Esta llamada mezclaba todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del ordenador."),
+            (.ptBR,"Esta chamada misturava todas as vozes remotas em um único fluxo, então o Cassini as gravou pelo áudio do computador."),
+            (.ptPT,"Esta chamada misturava todas as vozes remotas num único fluxo, por isso o Cassini gravou-as a partir do áudio do computador.")
+        ]
+        #expect(expected.count == CassiniLanguage.allCases.count)
+        for adapter in ["webrtc-interactive","future-engine/v9","Synthetic call"] {
+            let route = try JSONParser.parse(JSONSerialization.data(withJSONObject:["source":"system","reason":"mixedSiteSignal","site":adapter]))
+            let value = RecordingDetailsReport(.init(lifecycle:.saved,title:"Mixed call",session:nil,captureRecord:nil,storedEnd:nil,
+                sourceSpansSeparated:false,othersRoute:route))
+            let line = try #require(value.notes.first)
+            #expect(value.notes.count == 1)
+            #expect(line.id == "details.othersRoute.mixedGeneric")
+            #expect(line.values.isEmpty)
+            for (language,want) in expected {
+                let rendered = text(line,language)
+                #expect(rendered == want)
+                #expect(!rendered.contains(adapter))
+            }
+        }
+    }
+
     @Test func fallbackCausesUseActualSystemTransitionsAndSurvivePortableRecords() throws {
         for code in ["frameError","frameClosed","tabClosed","nativeHostError","startupError","transportClosed","lifecycle","futureCause",""] {
             let cause = code.isEmpty ? "" : ",\"cause\":\"\(code)\""
