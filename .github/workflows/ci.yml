@@ -247,6 +247,8 @@ jobs:
       timeout-minutes: 8
       env:
         CASSINI_FIXTURE_DIAGNOSTICS: ${{ github.workspace }}/build/model-bootstrap
+        # Bound cold interpreter startup only; ready servers/tests remain concurrent.
+        CASSINI_FIXTURE_BOOTSTRAP_LIMIT: '2'
       run: |
         set -o pipefail
         swift test --skip-build --filter ModelDownloaderTests 2>&1 | tee downloader.log
