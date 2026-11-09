@@ -71,20 +71,79 @@ public enum TranscriptRendering {
         }
         return out
     }
+    private static func firstEndingAfter(_ spans: [Span], _ time: Int64) -> Int {
+        var lo = 0, hi = spans.count
+        while lo < hi {
+            let mid = lo + (hi-lo)/2
+            if spans[mid].end <= time { lo = mid+1 } else { hi = mid }
+        }
+        return lo
+    }
     private static func overlap(_ a: [Span], _ b: [Span]) -> Int64 {
-        var i = 0, j = 0, total: Int64 = 0
+        guard let first = b.first else { return 0 }
+        var i = firstEndingAfter(a,first.start)
+        guard i < a.count else { return 0 }
+        var j = firstEndingAfter(b,a[i].start), total: Int64 = 0
         while i < a.count && j < b.count {
             total += max(0,min(a[i].end,b[j].end) - max(a[i].start,b[j].start))
             if a[i].end < b[j].end { i += 1 } else { j += 1 }
         }
         return total
     }
-    private static func matches(_ text: String, _ pattern: String) -> Bool {
-        text.range(of:pattern,options:.regularExpression) != nil
+    private struct BlockStarts {
+        let values: [Int64]
+        let lastPositions: [Int]
+        init(_ blocks: [Int], _ spans: [[Span]]) {
+            let entries = blocks.enumerated().compactMap { position,block in
+                spans[block].first.map { (start:$0.start,position:position) }
+            }.sorted { $0.start < $1.start }
+            values = entries.map(\.start)
+            // Prefix maxima preserve the viewer's last matching block position,
+            // even when leading zero-duration words reorder audible starts.
+            var last = -1
+            lastPositions = entries.map { last = max(last,$0.position); return last }
+        }
+        func bound(_ time: Int64, inclusive: Bool) -> Int {
+            var lo = 0, hi = values.count
+            while lo < hi {
+                let mid = lo + (hi-lo)/2
+                if values[mid] < time || inclusive && values[mid] == time { lo = mid+1 } else { hi = mid }
+            }
+            return lo
+        }
+        func before(_ time: Int64) -> Int? {
+            let end = bound(time,inclusive:false)
+            return end == 0 ? nil : lastPositions[end-1]
+        }
+        func inside(_ start: Int64, _ end: Int64) -> Int {
+            bound(end,inclusive:true) - bound(start,inclusive:true)
+        }
     }
-    private static func wordLike(_ text: String) -> Bool { matches(text,"[\\p{L}\\p{N}]") }
+    private static func wordLike(_ text: String) -> Bool {
+        text.unicodeScalars.contains {
+            switch $0.properties.generalCategory {
+            case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+                 .decimalNumber, .letterNumber, .otherNumber: return true
+            default: return false
+            }
+        }
+    }
+    private static let terminalMarks: Set<UInt32> = [46,63,33,44,59,58,0x2026,0x3002,0xFF0E,0xFF01,0xFF1F,0xFF1B,0xFF1A,0xFF0C,0x3001,0x0964,0x0965,0x061B,0x061F]
+    private static let terminalClosers: Set<UInt32> = [41,93,125,34,39,0x2019,0x201D,0x00BB,0x203A,0x300D,0x300F,0x3009,0x300B]
+    private static let sentenceMarks: Set<UInt32> = [46,33,63]
+    private static let sentenceClosers: Set<UInt32> = [34,39,41,93]
+    private static func endsWith(_ text: String, marks: Set<UInt32>, closers: Set<UInt32>) -> Bool {
+        for scalar in text.unicodeScalars.reversed() where !closers.contains(scalar.value) {
+            return marks.contains(scalar.value)
+        }
+        return false
+    }
     private static func terminal(_ text: String) -> Bool {
-        matches(text,"[.?!,;:…。，！？；：、।॥؛؟][)\\]}\"'’”»›」』〉》]*$")
+        endsWith(text,marks:terminalMarks,closers:terminalClosers)
+    }
+    /// Only the literal producer boolean true may bypass timing repair.
+    public static func endsBoundedByAudio(provenance: JSON?) -> Bool {
+        provenance?["wordTimings"]?["endsBoundedByAudio"] == .bool(true)
     }
     private static func candidates(_ indices: [Int], _ words: [Word]) -> [[Int]] {
         var out: [[Int]] = [], i = 0
@@ -110,7 +169,7 @@ public enum TranscriptRendering {
             if let p = grouped.last {
                 let gap = max(0,w.startMs-p.endMs)
                 let target = p.wordIndices.count >= 96 || p.endMs-p.startMs >= 45_000
-                let sentence = matches(words[p.wordIndices.last!].text,"[.!?][\"')\\]]*$")
+                let sentence = endsWith(words[p.wordIndices.last!].text,marks:sentenceMarks,closers:sentenceClosers)
                 if p.speaker == w.speaker && gap <= 4200 && w.endMs-p.startMs <= 90_000 && p.wordIndices.count+1 <= 140 && !(target && (sentence || gap >= 2200)) {
                     grouped[grouped.count-1].wordIndices.append(i)
                     grouped[grouped.count-1].endMs = w.endMs
@@ -191,6 +250,7 @@ public enum TranscriptRendering {
             }
         }
         let runSpans = runs.map { union($0.blocks.flatMap { spans[$0] }) }
+        let blockStarts = runs.map { $0.blocks.count > 1 ? BlockStarts($0.blocks,spans) : nil }
         var candidates: [Int:(host:Int,after:Int)] = [:]
         let byStart = runs.indices.sorted { runs[$0].startMs == runs[$1].startMs ? $0 < $1 : runs[$0].startMs < runs[$1].startMs }
         var hosts: [Int] = [], pending = 0
@@ -205,9 +265,9 @@ public enum TranscriptRendering {
             var best: (end:Int64,span:Int64,host:Int,after:Int)?
             for h in hosts.sorted() where runs[h].speaker != runs[r].speaker && runs[r].endMs <= runs[h].endMs {
                 let host = runs[h]
-                guard let before = host.blocks.lastIndex(where:{ spans[$0].first.map { $0.start < runs[r].startMs } ?? false }), before+1 < host.blocks.count,
+                guard let starts = blockStarts[h], let before = starts.before(runs[r].startMs), before+1 < host.blocks.count,
                       let left = spans[host.blocks[before]].last, let right = spans[host.blocks[before+1]].first else { continue }
-                let inside = host.blocks.filter { spans[$0].first.map { $0.start > runs[r].startMs && $0.start <= runs[r].endMs } ?? false }.count
+                let inside = starts.inside(runs[r].startMs,runs[r].endMs)
                 guard inside <= 1 && runs[r].startMs-left.end <= 500 && right.start-runs[r].endMs <= 500 else { continue }
                 let duration = host.endMs-host.startMs
                 if best == nil || left.end > best!.end || (left.end == best!.end && duration > best!.span) {
@@ -219,7 +279,7 @@ public enum TranscriptRendering {
         for (r,c) in candidates where candidates[c.host] == nil { runs[r].host = c.host; runs[r].afterBlock = c.after }
         var collisions: [(a:Int,b:Int,ms:Int64)] = []
         var sounding: [Int] = []
-        for j in byStart {
+        for j in byStart where !runSpans[j].isEmpty {
             sounding.removeAll { runs[$0].endMs <= runs[j].startMs }
             for k in sounding {
                 let a = min(k,j), b = max(k,j)
@@ -230,7 +290,11 @@ public enum TranscriptRendering {
             sounding.append(j)
         }
         // Viewer breaks equal-overlap ties by the first block's canonical id.
-        collisions.sort { $0.ms == $1.ms ? blocks[runs[$0.a].blocks[0]].id < blocks[runs[$1.a].blocks[0]].id : $0.ms > $1.ms }
+        collisions.sort {
+            if $0.ms != $1.ms { return $0.ms > $1.ms }
+            let a0 = blocks[runs[$0.a].blocks[0]].id, a1 = blocks[runs[$1.a].blocks[0]].id
+            return a0 == a1 ? $0.b < $1.b : a0 < a1
+        }
         for c in collisions {
             for (a,b) in [(c.a,c.b),(c.b,c.a)] where !runs[a].over.contains(runs[b].speaker) { runs[a].over.append(runs[b].speaker) }
         }

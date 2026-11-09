@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
-import CassiniKit
+@testable import CassiniKit
 @testable import CassiniLibrary
 
 struct D84InterjectionFixtureTests {
@@ -84,6 +84,125 @@ struct D84InterjectionFixtureTests {
         #expect(rows[1].startMs == 5000)
         input[1].lowConfidenceSpeaker = false
         #expect(!TranscriptRendering.render(input).rows[0].crosstalk)
+    }
+
+    @Test func manifestAttestationRequiresLiteralTrue() throws {
+        let url = try #require(Bundle.module.url(forResource:"001-minimal-v1",withExtension:"opus",subdirectory:"LibraryVectors/assets"))
+        var file = try CassiniReader.read(Data(contentsOf:url))
+        let original = try #require(file.manifest)
+        let values: [JSON?] = [nil,.null,.object([]),.object([("wordTimings",.null)]),.object([("wordTimings",.object([]))])] +
+            [JSON.bool(true),.bool(false),.string("true"),.number("1"),.null].map {
+                .object([("wordTimings",.object([("endsBoundedByAudio",$0)]))])
+            }
+        for (index,provenance) in values.enumerated() {
+            var members = try #require(original.raw.object).filter { $0.0 != "provenance" }
+            if let provenance { members.append(("provenance",provenance)) }
+            let manifest = try ManifestParser.parse(.object(members),formatMajor:1)
+            let expected = index == 5
+            #expect(manifest.wordEndsBoundedByAudio == expected)
+            #expect(TranscriptRendering.endsBoundedByAudio(provenance:provenance) == expected)
+            file.manifest = manifest
+            let meeting = MeetingPresentation.external(file,url:url)
+            #expect(meeting.wordEndsBoundedByAudio == expected)
+            let rendered = TranscriptRendering.render([w("a",0,5000,"Measured．")],endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
+            #expect(rendered.words[0].endMs == (expected ? 5000 : 1000))
+        }
+    }
+    @Test(arguments:["Word．","Word．」","Ⅻ．","²．","語．"])
+    func fullwidthStopRepairsWordAndNumberCategories(_ text: String) {
+        let input = [w("a",0,5000,text)]
+        let repaired = TranscriptRendering.render(input)
+        #expect(repaired.words[0].endMs == 1000)
+        #expect(repaired.words[0].text == text)
+        #expect(TranscriptRendering.render(input,endsBoundedByAudio:true).words == input)
+    }
+    @Test func zeroDurationWordsHaveNoAudibleOverlapOrNesting() {
+        let examples = [
+            [w("a",0,1000,"Host"),w("b",100,100,"um"),w("b",500,500,"uh")],
+            [w("a",0,100,"Before"),w("b",100,100,"um"),w("a",200,1000,"after"),w("b",500,500,"uh")]
+        ]
+        for input in examples {
+            let result = TranscriptRendering.render(input)
+            #expect(result.rows.allSatisfy { $0.over.isEmpty && $0.members.allSatisfy { $0.kind == "words" } })
+            #expect(result.runs.filter { $0.speaker == "b" }.allSatisfy { $0.host == nil && $0.blocks.count == 1 })
+            #expect(result.rows.flatMap(\.members).flatMap(\.wordIndices).sorted() == Array(input.indices))
+        }
+    }
+    @Test func equalOverlapUsesCanonicalRightRunOrder() {
+        // B's zero-duration lead sorts its block before C, but its first sound
+        // comes after C. Equal collisions still use canonical B/C run order.
+        let input = [w("a",0,3000,"Host"),w("b",100,100,"lead"),w("b",1000,1500,"Later"),w("c",200,700,"Earlier")]
+        let result = TranscriptRendering.render(input,endsBoundedByAudio:true)
+        #expect(result.rows.first?.over == ["b","c"])
+    }
+    @Test func hostSearchPreservesLastBlockPositionWhenAudibleStartsReorder() throws {
+        let input = [w("a",0,0,"lead"),w("a",1000,1100,"first"),
+                     w("c",100,100,"lead"),w("c",1050,1080,"touch"),
+                     w("a",200,200,"lead"),w("a",900,1000,"second"),
+                     w("b",1050,1080,"aside"),w("a",1100,1500,"third")]
+        let result = TranscriptRendering.render(input,endsBoundedByAudio:true)
+        let host = try #require(result.runs.first { $0.speaker == "a" })
+        let aside = try #require(result.runs.first { $0.speaker == "b" })
+        #expect(host.blocks.count == 3)
+        #expect(aside.host == host.id && aside.afterBlock == host.blocks[1])
+    }
+    @Test func elevenHourPresenterWithBackchannelsAndCompetingRemarksIsBounded() throws {
+        let seconds = 11*60*60
+        var input: [TranscriptRendering.Word] = []
+        input.reserveCapacity(seconds*4)
+        for second in 0..<seconds {
+            let t = Int64(second)*1000
+            input.append(w("presenter",t,t+480,"word"))
+            input.append(w("presenter",t+500,t+980,"word"))
+            if second < seconds-1 { input.append(w("listener",t+900,t+1100,"Yes.")) }
+            if second.isMultiple(of:10) { input.append(w("competing",t+200,t+2600,"remark")) }
+        }
+        input = input.enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
+        let clock = ContinuousClock()
+        let began = clock.now
+        // Repair is enabled: this also guards the former per-word regex cost.
+        let result = TranscriptRendering.render(input)
+        let elapsed = began.duration(to:clock.now)
+        #expect(elapsed < .seconds(15),"11-hour render exceeded its generous debug-build bound: \(elapsed)")
+        let host = try #require(result.runs.first { $0.speaker == "presenter" })
+        #expect(host.blocks.count >= seconds)
+        let backchannels = result.runs.filter { $0.speaker == "listener" }
+        #expect(backchannels.count == seconds-1 && backchannels.allSatisfy { $0.host == host.id })
+        let competing = result.runs.filter { $0.speaker == "competing" }
+        #expect(competing.count == seconds/10 && competing.allSatisfy { $0.host == nil && $0.over.contains("presenter") })
+        #expect(result.rows.first?.over == ["competing"])
+        let rendered = result.rows.flatMap(\.members).flatMap(\.wordIndices)
+        #expect(rendered.count == input.count && Set(rendered).count == input.count)
+        #expect(result.words == input,"Measured spans and stored text are unchanged")
+        print("D84 eleven-hour render: \(input.count) words, \(elapsed)")
+    }
+
+    @Test(arguments:[true,false]) func embeddedAttestationSurvivesReadAndImport(_ attested: Bool) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("D84-Provenance-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at:root) }
+        let asset = try #require(Bundle.module.url(forResource:"001-minimal-v1",withExtension:"opus",subdirectory:"LibraryVectors/assets"))
+        let base = try Data(contentsOf:asset)
+        let original = try CassiniReader.read(base)
+        var manifest = try #require(original.manifest?.raw)
+        manifest = try manifest.setting("provenance",to:.object([("wordTimings",.object([("endsBoundedByAudio",.bool(attested))]))]))
+        let speaker = try #require(original.manifest?.speakers.first?.id)
+        let body = try JSONSerialization.data(withJSONObject:["items":[["speaker":speaker,"startMs":0,"endMs":5000,"text":"Measured．"]]])
+        let source = root.appendingPathComponent("Measured.opus")
+        _ = try OpusStreamFile.rewrite(base,tags:PortableMeetingTags.make(manifest:manifest,transcript:body,wordCount:1),to:source)
+        let file = try CassiniReader.read(contentsOf:source)
+        #expect(file.state == .ok && file.manifest?.wordEndsBoundedByAudio == attested)
+        #expect(MeetingPresentation.external(file,url:source).wordEndsBoundedByAudio == attested)
+        let library = root.appendingPathComponent("Imported")
+        let imported = try LibraryImport.copy(source,into:library)
+        #expect(imported.state.transcript == .done && imported.wordEndsBoundedByAudio == attested)
+        // An unrelated sidecar transcription cannot inherit the original's flag.
+        try body.write(to:imported.folder.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
+            $0["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]]
+        }
+        let sidecar = try #require(LibraryScanner(root:library).scan().meetings.first)
+        #expect(sidecar.state.transcript == .done && !sidecar.wordEndsBoundedByAudio)
     }
 
 }
