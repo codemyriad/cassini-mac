@@ -285,20 +285,30 @@ final class ControlServiceTests: XCTestCase {
     }
     func testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
-        let admission = Admission()
-        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },canStart:{ admission.read() })
+        let admission = Admission(), frames = SignalFrameWaiter()
+        let ready = expectation(description:"Blocked inventory reconciled")
+        frames.expect("status",ready)
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },canStart:{ admission.read() },received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:true)
         let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
         try hello(client); try send(status(false),client)
-        XCTAssertThrowsError(try receive(client,seconds:0.2))
+        wait(for:[ready],timeout:2)
         let issued = expectation(description:"Blocked manual start returns no requests")
         service.recordAll(microphone:true) { requests in XCTAssertTrue(requests.isEmpty); issued.fulfill() }
         wait(for:[issued],timeout:2)
-        XCTAssertThrowsError(try receive(client,seconds:0.2))
+        // Stop the automatic timer before reopening admission, so every recovery
+        // Start uses the new microphone choice, even if a timer fires between calls.
+        service.setAutoRecord(false,microphone:true); service.tickHeartbeats()
         admission.set(true)
-        service.setAutoRecord(true,microphone:true)
-        XCTAssertEqual(try receive(client)["action"]?.string,"start")
+        service.setAutoRecord(true,microphone:false)
+        let recovery = try receive(client)
+        XCTAssertEqual(recovery["type"]?.string,"command")
+        XCTAssertEqual(recovery["action"]?.string,"start")
+        XCTAssertEqual(recovery["tabId"]?.int,2)
+        // One ordered writer carries every command. A wrongly issued blocked
+        // Start (microphone=true) would arrive before this recovery barrier.
+        XCTAssertEqual(recovery["microphone"]?.bool,false)
     }
     func temporary() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniServiceTests-" + UUID().uuidString)
