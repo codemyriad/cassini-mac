@@ -20,6 +20,8 @@ jobs:
           runtime: 'true'
       - name: Install build tools
         run: brew install xcodegen
+      - name: Verify pinned Sparkle ZIP before package resolution
+        run: python3 scripts/fetch-sparkle.py --spm-cache "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
       # No generated Library fixtures here: they belong to the Debug screenshot products only.
       - run: xcodegen generate
       - name: Build universal Release app once

@@ -93,7 +93,7 @@ final class SourceEventsTests: XCTestCase {
         try session.finish()
     }
     func testProcessCrashPublishesFallbackTrackAndEventTogetherAtEveryBoundary() throws {
-        for phase in ["filesCreated","audioSynchronized","metadataSynchronized","metadataPublished"] {
+        for phase in ["filesCreated","audioFileSynchronized","audioDeviceSynchronized","audioSynchronized","metadataSynchronized","metadataPublished"] {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniCaptureCrash-" + UUID().uuidString)
             try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
             defer { try? FileManager.default.removeItem(at:root) }

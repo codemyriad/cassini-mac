@@ -136,6 +136,14 @@ jobs:
     timeout-minutes: 15
     steps:
     - uses: actions/checkout@v5
+    # D66: the cold-host diagnostic42584372604 records mds_stores at182% CPU
+    # after restoring the SDKs. Apply the same disposable-runner precondition
+    # as browser audio CI before extraction queues more indexing work.
+    - name: Disable Spotlight indexing on the disposable native runner
+      run: |
+        test "$RUNNER_ENVIRONMENT" = github-hosted
+        sudo mdutil -a -i off
+        mdutil -a -s
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'

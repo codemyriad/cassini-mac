@@ -156,8 +156,11 @@ def measure(app: Path, output: Path):
             process = top = None
             try:
                 process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=stderr, text=True)
-                top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-pid', str(process.pid),
-                                        '-stats', 'pid,cpu'], stdout=top_log, stderr=subprocess.STDOUT)
+                (output/f'{case}.pid.txt').write_text(str(process.pid)+'\n')
+                # Keep the busiest host processes: probe-only telemetry hid the
+                # Spotlight/OS workload when a display interval exceeded100ms.
+                top = subprocess.Popen(['/usr/bin/top', '-l', '90', '-s', '1', '-o', 'cpu', '-n', '20',
+                                        '-stats', 'pid,command,cpu,mem'], stdout=top_log, stderr=subprocess.STDOUT)
                 stdout, _ = process.communicate(timeout=200 if case == 'B' else 85)
             finally:
                 if process and process.poll() is None:

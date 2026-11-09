@@ -179,7 +179,7 @@ public enum RecordingError: LocalizedError {
     }
 }
 
-@_spi(Testing) public enum RecordingCheckpointPhase: String { case filesCreated, audioSynchronized, metadataSynchronized, metadataPublished }
+@_spi(Testing) public enum RecordingCheckpointPhase: String { case filesCreated, audioFileSynchronized, audioDeviceSynchronized, audioSynchronized, metadataSynchronized, metadataPublished }
 
 /// A serially accessed, incremental recording. Audio is ordinary PCM WAV; the manifest
 /// preserves source provenance and offsets without claiming that track IDs are people.
@@ -566,7 +566,20 @@ public final class RecordingSession {
         encoder.dateEncodingStrategy = .iso8601
         if let captureOutcomeSource { let (outcome,tracks) = captureOutcomeSource(manifest); setCaptureOutcome(outcome,tracks:tracks) }
         // Commit audio before metadata so frames never advertise unsynced audio.
-        for writer in writers.values { try writer.synchronize() }
+        // F_FULLFSYNC drains the whole device queue, including earlier fsyncs on
+        // that device (Darwin fcntl(2)). Flush every WAV first, then issue one
+        // device barrier per device instead of draining it once per track.
+        // Metadata must still wait for every device barrier to succeed.
+        var devices: [dev_t: WAVWriter] = [:]
+        for writer in writers.values {
+            try writer.synchronizeFile()
+            try checkpointObserver?(.audioFileSynchronized)
+            devices[try writer.device()] = writer
+        }
+        for writer in devices.values {
+            try writer.synchronize()
+            try checkpointObserver?(.audioDeviceSynchronized)
+        }
         try checkpointObserver?(.audioSynchronized)
         let temporary = directory.appendingPathComponent(".session-\(UUID().uuidString).tmp")
         defer { try? FileManager.default.removeItem(at: temporary) }
@@ -639,6 +652,16 @@ private final class WAVWriter {
         string("data"); number(bytes)
         try handle.seek(toOffset: 0)
         try handle.write(contentsOf: header)
+    }
+
+    func synchronizeFile() throws {
+        guard fsync(handle.fileDescriptor) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+
+    func device() throws -> dev_t {
+        var info = stat()
+        guard fstat(handle.fileDescriptor, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        return info.st_dev
     }
 
     func synchronize() throws { try durableSync(handle) }

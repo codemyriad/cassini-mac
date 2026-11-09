@@ -13,7 +13,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
     }
     func testInitialStandInPreservesZero() async throws { try await exercise(atMs:0) }
     func testFailedCheckpointNeverAuthorizesResume() async throws {
-        for phase in [RecordingCheckpointPhase.audioSynchronized,.metadataSynchronized,.metadataPublished] {
+        for phase in [RecordingCheckpointPhase.audioFileSynchronized,.audioDeviceSynchronized,.audioSynchronized,.metadataSynchronized,.metadataPublished] {
             try await exercise(failing:phase,atMs:96_027.15)
         }
     }
