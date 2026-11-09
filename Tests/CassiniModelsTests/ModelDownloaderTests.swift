@@ -141,7 +141,10 @@ private final class Server: @unchecked Sendable {
         }
     }
     var appData: URL { root.appendingPathComponent("data") }
-    func downloader(budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = enough) throws -> ModelDownloader { try .init(appData:appData,fixtureOrigin:origin,userAgent:agent,budget:budget) }
+    func downloader(budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = enough,
+                    removalLockWaiting: (@Sendable () -> Void)? = nil) throws -> ModelDownloader {
+        try .init(appData:appData,fixtureOrigin:origin,userAgent:agent,budget:budget,removalLockWaiting:removalLockWaiting)
+    }
     var requests: [[String:Any]] { ((try? String(contentsOf:log,encoding:.utf8)) ?? "").split(separator:"\n").compactMap { try? JSONSerialization.jsonObject(with:Data($0.utf8)) as? [String:Any] } }
     var destination: URL { appData.appendingPathComponent("models/" + pin.id + "/" + pin.sourceSHA256) }
 }
@@ -188,6 +191,22 @@ private final class PendingTransfer: @unchecked Sendable {
     func wait() async throws {
         let result = await XCTWaiter.fulfillment(of:[event],timeout:2)
         try #require(result == .completed,"The transfer must write bytes before cancellation")
+    }
+}
+
+/// A real failed flock attempt establishes that removal is waiting, rather
+/// than merely that its task was scheduled. Success never comes from a timer.
+private final class RemovalLockEvent: @unchecked Sendable {
+    private let lock = NSLock()
+    private var signalled = false
+    private let event = XCTestExpectation(description:"Removal reached the held revision lock")
+    func signal() {
+        let first = lock.withLock { if signalled { return false }; signalled = true; return true }
+        if first { event.fulfill() }
+    }
+    func wait() async throws {
+        let result = await XCTWaiter.fulfillment(of:[event],timeout:2)
+        try #require(result == .completed,"The removal must actually wait for the external lock")
     }
 }
 
@@ -262,8 +281,15 @@ private final class PendingTransfer: @unchecked Sendable {
         let path = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
         let fd = open(path.path,O_RDWR | O_CLOEXEC)
         #expect(fd >= 0); #expect(flock(fd,LOCK_EX | LOCK_NB) == 0)
-        Thread.detachNewThread { Thread.sleep(forTimeInterval:0.15); flock(fd,LOCK_UN); close(fd) }
-        try await server.downloader().remove(pin)
+        defer { flock(fd,LOCK_UN); close(fd) }
+        let waiting = RemovalLockEvent()
+        let remover = try server.downloader(removalLockWaiting:{ waiting.signal() })
+        let removal = Task { try await remover.remove(pin) }
+        defer { removal.cancel() }
+        try await waiting.wait()
+        #expect(FileManager.default.fileExists(atPath:server.destination.path),"A contended removal cannot delete the installation")
+        flock(fd,LOCK_UN)
+        try await removal.value
         #expect(!FileManager.default.fileExists(atPath:server.destination.path))
     }
     @Test func cancellationWhileWaitingForRemoveLeavesTheInstallationIntact() async throws {
@@ -273,8 +299,12 @@ private final class PendingTransfer: @unchecked Sendable {
         let fd = open(path.path,O_RDWR | O_CLOEXEC)
         guard fd >= 0,flock(fd,LOCK_EX | LOCK_NB) == 0 else { if fd >= 0 { close(fd) }; throw ModelDownloadError.busy }
         defer { flock(fd,LOCK_UN); close(fd) }
-        let task = Task { try await server.downloader().remove(pin) }
-        try await Task.sleep(for:.milliseconds(100)); task.cancel()
+        let waiting = RemovalLockEvent()
+        let remover = try server.downloader(removalLockWaiting:{ waiting.signal() })
+        let task = Task { try await remover.remove(pin) }
+        defer { task.cancel() }
+        try await waiting.wait()
+        task.cancel()
         let error = await fails { try await task.value }
         #expect(error is CancellationError)
         #expect(FileManager.default.fileExists(atPath:server.destination.path))
@@ -314,10 +344,14 @@ private final class PendingTransfer: @unchecked Sendable {
         let lockFile = server.destination.deletingLastPathComponent().appendingPathComponent("." + pin.sourceSHA256 + ".lock")
         let fd = open(lockFile.path,O_RDWR | O_CLOEXEC)
         guard fd >= 0,flock(fd,LOCK_EX | LOCK_NB) == 0 else { if fd >= 0 { close(fd) }; throw ModelDownloadError.busy }
-        let removal = Task { try await server.downloader().removeInvalid(plan) }
-        try await Task.sleep(for:.milliseconds(100))
+        defer { flock(fd,LOCK_UN); close(fd) }
+        let waiting = RemovalLockEvent()
+        let remover = try server.downloader(removalLockWaiting:{ waiting.signal() })
+        let removal = Task { try await remover.removeInvalid(plan) }
+        defer { removal.cancel() }
+        try await waiting.wait()
         try original.write(to:weights)
-        flock(fd,LOCK_UN); close(fd)
+        flock(fd,LOCK_UN)
         #expect(try await removal.value == false)
         #expect(ModelStorage.isInstalled(plan,in:server.appData))
     }
