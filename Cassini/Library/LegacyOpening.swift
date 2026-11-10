@@ -129,7 +129,7 @@ private struct TranscriptDetailView: View {
                     HStack(alignment: .top, spacing: 16) {
                         Text(turn.continuation ? "" : meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? "").fontWeight(.semibold).frame(width: 110, alignment: .leading)
                         Text(LibraryFormat.position(turn.startMs)).monospacedDigit().foregroundStyle(.secondary)
-                        if !turn.over.isEmpty { Text(UXText.text("meeting.turn.over",["names":MeetingPresentation.speakerList(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).foregroundStyle(.secondary) }
+                        if !turn.over.isEmpty { Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).foregroundStyle(.secondary) }
                         Text(turn.text).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

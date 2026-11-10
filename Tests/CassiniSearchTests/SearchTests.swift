@@ -172,6 +172,10 @@ extension SearchTests {
         #expect(hits.count == 1)
         let hit = try #require(hits.first)
         #expect(hit.positionMs == 3050 && hit.speaker == "ben")
+        #expect(try await index.search("Ben").isEmpty,"Chip labels are not spoken words")
+        let hostPhrase = try await index.search("testing and")
+        #expect(hostPhrase.count == 1 && hostPhrase.first?.speaker == "ada")
+        #expect(hostPhrase.first?.spans.count == 2,"A continuous spoken phrase crosses the visual chip without highlighting it")
         #expect(hit.text.contains("(Ben: Sounds good.)"))
         #expect(hit.context.count == 1 && hit.contextText[0] == hit.text)
         #expect(hit.context.first?.turn.over.isEmpty == true)
@@ -180,5 +184,27 @@ extension SearchTests {
         let renamed = try await index.search("Sounds good",filter:.init(speaker:"Sam"))
         #expect(renamed.count == 1 && renamed.first?.text.contains("(Sam: Sounds good.)") == true)
         #expect(renamed.first?.positionMs == 3050)
+        #expect(try await index.search("Sam").isEmpty)
+        // A label identical to a spoken query cannot add a second hit or highlight.
+        meeting.speakers[1].name = "testing"
+        try await index.replace([meeting])
+        let real = try await index.search("testing")
+        #expect(real.count == 1 && real.first?.speaker == "ada")
+        #expect(real.first?.spans.count == 1)
     }
+    @Test func croppedMonologueContextIntroducesItsSpeaker() async throws {
+        let fixture = try SearchFixture()
+        var meeting = try #require(fixture.meetings().first(where:{ !$0.speakers.isEmpty }))
+        let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        struct Body: Decodable { let items: [LibraryTranscriptItem] }
+        meeting.transcriptItems = try JSONDecoder().decode(Body.self,from:Data(contentsOf:root.appendingPathComponent("Tests/CassiniLibraryTests/Golden/interjections/monologue.words.json"))).items
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        let hit = try #require(try await index.search("crash").first)
+        let first = try #require(hit.context.first)
+        #expect(first.turn.continuation)
+        #expect(hit.showsSpeakerHeader(at:first.index))
+        #expect(!hit.showsSpeakerHeader(at:hit.turn),"Later continuation rows retain the viewer rule")
+    }
+
 }

@@ -35,7 +35,12 @@ public struct SearchHit: Sendable, Identifiable {
     /// context view never prepares a transcript on the main actor (#118 review).
     public var context: [(index: Int, turn: MeetingPresentation.Turn)] = []
     public var contextText: [Int:String] = [:]
-    public var id: String { meetingKey + ":\(turn):\(occurrence)" }
+    /// A cropped context always introduces its first speaker, even mid-monologue.
+    public func showsSpeakerHeader(at index: Int) -> Bool {
+        guard let row = context.first(where:{ $0.index == index }) else { return false }
+        return !row.turn.continuation || index == context.first?.index
+    }
+    public var id: String { meetingKey + ":\(turn):\(speaker):\(occurrence)" }
     public var excerpt: (text: String, spans: [SearchSpan]) {
         guard let selected = spans.dropFirst(occurrence).first,
               let range = Range(NSRange(location:selected.start,length:selected.length),in:text) else { return (text,[]) }
@@ -61,6 +66,13 @@ public actor SearchIndex {
     private var fingerprints: [String:Data] = [:]
     private var turns: [String:[MeetingPresentation.Turn]] = [:]
     private var prose: [String:[MeetingPresentation.Prose]] = [:]
+    private struct SpokenRow {
+        let visibleIndex: Int
+        let speaker: String
+        let seeks: [MeetingPresentation.Prose.Seek]
+        let ranges: [Range<Int>]
+    }
+    private var spoken: [String:[SpokenRow]] = [:]
     public init(cache: URL) throws { database = try SearchDatabase(cache:cache) }
     public static func names(_ meetings: [LibraryMeeting]) -> [String] {
         var names: [String:String] = [:]
@@ -77,26 +89,39 @@ public actor SearchIndex {
         do {
             for removed in Set(meetings.keys).subtracting(incoming.keys) { try database.remove(removed) }
             var nextFingerprints: [String:Data] = [:], nextTurns: [String:[MeetingPresentation.Turn]] = [:], nextProse: [String:[MeetingPresentation.Prose]] = [:]
+            var nextSpoken: [String:[SpokenRow]] = [:]
             for meeting in snapshot {
                 // D63 #2: the turns also follow the speakers' gap ranges, so they are in the fingerprint.
                 let gaps = meeting.speakerGaps
                 let ranges = gaps.keys.sorted().map { key in [key] + gaps[key]!.map { "\($0.lowerBound)-\($0.upperBound)" } }
                 let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems) + JSONEncoder().encode(ranges) + JSONEncoder().encode(meeting.speakers.map(\.displayName)) + JSONEncoder().encode(meeting.wordEndsBoundedByAudio)))
                 nextFingerprints[meeting.libraryKey] = hash
-                if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; nextProse[meeting.libraryKey] = prose[meeting.libraryKey]; continue }
+                if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; nextProse[meeting.libraryKey] = prose[meeting.libraryKey]; nextSpoken[meeting.libraryKey] = spoken[meeting.libraryKey]; continue }
                 let all = MeetingPresentation.turns(meeting.transcriptItems,gaps:gaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
                 let grouped = MeetingPresentation.visibleTurns(all)
                 let names = Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) })
                 let text = grouped.map { MeetingPresentation.prose($0,in:all,names:names) }
                 try database.remove(meeting.libraryKey)
-                for (index,paragraph) in text.enumerated() {
-                    try database.insert(text:paragraph.text,meeting:meeting.libraryKey,turn:index)
+                var rows: [SpokenRow] = []
+                for (index,turn) in grouped.enumerated() {
+                    for source in [turn] + turn.asides.map({ all[$0.turn] }) {
+                        // Labels and other speakers never interrupt a speaker's spoken phrase.
+                        let seeks = text[index].seeks.filter { $0.turnID == source.id }
+                        var offset = 0
+                        let ranges = seeks.map { seek -> Range<Int> in
+                            defer { offset += seek.item.text.utf16.count + 1 }
+                            return offset..<(offset + seek.item.text.utf16.count)
+                        }
+                        try database.insert(text:seeks.map { $0.item.text }.joined(separator:" "),meeting:meeting.libraryKey,turn:rows.count)
+                        rows.append(.init(visibleIndex:index,speaker:source.speaker,seeks:seeks,ranges:ranges))
+                    }
                 }
+                nextSpoken[meeting.libraryKey] = rows
                 nextTurns[meeting.libraryKey] = grouped
                 nextProse[meeting.libraryKey] = text
             }
             try database.execute("COMMIT")
-            fingerprints = nextFingerprints; turns = nextTurns; prose = nextProse; meetings = incoming
+            fingerprints = nextFingerprints; turns = nextTurns; prose = nextProse; spoken = nextSpoken; meetings = incoming
         } catch { try? database.execute("ROLLBACK"); throw error }
     }
     public func search(_ query: String, filter: SearchFilter = .init(), now: Date = Date(), timeZone: TimeZone = .current) throws -> [SearchHit] {
@@ -110,24 +135,40 @@ public actor SearchIndex {
         try statement.bind([begin,end,phrase])
         var hits: [SearchHit] = []
         while try statement.next() {
-            let key = statement.text(0), index = statement.integer(1)
-            guard index >= 0, let meeting = meetings[key], !filter.own || meeting.state.origin == .own,
+            let key = statement.text(0), rowIndex = statement.integer(1)
+            guard rowIndex >= 0, let rows = spoken[key], rows.indices.contains(rowIndex) else { continue }
+            let row = rows[rowIndex], index = row.visibleIndex
+            guard let meeting = meetings[key], !filter.own || meeting.state.origin == .own,
                   filter.date.contains(meeting.start,now:now,timeZone:timeZone),
                   let turn = turns[key]?.dropFirst(index).first else { continue }
             let highlighted = statement.text(2)
             let parsed = Self.unmark(highlighted,begin:begin,end:end)
-            // An occurrence is a place. Multiple mentions in a long turn must
-            // remain separately seekable, rather than collapsing to one result.
-            for (occurrence,span) in parsed.spans.enumerated() {
-                let paragraph = prose[key]?[index]
-                let matched = paragraph?.seeks.first { span.start < $0.range.upperBound }
+            guard let paragraph = prose[key]?[index] else { continue }
+            let matches = parsed.spans.map { span in
+                let pieces = zip(row.ranges,row.seeks).compactMap { range,seek -> SearchSpan? in
+                    let lower = max(span.start,range.lowerBound), upper = min(span.start+span.length,range.upperBound)
+                    guard lower < upper else { return nil }
+                    return .init(start:seek.range.lowerBound+lower-range.lowerBound,length:upper-lower)
+                }
+                var joined: [SearchSpan] = []
+                for piece in pieces {
+                    if let last = joined.last, last.start+last.length+1 == piece.start {
+                        joined[joined.count-1] = .init(start:last.start,length:piece.start+piece.length-last.start)
+                    } else { joined.append(piece) }
+                }
+                return joined
+            }
+            let spans = matches.flatMap { $0 }.sorted { $0.start < $1.start }
+            for (match,span) in zip(matches,parsed.spans) where !match.isEmpty {
+                let matched = zip(row.ranges,row.seeks).first { $0.0.overlaps(span.start..<(span.start+span.length)) }?.1
                 let position = matched?.item.startMs ?? turn.startMs
-                let speakerID = matched?.item.speaker ?? turn.speaker
+                let speakerID = row.speaker
                 if let name = filter.speaker {
-                    guard let speaker = meeting.speakers.first(where:{ $0.id == speakerID }), speaker.provenance != .unnamed,
+                    guard let speaker = meeting.speaker(for:speakerID), speaker.provenance != .unnamed,
                           speaker.name?.compare(name,options:.caseInsensitive) == .orderedSame else { continue }
                 }
-                var hit = SearchHit(meetingKey:key,turn:index,positionMs:position,speaker:speakerID,text:parsed.text,spans:parsed.spans,occurrence:occurrence)
+                let occurrence = spans.firstIndex(of:match[0]) ?? 0
+                var hit = SearchHit(meetingKey:key,turn:index,positionMs:position,speaker:speakerID,text:paragraph.text,spans:spans,occurrence:occurrence)
                 if let all = turns[key] {
                     let range = max(0,index-1)...min(all.count-1,index+1)
                     hit.context = range.map { ($0,all[$0]) }

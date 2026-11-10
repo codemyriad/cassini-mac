@@ -89,7 +89,7 @@ public enum MeetingPresentation {
             previous[item.speaker] = item
         }
         let input = items.map { TranscriptRendering.Word(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker) }
-        let rendered = try TranscriptRendering.render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:boundaries,cancellable:cancellable)
+        let rendered = try TranscriptRendering.render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:boundaries,cancellable:cancellable,separates:{ SpeakerGapRanges.splits(items[$0],items[$1],gaps) })
         func item(_ i: Int) -> LibraryTranscriptItem {
             let w = rendered.words[i]
             return .init(speaker:w.speaker,startMs:w.startMs,endMs:w.endMs,text:w.text,lowConfidenceSpeaker:w.lowConfidenceSpeaker)
@@ -134,25 +134,25 @@ public enum MeetingPresentation {
     /// The turns shown as paragraphs: every turn not shown inside another.
     public static func visibleTurns(_ turns: [Turn]) -> [Turn] { turns.filter { $0.host == nil } }
     public struct Prose: Sendable {
-        public struct Seek: Sendable { public let range: Range<Int>; public let item: LibraryTranscriptItem }
+        public struct Seek: Sendable { public let range: Range<Int>; public let item: LibraryTranscriptItem; public let turnID: Int }
         public let text: String
         public let seeks: [Seek]
     }
     /// One copy/search/export projection; chips remain inline and every word keeps its seek anchor.
     public static func prose(_ turn: Turn, in turns: [Turn], names: [String:String] = [:]) -> Prose {
         var text = "", seeks: [Prose.Seek] = []
-        func append(_ item: LibraryTranscriptItem) {
+        func append(_ item: LibraryTranscriptItem, turnID: Int) {
             let at = text.utf16.count
             text += item.text
-            seeks.append(.init(range:at..<text.utf16.count,item:item))
+            seeks.append(.init(range:at..<text.utf16.count,item:item,turnID:turnID))
         }
         for (i,item) in turn.items.enumerated() {
             if !text.isEmpty { text += " " }
-            append(item)
+            append(item,turnID:turn.id)
             for aside in turn.asides where aside.after == i && turns.indices.contains(aside.turn) {
                 let child = turns[aside.turn]
                 text += " (" + (names[child.speaker] ?? child.speaker) + ": "
-                for (i,word) in child.items.enumerated() { if i > 0 { text += " " }; append(word) }
+                for (i,word) in child.items.enumerated() { if i > 0 { text += " " }; append(word,turnID:child.id) }
                 text += ")"
             }
         }
@@ -168,7 +168,7 @@ public enum MeetingPresentation {
         let status: TranscriptStatus = emptyTimed || file.state == .plainAudio ? .none : (body != nil ? .done : .damaged)
         let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, lowConfidenceSpeaker:$0.lowConfidenceSpeaker ? true : nil) }
         var ids: [String] = []
-        for word in words where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        for word in words.enumerated().sorted(by:{ $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }).map(\.element) where !ids.contains(word.speaker) { ids.append(word.speaker) }
         let speakers = ids.enumerated().map { index, id in
             MeetingSpeaker(id: id, name: file.manifest?.speaker(id)?.label, provenance: nil, colourIndex: index)
         }

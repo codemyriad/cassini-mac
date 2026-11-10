@@ -244,6 +244,7 @@ public struct LibraryScanner: Sendable {
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)
         }
+        meeting.prepareTranscriptTurns()
         return meeting
     }
     private func damage(_ meeting: inout LibraryMeeting) {

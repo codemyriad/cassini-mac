@@ -198,7 +198,7 @@ public enum TranscriptRendering {
     }
     /// App-owned source gaps are explicit boundaries, independent of the viewer's readable breaks.
     /// Cancellation is checked throughout preparation so superseded long transcripts stop promptly.
-    public static func render(_ input: [Word], endsBoundedByAudio: Bool = false, breakBefore: Set<Int>, cancellable: Bool) throws -> Result {
+    public static func render(_ input: [Word], endsBoundedByAudio: Bool = false, breakBefore: Set<Int>, cancellable: Bool, separates: (Int,Int) -> Bool = { _,_ in false }) throws -> Result {
         let check: () throws -> Void = cancellable ? { try Task.checkCancellation() } : {}
         try check()
         // Canonical order breaks timestamp ties. Indices always refer to the input, not the sort.
@@ -245,7 +245,7 @@ public enum TranscriptRendering {
             let block = blocks[b], bound = spans[b]
             var joined = false
             if !breakBefore.contains(block.wordIndices[0]), let previous = open[block.speaker], let first = bound.first, let lastBlock = runs[previous].blocks.last,
-               !spans[lastBlock].isEmpty, abs(first.start-runs[previous].endMs) <= 400 {
+               !spans[lastBlock].isEmpty, !separates(blocks[lastBlock].wordIndices.last!,block.wordIndices[0]), abs(first.start-runs[previous].endMs) <= 400 {
                 let between = spans[(lastBlock+1)..<b].flatMap { $0 }
                 if b == lastBlock+1 || between.isEmpty || touches(between,spans[lastBlock]+bound) {
                     runs[previous].blocks.append(b)

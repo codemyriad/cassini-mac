@@ -45,6 +45,15 @@ public struct Timeline: Sendable {
 
     public init(_ words: [Word], endsBoundedByAudio: Bool = false) {
         let projection = TranscriptRendering.render(words.map { .init(speaker:$0.speaker,startMs:Int64($0.startMs),endMs:Int64($0.endMs),text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker) },endsBoundedByAudio:endsBoundedByAudio)
+        self.init(words,projection:projection)
+    }
+    /// Background document preparation can stop before publishing a superseded selection.
+    public static func preparing(_ words: [Word], endsBoundedByAudio: Bool = false) throws -> Timeline {
+        let input = words.map { TranscriptRendering.Word(speaker:$0.speaker,startMs:Int64($0.startMs),endMs:Int64($0.endMs),text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker) }
+        let projection = try TranscriptRendering.render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:[],cancellable:true)
+        return Timeline(words,projection:projection)
+    }
+    private init(_ words: [Word], projection: TranscriptRendering.Result) {
         self.words = zip(words,projection.words).map { original,display in var copy = original; copy.endMs = Int(display.endMs); return copy }
         let turns = Timeline.buildTurns(projection)
         self.turns = turns
@@ -104,8 +113,12 @@ public struct Timeline: Sendable {
             } else {
                 var v = t
                 v.interjections.removeAll { hidden.contains($0.speaker) }
+                v.over.removeAll { hidden.contains($0) }
                 out.append(v)
             }
+        }
+        for i in out.indices {
+            out[i].continuation = i > 0 && out[i-1].speaker == out[i].speaker && out[i].startMs-out[i-1].endMs <= 60_000
         }
         return out
     }
@@ -138,6 +151,11 @@ public struct Timeline: Sendable {
             if words[idx[mid]].startMs <= t { lo = mid + 1 } else { hi = mid }
         }
         return lo == 0 ? nil : lo - 1
+    }
+
+    /// Upcoming display atoms, independent of canonical/timestamp order.
+    public func upcomingWords(_ indices: [Int], at t: Int) -> Set<Int> {
+        Set(indices.filter { words[$0].startMs > t })
     }
 
     /// Ids of the turns active at `t`: those whose span, plus the hold, contains it.

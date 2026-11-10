@@ -74,3 +74,25 @@ they are Library metadata derivation rules frozen by the shared S-3a vectors.
 D84 changes the preview's transcript paragraphs, rather than replacing an
 explicitly stored quote or the Library's quote-selection policy. All 22 Library
 vectors continue to assert their complete expected fields without alterations.
+
+Search's FTS rows contain only a reading turn's own spoken words; a child aside
+has a separate row linked to the same visible paragraph. Synthetic chip names
+and punctuation are display text only. Spoken phrase offsets map to the matching
+word's UTF16 ranges in that paragraph, splitting highlights around a chip rather
+than indexing its label or interrupting a host phrase. A cropped Search context
+always introduces its first speaker, then follows normal continuation rules.
+
+LibraryScanner prepares cached LibraryTranscriptTurn rows before publishing its
+background snapshot. Preview and legacy Library-window reads use that immutable
+array; transcript, name, timing-attestation, merge and source-gap mutations
+invalidate it. QuickLook constructs its attributed preview on its existing worker.
+The directly opened document prepares cancellable Timelines off-main, caches by
+transcript ID, and never publishes a superseded/closed selection.
+
+Canonical word order is not chronological order. Portable/Markdown/external
+speaker rosters sort their own stable `(startMs, canonical offset)` projection;
+source-gap rejoin checks compare the actual pair of blocks after display sorting.
+Playback styling compares each atom with the playhead, and document search
+orders unique displayed ranges visually. Hidden speakers also leave overlap
+captions and continuation calculations. All product overlap-name lists use
+LibraryFormat.list with the surface's language/locale.

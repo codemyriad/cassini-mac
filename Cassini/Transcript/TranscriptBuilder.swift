@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import CassiniKit
+import CassiniLibrary
 
 extension NSAttributedString.Key {
     /// Bool: exact words/chip of the current listening turn (D70).
@@ -42,6 +43,17 @@ struct TranscriptLayout {
     var chips: [ChipInfo] = []
 
     var visibleTurnIds: [Int] { visibleTurns.map(\.id) }
+
+    /// Search steps unique visible ranges in visual order, including an entire chip once.
+    func matchingWords(_ query: String, in timeline: Timeline) -> [Int] {
+        guard !query.isEmpty else { return [] }
+        let needle = query.lowercased()
+        let candidates = timeline.words.indices.filter { timeline.words[$0].text.lowercased().contains(needle) }
+            .compactMap { i in displayRange(of:i).map { (i,$0) } }
+            .sorted { $0.1.location == $1.1.location ? $0.0 < $1.0 : $0.1.location < $1.1.location }
+        var seen: Set<NSRange> = []
+        return candidates.filter { seen.insert($0.1).inserted }.map { $0.0 }
+    }
 
     /// Where a word is drawn: its body range, or the chip holding it; nil when it is not shown.
     func displayRange(of word: Int) -> NSRange? {
@@ -94,7 +106,7 @@ enum TranscriptBuilder {
                 .font: nameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: header,
             ])) }
             let others = turn.over.map(label)
-            let over = others.isEmpty ? "" : " " + UXText.text("meeting.turn.over",["names":TranscriptRendering.speakerList(others)])
+            let over = others.isEmpty ? "" : " " + UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(others)])
             out.append(NSAttributedString(string: "  " + formatClock(turn.startMs) + over, attributes: [
                 .font: timeFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: header,
                 .cassiniSeek: turn.startMs, .cursor: NSCursor.pointingHand,

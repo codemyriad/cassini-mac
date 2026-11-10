@@ -22,7 +22,7 @@ struct MeetingView: View {
     /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
     private func over(_ turn: MeetingPresentation.Turn) -> String? {
         let names = meeting.overlappingSpeakerIDs(turn.over,excluding:turn.speaker).map(name)
-        return names.isEmpty ? nil : UXText.text("meeting.turn.over",["names":MeetingPresentation.speakerList(names)])
+        return names.isEmpty ? nil : UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(names)])
     }
     /// The turn's words in reading order with each aside's text where its chip sits.
     private func spoken(_ turn: MeetingPresentation.Turn) -> String {

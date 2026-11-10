@@ -70,6 +70,8 @@ struct ContentColumn: View {
         Group {
             if session.tab == .summary, let md = session.manifest?.summaryMarkdown {
                 SummaryView(markdown: md, session: session)
+            } else if session.preparingTranscript {
+                ProgressView().frame(maxWidth:.infinity,maxHeight:.infinity)
             } else if session.timeline != nil {
                 VStack(spacing: 0) {
                     if session.hasQuery {

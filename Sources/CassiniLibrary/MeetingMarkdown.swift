@@ -21,12 +21,12 @@ public enum MeetingMarkdown {
         let all = MeetingPresentation.turns(ordered,gaps:gaps,endsBoundedByAudio:endsBoundedByAudio)
         let turns = MeetingPresentation.visibleTurns(all)
         var speaking: [String] = []
-        for word in ordered where !speaking.contains(word.speaker) { speaking.append(word.speaker) }
+        for word in ordered.enumerated().sorted(by:{ $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }).map(\.element) where !speaking.contains(word.speaker) { speaking.append(word.speaker) }
         if !speaking.isEmpty { blocks.append(strings.text("export.markdown.speakersLine",["names":speaking.map { escape(names[$0] ?? $0) }.joined(separator:", ")],language:language,locale:locale)) }
         blocks.append("## "+strings.text("export.markdown.transcriptHeading",language:language,locale:locale))
         for turn in turns {
             let others = turn.over.map { names[$0] ?? $0 }
-            let over = others.isEmpty ? "" : " " + strings.text("meeting.turn.over",["names":MeetingPresentation.speakerList(others)],language:language,locale:locale)
+            let over = others.isEmpty ? "" : " " + strings.text("meeting.turn.over",["names":LibraryFormat(locale:locale,language:language).list(others)],language:language,locale:locale)
             blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs,locale:locale,language:language) + escape(over) + "\n" + escape(MeetingPresentation.prose(turn,in:all,names:names).text))
         }
         if !notes.isEmpty {

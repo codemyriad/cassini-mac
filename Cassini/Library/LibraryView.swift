@@ -431,7 +431,7 @@ struct LibraryView: View {
                                     } }
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit()
                                     if !turn.over.isEmpty {
-                                        Text(UXText.text("meeting.turn.over",["names":MeetingPresentation.speakerList(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                                        Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
                                     }
                                 }.frame(width: 110, alignment: .leading)
                                 Text(turn.text).textSelection(.enabled).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)

@@ -35,11 +35,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try CassiniReader.read(contentsOf: url, verifyAudio: false) }
+            let result = Result { PreviewText.build(try CassiniReader.read(contentsOf: url, verifyAudio: false),fileName:url.lastPathComponent) }
             DispatchQueue.main.async {
                 switch result {
-                case .success(let file):
-                    self.textView.textStorage?.setAttributedString(PreviewText.build(file, fileName: url.lastPathComponent))
+                case .success(let text):
+                    self.textView.textStorage?.setAttributedString(text)
                     handler(nil)
                 case .failure(let error):
                     handler(error)
@@ -90,7 +90,7 @@ enum PreviewText {
                 .font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
             ]))
             let others = turn.over.map { m.speaker($0)?.label ?? $0 }
-            let over = others.isEmpty ? "" : " " + PreviewCopy.text("meeting.turn.over",["names":TranscriptRendering.speakerList(others)])
+            let over = others.isEmpty ? "" : " " + PreviewCopy.text("meeting.turn.over",["names":LibraryFormat(locale:.autoupdatingCurrent,language:.system).list(others)])
             out.append(NSAttributedString(string: formatClock(turn.startMs) + over + "\n", attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: body,
             ]))

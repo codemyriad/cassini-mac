@@ -90,6 +90,67 @@ struct D84InterjectionFixtureTests {
         for text in expectedText { #expect(markdown.contains(MeetingMarkdown.escape(text))) }
         #expect(markdown.components(separatedBy:"** · ").count-1 == expected.rows.count,"Export has one block per readable row")
     }
+    @Test func reverseCanonicalWordsDoNotRejoinAcrossCaptureGap() {
+        let items: [LibraryTranscriptItem] = [
+            .init(speaker:"a",startMs:10300,endMs:10600,text:"after"),
+            .init(speaker:"a",startMs:9000,endMs:9950,text:"before")]
+        let turns = MeetingPresentation.visibleTurns(MeetingPresentation.turns(items,gaps:["a":[160000..<164800]]))
+        #expect(turns.map { $0.items.map(\.text) } == [["before"],["after"]])
+    }
+    @Test func cachedLibraryRowsAreInvalidatedWithoutRenderingOnRead() throws {
+        let url = try #require(Bundle.module.url(forResource:"001-minimal-v1",withExtension:"opus",subdirectory:"LibraryVectors/assets"))
+        var meeting = MeetingPresentation.external(try CassiniReader.read(Data(contentsOf:url)),url:url)
+        meeting.transcriptItems = [.init(speaker:"a",startMs:0,endMs:100,text:"before")]
+        meeting.prepareTranscriptTurns()
+        let snapshot = meeting
+        #expect(meeting.transcriptTurns.map(\.text) == ["before"])
+        meeting.transcriptItems[0] = .init(speaker:"a",startMs:0,endMs:100,text:"after")
+        #expect(meeting.transcriptTurns.isEmpty,"Invalidated UI reads never start a synchronous render")
+        #expect(snapshot.transcriptTurns.map(\.text) == ["before"],"Immutable snapshot retains its cached rows")
+        meeting.prepareTranscriptTurns()
+        #expect(meeting.transcriptTurns.map(\.text) == ["after"])
+        meeting.speakers = []
+        #expect(meeting.transcriptTurns.isEmpty,"Name changes invalidate inline chip labels")
+    }
+    @Test func chronologicalRostersDoNotReorderCanonicalTranscript() throws {
+        let url = try #require(Bundle.module.url(forResource:"001-minimal-v1",withExtension:"opus",subdirectory:"LibraryVectors/assets"))
+        var file = try CassiniReader.read(Data(contentsOf:url))
+        let words: [LibraryTranscriptItem] = [.init(speaker:"late",startMs:2000,endMs:2200,text:"later"),.init(speaker:"early",startMs:0,endMs:200,text:"first")]
+        // Markdown roster follows time, while readable grouping still receives canonical atoms.
+        let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:["late":"Later","early":"First"],items:words,notes:[],locale:Locale(identifier:"en_GB"),language:.en)
+        #expect(markdown.contains("Speakers: First, Later"))
+        let transcript = try ManifestParser.words(JSONParser.parse(JSONEncoder().encode(["items":words])))
+        let entry = try #require(file.transcripts.first?.entry)
+        file.transcripts = [(entry:entry,load:.available(transcript))]
+        let meeting = MeetingPresentation.external(file,url:url)
+        #expect(meeting.speakers.map(\.id) == ["early","late"])
+        #expect(meeting.transcriptItems == words)
+    }
+    @Test func hiddenTimelineSpeakersLeaveNoOverlapOrInitialContinuation() {
+        let timeline = Timeline([Word(speaker:"a",startMs:0,endMs:1000,text:"first",lowConfidenceSpeaker:false,attributionGapDb:nil),Word(speaker:"b",startMs:0,endMs:1000,text:"second",lowConfidenceSpeaker:false,attributionGapDb:nil)])
+        let visible = timeline.visibleTurns(hiding:["b"])
+        #expect(visible.count == 1 && visible.first?.over.isEmpty == true && visible.first?.continuation == false)
+    }
+    @Test(arguments:[("en", "A, B and C"),("fr","A, B et C"),("it","A, B e C"),("es","A, B y C"),("pt-BR","A, B e C"),("pt-PT","A, B e C")])
+    func overlapSpeakerListsFollowLanguage(_ code: String, _ expected: String) {
+        let language = CassiniLanguage(rawValue:code)!
+        #expect(LibraryFormat(locale:Locale(identifier:"en_GB"),language:language).list(["A","B","C"]) == expected)
+    }
+    @Test func cancelledLegacyTimelinePreparationDoesNotRender() async {
+        let cancelled = await Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            do { _ = try Timeline.preparing([]); return false }
+            catch is CancellationError { return true }
+            catch { return false }
+        }.value
+        #expect(cancelled)
+    }
+    @Test func upcomingWordsFollowEachAtomsTimeInCanonicalOrder() throws {
+        let input = try ManifestParser.words(JSONParser.parse(Data(#"{"items":[{"speaker":"a","startMs":1000,"endMs":1100,"text":"later"},{"speaker":"a","startMs":100,"endMs":200,"text":"earlier"}]}"#.utf8)))
+        let timeline = Timeline(input.items)
+        #expect(timeline.upcomingWords([0,1],at:500) == [0])
+        #expect(timeline.upcomingWords([0,1],at:1000).isEmpty)
+    }
     private func w(_ speaker: String, _ start: Int64, _ end: Int64, _ text: String) -> TranscriptRendering.Word {
         .init(speaker:speaker,startMs:start,endMs:end,text:text)
     }

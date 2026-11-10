@@ -66,7 +66,7 @@ struct TranscriptView: NSViewRepresentable {
         private var lastWords: [String: Int] = [:]
         private var activeTurnIds: [Int] = []
         /// Turn id → number of body words styled as spoken (the rest are upcoming).
-        private var spokenCount: [Int: Int] = [:]
+        private var upcomingWords: Set<Int> = []
         private var matchWords: [Int] = []
         private var matchCursor = 0
         private var programmaticScroll = false
@@ -130,7 +130,7 @@ struct TranscriptView: NSViewRepresentable {
                                              color: { [session] in session.color(for: $0) })
             textView.layoutInfo = layout
             textView.textStorage?.setAttributedString(layout.text)
-            spokenCount = [:]
+            upcomingWords = []
             activeTurnIds = []
             textView.clearHighlights()
             lastWords = [:]
@@ -182,32 +182,14 @@ struct TranscriptView: NSViewRepresentable {
         /// Later words in an active turn use the secondary color; everything else the primary.
         private func restyleUpcoming(active: [Int], words: [String: Int], timeline: Timeline) {
             guard let storage = textView?.textStorage else { return }
-            var wanted: [Int: Int] = [:]  // turn → spoken count
-            for id in active {
-                guard let body = layout.turnWords[id], let speaker = layout.turnSpeaker[id] else { continue }
-                if let cur = words[speaker], let pos = body.firstIndex(of: cur) {
-                    wanted[id] = pos + 1
-                } else {
-                    // Active with no current word (a pause, or a seek into one): spoken = started by now.
-                    wanted[id] = body.filter { timeline.words[$0].startMs <= lastMs }.count
-                }
-            }
-            guard wanted != spokenCount else { return }
-            var edits: [(NSRange, NSColor)] = []
-            for (id, old) in spokenCount where wanted[id] == nil {
-                // Turn left the active set: everything back to primary.
-                for i in (layout.turnWords[id] ?? []).dropFirst(old) { if let r = layout.wordRanges[i] { edits.append((r, .labelColor)) } }
-            }
-            for (id, count) in wanted {
-                let body = layout.turnWords[id] ?? []
-                let old = spokenCount[id] ?? body.count  // untouched turns are all primary
-                if count > old {
-                    for i in body[old..<count] { if let r = layout.wordRanges[i] { edits.append((r, .labelColor)) } }
-                } else if count < old {
-                    for i in body[count..<old] { if let r = layout.wordRanges[i] { edits.append((r, .secondaryLabelColor)) } }
-                }
-            }
-            spokenCount = wanted
+            // Canonical display order can have non-monotonic times. Style each atom
+            // against the playhead rather than interpreting a count as an array prefix.
+            let wanted = timeline.upcomingWords(active.flatMap { layout.turnWords[$0] ?? [] },at:lastMs)
+            guard wanted != upcomingWords else { return }
+            var edits: [(NSRange,NSColor)] = []
+            for i in upcomingWords.subtracting(wanted) { if let r = layout.wordRanges[i] { edits.append((r,.labelColor)) } }
+            for i in wanted.subtracting(upcomingWords) { if let r = layout.wordRanges[i] { edits.append((r,.secondaryLabelColor)) } }
+            upcomingWords = wanted
             guard !edits.isEmpty else { return }
             storage.beginEditing()
             for (r, c) in edits where NSMaxRange(r) <= storage.length {
@@ -293,12 +275,8 @@ struct TranscriptView: NSViewRepresentable {
             matchCursor = 0
             var ranges: [NSRange] = []
             if !query.isEmpty, let timeline = session.timeline {
-                let needle = query.lowercased()
-                for i in timeline.words.indices where timeline.words[i].text.lowercased().contains(needle) {
-                    guard let r = layout.displayRange(of: i) else { continue }  // hidden speaker
-                    matchWords.append(i)
-                    ranges.append(r)
-                }
+                matchWords = layout.matchingWords(query,in:timeline)
+                ranges = matchWords.compactMap { layout.displayRange(of:$0) }
             }
             textView.matchRanges = ranges
             session.matchCount = matchWords.count

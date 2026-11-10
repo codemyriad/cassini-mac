@@ -110,7 +110,7 @@ public struct LibraryMeeting: Sendable {
     /// Only a retained Move original that collides with a destination folder
     /// needs a local collection identity. UUIDs and on-disk names stay intact.
     var retainedKey: String? = nil
-    public var state: MeetingState
+    public var state: MeetingState { didSet { if state.origin != oldValue.origin { transcriptTurns = [] } } }
     public var title: String?
     /// R6 display fallbacks may come from unverifiable tags. Received exports
     /// use this independently trusted local/verified title or filename instead.
@@ -118,7 +118,7 @@ public struct LibraryMeeting: Sendable {
     public var start: Date?
     /// Display duration only; D3 substitutes zero for unknown source starts. Never playback alignment.
     public var durationMs: Int64?
-    public var speakers: [MeetingSpeaker]
+    public var speakers: [MeetingSpeaker] { didSet { transcriptTurns = [] } }
     public var quote: MeetingQuote?
     public var notes: [MeetingNote]
     public var audioFiles: [URL]
@@ -139,7 +139,7 @@ public struct LibraryMeeting: Sendable {
     public var received: LibraryReceivedInfo? = nil
     /// The words as displayed: each speaker id is the final target of meeting.json's
     /// speakerMerges (D24), so every view, Search and Markdown group merged speakers together.
-    public var transcriptItems: [LibraryTranscriptItem] = []
+    public var transcriptItems: [LibraryTranscriptItem] = [] { didSet { transcriptTurns = [] } }
     /// The words with the speaker ids they were written with. Writers (resume, export bodies)
     /// use these: a merge never rewrites a transcript body. Defaults to `transcriptItems`.
     public var writtenTranscriptItems: [LibraryTranscriptItem] {
@@ -148,7 +148,7 @@ public struct LibraryMeeting: Sendable {
     }
     private var writtenItems: [LibraryTranscriptItem]? = nil
     /// D24: each merged-away speaker id mapped to its final target (empty without merges).
-    public var mergedInto: [String: String] = [:]
+    public var mergedInto: [String: String] = [:] { didSet { transcriptTurns = [] } }
     /// Prepared snapshots can outlive a metadata merge (including a suspended
     /// preparation). Resolve against the current metadata when rendering them.
     public func speaker(for id: String) -> MeetingSpeaker? {
@@ -175,7 +175,7 @@ public struct LibraryMeeting: Sendable {
     public var transcriptModel: String? = nil
     /// meeting.json's transcript names a body (D67.2: a failed write-down stores none).
     public var transcriptReferenced = false
-    public var wordEndsBoundedByAudio = false
+    public var wordEndsBoundedByAudio = false { didSet { transcriptTurns = [] } }
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
     public var captureEvents: [CaptureEvent] = []
@@ -188,9 +188,13 @@ public struct LibraryMeeting: Sendable {
         (state.origin == .own && state.transcript == .none || [.queued,.running].contains(state.transcript))
     }
     public var isBrowserCapture: Bool { captureSource == "chromium" }
-    /// The scanner establishes stable chronological item order. Both transcript
-    /// views consume these same consecutive speaker turns.
-    public var transcriptTurns: [LibraryTranscriptTurn] { LibraryTranscriptTurn.coalescing(transcriptItems,gaps:speakerGaps,names:speakerDisplayNames,endsBoundedByAudio:wordEndsBoundedByAudio) }
+    /// Immutable derived rows prepared by the background scanner. UI reads never render.
+    public private(set) var transcriptTurns: [LibraryTranscriptTurn] = []
+    /// Call after assigning all transcript inputs, off the main actor. Copies share Swift's
+    /// immutable array storage; changing any input invalidates only that snapshot's rows.
+    public mutating func prepareTranscriptTurns() {
+        transcriptTurns = LibraryTranscriptTurn.coalescing(transcriptItems,gaps:speakerGaps,names:speakerDisplayNames,endsBoundedByAudio:wordEndsBoundedByAudio)
+    }
     /// D70: maximal speaker runs for listening after merges, independent of reading rows.
     public var speakerTurns: [SpeakerTurn] { SpeakerTurn.grouping(transcriptItems) }
     /// D63 #2: each speaker's gap ranges, from the tracks its words were written from.
@@ -198,7 +202,7 @@ public struct LibraryMeeting: Sendable {
     public var speakerGaps: SpeakerGapRanges.Ranges {
         SpeakerMerges.gaps(SpeakerGapRanges.of(audioTracks,received:state.origin == .received),mergedInto)
     }
-    public var audioTracks: [LibraryAudioTrack] = []
+    public var audioTracks: [LibraryAudioTrack] = [] { didSet { transcriptTurns = [] } }
     public var canPlaySession: Bool {
         let nonempty = audioTracks.filter { $0.frameCount != 0 }
         return state.origin == .own && state.lifecycle == .saved && !nonempty.isEmpty && nonempty.allSatisfy { $0.startOffsetMs != nil }
