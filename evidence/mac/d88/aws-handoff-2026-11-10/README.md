@@ -15,7 +15,7 @@ No build products, downloaded assets, credentials or machine lock files are need
 | Playback cancellation | #212 | test/d88-aws-playback-gate | 8c9c38988c93e2d3e142e2e26dd631287e12b88d |
 | Setup/watcher | #213 | test/d88-aws-setup-events | 56bbf1e2adb703c94011a9e457ec8445dba44b55 |
 | Model fixture | #214 | test/d88-aws-model-startup | c2777e51e8a48cdb4ae3bd4419d063c2fd67a701 |
-| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 612bb36a1df7fd6296cba7061523ba743ffe7817 |
+| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 594bf715de569c46b1237c82d73bbc259eaec3d6 |
 
 Every branch has before/after and mutation evidence under `evidence/mac/d88/`.
 All local final suites pass. Transport retains 22 original asset-dependent skips;
@@ -97,3 +97,7 @@ Coordinator authorized ordinary main merges after #208 merged. All six branches 
 **Stop using this Mac by 2026-11-11 08:30 UTC; termination/disk deletion is 09:30 UTC.** This supersedes the earlier12:09 deadline and the original brief. The old host runs three task-owned tmux sessions: readiness (`aws-mac-d88-ci`, stop08:20), periodic checkpoints (`aws-mac-d88-checkpoint`, stop08:15), and one-shot finalization (`aws-mac-d88-cutoff`, starts08:20, all commands end by08:28). `retirement-plan.json` records exact UTC times and hostname.
 
 At finalization the script stops the two periodic writers, performs a bounded final CI audit, writes a final STATUS with pushed work and remaining PRs, pushes the handoff branch with bounded ordinary-push retries, verifies the remote head, and exits. The host-specific cutoff is an environment variable, not a permanent expiration of the archived portable watcher. On the replacement Mac leave `AWS_MAC_RETIRE_AT` unset and **do not start `retire-old-host.py`**. Check the final STATUS section and readiness JSON before resuming. All task branches and restoration scripts are already pushed independently of the scheduled final refresh.
+
+## #215 review follow-up
+
+The pushed head `594bf715de569c46b1237c82d73bbc259eaec3d6` bounds the reader gate and both receives. Its mutation drops the second reply with the connection open and fails with a receive timeout in 3.521 seconds. The restored selection passed 21 XCTest and seven Swift Testing checks. Evidence is on the #215 branch in `evidence/mac/d88/aws-transport/`. The watcher reports CI on this head and preserves the review draft. Remove 215 from `review_hold` once its draft disposition is cleared. Earlier routing validation still identifies its original merge head.

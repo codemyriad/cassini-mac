@@ -29,7 +29,13 @@ A controlled held-cooperative-worker reproduction fails both original parameter 
 
 ## Rented-Mac routing merge validation
 
-Merged main `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f` with an ordinary merge commit, without rebasing. Current exact head: `612bb36a1df7fd6296cba7061523ba743ffe7817`. Affected row tests plus all seven shared supersession tests pass under the shared heavy-run lock, Xcode 16.4 / four jobs. [Merged-head local log](https://github.com/codemyriad/cassini-mac/blob/f3baf1172ebfcb93ecc66322cb4ee2c013718e66/evidence/mac/d88/aws-handoff-2026-11-10/routing-merge-validation/215.log); the log is archived on the handoff branch so preserving evidence does not change the tested PR head. Prior mutation links remain valid evidence for the unchanged row implementation. Full CI on this new head is pending; ARM build jobs now request `cm-mac-m4`.
+Merged main `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f` with an ordinary merge commit, without rebasing. Head at the routing merge: `612bb36a1df7fd6296cba7061523ba743ffe7817`. Affected row tests plus all seven shared supersession tests pass under the shared heavy-run lock, Xcode 16.4 / four jobs. [Merged-head local log](https://github.com/codemyriad/cassini-mac/blob/f3baf1172ebfcb93ecc66322cb4ee2c013718e66/evidence/mac/d88/aws-handoff-2026-11-10/routing-merge-validation/215.log); the log is archived on the handoff branch so preserving evidence does not change the tested PR head. Prior mutation links remain valid evidence for the unchanged row implementation. ARM build jobs request `cm-mac-m4`.
+
+## Bounded waits from review
+
+The partial reader gate fails after ten seconds. The second and first replies have three- and six-second receive deadlines. Each reply must contain the expected bytes. The remaining fragment uses the existing bounded write on the test thread.
+
+A mutation suppresses the second peer reply with the connection open. The test fails with a receive timeout after 3.521 seconds. After restoring the reply, 21 XCTest and seven Swift Testing checks pass under the shared heavy-run lock. [Mutation patch](https://github.com/codemyriad/cassini-mac/blob/594bf715de569c46b1237c82d73bbc259eaec3d6/evidence/mac/d88/aws-transport/suppressed-second-reply.patch) · [Failure log](https://github.com/codemyriad/cassini-mac/blob/594bf715de569c46b1237c82d73bbc259eaec3d6/evidence/mac/d88/aws-transport/suppressed-second-reply.log) · [Restored run](https://github.com/codemyriad/cassini-mac/blob/594bf715de569c46b1237c82d73bbc259eaec3d6/evidence/mac/d88/aws-transport/review-bounds-restored.log)
 
 ## Checked bug classes
 
@@ -40,5 +46,5 @@ Reviewed [cassini-ux review/BUG-CLASSES.md](https://github.com/codemyriad/cassin
 - 14 checked: complete-frame, partial-frame and EOF assertions remain.
 - 15 checked: malformed-host exit status and transport-close paths remain.
 - 18 checked: base main, independent of the other drafts.
-- 19 pending: keep draft until full CI is green on exact merged head `612bb36a1df7fd6296cba7061523ba743ffe7817`; merged-head local checks passed.
+- 19 pending on `594bf715de569c46b1237c82d73bbc259eaec3d6`. Local validation passed and the PR is draft for review.
 - 1–13 not applicable: no new transcript ordering, format or storage policy.

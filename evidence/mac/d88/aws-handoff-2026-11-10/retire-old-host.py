@@ -96,7 +96,7 @@ def main():
         state = (item['state'].lower() if item.get('state') in ('MERGED', 'CLOSED') else
                  'ready' if not item['draft'] else
                  'failed: '+', '.join(item['failed']) if item['failed'] else
-                 'green; final readiness audit pending' if item['readyCandidate'] else
+                 ('green, draft for review' if item.get('reviewHold') else 'green; final readiness audit pending') if item['readyCandidate'] else
                  'pending: '+', '.join(item['pending']))
         if not item['headMatches']:
             state += '; head differs from the locally validated watcher head'

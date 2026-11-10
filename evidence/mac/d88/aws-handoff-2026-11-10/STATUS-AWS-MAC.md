@@ -2,7 +2,7 @@
 
 **Stop using this Mac by 2026-11-11 08:30 UTC. Termination and disk deletion: 2026-11-11 09:30 UTC.**
 
-Updated: 2026-11-10 22:43 UTC
+Updated: 2026-11-10 22:49 UTC
 
 Main #208 (including #222) merged at `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f`. Per coordinator, all six draft branches now contain an ordinary merge from that main, with no rebase or force-push. All six heads are pushed and their affected-row plus seven shared supersession tests pass locally under the shared heavy-run lock, Xcode16.4/four jobs. PR bodies include new-head validation links and D87 entries. No new source work is planned; continue existing readiness monitoring only.
 
@@ -13,7 +13,7 @@ Main #208 (including #222) merged at `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f`.
 | [#212](https://github.com/codemyriad/cassini-mac/pull/212) | Playback cancellation | `8c9c389` | Local pass; exact-head CI pending |
 | [#213](https://github.com/codemyriad/cassini-mac/pull/213) | Setup/watchers | `56bbf1e` | Local pass; exact-head CI pending |
 | [#214](https://github.com/codemyriad/cassini-mac/pull/214) | Model fixture startup | `c2777e5` | Local pass; exact-head CI pending |
-| [#215](https://github.com/codemyriad/cassini-mac/pull/215) | Transport discovery/process exit | `612bb36` | Local pass; exact-head CI pending |
+| [#215](https://github.com/codemyriad/cassini-mac/pull/215) | Transport discovery/process exit | `594bf71` | Local pass. Draft for review |
 
 ARM fast path confirmed: #210 run42886823413 requests `cm-mac-m4` for its ARM build; Intel remains `macos-15-intel`. Readiness automation is `aws-mac-d88-ci`, running `~/coordination/AWS-MAC-CI-WATCH.py --watch --mark-ready`. Its map contains the six full new SHAs and checks completed exact-head green workflows/jobs before updating D87 class19 and marking ready. It cannot push, merge or rerun. Per-PR audit records: `~/READY-AWS-MAC-<PR>.json`.
 
@@ -33,13 +33,11 @@ Heavy runs acquire `mkdir ~/.aws-heavy.lock` and the earlier local flock through
 
 None. Await exact-head CI; the watcher keeps failed/pending heads draft and marks green heads ready. No new work on this machine beyond the authorized monitoring/status checkpoints.
 
-## CI readiness
 
-Last checked: 2026-11-10T22:43:41+00:00
+## #215 review follow-up
 
-- #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
-- #211 `d1ebe14`: pending: UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
-- #212 `8c9c389`: pending: UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
-- #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
-- #214 `c2777e5`: pending: UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
-- #215 `612bb36`: ready; ready.
+The reader gate and both receives are bounded on pushed head `594bf715de569c46b1237c82d73bbc259eaec3d6`. Suppressing the second peer reply with the connection open fails with a receive timeout in 3.521 seconds. After restoration, 21 XCTest and seven Swift Testing checks passed under the shared lock. Evidence and the mutation patch are on the PR branch and linked in the PR body. The watcher tracks the new head and preserves the draft disposition for #215.
+
+## Old host final handoff
+
+Periodic checkpoint cutoff is 08:15 UTC. The readiness watcher stops at 08:20 UTC, when the finalizer takes a fresh CI snapshot and pushes the final handoff. Finalizer commands end by 08:28 UTC. Stop using the Mac by 08:30 UTC on 2026-11-11. Termination and disk deletion are at 09:30 UTC. The handoff branch contains the restoration instructions, head inventory and retirement plan.

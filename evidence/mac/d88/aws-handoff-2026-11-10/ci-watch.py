@@ -1,6 +1,7 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
-prs={210: '30fc6f3db0ec9be68e2c197e62b69db351ac9a1d', 211: 'd1ebe142862c3a4147866ee6cb0d6cbd229c56b8', 212: '8c9c38988c93e2d3e142e2e26dd631287e12b88d', 213: '56bbf1e2adb703c94011a9e457ec8445dba44b55', 214: 'c2777e51e8a48cdb4ae3bd4419d063c2fd67a701', 215: '612bb36a1df7fd6296cba7061523ba743ffe7817'}
+prs={210: '30fc6f3db0ec9be68e2c197e62b69db351ac9a1d', 211: 'd1ebe142862c3a4147866ee6cb0d6cbd229c56b8', 212: '8c9c38988c93e2d3e142e2e26dd631287e12b88d', 213: '56bbf1e2adb703c94011a9e457ec8445dba44b55', 214: 'c2777e51e8a48cdb4ae3bd4419d063c2fd67a701', 215: '594bf715de569c46b1237c82d73bbc259eaec3d6'}
+review_hold = {215}
 fields='number state headRefOid isDraft commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}}}}}'
 def retirement_due():
     value=os.environ.get('AWS_MAC_RETIRE_AT')
@@ -78,10 +79,10 @@ while True:
             if n==214: candidate=candidate and names.get('Package tests (macos-15-intel)')=='SUCCESS'
             if n==215: candidate=candidate and any(k and k.startswith('Whistle bundle') and v=='SUCCESS' for k,v in names.items())
             runs=sorted({int(m.group(1)) for x in contexts if (m:=re.search(r'/actions/runs/(\d+)',x.get('detailsUrl','')))})
-            summaries.append(dict(pr=n,state=pr['state'],head=pr['headRefOid'],headMatches=matches,draft=pr['isDraft'],readyCandidate=candidate,pending=pending,failed=failed,runs=runs))
+            summaries.append(dict(pr=n,state=pr['state'],head=pr['headRefOid'],headMatches=matches,draft=pr['isDraft'],readyCandidate=candidate,reviewHold=n in review_hold,pending=pending,failed=failed,runs=runs))
         if '--mark-ready' in sys.argv:
             for summary in summaries:
-                if summary['draft'] and summary['readyCandidate']:
+                if summary['draft'] and summary['readyCandidate'] and not summary['reviewHold']:
                     try:mark_when_audited(summary,prs[summary['pr']])
                     except Exception as error:
                         summary['auditError']=str(error); print('READINESS AUDIT: '+str(error),flush=True)
@@ -92,7 +93,7 @@ while True:
         text=status.read_text().split('\n## CI readiness\n')[0]
         text+='\n## CI readiness\n\nLast checked: '+stamp+'\n\n'
         for s in summaries:
-            text+='- #'+str(s['pr'])+' `'+s['head'][:7]+'`: '+('ready' if not s['draft'] else 'audit error: '+s['auditError'] if s.get('auditError') else 'HEAD MISMATCH' if not s['headMatches'] else 'failed: '+', '.join(s['failed']) if s['failed'] else 'green candidate, final run audit pending' if s['readyCandidate'] else 'pending: '+', '.join(s['pending']))+'; '+('draft' if s['draft'] else 'ready')+'.\n'
+            text+='- #'+str(s['pr'])+' `'+s['head'][:7]+'`: '+('ready' if not s['draft'] else 'audit error: '+s['auditError'] if s.get('auditError') else 'HEAD MISMATCH' if not s['headMatches'] else 'failed: '+', '.join(s['failed']) if s['failed'] else ('green, draft for review' if s['reviewHold'] else 'green candidate, final run audit pending') if s['readyCandidate'] else 'pending: '+', '.join(s['pending']))+'; '+('draft' if s['draft'] else 'ready')+'.\n'
         status.write_text(text)
         print(json.dumps(output),flush=True)
     except Exception as error:
