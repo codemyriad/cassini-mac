@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import Darwin
 import Testing
 @testable import CassiniKit
 @testable import CassiniLibrary
@@ -297,12 +298,12 @@ struct D84InterjectionFixtureTests {
             if second.isMultiple(of:10) { input.append(w("competing",t+200,t+2600,"remark")) }
         }
         input = input.enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
-        let clock = ContinuousClock()
-        let began = clock.now
+        let started = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         // Repair is enabled: this also guards the former per-word regex cost.
+        // Rendering is synchronous, so the thread CPU counter spans all of it.
         let result = TranscriptRendering.render(input)
-        let elapsed = began.duration(to:clock.now)
-        #expect(elapsed < .seconds(15),"11-hour render exceeded its generous debug-build bound: \(elapsed)")
+        let cpuNanoseconds = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-started
+        #expect(cpuNanoseconds < 15_000_000_000,"11-hour render exceeded its unchanged 15 s debug-build thread-CPU bound")
         let host = try #require(result.runs.first { $0.speaker == "presenter" })
         #expect(host.blocks.count >= seconds)
         let backchannels = result.runs.filter { $0.speaker == "listener" }
@@ -313,7 +314,7 @@ struct D84InterjectionFixtureTests {
         let rendered = result.rows.flatMap(\.members).flatMap(\.wordIndices)
         #expect(rendered.count == input.count && Set(rendered).count == input.count)
         #expect(result.words == input,"Measured spans and stored text are unchanged")
-        print("D84 eleven-hour render: \(input.count) words, \(elapsed)")
+        print("D84 eleven-hour render: \(input.count) words, thread CPU ms: \(Double(cpuNanoseconds)/1_000_000)")
     }
 
     @Test(arguments:[true,false]) func embeddedAttestationSurvivesReadAndImport(_ attested: Bool) throws {
