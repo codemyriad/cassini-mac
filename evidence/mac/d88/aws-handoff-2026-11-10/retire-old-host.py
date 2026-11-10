@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -47,14 +48,22 @@ def main():
     if args.check:
         return
     while now() < START:
-        time.sleep(min(30, (START-now()).total_seconds()))
+        time.sleep(max(0, min(30, (START-now()).total_seconds())))
     if now() >= END:
         print('Cutoff already passed; refusing further old-host operations', flush=True)
         return
     # These are this task's sessions only; leave CI runners and other agents alone.
     for session in ('aws-mac-d88-ci', 'aws-mac-d88-checkpoint'):
         try:
+            pid=int(command(['tmux', 'list-panes', '-t', session, '-F', '#{pane_pid}'], timeout=5).strip())
+            pgid=os.getpgid(pid)
+            if pgid != pid or pgid == os.getpgrp():
+                raise RuntimeError('Unexpected task process group; refusing group stop')
             command(['tmux', 'kill-session', '-t', session], timeout=5)
+            try:
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         except RuntimeError as error:
             print(str(error), flush=True)  # A completed watcher may already be gone.
     audit_error = None
@@ -65,9 +74,14 @@ def main():
         (ARCHIVE/'final-ci-audit.log').write_text(output)
     except RuntimeError as error:
         audit_error = str(error)
-    data = json.loads((HOME/'CI-AWS-MAC.json').read_text())
+    try:
+        data = json.loads((HOME/'CI-AWS-MAC.json').read_text())
+    except (OSError, ValueError):
+        data = json.loads((ARCHIVE/'ci-snapshot.json').read_text())
+        audit_error = (audit_error or '')+'; final CI file unreadable, using pushed snapshot'
     heads = json.loads((ARCHIVE/'routing-heads.json').read_text())
     status = (HOME/'STATUS-AWS-MAC.md').read_text().split('\n## Final handoff — old host stopped\n')[0]
+    status = re.sub(r'(?m)^Updated:.*$', 'Updated: '+now().strftime('%Y-%m-%d %H:%M UTC'), status)
     status += '\n## Final handoff — old host stopped\n\nRecorded: '+now().isoformat(timespec='seconds')+'\n\n'
     status += ('Periodic readiness/checkpoint sessions stopped. This final audit/checkpoint is the last old-host operation; '
                'no further use after 08:30 UTC. Mac termination/disk deletion: 2026-11-11 09:30 UTC.\n\n')

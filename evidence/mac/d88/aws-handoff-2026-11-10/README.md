@@ -4,6 +4,7 @@
 brief. Move before this deadline. All task source and evidence are on origin;
 this branch additionally preserves operational scripts and the status snapshot.
 No build products, downloaded assets, credentials or machine lock files are needed.
+**Stop all use of the old host by 2026-11-11 08:30 UTC; finalization starts08:20.**
 
 ## Published work
 

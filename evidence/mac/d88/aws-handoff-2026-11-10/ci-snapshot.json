@@ -1,8 +1,9 @@
 {
-  "updated": "2026-11-10T21:45:32+00:00",
+  "updated": "2026-11-10T21:48:28+00:00",
   "prs": [
     {
       "pr": 210,
+      "state": "OPEN",
       "head": "30fc6f3db0ec9be68e2c197e62b69db351ac9a1d",
       "headMatches": true,
       "draft": true,
@@ -22,6 +23,7 @@
     },
     {
       "pr": 211,
+      "state": "OPEN",
       "head": "d1ebe142862c3a4147866ee6cb0d6cbd229c56b8",
       "headMatches": true,
       "draft": true,
@@ -40,6 +42,7 @@
     },
     {
       "pr": 212,
+      "state": "OPEN",
       "head": "8c9c38988c93e2d3e142e2e26dd631287e12b88d",
       "headMatches": true,
       "draft": true,
@@ -55,6 +58,7 @@
     },
     {
       "pr": 213,
+      "state": "OPEN",
       "head": "56bbf1e2adb703c94011a9e457ec8445dba44b55",
       "headMatches": true,
       "draft": true,
@@ -72,13 +76,13 @@
     },
     {
       "pr": 214,
+      "state": "OPEN",
       "head": "c2777e51e8a48cdb4ae3bd4419d063c2fd67a701",
       "headMatches": true,
       "draft": true,
       "readyCandidate": false,
       "pending": [
         "UX browser setup / Browser setup (macos-15)",
-        "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)"
       ],
@@ -89,13 +93,13 @@
     },
     {
       "pr": 215,
+      "state": "OPEN",
       "head": "612bb36a1df7fd6296cba7061523ba743ffe7817",
       "headMatches": true,
       "draft": true,
       "readyCandidate": false,
       "pending": [
         "Package tests (macos-15-intel)",
-        "UX browser setup / Browser setup (macos-15)",
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
