@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T16:04:56+00:00",
+  "updated": "2026-11-10T16:09:57+00:00",
   "prs": [
     {
       "pr": 210,
@@ -10,7 +10,6 @@
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
         "CassiniKit tests and conformance",
-        "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper",
@@ -57,8 +56,7 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "build / Build products (arm64, Xcode 16.4)",
-        "build / Build products (x86_64, Xcode 16.4)"
+        "build / Build products (arm64, Xcode 16.4)"
       ],
       "failed": [],
       "runs": [
