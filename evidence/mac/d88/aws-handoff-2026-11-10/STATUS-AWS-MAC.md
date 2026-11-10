@@ -2,14 +2,14 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 18:33 UTC
+Updated: 2026-11-10 19:38 UTC
 
-- IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `9d373ff`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
-- Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `9f892f6`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
-- Playback cancellation: draft PR https://github.com/codemyriad/cassini-mac/pull/212, head `75ea821`. All 33 local tests pass before/after/restoration; removing owner cancel fails intended assertions. The shared ModelSupersessionTests:93 failure is repaired locally on all six heads; changed playback cancellation and shared fixture tests pass. Await new exact-head CI.
-- Setup/watchers: draft PR https://github.com/codemyriad/cassini-mac/pull/213, head `c4f3d1e`. 29 XCTest + 4 Swift Testing pass before/after/restoration; dropped-coalesced-attempt mutation fails intended assertions. Watcher timeout individually retained as failure-only.
-- Model fixture: draft PR https://github.com/codemyriad/cassini-mac/pull/214, head `922711b`. All 26 tests pass before/after/restoration; false-ready URL mutation fails. Manual expiry follows actual child-stall event; existing readiness/transfer/exit gates preserved.
-- Transport discovery/process exit: draft PR https://github.com/codemyriad/cassini-mac/pull/215, head `2a80631`. Focused 20 and broad 415 XCTest (22 inherited asset skips) + 5 Swift Testing pass before/after/restoration. Reintroduced 250 ms partial-frame deadline fails after manual 350 ms advance. Added generated-silence committed-write proof: passed locally with pinned VAD; notification-before-write mutation fails, restored 21 focused tests pass without skips. Real speech-resume golden remains for pipeline CI. All six may become ready independently when exact-head CI is green.
+- IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `30fc6f3`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
+- Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `d1ebe14`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
+- Playback cancellation: draft PR https://github.com/codemyriad/cassini-mac/pull/212, head `8c9c389`. All 33 local tests pass before/after/restoration; removing owner cancel fails intended assertions. The shared ModelSupersessionTests:93 failure is repaired locally on all six heads; changed playback cancellation and shared fixture tests pass. Await new exact-head CI.
+- Setup/watchers: draft PR https://github.com/codemyriad/cassini-mac/pull/213, head `56bbf1e`. 29 XCTest + 4 Swift Testing pass before/after/restoration; dropped-coalesced-attempt mutation fails intended assertions. Watcher timeout individually retained as failure-only.
+- Model fixture: draft PR https://github.com/codemyriad/cassini-mac/pull/214, head `c2777e5`. All 26 tests pass before/after/restoration; false-ready URL mutation fails. Manual expiry follows actual child-stall event; existing readiness/transfer/exit gates preserved.
+- Transport discovery/process exit: draft PR https://github.com/codemyriad/cassini-mac/pull/215, head `612bb36`. Focused 20 and broad 415 XCTest (22 inherited asset skips) + 5 Swift Testing pass before/after/restoration. Reintroduced 250 ms partial-frame deadline fails after manual 350 ms advance. Added generated-silence committed-write proof: passed locally with pinned VAD; notification-before-write mutation fails, restored 21 focused tests pass without skips. Real speech-resume golden remains for pipeline CI. All six may become ready independently when exact-head CI is green.
 - Full local test/build runs now acquire the shared directory lock via `mkdir ~/.aws-heavy.lock` and release it via `rmdir` in cleanup, in addition to the prior local flock. Wrapper: `~/coordination/aws-mac-test.py` (also `/tmp/aws-mac-test.py`), Xcode 16.4, 4 jobs. All six new heads passed their affected row tests plus seven ordinary supersession tests under the shared lock; no local heavy run currently active. Shared mkdir lock verified with a lightweight command; existing owners are never removed. Reusing `/tmp/cassini-aws-d88-before-build` when another run is needed.
 - Readiness automation: detached tmux session `aws-mac-d88-ci` (restarted with current exact heads), `~/coordination/AWS-MAC-CI-WATCH.py --watch --mark-ready`; log `~/coordination/aws-mac-ci-watch.log`. Polls every 300 s, audits exact head + completed successful first-attempt workflow/jobs before updating own D87 class 19 and marking ready. Seven offline success/rejection-gate checks pass. No push, merge or rerun capability. It continues after this turn; per-PR audit records go to `~/READY-AWS-MAC-<PR>.json`.
 
@@ -27,11 +27,11 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T19:33:40+00:00
+Last checked: 2026-11-10T19:36:48+00:00
 
-- #210 `9d373ff`: failed: CassiniKit tests and conformance; draft.
-- #211 `9f892f6`: failed: CassiniKit tests and conformance; draft.
-- #212 `75ea821`: failed: CassiniKit tests and conformance; draft.
-- #213 `c4f3d1e`: failed: CassiniKit tests and conformance; draft.
-- #214 `922711b`: failed: CassiniKit tests and conformance; draft.
-- #215 `2a80631`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #210 `30fc6f3`: pending: changes; draft.
+- #211 `d1ebe14`: pending: changes; draft.
+- #212 `8c9c389`: pending: changes; draft.
+- #213 `56bbf1e`: pending: changes; draft.
+- #214 `c2777e5`: pending: changes; draft.
+- #215 `612bb36`: pending: changes; draft.

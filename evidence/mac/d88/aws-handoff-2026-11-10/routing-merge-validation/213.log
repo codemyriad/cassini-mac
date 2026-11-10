@@ -1,0 +1,133 @@
+Building for debugging...
+[0/31] Write sources
+[7/31] Write swift-version--79AA4F9932D1E87A.txt
+[9/22] Emitting module CassiniBrowserSetupTests
+[10/22] Emitting module CassiniWhistle
+[11/22] Compiling CassiniWhistle WhistleSubprocess.swift
+[12/22] Emitting module CassiniPlaybackTests
+[13/24] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[14/24] Emitting module CassiniModelsTests
+[15/24] Compiling CassiniBrowserSetupTests InstallationTests.swift
+[16/24] Compiling CassiniBrowserSetupTests BackgroundSetupTests.swift
+[17/25] Emitting module cassini_whistle_worker
+[18/25] Compiling cassini_whistle_worker main.swift
+[19/27] Compiling CassiniPlaybackTests SessionPlaybackTests.swift
+[20/28] Emitting module cassini_parakeet_worker
+[21/28] Compiling cassini_parakeet_worker main.swift
+[22/26] Compiling CassiniWhistleTests IOTests.swift
+[23/26] Emitting module CassiniWhistleTests
+[24/26] Compiling CassiniPlaybackTests ListenControllerTests.swift
+[24/26] Write Objects.LinkFileList
+[25/26] Linking CassiniKitPackageTests
+Build complete! (3.16s)
+Test Suite 'Selected tests' started at 2026-11-10 19:37:08.476.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 19:37:08.477.
+Test Suite 'BackgroundSetupTests' started at 2026-11-10 19:37:08.477.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testActivationOrRetryResetsBackoffAndCancelsOldTimer]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testActivationOrRetryResetsBackoffAndCancelsOldTimer]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testBackoffAndJitterBounds]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testBackoffAndJitterBounds]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFailureClassificationSurvivesXPCAndDoesNotRetryPermissions]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFailureClassificationSurvivesXPCAndDoesNotRetryPermissions]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFakeClockRetryAndSuccessStopsTimer]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFakeClockRetryAndSuccessStopsTimer]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testPermanentFailuresOnlyRetryOnTrigger]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testPermanentFailuresOnlyRetryOnTrigger]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testStopCancelsScheduledRetry]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testStopCancelsScheduledRetry]' passed (0.001 seconds).
+Test Suite 'BackgroundSetupTests' passed at 2026-11-10 19:37:08.482.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+Test Suite 'InstallationTests' started at 2026-11-10 19:37:08.482.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testChromeForTestingUsesItsOwnFixedManifestRoot]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testChromeForTestingUsesItsOwnFixedManifestRoot]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testConcurrentInstallerCannotInterleavePublications]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testConcurrentInstallerCannotInterleavePublications]' passed (0.017 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testDetectionUsesInstalledBundleIDsWithoutReadingAProfile]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testDetectionUsesInstalledBundleIDsWithoutReadingAProfile]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFailureRollsBackEveryPreviouslyPublishedManifestAndLeavesNoStagingFiles]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFailureRollsBackEveryPreviouslyPublishedManifestAndLeavesNoStagingFiles]' passed (0.039 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFreshPartialFailureRemovesEarlierNewManifests]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFreshPartialFailureRemovesEarlierNewManifests]' passed (0.009 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testHardLinkedAndOversizedPreviousManifestsAreRejected]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testHardLinkedAndOversizedPreviousManifestsAreRejected]' passed (0.007 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testIdenticalManifestsKeepMtimeAndInodeEvenWithDifferentJSONFormatting]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testIdenticalManifestsKeepMtimeAndInodeEvenWithDifferentJSONFormatting]' passed (0.009 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testInstalledButNeverOpenedBrowserGetsOnlyRegistrationDirectories]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testInstalledButNeverOpenedBrowserGetsOnlyRegistrationDirectories]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLaunchTriggerInstallsMissingManifestsWithoutConnectAction]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLaunchTriggerInstallsMissingManifestsWithoutConnectAction]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyDeletionRollsBackTogetherWithNewManifests]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyDeletionRollsBackTogetherWithNewManifests]' passed (0.012 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyOwnershipRequiresFileNameManifestNameAndOwnExecutable]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyOwnershipRequiresFileNameManifestNameAndOwnExecutable]' passed (0.021 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMissingOrSymlinkedExecutableCannotBeRegistered]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMissingOrSymlinkedExecutableCannotBeRegistered]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMoveRewritesBothPathsAndWrongOriginIsRepaired]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMoveRewritesBothPathsAndWrongOriginIsRepaired]' passed (0.012 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserCreatesNothingAndCannotUseUnlistedDirectories]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserCreatesNothingAndCannotUseUnlistedDirectories]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserMeansNoRegistrationOrProfileCreation]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserMeansNoRegistrationOrProfileCreation]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testOwnLegacyManifestsAreRemovedWithoutMatchingOrigins]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testOwnLegacyManifestsAreRemovedWithoutMatchingOrigins]' passed (0.026 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRegistersBothHostsWithPinnedOriginAndPrivateModesInAllFourBrowsers]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRegistersBothHostsWithPinnedOriginAndPrivateModesInAllFourBrowsers]' passed (0.017 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRepeatConnectRepairsAStalePathAndSkipsBrowsersThatNeverRan]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRepeatConnectRepairsAStalePathAndSkipsBrowsersThatNeverRan]' passed (0.008 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkAndPipeManifestsAreRejectedBeforeAnyPublication]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkAndPipeManifestsAreRejectedBeforeAnyPublication]' passed (0.007 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkedBrowserParentCannotRedirectRegistration]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkedBrowserParentCannotRedirectRegistration]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnsafeLegacyEntriesAreLeftAlone]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnsafeLegacyEntriesAreLeftAlone]' passed (0.023 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnwritableConfigIsPermanentWithoutPublishingAnyManifest]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnwritableConfigIsPermanentWithoutPublishingAnyManifest]' passed (0.003 seconds).
+Test Suite 'InstallationTests' passed at 2026-11-10 19:37:08.725.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.243 (0.244) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 19:37:08.725.
+	 Executed 29 tests, with 0 failures (0 unexpected) in 0.248 (0.249) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 19:37:08.725.
+	 Executed 29 tests, with 0 failures (0 unexpected) in 0.248 (0.249) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite BrowserHostInstallationTests started.
+◇ Suite LibraryWatcherTests started.
+◇ Suite ModelSupersessionTests started.
+◇ Test fileEventsUseAnInjectedTemporaryRoot() started.
+◇ Test trailingDebounceHasAMaximumWaitAndRootSupersedesMeetings() started.
+◇ Test metadataTargetsOnlyItsMeetingAndWaveGrowthIsIgnored() started.
+◇ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Test symlinkedModelNamespaceCannotRedirectCleanup() started.
+◇ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() started.
+◇ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() started.
+◇ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) started.
+◇ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() started.
+◇ Passing 1 argument failure → "missing" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "same-size-corrupt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing-notice" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "partial" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "bad-receipt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Test registersOnlyExistingBrowsersAndRetainsRecordingsOnUninstall() started.
+◇ Passing 1 argument idOnly → false to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument idOnly → true to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+✔ Test metadataTargetsOnlyItsMeetingAndWaveGrowthIsIgnored() passed after 0.012 seconds.
+✔ Test trailingDebounceHasAMaximumWaitAndRootSupersedesMeetings() passed after 0.012 seconds.
+✔ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() passed after 0.012 seconds.
+✔ Test symlinkedModelNamespaceCannotRedirectCleanup() passed after 0.015 seconds.
+✔ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) passed after 0.017 seconds.
+✔ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) passed after 0.017 seconds.
+✔ Test registersOnlyExistingBrowsersAndRetainsRecordingsOnUninstall() passed after 0.020 seconds.
+✔ Suite BrowserHostInstallationTests passed after 0.020 seconds.
+✔ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() passed after 0.024 seconds.
+✔ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() passed after 0.070 seconds.
+✔ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) passed after 0.070 seconds.
+✔ Suite ModelSupersessionTests passed after 0.071 seconds.
+✔ Test fileEventsUseAnInjectedTemporaryRoot() passed after 0.332 seconds.
+✔ Suite LibraryWatcherTests passed after 0.332 seconds.
+✔ Test run with 11 tests passed after 0.332 seconds.

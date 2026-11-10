@@ -1,0 +1,125 @@
+Building for debugging...
+[0/31] Write sources
+[6/31] Copying Fixtures
+[7/31] Write swift-version--79AA4F9932D1E87A.txt
+[9/21] Emitting module CassiniWhistle
+[10/21] Compiling CassiniWhistle WhistleSubprocess.swift
+[11/25] Emitting module cassini_whistle_worker
+[12/25] Compiling CassiniBrowserSetupTests BackgroundSetupTests.swift
+[13/25] Emitting module CassiniBrowserSetupTests
+[14/25] Compiling CassiniBrowserSetupTests InstallationTests.swift
+[15/26] Compiling cassini_whistle_worker main.swift
+[16/26] Emitting module cassini_parakeet_worker
+[17/26] Compiling cassini_parakeet_worker main.swift
+[18/24] Emitting module CassiniWhistleTests
+[19/24] Compiling CassiniWhistleTests IOTests.swift
+[20/24] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[21/24] Compiling CassiniModelsTests ModelDownloaderTests.swift
+[22/24] Emitting module CassiniModelsTests
+[22/24] Write Objects.LinkFileList
+[23/24] Linking CassiniKitPackageTests
+Build complete! (3.28s)
+Test Suite 'Selected tests' started at 2026-11-10 19:37:13.280.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 19:37:13.281.
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 19:37:13.281.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 19:37:13.281.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelSupersessionTests started.
+◇ Suite ModelDownloaderTests started.
+◇ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() started.
+◇ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() started.
+◇ Test symlinkedModelNamespaceCannotRedirectCleanup() started.
+◇ Test cancellationWhileWaitingForRemoveLeavesTheInstallationIntact() started.
+◇ Test changedIdentityNeverAppends(_:) started.
+◇ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() started.
+◇ Test revisionPinMustBePresentAndOriginalInstallSurvivesBadUpdate() started.
+◇ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) started.
+◇ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) started.
+◇ Test removeWaitsForAnExternalCancelledTransferToReleaseTheRevisionLock() started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Test aBadDecodedHashNeverReportsAnInstalledModel() started.
+◇ Test retryRepairsAnIncompleteInstallation(_:) started.
+◇ Test staleInventoryDoesNotRemoveAnInstallationRepairedWhileWaitingForItsLock() started.
+◇ Test resumeWithRangeAndIfRange(_:) started.
+◇ Test inventoryRequiresReceiptAndNoticeAndNeverFetchesMetadata() started.
+◇ Test completedTransfersAndRemovalReleaseLocksBeforeRetryEvenWithInheritedDescriptors() started.
+◇ Test fixtureBootstrapReportsTheChildsErrorAndInvalidReadinessLine() started.
+◇ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() started.
+◇ Test cancelAndRemoveWaitForTransferWithoutResurrection() started.
+◇ Test installVerifyReuseWithoutArtifactDownloadAndRemove(_:) started.
+◇ Test readinessCanDependOnTheCallingActorMakingProgress() started.
+◇ Test repairUnlinksAnUnsafeChildWithoutFollowingItsTarget() started.
+◇ Test retryRepairsSameSizeCorruptWeights() started.
+◇ Test invalidZstdAndRawLimitNeverPublish() started.
+◇ Test failureCaptureRetainsTheRealChildsPythonStackAndWaitsForItsExit() started.
+◇ Test progressReportsBytesAndMarksOnlyTheAtomicInstallComplete() started.
+◇ Test transientServerFailureRetainsPreviouslyValidatedPrefix() started.
+◇ Test theUserAgentNamesTheAppItsVersionAndThePlatformOnly() started.
+◇ Test rejectsWithoutPublishing(_:) started.
+◇ Test manifestAndFilesystemBoundaries() started.
+◇ Test fullDiskStopsBeforeArtifact() started.
+◇ Test acceptedInferenceLinksDoNotInvalidateOrRedownloadAnInstalledModel() started.
+◇ Passing 1 argument scenario → "bad-range" to changedIdentityNeverAppends(_:)
+◇ Passing 1 argument failure → "same-size-corrupt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument scenario → "changed-etag" to changedIdentityNeverAppends(_:)
+◇ Passing 1 argument failure → "bad-receipt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "partial" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing-notice" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument idOnly → false to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument idOnly → true to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument missing → "weights.bin" to retryRepairsAnIncompleteInstallation(_:)
+◇ Passing 1 argument missing → "receipt.json" to retryRepairsAnIncompleteInstallation(_:)
+◇ Passing 1 argument missing → "NOTICE.txt" to retryRepairsAnIncompleteInstallation(_:)
+◇ Passing 1 argument scenario → "truncated" to resumeWithRangeAndIfRange(_:)
+◇ Passing 1 argument scenario → "416" to resumeWithRangeAndIfRange(_:)
+◇ Passing 1 argument scenario → "ignore-range" to resumeWithRangeAndIfRange(_:)
+◇ Passing 1 argument scenario → "normal" to installVerifyReuseWithoutArtifactDownloadAndRemove(_:)
+◇ Passing 1 argument scenario → "no-length" to installVerifyReuseWithoutArtifactDownloadAndRemove(_:)
+◇ Passing 1 argument scenario → "compressed-hash" to rejectsWithoutPublishing(_:)
+◇ Passing 1 argument scenario → "raw-hash" to rejectsWithoutPublishing(_:)
+◇ Passing 1 argument scenario → "unsafe-path" to rejectsWithoutPublishing(_:)
+◇ Passing 1 argument scenario → "wrong-origin" to rejectsWithoutPublishing(_:)
+◇ Passing 1 argument scenario → "redirect" to rejectsWithoutPublishing(_:)
+✔ Test symlinkedModelNamespaceCannotRedirectCleanup() passed after 0.015 seconds.
+✔ Test theUserAgentNamesTheAppItsVersionAndThePlatformOnly() passed after 0.015 seconds.
+✔ Test manifestAndFilesystemBoundaries() passed after 0.015 seconds.
+✔ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() passed after 0.019 seconds.
+✔ Test invalidZstdAndRawLimitNeverPublish() passed after 0.022 seconds.
+✔ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) passed after 0.023 seconds.
+✔ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() passed after 0.024 seconds.
+✔ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) passed after 0.028 seconds.
+✔ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() passed after 0.039 seconds.
+✔ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) passed after 0.087 seconds.
+✔ Suite ModelSupersessionTests passed after 0.088 seconds.
+✔ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() passed after 0.325 seconds.
+✔ Test readinessCanDependOnTheCallingActorMakingProgress() passed after 0.328 seconds.
+✔ Test fixtureBootstrapReportsTheChildsErrorAndInvalidReadinessLine() passed after 0.336 seconds.
+✔ Test fullDiskStopsBeforeArtifact() passed after 0.340 seconds.
+✔ Test failureCaptureRetainsTheRealChildsPythonStackAndWaitsForItsExit() passed after 0.340 seconds.
+✔ Test aBadDecodedHashNeverReportsAnInstalledModel() passed after 0.369 seconds.
+✔ Test progressReportsBytesAndMarksOnlyTheAtomicInstallComplete() passed after 0.470 seconds.
+✔ Test cancellationWhileWaitingForRemoveLeavesTheInstallationIntact() passed after 0.483 seconds.
+✔ Test removeWaitsForAnExternalCancelledTransferToReleaseTheRevisionLock() passed after 0.514 seconds.
+✔ Test inventoryRequiresReceiptAndNoticeAndNeverFetchesMetadata() passed after 0.575 seconds.
+✔ Test rejectsWithoutPublishing(_:) passed after 0.591 seconds.
+✔ Test staleInventoryDoesNotRemoveAnInstallationRepairedWhileWaitingForItsLock() passed after 0.634 seconds.
+✔ Test revisionPinMustBePresentAndOriginalInstallSurvivesBadUpdate() passed after 0.645 seconds.
+✔ Test resumeWithRangeAndIfRange(_:) passed after 0.668 seconds.
+✔ Test acceptedInferenceLinksDoNotInvalidateOrRedownloadAnInstalledModel() passed after 0.685 seconds.
+✔ Test cancelAndRemoveWaitForTransferWithoutResurrection() passed after 0.722 seconds.
+✔ Test retryRepairsSameSizeCorruptWeights() passed after 0.734 seconds.
+✔ Test repairUnlinksAnUnsafeChildWithoutFollowingItsTarget() passed after 0.739 seconds.
+✔ Test retryRepairsAnIncompleteInstallation(_:) passed after 0.751 seconds.
+✔ Test changedIdentityNeverAppends(_:) passed after 0.790 seconds.
+✔ Test transientServerFailureRetainsPreviouslyValidatedPrefix() passed after 0.801 seconds.
+✔ Test installVerifyReuseWithoutArtifactDownloadAndRemove(_:) passed after 0.821 seconds.
+✔ Test completedTransfersAndRemovalReleaseLocksBeforeRetryEvenWithInheritedDescriptors() passed after 0.834 seconds.
+✔ Suite ModelDownloaderTests passed after 0.835 seconds.
+✔ Test run with 33 tests passed after 0.835 seconds.

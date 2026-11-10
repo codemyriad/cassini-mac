@@ -9,12 +9,12 @@ No build products, downloaded assets, credentials or machine lock files are need
 
 | Row | PR | Branch | Exact tested head |
 |---|---|---|---|
-| IPC silence | #210 | test/d88-aws-ipc-barriers | 9d373ff997c1d8721cae24fa6c805fd0da42662a |
-| Browser broker/start/permissions | #211 | test/d88-aws-browser-gates | 9f892f66edf6cfb5d9698b410e232dff1b15cecf |
-| Playback cancellation | #212 | test/d88-aws-playback-gate | 75ea82166b79dcdfc7ad084d5eb30dc71a274a11 |
-| Setup/watcher | #213 | test/d88-aws-setup-events | c4f3d1e86d1bc66d2d186c3f740fcaaa14a63b34 |
-| Model fixture | #214 | test/d88-aws-model-startup | 922711bcbde0531c834f18bccf8a2f2407462923 |
-| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 2a80631e207765524044523fe0b6a643d7571942 |
+| IPC silence | #210 | test/d88-aws-ipc-barriers | 30fc6f3db0ec9be68e2c197e62b69db351ac9a1d |
+| Browser broker/start/permissions | #211 | test/d88-aws-browser-gates | d1ebe142862c3a4147866ee6cb0d6cbd229c56b8 |
+| Playback cancellation | #212 | test/d88-aws-playback-gate | 8c9c38988c93e2d3e142e2e26dd631287e12b88d |
+| Setup/watcher | #213 | test/d88-aws-setup-events | 56bbf1e2adb703c94011a9e457ec8445dba44b55 |
+| Model fixture | #214 | test/d88-aws-model-startup | c2777e51e8a48cdb4ae3bd4419d063c2fd67a701 |
+| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 612bb36a1df7fd6296cba7061523ba743ffe7817 |
 
 Every branch has before/after and mutation evidence under `evidence/mac/d88/`.
 All local final suites pass. Transport retains 22 original asset-dependent skips;
@@ -86,3 +86,7 @@ Each PR contains the final proof/recipe in `aws-supersession/` and explicit D87 
 ## Subsequent #208 blocker 1 assignment
 
 Completed local proof and opened draft PR #222 targeting `ci/rented-mac-routing`, branch `ci/rented-mac-routing-paths`, head `452c52f66d90fd5d1f987dff90197620554e833e`. The base #208 head17162d0 already contains the workspace fence and consumer-local rebuild; the PR adds real two-path compiled proof and a guard-removal mutation. Complete Cassini producer/consumer builds + three path-dependent tests pass with producer unavailable; same-path reuse and all41 contract checks pass. Everything is pushed under `evidence/mac/rented-runner-paths/` on that branch. The readiness watcher still covers only #210–#215. See current STATUS for details.
+
+## #208 merged: current six PR heads
+
+Coordinator authorized ordinary main merges after #208 merged. All six branches contain main `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f` as their second merge parent, with no rebase or force-push. The published-work table and `routing-heads.json` name the new exact heads. Every affected row plus all seven shared supersession tests passes locally under the shared mkdir lock, Xcode16.4/four jobs; transport uses only generated silence for its supplemental publication check. Logs/results are in `routing-merge-validation/`, with staging recipe `aws-validate-routing-merges.py`. CI readiness is pending on these new heads; the watcher map is updated. Earlier #208 pending/failure observations are historical.

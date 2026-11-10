@@ -1,6 +1,6 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
-prs={210: '9d373ff997c1d8721cae24fa6c805fd0da42662a', 211: '9f892f66edf6cfb5d9698b410e232dff1b15cecf', 212: '75ea82166b79dcdfc7ad084d5eb30dc71a274a11', 213: 'c4f3d1e86d1bc66d2d186c3f740fcaaa14a63b34', 214: '922711bcbde0531c834f18bccf8a2f2407462923', 215: '2a80631e207765524044523fe0b6a643d7571942'}
+prs={210: '30fc6f3db0ec9be68e2c197e62b69db351ac9a1d', 211: 'd1ebe142862c3a4147866ee6cb0d6cbd229c56b8', 212: '8c9c38988c93e2d3e142e2e26dd631287e12b88d', 213: '56bbf1e2adb703c94011a9e457ec8445dba44b55', 214: 'c2777e51e8a48cdb4ae3bd4419d063c2fd67a701', 215: '612bb36a1df7fd6296cba7061523ba743ffe7817'}
 fields='number headRefOid isDraft commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}}}}}'
 def gh_json(*args):
     return json.loads(subprocess.check_output(['gh',*args],text=True))
