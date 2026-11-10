@@ -9,12 +9,12 @@ No build products, downloaded assets, credentials or machine lock files are need
 
 | Row | PR | Branch | Exact tested head |
 |---|---|---|---|
-| IPC silence | #210 | test/d88-aws-ipc-barriers | f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51 |
-| Browser broker/start/permissions | #211 | test/d88-aws-browser-gates | 54c574b672ddd10b3ea5cfb9af42fb9d6734dc47 |
-| Playback cancellation | #212 | test/d88-aws-playback-gate | ac49a7503d35c32837b2a93605028f6525e6fc95 |
-| Setup/watcher | #213 | test/d88-aws-setup-events | 3fd8e39175df0fd649cfcbaf7fd8edfbc14a6d42 |
-| Model fixture | #214 | test/d88-aws-model-startup | 21e957a0aaa5e0f8df4aa857344addc94af511eb |
-| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 8f5cdab91a904d4695b4f0a2b1c4aaa46376ff85 |
+| IPC silence | #210 | test/d88-aws-ipc-barriers | 9d373ff997c1d8721cae24fa6c805fd0da42662a |
+| Browser broker/start/permissions | #211 | test/d88-aws-browser-gates | 9f892f66edf6cfb5d9698b410e232dff1b15cecf |
+| Playback cancellation | #212 | test/d88-aws-playback-gate | 75ea82166b79dcdfc7ad084d5eb30dc71a274a11 |
+| Setup/watcher | #213 | test/d88-aws-setup-events | c4f3d1e86d1bc66d2d186c3f740fcaaa14a63b34 |
+| Model fixture | #214 | test/d88-aws-model-startup | 922711bcbde0531c834f18bccf8a2f2407462923 |
+| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 2a80631e207765524044523fe0b6a643d7571942 |
 
 Every branch has before/after and mutation evidence under `evidence/mac/d88/`.
 All local final suites pass. Transport retains 22 original asset-dependent skips;
@@ -75,6 +75,10 @@ along with the old CI watcher before moving; resume against a dedicated checkout
 of this branch on the second Mac. This archival branch has no PR and does not alter
 the six tested PR heads.
 
-Transport supplemental proof: generated silence with the pinned VAD cache passed, notification-before-write mutation failed, and all 21 focused tests passed after restoration. Recipe: `aws-sidecar-verify.py`. Readiness for #215 is held until #210–#214 are ready, following coordinator priority.
+Transport supplemental proof: generated silence with the pinned VAD cache passed, notification-before-write mutation failed, and all 21 focused tests passed after restoration. Recipe: `aws-sidecar-verify.py`. All six become ready independently as full CI goes green on their exact heads, per the latest coordinator instruction.
 
-Additional coordinator-assigned shared-model blocker: `test/d88-aws-supersession-events` at `a935f0e376437919cc947039126f7841533306dd` (WIP, no PR, verification deliberately interrupted at the 70-minute checkpoint). Source, held-pool probe, mutation recipe and interruption record are on that branch. No test result is claimed. See the status snapshot for next steps.
+Additional coordinator-assigned shared-model blocker: **fixed locally and pushed on all six heads**. The complete controlled proof and diagnostic history is preserved on `test/d88-aws-supersession-events` at `6ed212bb12abacec8ec1feaca1e30a9282c68fe9` (no PR). Both original parameter variants fail the controlled held-cooperative-worker reproduction at the actual lock-event wait; both pass with the dedicated task executor. Seven ordinary supersession tests pass; removing replacement hash revalidation fails hash-error and retained-old-copy assertions; restored eight ordinary/probe tests pass. All six row suites plus the shared suite pass locally under the shared lock. Production behavior and the original 5/10-second bounds are unchanged.
+
+Each PR contains the final proof/recipe in `aws-supersession/` and explicit D87 + mutation links in its body. Body snapshots are preserved here as `pr-210-body.md` through `pr-215-body.md`. `apply-supersession.py` and `refresh-shared-evidence.py` are historical one-shot recipes, not migration startup tasks; the source changes are already pushed.
+
+#208 has not merged as of 17:15 UTC. Its ARM Whistle worker failed during Python setup (`mkdir /Users/runner: Permission denied`), recorded in `routing-208-observation.md`; leave that routing work with its owner. No hosted jobs were rerun. Once it merges, integrate main into each still-draft branch with ordinary merges/pushes, locally validate under the shared lock, update each PR's exact tested head and body evidence, and refresh the readiness watcher's expected head map before restarting it. Never force-push or change a ready head.
