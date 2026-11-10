@@ -2,7 +2,7 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 15:29 UTC
+Updated: 2026-11-10 15:45 UTC
 
 - IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `f0b06cc`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
 - Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `54c574b`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
@@ -17,13 +17,17 @@ Updated: 2026-11-10 15:29 UTC
 
 All six work branches and evidence are pushed. Handoff scripts and a status snapshot are preserved on `test/d88-aws-handoff`; no credentials or build caches are needed for restoration. Checkpoint branch: `test/d88-aws-handoff`, archive `evidence/mac/d88/aws-handoff-2026-11-10/`. A separate `aws-mac-d88-checkpoint` tmux session pushes status, scripts, and readiness audit records there every five minutes. Logs: `~/coordination/aws-mac-checkpoint.log`. Stop both old tmux sessions before resuming on the second Mac.
 
+## Current blocker
+
+GitHub-hosted macOS slots: #214 has both builds green but its nine downstream jobs were queued at 15:43 UTC; #210 still needs ARM, and #211–#213 still need architecture builds. No failed checks reported. No reruns or deadline changes requested or performed. Readiness continues automatically on exact green heads, with #215 held until #210–#214 are ready.
+
 ## Questions
 
 None. All six assigned rows are pushed; exact-head CI is the remaining gate. No merges, reruns or force-pushes performed.
 
 ## CI readiness
 
-Last checked: 2026-11-10T15:39:53+00:00
+Last checked: 2026-11-10T15:44:54+00:00
 
 - #210 `f0b06cc`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #211 `54c574b`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
