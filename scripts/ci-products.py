@@ -55,27 +55,36 @@ def product_arch():
 
 
 def macho_arch(path):
-    """The architecture of a thin 64-bit Mach-O file, 'universal' for a fat one, None otherwise."""
+    """The architecture of a thin little-endian 64-bit Mach-O file, 'universal' for a fat one,
+    'unknown' for any other Mach-O (32-bit, big-endian, another CPU), None for other files."""
     with Path(path).open('rb') as stream:
         header = stream.read(8)
     if len(header) < 8:
         return None
     if header[:4] in (b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf'):
         return 'universal'
+    if header[:4] in (b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf'):
+        return 'unknown'
     if header[:4] != b'\xcf\xfa\xed\xfe':
         return None
     return CPU_TYPES.get(int.from_bytes(header[4:8], 'little'), 'unknown')
 
 
 def check_swiftpm_arch(expected):
-    """Every executable and test bundle the consumers run has exactly the named architecture."""
+    """Every executable and test bundle the consumers run has exactly the named architecture,
+    and the test bundle `swift test --skip-build` loads is really there: a layout this check
+    does not know must fail, not pass with nothing inspected."""
     folder = ROOT/'.build/debug'
+    if not folder.is_dir():
+        raise ValueError('No SwiftPM products at .build/debug')
     files = [path for path in folder.iterdir() if path.is_file() and not path.is_symlink()]
-    files += [path for path in folder.glob('*.xctest/Contents/MacOS/*') if path.is_file()]
-    for path in sorted(files):
+    bundles = [path for path in folder.glob('*.xctest/Contents/MacOS/*') if path.is_file()]
+    for path in sorted(files + bundles):
         found = macho_arch(path)
         if found is not None and found != expected:
             raise ValueError('Product %s is %s, not %s' % (path.relative_to(ROOT), found, expected))
+    if not any(macho_arch(path) == expected for path in bundles):
+        raise ValueError('No %s test bundle among the SwiftPM products' % expected)
 
 
 # Release tooling that once lived in SwiftPM's .build (release.py now keeps it in build/). A
@@ -155,6 +164,8 @@ def unpack(kind, source):
             if workspace != expected['workspace']:
                 raise WorkspaceMismatch('SwiftPM workspace differs: ' + workspace + ' -> ' + expected['workspace'])
         packed.extractall(ROOT, members=members)
+    if kind == 'swiftpm':
+        check_swiftpm_arch(expected['arch'])
     print('Restored verified', kind, 'products for', expected['commit'])
 
 

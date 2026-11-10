@@ -258,10 +258,10 @@ class RentedRunnerRouting(unittest.TestCase):
         # Every routed consumer of x86_64 products runs each of its own steps as x86_64.
         package=ci_job('package_tests')
         self.assertIn('      CASSINI_CI_ARCH: x86_64\n',package)
-        self.assertIn('    defaults:\n      run:\n        shell: arch -x86_64 /bin/bash -e {0}\n',package)
+        self.assertIn('    defaults:\n      run:\n        shell: arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}\n',package)
         worker=self.worker()
         self.assertIn('      CASSINI_CI_ARCH: ${{ matrix.arch }}\n',worker)
-        self.assertIn('    defaults:\n      run:\n        shell: arch -${{ matrix.arch }} /bin/bash -e {0}\n',worker)
+        self.assertIn('    defaults:\n      run:\n        shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}\n',worker)
         for job in [package,worker]:
             self.assertNotRegex(job,r'(?m)^\s+shell: (?!arch -)','no step may leave the product architecture')
             self.assertNotIn('swift build',job)
@@ -290,6 +290,9 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertIn('runner: [macos-15, macos-15-intel]\n',body)
             self.assertIn('runs-on: ${{ matrix.runner }}\n',body)
             self.assertNotIn('CASSINI_CI_ARCH',body)
+            # Their hosted Intel row compiles SwiftPM itself after a rented Mac built the products.
+            job=body[body.index('runner: [macos-15, macos-15-intel]'):]
+            self.assertEqual(re.search(r'(?m)^    timeout-minutes: (\d+)$',job).group(1),'25',name)
         for name in ['ux-shot.yml','ux-boards.yml','ux-parakeet.yml','ux-browser-setup.yml','ci-build-release.yml']:
             self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
@@ -341,11 +344,49 @@ class ProductArchitecture(unittest.TestCase):
         if translation:self.state.write_text('')
         elif self.state.exists():self.state.unlink()
         output=self.root/'outputs';output.write_text('');log=self.root/'sudo.log';log.write_text('')
-        env=dict(PATH=str(self.bin)+':/usr/bin:/bin',GITHUB_OUTPUT=str(output),FAKE_MACHINE=machine,FAKE_STATE=str(self.state),
-                 FAKE_SUDO=sudo,FAKE_SUDO_LOG=str(log))
-        if requested is not None:env['CASSINI_CI_ARCH']=requested
+        env=self.environment(machine,requested,sudo,output,log)
         result=subprocess.run(['/bin/bash',str(ROOT/'scripts/ci-product-arch.sh')],env=env,capture_output=True,text=True)
+        self.assertFalse((self.root/'install.lock').exists(),'the install lock is always released')
         return result,output.read_text(),log.read_text().count('called')
+
+    def environment(self,machine,requested,sudo,output,log):
+        env=dict(PATH=str(self.bin)+':/usr/bin:/bin',GITHUB_OUTPUT=str(output),FAKE_MACHINE=machine,FAKE_STATE=str(self.state),
+                 FAKE_SUDO=sudo,FAKE_SUDO_LOG=str(log),CI_ROSETTA_LOCK=str(self.root/'install.lock'),FAKE_RELEASE=str(self.root/'release'))
+        if requested is not None:env['CASSINI_CI_ARCH']=requested
+        return env
+
+    def test_two_runners_of_one_mac_install_once_and_both_continue(self):
+        # softwareupdate refuses a second concurrent install. The fake installer does the same and
+        # only finishes once the test has seen the second runner waiting for the first.
+        self.tool('sudo','[[ "$*" = "-n softwareupdate --install-rosetta --agree-to-license" ]]\necho called >> "$FAKE_SUDO_LOG"\n'
+                  'mkdir "$FAKE_STATE.installing" || exit 1\nwhile [[ ! -e "$FAKE_RELEASE" ]]; do sleep 0.05; done\n: > "$FAKE_STATE"\nrmdir "$FAKE_STATE.installing"')
+        outputs=[self.root/'first.out',self.root/'second.out'];log=self.root/'sudo.log';log.write_text('')
+        for output in outputs:output.write_text('')
+        start=lambda output:subprocess.Popen(['/bin/bash',str(ROOT/'scripts/ci-product-arch.sh')],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                                             env=self.environment('arm64','x86_64','works',output,log))
+        first=start(outputs[0])
+        self.addCleanup(lambda:[process.kill() for process in (first,) if process.poll() is None])
+        self.assertEqual(first.stdout.readline(),'Rosetta 2 is missing on this runner; installing it\n')
+        second=start(outputs[1])
+        self.addCleanup(lambda:[process.kill() for process in (second,) if process.poll() is None])
+        self.assertEqual(second.stderr.readline(),'Another runner is installing Rosetta 2; waiting for it\n')
+        self.assertIsNone(second.poll(),'the second runner must not fail while the first installs')
+        (self.root/'release').write_text('')
+        for process,output in zip([first,second],outputs):
+            self.assertEqual(process.wait(timeout=60),0,process.stderr.read())
+            self.assertEqual(output.read_text(),'name=x86_64\n')
+            process.stdout.close();process.stderr.close()
+        self.assertEqual(log.read_text().count('called'),1)
+        self.assertFalse((self.root/'install.lock').exists())
+
+    def test_an_abandoned_install_lock_fails_clearly_without_a_second_installer(self):
+        (self.root/'install.lock').mkdir()
+        output=self.root/'outputs';output.write_text('');log=self.root/'sudo.log';log.write_text('')
+        env=dict(self.environment('arm64','x86_64','works',output,log),CI_ROSETTA_WAIT='0')
+        result=subprocess.run(['/bin/bash',str(ROOT/'scripts/ci-product-arch.sh')],env=env,capture_output=True,text=True)
+        self.assertEqual((result.returncode,output.read_text(),log.read_text()),(1,'',''))
+        self.assertIn('cannot execute x86_64 products',result.stderr)
+        self.assertTrue((self.root/'install.lock').is_dir(),'another runner owns it')
 
     def test_a_job_without_a_named_architecture_uses_the_machines_own(self):
         for machine in ['arm64','x86_64']:
@@ -388,12 +429,20 @@ class Transport(unittest.TestCase):
         self.identity_patch = patch.object(products, 'identity', return_value=self.identity); self.identity_patch.start()
         arch = patch.dict(os.environ, CASSINI_CI_ARCH='arm64'); arch.start(); self.addCleanup(arch.stop)
         folder = self.root/'.build/arm64/debug'; folder.mkdir(parents=True)
-        self.executable = folder/'worker'; self.executable.write_bytes(b'fixture'); self.executable.chmod(0o755)
+        self.macho = self.thin(0x0100000c)
+        self.executable = folder/'worker'; self.executable.write_bytes(self.macho); self.executable.chmod(0o755)
+        self.tests = folder/'CassiniKitPackageTests.xctest/Contents/MacOS/CassiniKitPackageTests'
+        self.tests.parent.mkdir(parents=True); self.tests.write_bytes(self.macho)
         (self.root/'.build/debug').symlink_to('arm64/debug')
         self.output = self.root/'upload'
 
     def tearDown(self):
         self.identity_patch.stop(); self.patch.stop(); self.temp.cleanup()
+
+    @staticmethod
+    def thin(cpu, magic=b'\xcf\xfa\xed\xfe'):
+        """A minimal Mach-O header: enough for the architecture check, never executed."""
+        return magic + cpu.to_bytes(4, 'little') + b'\0'*24
 
     def test_stale_opus_pin_is_rejected_before_staging(self):
         source=self.root/'assets/Opus';source.mkdir(parents=True)
@@ -415,7 +464,7 @@ class Transport(unittest.TestCase):
         self.executable.unlink()
         products.unpack('swiftpm', self.output)
         self.assertTrue(os.access(self.executable, os.X_OK))
-        self.assertEqual((self.root/'.build/debug/worker').read_bytes(), b'fixture')
+        self.assertEqual((self.root/'.build/debug/worker').read_bytes(), self.macho)
 
     def test_relocated_swiftpm_is_not_extracted_and_builds_in_the_consumer(self):
         products.pack('swiftpm', self.output)
@@ -429,16 +478,22 @@ class Transport(unittest.TestCase):
                 products.restore('swiftpm', self.output)
                 build.assert_called_once_with(['swift','build','--build-tests','--arch','arm64'],cwd=self.root,check=True)
             # A rented Mac compiles the job's architecture, not its own, and checks the result.
-            intel=(self.root/'.build/arm64/debug/worker');intel.write_bytes(b'\xcf\xfa\xed\xfe'+(0x01000007).to_bytes(4,'little')+b'\0'*24)
+            intel,arm=self.thin(0x01000007),self.macho
             with patch.dict(os.environ,CASSINI_CI_ARCH='x86_64'),patch.object(products,'identity',return_value={**consumer,'arch':'x86_64'}):
                 (self.output/'swiftpm.json').write_text(json.dumps({**json.loads((self.output/'swiftpm.json').read_text()),'arch':'x86_64'}))
+                self.executable.write_bytes(intel);self.tests.write_bytes(intel)
                 with patch.object(products.subprocess, 'run') as build:
                     products.restore('swiftpm', self.output)
                     build.assert_called_once_with(['swift','build','--build-tests','--arch','x86_64'],cwd=self.root,check=True)
-                intel.write_bytes(b'\xcf\xfa\xed\xfe'+(0x0100000c).to_bytes(4,'little')+b'\0'*24)
+                for worker,tests,message in [(arm,intel,'worker is arm64, not x86_64'),(intel,arm,'CassiniKitPackageTests is arm64, not x86_64')]:
+                    self.executable.write_bytes(worker);self.tests.write_bytes(tests)
+                    with patch.object(products.subprocess, 'run'):
+                        with self.assertRaisesRegex(ValueError,message): products.restore('swiftpm', self.output)
+                # A build that leaves no test bundle where consumers load it is not accepted either.
+                self.executable.write_bytes(intel);self.tests.unlink()
                 with patch.object(products.subprocess, 'run'):
-                    with self.assertRaisesRegex(ValueError,'is arm64, not x86_64'): products.restore('swiftpm', self.output)
-            intel.unlink()
+                    with self.assertRaisesRegex(ValueError,'No x86_64 test bundle'): products.restore('swiftpm', self.output)
+            self.tests.write_bytes(arm);self.executable.unlink()
             self.assertFalse(self.executable.exists(), 'Foreign objects never reach the consumer')
 
     def test_compatible_workspace_restores_without_compiling(self):
@@ -447,7 +502,7 @@ class Transport(unittest.TestCase):
         with patch.object(products.subprocess, 'run') as build:
             products.restore('swiftpm', self.output)
             build.assert_not_called()
-        self.assertEqual(self.executable.read_bytes(),b'fixture')
+        self.assertEqual(self.executable.read_bytes(),self.macho)
 
     def test_relocated_product_does_not_hide_tampering_or_build_failure(self):
         products.pack('swiftpm', self.output)
@@ -477,23 +532,37 @@ class Transport(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Unsupported product architecture'):products.product_arch()
 
     def test_packing_rejects_products_of_another_architecture(self):
-        thin=lambda cpu:b'\xcf\xfa\xed\xfe'+cpu.to_bytes(4,'little')+b'\0'*24
-        intel,arm,fat=thin(0x01000007),thin(0x0100000c),b'\xca\xfe\xba\xbe'+b'\0\0\0\x02'+b'\0'*24
-        bundle=self.root/'.build/arm64/debug/CassiniKitPackageTests.xctest/Contents/MacOS';bundle.mkdir(parents=True)
-        tests=bundle/'CassiniKitPackageTests'
-        for worker,test,named,accepted in [(arm,arm,'arm64',True),(intel,intel,'x86_64',True),(intel,intel,'arm64',False),
-                (arm,arm,'x86_64',False),(intel,arm,'x86_64',False),(arm,intel,'arm64',False),(fat,intel,'x86_64',False),
-                (thin(7),intel,'x86_64',False)]:
-            with self.subTest(named=named,worker=worker[:8],test=test[:8]):
-                self.executable.write_bytes(worker);tests.write_bytes(test)
+        intel,arm,fat=self.thin(0x01000007),self.macho,b'\xca\xfe\xba\xbe'+b'\0\0\0\x02'+b'\0'*24
+        other=[self.thin(7),self.thin(0x01000007,b'\xce\xfa\xed\xfe'),self.thin(0x01000007,b'\xfe\xed\xfa\xce'),self.thin(0x01000007,b'\xfe\xed\xfa\xcf')]
+        cases=[(arm,arm,'arm64',True),(intel,intel,'x86_64',True),(b'#!/bin/sh\n# a script',intel,'x86_64',True),
+               (intel,intel,'arm64',False),(arm,arm,'x86_64',False),(intel,arm,'x86_64',False),(arm,intel,'arm64',False),
+               (fat,intel,'x86_64',False),(intel,fat,'x86_64',False)]
+        cases+=[(unknown,intel,'x86_64',False) for unknown in other]+[(intel,unknown,'x86_64',False) for unknown in other]
+        # Nothing inspected is not a pass: a missing or non-Mach-O test bundle is refused.
+        cases+=[(intel,None,'x86_64',False),(intel,b'not a Mach-O file','x86_64',False)]
+        for worker,test,named,accepted in cases:
+            with self.subTest(named=named,worker=worker[:8],test=test and test[:8]):
+                self.executable.write_bytes(worker)
+                if test is None: self.tests.unlink()
+                else: self.tests.write_bytes(test)
                 shutil.rmtree(self.output,ignore_errors=True)
                 with patch.dict(os.environ,CASSINI_CI_ARCH=named),patch.object(products,'identity',side_effect=lambda kind:{**self.identity,'arch':products.product_arch()}):
                     if accepted:
                         products.pack('swiftpm',self.output)
                         self.assertEqual(json.loads((self.output/'swiftpm.json').read_text())['arch'],named)
                     else:
-                        with self.assertRaisesRegex(ValueError,'Product .* is .*, not '+named):products.pack('swiftpm',self.output)
+                        with self.assertRaisesRegex(ValueError,'(Product .* is .*, not |No )'+named):products.pack('swiftpm',self.output)
                         self.assertFalse((self.output/'swiftpm.tar.gz').exists())
+        shutil.rmtree(self.root/'.build/arm64/debug')
+        with self.assertRaisesRegex(ValueError,'No SwiftPM products'):products.pack('swiftpm',self.output)
+
+    def test_restored_products_are_checked_after_extraction(self):
+        products.pack('swiftpm', self.output)
+        self.executable.unlink();self.tests.unlink()
+        with patch.object(products,'check_swiftpm_arch',wraps=products.check_swiftpm_arch) as check:
+            products.unpack('swiftpm', self.output)
+            check.assert_called_once_with('arm64')
+        self.assertEqual(self.tests.read_bytes(),self.macho)
 
     def test_different_commit_or_arch_is_rejected_before_extract(self):
         products.pack('swiftpm', self.output)
