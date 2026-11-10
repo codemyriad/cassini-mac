@@ -253,11 +253,17 @@ public enum TranscriptRendering {
         let blockStarts = runs.map { $0.blocks.count > 1 ? BlockStarts($0.blocks,spans) : nil }
         var candidates: [Int:(host:Int,after:Int)] = [:]
         let byStart = runs.indices.sorted { runs[$0].startMs == runs[$1].startMs ? $0 < $1 : runs[$0].startMs < runs[$1].startMs }
+        // Rejoining preserves the viewer's first-block startMs, but a later
+        // block can sound earlier. Sweep audible spans independently of display order.
+        let audibleByStart = runs.indices.filter { !runSpans[$0].isEmpty }.sorted {
+            let a = runSpans[$0][0].start, b = runSpans[$1][0].start
+            return a == b ? $0 < $1 : a < b
+        }
         var hosts: [Int] = [], pending = 0
         for r in byStart {
-            while pending < byStart.count && runs[byStart[pending]].startMs < runs[r].startMs {
-                let h = byStart[pending]
-                if runs[h].blocks.count > 1 && !runSpans[h].isEmpty { hosts.append(h) }
+            while pending < audibleByStart.count && runSpans[audibleByStart[pending]][0].start < runs[r].startMs {
+                let h = audibleByStart[pending]
+                if runs[h].blocks.count > 1 { hosts.append(h) }
                 pending += 1
             }
             hosts.removeAll { runs[$0].endMs < runs[r].startMs }
@@ -279,8 +285,9 @@ public enum TranscriptRendering {
         for (r,c) in candidates where candidates[c.host] == nil { runs[r].host = c.host; runs[r].afterBlock = c.after }
         var collisions: [(a:Int,b:Int,ms:Int64)] = []
         var sounding: [Int] = []
-        for j in byStart where !runSpans[j].isEmpty {
-            sounding.removeAll { runs[$0].endMs <= runs[j].startMs }
+        for j in audibleByStart {
+            let start = runSpans[j][0].start
+            sounding.removeAll { runSpans[$0].last!.end <= start }
             for k in sounding {
                 let a = min(k,j), b = max(k,j)
                 guard runs[a].speaker != runs[b].speaker && runs[a].host != b && runs[b].host != a else { continue }

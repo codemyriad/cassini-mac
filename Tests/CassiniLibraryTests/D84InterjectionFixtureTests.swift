@@ -35,6 +35,25 @@ struct D84InterjectionFixtureTests {
         #expect(result.words.map(\.text) == fixture.items.map(\.text))
         #expect(result.words.map(\.startMs) == fixture.items.map(\.startMs),"Repair cannot move seek anchors")
     }
+    @Test func seededAudibleOrderMatchesViewer() throws {
+        struct Corpus: Decodable {
+            struct Case: Decodable { let name: String; let items: [TranscriptRendering.Word]; let rows: [Expected.Row] }
+            let cases: [Case]
+        }
+        let url = try #require(Bundle.module.url(forResource:"audible-order",withExtension:"json",subdirectory:"Golden/interjections"))
+        let corpus = try JSONDecoder().decode(Corpus.self,from:Data(contentsOf:url))
+        #expect(corpus.cases.count == 128)
+        for fixture in corpus.cases {
+            let result = TranscriptRendering.render(fixture.items)
+            let rows = result.rows.map { row in
+                Expected.Row(speaker:row.speaker,continuation:row.continuation,startMs:row.startMs,endMs:row.endMs,over:row.over,crosstalk:row.crosstalk,
+                             members:row.members.map { .init(kind:$0.kind,speaker:$0.speaker,crosstalk:$0.crosstalk,wordIndices:$0.wordIndices,text:$0.text) })
+            }
+            #expect(rows == fixture.rows,"Viewer audible order: \(fixture.name)")
+            #expect(result.rows.flatMap(\.members).flatMap(\.wordIndices).sorted() == Array(fixture.items.indices))
+            #expect(result.words == fixture.items)
+        }
+    }
     private func w(_ speaker: String, _ start: Int64, _ end: Int64, _ text: String) -> TranscriptRendering.Word {
         .init(speaker:speaker,startMs:start,endMs:end,text:text)
     }
@@ -203,6 +222,27 @@ struct D84InterjectionFixtureTests {
         }
         let sidecar = try #require(LibraryScanner(root:library).scan().meetings.first)
         #expect(sidecar.state.transcript == .done && !sidecar.wordEndsBoundedByAudio)
+    }
+
+    @Test func asideBeforeLegacyRunStartUsesAudibleHostAdmission() throws {
+        let input = [w("s1",0,0,"um"),w("s1",1000,1150,"first"),w("c",950,1020,"touch"),
+                     w("s1",800,950,"second"),w("b",960,990,"aside"),w("s1",1020,1500,"third")]
+        let result = TranscriptRendering.render(input,endsBoundedByAudio:true)
+        let host = try #require(result.runs.first { $0.speaker == "s1" })
+        let aside = try #require(result.runs.first { $0.speaker == "b" })
+        #expect(host.startMs == 1000,"Display/run ordering retains the viewer's legacy start")
+        #expect(aside.host == host.id && aside.afterBlock == host.blocks[1])
+        #expect(!result.rows.contains { $0.speaker == "b" })
+        #expect(result.rows.flatMap(\.members).contains { $0.kind == "interjection" && $0.speaker == "b" && $0.wordIndices == [4] })
+    }
+    @Test func audibleOverlapBeforeLegacyRunStartIsNotEvicted() throws {
+        let input = [w("s1",0,0,"um"),w("s1",1000,1150,"first"),w("b",700,1000,"competing"),w("s1",800,1000,"second")]
+        let result = TranscriptRendering.render(input,endsBoundedByAudio:true)
+        let host = try #require(result.runs.first { $0.speaker == "s1" })
+        #expect(host.startMs == 1000)
+        #expect(result.rows.first { $0.speaker == "s1" }?.over == ["b"])
+        #expect(result.rows.first { $0.speaker == "b" }?.over == ["s1"])
+        #expect(result.rows.flatMap(\.members).flatMap(\.wordIndices).sorted() == Array(input.indices))
     }
 
 }
