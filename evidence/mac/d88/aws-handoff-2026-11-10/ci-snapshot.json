@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T19:08:37+00:00",
+  "updated": "2026-11-10T19:13:38+00:00",
   "prs": [
     {
       "pr": 210,
@@ -9,8 +9,7 @@
       "readyCandidate": false,
       "pending": [
         "UX Library boards / Library boards",
-        "UX Library boards / Native spectrogram and profiling",
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)"
+        "UX Library boards / Native spectrogram and profiling"
       ],
       "failed": [
         "CassiniKit tests and conformance"
@@ -27,7 +26,6 @@
       "readyCandidate": false,
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
-        "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper"
       ],
@@ -47,7 +45,6 @@
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
         "CassiniKit tests and conformance",
-        "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper",
@@ -68,8 +65,7 @@
       "pending": [
         "UX browser setup / Browser setup (macos-15)",
         "UX Library boards / Library boards",
-        "UX Library boards / Native spectrogram and profiling",
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)"
+        "UX Library boards / Native spectrogram and profiling"
       ],
       "failed": [
         "CassiniKit tests and conformance"
@@ -85,10 +81,12 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "build_release / Build Release app and package (universal, Xcode 16.4)",
         "UX window screenshots / Window and board-size screenshots",
-        "Whistle bundle / Whistle worker (macos-15)",
-        "Whistle bundle / Universal app and sandboxed Whistle helper"
+        "Whistle bundle / Universal app and sandboxed Whistle helper",
+        "UX Library boards / Library boards",
+        "UX Library boards / Native spectrogram and profiling",
+        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
+        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel)"
       ],
       "failed": [
         "CassiniKit tests and conformance"
@@ -106,7 +104,6 @@
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
         "CassiniKit tests and conformance",
-        "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper",
