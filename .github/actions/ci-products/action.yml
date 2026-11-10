@@ -1,6 +1,9 @@
 name: Restore same-run products
 description: Verify source, pins, architecture and Xcode before extracting signed products.
 inputs:
+  headless:
+    default: 'false'
+    description: Separate same-toolchain rented-runner products; never GUI or Release products
   swiftpm:
     default: 'false'
     description: Native SwiftPM test bundles and executables
@@ -22,8 +25,15 @@ inputs:
 runs:
   using: composite
   steps:
+    - if: inputs.headless == 'true'
+      shell: bash
+      env:
+        RESTORE_RELEASE: ${{ inputs.release }}
+      run: |
+        test "$RUNNER_ENVIRONMENT" = self-hosted
+        test "$RESTORE_RELEASE" != true
     - shell: bash
-      run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      run: bash scripts/ci-select-xcode.sh
     - id: arch
       shell: bash
       run: echo "name=$(uname -m)" >> "$GITHUB_OUTPUT"
@@ -34,27 +44,27 @@ runs:
     - uses: actions/download-artifact@v5
       if: inputs.swiftpm == 'true'
       with:
-        name: ci-swiftpm-${{ steps.arch.outputs.name }}
+        name: ci-swiftpm-${{ steps.arch.outputs.name }}${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.assets == 'true'
       with:
-        name: ci-assets
+        name: ci-assets${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true'
       with:
-        name: ci-parakeet
+        name: ci-parakeet${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.runtime == 'true'
       with:
-        name: ci-runtime
+        name: ci-runtime${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.debug == 'true'
       with:
-        name: ci-debug
+        name: ci-debug${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.release == 'true'
@@ -85,27 +95,27 @@ runs:
     - uses: actions/download-artifact@v5
       if: inputs.swiftpm == 'true' && contains(steps.verify.outputs.retry, ' swiftpm ')
       with:
-        name: ci-swiftpm-${{ steps.arch.outputs.name }}
+        name: ci-swiftpm-${{ steps.arch.outputs.name }}${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.assets == 'true' && contains(steps.verify.outputs.retry, ' assets ')
       with:
-        name: ci-assets
+        name: ci-assets${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true' && contains(steps.verify.outputs.retry, ' parakeet ')
       with:
-        name: ci-parakeet
+        name: ci-parakeet${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.runtime == 'true' && contains(steps.verify.outputs.retry, ' runtime ')
       with:
-        name: ci-runtime
+        name: ci-runtime${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.debug == 'true' && contains(steps.verify.outputs.retry, ' debug ')
       with:
-        name: ci-debug
+        name: ci-debug${{ inputs.headless == 'true' && '-headless' || '' }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.release == 'true' && contains(steps.verify.outputs.retry, ' release ')

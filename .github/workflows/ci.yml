@@ -35,6 +35,7 @@ jobs:
         EVENT_NAME: ${{ github.event_name }}
       run: |
         python3 scripts/test-ci-contract.py
+        python3 scripts/ci-test-xcode.py
         python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
   build:
@@ -51,7 +52,7 @@ jobs:
     uses: ./.github/workflows/ci-build-release.yml
   kit:
     name: CassiniKit tests and conformance
-    runs-on: macos-15
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || 'macos-15' }}
     # About 2.5x its p95 (9.2 min) with the folded Library, native-sink and packaging steps; a
     # hang can't hold a shared macOS slot for 6 hours (D66 mac-P0-5, #130 review).
     timeout-minutes: 30
@@ -59,6 +60,7 @@ jobs:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
       with:
+        headless: ${{ runner.environment == 'self-hosted' && 'true' || 'false' }}
         swiftpm: 'true'
         assets: 'true'
         debug: 'true'

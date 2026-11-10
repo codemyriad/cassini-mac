@@ -10,20 +10,24 @@ permissions:
   contents: read
 jobs:
   build:
-    name: Build products (${{ matrix.arch }}, Xcode 16.4)
+    name: Build products (${{ matrix.arch }}, ${{ matrix.suffix == '-headless' && 'rented Xcode' || 'Xcode 16.4' }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+        # Preserve the Xcode16.4 products used by GUI/Release consumers. Only
+        # trusted runs with an enabled rented runner add a separate compiler set.
+        include: >-
+          ${{ fromJSON(
+            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER
+            && '[{"runner":"macos-15","arch":"arm64","suffix":""},{"runner":"macos-15-intel","arch":"x86_64","suffix":""},{"runner":"macos-15","arch":"arm64","suffix":"-headless"}]'
+            || '[{"runner":"macos-15","arch":"arm64","suffix":""},{"runner":"macos-15-intel","arch":"x86_64","suffix":""}]'
+          ) }}
+    runs-on: ${{ matrix.suffix == '-headless' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - id: xcode
+        run: bash scripts/ci-select-xcode.sh
       - run: swift --version
       # Freeze the source fingerprint before generated trees exist; cache post-save
       # otherwise evaluates hashFiles again and can time out walking build output.
@@ -32,14 +36,14 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .build
-          key: swiftpm-${{ matrix.arch }}-xcode16.4-${{ steps.swiftpm_key.outputs.hash }}
-          restore-keys: swiftpm-${{ matrix.arch }}-xcode16.4-
+          key: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.swiftpm_key.outputs.hash }}
+          restore-keys: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-
       - name: Compile all native Swift executables and test bundles once
         run: swift build --build-tests
       - run: python3 scripts/ci-products.py pack swiftpm build/ci-upload/swiftpm
       - uses: actions/upload-artifact@v5
         with:
-          name: ci-swiftpm-${{ matrix.arch }}
+          name: ci-swiftpm-${{ matrix.arch }}${{ matrix.suffix }}
           path: build/ci-upload/swiftpm
           retention-days: 3
           compression-level: 0
@@ -54,10 +58,10 @@ jobs:
             .build/Sparkle
             build/dmg-pip-cache
             ~/Library/Caches/Homebrew
-          key: pinned-fetches-xcode16.4-${{ hashFiles('Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'Distribution/dmg-requirements.txt', 'scripts/fetch-*.py', 'project.yml') }}
+          key: pinned-fetches-${{ steps.xcode.outputs.fingerprint }}-${{ hashFiles('Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'Distribution/dmg-requirements.txt', 'scripts/fetch-*.py', 'project.yml') }}
           # Every fetch checks its pinned digest before reuse. Keep valid artifacts
           # when a fetch script changes instead of forcing all GitHub downloads.
-          restore-keys: pinned-fetches-xcode16.4-
+          restore-keys: pinned-fetches-${{ steps.xcode.outputs.fingerprint }}-
       - name: Install build tools
         if: matrix.arch == 'arm64'
         run: brew install cmake xcodegen
@@ -73,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
         with:
-          name: ci-assets
+          name: ci-assets${{ matrix.suffix }}
           path: build/ci-upload/assets
           retention-days: 3
           compression-level: 0
@@ -82,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
         with:
-          name: ci-runtime
+          name: ci-runtime${{ matrix.suffix }}
           path: build/ci-upload/runtime
           retention-days: 3
           compression-level: 0
@@ -99,7 +103,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64' && inputs.parakeet_models
         with:
-          name: ci-parakeet
+          name: ci-parakeet${{ matrix.suffix }}
           path: build/ci-upload/parakeet
           retention-days: 3
           compression-level: 0
@@ -147,12 +151,12 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
         with:
-          name: ci-debug
+          name: ci-debug${{ matrix.suffix }}
           path: build/ci-upload/debug
           retention-days: 3
           compression-level: 0
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
-          name: build-diagnostics-${{ matrix.arch }}
+          name: build-diagnostics-${{ matrix.arch }}${{ matrix.suffix }}
           path: build/*build.log

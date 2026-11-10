@@ -11,6 +11,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -171,7 +172,8 @@ class FoldedJobs(unittest.TestCase):
 
     def test_arm64_full_suite_has_one_model_partition_and_its_exact_complement(self):
         kit = ci_job('kit')
-        self.assertIn('runs-on: macos-15\n', kit)
+        self.assertIn('vars.CM_MAC_RUNNER',kit)
+        self.assertIn("|| 'macos-15'",kit)
         start = kit.index('    - name: Test\n')
         end = kit.index('\n    - ', start + 1)
         step = kit[start:end]
@@ -206,6 +208,69 @@ class FoldedJobs(unittest.TestCase):
         self.assertLess(shot.index('python3 scripts/hosted-display.py'),
                         shot.index('python3 scripts/check-window-screenshots.py build/board-screenshots 1120x720'))
         self.assertFalse((ROOT/'.github/workflows/ux-board-shot.yml').exists())
+
+
+class RentedRunnerRouting(unittest.TestCase):
+    def evaluate(self, expression, event, head, label, matrix=None):
+        # Evaluate the actual limited Actions expression, not a second routing implementation.
+        expression = expression.strip().removeprefix('${{').removesuffix('}}').strip()
+        expression = expression.replace('&&',' and ').replace('||',' or ')
+        github = SimpleNamespace(event_name=event,repository='codemyriad/cassini-mac',
+            event=SimpleNamespace(pull_request=SimpleNamespace(head=SimpleNamespace(repo=SimpleNamespace(full_name=head)))))
+        return eval(expression,{'__builtins__':{}},{'github':github,'vars':SimpleNamespace(CM_MAC_RUNNER=label),
+                    'matrix':SimpleNamespace(**(matrix or {})),'fromJSON':json.loads})
+
+    def test_enabled_owned_runs_get_separate_products_but_forks_and_unset_use_original_matrix(self):
+        body=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        include=body.split('include: >-\n',1)[1].split('    runs-on:',1)[0]
+        route=re.search(r'^    runs-on: (.+)$',body,re.M).group(1)
+        cases=[('pull_request','codemyriad/cassini-mac','cm-mac-m4',3),
+               ('pull_request','contributor/fork','cm-mac-m4',2),
+               ('pull_request','codemyriad/cassini-mac','',2),
+               ('push','','cm-mac-m4',3),('workflow_dispatch','','',2)]
+        for event,head,label,count in cases:
+            with self.subTest(event=event,head=head,label=label):
+                rows=self.evaluate(include,event,head,label)
+                self.assertEqual(len(rows),count)
+                self.assertEqual(rows[:2],[dict(runner='macos-15',arch='arm64',suffix=''),
+                                         dict(runner='macos-15-intel',arch='x86_64',suffix='')])
+                actual=[self.evaluate(route,event,head,label,row) for row in rows]
+                self.assertEqual(actual[:2],['macos-15','macos-15-intel'])
+                if count==3:
+                    self.assertEqual(actual[2],'cm-mac-m4')
+                    self.assertEqual(rows[2]['suffix'],'-headless')
+
+    def test_only_compatible_headless_consumers_route_and_intel_never_moves(self):
+        kit=ci_job('kit')
+        worker=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  worker:',1)[1].split('  bundle:',1)[0]
+        for job,matrices in [(kit,[{}]),(worker,[dict(runner='macos-15'),dict(runner='macos-15-intel')])]:
+            route=re.search(r'^    runs-on: (.+)$',job,re.M).group(1)
+            self.assertIn("headless: ${{ runner.environment == 'self-hosted'",job)
+            for row in matrices:
+                for event,head,label,enabled in [('pull_request','codemyriad/cassini-mac','cm-mac-m4',True),
+                    ('pull_request','fork/repo','cm-mac-m4',False),('pull_request','codemyriad/cassini-mac','',False),
+                    ('schedule','','cm-mac-m4',True)]:
+                    original=row.get('runner','macos-15')
+                    expected='cm-mac-m4' if enabled and original=='macos-15' else original
+                    self.assertEqual(self.evaluate(route,event,head,label,row),expected)
+        for name in ['ux-shot.yml','ux-boards.yml','ux-parakeet.yml','ux-browser-setup.yml','ci-build-release.yml']:
+            self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
+        bundle=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
+        self.assertIn('runs-on: macos-15',bundle)
+        self.assertIn('runs-on: macos-15-intel',ci_job('package_tests'))
+
+    def test_compiler_products_and_caches_stay_separate(self):
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        for name in ['ci-swiftpm-${{ matrix.arch }}','ci-assets','ci-runtime','ci-parakeet','ci-debug']:
+            self.assertIn('name: '+name+'${{ matrix.suffix }}',producer)
+        for kind in ['swiftpm-${{ steps.arch.outputs.name }}','assets','runtime','parakeet','debug']:
+            self.assertIn('name: ci-'+kind+"${{ inputs.headless == 'true' && '-headless' || '' }}",action)
+        self.assertIn('name: ci-release\n',action)
+        for line in producer.splitlines():
+            if 'key: swiftpm-' in line or 'restore-keys: swiftpm-' in line or 'key: pinned-fetches-' in line or 'restore-keys: pinned-fetches-' in line:
+                self.assertIn('steps.xcode.outputs.fingerprint',line)
+        self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
 
 
 class Transport(unittest.TestCase):
