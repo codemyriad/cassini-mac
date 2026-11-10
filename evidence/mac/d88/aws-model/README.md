@@ -32,3 +32,17 @@ clock; 14 checked by preserved complete-byte/prefix tests; 15 checked by cancell
 bootstrap error and cleanup coverage; 16 checked by existing atomic install/lock tests;
 18 checked (base main). 19 pending exact-head CI. 1–13 not applicable to this fixture-
 only change.
+
+## Manual deadline review follow-up
+
+The bootstrap error records which exit the fixture actually took. The real hang
+bound wins if both clocks have expired. The stalled test requires the
+manual-deadline reason and keeps its child and directory cleanup checks.
+
+A Swift probe compiled the bootstrap reader and ran the actual Python
+`no-ready` fixture. At reviewed head `c2777e51`, disabling both manual exit checks
+still satisfied the old assertion after the real hang bound. The fixed probe
+reports `startupDeadline`. Applying `ignore-manual-deadline.patch` makes the
+fixed assertion reject `hangBound`. See `deadline-review.log`. Production
+downloader code is outside this change. D87 #17 is covered by the failed
+mutation. D87 #19 requires CI on the follow-up commit.

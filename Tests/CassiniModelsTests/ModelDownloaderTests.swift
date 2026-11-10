@@ -70,10 +70,13 @@ private final class Server: @unchecked Sendable {
         }
     }
     struct BootstrapFailure: Error, CustomStringConvertible {
+        enum Reason {
+            case startupDeadline, hangBound, pipeClosed, invalidReadiness
+        }
         let description: String
         let pid: Int32
         let folder: URL
-        let deadlineExpired: Bool
+        let reason: Reason
     }
     private init(_ scenario: String, startupTimeout: TimeInterval, diagnostics: URL?,
                  startupClock: @Sendable () -> UInt64, startupHeld: (@Sendable () -> Void)?,
@@ -111,15 +114,26 @@ private final class Server: @unchecked Sendable {
         let hangDeadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
         let fd = pipe.fileHandleForReading.fileDescriptor
         var line = Data(), published = false
-        while startupClock() < deadline && DispatchTime.now().uptimeNanoseconds < hangDeadline {
-            var ready = pollfd(fd:fd,events:Int16(POLLIN | POLLHUP),revents:0)
+        var failureReason = BootstrapFailure.Reason.invalidReadiness
+        while true {
             let now = startupClock(), realNow = DispatchTime.now().uptimeNanoseconds
-            guard now < deadline, realNow < hangDeadline else { break }
+            if realNow >= hangDeadline {
+                failureReason = .hangBound
+                break
+            }
+            if now >= deadline {
+                failureReason = .startupDeadline
+                break
+            }
             let remaining = min(deadline-now,hangDeadline-realNow)
+            var ready = pollfd(fd:fd,events:Int16(POLLIN | POLLHUP),revents:0)
             let count = poll(&ready,1,Int32(min(100,remaining/1_000_000)))
             if count < 0 { if errno == EINTR { continue }; throw ModelDownloadError.response }
             if count == 0 { continue }
-            guard let byte = try pipe.fileHandleForReading.read(upToCount:1), !byte.isEmpty else { break }
+            guard let byte = try pipe.fileHandleForReading.read(upToCount:1), !byte.isEmpty else {
+                failureReason = .pipeClosed
+                break
+            }
             if byte == Data([10]) {
                 // The child has entered its intentional pre-readiness stall. This
                 // is a control event, never a URL or a readiness publication.
@@ -133,7 +147,7 @@ private final class Server: @unchecked Sendable {
         guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else {
             Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:false,diagnostics:diagnostics,exited:exitEvent)
             let diagnostic = (try? String(contentsOf:errors,encoding:.utf8)) ?? ""
-            throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root,deadlineExpired:startupClock() >= deadline)
+            throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (reason=\(failureReason), newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root,reason:failureReason)
         }
         origin = url; admitted = true
         Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:true,diagnostics:diagnostics,exited:exitEvent)
@@ -292,7 +306,7 @@ private final class RemovalLockEvent: @unchecked Sendable {
             _ = try await Server.start("no-ready",startupClock:{ clock.now() },startupHeld:{ clock.expire() })
         } as? Server.BootstrapFailure)
         #expect(clock.expirations == 1)
-        #expect(failure.deadlineExpired,"The manual deadline must fire after the child stalls; the hang bound must fail")
+        #expect(failure.reason == .startupDeadline,"The manual deadline must end startup after the child stalls")
         #expect(kill(failure.pid,0) == -1 && errno == ESRCH)
         #expect(!FileManager.default.fileExists(atPath:failure.folder.path))
     }
@@ -300,6 +314,7 @@ private final class RemovalLockEvent: @unchecked Sendable {
         let failure = try #require(await fails {
             _ = try await Server.start("invalid-ready")
         } as? Server.BootstrapFailure)
+        #expect(failure.reason == .invalidReadiness)
         #expect(failure.description.contains("deliberate fixture startup failure"))
         #expect(failure.description.contains("stdout=invalid readiness"))
         #expect(kill(failure.pid,0) == -1 && errno == ESRCH)

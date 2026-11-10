@@ -1,0 +1,27 @@
+--- a/Tests/CassiniModelsTests/ModelDownloaderTests.swift
++++ b/Tests/CassiniModelsTests/ModelDownloaderTests.swift
+@@ -110,22 +110,17 @@
+         let launchedAt = DispatchTime.now().uptimeNanoseconds
+         try process.run()
+         onLaunched(control.fileHandleForWriting)
+-        let deadline = startupClock() + UInt64(startupTimeout*1_000_000_000)
+         let hangDeadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
+         let fd = pipe.fileHandleForReading.fileDescriptor
+         var line = Data(), published = false
+         var failureReason = BootstrapFailure.Reason.invalidReadiness
+         while true {
+-            let now = startupClock(), realNow = DispatchTime.now().uptimeNanoseconds
++            let realNow = DispatchTime.now().uptimeNanoseconds
+             if realNow >= hangDeadline {
+                 failureReason = .hangBound
+                 break
+             }
+-            if now >= deadline {
+-                failureReason = .startupDeadline
+-                break
+-            }
+-            let remaining = min(deadline-now,hangDeadline-realNow)
++            let remaining = hangDeadline-realNow
+             var ready = pollfd(fd:fd,events:Int16(POLLIN | POLLHUP),revents:0)
+             let count = poll(&ready,1,Int32(min(100,remaining/1_000_000)))
+             if count < 0 { if errno == EINTR { continue }; throw ModelDownloadError.response }
