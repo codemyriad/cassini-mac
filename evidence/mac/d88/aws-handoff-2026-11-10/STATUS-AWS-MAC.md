@@ -41,3 +41,14 @@ The reader gate and both receives are bounded on pushed head `594bf715de569c46b1
 ## Old host final handoff
 
 Periodic checkpoint cutoff is 08:15 UTC. The readiness watcher stops at 08:20 UTC, when the finalizer takes a fresh CI snapshot and pushes the final handoff. Finalizer commands end by 08:28 UTC. Stop using the Mac by 08:30 UTC on 2026-11-11. Termination and disk deletion are at 09:30 UTC. The handoff branch contains the restoration instructions, head inventory and retirement plan.
+
+## CI readiness
+
+Last checked: 2026-11-10T22:49:42+00:00
+
+- #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
+- #211 `d1ebe14`: pending: UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
+- #212 `8c9c389`: pending: UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
+- #214 `c2777e5`: pending: UX Library boards / Native spectrogram and profiling; draft.
+- #215 `594bf71`: pending: changes; draft.
