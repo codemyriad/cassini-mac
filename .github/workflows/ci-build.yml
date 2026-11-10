@@ -37,6 +37,9 @@ jobs:
           restore-keys: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-
       - name: Compile all native Swift executables and test bundles once
         run: swift build --build-tests
+      - name: Verify SwiftPM products at identical and different checkout paths
+        if: matrix.arch == 'arm64'
+        run: python3 scripts/test-ci-product-paths.py --evidence build/product-paths
       - run: python3 scripts/ci-products.py pack swiftpm build/ci-upload/swiftpm
       - uses: actions/upload-artifact@v5
         with:
@@ -156,4 +159,6 @@ jobs:
         if: failure()
         with:
           name: build-diagnostics-${{ matrix.arch }}
-          path: build/*build.log
+          path: |
+            build/*build.log
+            build/product-paths
