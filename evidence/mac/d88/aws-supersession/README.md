@@ -20,5 +20,5 @@ event failure and the fix must pass. A separate mutation removes replacement
 hash revalidation to prove corruption/old-copy retention assertions still fail.
 No real sleeps, elapsed pass assertions, timeout inflation or CI reruns are used.
 
-Verification is queued under the shared mkdir lock. Results are not yet claimed.
+Verification acquired the shared mkdir lock, then was deliberately interrupted at the coordinator’s 70-minute checkpoint before the baseline probe produced output. `checkpoint-interruption.log` records that intentional stop; it is not a test result. The disposable baseline source was restored and its temporary probe removed. Results are not yet claimed. Resume the bounded baseline/after/mutation recipe under the shared lock; inspect any stall before continuing.
 Historical recipe paths refer to this AWS Mac; adapt paths when restoring.
