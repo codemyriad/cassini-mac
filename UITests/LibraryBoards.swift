@@ -557,7 +557,7 @@ final class LibraryBoards: XCTestCase {
         let whistle = window.radioButtons["settings-whistle-radio"]
         XCTAssertTrue(whistle.exists && whistle.isEnabled)
         XCTAssertEqual(String(describing:try XCTUnwrap(whistle.value)),"1")
-        XCTAssertTrue(text("443 MB download",in:window))
+        XCTAssertTrue(text("444 MB download",in:window))
         XCTAssertFalse(text("To check for updates. No meeting data is sent.",in:window))
         capture(window,name:"settings-transcription")
     }
@@ -577,7 +577,7 @@ final class LibraryBoards: XCTestCase {
             let card = window.descendants(matching:.any).matching(identifier:"settings-parakeet-suggestion").firstMatch
             XCTAssertTrue(card.waitForExistence(timeout:5),app.debugDescription)
             XCTAssertTrue(card.descendants(matching:.staticText).allElementsBoundByIndex.contains { element in
-                String(describing:element.value ?? element.label).contains("443")
+                String(describing:element.value ?? element.label).contains("444")
             },card.debugDescription)
             XCTAssertTrue(window.buttons["settings-parakeet-suggestion-download"].isHittable)
             capture(window,name:"settings-parakeet-recommendation-"+language)

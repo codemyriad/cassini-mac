@@ -13,7 +13,7 @@ public enum ParakeetPin {
     public static let sourceSHA256 = ModelPin.parakeetUltra.sourceSHA256
     public static let transcriptModel = id + "@" + sourceSHA256
     public static let files: [String:(bytes:UInt64,sha256:String)] = [
-        "encoder.int8.onnx":(652282922,"299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69"),
+        "encoder.int8.onnx":(653313528,"f9a8af14deb2e5237eebb9dfb25126180614feaf835a03f307e4077eab247015"),
         "decoder.int8.onnx":(11845274,"1fab98fe6c12aded87d2da66272cc9e148d0a0044ce3850a12fe56302ec4a922"),
         "joiner.int8.onnx":(6355277,"8a71aaccfdba3d451775507a889afd2257d2e754463fd81095a8c8f290f924c2"),
         "tokens.txt":(93939,"d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d")

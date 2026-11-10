@@ -1,7 +1,7 @@
 {
   "version": 1,
   "decision": "D16",
-  "note": "D16 golden (fork engine), same input and D11 segmentation as pipeline-golden.json (48 kHz -> cassini-fir-48k-16k-v1), segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged.",
+  "note": "D86: regenerated on Mac arm64 with the dist #4179 encoder revision; runtime, input PCM, segmentation and conformance policy unchanged. D16 golden (fork engine), same input and D11 segmentation as pipeline-golden.json (48 kHz -> cassini-fir-48k-16k-v1), segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8-v2 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged.",
   "input": "pipeline-input-48k.wav",
   "inputSha256": "b7062e41f452236812aa3417a68eb50372a99851ab4a18d1c4f4f99e2e2e3963",
   "segments": [
@@ -44,14 +44,14 @@
       "startSample": 318976,
       "endSample": 458240,
       "reason": "silence",
-      "text": "What your country can do for you ask what you can do for your country. And so, my fellow Americans",
+      "text": "What your country can do for you, ask what you can do for your country. And so, my fellow Americans,",
       "inputSha256": "41bff288087c3ab5fb7d27b5a952b2f1d67e1083305872c513b99f2ce20e5210"
     },
     {
       "startSample": 461312,
       "endSample": 493056,
       "reason": "silence",
-      "text": "Ask not",
+      "text": "Ask not.",
       "inputSha256": "f3a2daf45deef0d97b01f323e6d213826a50f067cda585fceeeb1141b58bd3f1"
     },
     {
@@ -64,334 +64,334 @@
   ],
   "words": [
     {
-      "startMs": 1024,
-      "endMs": 1344,
-      "text": "And"
+      "text": "And",
+      "startMs": 1104,
+      "endMs": 1424
     },
     {
-      "startMs": 1344,
-      "endMs": 1584,
-      "text": "so,"
+      "text": "so,",
+      "startMs": 1424,
+      "endMs": 1584
     },
     {
-      "startMs": 1744,
-      "endMs": 1984,
-      "text": "my"
+      "text": "my",
+      "startMs": 1824,
+      "endMs": 2064
     },
     {
-      "startMs": 1984,
-      "endMs": 2464,
-      "text": "fellow"
+      "text": "fellow",
+      "startMs": 2064,
+      "endMs": 2464
     },
     {
+      "text": "Americans",
       "startMs": 2464,
-      "endMs": 3264,
-      "text": "Americans"
+      "endMs": 3264
     },
     {
+      "text": "Ask",
       "startMs": 4160,
-      "endMs": 4800,
-      "text": "Ask"
+      "endMs": 4800
     },
     {
+      "text": "not",
       "startMs": 4800,
-      "endMs": 5120,
-      "text": "not"
+      "endMs": 5120
     },
     {
-      "startMs": 6192,
-      "endMs": 6512,
-      "text": "What"
+      "text": "What",
+      "startMs": 6112,
+      "endMs": 6512
     },
     {
+      "text": "your",
       "startMs": 6512,
-      "endMs": 6752,
-      "text": "your"
+      "endMs": 6752
     },
     {
+      "text": "country",
       "startMs": 6752,
-      "endMs": 7312,
-      "text": "country"
+      "endMs": 7312
     },
     {
+      "text": "can",
       "startMs": 7312,
-      "endMs": 7552,
-      "text": "can"
+      "endMs": 7632
     },
     {
-      "startMs": 7552,
-      "endMs": 7872,
-      "text": "do"
+      "text": "do",
+      "startMs": 7632,
+      "endMs": 7872
     },
     {
+      "text": "for",
       "startMs": 7872,
-      "endMs": 8192,
-      "text": "for"
+      "endMs": 8192
     },
     {
+      "text": "you,",
       "startMs": 8192,
-      "endMs": 8512,
-      "text": "you,"
+      "endMs": 8512
     },
     {
+      "text": "ask",
       "startMs": 8912,
-      "endMs": 9472,
-      "text": "ask"
+      "endMs": 9472
     },
     {
+      "text": "what",
       "startMs": 9472,
-      "endMs": 9712,
-      "text": "what"
+      "endMs": 9792
     },
     {
-      "startMs": 9712,
-      "endMs": 9952,
-      "text": "you"
+      "text": "you",
+      "startMs": 9792,
+      "endMs": 10032
     },
     {
-      "startMs": 9952,
-      "endMs": 10192,
-      "text": "can"
+      "text": "can",
+      "startMs": 10032,
+      "endMs": 10272
     },
     {
-      "startMs": 10192,
-      "endMs": 10432,
-      "text": "do"
+      "text": "do",
+      "startMs": 10272,
+      "endMs": 10512
     },
     {
-      "startMs": 10432,
-      "endMs": 10672,
-      "text": "for"
+      "text": "for",
+      "startMs": 10512,
+      "endMs": 10752
     },
     {
-      "startMs": 10672,
-      "endMs": 10912,
-      "text": "your"
+      "text": "your",
+      "startMs": 10752,
+      "endMs": 10992
     },
     {
-      "startMs": 10912,
-      "endMs": 11792,
-      "text": "country."
+      "text": "country.",
+      "startMs": 10992,
+      "endMs": 11792
     },
     {
+      "text": "And",
       "startMs": 15040,
-      "endMs": 15360,
-      "text": "And"
+      "endMs": 15360
     },
     {
+      "text": "so,",
       "startMs": 15360,
-      "endMs": 15600,
-      "text": "so,"
+      "endMs": 15600
     },
     {
-      "startMs": 15760,
-      "endMs": 16000,
-      "text": "my"
+      "text": "my",
+      "startMs": 15840,
+      "endMs": 16080
     },
     {
-      "startMs": 16000,
-      "endMs": 16480,
-      "text": "fellow"
+      "text": "fellow",
+      "startMs": 16080,
+      "endMs": 16480
     },
     {
+      "text": "Americans",
       "startMs": 16480,
-      "endMs": 17200,
-      "text": "Americans"
+      "endMs": 17360
     },
     {
+      "text": "Ask",
       "startMs": 18144,
-      "endMs": 18784,
-      "text": "Ask"
+      "endMs": 18784
     },
     {
+      "text": "not",
       "startMs": 18784,
-      "endMs": 19104,
-      "text": "not"
+      "endMs": 19104
     },
     {
+      "text": "What",
       "startMs": 20176,
-      "endMs": 20496,
-      "text": "What"
+      "endMs": 20576
     },
     {
-      "startMs": 20496,
-      "endMs": 20736,
-      "text": "your"
+      "text": "your",
+      "startMs": 20576,
+      "endMs": 20816
     },
     {
-      "startMs": 20736,
-      "endMs": 21296,
-      "text": "country"
+      "text": "country",
+      "startMs": 20816,
+      "endMs": 21376
     },
     {
-      "startMs": 21296,
-      "endMs": 21536,
-      "text": "can"
+      "text": "can",
+      "startMs": 21376,
+      "endMs": 21616
     },
     {
-      "startMs": 21536,
-      "endMs": 21856,
-      "text": "do"
+      "text": "do",
+      "startMs": 21616,
+      "endMs": 21936
     },
     {
-      "startMs": 21856,
-      "endMs": 22176,
-      "text": "for"
+      "text": "for",
+      "startMs": 21936,
+      "endMs": 22256
     },
     {
-      "startMs": 22176,
-      "endMs": 22496,
-      "text": "you"
+      "text": "you,",
+      "startMs": 22256,
+      "endMs": 22576
     },
     {
-      "startMs": 22896,
-      "endMs": 23456,
-      "text": "ask"
+      "text": "ask",
+      "startMs": 22976,
+      "endMs": 23456
     },
     {
+      "text": "what",
       "startMs": 23456,
-      "endMs": 23696,
-      "text": "what"
+      "endMs": 23776
     },
     {
-      "startMs": 23696,
-      "endMs": 24016,
-      "text": "you"
+      "text": "you",
+      "startMs": 23776,
+      "endMs": 24096
     },
     {
-      "startMs": 24016,
-      "endMs": 24256,
-      "text": "can"
+      "text": "can",
+      "startMs": 24096,
+      "endMs": 24336
     },
     {
-      "startMs": 24256,
-      "endMs": 24496,
-      "text": "do"
+      "text": "do",
+      "startMs": 24336,
+      "endMs": 24496
     },
     {
+      "text": "for",
       "startMs": 24496,
-      "endMs": 24656,
-      "text": "for"
+      "endMs": 24736
     },
     {
-      "startMs": 24656,
-      "endMs": 24896,
-      "text": "your"
+      "text": "your",
+      "startMs": 24736,
+      "endMs": 24976
     },
     {
-      "startMs": 24896,
-      "endMs": 25696,
-      "text": "country."
+      "text": "country.",
+      "startMs": 24976,
+      "endMs": 25776
     },
     {
+      "text": "And",
       "startMs": 26016,
-      "endMs": 26336,
-      "text": "And"
+      "endMs": 26336
     },
     {
+      "text": "so,",
       "startMs": 26336,
-      "endMs": 26576,
-      "text": "so,"
+      "endMs": 26576
     },
     {
+      "text": "my",
       "startMs": 26736,
-      "endMs": 26976,
-      "text": "my"
+      "endMs": 26976
     },
     {
+      "text": "fellow",
       "startMs": 26976,
-      "endMs": 27456,
-      "text": "fellow"
+      "endMs": 27536
     },
     {
-      "startMs": 27456,
-      "endMs": 28256,
-      "text": "Americans"
+      "text": "Americans,",
+      "startMs": 27536,
+      "endMs": 28416
     },
     {
+      "text": "Ask",
       "startMs": 29152,
-      "endMs": 29792,
-      "text": "Ask"
+      "endMs": 29792
     },
     {
+      "text": "not.",
       "startMs": 29792,
-      "endMs": 30112,
-      "text": "not"
+      "endMs": 30112
     },
     {
-      "startMs": 31184,
-      "endMs": 31504,
-      "text": "What"
+      "text": "What",
+      "startMs": 31104,
+      "endMs": 31504
     },
     {
+      "text": "your",
       "startMs": 31504,
-      "endMs": 31744,
-      "text": "your"
+      "endMs": 31744
     },
     {
+      "text": "country",
       "startMs": 31744,
-      "endMs": 32304,
-      "text": "country"
+      "endMs": 32304
     },
     {
+      "text": "can",
       "startMs": 32304,
-      "endMs": 32544,
-      "text": "can"
+      "endMs": 32624
     },
     {
-      "startMs": 32544,
-      "endMs": 32864,
-      "text": "do"
+      "text": "do",
+      "startMs": 32624,
+      "endMs": 32864
     },
     {
+      "text": "for",
       "startMs": 32864,
-      "endMs": 33184,
-      "text": "for"
+      "endMs": 33184
     },
     {
+      "text": "you,",
       "startMs": 33184,
-      "endMs": 33504,
-      "text": "you,"
+      "endMs": 33504
     },
     {
+      "text": "ask",
       "startMs": 33904,
-      "endMs": 34464,
-      "text": "ask"
+      "endMs": 34544
     },
     {
-      "startMs": 34464,
-      "endMs": 34704,
-      "text": "what"
+      "text": "what",
+      "startMs": 34544,
+      "endMs": 34784
     },
     {
-      "startMs": 34704,
-      "endMs": 35024,
-      "text": "you"
+      "text": "you",
+      "startMs": 34784,
+      "endMs": 35024
     },
     {
+      "text": "can",
       "startMs": 35024,
-      "endMs": 35184,
-      "text": "can"
+      "endMs": 35264
     },
     {
-      "startMs": 35184,
-      "endMs": 35504,
-      "text": "do"
+      "text": "do",
+      "startMs": 35264,
+      "endMs": 35504
     },
     {
+      "text": "for",
       "startMs": 35504,
-      "endMs": 35664,
-      "text": "for"
+      "endMs": 35744
     },
     {
-      "startMs": 35664,
-      "endMs": 35904,
-      "text": "your"
+      "text": "your",
+      "startMs": 35744,
+      "endMs": 35984
     },
     {
-      "startMs": 35904,
-      "endMs": 36784,
-      "text": "country."
+      "text": "country.",
+      "startMs": 35984,
+      "endMs": 36784
     }
   ],
   "resampled": "pipeline-resampled-16k.f32",
@@ -403,17 +403,17 @@
     "nativeVersion": "1.13.7+cassini-parakeet-v3-reference-v1.nemotron-diarization-v2.parakeet-ultra-v1",
     "source": "codemyriad/sherpa-onnx 0c2ee3f3f5f16bb06d234a0f98632810296ba0eb (v1.13.7-cassini-parakeet-ultra-v1)",
     "api": "C API",
-    "goldenPlatform": "x86_64-unknown-linux-gnu (onnxruntime 1.27.1)",
+    "goldenPlatform": "arm64-apple-macos (onnxruntime 1.28.1; Xcode 27.0, 27A266a)",
     "libs": {
-      "libsherpa-onnx-c-api.so": "9f461c6b5bb2c57567971cde1fc6fd7762a395427f4063d0ee9b8611c3e1fddc",
-      "libonnxruntime.so": "c85f471e1bd5059a4556038f7f5288fa41141647613688452ae7de4879150903"
+      "libsherpa-onnx-c-api.dylib": "08ab71d342667d8a5ad8f9f700b1e742ec924b06e34ddeb907decb86cc17206d",
+      "libonnxruntime.dylib": "34128c0872d6179fa02b48d410886da20452e7529efd06c381c68fb6aa3e001e"
     }
   },
   "model": {
-    "distId": "parakeet-ultra-0.6b-int8",
-    "sourceSha256": "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9",
+    "distId": "parakeet-ultra-0.6b-int8-v2",
+    "sourceSha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
     "files": {
-      "encoder.int8.onnx": "299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69",
+      "encoder.int8.onnx": "f9a8af14deb2e5237eebb9dfb25126180614feaf835a03f307e4077eab247015",
       "decoder.int8.onnx": "1fab98fe6c12aded87d2da66272cc9e148d0a0044ce3850a12fe56302ec4a922",
       "joiner.int8.onnx": "8a71aaccfdba3d451775507a889afd2257d2e754463fd81095a8c8f290f924c2",
       "tokens.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
@@ -423,7 +423,7 @@
   "recognizerConfig": {
     "model_type": "nemo_transducer",
     "decoding_method": "greedy_search",
-    "num_threads": 1,
+    "num_threads": 2,
     "provider": "cpu",
     "sample_rate": 16000,
     "feature_dim": 128,

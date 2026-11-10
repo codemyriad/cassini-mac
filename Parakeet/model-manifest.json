@@ -3,16 +3,16 @@
   "base_url": "https://dist.gocassini.com",
   "models": [
     {
-      "id": "parakeet-ultra-0.6b-int8",
-      "name": "Parakeet Ultra 0.6B \u2014 int8",
-      "description": "Multilingual speech recognition, Parakeet v3 post-trained by Moondream, quantized weights",
+      "id": "parakeet-ultra-0.6b-int8-v2",
+      "name": "Parakeet Ultra 0.6B \u2014 int8 v2",
+      "description": "Multilingual speech recognition, Parakeet v3 post-trained by Moondream, quantized weights; depthwise and subsampling convolutions kept in fp32",
       "license": "CC-BY-4.0",
       "source_url": "https://huggingface.co/moondream/parakeet-ultra",
-      "source_sha256": "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9",
+      "source_sha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
       "files": [
         {
           "path": "encoder.int8.onnx",
-          "artifact": "models/files/caf7a38f2ad3224c1863564fb6e975a11aa3ae6ad1e7ad0bee5c4f5e018babb4/encoder.int8.onnx.zst",
+          "artifact": "models/files/44060ee9be2ac23ace05d6ea1271dd4cdbb353ac4d822f36c51ce733142d31a0/encoder.int8.onnx.zst",
           "required": true
         },
         {
@@ -53,19 +53,19 @@
       "format_version": "0.1.0"
     },
     {
-      "id": "caf7a38f2ad3224c1863564fb6e975a11aa3ae6ad1e7ad0bee5c4f5e018babb4",
-      "key": "models/files/caf7a38f2ad3224c1863564fb6e975a11aa3ae6ad1e7ad0bee5c4f5e018babb4/encoder.int8.onnx.zst",
+      "id": "44060ee9be2ac23ace05d6ea1271dd4cdbb353ac4d822f36c51ce733142d31a0",
+      "key": "models/files/44060ee9be2ac23ace05d6ea1271dd4cdbb353ac4d822f36c51ce733142d31a0/encoder.int8.onnx.zst",
       "filename": "encoder.int8.onnx.zst",
       "name": "encoder.int8.onnx",
       "description": "Seekable Zstandard model file",
-      "url": "https://dist.gocassini.com/models/files/caf7a38f2ad3224c1863564fb6e975a11aa3ae6ad1e7ad0bee5c4f5e018babb4/encoder.int8.onnx.zst",
-      "size": 452306705,
-      "sha256": "caf7a38f2ad3224c1863564fb6e975a11aa3ae6ad1e7ad0bee5c4f5e018babb4",
-      "uncompressed_size": 652282922,
-      "uncompressed_sha256": "299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69",
+      "url": "https://dist.gocassini.com/models/files/44060ee9be2ac23ace05d6ea1271dd4cdbb353ac4d822f36c51ce733142d31a0/encoder.int8.onnx.zst",
+      "size": 452843967,
+      "sha256": "44060ee9be2ac23ace05d6ea1271dd4cdbb353ac4d822f36c51ce733142d31a0",
+      "uncompressed_size": 653313528,
+      "uncompressed_sha256": "f9a8af14deb2e5237eebb9dfb25126180614feaf835a03f307e4077eab247015",
       "frame_size": 262144,
-      "frame_count": 2489,
-      "seek_table_size": 19929,
+      "frame_count": 2493,
+      "seek_table_size": 19961,
       "compression_level": 6,
       "encoding": "zstd-seekable",
       "format_version": "0.1.0"

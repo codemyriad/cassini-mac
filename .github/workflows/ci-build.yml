@@ -90,7 +90,7 @@ jobs:
         if: matrix.arch == 'arm64' && inputs.parakeet_models
         with:
           path: build/ParakeetModel
-          key: parakeet-model-${{ hashFiles('Parakeet/model-manifest.json', 'Sources/CassiniModels/**', 'Sources/cassini-model-fetch/**') }}
+          key: parakeet-model-v2-4179-${{ hashFiles('Parakeet/model-manifest.json', 'Sources/CassiniModels/**', 'Sources/cassini-model-fetch/**') }}
       - name: Fetch and verify optional model once for ARM and Intel goldens
         if: matrix.arch == 'arm64' && inputs.parakeet_models
         run: |

@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
     assert result.returncode==0,(result.returncode,result.stdout,result.stderr)
     response=json.loads(result.stdout);assert response['id']=='parakeet-proof' and 'error' not in response,response
     saved=json.loads((meeting/'meeting.json').read_text());body=json.loads((meeting/'transcript.json').read_text())
-    assert saved['transcript']['status']=='done' and saved['transcript']['model']=='parakeet-ultra-0.6b-int8@18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9',saved
+    assert saved['transcript']['status']=='done' and saved['transcript']['model']=='parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366',saved
     assert body['language']=='und' and len(body['items'])>10,body
     assert {x['speaker'] for x in body['items']}=={'track-original'}
     assert saved['speakers']==[dict(id='track-original',name=None,provenance='unnamed',colourIndex=0,label='Intervenant 1')],saved
