@@ -11,6 +11,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,7 +74,7 @@ class Selection(unittest.TestCase):
         self.assertFalse(any(changes.select('pull_request', 'base', PATHS, ['README.md']).values()))
 
     def test_shared_dependency_or_ci_change_runs_everything(self):
-        for name in ['.github/actions/ci-products/action.yml', 'Sources/CassiniKit/Reader.swift', 'Tests/CassiniPlaybackTests/Seek.swift']:
+        for name in ['.github/actions/ci-products/action.yml', 'scripts/ci-select-xcode.sh', 'scripts/ci-test-xcode.py', 'Sources/CassiniKit/Reader.swift', 'Tests/CassiniPlaybackTests/Seek.swift']:
             self.assertTrue(all(changes.select('pull_request', 'base', PATHS, [name]).values()))
 
 
@@ -213,12 +214,76 @@ class FoldedJobs(unittest.TestCase):
         self.assertFalse((ROOT/'.github/workflows/ux-board-shot.yml').exists())
 
 
+class RentedRunnerRouting(unittest.TestCase):
+    def evaluate(self, expression, event, head, label, runner):
+        expression=expression.strip().removeprefix('${{').removesuffix('}}').strip()
+        expression=expression.replace('&&',' and ').replace('||',' or ')
+        github=SimpleNamespace(event_name=event,repository='codemyriad/cassini-mac',
+            event=SimpleNamespace(pull_request=SimpleNamespace(head=SimpleNamespace(repo=SimpleNamespace(full_name=head)))))
+        return eval(expression,{'__builtins__':{}},{'github':github,'vars':SimpleNamespace(CM_MAC_RUNNER=label),
+                    'matrix':SimpleNamespace(runner=runner)})
+
+    def test_actual_expressions_route_only_trusted_arm_jobs_with_a_configured_runner(self):
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        worker=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  worker:',1)[1].split('  bundle:',1)[0]
+        for job in [producer,worker]:
+            route=re.search(r'^    runs-on: (.+)$',job,re.M).group(1)
+            for runner in ['macos-15','macos-15-intel']:
+                for event,head,label,enabled in [('pull_request','codemyriad/cassini-mac','cm-mac-m4',True),
+                    ('pull_request','fork/repo','cm-mac-m4',False),('pull_request','codemyriad/cassini-mac','',False),
+                    ('push','','cm-mac-m4',True),('schedule','','cm-mac-m4',True),('workflow_dispatch','','',False)]:
+                    with self.subTest(runner=runner,event=event,head=head,label=label):
+                        expected='cm-mac-m4' if enabled and runner=='macos-15' else runner
+                        self.assertEqual(self.evaluate(route,event,head,label,runner),expected)
+        rows=re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',producer)
+        self.assertEqual(rows,[('macos-15','arm64'),('macos-15-intel','x86_64')])
+
+    def test_self_hosted_worker_uses_existing_python_without_hosted_toolcache(self):
+        worker=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  worker:',1)[1].split('  bundle:',1)[0]
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(worker,'actions/setup-python'))
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        self.assertEqual(action.count('python3 scripts/ci-products.py restore'),2)
+        self.assertNotIn('python3 scripts/ci-products.py unpack',action)
+
+    def test_constrained_jobs_and_all_original_artifact_names_remain_hosted(self):
+        self.assertIn('runs-on: macos-15\n',ci_job('kit'))
+        self.assertIn('runs-on: macos-15-intel',ci_job('package_tests'))
+        for name in ['ux-shot.yml','ux-boards.yml','ux-parakeet.yml','ux-browser-setup.yml','ci-build-release.yml']:
+            self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
+        body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
+        self.assertIn('runs-on: macos-15',body)
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        self.assertIn('name: ci-swiftpm-${{ matrix.arch }}\n',producer)
+        self.assertIn('name: ci-swiftpm-${{ steps.arch.outputs.name }}\n',action)
+        for name in ['ci-assets','ci-runtime','ci-parakeet','ci-debug']:
+            self.assertIn('name: '+name+'\n',producer)
+            self.assertIn('name: '+name+'\n',action)
+        self.assertIn('name: ci-release\n',action)
+        self.assertNotIn('-headless',producer+action)
+
+    def test_producers_and_restorers_select_the_same_xcode_and_fingerprint_caches(self):
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        for body in [producer,action]:
+            self.assertIn('bash scripts/ci-select-xcode.sh',body)
+            self.assertNotIn('sudo xcode-select',body)
+        keys=[line for line in producer.splitlines() if any(marker in line for marker in
+            ['key: swiftpm-','restore-keys: swiftpm-','key: pinned-fetches-','restore-keys: pinned-fetches-'])]
+        self.assertEqual(len(keys),4)
+        for line in keys:self.assertIn('steps.xcode.outputs.fingerprint',line)
+        for line in keys:
+            if 'swiftpm-' in line:self.assertIn('steps.xcode.outputs.workspace',line)
+            else:self.assertNotIn('steps.xcode.outputs.workspace',line)
+        self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
+
+
 class Transport(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
         self.patch = patch.object(products, 'ROOT', self.root); self.patch.start()
-        self.identity = dict(kind='swiftpm', commit='a'*40, arch='arm64', xcode='Xcode 16.4', pins={})
+        self.identity = dict(kind='swiftpm', commit='a'*40, arch='arm64', xcode='Xcode 16.4', pins={},workspace=str(self.root))
         self.identity_patch = patch.object(products, 'identity', return_value=self.identity); self.identity_patch.start()
         folder = self.root/'.build/arm64/debug'; folder.mkdir(parents=True)
         self.executable = folder/'worker'; self.executable.write_bytes(b'fixture'); self.executable.chmod(0o755)
@@ -249,6 +314,47 @@ class Transport(unittest.TestCase):
         products.unpack('swiftpm', self.output)
         self.assertTrue(os.access(self.executable, os.X_OK))
         self.assertEqual((self.root/'.build/debug/worker').read_bytes(), b'fixture')
+
+    def test_relocated_swiftpm_is_not_extracted_and_builds_in_the_consumer(self):
+        products.pack('swiftpm', self.output)
+        self.executable.unlink()
+        consumer = {**self.identity, 'workspace': '/private/other-runner/checkout'}
+        with patch.object(products, 'identity', return_value=consumer):
+            with self.assertRaises(products.WorkspaceMismatch):
+                products.unpack('swiftpm', self.output)
+            self.assertFalse(self.executable.exists())
+            with patch.object(products.subprocess, 'run') as build:
+                products.restore('swiftpm', self.output)
+                build.assert_called_once_with(['swift','build','--build-tests'],cwd=self.root,check=True)
+            self.assertFalse(self.executable.exists(), 'Foreign objects never reach the consumer')
+
+    def test_compatible_workspace_restores_without_compiling(self):
+        products.pack('swiftpm', self.output)
+        self.executable.unlink()
+        with patch.object(products.subprocess, 'run') as build:
+            products.restore('swiftpm', self.output)
+            build.assert_not_called()
+        self.assertEqual(self.executable.read_bytes(),b'fixture')
+
+    def test_relocated_product_does_not_hide_tampering_or_build_failure(self):
+        products.pack('swiftpm', self.output)
+        consumer = {**self.identity, 'workspace': '/private/other-runner/checkout'}
+        with patch.object(products, 'identity', return_value=consumer):
+            with patch.object(products.subprocess, 'run', side_effect=subprocess.CalledProcessError(1,'swift')):
+                with self.assertRaises(subprocess.CalledProcessError): products.restore('swiftpm', self.output)
+            with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'tampered')
+            with patch.object(products.subprocess, 'run') as build:
+                with self.assertRaises(products.TransferError): products.restore('swiftpm', self.output)
+                build.assert_not_called()
+        products.pack('swiftpm', self.output)
+        for key in ['commit','arch','xcode','pins','workspace']:
+            metadata=json.loads((self.output/'swiftpm.json').read_text())
+            del metadata[key]
+            (self.output/'swiftpm.json').write_text(json.dumps(metadata))
+            with patch.object(products.subprocess,'run') as build:
+                with self.assertRaises(ValueError): products.restore('swiftpm',self.output)
+                build.assert_not_called()
+            products.pack('swiftpm',self.output)
 
     def test_different_commit_or_arch_is_rejected_before_extract(self):
         products.pack('swiftpm', self.output)
