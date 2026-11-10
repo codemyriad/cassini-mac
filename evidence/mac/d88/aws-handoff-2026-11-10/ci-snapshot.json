@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T18:33:48+00:00",
+  "updated": "2026-11-10T18:38:34+00:00",
   "prs": [
     {
       "pr": 210,
@@ -9,11 +9,11 @@
       "readyCandidate": false,
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
-        "CassiniKit tests and conformance",
-        "Whistle bundle / Universal app and sandboxed Whistle helper",
-        "Package tests (macos-15-intel)"
+        "Whistle bundle / Universal app and sandboxed Whistle helper"
       ],
-      "failed": [],
+      "failed": [
+        "CassiniKit tests and conformance"
+      ],
       "runs": [
         42861218854
       ]
