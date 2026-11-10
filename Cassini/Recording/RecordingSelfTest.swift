@@ -120,7 +120,11 @@ enum RecordingSelfTest {
         init() { (stream, completion) = AsyncThrowingStream<Void, Error>.makeStream() }
 
         func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
-            guard source.id == "tone", source.channels == 2 else { return }
+            guard source.id == "tone" else { return }
+            guard source.channels == 2 else {
+                fail("The synthetic process tap did not capture stereo audio.")
+                return
+            }
             let complete = lock.withLock {
                 let required = source.sampleRate * 3
                 guard frames < required, pcm.contains(where: { $0 != 0 }) else { return false }
