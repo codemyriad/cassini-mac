@@ -18,11 +18,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner:
-        - macos-15
-        - macos-15-intel
-    runs-on: ${{ matrix.runner == 'macos-15' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
+        include:
+        - runner: macos-15
+          arch: arm64
+        - runner: macos-15-intel
+          arch: x86_64
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
     timeout-minutes: 20
+    env:
+      CASSINI_CI_ARCH: ${{ matrix.arch }}
+    # On a rented Apple Silicon Mac the Intel row runs its x86_64 products through Rosetta 2;
+    # on a machine of that architecture `arch` changes nothing.
+    defaults:
+      run:
+        shell: arch -${{ matrix.arch }} /bin/bash -e {0}
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -34,6 +43,17 @@ jobs:
       if: runner.environment == 'github-hosted'
       with:
         python-version: '3.12'
+    # A rented Mac's own python3 may be arm64 only. The Intel row uses the selected Xcode's
+    # universal Python, which runs as x86_64 under `arch -x86_64`.
+    - name: Use the selected Xcode's universal Python for the Intel row on a rented Mac
+      if: runner.environment != 'github-hosted' && matrix.arch == 'x86_64'
+      run: |
+        mkdir -p "$RUNNER_TEMP/python"
+        ln -sf "$(xcrun -f python3)" "$RUNNER_TEMP/python/python3"
+        echo "$RUNNER_TEMP/python" >> "$GITHUB_PATH"
+    # The interpreter compiles and loads the constructor fixture below, so it has the
+    # architecture of the worker it tests.
+    - run: test "$(python3 -c 'import platform; print(platform.machine())')" = "$CASSINI_CI_ARCH"
     - name: Build worker and Whistle regressions
       run: |
         swift test --skip-build --filter Whistle

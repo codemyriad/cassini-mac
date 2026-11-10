@@ -19,8 +19,13 @@ jobs:
             arch: arm64
           - runner: macos-15-intel
             arch: x86_64
-    runs-on: ${{ matrix.runner == 'macos-15' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
+    # Trusted runs build both architectures on the rented Apple Silicon Macs: the x86_64 row is
+    # cross-compiled there (same Xcode, same target triple). Hosted runners stay the fallback.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
     timeout-minutes: 30
+    env:
+      # The architecture of this row's products, whatever machine builds them.
+      CASSINI_CI_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v5
       - id: xcode
@@ -36,7 +41,7 @@ jobs:
           key: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-${{ steps.swiftpm_key.outputs.hash }}
           restore-keys: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-
       - name: Compile all native Swift executables and test bundles once
-        run: swift build --build-tests
+        run: swift build --build-tests --arch ${{ matrix.arch }}
       - name: Verify SwiftPM products at identical and different checkout paths
         if: matrix.arch == 'arm64'
         run: python3 scripts/test-ci-product-paths.py --evidence build/product-paths
