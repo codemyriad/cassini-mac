@@ -17,6 +17,12 @@ private final class Admission: @unchecked Sendable {
     func set(_ value: Bool) { lock.withLock { allowed = value } }
     func read() -> Bool { lock.withLock { allowed } }
 }
+private final class ServiceTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var milliseconds: UInt64 = 1_000_000
+    func now() -> UInt64 { lock.withLock { milliseconds } }
+    func advanceHeartbeat() { lock.withLock { milliseconds += ControlHeartbeat.interval } }
+}
 final class ControlServiceTests: XCTestCase {
     @MainActor func testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -232,13 +238,14 @@ final class ControlServiceTests: XCTestCase {
     }
     func testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = ServiceTestClock(), frames = SignalFrameWaiter()
         let bound = expectation(description:"First status binds before audio registration")
         let gone = expectation(description:"Control connection gone")
         bound.assertForOverFulfill = false; gone.assertForOverFulfill = false
         let service = BrowserControlService(changed:{ peers in
             if peers.contains(where:{ $0.captures.first?.captureID == "capture" }) { bound.fulfill() }
             if peers.isEmpty { gone.fulfill() }
-        },completed:{ _,_ in })
+        },completed:{ _,_ in },clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
         var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
@@ -249,13 +256,14 @@ final class ControlServiceTests: XCTestCase {
         service.rememberUserStop(captureID:"capture",key:nil)
         service.setAutoRecord(true,microphone:false)
         let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
-        try hello(second); try send(status(false),second)
-        XCTAssertThrowsError(try receive(second,seconds:0.3))
+        try hello(second,heartbeat:true); try send(status(false),second)
+        try assertNoCommandBeforeHeartbeat(service,second,clock:clock,frames:frames)
         try send(["type":"meetings","meetings":[["tabId":2,"title":"New call","url":"https://meet.example/new","sourceCount":2]]],second)
         XCTAssertEqual(try receive(second)["action"]?.string,"start")
     }
     func testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = ServiceTestClock(), frames = SignalFrameWaiter()
         let closing = Admission(), gone = expectation(description:"Control really disconnected")
         gone.assertForOverFulfill = false
         let broker = BrowserAudioBroker(make:{ title,mic in
@@ -263,7 +271,7 @@ final class ControlServiceTests: XCTestCase {
         },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         let service = BrowserControlService(changed:{ peers in
             if closing.read(), peers.isEmpty { gone.fulfill() }
-        },completed:{ _,_ in },audio:broker)
+        },completed:{ _,_ in },audio:broker,clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:false)
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
@@ -278,8 +286,8 @@ final class ControlServiceTests: XCTestCase {
         closing.set(true); control = nil; wait(for:[gone],timeout:3)
         service.stopRecordings()
         let next = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
-        try hello(next); try send(status(false),next)
-        XCTAssertThrowsError(try receive(next,seconds:0.3))
+        try hello(next,heartbeat:true); try send(status(false),next)
+        try assertNoCommandBeforeHeartbeat(service,next,clock:clock,frames:frames)
         // This test opens only private files/FIFOs; no PCM or device is used.
         try send(["type":"stop"],audio); XCTAssertEqual(try receive(audio)["type"]?.string,"stopped")
     }
@@ -316,9 +324,25 @@ final class ControlServiceTests: XCTestCase {
         return url
     }
     func send(_ value: [String:Any], _ client: PipeEndpoint) throws { try client.send(JSONSerialization.data(withJSONObject:value)) }
-    func hello(_ client: PipeEndpoint) throws {
-        try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1"]],client)
+    func hello(_ client: PipeEndpoint, heartbeat: Bool = false) throws {
+        let capabilities = ["independent-sessions-v1"] + (heartbeat ? ["heartbeat-v1"] : [])
+        try send(["type":"hello","version":1,"capabilities":capabilities],client)
         try send(["type":"meetings","meetings":[["tabId":2,"title":"Call","url":"https://meet.example/call","sourceCount":2]]],client)
+    }
+    private func assertNoCommandBeforeHeartbeat(_ service: BrowserControlService, _ client: PipeEndpoint,
+                                               clock: ServiceTestClock, frames: SignalFrameWaiter,
+                                               file: StaticString = #filePath, line: UInt = #line) throws {
+        // A received pong fences every preceding input and its reconciliation.
+        // The next ping uses that connection's same ordered output writer, so
+        // any incorrectly queued command must appear before the barrier.
+        let reconciled = expectation(description:"Prior control frames reconciled")
+        frames.expect("pong",reconciled)
+        try send(["type":"pong","seq":0],client)
+        wait(for:[reconciled],timeout:3)
+        clock.advanceHeartbeat(); service.tickHeartbeats()
+        let barrier = try receive(client)
+        XCTAssertEqual(barrier["type"]?.string,"ping","A command preceded the ordered barrier",file:file,line:line)
+        XCTAssertEqual(barrier["seq"]?.int,0,file:file,line:line)
     }
     func status(_ recording: Bool) -> [String:Any] {
         ["type":"status","recording":recording,"tabId":recording ? 2 : NSNull(),"path":NSNull(),"message":"Status",
@@ -330,14 +354,15 @@ final class ControlServiceTests: XCTestCase {
     }
     func testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = ServiceTestClock(), frames = SignalFrameWaiter()
         let announced = expectation(description:"auto start acknowledged"), notifications = NotificationCount()
         let service = BrowserControlService(changed:{ _ in },completed:{ result,automatic in
             if result.ok && result.action == .start && automatic { notifications.increment(); announced.fulfill() }
-        })
+        },clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:false)
         let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
-        try hello(client); try send(status(false),client)
+        try hello(client,heartbeat:true); try send(status(false),client)
         let start = try receive(client)
         XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["captureLocal"]?.bool,false)
         XCTAssertEqual(start["microphone"]?.bool,false); XCTAssertEqual(notifications.value,0)
@@ -347,7 +372,7 @@ final class ControlServiceTests: XCTestCase {
         let stop = try receive(client); XCTAssertEqual(stop["action"]?.string,"stop"); XCTAssertEqual(stop["tabId"]?.int,2)
         try send(["type":"result","requestId":try XCTUnwrap(stop["requestId"]?.string),"ok":true,"status":status(false)],client)
         try send(status(false),client)
-        XCTAssertThrowsError(try receive(client,seconds:0.2))
+        try assertNoCommandBeforeHeartbeat(service,client,clock:clock,frames:frames)
         XCTAssertEqual(notifications.value,1)
     }
     func testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus() throws {
