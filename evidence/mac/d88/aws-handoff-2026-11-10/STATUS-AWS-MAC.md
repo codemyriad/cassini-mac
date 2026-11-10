@@ -2,7 +2,7 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 17:27 UTC
+Updated: 2026-11-10 17:59 UTC
 
 - IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `9d373ff`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
 - Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `9f892f6`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
@@ -27,11 +27,24 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T17:53:29+00:00
+Last checked: 2026-11-10T17:59:19+00:00
 
-- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #211 `9f892f6`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #212 `75ea821`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
-- #213 `c4f3d1e`: pending: build / Build products (arm64, Xcode 16.4); draft.
+- #213 `c4f3d1e`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #214 `922711b`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #215 `2a80631`: pending: build / Build products (arm64, Xcode 16.4); draft.
+
+## Coordinator checkpoint
+
+2026-11-10T17:59:19+00:00 — coordinator requested checkpoint and end of turn.
+
+Full CI green: **none yet**. All six passed local affected-row plus shared supersession checks; all source/evidence is pushed. Readiness watcher remains active for exact-head full CI audits.
+
+- #210 `9d373ff997c1d8721cae24fa6c805fd0da42662a`: PENDING: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #211 `9f892f66edf6cfb5d9698b410e232dff1b15cecf`: PENDING: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #212 `75ea82166b79dcdfc7ad084d5eb30dc71a274a11`: PENDING: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #213 `c4f3d1e86d1bc66d2d186c3f740fcaaa14a63b34`: PENDING: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #214 `922711bcbde0531c834f18bccf8a2f2407462923`: PENDING: build / Build products (arm64, Xcode 16.4); draft.
+- #215 `2a80631e207765524044523fe0b6a643d7571942`: PENDING: build / Build products (arm64, Xcode 16.4); draft.
