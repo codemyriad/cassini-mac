@@ -30,8 +30,8 @@ No merges, force-pushes or reruns have been performed.
 2. Copy the status snapshot to `~/STATUS-AWS-MAC.md`, preserving any newer status
    from the first Mac. Place `ci-watch.py` and `test-ready-gates.py` together.
 3. Run `python3 test-ready-gates.py`. Seven offline success/rejection cases verify
-   gating without any GitHub mutations. It requires the known commit objects in
-   the local clone. Only git revision reads are real in these offline checks.
+   gating without any GitHub mutations or network calls. The watcher contains
+   the full tested SHAs and needs no local git object lookup to check readiness.
 4. Stop the **old** `aws-mac-d88-ci` tmux session before starting a replacement.
    The old host's active script is `~/coordination/AWS-MAC-CI-WATCH.py`; its log is
    `~/coordination/aws-mac-ci-watch.log`. Do not run two readiness writers.

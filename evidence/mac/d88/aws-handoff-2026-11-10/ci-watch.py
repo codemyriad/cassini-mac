@@ -1,9 +1,6 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
-prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a75',213:'3fd8e39',214:'21e957a',215:'8f5cdab91a904d4695b4f0a2b1c4aaa46376ff85'}
-for n,v in list(prs.items()):
-    if len(v)!=40:
-        prs[n]=subprocess.check_output(['git','rev-parse',v],cwd=repo_path,text=True).strip()
+prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a7503d35c32837b2a93605028f6525e6fc95',213:'3fd8e39175df0fd649cfcbaf7fd8edfbc14a6d42',214:'21e957a0aaa5e0f8df4aa857344addc94af511eb',215:'8f5cdab91a904d4695b4f0a2b1c4aaa46376ff85'}
 fields='number headRefOid isDraft commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}}}}}'
 def gh_json(*args):
     return json.loads(subprocess.check_output(['gh',*args],text=True))
