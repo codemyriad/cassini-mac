@@ -27,20 +27,11 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T18:18:32+00:00
+Last checked: 2026-11-10T18:23:32+00:00
 
-- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15-intel); draft.
 - #211 `9f892f6`: failed: CassiniKit tests and conformance; draft.
 - #212 `75ea821`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #213 `c4f3d1e`: failed: CassiniKit tests and conformance; draft.
 - #214 `922711b`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #215 `2a80631`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
-
-## #208 blocker 1 — complete local proof, draft PR open
-
-Draft PR https://github.com/codemyriad/cassini-mac/pull/222, branch `ci/rented-mac-routing-paths`, head `452c52f66d90fd5d1f987dff90197620554e833e`, base `ci/rented-mac-routing` at #208 head `17162d0ab810ddaeb65a17d3b7abfbb8b5c295f2`. The existing base already contains workspace identity + verified consumer-local rebuild; this PR proves that smallest fix with real compiled products instead of adding a competing implementation. No changes to #208 itself or setup-python (drmeyers owns blocker 2).
-
-- Complete unchanged Cassini package built/packed at path A; A was hidden; foreign unpack rejected before extraction; real consumer-local build at B passed. Three actual tests passed at both paths: model fixture bootstrap via Bundle.module, wire vectors and publication pins via #filePath. Consumer generated resource accessors embed B.
-- Standalone real SwiftPM regression passes producer build/test/pack, foreign rejection, actual guard-removal mutation failure (producer buildPath resource bundle missing), restored consumer resource/source path + byte assertions, and same-path verified reuse without rebuilding.
-- All 41 CI transport/contract checks pass. Xcode 16.4 / 16F6, ARM M4, four build jobs, shared mkdir lock plus local flock. Initial fixture name collision and Foundation/Python /var spelling diagnostics are preserved separately, not counted as mutation evidence.
-- All code, recipes, logs, D87 sections and mutation links pushed. Worktree clean; own locks released. Draft #222 is intentionally outside the six-PR readiness automation. No agy self-check, hosted rerun, merge or force-push.
