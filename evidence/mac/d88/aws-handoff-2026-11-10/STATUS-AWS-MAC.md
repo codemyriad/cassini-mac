@@ -27,10 +27,10 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T17:48:28+00:00
+Last checked: 2026-11-10T17:53:29+00:00
 
-- #210 `9d373ff`: pending: build / Build products (arm64, Xcode 16.4); draft.
-- #211 `9f892f6`: pending: build / Build products (arm64, Xcode 16.4); draft.
+- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #211 `9f892f6`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #212 `75ea821`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #213 `c4f3d1e`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #214 `922711b`: pending: build / Build products (arm64, Xcode 16.4); draft.
