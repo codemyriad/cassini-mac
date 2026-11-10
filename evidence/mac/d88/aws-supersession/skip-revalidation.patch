@@ -1,0 +1,11 @@
+--- a/Sources/CassiniModels/ModelDownloader.swift
++++ b/Sources/CassiniModels/ModelDownloader.swift
+@@ -122,7 +122,7 @@
+         if let replacement {
+             let directory = dataRoot.appendingPathComponent("models/" + replacement.pin.id + "/" + replacement.pin.sourceSHA256,isDirectory:true)
+             guard ModelFiles.existingDirectory(directory) else { throw ModelDownloadError.installation }
+-            try Self.validateInstalled(directory,plan:replacement,verifyHashes:true)
++            // MUTATION: omit replacement hash revalidation
+         }
+         let installed = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
+         if FileManager.default.fileExists(atPath:installed.path) {

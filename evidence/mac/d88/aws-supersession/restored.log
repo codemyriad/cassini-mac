@@ -1,0 +1,35 @@
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelSupersessionTests started.
+◇ Suite SupersessionPoolProbeTests started.
+◇ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() started.
+◇ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() started.
+◇ Test symlinkedModelNamespaceCannotRedirectCleanup() started.
+◇ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) started.
+◇ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() started.
+◇ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Test heldPoolCannotBlockReplacementFixture(_:) started.
+◇ Passing 1 argument failure → "missing" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "partial" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "same-size-corrupt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "bad-receipt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing-notice" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument idOnly → false to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument idOnly → true to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument cancel → false to heldPoolCannotBlockReplacementFixture(_:)
+✔ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() passed after 0.097 seconds.
+✔ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() passed after 0.097 seconds.
+✔ Test symlinkedModelNamespaceCannotRedirectCleanup() passed after 0.097 seconds.
+✔ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) passed after 0.097 seconds.
+✔ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) passed after 0.097 seconds.
+✔ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() passed after 0.106 seconds.
+✔ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) passed after 0.165 seconds.
+✔ Suite ModelSupersessionTests passed after 0.165 seconds.
+◇ Passing 1 argument cancel → true to heldPoolCannotBlockReplacementFixture(_:)
+✔ Test heldPoolCannotBlockReplacementFixture(_:) passed after 0.340 seconds.
+✔ Suite SupersessionPoolProbeTests passed after 0.341 seconds.
+✔ Test run with 8 tests passed after 0.341 seconds.
