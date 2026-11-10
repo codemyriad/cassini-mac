@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/scripts/ci-products.py", line 185, in <module>
+    main()
+    ~~~~^^
+  File "/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/scripts/ci-products.py", line 179, in main
+    (restore if args.action == 'restore' else unpack)(args.kind, args.directory)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/scripts/ci-products.py", line 118, in unpack
+    raise WorkspaceMismatch('SwiftPM workspace differs: ' + workspace + ' -> ' + expected['workspace'])
+WorkspaceMismatch: SwiftPM workspace differs: /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/producer -> /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer

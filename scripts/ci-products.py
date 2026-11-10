@@ -38,7 +38,8 @@ def identity(kind):
     return dict(kind=kind, commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 xcode=subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
                 pins={name: digest(ROOT / name) for name in PINS},
-                arch=os.uname().machine if kind == 'swiftpm' else 'universal')
+                arch=os.uname().machine if kind == 'swiftpm' else 'universal',
+                **({'workspace': str(ROOT.resolve())} if kind == 'swiftpm' else {}))
 
 
 # Release tooling that once lived in SwiftPM's .build (release.py now keeps it in build/). A
@@ -78,6 +79,10 @@ class TransferError(ValueError):
     a plain ValueError and is never retried (D66 rule 2)."""
 
 
+class WorkspaceMismatch(ValueError):
+    """Verified SwiftPM bytes compiled for another absolute checkout path."""
+
+
 TRANSFER_EXIT = 75  # EX_TEMPFAIL: the action downloads that product once more
 
 
@@ -86,7 +91,7 @@ def unpack(kind, source):
         raise TransferError('Product download missing: '+kind)
     metadata = json.loads((source/(kind+'.json')).read_text())
     expected = identity(kind)
-    if any(metadata.get(key) != value for key, value in expected.items()):
+    if any(metadata.get(key) != value for key, value in expected.items() if key != 'workspace'):
         raise ValueError('Product revision, architecture, Xcode or pins do not match checkout')
     archive = source/(kind+'.tar.gz')
     if digest(archive) != metadata['sha256']:
@@ -105,8 +110,29 @@ def unpack(kind, source):
                     raise ValueError('Unsafe product link: '+item.name)
             elif not (item.isfile() or item.isdir()):
                 raise ValueError('Unsupported product member: '+item.name)
+        if kind == 'swiftpm':
+            workspace = metadata.get('workspace')
+            if not isinstance(workspace, str) or not Path(workspace).is_absolute():
+                raise ValueError('Missing or invalid SwiftPM workspace identity')
+            if workspace != expected['workspace']:
+                raise WorkspaceMismatch('SwiftPM workspace differs: ' + workspace + ' -> ' + expected['workspace'])
         packed.extractall(ROOT, members=members)
     print('Restored verified', kind, 'products for', expected['commit'])
+
+
+def restore(kind, source):
+    """Reuse only path-compatible objects; otherwise compile this checkout.
+
+    Source, toolchain, pins, digest and archive safety are still checked first.
+    This is not a retry of a failed test/build or a re-download. SwiftPM embeds
+    absolute paths in Bundle.module and #filePath, so a relocated consumer must
+    generate its own objects before any --skip-build test can run.
+    """
+    try:
+        unpack(kind, source)
+    except WorkspaceMismatch as error:
+        print(str(error) + '; building test products in this checkout', flush=True)
+        subprocess.run(['swift', 'build', '--build-tests'], cwd=ROOT, check=True)
 
 
 def stage_assets(kind, destination):
@@ -140,7 +166,7 @@ def stage_assets(kind, destination):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['pack', 'unpack', 'stage-assets'])
+    parser.add_argument('action', choices=['pack', 'unpack', 'restore', 'stage-assets'])
     parser.add_argument('kind', choices=list(PRODUCTS)+['Whistle', 'Opus', 'Parakeet'])
     parser.add_argument('directory', type=Path)
     args = parser.parse_args()
@@ -150,7 +176,7 @@ def main():
         pack(args.kind, args.directory)
     else:
         try:
-            unpack(args.kind, args.directory)
+            (restore if args.action == 'restore' else unpack)(args.kind, args.directory)
         except TransferError as error:
             print(error, file=sys.stderr); sys.exit(TRANSFER_EXIT)
 
