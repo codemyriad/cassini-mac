@@ -16,6 +16,24 @@ final class CallSignalTests: XCTestCase {
         var policy = SignalCallPolicy(); policy.update([peer([row()])],now:0); policy.advance(now:0,enabled:true)
         let token = try XCTUnwrap(policy.reserve()); policy.didStart(token); return (policy,token)
     }
+    func testUnrelatedReloadEndDoesNotFenceMixedOwnerButMatchingEndDoes() throws {
+        for changed in ["profile","tab","generation"] {
+            var (policy,token) = try running()
+            policy.update([],now:1)
+            let unrelated = row(changed == "generation" ? "call-B" : "call-A",document:"doc-B",state:"inactive",tab:changed == "tab" ? 3 : 2)
+            policy.update([peer([unrelated],seq:1,replacement:changed == "profile",profile:changed == "profile" ? "profile-B" : "profile-A")],now:2)
+            policy.advance(now:2,enabled:true)
+            XCTAssertNil(policy.retiring,changed)
+            XCTAssertTrue(policy.mayOpen(token),changed)
+            XCTAssertEqual(policy.calls.count,1,changed)
+            XCTAssertEqual(policy.calls.values.first?.lostAt,1,"Unrelated ends do not reset original grace: " + changed)
+            policy.update([peer([row(document:"doc-B",state:"inactive")],seq:2)],now:3)
+            policy.advance(now:3,enabled:true)
+            XCTAssertEqual(policy.retiring,.callEnded,"Matching call identity ends its lost predecessor: " + changed)
+            XCTAssertTrue(policy.calls.isEmpty,changed)
+            XCTAssertFalse(policy.mayOpen(token),changed)
+        }
+    }
     func testUnknownOrDisconnectAfterUntickedProofExpiryKeepsOriginalGrace() throws {
         for transition in ["unknown","disconnect"] {
             var policy = SignalCallPolicy()
