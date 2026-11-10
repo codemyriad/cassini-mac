@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T22:54:43+00:00",
+  "updated": "2026-11-10T22:59:44+00:00",
   "prs": [
     {
       "pr": 210,
@@ -98,7 +98,6 @@
       "readyCandidate": false,
       "reviewHold": true,
       "pending": [
-        "build / Build products (arm64, Xcode 16.4)",
         "build / Build products (x86_64, Xcode 16.4)"
       ],
       "failed": [],
