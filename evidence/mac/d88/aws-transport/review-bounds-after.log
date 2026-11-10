@@ -1,0 +1,42 @@
+[0/1] Planning build
+Building for debugging...
+[0/33] Write sources
+[9/33] Write swift-version--79AA4F9932D1E87A.txt
+[11/26] Emitting module CassiniWhistle
+[12/26] Compiling CassiniWhistle WhistleSubprocess.swift
+[13/30] Compiling CassiniBrowserControl FrameIO.swift
+[14/30] Emitting module CassiniBrowserControl
+[15/30] Compiling CassiniBrowserControl PipeTransport.swift
+[16/26] Emitting module CassiniModelsTests
+[17/26] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[18/29] Emitting module CassiniWhistleTests
+[19/29] Compiling CassiniWhistleTests IOTests.swift
+[20/29] Compiling CassiniBrowserControlTests PipeTransportTests.swift
+[21/29] Compiling CassiniBrowserControlTests ControlHostTests.swift
+[22/29] Emitting module CassiniBrowserControlTests
+[23/29] Compiling CassiniTranscription MeetingTranscriber.swift
+[24/29] Emitting module CassiniTranscription
+[25/36] Emitting module cassini_parakeet_worker
+[26/36] Compiling cassini_parakeet_worker main.swift
+[27/36] Emitting module cassini_whistle_worker
+[28/36] Compiling cassini_whistle_worker main.swift
+[29/32] Emitting module CassiniTranscriptionTests
+[30/32] Compiling CassiniTranscriptionTests MeetingTests.swift
+[30/32] Write Objects.LinkFileList
+[31/32] Linking CassiniKitPackageTests
+Build complete! (4.24s)
+Test Suite 'Selected tests' started at 2026-11-10 22:47:55.806.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 22:47:55.806.
+Test Suite 'PipeTransportTests' started at 2026-11-10 22:47:55.806.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' passed (0.239 seconds).
+Test Suite 'PipeTransportTests' passed at 2026-11-10 22:47:56.046.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.239 (0.239) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 22:47:56.046.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.239 (0.239) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 22:47:56.046.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.239 (0.240) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.

@@ -66,3 +66,20 @@ tests; it was explicitly supplied and exercised in this local proof.
 The earlier broad 415-XCTest/five-Swift-Testing logs precede this additional test;
 production code is unchanged from that broad run. The speech-resume golden remains
 an exact-head pipeline CI requirement, separate from this generated-only proof.
+
+## Review fix for bounded waits
+
+The partial reader reports a failure if its release gate expires after ten
+seconds. The test requires the partial-header event before sending to the
+second peer, then uses three- and six-second receive deadlines for the second
+and first replies. Each successful receive still requires the expected bytes.
+The test writes the remaining fragment after releasing the reader, using the
+existing bounded write so the test thread owns the descriptor through cleanup.
+
+The focused run passes in `review-bounds-after.log`. The mutation in
+`suppressed-second-reply.patch` discards only the independent peer's reply and
+leaves both endpoints open until normal cleanup. The focused test reports a
+receive timeout after 3.521 seconds in `suppressed-second-reply.log`. The
+restored transport, host, frame, generated-silence publication and shared
+supersession checks pass in `review-bounds-restored.log`. These runs use Xcode
+16.4 and four jobs under the shared heavy-run lock.

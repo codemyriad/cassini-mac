@@ -1,0 +1,97 @@
+Building for debugging...
+[0/25] Write sources
+[1/25] Write swift-version--79AA4F9932D1E87A.txt
+[3/5] Emitting module CassiniBrowserControlTests
+[4/5] Compiling CassiniBrowserControlTests PipeTransportTests.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking CassiniKitPackageTests
+Build complete! (1.31s)
+Test Suite 'Selected tests' started at 2026-11-10 22:48:03.968.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 22:48:03.968.
+Test Suite 'ControlHostTests' started at 2026-11-10 22:48:03.968.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' passed (0.317 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' passed (0.218 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' passed (0.219 seconds).
+Test Suite 'ControlHostTests' passed at 2026-11-10 22:48:04.723.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.754 (0.754) seconds
+Test Suite 'FrameIOTests' started at 2026-11-10 22:48:04.723.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testCancellationDoesNotNeedToCloseAnActiveDescriptor]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testCancellationDoesNotNeedToCloseAnActiveDescriptor]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer]' passed (0.005 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFrameLimitsAndTruncatedHeaderAreRejected]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFrameLimitsAndTruncatedHeaderAreRejected]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testNormalizingPreservesValuesAndLexicalNumbersWithoutLineBreaks]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testNormalizingPreservesValuesAndLexicalNumbersWithoutLineBreaks]' passed (0.001 seconds).
+Test Suite 'FrameIOTests' passed at 2026-11-10 22:48:04.729.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.007 (0.007) seconds
+Test Suite 'PipeTransportTests' started at 2026-11-10 22:48:04.730.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' passed (0.354 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' passed (0.216 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' passed (0.106 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' passed (0.212 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' passed (0.109 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' passed (0.237 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' passed (0.209 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' passed (0.213 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' passed (0.002 seconds).
+Test Suite 'PipeTransportTests' passed at 2026-11-10 22:48:06.394.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 1.664 (1.665) seconds
+Test Suite 'TranscriptionMeetingTests' started at 2026-11-10 22:48:06.394.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSidecarWriteObserverReadsCommittedBytesForGeneratedSilence]' started.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSidecarWriteObserverReadsCommittedBytesForGeneratedSilence]' passed (0.247 seconds).
+Test Suite 'TranscriptionMeetingTests' passed at 2026-11-10 22:48:06.642.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.247 (0.247) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 22:48:06.642.
+	 Executed 21 tests, with 0 failures (0 unexpected) in 2.671 (2.673) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 22:48:06.642.
+	 Executed 21 tests, with 0 failures (0 unexpected) in 2.671 (2.674) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelSupersessionTests started.
+◇ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) started.
+◇ Test symlinkedModelNamespaceCannotRedirectCleanup() started.
+◇ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) started.
+◇ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() started.
+◇ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() started.
+◇ Passing 1 argument failure → "missing-notice" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument idOnly → false to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument failure → "bad-receipt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "partial" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument idOnly → true to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument failure → "same-size-corrupt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+✔ Test symlinkedModelNamespaceCannotRedirectCleanup() passed after 0.013 seconds.
+✔ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() passed after 0.015 seconds.
+✔ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() passed after 0.017 seconds.
+✔ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) passed after 0.018 seconds.
+✔ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) passed after 0.019 seconds.
+✔ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() passed after 0.025 seconds.
+✔ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) passed after 0.082 seconds.
+✔ Suite ModelSupersessionTests passed after 0.082 seconds.
+✔ Test run with 7 tests passed after 0.082 seconds.

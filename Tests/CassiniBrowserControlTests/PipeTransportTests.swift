@@ -71,7 +71,13 @@ final class PipeTransportTests: XCTestCase {
         let clock = TransportReadClock(), entered = expectation(description:"Reader consumed partial header"), release = DispatchSemaphore(value:0)
         let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in try peer.send(data) },disconnected:{ _ in })
         server.readClock = { clock.now() }
-        server.readProgress = { count in if count == 2, clock.claimPartial() { entered.fulfill(); release.wait() } }
+        server.readProgress = { count in
+            guard count == 2, clock.claimPartial() else { return }
+            entered.fulfill()
+            if release.wait(timeout:.now() + 10) == .timedOut {
+                XCTFail("Timed out waiting to release the partial reader")
+            }
+        }
         try server.start(); defer { release.signal(); server.stop() }
         let first = try PipeEndpoint(root:root,role:.control,browser:nil)
         let folder = try XCTUnwrap(FileManager.default.contentsOfDirectory(at:root.appendingPathComponent("clients"),includingPropertiesForKeys:nil).first { UUID(uuidString:$0.lastPathComponent) != nil })
@@ -83,20 +89,19 @@ final class PipeTransportTests: XCTestCase {
         var size = UInt32(payload.count).littleEndian
         let header = withUnsafeBytes(of:&size) { Data($0) }
         try FrameIO.write(fd,bytes:header.prefix(2),cancel:Cancellation())
-        wait(for:[entered],timeout:3)
+        guard XCTWaiter.wait(for:[entered],timeout:3) == .completed else {
+            XCTFail("Reader did not consume the partial header")
+            return
+        }
         let other = Data("{\"type\":\"future\",\"body\":\"independent\"}".utf8)
         try second.send(other)
-        XCTAssertEqual(try second.receive(),try FrameIO.normalized(other))
+        let secondReply = try second.receive(deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000)
+        XCTAssertEqual(secondReply,try FrameIO.normalized(other))
         clock.advance(350_000_000) // Cross the former 250 ms retry boundary virtually.
-        let done = expectation(description:"Remaining header and body written")
-        DispatchQueue.global().async {
-            defer { done.fulfill() }
-            do { try FrameIO.write(fd,bytes:header.suffix(2) + payload,cancel:Cancellation()) }
-            catch { XCTFail("Fragment write failed: \(error)") }
-        }
         release.signal()
-        XCTAssertEqual(try first.receive(),try FrameIO.normalized(payload))
-        wait(for:[done],timeout:6)
+        try FrameIO.write(fd,bytes:header.suffix(2) + payload,cancel:Cancellation())
+        let firstReply = try first.receive(deadline:DispatchTime.now().uptimeNanoseconds + 6_000_000_000)
+        XCTAssertEqual(firstReply,try FrameIO.normalized(payload))
     }
     func testPeerDeathBeforeItsFirstMessageReleasesTheServerSide() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
