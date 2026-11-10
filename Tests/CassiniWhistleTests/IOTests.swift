@@ -91,13 +91,17 @@ import Testing
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false)
         defer { try? FileManager.default.removeItem(at:root) }
         let ready = root.appendingPathComponent("ready")
+        let blocked = root.appendingPathComponent("blocked")
         try #require(mkfifo(ready.path,0o600) == 0)
+        try #require(mkfifo(blocked.path,0o600) == 0)
         let fd = open(ready.path,O_RDWR | O_NONBLOCK | O_CLOEXEC)
         try #require(fd >= 0)
         defer { close(fd) }
         let task = Task {
-            try await WhistleSubprocess.run(executable: URL(fileURLWithPath: "/usr/bin/python3"),
-                arguments: ["-c", "import signal,sys\nwith open(sys.argv[1],'wb',buffering=0) as ready: ready.write(b'1')\nsignal.pause()",ready.path],
+            // The shell reports readiness then blocks opening a separate FIFO.
+            // No interpreter initialization or fixed sleep enters cancellation.
+            try await WhistleSubprocess.run(executable: URL(fileURLWithPath: "/bin/sh"),
+                arguments: ["-c", "printf 1 > \"$1\"; exec 3<\"$2\"", "cassini-cancel", ready.path, blocked.path],
                 environment: ["PATH": "/usr/bin:/bin"], input: Data())
         }
         defer { task.cancel() }

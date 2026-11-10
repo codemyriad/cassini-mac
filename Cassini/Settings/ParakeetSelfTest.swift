@@ -11,10 +11,14 @@ import CassiniModels
 /// Private generated-file proof over the actual queue and signed helpers. Model
 /// bytes arrive through stdin, not a sandbox exemption or a network download.
 @MainActor enum ParakeetSelfTest {
+    private static func phase(_ name: String) {
+        FileHandle.standardError.write(Data("Parakeet app phase: \(name), uptime \(ProcessInfo.processInfo.systemUptime)\n".utf8))
+    }
     static func run() async {
         let env = ProcessInfo.processInfo.environment
         guard SettingsFixture.id != nil,
               env["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" || env["GITHUB_ACTIONS"] == "true" && env["RUNNER_ENVIRONMENT"] == "github-hosted" else { exit(78) }
+        phase("initializing controllers")
         let dataRoot = SpeechModelController.appData
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniParakeetProbe-" + UUID().uuidString)
         let backup = dataRoot.appendingPathComponent("private-input")
@@ -25,6 +29,7 @@ import CassiniModels
                 try? FileManager.default.removeItem(at:root); try? FileManager.default.removeItem(at:dataRoot)
                 if let id = SettingsFixture.id { SettingsFixture.defaults?.removePersistentDomain(forName:"io.codemyriad.cassini.settings-fixture." + id.uuidString) }
             }
+            phase("receiving pinned model bytes")
             try await Task.detached(priority:.utility) {
                 try FileManager.default.createDirectory(at:backup,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
                 for (name,pin) in ParakeetPin.files.sorted(by:{ $0.key < $1.key }) {
@@ -40,11 +45,13 @@ import CassiniModels
                 }
                 guard try FileHandle.standardInput.read(upToCount:1)?.isEmpty != false else { throw POSIXError(.EINVAL) }
             }.value
+            phase("initial inventory")
             await models.reloadInventory()
             let recommendationEligible = models.recommendationCapable && models.recommendationDiskAvailable
             guard !models.downloaded, !models.usesParakeet, models.showsSettingsSuggestion == recommendationEligible,
                   !models.showsAfterFirstSuggestion else { throw POSIXError(.EINVAL) }
             let firstWhistle = try meeting(root:root,title:"First Whistle transcription")
+            phase("first Whistle queue completion")
             let firstResult: (URL,String,Bool) = await withCheckedContinuation { continuation in
                 queue.fixtureCompletion = { folder,engine,succeeded in
                     queue.fixtureCompletion = nil
@@ -52,6 +59,7 @@ import CassiniModels
                 }
                 queue.enqueue(firstWhistle)
             }
+            phase("first Whistle completed")
             guard firstResult.0 == firstWhistle.folder, firstResult.1 == "whistle", firstResult.2,
                   models.hasCompletedWhistle else { throw POSIXError(.EINVAL) }
             if recommendationEligible {
@@ -66,6 +74,7 @@ import CassiniModels
             let relaunchedSuggestion = SpeechModelController()
             await relaunchedSuggestion.refresh()
             guard !relaunchedSuggestion.showsSettingsSuggestion, !relaunchedSuggestion.showsAfterFirstSuggestion else { throw POSIXError(.EINVAL) }
+            phase("installing and verifying model")
             try install(backup)
             await models.reloadInventory()
             guard models.downloaded, models.usesParakeet,
@@ -78,6 +87,7 @@ import CassiniModels
             // A broken unused installation must not hide Remove and wedge
             // Download/Try again. Inventory cleans it without a network client.
             for name in ["tokens.txt","receipt.json","NOTICE.txt"] {
+                phase("unused damaged installation: " + name)
                 try FileManager.default.removeItem(at:SpeechModelController.modelDirectory.appendingPathComponent(name))
                 await models.reloadInventory()
                 guard !models.downloaded,!models.usesParakeet,!models.busy,
@@ -90,6 +100,7 @@ import CassiniModels
             models.chooseParakeet(true)
             let first = try meeting(root:root,title:"Parakeet active")
             let second = try meeting(root:root,title:"Whistle queued")
+            phase("accepting Parakeet queue job")
             queue.enqueue(first)
             try await wait { queue.activeModel == "parakeet" }
             await models.reloadInventory()
@@ -104,18 +115,22 @@ import CassiniModels
             let release = DispatchSemaphore(value:0)
             defer { release.signal() }
             Thread.detachNewThread { _ = release.wait(timeout:.now()+5); flock(held,LOCK_UN); close(held) }
+            phase("removing accepted model while lock held")
             models.remove()
             try FileManager.default.removeItem(at:SpeechModelController.modelDirectory.appendingPathComponent("NOTICE.txt"))
             await models.reloadInventory() // Reopening Settings cannot start a second cleanup during Remove.
             try await Task.sleep(for:.milliseconds(50))
             guard models.busy,models.downloaded,models.message == previousMessage else { throw POSIXError(.EINVAL) }
             release.signal()
+            phase("waiting for Remove disk commit")
             await models.waitForOperation()
             guard !models.usesParakeet, !models.downloaded,
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path),
                   models.message == UXText.text("models.parakeetUltra.removedFallback") else { throw POSIXError(.EINVAL) }
+            phase("waiting for Parakeet and queued Whistle")
             queue.enqueue(second)
             try await wait { !queue.isBusy }
+            phase("Parakeet and queued Whistle completed")
             let firstDone = try checked(first,model:ParakeetPin.transcriptModel,language:"und")
             _ = try checked(second,model:"whistle",language:nil)
             // Same-size corrupt tokens pass inventory, then fail the worker's
@@ -137,6 +152,7 @@ import CassiniModels
             try Data(repeating:0,count:Int(ParakeetPin.files["tokens.txt"]!.bytes)).write(to:tokens)
             await models.reloadInventory(); models.chooseParakeet(true)
             guard models.usesParakeet else { throw POSIXError(.EINVAL) }
+            phase("invalid-model Whistle fallback")
             let third = try meeting(root:root,title:"Invalid model fallback")
             queue.enqueue(third); try await wait { !queue.isBusy }
             _ = try checked(third,model:"whistle",language:nil)
@@ -144,17 +160,20 @@ import CassiniModels
                   models.message == UXText.text("models.parakeetUltra.invalidFallback"),
                   RecordingPreferences.defaults.string(forKey:"CassiniSpeechModel") == "whistle",
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
+            phase("DC-only empty transcript")
             let quiet = try meeting(root:root,title:"DC-only empty transcript",dcOnly:true)
             queue.enqueue(quiet); try await wait { !queue.isBusy }
             let empty = try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })
             guard let empty,empty.hasNoSpeech,empty.canWriteDown,!empty.canQueueAutomatically else { throw POSIXError(.EINVAL) }
             let before = try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json"))
             let detail = MeetingDetailModel(meeting:empty,frozen:true)
+            phase("empty-transcript explicit retry")
             queue.writeDown(detail); queue.writeDown(detail)
             guard queue.isBusy else { throw POSIXError(.EINVAL) } // Must clear the prior completed job's known key.
             try await wait { !queue.isBusy }
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })?.hasNoSpeech == true,
                   try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json")) != before else { throw POSIXError(.EINVAL) }
+            phase("all assertions completed")
             let report: [String:Any] = ["physicalMemoryBytes":ProcessInfo.processInfo.physicalMemory,"suggestionMemoryBytes":models.recommendationMemoryBytes,"suggestionEligible":recommendationEligible,
                 "sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
                 "unverifiedModelCannotBecomeDefault":true,"verifiedInstallationBecomesDefault":true,"explicitWhistleChoiceSurvivesRelaunch":true,
@@ -165,8 +184,11 @@ import CassiniModels
                 "inventoryPreservesAcceptedModel":true,"emptyTranscriptRetryRequeues":true]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
+            // Retain the initiating failure even if shutdown itself stalls.
+            FileHandle.standardError.write(Data("Parakeet app proof failed: \(error)\n".utf8))
+            phase("waiting for shutdown after failure")
             queue.beginShutdown(); await queue.waitForShutdown()
-            FileHandle.standardError.write(Data("Parakeet app proof failed: \(error)\n".utf8)); exit(1)
+            exit(1)
         }
     }
     private static func install(_ input: URL) throws {

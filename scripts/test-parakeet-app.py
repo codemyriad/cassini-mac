@@ -33,6 +33,9 @@ with a.report.with_suffix('.stderr.txt').open('w') as errors:
         # Preserve the actual hung signed-app PID before cleanup destroys the
         # only evidence (D66 run42580139946, Intel). No deadline extension or
         # retry: sampling is diagnostic work after the original180s failure.
+        # Run42676060732 sampled successfully but the old5s diagnostic limit
+        # killed symbol processing before it wrote a stack. Wait for sample's
+        # completion (30s upper bound), leaving the original failure unchanged.
         try:
             with a.report.with_suffix('.timeout-process.txt').open('w') as diagnostic:
                 subprocess.run(['/bin/ps','-p',str(child.pid),'-o','pid=,ppid=,state=,etime=,time=,comm='],
@@ -40,7 +43,7 @@ with a.report.with_suffix('.stderr.txt').open('w') as errors:
             with a.report.with_suffix('.sample.log').open('w') as diagnostic:
                 subprocess.run(['/usr/bin/sample',str(child.pid),'1','10','-file',
                                 str(a.report.with_suffix('.stack.txt'))],
-                               stdout=diagnostic,stderr=subprocess.STDOUT,timeout=5)
+                               stdout=diagnostic,stderr=subprocess.STDOUT,timeout=30)
         except (OSError,subprocess.SubprocessError) as error:
             a.report.with_suffix('.diagnostic-error.txt').write_text(str(error))
         finally:
