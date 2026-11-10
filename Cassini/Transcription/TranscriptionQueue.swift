@@ -193,7 +193,7 @@ import Darwin
             // to unlock it: only completion of the action releases the lock.
             try await holdingDirectoryLock(session.directory) { queue.enqueue(meeting) }
             await queue.waitForFixturePreparation()
-            guard queue.active == session.directory else { throw POSIXError(.EINVAL) }
+            guard queue.active == meeting.folder else { throw POSIXError(.EINVAL) }
             let document = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as! [String:Any]
             guard (document["transcript"] as? [String:Any])?["status"] as? String == "queued" else { throw POSIXError(.EINVAL) }
             let input = Bundle.main.resourceURL!.appendingPathComponent("Fixtures/Library/main/root/Received-a0000000-0000-4000-8000-000000000006/original.opus")
