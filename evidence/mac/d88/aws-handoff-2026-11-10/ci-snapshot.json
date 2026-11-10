@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T18:58:36+00:00",
+  "updated": "2026-11-10T19:03:37+00:00",
   "prs": [
     {
       "pr": 210,
@@ -8,7 +8,6 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "Whistle bundle / Universal app and sandboxed Whistle helper",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
@@ -70,7 +69,6 @@
       "readyCandidate": false,
       "pending": [
         "UX browser setup / Browser setup (macos-15)",
-        "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)"
