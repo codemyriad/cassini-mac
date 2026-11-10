@@ -2,7 +2,7 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 17:20 UTC
+Updated: 2026-11-10 17:27 UTC
 
 - IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `9d373ff`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
 - Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `9f892f6`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
@@ -23,15 +23,15 @@ The shared ModelSupersessionTests:93 CI blocker is fixed on all six pushed heads
 
 ## Questions
 
-None. Ownership of the shared blocker was explicitly assigned to aws-mac and the repair is complete locally. Proof/recipe is pushed on `test/d88-aws-supersession-events` and copied into each PR's evidence. #208 remains open; its ARM Whistle worker has failed at 17:15 UTC while downstream checks continue. Failure is Python setup attempting to mkdir `/Users/runner` (permission denied), job 129993819438; this routing PR stays with its owner. ARM routing awaits its merge. Continue monitoring all six independently. Once #208 merges, integrate main into the still-draft branches with ordinary merge/push, revalidate locally under the shared lock, and refresh exact heads/body links; no hosted reruns.
+None. Ownership of the shared blocker was explicitly assigned to aws-mac and the repair is complete locally. Proof/recipe is pushed on `test/d88-aws-supersession-events` and copied into each PR's evidence. #208 remains open at new head `17162d0` (17:28 UTC), owner progressing its routing fix. Previous ARM Whistle failure was Python setup attempting mkdir `/Users/runner` (permission denied), job 129993819438. No edits/reruns/comments by aws-mac; ARM routing awaits its merge. Continue monitoring all six independently. Once #208 merges, integrate main into the still-draft branches with ordinary merge/push, revalidate locally under the shared lock, and refresh exact heads/body links; no hosted reruns.
 
 ## CI readiness
 
-Last checked: 2026-11-10T17:23:25+00:00
+Last checked: 2026-11-10T17:28:26+00:00
 
-- #210 `9d373ff`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #210 `9d373ff`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #211 `9f892f6`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #212 `75ea821`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #213 `c4f3d1e`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #214 `922711b`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
-- #215 `2a80631`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #215 `2a80631`: pending: build / Build products (arm64, Xcode 16.4); draft.
