@@ -1,0 +1,11 @@
+--- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
++++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
+@@ -556,7 +556,7 @@
+     }
+     private func failed(_ side: CaptureSide, generation: UUID, message: String) async {
+         try? await enqueue {
+-            guard !self.closed, let input = self.inputs[side], input.generation == generation else { return }
++            guard !self.closed, let input = self.inputs[side] else { return }
+             // D58 (#120 review): a start side that fails before its first buffer never opened.
+             // It is refused and closed without a problem, and the recording is not failed.
+             // #140 review: whether this input generation ever admitted a buffer decides, not whether

@@ -138,6 +138,7 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             release.signal()
             let response = try await starting.value
             await closing.value
+            broker.shutdownWaitRegistered = nil
             XCTAssertEqual(finished.value,1); XCTAssertTrue(broker.activeCaptures.isEmpty)
             let saved = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(response["path"]?.string)))
             XCTAssertNotEqual(saved.state,"recording")

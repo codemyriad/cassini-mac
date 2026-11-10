@@ -1,0 +1,92 @@
+Building for debugging...
+[0/26] Write sources
+[2/26] Write swift-version--79AA4F9932D1E87A.txt
+[4/11] Compiling CassiniBrowserControl CaptureInputLifecycle.swift
+[5/11] Emitting module CassiniBrowserControl
+[6/11] Compiling CassiniBrowserControl BrowserAudioBroker.swift
+[6/14] Write Objects.LinkFileList
+[8/30] Linking cassini-control-host
+[9/30] Linking cassini-browser-host
+[10/30] Applying cassini-control-host
+[11/30] Applying cassini-browser-host
+[13/30] Emitting module CassiniBrowserControlTests
+[14/35] Compiling CassiniBrowserControlTests OwnedTerminalEventTests.swift
+[15/35] Compiling CassiniBrowserControlTests PassiveWebRTCStartTests.swift
+[16/35] Compiling CassiniBrowserControlTests R94CommittedResumeTests.swift
+[17/35] Compiling CassiniBrowserControlTests RealProducerStartTests.swift
+[18/35] Compiling CassiniBrowserControlTests VerifiedAdmissionTests.swift
+[19/35] Compiling CassiniBrowserControlTests AudioBrokerTests.swift
+[20/35] Compiling CassiniBrowserControlTests ControlServiceTests.swift
+[21/35] Compiling CassiniBrowserControlTests D52CallOwnershipTests.swift
+[22/35] Compiling CassiniBrowserControlTests D52CaptureRecordTests.swift
+[23/35] Compiling CassiniBrowserControlTests D52ResumeTests.swift
+[24/35] Compiling CassiniBrowserControlTests D69WriterLossTests.swift
+[25/35] Compiling CassiniBrowserControlTests DOMProvenanceTests.swift
+[26/35] Compiling CassiniBrowserControlTests InputLifecycleTests.swift
+[27/35] Compiling CassiniBrowserControlTests OwnedCallProofLossTests.swift
+[28/35] Compiling CassiniBrowserControlTests OwnedCaptureTests.swift
+[29/35] Compiling CassiniBrowserControlTests D52SourceOutcomeTests.swift
+[30/35] Compiling CassiniBrowserControlTests D52TransportLivenessTests.swift
+[31/35] Compiling CassiniBrowserControlTests D58RefusalWriterTests.swift
+[32/35] Compiling CassiniBrowserControlTests D58ResumeRefusalTests.swift
+[33/35] Compiling CassiniBrowserControlTests D61ClockFactsBrokerTests.swift
+[33/35] Write Objects.LinkFileList
+[34/35] Linking CassiniKitPackageTests
+Build complete! (5.99s)
+Test Suite 'Selected tests' started at 2026-11-10 14:36:04.788.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:36:04.788.
+Test Suite 'AudioBrokerTests' started at 2026-11-10 14:36:04.788.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain]' passed (0.248 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testControlLossBeforeLostStopKeepsFirstNonNilCauseThroughFallbackAndDetails]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testControlLossBeforeLostStopKeepsFirstNonNilCauseThroughFallbackAndDetails]' passed (0.526 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testIndependentFramingFailuresReturnAnErrorFrameAndExitNonzero]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testIndependentFramingFailuresReturnAnErrorFrameAndExitNonzero]' passed (0.636 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testInvalidIndependentStartMetadataNeverCreatesARecordingFolder]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testInvalidIndependentStartMetadataNeverCreatesARecordingFolder]' passed (0.305 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLossKeepsTheOwnedFolderAndRejectsReuseOfItsOpaqueCaptureID]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLossKeepsTheOwnedFolderAndRejectsReuseOfItsOpaqueCaptureID]' passed (0.351 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLostStopCauseSurvivesRealStoppedResponseAndNativeFallbackPersistence]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLostStopCauseSurvivesRealStoppedResponseAndNativeFallbackPersistence]' passed (0.243 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testMalformedSourceGetsAFramedErrorWithoutStoppingAnotherNativeProcess]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testMalformedSourceGetsAFramedErrorWithoutStoppingAnotherNativeProcess]' passed (0.356 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testManagementDisconnectLeavesThePCMProcessRecording]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testManagementDisconnectLeavesThePCMProcessRecording]' passed (0.348 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPinnedLostStopDiagnosticVectorsThroughTheNativeHost]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPinnedLostStopDiagnosticVectorsThroughTheNativeHost]' passed (2.040 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPipelinedRequestsDrainAllRepliesBeforeInputEOFExitsZero]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPipelinedRequestsDrainAllRepliesBeforeInputEOFExitsZero]' passed (0.143 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture]' passed (0.378 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:134: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : API violation - multiple calls made to -[XCTestExpectation fulfill] for Shutdown registered its folder-creation wait. (NSInternalInconsistencyException)
+*** Terminating app due to uncaught exception 'NSInternalInconsistencyException', reason: 'API violation - multiple calls made to -[XCTestExpectation fulfill] for Shutdown registered its folder-creation wait.'
+*** First throw call stack:
+(
+	0   CoreFoundation                      0x000000018b4be8c0 __exceptionPreprocess + 176
+error: Exited with unexpected signal code 6
+	1   libobjc.A.dylib                     0x000000018af1c60c objc_exception_throw + 88
+	2   Foundation                          0x000000018cc054d8 -[NSCalendarDate initWithCoder:] + 0
+	3   XCTestCore                          0x0000000104a45fb8 -[XCTestExpectation fulfill] + 360
+	4   CassiniKitPackageTests              0x000000010ebb1378 $s26CassiniBrowserControlTests011AudioBrokerD0C61testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactoryyyYaKFyyYbcfU1_ + 36
+	5   CassiniKitPackageTests              0x000000010ea2cb3c $s21CassiniBrowserControl0B11AudioBrokerC9finishAll7problem6reasonSayAA20OwnedCaptureSnapshotVGSSSg_0A3Kit0K9EndReasonOSgtYaFyScCyyts5NeverOGXEfU_ + 928
+	6   libswift_Concurrency.dylib          0x00000002b7cc23b4 $ss23withCheckedContinuation9isolation8function_xScA_pSgYi_SSyScCyxs5NeverOGXEtYalFyBcXEfU_Tm + 100
+	7   libswift_Concurrency.dylib          0x00000002b7cc1ff4 $ss23withCheckedContinuation9isolation8function_xScA_pSgYi_SSyScCyxs5NeverOGXEtYalFTY0_ + 152
+	8   CassiniKitPackageTests              0x000000010ea2c3e9 $s21CassiniBrowserControl0B11AudioBrokerC9finishAll7problem6reasonSayAA20OwnedCaptureSnapshotVGSSSg_0A3Kit0K9EndReasonOSgtYaFTQ1_ + 1
+	9   CassiniKitPackageTests              0x000000010ebac209 $s26CassiniBrowserControlTests12AudioFixtureC6finishyyYaFTQ1_ + 1
+	10  CassiniKitPackageTests              0x000000010ebb0c65 $s26CassiniBrowserControlTests011AudioBrokerD0C61testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactoryyyYaKFTQ7_ + 1
+	11  CassiniKitPackageTests              0x000000010ebb1c81 $s26CassiniBrowserControlTests011AudioBrokerD0C61testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactoryyyYaKFyyYacfU_ToTQ0_ + 1
+	12  CassiniKitPackageTests              0x000000010ebcebc5 $s26CassiniBrowserControlTests011AudioBrokerD0C61testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactoryyyYaKFyyYacfU_ToTATQ0_ + 1
+	13  CassiniKitPackageTests              0x000000010ebd17c5 $sIeghH_IeAgH_TRTQ0_ + 1
+	14  CassiniKitPackageTests              0x000000010ebd26d1 $sIeghH_IeAgH_TRTATQ0_ + 1
+	15  CassiniKitPackageTests              0x000000010ebd18a1 $sIeAgH_ytIeAgHr_TRTQ0_ + 1
+	16  CassiniKitPackageTests              0x000000010ebd2835 $sIeAgH_ytIeAgHr_TRTATQ0_ + 1
+	17  CassiniKitPackageTests              0x000000010ebd1b89 $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRyt_Tgq5TQ0_ + 1
+	18  CassiniKitPackageTests              0x000000010ebd2979 $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRyt_Tgq5TATQ0_ + 1
+	19  libswift_Concurrency.dylib          0x00000002b7c8ad41 _ZL23completeTaskWithClosurePN5swift12AsyncContextEPNS_10SwiftErrorE + 1
+)
+libc++abi: terminating due to uncaught exception of type NSException
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.

@@ -1,0 +1,30 @@
+Building for debugging...
+[0/25] Write sources
+[1/25] Write swift-version--79AA4F9932D1E87A.txt
+[3/9] Emitting module CassiniBrowserControl
+[4/9] Compiling CassiniBrowserControl CaptureInputLifecycle.swift
+[4/10] Write Objects.LinkFileList
+[7/12] Linking cassini-browser-host
+[8/12] Linking cassini-control-host
+[9/12] Applying cassini-browser-host
+[10/12] Applying cassini-control-host
+[11/12] Linking CassiniKitPackageTests
+Build complete! (4.14s)
+Test Suite 'Selected tests' started at 2026-11-10 14:37:33.163.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:37:33.164.
+Test Suite 'InputLifecycleTests' started at 2026-11-10 14:37:33.164.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:756: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertFalse failed
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:756: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("2") is not equal to ("1")
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:760: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("interrupted") is not equal to ("completed")
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic]' failed (0.416 seconds).
+Test Suite 'InputLifecycleTests' failed at 2026-11-10 14:37:33.580.
+	 Executed 1 test, with 3 failures (0 unexpected) in 0.416 (0.416) seconds
+Test Suite 'CassiniKitPackageTests.xctest' failed at 2026-11-10 14:37:33.581.
+	 Executed 1 test, with 3 failures (0 unexpected) in 0.416 (0.416) seconds
+Test Suite 'Selected tests' failed at 2026-11-10 14:37:33.581.
+	 Executed 1 test, with 3 failures (0 unexpected) in 0.416 (0.417) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.
