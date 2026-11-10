@@ -34,13 +34,20 @@ def checkpoint():
     for source in home.glob('READY-AWS-MAC-*.json'):
         if int(source.stem.rsplit('-', 1)[-1]) in range(210, 216):
             shutil.copyfile(source, archive / source.name)
-    source = (home / 'coordination/AWS-MAC-CI-WATCH.py').read_text()
-    source = source.replace('import datetime,json,pathlib,re,subprocess,time,sys',
-                            'import datetime,json,pathlib,re,subprocess,time,sys,os')
-    source = source.replace('prs={', 'repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))\nprs={', 1)
+    watch_source = home / 'coordination/AWS-MAC-CI-WATCH.py'
+    if not watch_source.exists():
+        watch_source = archive / 'ci-watch.py'
+    source = watch_source.read_text()
+    source = source.replace('import datetime,json,pathlib,re,subprocess,time,sys\n',
+                            'import datetime,json,pathlib,re,subprocess,time,sys,os\n')
+    if 'repo_path=os.environ.get' not in source:
+        source = source.replace('prs={', 'repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))\nprs={', 1)
     source = source.replace("cwd='/Users/ec2-user/agents/cassini-mac'", 'cwd=repo_path')
     (archive / 'ci-watch.py').write_text(source)
-    source = (home / 'coordination/test-aws-mac-ready-gates.py').read_text()
+    gate_source = home / 'coordination/test-aws-mac-ready-gates.py'
+    if not gate_source.exists():
+        gate_source = archive / 'test-ready-gates.py'
+    source = gate_source.read_text()
     source = source.replace("(pathlib.Path.home()/'coordination/AWS-MAC-CI-WATCH.py')", "pathlib.Path(__file__).with_name('ci-watch.py')")
     (archive / 'test-ready-gates.py').write_text(source)
     paths = [str(p.relative_to(repo)) for p in archive.iterdir()

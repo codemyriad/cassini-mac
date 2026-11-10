@@ -72,7 +72,7 @@ operational scripts every five minutes onto this handoff branch. It only stages
 this archive's named public artifacts. It cannot write another branch or force-push.
 Its log is `~/coordination/aws-mac-checkpoint.log`. Stop the old checkpoint session
 along with the old CI watcher before moving; resume against a dedicated checkout
-of this branch on the second Mac. This archival branch has no PR and does not alter
+of this branch on the second Mac. The checkpoint script falls back to its archived watcher and gate-check scripts when the old `~/coordination` paths do not exist. Copy `run-heavy.py` to the new host as needed; do not copy lock directories. This archival branch has no PR and does not alter
 the six tested PR heads.
 
 Transport supplemental proof: generated silence with the pinned VAD cache passed, notification-before-write mutation failed, and all 21 focused tests passed after restoration. Recipe: `aws-sidecar-verify.py`. All six become ready independently as full CI goes green on their exact heads, per the latest coordinator instruction.
