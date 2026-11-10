@@ -1,0 +1,20 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -722,7 +722,7 @@
+             let reports = try Self.pageReports(json,inventory:inventory,interrupted:interrupted,enabled:peer.supportsPageState)
+             let current = Self.statusInventory(json,captures:captures,interrupted:interrupted,previous:peer,reports:reports)
+             retireMissing(peer.captures+peer.interrupted,current:current.captures+current.interrupted,peer:peer)
+-            peer.captures = current.captures; peer.interrupted = current.interrupted
++            peer.captures = current.captures; peer.interrupted = current.interrupted; peer.autoAttempted = []; peer.requestedStops = []
+             stamp(&peer,reports:reports)
+             peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
+             peer.autoAttempted.formUnion(peer.interrupted.filter { Self.retained($0,ids:retainedCaptureIDs) }.map { $0.key.tabID })
+@@ -768,7 +768,7 @@
+                     peer.healthRevision &+= 1
+                     let current = Self.statusInventory(status,captures:captures,interrupted:interrupted,previous:peer,reports:reports)
+                     retireMissing(peer.captures+peer.interrupted,current:current.captures+current.interrupted,peer:peer)
+-                    peer.captures = current.captures; peer.interrupted = current.interrupted
++                    peer.captures = current.captures; peer.interrupted = current.interrupted; peer.autoAttempted = []; peer.requestedStops = []
+                     stamp(&peer,reports:reports)
+                     peer.lastResultOrder = pending.order
+                     peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
