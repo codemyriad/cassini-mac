@@ -32,3 +32,14 @@ Heavy runs acquire `mkdir ~/.aws-heavy.lock` and the earlier local flock through
 ## Questions
 
 None. Await exact-head CI; the watcher keeps failed/pending heads draft and marks green heads ready. No new work on this machine beyond the authorized monitoring/status checkpoints.
+
+## CI readiness
+
+Last checked: 2026-11-10T19:40:12+00:00
+
+- #210 `30fc6f3`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #211 `d1ebe14`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #212 `8c9c389`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #213 `56bbf1e`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #214 `c2777e5`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #215 `612bb36`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
