@@ -77,17 +77,18 @@ struct MeetingExportTests {
         try FileManager.default.removeItem(at:session.directory.appendingPathComponent("session.json"))
         let recovered = try #require(LibraryScanner(root:root).scan().meetings.first)
         #expect(recovered.start == nil && recovered.audioTracks.first?.startOffsetMs == nil)
-        let before = Date().addingTimeInterval(-1)
-        let artifact = try MeetingFileExporter.cassini(recovered,assets:assets(),temporaryRoot:root)
+        let expected = "2026-02-03T04:05:06.125Z"
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        let exportTime = try #require(iso.date(from:expected))
+        let artifact = try MeetingFileExporter.cassini(recovered,assets:assets(),temporaryRoot:root,
+            timeZone:TimeZone(secondsFromGMT:0)!,shouldCancel:{ false },exportTime:{ exportTime },afterRead:nil)
         try evidence(artifact,name:"salvaged")
         let file = try CassiniReader.read(contentsOf:artifact.url)
         #expect(file.state == .ok && file.manifest?.audio.sampleCount == 48000)
         #expect(file.manifest?.meeting.recordedAtLocal == nil)
+        #expect(file.manifest?.meeting.recordedAtUtc == nil)
         #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"]?["offsetsAssumedZero"] == .bool(true))
-        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
-        let stamp = try #require(file.manifest?.meeting.createdAtUtc)
-        let stamped = try #require(iso.date(from:stamp))
-        #expect(stamped >= before && stamped <= Date())
+        #expect(file.manifest?.meeting.createdAtUtc == expected)
     }
     @Test(arguments:[false,true]) func reexportDoesNotAuthenticateUntrustedManifestExtensions(unverified: Bool) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
