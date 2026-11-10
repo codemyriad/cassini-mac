@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T16:50:22+00:00",
+  "updated": "2026-11-10T16:55:23+00:00",
   "prs": [
     {
       "pr": 210,
@@ -8,14 +8,15 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "CassiniKit tests and conformance",
         "Whistle bundle / Universal app and sandboxed Whistle helper",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel)"
       ],
-      "failed": [],
+      "failed": [
+        "CassiniKit tests and conformance"
+      ],
       "runs": [
         42835970763
       ]

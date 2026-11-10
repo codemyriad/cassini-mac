@@ -27,9 +27,9 @@ Coordinator assigned the ModelSupersessionTests blocker to aws-mac. Candidate fi
 
 ## CI readiness
 
-Last checked: 2026-11-10T16:50:22+00:00
+Last checked: 2026-11-10T16:55:23+00:00
 
-- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #210 `f0b06cc`: failed: CassiniKit tests and conformance; draft.
 - #211 `54c574b`: failed: CassiniKit tests and conformance; draft.
 - #212 `ac49a75`: failed: CassiniKit tests and conformance; draft.
 - #213 `3fd8e39`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
