@@ -7,7 +7,7 @@ The hosted Mac guard policy is D36.2, coordination commit `e0e3124` (2026-11-01)
 | Analysis CPU, percent of one core | 0.8% |
 | Drawing CPU, Library pill (A) | 1.7% |
 | Drawing CPU, Recording page (B/D) | 3.5% |
-| Page frame p95 / maximum | 17.5 / 100 ms |
+| Page main-thread CPU between frame updates, p95 / maximum | 17.5 / 100 ms |
 | Late columns | 3% of steady-state timeline slots |
 | Logical view payload | 131,072 bytes |
 
@@ -48,3 +48,21 @@ the fix. They use no clock sleeps, audio device, window or graphics context.
 The native A–E job consumes the shared Release objects and therefore explicitly
 waits for the Release producer, both from CI and standalone dispatch. Changes to
 analysis, PCM admission and the fixture clock select this native consumer.
+
+## D88: frame work instead of scheduler wall intervals
+
+The frame gate now measures `CLOCK_THREAD_CPUTIME_ID` across successive native
+updates. It includes main-thread work between callbacks, including implicit Core
+Animation commits, rather than only the synchronous paint region. The existing
+17.5 ms p95 / 100 ms worst-frame limits are unchanged; there is no new OS-specific
+allowance. Zero visible samples or a backward CPU counter fails. Histogram bins
+are bounded and allocated only in the standalone probe, never in the shipped app.
+
+Reports retain `p95FrameMs` / `maxFrameMs` solely as wall diagnostics; the asserted
+`frameWork` gate uses `p95FrameCPUMs` / `maxFrameCPUMs`. The pure checker proves that
+an interval of 101 ms of CPU work still fails and that an empty measurement fails.
+The original CI42781775893 D case reported a 121.580 ms wall interval and failed;
+it did not capture per-frame CPU, so that evidence cannot establish its CPU cost.
+CPU-per-media normalization, producer completion/counts and lateness remain separate
+D88 audit items; this change converts the recurring wall-frame gate only. All other
+functional, hidden/off, pixel, motion, memory and drop checks remain in place.

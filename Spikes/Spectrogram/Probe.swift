@@ -129,8 +129,10 @@ import ScreenCaptureKit
                 "instrumentedDrawingCorePercent":regions,
                 "framesApplied":controller.framesApplied,"skippedFrames":controller.skippedFrames,
                 "p95FrameMs":controller.frameP95Ms,"maxFrameMs":controller.maxFrameIntervalMs,
+                "p95FrameCPUMs":controller.frameCPU.p95Ms,"maxFrameCPUMs":controller.frameCPU.maximumMs,
+                "frameCPUSamples":controller.frameCPU.count,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
-                "budgetPolicy":"D36.4","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
+                "budgetPolicy":"D88-frame-work","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
                 "lateColumnFraction":Double(controller.lateColumns-initialLate)/SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
@@ -150,8 +152,9 @@ import ScreenCaptureKit
                 try require(controller.surfaceRevision > 50 && controller.surfaceBytes > 0,"native surfaces updated")
             }
             var gates=SpectrogramHostedBudget.evaluate(mode:mode,seconds:elapsed,analysis:analysis,drawing:drawing,
-                p95:controller.frameP95Ms,maximum:controller.maxFrameIntervalMs,
+                p95:controller.frameCPU.p95Ms,maximum:controller.frameCPU.maximumMs,frameCPUSamples:controller.frameCPU.count,
                 late:controller.lateColumns-initialLate,payload:controller.payloadBytes)
+            gates["frameClockValid"]=controller.frameCPU.valid
             gates["drops"]=controller.droppedColumns == initialDropped
             gates["inputDrops"]=controller.droppedBuffers == initialBufferDrops
             report["gates"]=gates

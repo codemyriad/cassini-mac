@@ -66,6 +66,9 @@ import Darwin
     private var pageNeedsBake = true, pillNeedsBake = true
     private(set) var frameCallbacks: UInt64 = 0, framesApplied: UInt64 = 0
     private(set) var skippedFrames: UInt64 = 0, maxFrameIntervalMs = 0.0
+    #if SPECTROGRAM_PROBE
+    private(set) var frameCPU = SpectrogramFrameCPU()
+    #endif
     #if DEBUG
     private(set) var displayOptionsChanges: UInt64 = 0
     private(set) var lateTiming: [SpectrogramSession.LateColumn] = []
@@ -258,7 +261,16 @@ import Darwin
     }
     private func requestFrame(timestamp: Double) {
         let cpuStart = Self.measuring ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
-        defer { if Self.measuring { drawingNanoseconds &+= clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-cpuStart } }
+        defer {
+            if Self.measuring {
+                let end = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+                drawingNanoseconds &+= end-cpuStart
+                #if SPECTROGRAM_PROBE
+                // Across updates, so deferred CA commits stay inside the CPU gate.
+                frameCPU.record(through:end)
+                #endif
+            }
+        }
         // Read already-analyzed columns in the display-link callback. No
         // utility→main handoff or second run-loop wake is needed per frame.
         let frame = engine.pollFrame(nowMs:max(0,(timestamp-originUptime)*1000))
@@ -406,6 +418,9 @@ import Darwin
         frameCallbacks = 0; framesApplied = 0; skippedFrames = 0; maxFrameIntervalMs = 0
         intervals = Self.measuring ? [UInt16](repeating:0,count:512) : []; intervalCount = 0; lastAppliedTime = nil
         drawingNanoseconds = 0
+        #if SPECTROGRAM_PROBE
+        frameCPU = SpectrogramFrameCPU()
+        #endif
     }
     var frameP95Ms: Double {
         guard intervalCount > 0 else { return 0 }
