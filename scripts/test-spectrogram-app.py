@@ -226,7 +226,8 @@ def measure(app: Path, output: Path):
         if case == 'B' and (not report['hideShowReleasesAndRestarts'] or report['liveCompositedInkPixels']['sound'] < 100 or report['liveCompositedInkPixels']['silence'] > 4):
             problems.append('B: hide/show lifecycle failed')
         print(f"{case}: CPU {report['cpuCorePercent']:.4f}%, analysis {report['analysisCorePercent']:.4f}%, "
-              f"draw {report['drawingCorePercent']:.4f}%, p95/max {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
+              f"draw {report['drawingCorePercent']:.4f}%, CPU p95/max {report['p95FrameCPUMs']}/{report['maxFrameCPUMs']:.3f} ms; "
+              f"wall diagnostic {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
     try:
         if not record_motion(app, output):
             problems.append('actual System Settings motion transition failed in isolated diagnostic')
