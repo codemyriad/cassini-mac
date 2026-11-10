@@ -12,9 +12,8 @@ import subprocess
 import sys
 import shutil
 import signal
-import time
-import select
 import tempfile
+from worker_events import OWNER_TICK_FD, ProcessExit, json_line, watchdog_ticks, discard_ticks
 
 ROOT = Path(__file__).resolve().parent.parent
 SAFE = dict(NEEDLE_TELEMETRY='0', DO_NOT_TRACK='1', ORT_DISABLE_TELEMETRY='1')
@@ -74,45 +73,34 @@ __attribute__((constructor)) static void loaded(void) {
         assert result.returncode==78 and 'checksum mismatch' in result.stdout,result
     # Hold stdin open in the grandparent: the orphan cannot pass this test by
     # simply seeing EOF. First complete real inference, then kill only its owner.
-    read_fd, write_fd = os.pipe()
-    parent_script = """import json,subprocess,sys
-child=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL)
+    read_fd, write_fd = os.pipe(); tick_read, tick_write = os.pipe()
+    parent_script = """import json,subprocess,sys,os
+child=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL,pass_fds=(int(os.environ['CASSINI_TEST_OWNER_TICK_FD']),))
 print(json.dumps({'ownedChild':child.pid}),flush=True)
 child.wait()
 """
-    owner = subprocess.Popen([sys.executable,'-u','-c',parent_script,str(read_fd),str(args.worker.resolve()),'--assets',str(args.bundle.resolve())],pass_fds=(read_fd,),stdout=subprocess.PIPE,bufsize=0,env=worker_env())
-    os.close(read_fd)
+    owner = subprocess.Popen([sys.executable,'-u','-c',parent_script,str(read_fd),str(args.worker.resolve()),'--assets',str(args.bundle.resolve())],pass_fds=(read_fd,tick_write),stdout=subprocess.PIPE,bufsize=0,env=worker_env(**{OWNER_TICK_FD:str(tick_write)}))
+    os.close(read_fd); os.close(tick_write)
     orphan = None
-    def owner_line():
-        data=bytearray();deadline=time.monotonic()+60
-        while not data.endswith(b'\n'):
-            ready,_,_=select.select([owner.stdout],[],[],max(0,deadline-time.monotonic()))
-            assert ready and len(data)<1048576,'Owner probe response stalled or exceeded its limit'
-            value=os.read(owner.stdout.fileno(),1)
-            assert value,'Owner probe closed before a complete response'
-            data.extend(value)
-        return json.loads(data)
+    def owner_line(): return json_line(owner.stdout)
     try:
         orphan=owner_line()['ownedChild']
         request=json.dumps(dict(id='owner-proof',wav=str(fixture/'jfk.wav')))+'\n'
         os.write(write_fd,request.encode())
         response=owner_line();assert response['id']=='owner-proof' and 'error' not in response,response
-        time.sleep(0.45)
+        discard_ticks(tick_read)
+        watchdog_ticks(tick_read)
         assert owner.poll() is None,'Worker died while its owner was still alive across watchdog ticks'
-        owner.kill();owner.wait(timeout=5)
-        deadline=time.monotonic()+3
-        while time.monotonic()<deadline:
-            result=subprocess.run(['/bin/ps','-p',str(orphan),'-o','stat='],capture_output=True,text=True)
-            if result.returncode or result.stdout.strip().startswith('Z'):
-                orphan=None;break
-            time.sleep(.05)
-        else:raise AssertionError('Worker survived its owner with stdin still open')
+        with ProcessExit(orphan) as exited:
+            owner.kill();owner.wait(timeout=10)
+            exited.wait();orphan=None
     finally:
         os.close(write_fd)
-        if owner.poll() is None:owner.kill();owner.wait(timeout=5)
+        if owner.poll() is None:owner.kill();owner.wait(timeout=10)
         if orphan:
             try:os.kill(orphan,signal.SIGKILL)
             except ProcessLookupError:pass
+        os.close(tick_read)
 
     # The same child loads once and serves two requests, not one model per clip.
     command = [str(args.worker.resolve()), '--assets', str(args.bundle.resolve())]

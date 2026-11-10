@@ -1,0 +1,10 @@
+{
+  "producer": "/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/producer",
+  "consumer": "/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/consumer",
+  "commit": "e3eb2ad8cf19f11f1ab2cc9e075747f48f8b1539",
+  "xcode": "Xcode 16.4\nBuild version 16F6",
+  "arch": "arm64",
+  "mutation": "foreign objects fail with producer unavailable",
+  "restored": "consumer-local build passes Bundle.module and #filePath",
+  "samePath": "verified artifact restored and tests passed without rebuilding"
+}
