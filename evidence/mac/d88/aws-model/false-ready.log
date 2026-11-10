@@ -1,0 +1,23 @@
+Building for debugging...
+[0/25] Copying Fixtures
+[1/25] Write swift-version--79AA4F9932D1E87A.txt
+Build complete! (0.31s)
+Test Suite 'Selected tests' started at 2026-11-10 14:43:32.656.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:43:32.658.
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 14:43:32.658.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 14:43:32.658.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelDownloaderTests started.
+◇ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() started.
+✘ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() recorded an issue at ModelDownloaderTests.swift:231:104: Issue recorded
+↳ Expected failure
+✘ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() recorded an issue at ModelDownloaderTests.swift:291:27: Expectation failed: await fails {
+            _ = try await Server.start("no-ready",startupClock:{ clock.now() },startupHeld:{ clock.expire() })
+        } as? Server.BootstrapFailure → nil
+✘ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() failed after 0.243 seconds with 2 issues.
+✘ Suite ModelDownloaderTests failed after 0.244 seconds with 2 issues.
+✘ Test run with 1 test failed after 0.244 seconds with 2 issues.
