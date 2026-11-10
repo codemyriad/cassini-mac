@@ -35,11 +35,11 @@ None. Await exact-head CI; the watcher keeps failed/pending heads draft and mark
 
 ## CI readiness
 
-Last checked: 2026-11-10T19:45:14+00:00
+Last checked: 2026-11-10T19:50:15+00:00
 
-- #210 `30fc6f3`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
-- #211 `d1ebe14`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
-- #212 `8c9c389`: pending: build / Build products (arm64, Xcode 16.4); draft.
+- #210 `30fc6f3`: pending: build / Build products (arm64, Xcode 16.4); draft.
+- #211 `d1ebe14`: pending: build / Build products (arm64, Xcode 16.4); draft.
+- #212 `8c9c389`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #213 `56bbf1e`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #214 `c2777e5`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
-- #215 `612bb36`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #215 `612bb36`: pending: build / Build products (x86_64, Xcode 16.4); draft.
