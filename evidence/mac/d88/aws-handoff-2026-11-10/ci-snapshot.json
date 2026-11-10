@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T19:03:37+00:00",
+  "updated": "2026-11-10T19:08:37+00:00",
   "prs": [
     {
       "pr": 210,
@@ -10,8 +10,7 @@
       "pending": [
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel)"
+        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)"
       ],
       "failed": [
         "CassiniKit tests and conformance"
@@ -28,7 +27,6 @@
       "readyCandidate": false,
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
-        "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper"
@@ -90,8 +88,7 @@
         "build_release / Build Release app and package (universal, Xcode 16.4)",
         "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
-        "Whistle bundle / Universal app and sandboxed Whistle helper",
-        "UX browser setup / Browser setup (macos-15)"
+        "Whistle bundle / Universal app and sandboxed Whistle helper"
       ],
       "failed": [
         "CassiniKit tests and conformance"
