@@ -191,7 +191,7 @@ public struct LibraryScanner: Sendable {
                     if let requested = reference.transcriptId { selected = file.transcripts.first { $0.entry.id == requested } }
                     else { selected = file.defaultTranscript }
                     guard let body = selected?.load.transcript else { throw MetadataError.invalid }
-                    words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
+                    words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, lowConfidenceSpeaker:$0.lowConfidenceSpeaker ? true : nil) }
                     meeting.transcriptLanguage = body.language
                     meeting.wordEndsBoundedByAudio = file.manifest?.wordEndsBoundedByAudio == true
                     readable = true
@@ -216,9 +216,9 @@ public struct LibraryScanner: Sendable {
         }
         if ![.queued, .running].contains(meeting.state.transcript) { meeting.state.etaMinutes = nil }
         if meeting.state.transcript == .damaged { words = [] }
-        let sorted = words.enumerated().sorted {
-            $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
-        }.map(\.element)
+        // D84: readable grouping precedes display sorting in the viewer. Preserve canonical
+        // producer order here; playback/listening indices sort their own timed projections.
+        let sorted = words
         // D24: merges are applied once, here; the stored words keep their own speaker ids.
         // Known ids (GNOME parity): meeting.json speakers, the received file's speakers, and the words'.
         let known = Set((metadata?.speakers ?? []).map(\.id)).union(embeddedNames.keys).union(sorted.map(\.speaker))
@@ -227,8 +227,11 @@ public struct LibraryScanner: Sendable {
         let resolved = SpeakerMerges.apply(sorted, meeting.mergedInto)
         meeting.writtenTranscriptItems = sorted
         meeting.transcriptItems = resolved
+        // R3 first-speaking roster and stored pull-quote selection keep their chronological
+        // semantics. D84 display grouping consumes canonical word order instead.
+        let chronological = resolved.enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
         var ids: [String] = []
-        for word in resolved where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        for word in chronological where !ids.contains(word.speaker) { ids.append(word.speaker) }
         let overrides = Dictionary(uniqueKeysWithValues: (metadata?.speakers ?? []).map { ($0.id, $0) })
         meeting.speakers = ids.enumerated().map { index, id in
             let override = overrides[id]
@@ -239,8 +242,9 @@ public struct LibraryScanner: Sendable {
             return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
         if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
-            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(resolved)
+            meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)
         }
+        meeting.prepareTranscriptTurns()
         return meeting
     }
     private func damage(_ meeting: inout LibraryMeeting) {
@@ -392,8 +396,9 @@ private struct LibraryWords: Decodable {
 }
 public struct LibraryTranscriptItem: Codable, Equatable, Sendable {
     public let speaker: String; public let startMs: Int64; public let endMs: Int64; public let text: String
-    public init(speaker: String, startMs: Int64, endMs: Int64, text: String) {
-        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text
+    public let lowConfidenceSpeaker: Bool?
+    public init(speaker: String, startMs: Int64, endMs: Int64, text: String, lowConfidenceSpeaker: Bool? = nil) {
+        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text; self.lowConfidenceSpeaker = lowConfidenceSpeaker
     }
 }
 private func collapsed(_ text: String) -> String { text.split(whereSeparator: \.isWhitespace).joined(separator: " ") }

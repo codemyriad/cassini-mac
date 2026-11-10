@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import CassiniLibrary
+import CassiniKit
 import SwiftUI
 
 /// Native selection and the responder chain handle Copy/Select All. Seeking is
@@ -12,7 +13,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
         var listeningWords: Set<Int> = []
         let after: Int, name: String, items: [LibraryTranscriptItem]
         /// D55.1 meeting.turn.aside: the visible text and accessible label.
-        var label: String { UXText.text("meeting.turn.aside",["name":name,"text":items.map(\.text).joined(separator:" ")]) }
+        var label: String { "(" + UXText.text("meeting.turn.aside",["name":name,"text":items.map(\.text).joined(separator:" ")]) + ")" }
     }
     let items: [LibraryTranscriptItem]
     var asides: [Aside] = []
@@ -77,7 +78,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
                 attributes[.backgroundColor] = NSColor.controlAccentColor.withAlphaComponent(chip == nil ? 0.08 : 0.18)
             }
             if item.startMs <= positionMs && positionMs < item.endMs { attributes[.backgroundColor] = current }
-            return NSAttributedString(string: item.text.trimmingCharacters(in: .whitespacesAndNewlines), attributes: attributes)
+            return NSAttributedString(string: item.text, attributes: attributes)
         }
         /// GNOME's chip: smaller text on a light tint (the accent while it plays), the name in bold.
         func chip(_ aside: Aside) -> NSAttributedString {
@@ -89,12 +90,13 @@ struct MeetingTranscriptText: NSViewRepresentable {
             let tint = listening ? NSColor.controlAccentColor.withAlphaComponent(0.18) : playing ? NSColor.controlAccentColor.withAlphaComponent(0.25) : NSColor.labelColor.withAlphaComponent(0.07)
             var plain: [NSAttributedString.Key:Any] = [.font: NSFont.systemFont(ofSize: 11.5), .paragraphStyle: paragraph,
                                                         .foregroundColor: NSColor.labelColor, .backgroundColor: tint]
+            if let first = aside.items.first { plain[.cassiniSeek] = Int(first.startMs); plain[.cursor] = NSCursor.pointingHand }
             if listening { plain[.cassiniListenCurrent] = true }
             var bold = plain; bold[.font] = NSFont.boldSystemFont(ofSize: 11.5)
             // The catalog orders the name and the words per language; the words stay seekable.
             let marker = "\u{E000}"
-            let format = UXText.text("meeting.turn.aside",["name":aside.name,"text":marker])
-            let result = NSMutableAttributedString(string: " ", attributes: plain)
+            let format = "(" + UXText.text("meeting.turn.aside",["name":aside.name,"text":marker]) + ")"
+            let result = NSMutableAttributedString(string: "")
             let parts = format.components(separatedBy: marker)
             for (index,part) in parts.enumerated() {
                 if !part.isEmpty {
@@ -113,7 +115,6 @@ struct MeetingTranscriptText: NSViewRepresentable {
                     }
                 }
             }
-            result.append(NSAttributedString(string: " ", attributes: plain))
             return result
         }
         for (index,item) in items.enumerated() {
@@ -259,7 +260,12 @@ final class MeetingTurnTextView: NSTextView {
         guard glyph < layout.numberOfGlyphs,
               layout.boundingRect(forGlyphRange: NSRange(location: glyph,length: 1), in: container).contains(local) else { return }
         let character = layout.characterIndexForGlyph(at: glyph)
-        if let time = storage.attribute(.cassiniSeek, at: character, effectiveRange: nil) as? Int { seek?(time) }
+        seekAtCharacter(character)
+    }
+    /// Shared by mouse hit testing and the inert native regression fixture.
+    func seekAtCharacter(_ character: Int) {
+        guard let storage = textStorage, character >= 0, character < storage.length else { return }
+        if let time = storage.attribute(.cassiniSeek,at:character,effectiveRange:nil) as? Int { seek?(time) }
     }
 }
 
@@ -288,6 +294,26 @@ extension MeetingTranscriptText {
         report["asideNativeListenButton"] = listened == 1 && sought == -1
         report["asideButtonAccessibility"] = button?.accessibilityRole() == .button
         report["asideButtonGeometry"] = (button?.frame.width ?? 0) > 0
+        do {
+            let words: [Word] = [.init(speaker:"s1",startMs:0,endMs:0,text:"same"),
+                .init(speaker:"s1",startMs:1000,endMs:1150,text:"same"),
+                .init(speaker:"c",startMs:950,endMs:1020,text:"same"),
+                .init(speaker:"s1",startMs:800,endMs:950,text:"same"),
+                .init(speaker:"b",startMs:960,endMs:970,text:"same"),
+                .init(speaker:"b",startMs:975,endMs:990,text:"same"),
+                .init(speaker:"s1",startMs:1020,endMs:1500,text:"same")]
+            let timeline = Timeline(words,endsBoundedByAudio:true)
+            let layout = TranscriptBuilder.build(timeline:timeline,hidden:[],label:{ $0 },color:{ _ in .labelColor })
+            report["legacySearchUsesUniqueVisualRanges"] = layout.matchingWords("same",in:timeline) == [0,1,3,4,6,2]
+        }
+        report["inlineCopyHasSingleSpaces"] = storage.string == "We agree. (Unidentified voice: Yes.) Thanks."
+        let prefix = string.range(of:"(Unidentified voice: "), suffix = string.range(of:")")
+        let decorations = [prefix.location,prefix.location+prefix.length-2,prefix.location+prefix.length-1,suffix.location]
+        var allSeek = true
+        for character in decorations { sought = -1; view.seekAtCharacter(character); allSeek = allSeek && sought == 850 }
+        report["chipPunctuationAndSpacesSeekFirstWord"] = allSeek
+        sought = -1
+
         let range = NSRange(location:0,length:2); view.setSelectedRange(range)
         var edits = 0
         let observation = NotificationCenter.default.addObserver(forName:NSTextStorage.didProcessEditingNotification,object:storage,queue:.main) { _ in

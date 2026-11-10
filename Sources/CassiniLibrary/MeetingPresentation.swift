@@ -27,25 +27,26 @@ public enum MeetingPresentation {
         public let id: Int
         public let speaker: String
         public var items: [LibraryTranscriptItem]
-        /// The first word of the first fragment, and the latest word end.
+        /// Viewer row bounds, including its inline chips; child turns retain their own bounds.
         public internal(set) var startMs: Int64
         public internal(set) var endMs: Int64
         /// Displayed-item ranges of the consecutive runs rejoined into this turn.
         public internal(set) var fragments: [Range<Int>]
         /// Audible spans of each fragment's words (zero-length words excluded).
         var pools: [[Span]]
-        /// M11 (GNOME transcript.py): short turns of other speakers shown inline, each after
+        /// D84: short turns of other speakers shown inline, each after
         /// the displayed item `after`; `host` is set on a turn shown inside another one.
         public internal(set) var asides: [(after: Int, turn: Int)] = []
         public internal(set) var host: Int?
         /// Speakers whose words overlap this turn's words by at least 150 ms.
         public internal(set) var over: [String] = []
+        /// The viewer hides a repeated name within 60 seconds, retaining its clock.
+        public internal(set) var continuation = false
+        public internal(set) var crosstalk = false
     }
     typealias Span = (start: Int64, end: Int64)
-    /// D52 M11 (GNOME transcript.py build_turns, from gocassini): rejoin a speaker's
-    /// interrupted run when competing speech overlaps it, so mutual overlap reads as
-    /// whole interleaved turns instead of alternating fragments. Quotes stay paired
-    /// within each consecutive run (D38.5). Markdown export keeps consecutive runs (S-5).
+    /// D84: every transcript surface uses the viewer's word-only rendering pipeline.
+    /// These constants remain the bounds used by the sweep differential regressions.
     public static let seamGapMs: Int64 = 400
     public static let touchToleranceMs: Int64 = 20
     public static let asideMaxMs: Int64 = 2000
@@ -69,10 +70,10 @@ public enum MeetingPresentation {
     /// Whether a meeting update changes what its turns are prepared from: the words, the speakers,
     /// or the speakers' gap ranges (D63 #2; a gap-only manifest update re-splits turns).
     public static func turnInputsChanged(from old: LibraryMeeting, to new: LibraryMeeting) -> Bool {
-        new.transcriptItems != old.transcriptItems || new.speakers.map(\.id) != old.speakers.map(\.id) || new.speakerGaps != old.speakerGaps
+        new.wordEndsBoundedByAudio != old.wordEndsBoundedByAudio || new.transcriptItems != old.transcriptItems || new.speakers.map(\.id) != old.speakers.map(\.id) || new.speakerGaps != old.speakerGaps
     }
-    public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:]) -> [Turn] {
-        (try? turns(items,gaps:gaps,cancellable:false)) ?? []
+    public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:], endsBoundedByAudio: Bool = false) -> [Turn] {
+        (try? turns(items,gaps:gaps,endsBoundedByAudio:endsBoundedByAudio,cancellable:false)) ?? []
     }
     /// The same, for a caller off the main actor: with `cancellable`, a cancelled task stops
     /// at the next step with CancellationError (#118 review: long transcripts prepare off the
@@ -80,140 +81,86 @@ public enum MeetingPresentation {
     /// D63 #2: with `gaps` (SpeakerGapRanges), consecutive words of one speaker split where one of
     /// that speaker's gap ranges lies between their midpoints, and the 400 ms rejoin never joins
     /// across one; pauses inside presence still join.
-    public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:], cancellable: Bool) throws -> [Turn] {
-        let check: () throws -> Void = cancellable ? { try Task.checkCancellation() } : {}
-        var fragments: [[LibraryTranscriptItem]] = []
-        for item in items where !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if let last = fragments.last?.last, last.speaker == item.speaker, !SpeakerGapRanges.splits(last,item,gaps) {
-                fragments[fragments.count - 1].append(item)
-            } else { fragments.append([item]) }
+    public static func turns(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:], endsBoundedByAudio: Bool = false, cancellable: Bool) throws -> [Turn] {
+        var boundaries: Set<Int> = []
+        var previous: [String:LibraryTranscriptItem] = [:]
+        for (i,item) in items.enumerated() {
+            if let before = previous[item.speaker], SpeakerGapRanges.splits(before,item,gaps) { boundaries.insert(i) }
+            previous[item.speaker] = item
         }
-        let displayed: [[LibraryTranscriptItem]] = fragments.map { fragment in
-            zip(fragment,TranscriptText.quotes(fragment.map(\.text))).compactMap { item,text in
-                let text = text.split(whereSeparator: \.isWhitespace).joined(separator:" ")
-                return text.isEmpty ? nil : .init(speaker:item.speaker,startMs:item.startMs,endMs:item.endMs,text:text)
-            }
+        let input = items.map { TranscriptRendering.Word(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker) }
+        let rendered = try TranscriptRendering.render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:boundaries,cancellable:cancellable,separates:{ SpeakerGapRanges.splits(items[$0],items[$1],gaps) })
+        func item(_ i: Int) -> LibraryTranscriptItem {
+            let w = rendered.words[i]
+            return .init(speaker:w.speaker,startMs:w.startMs,endMs:w.endMs,text:w.text,lowConfidenceSpeaker:w.lowConfidenceSpeaker)
         }
-        func touches(_ left: [Span], _ right: [Span]) -> Bool {
-            left.contains { a in right.contains { c in max(a.start,c.start) - min(a.end,c.end) <= touchToleranceMs } }
-        }
-        let pools = fragments.map(spans)
-        var result: [Turn] = [], open: [String:(turn: Int,fragment: Int)] = [:]
-        for (position,fragment) in fragments.enumerated() {
-            try check()
-            let speaker = fragment[0].speaker, end = fragment.map(\.endMs).max() ?? 0
-            var joined = false
-            if let previous = open[speaker], let first = pools[position].first, !pools[previous.fragment].isEmpty,
-               abs(first.start - result[previous.turn].endMs) <= seamGapMs,
-               let last = fragments[previous.fragment].last, !SpeakerGapRanges.splits(last,fragment[0],gaps) {
-                let intervening = pools[(previous.fragment + 1)..<position].flatMap { $0 }
-                if intervening.isEmpty || touches(intervening,pools[previous.fragment] + pools[position]) {
-                    let at = result[previous.turn].items.count
-                    result[previous.turn].items += displayed[position]
-                    result[previous.turn].fragments.append(at..<result[previous.turn].items.count)
-                    result[previous.turn].pools.append(pools[position])
-                    result[previous.turn].endMs = max(result[previous.turn].endMs,end)
-                    open[speaker] = (previous.turn,position); joined = true
+        var result: [Turn] = [], firstID: [Int:Int] = [:]
+        var rowByID: [Int:TranscriptRendering.Row] = [:]
+        // Expand a visible run to its readable paragraphs, while retaining hidden child turns
+        // as addressable listening targets. IDs continue to be array indices.
+        let rowsByRun = Dictionary(grouping:rendered.rows,by:\.turnID)
+        for run in rendered.runs {
+            if cancellable { try Task.checkCancellation() }
+            firstID[run.id] = result.count
+            let rows = rowsByRun[run.id] ?? []
+            if run.host != nil {
+                let blocks = run.blocks.map { rendered.blocks[$0] }
+                let indices = blocks.flatMap(\.wordIndices)
+                var at = 0
+                let ranges = blocks.map { b -> Range<Int> in defer { at += b.wordIndices.count }; return at..<(at+b.wordIndices.count) }
+                result.append(.init(id:result.count,speaker:run.speaker,items:indices.map(item),startMs:run.startMs,endMs:run.endMs,fragments:ranges,pools:blocks.map { spans($0.wordIndices.map(item)) },over:run.over))
+            } else {
+                for row in rows {
+                    let own = row.members.filter { $0.kind == "words" }
+                    var at = 0
+                    let ranges = own.map { m -> Range<Int> in defer { at += m.wordIndices.count }; return at..<(at+m.wordIndices.count) }
+                    let turn = Turn(id:result.count,speaker:row.speaker,items:own.flatMap(\.wordIndices).map(item),startMs:row.startMs,endMs:row.endMs,fragments:ranges,pools:own.map { spans($0.wordIndices.map(item)) },over:row.over,continuation:row.continuation,crosstalk:row.crosstalk)
+                    rowByID[turn.id] = row; result.append(turn)
                 }
             }
-            if !joined, !displayed[position].isEmpty {
-                result.append(.init(id:result.count,speaker:speaker,items:displayed[position],startMs:fragment[0].startMs,endMs:end,
-                                    fragments:[0..<displayed[position].count],pools:[pools[position]]))
-                open[speaker] = (result.count - 1,position)
-            } else if !joined { open[speaker] = nil }
         }
-        try attachAsides(&result,check:check)
-        try markOverlap(&result,check:check)
+        let childByFirstWord = Dictionary(uniqueKeysWithValues:rendered.runs.filter { $0.host != nil }.map { (rendered.blocks[$0.blocks[0]].wordIndices[0],$0.id) })
+        for (id,row) in rowByID {
+            var after = -1
+            for member in row.members {
+                if member.kind == "words" { after += member.wordIndices.count }
+                else if let word = member.wordIndices.first, let run = childByFirstWord[word], let child = firstID[run] {
+                    result[id].asides.append((after,child)); result[child].host = id
+                }
+            }
+        }
         return result
-    }
-    /// Turn indices by start (ties in turn order): both passes sweep time in this order.
-    private static func byStart(_ turns: [Turn]) -> [Int] {
-        turns.indices.sorted { turns[$0].startMs == turns[$1].startMs ? $0 < $1 : turns[$0].startMs < turns[$1].startMs }
-    }
-    /// GNOME `_attach_asides`: a turn of at most 2 s of speech by another speaker, starting
-    /// within 500 ms after one fragment of a longer host turn and ending within 500 ms before
-    /// the host's next fragment, is shown inside the host. Never an aside inside an aside.
-    ///
-    /// #118 review: a sweep in start order. Only a turn with a seam (two or more fragments) can
-    /// host, and only while it is still open (it started before the aside and has not ended
-    /// before it); its seams are found by binary search over its fragment starts.
-    static func attachAsides(_ turns: inout [Turn], check: () throws -> Void = {}) rethrows {
-        // Each eligible host's non-empty fragments, in order, with their first word's start.
-        var seams: [Int:[(fragment: Int, start: Int64)]] = [:]
-        for turn in turns {
-            let starts: [(fragment: Int, start: Int64)] = turn.pools.enumerated().compactMap { entry in entry.element.first.map { (entry.offset,$0.start) } }
-            if turn.pools.count > 1, !starts.isEmpty { seams[turn.id] = starts }
-        }
-        /// The number of fragment starts below `value` (or at or below it, when `inclusive`).
-        func count(_ starts: [(fragment: Int, start: Int64)], below value: Int64, inclusive: Bool = false) -> Int {
-            var low = 0, high = starts.count
-            while low < high {
-                let mid = (low + high) / 2
-                if inclusive ? starts[mid].start <= value : starts[mid].start < value { low = mid + 1 } else { high = mid }
-            }
-            return low
-        }
-        var candidates: [(turn: Int, host: Int, after: Int)] = []
-        var open: [Int] = [], pending = byStart(turns).filter { seams[turns[$0].id] != nil }[...]
-        for index in byStart(turns) {
-            try check()
-            let turn = turns[index]
-            // Hosts that started before this turn join; hosts over before it began leave for good.
-            while let next = pending.first, turns[next].startMs < turn.startMs { open.append(next); pending = pending.dropFirst() }
-            open.removeAll { turns[$0].endMs < turn.startMs }
-            let spans = union(turn.pools)
-            guard !spans.isEmpty, spans.reduce(Int64(0),{ $0 + $1.end - $1.start }) <= asideMaxMs else { continue }
-            var best: (score: (Int64,Int64), host: Int, after: Int)?
-            for hostIndex in open.sorted() {
-                let host = turns[hostIndex]
-                guard host.speaker != turn.speaker, turn.endMs <= host.endMs, let starts = seams[host.id] else { continue }
-                let pools = host.pools
-                let earlier = count(starts,below:turn.startMs)
-                guard earlier > 0 else { continue }
-                let before = starts[earlier - 1].fragment
-                guard before + 1 < pools.count, let left = pools[before].last, let right = pools[before + 1].first else { continue }
-                // More than one fragment starting inside the turn: not a single seam.
-                if count(starts,below:turn.endMs,inclusive:true) - count(starts,below:turn.startMs,inclusive:true) > 1 { continue }
-                if turn.startMs - left.end > sideGapMs || right.start - turn.endMs > sideGapMs { continue }
-                let score = (left.end,host.endMs - host.startMs)
-                if best == nil || score > best!.score { best = (score,host.id,host.fragments[before].upperBound - 1) }
-            }
-            if let best { candidates.append((turn.id,best.host,best.after)) }
-        }
-        candidates.sort { $0.turn < $1.turn }
-        let asides = Set(candidates.map(\.turn))
-        for candidate in candidates where !asides.contains(candidate.host) {
-            turns[candidate.turn].host = candidate.host
-            turns[candidate.host].asides.append((candidate.after,candidate.turn))
-        }
-    }
-    /// GNOME `_mark_overlap`: actual word overlap of at least 150 ms, not paragraph containment.
-    /// #118 review: a sweep in start order, comparing a turn only with turns still open.
-    static func markOverlap(_ turns: inout [Turn], check: () throws -> Void = {}) rethrows {
-        let pools = turns.map { union($0.pools) }
-        var open: [Int] = []
-        for j in byStart(turns) {
-            try check()
-            open.removeAll { turns[$0].endMs <= turns[j].startMs }
-            for k in open.sorted() {
-                let (i,l) = k < j ? (k,j) : (j,k)
-                let left = turns[i], right = turns[l]
-                guard left.speaker != right.speaker, max(left.startMs,right.startMs) < min(left.endMs,right.endMs) else { continue }
-                var a = 0, b = 0, overlap: Int64 = 0
-                while a < pools[i].count && b < pools[l].count {
-                    let x = pools[i][a], y = pools[l][b]
-                    overlap += max(0,min(x.end,y.end) - max(x.start,y.start))
-                    if x.end < y.end { a += 1 } else { b += 1 }
-                }
-                guard overlap >= overlapMinMs else { continue }
-                if !turns[i].over.contains(right.speaker) { turns[i].over.append(right.speaker) }
-                if !turns[l].over.contains(left.speaker) { turns[l].over.append(left.speaker) }
-            }
-            open.append(j)
-        }
     }
     /// The turns shown as paragraphs: every turn not shown inside another.
     public static func visibleTurns(_ turns: [Turn]) -> [Turn] { turns.filter { $0.host == nil } }
+    public struct Prose: Sendable {
+        public struct Seek: Sendable { public let range: Range<Int>; public let item: LibraryTranscriptItem; public let turnID: Int }
+        public let text: String
+        public let seeks: [Seek]
+    }
+    /// One copy/search/export projection; chips remain inline and every word keeps its seek anchor.
+    public static func prose(_ turn: Turn, in turns: [Turn], names: [String:String] = [:], locale: Locale = .current, language: CassiniLanguage = .system) -> Prose {
+        var text = "", seeks: [Prose.Seek] = []
+        func append(_ item: LibraryTranscriptItem, turnID: Int) {
+            let at = text.utf16.count
+            text += item.text
+            seeks.append(.init(range:at..<text.utf16.count,item:item,turnID:turnID))
+        }
+        for (i,item) in turn.items.enumerated() {
+            if !text.isEmpty { text += " " }
+            append(item,turnID:turn.id)
+            for aside in turn.asides where aside.after == i && turns.indices.contains(aside.turn) {
+                let child = turns[aside.turn]
+                let marker = "\u{E000}"
+                let template = LibraryLocalization.shared.text("meeting.turn.aside",["name":names[child.speaker] ?? child.speaker,"text":marker],language:language,locale:locale).components(separatedBy:marker)
+                text += " (" + template[0]
+                for (i,word) in child.items.enumerated() { if i > 0 { text += " " }; append(word,turnID:child.id) }
+                text += template.dropFirst().joined(separator:marker) + ")"
+            }
+        }
+        return .init(text:text,seeks:seeks)
+    }
+    public static func speakerList(_ names: [String]) -> String { TranscriptRendering.speakerList(names) }
     /// Meeting data for directly opened files, without an app-owned sidecar.
     public static func external(_ file: CassiniFile, url: URL) -> LibraryMeeting {
         let trusted = file.state == .ok
@@ -221,10 +168,9 @@ public enum MeetingPresentation {
         let emptyTimed = trusted && !timed.isEmpty && timed.allSatisfy { $0.load.transcript?.items.isEmpty == true }
         let body = trusted && !emptyTimed ? file.defaultTranscript?.load.transcript : nil
         let status: TranscriptStatus = emptyTimed || file.state == .plainAudio ? .none : (body != nil ? .done : .damaged)
-        let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
-            .enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
+        let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, lowConfidenceSpeaker:$0.lowConfidenceSpeaker ? true : nil) }
         var ids: [String] = []
-        for word in words where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        for word in words.enumerated().sorted(by:{ $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }).map(\.element) where !ids.contains(word.speaker) { ids.append(word.speaker) }
         let speakers = ids.enumerated().map { index, id in
             MeetingSpeaker(id: id, name: file.manifest?.speaker(id)?.label, provenance: nil, colourIndex: index)
         }

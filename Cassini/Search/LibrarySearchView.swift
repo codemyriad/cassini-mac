@@ -75,20 +75,22 @@ struct LibrarySearchView: View {
                 }
                 VStack(alignment:.leading,spacing:18) {
                     ForEach(hit.context,id:\.index) { index,turn in
+                        let others = meeting.overlappingSpeakerIDs(turn.over,excluding:turn.speaker)
                         HStack(alignment:.top,spacing:16) {
                             VStack(alignment:.leading,spacing:4) {
-                                HStack(spacing:5) {
+                                if hit.showsSpeakerHeader(at:index) { HStack(spacing:5) {
                                     Text(name(turn.speaker,meeting:meeting)).fontWeight(.semibold)
-                                    if meeting.speakers.first(where:{ $0.id == turn.speaker })?.provenance == .recognised {
+                                    if meeting.speaker(for:turn.speaker)?.provenance == .recognised {
                                         Text(UXText.text("common.autoTag")).font(.system(size:10)).padding(.horizontal,4)
                                             .overlay(RoundedRectangle(cornerRadius:4).stroke(LibraryTheme.dim.opacity(0.3)))
                                             .help(UXText.text("common.autoTag.tooltip"))
                                     }
-                                }.fixedSize()
+                                }.fixedSize() }
                                 if index == hit.turn { Text(LibraryFormat.position(hit.positionMs)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit() }
+                                if !others.isEmpty { Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(others.map { name($0,meeting:meeting) })])).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim) }
                             }.frame(width:110,alignment:.leading)
                             if index == hit.turn { marked(hit.text,spans:hit.spans).lineSpacing(5).frame(maxWidth:.infinity,alignment:.leading) }
-                            else { Text(turn.items.map { $0.text.split(whereSeparator:\.isWhitespace).joined(separator:" ") }.joined(separator:" ")).lineSpacing(5).frame(maxWidth:.infinity,alignment:.leading) }
+                            else { Text(hit.contextText[index] ?? "").lineSpacing(5).frame(maxWidth:.infinity,alignment:.leading) }
                         }.foregroundStyle(index == hit.turn ? Color(nsColor:.labelColor) : LibraryTheme.dim)
                     }
                 }.padding(.top,4)
@@ -111,7 +113,7 @@ struct LibrarySearchView: View {
             .fontWeight(.semibold).padding(.horizontal,16).frame(height:36).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:6))
             .disabled(model.searching).accessibilityIdentifier("search-open-meeting")
     }
-    private func name(_ id: String, meeting: LibraryMeeting) -> String { meeting.speakers.first { $0.id == id }?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"]) }
+    private func name(_ id: String, meeting: LibraryMeeting) -> String { meeting.speaker(for:id)?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"]) }
     private func dateText(_ value: SearchDate) -> String {
         UXText.text(value == .any ? "search.filter.anyDate" : value == .today ? "search.filter.date.today" : value == .week ? "search.filter.date.week" : "search.filter.date.month")
     }

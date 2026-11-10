@@ -22,6 +22,8 @@ public struct Turn: Sendable, Equatable, Identifiable {
     public var startMs: Int
     /// The greatest end among its own words, which is not always the last word's.
     public var endMs: Int
+    public var over: [String] = []
+    public var continuation = false
 }
 
 /// The words of one transcript arranged for display and for time lookup.
@@ -31,11 +33,6 @@ public struct Turn: Sendable, Equatable, Identifiable {
 public struct Timeline: Sendable {
     /// The 300 ms hold that stops a highlight flickering off in short pauses.
     public static let holdMs = 300
-    /// Interjection limits: at most this many words and this long.
-    public static let interjectionMaxWords = 4
-    public static let interjectionMaxMs = 2500
-    /// A host turn split by an interjection is rejoined when its halves are this close.
-    public static let rejoinGapMs = 2000
 
     public let words: [Word]
     public let turns: [Turn]
@@ -46,9 +43,19 @@ public struct Timeline: Sendable {
     /// Per speaker id: that speaker's word indices sorted by start.
     let bySpeaker: [String: [Int]]
 
-    public init(_ words: [Word]) {
-        self.words = words
-        let turns = Timeline.buildTurns(words)
+    public init(_ words: [Word], endsBoundedByAudio: Bool = false) {
+        let projection = TranscriptRendering.render(words.map { .init(speaker:$0.speaker,startMs:Int64($0.startMs),endMs:Int64($0.endMs),text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker) },endsBoundedByAudio:endsBoundedByAudio)
+        self.init(words,projection:projection)
+    }
+    /// Background document preparation can stop before publishing a superseded selection.
+    public static func preparing(_ words: [Word], endsBoundedByAudio: Bool = false) throws -> Timeline {
+        let input = words.map { TranscriptRendering.Word(speaker:$0.speaker,startMs:Int64($0.startMs),endMs:Int64($0.endMs),text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker) }
+        let projection = try TranscriptRendering.render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:[],cancellable:true)
+        return Timeline(words,projection:projection)
+    }
+    private init(_ words: [Word], projection: TranscriptRendering.Result) {
+        self.words = zip(words,projection.words).map { original,display in var copy = original; copy.endMs = Int(display.endMs); return copy }
+        let turns = Timeline.buildTurns(projection)
         self.turns = turns
         var tow = [Int](repeating: -1, count: words.count)
         var chip = [Bool](repeating: false, count: words.count)
@@ -66,102 +73,30 @@ public struct Timeline: Sendable {
         }.map(\.element) }
     }
 
-    /// Raw turns: maximal runs of consecutive items with the same speaker.
-    static func rawTurns(_ words: [Word]) -> [(speaker: String, words: [Int])] {
-        var out: [(speaker: String, words: [Int])] = []
-        for (i, w) in words.enumerated() {
-            if let last = out.last, last.speaker == w.speaker {
-                out[out.count - 1].words.append(i)
-            } else {
-                out.append((w.speaker, [i]))
+    /// D84: the legacy document and QuickLook adapt the same viewer rows as Meeting/Search.
+    private static func buildTurns(_ rendered: TranscriptRendering.Result) -> [Turn] {
+        rendered.rows.enumerated().map { id,row in
+            var own: [Int] = [], chips: [Interjection] = []
+            for member in row.members {
+                if member.kind == "words" { own += member.wordIndices }
+                else {
+                    chips.append(.init(speaker:member.speaker!,words:member.wordIndices,anchor:own.count-1,
+                                       startMs:Int(member.wordIndices.map { rendered.words[$0].startMs }.min()!),endMs:Int(member.wordIndices.map { rendered.words[$0].endMs }.max()!)))
+                }
             }
+            return .init(id:id,speaker:row.speaker,words:own,interjections:chips,startMs:Int(row.startMs),endMs:Int(row.endMs),over:row.over,continuation:row.continuation)
         }
-        return out
     }
-
-    static func buildTurns(_ words: [Word]) -> [Turn] {
-        let raw = rawTurns(words)
-        func span(_ idx: [Int]) -> (Int, Int) {
-            (idx.map { words[$0].startMs }.min() ?? 0, idx.map { words[$0].endMs }.max() ?? 0)
-        }
-        func isShort(_ idx: [Int]) -> Bool {
-            let (s, e) = span(idx)
-            return idx.count <= interjectionMaxWords && e - s <= interjectionMaxMs
-        }
-        /// Whether a run at (s, e) lies within a host spanning (hs, he), allowing the hold.
-        func fits(_ s: Int, _ e: Int, in hs: Int, _ he: Int) -> Bool { hs <= s && e - holdMs <= he }
-        func anchor(in host: [Int], at ms: Int) -> Int {
-            var a = -1
-            for (k, i) in host.enumerated() where words[i].startMs <= ms { a = k }
-            return a
-        }
-        func makeInterjection(_ idx: [Int], host: [Int]) -> Interjection {
-            let (s, e) = span(idx)
-            return Interjection(speaker: words[idx[0]].speaker, words: idx, anchor: anchor(in: host, at: s), startMs: s, endMs: e)
-        }
-        func standalone(_ idx: [Int], id: Int) -> Turn {
-            let (s, e) = span(idx)
-            return Turn(id: id, speaker: words[idx[0]].speaker, words: idx, interjections: [], startMs: s, endMs: e)
-        }
-
-        var turns: [Turn] = []
-        var held: [[Int]] = []  // interjections written before the speech they overlap
-        /// Attaches held runs to `host` where they fit; the rest become turns of their own first.
-        func settleHeld(into host: inout Turn) {
-            for h in held {
-                let (hs, he) = span(h)
-                if words[h[0]].speaker != host.speaker, fits(hs, he, in: host.startMs, host.endMs) {
-                    host.interjections.append(makeInterjection(h, host: host.words))
-                } else {
-                    turns.append(standalone(h, id: turns.count))
-                }
+    /// Copy and preview text keep short interjections inline, with no lost words.
+    public func text(_ turn: Turn, names: [String:String] = [:], aside: (String,String) -> String = { $0 + ": " + $1 }) -> String {
+        var pieces: [String] = []
+        for (position,index) in turn.words.enumerated() {
+            pieces.append(words[index].text)
+            for chip in turn.interjections where chip.anchor == position {
+                pieces.append("(" + aside(names[chip.speaker] ?? chip.speaker,chip.words.map { words[$0].text }.joined(separator:" ")) + ")")
             }
-            held = []
         }
-
-        var k = 0
-        while k < raw.count {
-            let r = raw[k]
-            let (s, e) = span(r.words)
-            // Folds into the previous turn when it lies within that turn's span.
-            if isShort(r.words), let last = turns.last, last.speaker != r.speaker, fits(s, e, in: last.startMs, last.endMs) {
-                var host = turns.removeLast()
-                host.interjections.append(makeInterjection(r.words, host: host.words))
-                // The host may continue after the interjection: rejoin it.
-                if k + 1 < raw.count, raw[k + 1].speaker == host.speaker {
-                    let (ns, ne) = span(raw[k + 1].words)
-                    if ns - host.endMs <= rejoinGapMs {
-                        host.words += raw[k + 1].words
-                        host.endMs = max(host.endMs, ne)
-                        host.startMs = min(host.startMs, ns)
-                        k += 1
-                    }
-                }
-                // Runs held for a next turn that just folded away go here or stand alone.
-                settleHeld(into: &host)
-                host.id = turns.count
-                turns.append(host)
-                k += 1
-                continue
-            }
-            // Or into the next turn, when it was written before the speech it overlaps.
-            if isShort(r.words), k + 1 < raw.count, raw[k + 1].speaker != r.speaker {
-                let (ns, ne) = span(raw[k + 1].words)
-                if fits(s, e, in: ns, ne) {
-                    held.append(r.words)
-                    k += 1
-                    continue
-                }
-            }
-            var turn = Turn(id: 0, speaker: r.speaker, words: r.words, interjections: [], startMs: s, endMs: e)
-            settleHeld(into: &turn)
-            turn.id = turns.count
-            turns.append(turn)
-            k += 1
-        }
-        // An interjection held for a turn that never came stands on its own.
-        for h in held { turns.append(standalone(h, id: turns.count)) }
-        return turns
+        return pieces.joined(separator:" ")
     }
 
     /// Turns with hidden speakers removed. A visible interjection inside a hidden turn becomes a
@@ -178,8 +113,12 @@ public struct Timeline: Sendable {
             } else {
                 var v = t
                 v.interjections.removeAll { hidden.contains($0.speaker) }
+                v.over.removeAll { hidden.contains($0) }
                 out.append(v)
             }
+        }
+        for i in out.indices {
+            out[i].continuation = i > 0 && out[i-1].speaker == out[i].speaker && out[i].startMs-out[i-1].endMs <= 60_000
         }
         return out
     }
@@ -212,6 +151,11 @@ public struct Timeline: Sendable {
             if words[idx[mid]].startMs <= t { lo = mid + 1 } else { hi = mid }
         }
         return lo == 0 ? nil : lo - 1
+    }
+
+    /// Upcoming display atoms, independent of canonical/timestamp order.
+    public func upcomingWords(_ indices: [Int], at t: Int) -> Set<Int> {
+        Set(indices.filter { words[$0].startMs > t })
     }
 
     /// Ids of the turns active at `t`: those whose span, plus the hold, contains it.

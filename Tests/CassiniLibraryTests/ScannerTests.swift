@@ -140,7 +140,7 @@ final class Fixture {
         try JSONSerialization.data(withJSONObject: words).write(to: f.folder.appendingPathComponent("transcript.json"))
         let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
         #expect(result.speakerNames == ["Speaker 1", "Dario", "Speaker 3"])
-        #expect(result.transcriptItems.map(\.startMs) == [0, 11000, 610000])
+        #expect(result.transcriptItems.map(\.startMs) == [11000, 0, 610000])
         #expect(result.quote?.text == "Longest turn")
         #expect(result.quote?.displayText == "“Longest turn”")
         try f.metadata {
@@ -149,18 +149,19 @@ final class Fixture {
         }
         #expect(try LibraryScanner(root: f.root).scan().meetings.first?.quote?.text == "Last played")
     }
-    @Test func transcriptViewsShareConsecutiveSpeakerTurns() {
+    @Test func transcriptPreviewsShareViewerTurnsWithInlineInterjections() {
         let items: [LibraryTranscriptItem] = [
-            .init(speaker: "a", startMs: 0, endMs: 100, text: " First  "),
-            .init(speaker: "a", startMs: 100, endMs: 200, text: "word\n here"),
-            .init(speaker: "b", startMs: 200, endMs: 300, text: "Yes"),
-            .init(speaker: "a", startMs: 300, endMs: 400, text: "Again")
-        ]
+            .init(speaker:"a",startMs:0,endMs:100,text:"First"),
+            .init(speaker:"a",startMs:100,endMs:150,text:"word"),
+            .init(speaker:"a",startMs:150,endMs:200,text:"here"),
+            .init(speaker:"b",startMs:200,endMs:300,text:"Yes"),
+            .init(speaker:"a",startMs:300,endMs:400,text:"Again")]
         let turns = LibraryTranscriptTurn.coalescing(items)
-        #expect(turns.map(\.speaker) == ["a", "b", "a"])
-        #expect(turns.map(\.text) == ["First word here", "Yes", "Again"])
-        #expect(turns.map(\.startMs) == [0, 200, 300])
-        #expect(turns.map(\.endMs) == [200, 300, 400])
+        #expect(turns.map(\.speaker) == ["a"])
+        #expect(turns.map(\.text) == ["First word here (b: Yes) Again"])
+        #expect(turns.map(\.startMs) == [0])
+        #expect(turns.map(\.endMs) == [400])
+        #expect(turns.first?.over.isEmpty == true)
     }
     @Test(arguments: [false, true]) func receivedTranscriptAndPlainAudioHaveDifferentActions(plain: Bool) throws {
         let f = try Fixture(); let received = try f.received(plain: plain)

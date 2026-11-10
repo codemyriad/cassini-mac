@@ -425,11 +425,14 @@ struct LibraryView: View {
                         ForEach(Array(store.excerpt(meeting).enumerated()), id: \.offset) { _, turn in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    HStack(spacing: 5) {
+                                    if !turn.continuation { HStack(spacing: 5) {
                                         Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"])).fontWeight(.semibold)
                                         if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
-                                    }
+                                    } }
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(LibraryTheme.dim).monospacedDigit()
+                                    if !turn.over.isEmpty {
+                                        Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                                    }
                                 }.frame(width: 110, alignment: .leading)
                                 Text(turn.text).textSelection(.enabled).lineSpacing(4).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                             }

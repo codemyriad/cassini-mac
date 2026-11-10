@@ -121,6 +121,11 @@ public struct Word: Sendable, Equatable {
     public var text: String
     public var lowConfidenceSpeaker: Bool
     public var attributionGapDb: Double?
+    public init(speaker: String, startMs: Int, endMs: Int, text: String,
+                lowConfidenceSpeaker: Bool = false, attributionGapDb: Double? = nil) {
+        self.speaker = speaker; self.startMs = startMs; self.endMs = endMs; self.text = text
+        self.lowConfidenceSpeaker = lowConfidenceSpeaker; self.attributionGapDb = attributionGapDb
+    }
 }
 
 public struct WordsTranscript: Sendable, Equatable {

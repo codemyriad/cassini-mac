@@ -8,9 +8,9 @@ import Foundation
 @MainActor public final class TurnPreparation {
     /// The words, and their speakers' gap ranges (D63 #2).
     public typealias Prepare = @Sendable ([LibraryTranscriptItem], SpeakerGapRanges.Ranges) throws -> [MeetingPresentation.Turn]
-    private let prepare: Prepare
+    private let prepare: @Sendable ([LibraryTranscriptItem],SpeakerGapRanges.Ranges,Bool) throws -> [MeetingPresentation.Turn]
     private let delivered: @MainActor ([MeetingPresentation.Turn]) -> Void
-    private struct Wanted: Equatable { var items: [LibraryTranscriptItem]; var gaps: SpeakerGapRanges.Ranges }
+    private struct Wanted: Equatable { var items: [LibraryTranscriptItem]; var gaps: SpeakerGapRanges.Ranges; var endsBoundedByAudio = false }
     private var wanted = Wanted(items:[],gaps:[:])
     private var ready: Wanted?
     private var task: Task<Void,Never>?
@@ -18,14 +18,18 @@ import Foundation
     public private(set) var speakerTurns: [SpeakerTurn] = []
     public private(set) var timelineReadout = TimelineReadout()
     public private(set) var transcriptListening = TranscriptListening()
-    public init(prepare: @escaping Prepare = { try MeetingPresentation.turns($0,gaps:$1,cancellable:true) },
+    public init(prepare: Prepare? = nil,
                 delivered: @escaping @MainActor ([MeetingPresentation.Turn]) -> Void) {
-        self.prepare = prepare; self.delivered = delivered
+        self.prepare = { items,gaps,bounded in
+            if let prepare { return try prepare(items,gaps) }
+            return try MeetingPresentation.turns(items,gaps:gaps,endsBoundedByAudio:bounded,cancellable:true)
+        }
+        self.delivered = delivered
     }
     /// True while a preparation runs.
     public var preparing: Bool { task != nil }
-    public func request(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:]) {
-        wanted = .init(items:items,gaps:gaps); ready = nil
+    public func request(_ items: [LibraryTranscriptItem], gaps: SpeakerGapRanges.Ranges = [:], endsBoundedByAudio: Bool = false) {
+        wanted = .init(items:items,gaps:gaps,endsBoundedByAudio:endsBoundedByAudio); ready = nil
         start()
     }
     public func cancel() { task?.cancel(); task = nil }
@@ -35,7 +39,7 @@ import Foundation
         task?.cancel()
         let request = wanted, prepare = prepare
         let work = Task.detached(priority:.userInitiated) {
-            let rows = try prepare(request.items,request.gaps)
+            let rows = try prepare(request.items,request.gaps,request.endsBoundedByAudio)
             try Task.checkCancellation()
             let listening = SpeakerTurn.grouping(request.items)
             try Task.checkCancellation()

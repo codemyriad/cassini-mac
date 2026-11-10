@@ -7,26 +7,27 @@ public enum MeetingMarkdown {
     public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current, language: CassiniLanguage = .system) -> String {
         render(title:meeting.title ?? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale),start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,gaps:meeting.speakerGaps,locale:locale,language:language)
+            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio,locale:locale,language:language)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
-                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], gaps: SpeakerGapRanges.Ranges = [:],
+                              names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], gaps: SpeakerGapRanges.Ranges = [:], endsBoundedByAudio: Bool = false,
                               locale: Locale = .current, language: CassiniLanguage = .system) -> String {
         let strings=LibraryLocalization.shared
         let title=title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? strings.text("library.untitled",language:language,locale:locale) : title
         var blocks = ["# " + escape(title)]
         // D50.3: words follow the document language; the clock follows `locale`.
         if let start { blocks.append(LibraryFormat(timeZone:timeZone,locale:locale,language:language).absoluteDateLine(start,durationMs:durationMs)) }
-        let ordered = items.enumerated().sorted {
-            $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
-        }.map(\.element)
-        let turns = LibraryTranscriptTurn.coalescing(ordered,gaps:gaps)
+        let ordered = items // Group canonical words before sorting display blocks, as the viewer does.
+        let all = MeetingPresentation.turns(ordered,gaps:gaps,endsBoundedByAudio:endsBoundedByAudio)
+        let turns = MeetingPresentation.visibleTurns(all)
         var speaking: [String] = []
-        for turn in turns where !speaking.contains(turn.speaker) { speaking.append(turn.speaker) }
+        for word in ordered.enumerated().sorted(by:{ $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }).map(\.element) where !speaking.contains(word.speaker) { speaking.append(word.speaker) }
         if !speaking.isEmpty { blocks.append(strings.text("export.markdown.speakersLine",["names":speaking.map { escape(names[$0] ?? $0) }.joined(separator:", ")],language:language,locale:locale)) }
         blocks.append("## "+strings.text("export.markdown.transcriptHeading",language:language,locale:locale))
         for turn in turns {
-            blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs,locale:locale,language:language) + "\n" + escape(turn.text))
+            let others = turn.over.map { names[$0] ?? $0 }
+            let over = others.isEmpty ? "" : " " + escape(strings.text("meeting.turn.over",["names":LibraryFormat(locale:locale,language:language).list(others)],language:language,locale:locale))
+            blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs,locale:locale,language:language) + over + "\n" + escape(MeetingPresentation.prose(turn,in:all,names:names,locale:locale,language:language).text))
         }
         if !notes.isEmpty {
             blocks.append("## "+strings.text("export.markdown.notesHeading",language:language,locale:locale))
@@ -36,7 +37,7 @@ public enum MeetingMarkdown {
         return blocks.joined(separator:"\n\n") + "\n"
     }
     public static func escape(_ value: String) -> String {
-        let normalized = value.split(whereSeparator:\.isWhitespace).joined(separator:" ")
+        let normalized = value.split(whereSeparator:{ $0.isWhitespace && $0 != "\u{00A0}" && $0 != "\u{202F}" }).joined(separator:" ")
         var result = ""
         for scalar in normalized.unicodeScalars {
             if "\\`*_[]<>".unicodeScalars.contains(scalar) { result += "\\" }

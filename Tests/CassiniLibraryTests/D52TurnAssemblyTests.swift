@@ -23,8 +23,8 @@ struct D52TurnAssemblyTests {
         let turns = MeetingPresentation.turns([item("a",0,1000,"one"),item("b",1100,1200,"yes"),item("a",1300,1800,"two")])
         #expect(turns.map(\.speaker) == ["a","b","a"])
     }
-    @Test func quotesPairWithinEachConsecutiveRun() {
+    @Test func storedQuotesRemainUnchangedWithinEachConsecutiveRun() {
         let turns = MeetingPresentation.turns([item("a",0,500,"\"Hello"),item("a",500,900,"there\""),item("b",950,1200,"ok")])
-        #expect(turns.count == 2); #expect(turns[0].items.map(\.text).joined(separator:" ").contains("“Hello"))
+        #expect(turns.count == 2); #expect(turns[0].items.map(\.text).joined(separator:" ").contains("\"Hello"))
     }
 }

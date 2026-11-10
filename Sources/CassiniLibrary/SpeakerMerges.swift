@@ -34,7 +34,7 @@ public enum SpeakerMerges {
         guard !merged.isEmpty else { return words }
         return words.map { word in
             guard let target = merged[word.speaker] else { return word }
-            return .init(speaker: target, startMs: word.startMs, endMs: word.endMs, text: word.text)
+            return .init(speaker: target, startMs: word.startMs, endMs: word.endMs, text: word.text, lowConfidenceSpeaker:word.lowConfidenceSpeaker)
         }
     }
     /// D63 #2 after merges: a target splits on its own gap ranges and on those of every speaker

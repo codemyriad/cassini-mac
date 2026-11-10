@@ -23,6 +23,7 @@ final class SessionModel {
         didSet { if selectedTranscriptId != oldValue { rebuildTimeline() } }
     }
     private(set) var timeline: Timeline?
+    private(set) var preparingTranscript = false
     /// Why there is no transcript on screen, when there is none.
     private(set) var transcriptProblem: String?
 
@@ -54,6 +55,9 @@ final class SessionModel {
     @ObservationIgnored var transcriptSink: ((Int, [String: Int]) -> Void)?
     @ObservationIgnored private var lookupHint: [String: Int] = [:]
     @ObservationIgnored private var lastWords: [String: Int] = [:]
+    @ObservationIgnored private var timelineTask: Task<Void,Never>?
+    @ObservationIgnored private var preparedTimelines: [String:Timeline] = [:]
+    @ObservationIgnored private var timelineRequest = UUID()
 
     init(document: CassiniDocument, url: URL?, fileAccessLease: AnyObject? = nil) {
         self.fileAccessLease = fileAccessLease
@@ -142,6 +146,9 @@ final class SessionModel {
     // MARK: Transcript
 
     private func rebuildTimeline() {
+        timelineTask?.cancel(); timelineTask = nil
+        let request = UUID(); timelineRequest = request
+        preparingTranscript = false
         speakers = manifest?.speakers ?? []
         timeline = nil
         transcriptProblem = nil
@@ -173,7 +180,22 @@ final class SessionModel {
                 // D53.3: an unnamed speaker written in the UI language.
                 speakers.append(Speaker(id: w.speaker, label: UXText.text("common.speaker.unnamed",["n":String(speakers.count + 1)])))
             }
-            timeline = Timeline(t.items)
+            if let prepared = preparedTimelines[id] { timeline = prepared; return }
+            preparingTranscript = true
+            let bounded = file.manifest?.wordEndsBoundedByAudio == true
+            let work = Task.detached(priority:.userInitiated) {
+                try Task.checkCancellation()
+                let result = try Timeline.preparing(t.items,endsBoundedByAudio:bounded)
+                try Task.checkCancellation()
+                return result
+            }
+            timelineTask = Task { [weak self] in
+                let result = await withTaskCancellationHandler { try? await work.value } onCancel: { work.cancel() }
+                guard !Task.isCancelled, let self, self.timelineRequest == request, let result else { return }
+                self.preparedTimelines[id] = result
+                self.timeline = result; self.timelineTask = nil; self.preparingTranscript = false
+                if let ms = self.player?.currentMs { self.tick(ms) }
+            }
         case .unavailable(let f):
             transcriptProblem = UXText.text("mac.legacy.transcriptUnreadable")
         }
@@ -223,6 +245,7 @@ final class SessionModel {
 
     /// The window is closing: stop the audio for good.
     func close() {
+        timelineTask?.cancel(); timelineTask = nil; timelineRequest = UUID(); preparingTranscript = false
         player?.shutDown()
         transcriptSink = nil
     }

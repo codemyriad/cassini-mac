@@ -142,7 +142,7 @@ extension SearchTests {
         #expect(try await index.search("microphone repeat").first?.positionMs == 300)
     }
 
-    @Test func quoteCleanupKeepsSearchOffsetsAndPlaybackPositions() async throws {
+    @Test func storedQuotesKeepSearchOffsetsAndPlaybackPositions() async throws {
         let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first)
         meeting.transcriptItems = [
             .init(speaker:"a",startMs:100,endMs:200,text:"\"👩🏽‍💻 Café"),
@@ -151,8 +151,91 @@ extension SearchTests {
         let hits = try await index.search("budget")
         #expect(hits.count == 1 && hits.first?.positionMs == 900)
         let hit = try #require(hits.first), span = try #require(hit.spans.first)
-        #expect(hit.text == "👩🏽‍💻 Café budget returns.")
+        #expect(hit.text == "\"👩🏽‍💻 Café budget returns.")
         #expect((hit.text as NSString).substring(with:NSRange(location:span.start,length:span.length)) == "budget")
         #expect(meeting.transcriptItems[0].text.hasPrefix("\""))
     }
+}
+
+extension SearchTests {
+    @Test func d84InlineInterjectionSearchKeepsItsWordAnchorAndRenamedCopy() async throws {
+        let fixture = try SearchFixture(); var meeting = try #require(fixture.meetings().first(where:{ !$0.speakers.isEmpty }))
+        let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        struct Body: Decodable { let items: [LibraryTranscriptItem] }
+        meeting.transcriptItems = try JSONDecoder().decode(Body.self,from:Data(contentsOf:root.appendingPathComponent("Tests/CassiniLibraryTests/Golden/interjections/acknowledgment.words.json"))).items
+        var ada = try #require(meeting.speakers.first); ada.id = "ada"; ada.name = "Ada"; ada.provenance = .user
+        var ben = ada; ben.id = "ben"; ben.name = "Ben"; ben.colourIndex = 1
+        meeting.speakers = [ada,ben]
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        let hits = try await index.search("Sounds good",filter:.init(speaker:"Ben"))
+        #expect(hits.count == 1)
+        let hit = try #require(hits.first)
+        #expect(hit.positionMs == 3050 && hit.speaker == "ben")
+        #expect(try await index.search("Ben").isEmpty,"Chip labels are not spoken words")
+        let hostPhrase = try await index.search("testing and")
+        #expect(hostPhrase.count == 1 && hostPhrase.first?.speaker == "ada")
+        #expect(hostPhrase.first?.spans.count == 2,"A continuous spoken phrase crosses the visual chip without highlighting it")
+        #expect(hit.text.contains("(Ben: Sounds good.)"))
+        #expect(hit.context.count == 1 && hit.contextText[0] == hit.text)
+        #expect(hit.context.first?.turn.over.isEmpty == true)
+        meeting.speakers[1].name = "Sam"
+        try await index.replace([meeting])
+        let renamed = try await index.search("Sounds good",filter:.init(speaker:"Sam"))
+        #expect(renamed.count == 1 && renamed.first?.text.contains("(Sam: Sounds good.)") == true)
+        #expect(renamed.first?.positionMs == 3050)
+        #expect(try await index.search("Sam").isEmpty)
+        // A label identical to a spoken query cannot add a second hit or highlight.
+        meeting.speakers[1].name = "testing"
+        try await index.replace([meeting])
+        let real = try await index.search("testing")
+        #expect(real.count == 1 && real.first?.speaker == "ada")
+        #expect(real.first?.spans.count == 1)
+    }
+    @Test func croppedMonologueContextIntroducesItsSpeaker() async throws {
+        let fixture = try SearchFixture()
+        var meeting = try #require(fixture.meetings().first(where:{ !$0.speakers.isEmpty }))
+        let root = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        struct Body: Decodable { let items: [LibraryTranscriptItem] }
+        meeting.transcriptItems = try JSONDecoder().decode(Body.self,from:Data(contentsOf:root.appendingPathComponent("Tests/CassiniLibraryTests/Golden/interjections/monologue.words.json"))).items
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        let hit = try #require(try await index.search("crash").first)
+        let first = try #require(hit.context.first)
+        #expect(first.turn.continuation)
+        #expect(hit.showsSpeakerHeader(at:first.index))
+        #expect(!hit.showsSpeakerHeader(at:hit.turn),"Later continuation rows retain the viewer rule")
+    }
+
+    @Test func repeatedAsidesAndHostHitsHaveParagraphWideVisualOccurrences() async throws {
+        let fixture = try SearchFixture()
+        var meeting = try #require(fixture.meetings().first(where:{ !$0.speakers.isEmpty }))
+        meeting.transcriptItems = [
+            .init(speaker:"ada",startMs:0,endMs:1000,text:"before"),
+            .init(speaker:"ben",startMs:900,endMs:1100,text:"yes"),
+            .init(speaker:"ada",startMs:1100,endMs:2000,text:"middle"),
+            .init(speaker:"ben",startMs:1900,endMs:2100,text:"yes"),
+            .init(speaker:"ada",startMs:2100,endMs:3000,text:"yes")]
+        var ada = try #require(meeting.speakers.first); ada.id = "ada"; ada.name = "Ada"; ada.provenance = .user
+        var ben = ada; ben.id = "ben"; ben.name = "Ben"
+        meeting.speakers = [ada,ben]
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        let hits = try await index.search("yes")
+        #expect(hits.map(\.positionMs) == [900,1900,2100])
+        #expect(hits.map(\.speaker) == ["ben","ben","ada"])
+        #expect(hits.map(\.turn) == [0,0,0])
+        #expect(hits.map(\.occurrence) == [0,1,2])
+        #expect(Set(hits.map(\.id)).count == 3)
+        #expect(hits.map(\.id) == (0..<3).map { meeting.libraryKey + ":0:\($0)" },"Keep the existing accessibility identifier contract")
+        #expect(hits.allSatisfy { $0.spans.count == 3 })
+        let filtered = try await index.search("yes",filter:.init(speaker:"Ben"))
+        #expect(filtered.map(\.id) == Array(hits.prefix(2)).map(\.id))
+        #expect(filtered.map(\.positionMs) == [900,1900])
+        for hit in hits {
+            let selected = try #require(hit.spans.dropFirst(hit.occurrence).first)
+            #expect((hit.text as NSString).substring(with:NSRange(location:selected.start,length:selected.length)) == "yes")
+        }
+    }
+
 }

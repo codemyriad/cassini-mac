@@ -38,3 +38,72 @@ The core PR introduces this tested model without changing any surface. Follow-up
 adoption replaces MeetingPresentation and the legacy Timeline adapters, then
 wires Meeting, reader/QuickLook, Search/preview and Markdown to these same rows.
 D63 speaker-gap boundaries must remain explicit at the adapter boundary.
+
+## Surface adoption
+
+The adoption branch replaces MeetingPresentation's private builder and
+Timeline.buildTurns with adapters to TranscriptRendering. Meeting paragraphs,
+inline chip selection/copy, Search indexing and context, Library and QuickLook
+previews, both document windows and Markdown now share these rows. Library
+preview/Markdown text uses MeetingPresentation.prose; QuickLook/legacy plain
+text uses Timeline.text. Chips include their name and parentheses in copy text.
+Names are hidden on continuation rows, clocks remain visible, and competing
+labels appear once per turn in descending collision order.
+
+App-owned speaker gaps remain explicit hard boundaries. The old D63 vector's
+no-gap long-pause case still describes listening-span identity; D84 now gives
+that case two readable rows. The other seven source-gap cases and gap mutants
+retain their old assertions. D84 also supersedes D38.5 quote pairing: stored
+quotes stay unchanged on all transcript surfaces, including search offsets.
+
+The Cassini-file timing attestation reaches every adapter, Search fingerprints
+and asynchronous preparation. Canonical word order is retained until readable
+blocks have been built; sorting words first changes paragraph boundaries. D70
+listening spans remain separate from reading paragraphs, and matching listening
+words uses speaker/start/text so a display-only end repair cannot erase their
+highlights. Search uses UTF16 word spans in the inline copy text, so a chip hit
+seeks its own source word. Renaming a chip speaker invalidates the index copy.
+
+The existing Mac export wrapper (localized headings, dates and clock format)
+is retained; transcript paragraph order, text, inline chips and overlap decisions
+come from the shared viewer model. Vector-driven adapter tests compare each
+expected row and the resulting prose on Meeting, preview, QuickLook and export.
+
+Stored R3 pull-quote selection and first-speaking roster order remain unchanged;
+they are Library metadata derivation rules frozen by the shared S-3a vectors.
+D84 changes the preview's transcript paragraphs, rather than replacing an
+explicitly stored quote or the Library's quote-selection policy. All 22 Library
+vectors continue to assert their complete expected fields without alterations.
+
+Search's FTS rows contain only a reading turn's own spoken words; a child aside
+has a separate row linked to the same visible paragraph. Synthetic chip names
+and punctuation are display text only. Spoken phrase offsets map to the matching
+word's UTF16 ranges in that paragraph, splitting highlights around a chip rather
+than indexing its label or interrupting a host phrase. A cropped Search context
+always introduces its first speaker, then follows normal continuation rules.
+
+LibraryScanner prepares cached LibraryTranscriptTurn rows before publishing its
+background snapshot. Preview and legacy Library-window reads use that immutable
+array; transcript, name, timing-attestation, merge and source-gap mutations
+invalidate it. QuickLook constructs its attributed preview on its existing worker.
+The directly opened document prepares cancellable Timelines off-main, caches by
+transcript ID, and never publishes a superseded/closed selection.
+
+Canonical word order is not chronological order. Portable/Markdown/external
+speaker rosters sort their own stable `(startMs, canonical offset)` projection;
+source-gap rejoin checks compare the actual pair of blocks after display sorting.
+Playback styling compares each atom with the playhead, and document search
+orders unique displayed ranges visually. Hidden speakers also leave overlap
+captions and continuation calculations. All product overlap-name lists use
+LibraryFormat.list with the surface's language/locale.
+
+Search occurrence IDs are assigned across the complete visible paragraph after
+sorting spoken-row matches by their displayed UTF16 start. Repeated asides from
+the same speaker cannot collide, and speaker filtering retains the same IDs. The
+existing meeting/turn/occurrence accessibility identifier stays unchanged.
+
+Every inline chip adapter uses meeting.turn.aside for the surface's language;
+French's non-breaking space before the colon remains in copy, seek offsets and
+Markdown. Markdown escapes overlap captions before adding the separating space.
+Legacy screenshot readiness follows asynchronous timeline completion, so the
+capture identifier is never published for a loading transcript.

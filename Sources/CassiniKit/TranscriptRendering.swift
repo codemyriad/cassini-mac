@@ -162,15 +162,16 @@ public enum TranscriptRendering {
         return sorted.count.isMultiple(of:2) ? (Double(sorted[mid-1])+Double(sorted[mid]))/2 : Double(sorted[mid])
     }
     /// The readable writer runs before timing repair, exactly as in loadArtifact.ts.
-    private static func readable(_ words: [Word]) -> [Block] {
+    private static func readable(_ words: [Word], breaks: Set<Int>, check: () throws -> Void) rethrows -> [Block] {
         var grouped: [Block] = []
         for i in words.indices {
+            try check()
             let w = words[i]
             if let p = grouped.last {
                 let gap = max(0,w.startMs-p.endMs)
                 let target = p.wordIndices.count >= 96 || p.endMs-p.startMs >= 45_000
                 let sentence = endsWith(words[p.wordIndices.last!].text,marks:sentenceMarks,closers:sentenceClosers)
-                if p.speaker == w.speaker && gap <= 4200 && w.endMs-p.startMs <= 90_000 && p.wordIndices.count+1 <= 140 && !(target && (sentence || gap >= 2200)) {
+                if !breaks.contains(i) && p.speaker == w.speaker && gap <= 4200 && w.endMs-p.startMs <= 90_000 && p.wordIndices.count+1 <= 140 && !(target && (sentence || gap >= 2200)) {
                     grouped[grouped.count-1].wordIndices.append(i)
                     grouped[grouped.count-1].endMs = w.endMs
                     continue
@@ -182,7 +183,7 @@ public enum TranscriptRendering {
         for b in grouped {
             if let p = merged.last {
                 let small = p.wordIndices.count < 18 || b.wordIndices.count < 18 || p.endMs-p.startMs < 8000 || b.endMs-b.startMs < 8000
-                if p.speaker == b.speaker && max(0,b.startMs-p.endMs) <= 4200 && p.wordIndices.count+b.wordIndices.count <= 140 && max(0,b.endMs-p.startMs) <= 90_000 && small {
+                if !breaks.contains(b.wordIndices[0]) && p.speaker == b.speaker && max(0,b.startMs-p.endMs) <= 4200 && p.wordIndices.count+b.wordIndices.count <= 140 && max(0,b.endMs-p.startMs) <= 90_000 && small {
                     merged[merged.count-1].endMs = b.endMs
                     merged[merged.count-1].wordIndices += b.wordIndices
                     continue
@@ -193,10 +194,17 @@ public enum TranscriptRendering {
         return merged
     }
     public static func render(_ input: [Word], endsBoundedByAudio: Bool = false) -> Result {
+        (try? render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:[],cancellable:false)) ?? .init(words:input,blocks:[],runs:[],rows:[])
+    }
+    /// App-owned source gaps are explicit boundaries, independent of the viewer's readable breaks.
+    /// Cancellation is checked throughout preparation so superseded long transcripts stop promptly.
+    public static func render(_ input: [Word], endsBoundedByAudio: Bool = false, breakBefore: Set<Int>, cancellable: Bool, separates: (Int,Int) -> Bool = { _,_ in false }) throws -> Result {
+        let check: () throws -> Void = cancellable ? { try Task.checkCancellation() } : {}
+        try check()
         // Canonical order breaks timestamp ties. Indices always refer to the input, not the sort.
         var words = input
         // Portable's canonical items preserve input order; only display blocks are sorted later.
-        var blocks = readable(words)
+        var blocks = try readable(words,breaks:breakBefore,check:check)
         if !endsBoundedByAudio {
             var population: [String:[Int64]] = [:], excluded: Set<Int> = []
             let repairs = blocks.map { Self.candidates($0.wordIndices,words) }
@@ -208,6 +216,7 @@ public enum TranscriptRendering {
             let all = population.values.flatMap { $0 }, meetingMedian = all.count >= 8 ? median(all) : 250
             let budgets = population.mapValues { max(1000,4 * ($0.count >= 8 ? median($0) : meetingMedian)) }
             for (position,runs) in repairs.enumerated() {
+                try check()
                 var changed = false
                 for run in runs {
                     let start = run.map { words[$0].startMs }.min()!, end = run.map { words[$0].endMs }.max()!
@@ -232,10 +241,11 @@ public enum TranscriptRendering {
             a.contains { x in b.contains { y in max(x.start,y.start)-min(x.end,y.end) <= 20 } }
         }
         for b in blocks.indices {
+            try check()
             let block = blocks[b], bound = spans[b]
             var joined = false
-            if let previous = open[block.speaker], let first = bound.first, let lastBlock = runs[previous].blocks.last,
-               !spans[lastBlock].isEmpty, abs(first.start-runs[previous].endMs) <= 400 {
+            if !breakBefore.contains(block.wordIndices[0]), let previous = open[block.speaker], let first = bound.first, let lastBlock = runs[previous].blocks.last,
+               !spans[lastBlock].isEmpty, !separates(blocks[lastBlock].wordIndices.last!,block.wordIndices[0]), abs(first.start-runs[previous].endMs) <= 400 {
                 let between = spans[(lastBlock+1)..<b].flatMap { $0 }
                 if b == lastBlock+1 || between.isEmpty || touches(between,spans[lastBlock]+bound) {
                     runs[previous].blocks.append(b)
@@ -261,6 +271,7 @@ public enum TranscriptRendering {
         }
         var hosts: [Int] = [], pending = 0
         for r in byStart {
+            try check()
             while pending < audibleByStart.count && runSpans[audibleByStart[pending]][0].start < runs[r].startMs {
                 let h = audibleByStart[pending]
                 if runs[h].blocks.count > 1 { hosts.append(h) }
@@ -286,6 +297,7 @@ public enum TranscriptRendering {
         var collisions: [(a:Int,b:Int,ms:Int64)] = []
         var sounding: [Int] = []
         for j in audibleByStart {
+            try check()
             let start = runSpans[j][0].start
             sounding.removeAll { runSpans[$0].last!.end <= start }
             for k in sounding {
@@ -317,6 +329,7 @@ public enum TranscriptRendering {
         }
         var rows: [Row] = []
         for r in runs.indices where runs[r].host == nil {
+            try check()
             var paragraphs: [[Member]] = [], current: [Member] = [], previous: Int?
             for b in runs[r].blocks {
                 if let previous, current.last?.kind == "words", b == previous+1 { paragraphs.append(current); current = [] }

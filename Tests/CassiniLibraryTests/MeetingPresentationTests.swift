@@ -91,7 +91,7 @@ struct MeetingPresentationTests {
         #expect(MeetingPresentation.shares(meeting).values.allSatisfy { $0 == 0 })
     }
     @Test func turnsRetainExactSentenceAndWordBoundaries() {
-        let items: [LibraryTranscriptItem] = [.init(speaker: "a", startMs: 0, endMs: 3000, text: "One sentence."), .init(speaker: "a", startMs: 4000, endMs: 4500, text: "One"), .init(speaker: "b", startMs: 4100, endMs: 4900, text: "yes")]
+        let items: [LibraryTranscriptItem] = [.init(speaker: "a", startMs: 0, endMs: 1000, text: "Sentence."), .init(speaker: "a", startMs: 4000, endMs: 4500, text: "One"), .init(speaker: "b", startMs: 4100, endMs: 4900, text: "yes")]
         let turns = MeetingPresentation.turns(items)
         #expect(turns.count == 2 && turns[0].items == Array(items.prefix(2)) && turns[1].startMs == 4100)
     }
@@ -124,14 +124,13 @@ struct TurnQuotePresentationTests {
             .init(speaker:"b",startMs:20,endMs:30,text:"\"Unpaired"),
             .init(speaker:"a",startMs:30,endMs:40,text:"Closing\"")]
         let turns = MeetingPresentation.turns(items)
-        // D52 M11: a's "Closing" rejoins its touching run; quotes still pair only within
-        // each consecutive run, so the unmatched closing quote is not paired across b.
-        #expect(turns.map { $0.items.map(\.text).joined(separator:" ") } == ["He said “hello world”. Closing","Unpaired"])
+        // D52 M11: a's "Closing" rejoins its touching run; stored quote bytes remain unchanged across every fragment.
+        #expect(turns.map { $0.items.map(\.text).joined(separator:" ") } == ["He said \"hello world\". Closing\"","\"Unpaired"])
         #expect(turns.flatMap(\.items).map(\.startMs).sorted() == items.map(\.startMs))
         #expect(turns.flatMap(\.items).map(\.endMs).sorted() == items.map(\.endMs))
         #expect(items[0].text == "He said \"hello")
-        #expect(LibraryTranscriptTurn.coalescing(items).map(\.text) == ["He said “hello world”.","Unpaired","Closing"])
+        #expect(LibraryTranscriptTurn.coalescing(items).map(\.text) == ["He said \"hello world\". (b: \"Unpaired) Closing\""])
         let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:items,notes:[])
-        #expect(markdown.contains("He said “hello world”.") && !markdown.contains("\"Unpaired"))
+        #expect(markdown.contains("He said \"hello world\".") && markdown.contains("\"Unpaired"))
     }
 }

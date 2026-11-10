@@ -23,6 +23,11 @@ struct M11AsideTests {
         #expect(turns[2].host == nil)
         #expect(MeetingPresentation.visibleTurns(turns).map(\.id) == [0,2])
     }
+    @Test func anInlineInterjectionIsNotAlsoMarkedOver() {
+        let turns = MeetingPresentation.turns(words)
+        #expect(turns[1].host == 0)
+        #expect(!turns[0].over.contains("b") && !turns[1].over.contains("a"))
+    }
     @Test func aRapidCleanExchangeStaysSeparate() {
         let turns = MeetingPresentation.turns([w("a",0,1000,"Question?"),w("b",1050,1150,"Yes."),w("a",1200,2000,"Good.")])
         #expect(MeetingPresentation.visibleTurns(turns).map(text) == ["Question?","Yes.","Good."])

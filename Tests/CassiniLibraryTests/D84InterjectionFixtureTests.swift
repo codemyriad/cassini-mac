@@ -54,6 +54,126 @@ struct D84InterjectionFixtureTests {
             #expect(result.words == fixture.items)
         }
     }
+    @Test(arguments:["acknowledgment","competing","monologue","overlapping-turns","brief-reply","seam-gap"])
+    func meetingAndExportAdapters(name: String) throws {
+        let url = try #require(Bundle.module.url(forResource:name,withExtension:"words.json",subdirectory:"Golden/interjections"))
+        let input = try JSONDecoder().decode(Fixture.self,from:Data(contentsOf:url)).items
+        let expected = try JSONDecoder().decode(Expected.self,from:Data(contentsOf:url.deletingLastPathComponent().appendingPathComponent(name+".expected.json")))
+        let items = input.map { LibraryTranscriptItem(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text) }
+        let all = MeetingPresentation.turns(items), visible = MeetingPresentation.visibleTurns(all)
+        func indices(_ words: [LibraryTranscriptItem]) -> [Int] {
+            words.compactMap { w in input.firstIndex { $0.speaker == w.speaker && $0.startMs == w.startMs && $0.text == w.text } }
+        }
+        let actual = visible.map { turn -> Expected.Row in
+            var members: [Expected.Member] = []
+            for fragment in turn.fragments {
+                let own = Array(turn.items[fragment])
+                members.append(.init(kind:"words",speaker:nil,crosstalk:nil,wordIndices:indices(own),text:own.map(\.text).joined(separator:" ")))
+                for chip in turn.asides where chip.after == fragment.upperBound-1 {
+                    let child = all[chip.turn]
+                    members.append(.init(kind:"interjection",speaker:child.speaker,crosstalk:!child.items.isEmpty && child.items.allSatisfy { $0.lowConfidenceSpeaker == true },wordIndices:indices(child.items),text:child.items.map(\.text).joined(separator:" ")))
+                }
+            }
+            return .init(speaker:turn.speaker,continuation:turn.continuation,startMs:turn.startMs,endMs:turn.endMs,over:turn.over,crosstalk:turn.crosstalk,members:members)
+        }
+        #expect(actual == expected.rows,"Meeting/Search adapter: \(name)")
+        let expectedText = expected.rows.map { row in row.members.map { $0.kind == "words" ? $0.text : "(\($0.speaker!): \($0.text))" }.joined(separator:" ") }
+        #expect(visible.map { MeetingPresentation.prose($0,in:all).text } == expectedText)
+        #expect(LibraryTranscriptTurn.coalescing(items).map(\.text) == expectedText,"Library preview uses the same rows")
+        let legacy = Timeline(input.map { CassiniKit.Word(speaker:$0.speaker,startMs:Int($0.startMs),endMs:Int($0.endMs),text:$0.text,lowConfidenceSpeaker:$0.lowConfidenceSpeaker ?? false,attributionGapDb:nil) })
+        #expect(legacy.turns.map { legacy.text($0) } == expectedText,"Legacy/QuickLook preserve chips inline")
+        #expect(legacy.turns.map(\.over) == expected.rows.map(\.over))
+        #expect(legacy.turns.map(\.continuation) == expected.rows.map(\.continuation))
+        #expect(legacy.turns.map { Int64($0.startMs) } == expected.rows.map(\.startMs))
+        #expect(legacy.turns.map { Int64($0.endMs) } == expected.rows.map(\.endMs))
+        let markdown = MeetingMarkdown.render(title:name,start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:items,notes:[],locale:Locale(identifier:"en_GB"),language:.en)
+        for text in expectedText { #expect(markdown.contains(MeetingMarkdown.escape(text))) }
+        #expect(markdown.components(separatedBy:"** · ").count-1 == expected.rows.count,"Export has one block per readable row")
+        for row in expected.rows where !row.over.isEmpty {
+            let caption = LibraryLocalization.shared.text("meeting.turn.over",["names":LibraryFormat(locale:Locale(identifier:"en_GB"),language:.en).list(row.over)],language:.en,locale:Locale(identifier:"en_GB"))
+            let clock = LibraryFormat.position(row.startMs,locale:Locale(identifier:"en_GB"),language:.en)
+            #expect(markdown.contains(clock + " " + MeetingMarkdown.escape(caption) + "\n"),"Keep the separating space outside whitespace-normalizing Markdown escape")
+        }
+    }
+    @Test func reverseCanonicalWordsDoNotRejoinAcrossCaptureGap() {
+        let items: [LibraryTranscriptItem] = [
+            .init(speaker:"a",startMs:10300,endMs:10600,text:"after"),
+            .init(speaker:"a",startMs:9000,endMs:9950,text:"before")]
+        let turns = MeetingPresentation.visibleTurns(MeetingPresentation.turns(items,gaps:["a":[160000..<164800]]))
+        #expect(turns.map { $0.items.map(\.text) } == [["before"],["after"]])
+    }
+    @Test func cachedLibraryRowsAreInvalidatedWithoutRenderingOnRead() throws {
+        let url = try #require(Bundle.module.url(forResource:"001-minimal-v1",withExtension:"opus",subdirectory:"LibraryVectors/assets"))
+        var meeting = MeetingPresentation.external(try CassiniReader.read(Data(contentsOf:url)),url:url)
+        meeting.transcriptItems = [.init(speaker:"a",startMs:0,endMs:100,text:"before")]
+        meeting.prepareTranscriptTurns()
+        let snapshot = meeting
+        #expect(meeting.transcriptTurns.map(\.text) == ["before"])
+        meeting.transcriptItems[0] = .init(speaker:"a",startMs:0,endMs:100,text:"after")
+        #expect(meeting.transcriptTurns.isEmpty,"Invalidated UI reads never start a synchronous render")
+        #expect(snapshot.transcriptTurns.map(\.text) == ["before"],"Immutable snapshot retains its cached rows")
+        meeting.prepareTranscriptTurns()
+        #expect(meeting.transcriptTurns.map(\.text) == ["after"])
+        meeting.speakers = []
+        #expect(meeting.transcriptTurns.isEmpty,"Name changes invalidate inline chip labels")
+    }
+    @Test func chronologicalRostersDoNotReorderCanonicalTranscript() throws {
+        let url = try #require(Bundle.module.url(forResource:"001-minimal-v1",withExtension:"opus",subdirectory:"LibraryVectors/assets"))
+        var file = try CassiniReader.read(Data(contentsOf:url))
+        let words: [LibraryTranscriptItem] = [.init(speaker:"late",startMs:2000,endMs:2200,text:"later"),.init(speaker:"early",startMs:0,endMs:200,text:"first")]
+        // Markdown roster follows time, while readable grouping still receives canonical atoms.
+        let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:["late":"Later","early":"First"],items:words,notes:[],locale:Locale(identifier:"en_GB"),language:.en)
+        #expect(markdown.contains("Speakers: First, Later"))
+        let transcript = try ManifestParser.words(JSONParser.parse(JSONEncoder().encode(["items":words])))
+        let entry = try #require(file.transcripts.first?.entry)
+        file.transcripts = [(entry:entry,load:.available(transcript))]
+        let meeting = MeetingPresentation.external(file,url:url)
+        #expect(meeting.speakers.map(\.id) == ["early","late"])
+        #expect(meeting.transcriptItems == words)
+    }
+    @Test func hiddenTimelineSpeakersLeaveNoOverlapOrInitialContinuation() {
+        let timeline = Timeline([Word(speaker:"a",startMs:0,endMs:1000,text:"first",lowConfidenceSpeaker:false,attributionGapDb:nil),Word(speaker:"b",startMs:0,endMs:1000,text:"second",lowConfidenceSpeaker:false,attributionGapDb:nil)])
+        let visible = timeline.visibleTurns(hiding:["b"])
+        #expect(visible.count == 1 && visible.first?.over.isEmpty == true && visible.first?.continuation == false)
+    }
+    @Test(arguments:[("en", "A, B and C"),("fr","A, B et C"),("it","A, B e C"),("es","A, B y C"),("pt-BR","A, B e C"),("pt-PT","A, B e C")])
+    func overlapSpeakerListsFollowLanguage(_ code: String, _ expected: String) {
+        let language = CassiniLanguage(rawValue:code)!
+        #expect(LibraryFormat(locale:Locale(identifier:"en_GB"),language:language).list(["A","B","C"]) == expected)
+    }
+    @Test func cancelledLegacyTimelinePreparationDoesNotRender() async {
+        let cancelled = await Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            do { _ = try Timeline.preparing([]); return false }
+            catch is CancellationError { return true }
+            catch { return false }
+        }.value
+        #expect(cancelled)
+    }
+    @Test func upcomingWordsFollowEachAtomsTimeInCanonicalOrder() throws {
+        let input = try ManifestParser.words(JSONParser.parse(Data(#"{"items":[{"speaker":"a","startMs":1000,"endMs":1100,"text":"later"},{"speaker":"a","startMs":100,"endMs":200,"text":"earlier"}]}"#.utf8)))
+        let timeline = Timeline(input.items)
+        #expect(timeline.upcomingWords([0,1],at:500) == [0])
+        #expect(timeline.upcomingWords([0,1],at:1000).isEmpty)
+    }
+    @Test func frenchInlineChipsUseCatalogPunctuationAndPreserveSeekOffsets() throws {
+        let url = try #require(Bundle.module.url(forResource:"acknowledgment",withExtension:"words.json",subdirectory:"Golden/interjections"))
+        let input = try JSONDecoder().decode(Fixture.self,from:Data(contentsOf:url)).items
+        let items = input.map { LibraryTranscriptItem(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text) }
+        let all = MeetingPresentation.turns(items)
+        let row = try #require(MeetingPresentation.visibleTurns(all).first)
+        let prose = MeetingPresentation.prose(row,in:all,names:["ben":"Ben"],locale:Locale(identifier:"fr_FR"),language:.fr)
+        #expect(prose.text.contains("(Ben\u{00A0}: Sounds good.)"))
+        for seek in prose.seeks {
+            #expect((prose.text as NSString).substring(with:NSRange(location:seek.range.lowerBound,length:seek.range.count)) == seek.item.text)
+        }
+        let legacy = Timeline(input.map { Word(speaker:$0.speaker,startMs:Int($0.startMs),endMs:Int($0.endMs),text:$0.text) })
+        let legacyRow = try #require(legacy.turns.first)
+        let text = legacy.text(legacyRow,names:["ben":"Ben"],aside:{ LibraryLocalization.shared.text("meeting.turn.aside",["name":$0,"text":$1],language:.fr,locale:Locale(identifier:"fr_FR")) })
+        #expect(text == prose.text)
+        let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:["ben":"Ben"],items:items,notes:[],locale:Locale(identifier:"fr_FR"),language:.fr)
+        #expect(markdown.contains("(Ben\u{00A0}: Sounds good.)"))
+    }
     private func w(_ speaker: String, _ start: Int64, _ end: Int64, _ text: String) -> TranscriptRendering.Word {
         .init(speaker:speaker,startMs:start,endMs:end,text:text)
     }
@@ -215,6 +335,13 @@ struct D84InterjectionFixtureTests {
         let library = root.appendingPathComponent("Imported")
         let imported = try LibraryImport.copy(source,into:library)
         #expect(imported.state.transcript == .done && imported.wordEndsBoundedByAudio == attested)
+        let expectedEnd: Int64 = attested ? 5000 : 1000
+        #expect(imported.transcriptTurns.first?.endMs == expectedEnd,"Library preview uses the manifest attestation")
+        let external = MeetingPresentation.external(file,url:source)
+        let turns = MeetingPresentation.turns(external.transcriptItems,endsBoundedByAudio:external.wordEndsBoundedByAudio)
+        #expect(MeetingPresentation.visibleTurns(turns).first?.endMs == expectedEnd,"Meeting/Search rows use the manifest attestation")
+        let words = try #require(file.defaultTranscript?.load.transcript?.items)
+        #expect(Timeline(words,endsBoundedByAudio:file.manifest?.wordEndsBoundedByAudio == true).turns.first?.endMs == Int(expectedEnd),"Document and QuickLook adapter uses the manifest attestation")
         // An unrelated sidecar transcription cannot inherit the original's flag.
         try body.write(to:imported.folder.appendingPathComponent("transcript.json"))
         try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
@@ -222,6 +349,7 @@ struct D84InterjectionFixtureTests {
         }
         let sidecar = try #require(LibraryScanner(root:library).scan().meetings.first)
         #expect(sidecar.state.transcript == .done && !sidecar.wordEndsBoundedByAudio)
+        #expect(sidecar.transcriptTurns.first?.endMs == 1000,"Sidecar rows still repair unattested ends")
     }
 
     @Test func asideBeforeLegacyRunStartUsesAudibleHostAdmission() throws {

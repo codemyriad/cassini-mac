@@ -37,7 +37,7 @@ public struct ListeningBarPresentation {
             current.append(contentsOf:item.text.split(maxSplits:8,whereSeparator: \.isWhitespace).prefix(8-current.count).map(String.init))
             if current.count == 8 { break }
         }
-        previousExcerpt = TranscriptText.quotes(leading).joined(separator:" ")
-        currentExcerpt = TranscriptText.quotes(current).joined(separator:" ")
+        previousExcerpt = leading.joined(separator:" ")
+        currentExcerpt = current.joined(separator:" ")
     }
 }

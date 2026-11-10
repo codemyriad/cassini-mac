@@ -20,7 +20,7 @@ struct D70SpeakerMergesExportTests {
         let items: [[String:Any]] = [["speaker":"me","startMs":0,"endMs":400,"text":"Hello"],
             ["speaker":"track-a","startMs":500,"endMs":900,"text":"Hi"],["speaker":"track-c","startMs":1000,"endMs":1400,"text":"there"],
             ["speaker":"track-a","startMs":1500,"endMs":1900,"text":"all"]]
-        try JSONSerialization.data(withJSONObject:["language":"en","items":items],options:[.sortedKeys])
+        try JSONSerialization.data(withJSONObject:["language":"en","items":[items[2],items[0],items[3],items[1]]],options:[.sortedKeys])
             .write(to:session.directory.appendingPathComponent("transcript.json"))
         try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { metadata in
             metadata["transcript"] = ["status":"done","reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"],"model":"parakeet-tdt-0.6b-v3"]
@@ -49,7 +49,7 @@ struct D70SpeakerMergesExportTests {
         let speakers = try #require(file.manifest?.raw["speakers"]?.array)
         #expect(speakers.map { $0["id"]?.string } == ["me","track-a","track-c"],"one entry per original id, in first-speaking order")
         #expect(speakers.map { $0["label"]?.string } == ["Me","Carla","Carla"],"merged ids share the target's name")
-        #expect(file.defaultTranscript?.load.transcript?.items.map(\.speaker) == ["me","track-a","track-c","track-a"],"the body is never rewritten for a merge")
+        #expect(file.defaultTranscript?.load.transcript?.items.map(\.speaker) == ["track-c","me","track-a","track-a"],"canonical body order is never rewritten for a merge; roster alone is chronological")
         let stored = try JSONParser.parse(Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json")))
         #expect(file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["speakerMerges"] == stored["speakerMerges"],"the history goes out verbatim, in order")
     }

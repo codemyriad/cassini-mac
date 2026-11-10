@@ -273,7 +273,7 @@ public enum MeetingFileExporter {
         // MAPPING Q2 with speakerMerges (D24): the ids are the words' own, in first-speaking
         // order, and each label is the name of the speaker it resolves to, so merged ids share it.
         var used: [String] = []
-        for word in words where !used.contains(word.speaker) { used.append(word.speaker) }
+        for word in words.enumerated().sorted(by:{ $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }).map(\.element) where !used.contains(word.speaker) { used.append(word.speaker) }
         let resolvedID = { (id: String) in meeting.mergedInto[id] ?? id }
         let shown = { (id: String) in meeting.speakers.first { $0.id == resolvedID(id) }?.displayName }
         let projected = used.compactMap { id in shown(id).map { (id:id,label:$0) } }
