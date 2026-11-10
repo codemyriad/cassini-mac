@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -26,7 +27,7 @@ def checked(path, expected):
         raise ValueError('SHA256 mismatch: ' + path.name)
 
 
-def fetch(artifact, cache):
+def fetch(artifact, cache, *, fallback_urls=()):
     archive = cache / artifact['name']
     if archive.exists():
         try:
@@ -34,18 +35,20 @@ def fetch(artifact, cache):
             return archive
         except (OSError, ValueError):
             archive.unlink(missing_ok=True)
+    urls = (artifact['url'], *fallback_urls)
     for attempt in range(3):
         pending = None
         try:
             with tempfile.NamedTemporaryFile(dir=cache, prefix=archive.name + '.', suffix='.part', delete=False) as target:
                 pending = Path(target.name)
-                with urllib.request.urlopen(artifact['url'], timeout=60) as source:
+                with urllib.request.urlopen(urls[min(attempt,len(urls)-1)], timeout=60) as source:
                     shutil.copyfileobj(source, target)
             checked(pending, artifact['sha256'])
             pending.replace(archive)
             return archive
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
             if attempt == 2: raise
+            print(f"Pinned download {artifact['name']}: attempt {attempt+1}/3 failed ({type(error).__name__}); retrying with the same pinned SHA-256",file=sys.stderr)
             time.sleep(attempt + 1)
         finally:
             if pending is not None: pending.unlink(missing_ok=True)

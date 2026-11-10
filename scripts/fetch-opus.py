@@ -13,6 +13,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = dict(name='opus-1.6.1.tar.gz', url='https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz',
               sha256='6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1')
+# Direct Xiph mirrors avoid retrying only the redirector when it closes a cold
+# connection. Both sources must match the same published archive digest.
+SOURCE_MIRRORS = ('https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.1.tar.gz',)
 spec = importlib.util.spec_from_file_location('fetch_whistle', ROOT/'scripts/fetch-whistle.py')
 fetch = importlib.util.module_from_spec(spec); spec.loader.exec_module(fetch)
 
@@ -23,7 +26,7 @@ def main():
     args = parser.parse_args()
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)
     cache = (args.cache or output.parent/'opus-downloads').resolve(); cache.mkdir(parents=True, exist_ok=True)
-    archive = fetch.fetch(SOURCE, cache)
+    archive = fetch.fetch(SOURCE, cache, fallback_urls=SOURCE_MIRRORS)
     # Only the source archive is reused, after SHA verification. Build fresh so
     # stale or modified object/dylib caches cannot become trusted shipped code.
     with tempfile.TemporaryDirectory(prefix='opus-build-',dir=cache) as temporary:
