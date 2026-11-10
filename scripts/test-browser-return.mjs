@@ -22,21 +22,36 @@ const controlRoot = path.join(os.userInfo().homedir, 'Library/Containers/io.code
 // capture. The return path therefore reloads the same address; the returning
 // document holds its call until the test releases it after the app's fallback.
 const pageBody = returning => `<!doctype html><title>D33 real call</title><body>Generated WebRTC call<script>
-(async () => {
+window.generatedCallConnected = (async () => {
  ${returning ? "await fetch('/go');" : ''}
  const context = new AudioContext(); const oscillator = context.createOscillator();
  oscillator.frequency.value = ${returning ? 660 : 880};
  const output = context.createMediaStreamDestination(); oscillator.connect(output); oscillator.start(); await context.resume();
  const sender = new RTCPeerConnection(), receiver = new RTCPeerConnection();
- window.generatedCall = {context,oscillator,output,sender,receiver};
+ const audioStart = {time:context.currentTime,wall:performance.now()};
+ window.generatedCall = {context,oscillator,output,sender,receiver,audioStart};
  sender.addTrack(output.stream.getAudioTracks()[0]);
  receiver.ontrack = async event => { const audio = document.createElement('audio'); audio.muted = true; audio.srcObject = new MediaStream([event.track]); document.body.append(audio); await audio.play(); };
  const gathered = async pc => { if (pc.iceGatheringState !== 'complete') await new Promise(resolve => pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); })); };
  await sender.setLocalDescription(await sender.createOffer()); await gathered(sender);
  await receiver.setRemoteDescription(sender.localDescription); await receiver.setLocalDescription(await receiver.createAnswer()); await gathered(receiver);
  await sender.setRemoteDescription(receiver.localDescription);
- window.generatedCall = {context,oscillator,output,sender,receiver};
-})().catch(error => { window.callError = String(error); });
+ await new Promise((resolve,reject) => {
+  const changed = () => {
+   const state = receiver.connectionState;
+   if (!['connected','failed','closed'].includes(state)) return;
+   receiver.removeEventListener('connectionstatechange',changed);
+   if (state === 'connected') resolve();
+   else reject(new Error('Generated receiver ' + state));
+  };
+  receiver.addEventListener('connectionstatechange',changed);
+  changed();
+ });
+ return {connected:true};
+})().catch(error => {
+ window.callError = String(error);
+ return {connected:false,error:window.callError};
+});
 </script>`;
 let returning = false, released = false;
 const held = [];
@@ -63,7 +78,20 @@ const wait = async (predicate, message, timeout=45000) => {
 };
 const connected = async page => {
  try {
-  await page.waitForFunction(() => window.generatedCall?.receiver.connectionState === 'connected');
+  const result = await page.evaluate(async () => {
+   let hangGuard;
+   try {
+    return await Promise.race([
+     window.generatedCallConnected,
+     new Promise((_,reject) => {
+      hangGuard = setTimeout(() => reject(new Error('Generated receiver did not connect')),30000);
+     })
+    ]);
+   } finally {
+    clearTimeout(hangGuard);
+   }
+  });
+  assert.equal(result?.connected,true,result?.error ?? 'Generated call did not start');
  } catch(error) {
   const diagnostic=await page.evaluate(() => ({error:window.callError,
    context:window.generatedCall?.context.state,
@@ -100,14 +128,17 @@ try {
  // worker start or close, collected in Node so they survive the worker closing.
  const nativeLog = attachNativeLog(context);
  await nativeLog.ready;
- // The page's own audio clock against performance.now() over one second: a hosted context
- // running slow (D68.1) delays every capture behind it. Measured only after a failure.
- const renderRate = async page => page.evaluate(async () => {
-  const context = window.generatedCall?.context;
-  if (!context) return null;
-  const [audio,wall] = [context.currentTime,performance.now()];
-  await new Promise(resolve => setTimeout(resolve,1000));
-  return {state:context.state,rate:(context.currentTime-audio)*1000/(performance.now()-wall)};
+ // Sample progress from the context's start to the failure, without an added
+ // diagnostic wait. The rate is logged to explain failures under host load.
+ const renderRate = async page => page.evaluate(() => {
+  const call = window.generatedCall;
+  if (!call) return null;
+  const {context,audioStart} = call;
+  const elapsedMs = performance.now()-audioStart.wall;
+  const audioSeconds = context.currentTime-audioStart.time;
+  return {state:context.state,sampleRate:context.sampleRate,
+   elapsedMs,renderedFrames:Math.round(audioSeconds*context.sampleRate),
+   rate:elapsedMs>0 ? audioSeconds*1000/elapsedMs : null};
  }).catch(error => ({unavailable:String(error)}));
  // Written on a pass too (a baseline for the next failure); printed only on a failure.
  const saveExtensionLog = () => writeFile(output+'.extension.json',JSON.stringify({events:nativeLog.events},null,1)+'\n').catch(() => {});
