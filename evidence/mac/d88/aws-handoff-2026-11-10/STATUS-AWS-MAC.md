@@ -2,7 +2,7 @@
 
 **Stop using this Mac by 2026-11-11 08:30 UTC. Termination and disk deletion: 2026-11-11 09:30 UTC.**
 
-Updated: 2026-11-10 23:24 UTC
+Updated: 2026-11-10 23:34 UTC
 
 Main #208 (including #222) merged at `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f`. Per coordinator, all six draft branches now contain an ordinary merge from that main, with no rebase or force-push. All six heads are pushed and their affected-row plus seven shared supersession tests pass locally under the shared heavy-run lock, Xcode16.4/four jobs. PR bodies include new-head validation links and D87 entries. No new source work is planned; continue existing readiness monitoring only.
 
@@ -44,11 +44,11 @@ Periodic checkpoint cutoff is 08:15 UTC. The readiness watcher stops at 08:20 UT
 
 ## CI readiness
 
-Last checked: 2026-11-10T23:29:53+00:00
+Last checked: 2026-11-10T23:34:58+00:00
 
 - #210 `30fc6f3`: pending: Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling; draft.
 - #211 `d1ebe14`: pending: UX Library boards / Library boards; draft.
-- #212 `8c9c389`: pending: UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #212 `8c9c389`: ready; ready.
 - #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
 - #214 `c2777e5`: ready; ready.
-- #215 `594bf71`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #215 `594bf71`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
