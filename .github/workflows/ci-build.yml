@@ -2,10 +2,6 @@ name: Build shared CI products
 on:
   workflow_call:
     inputs:
-      headless_products:
-        type: boolean
-        default: false
-        description: Build separate rented compiler products only for headless worker consumers
       parakeet_models:
         type: boolean
         default: true
@@ -14,19 +10,16 @@ permissions:
   contents: read
 jobs:
   build:
-    name: Build products (${{ matrix.arch }}, ${{ matrix.suffix == '-headless' && 'rented Xcode' || 'Xcode 16.4' }})
+    name: Build products (${{ matrix.arch }}, Xcode 16.4)
     strategy:
       fail-fast: false
       matrix:
-        # Preserve the Xcode16.4 products used by GUI/Release consumers. Only
-        # trusted runs with an enabled rented runner add a separate compiler set.
-        include: >-
-          ${{ fromJSON(
-            inputs.headless_products && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER
-            && '[{"runner":"macos-15","arch":"arm64","suffix":""},{"runner":"macos-15-intel","arch":"x86_64","suffix":""},{"runner":"macos-15","arch":"arm64","suffix":"-headless"}]'
-            || '[{"runner":"macos-15","arch":"arm64","suffix":""},{"runner":"macos-15-intel","arch":"x86_64","suffix":""}]'
-          ) }}
-    runs-on: ${{ matrix.suffix == '-headless' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner == 'macos-15' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -47,7 +40,7 @@ jobs:
       - run: python3 scripts/ci-products.py pack swiftpm build/ci-upload/swiftpm
       - uses: actions/upload-artifact@v5
         with:
-          name: ci-swiftpm-${{ matrix.arch }}${{ matrix.suffix }}
+          name: ci-swiftpm-${{ matrix.arch }}
           path: build/ci-upload/swiftpm
           retention-days: 3
           compression-level: 0
@@ -75,46 +68,44 @@ jobs:
           python3 scripts/fetch-whistle.py --output build/Whistle
           python3 scripts/fetch-vad.py --output build/Whistle
           python3 scripts/fetch-opus.py --output build/Opus
+          python3 scripts/fetch-parakeet-runtime.py --output build/Parakeet
           python3 scripts/ci-products.py pack assets build/ci-upload/assets
-          if [ '${{ matrix.suffix }}' = '' ]; then
-            python3 scripts/fetch-parakeet-runtime.py --output build/Parakeet
-            python3 scripts/ci-products.py pack runtime build/ci-upload/runtime
-          fi
+          python3 scripts/ci-products.py pack runtime build/ci-upload/runtime
       - uses: actions/upload-artifact@v5
         if: matrix.arch == 'arm64'
         with:
-          name: ci-assets${{ matrix.suffix }}
+          name: ci-assets
           path: build/ci-upload/assets
           retention-days: 3
           compression-level: 0
       # The Release app job (ci-build-release.yml, D66 mac-P2-2) stages this runtime; the
       # optional ci-parakeet product below carries it only when the model goldens run.
       - uses: actions/upload-artifact@v5
-        if: matrix.arch == 'arm64' && matrix.suffix == ''
+        if: matrix.arch == 'arm64'
         with:
           name: ci-runtime
           path: build/ci-upload/runtime
           retention-days: 3
           compression-level: 0
       - uses: actions/cache@v4
-        if: matrix.arch == 'arm64' && matrix.suffix == '' && inputs.parakeet_models
+        if: matrix.arch == 'arm64' && inputs.parakeet_models
         with:
           path: build/ParakeetModel
           key: parakeet-model-v2-4179-${{ hashFiles('Parakeet/model-manifest.json', 'Sources/CassiniModels/**', 'Sources/cassini-model-fetch/**') }}
       - name: Fetch and verify optional model once for ARM and Intel goldens
-        if: matrix.arch == 'arm64' && matrix.suffix == '' && inputs.parakeet_models
+        if: matrix.arch == 'arm64' && inputs.parakeet_models
         run: |
           .build/debug/cassini-model-fetch --output build/ParakeetModel
           python3 scripts/ci-products.py pack parakeet build/ci-upload/parakeet
       - uses: actions/upload-artifact@v5
-        if: matrix.arch == 'arm64' && matrix.suffix == '' && inputs.parakeet_models
+        if: matrix.arch == 'arm64' && inputs.parakeet_models
         with:
           name: ci-parakeet
           path: build/ci-upload/parakeet
           retention-days: 3
           compression-level: 0
       - name: Test signing identifier and shipped-byte checks on generated code
-        if: matrix.arch == 'arm64' && matrix.suffix == ''
+        if: matrix.arch == 'arm64'
         run: |
           python3 scripts/fetch-sparkle.py
           python3 scripts/fetch-sparkle.py --spm-cache "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
@@ -126,7 +117,7 @@ jobs:
           python3 scripts/test-signing-identifiers.py
           python3 scripts/test-native-host-staging.py
       - name: Prepare identical bundled Library fixtures
-        if: matrix.arch == 'arm64' && matrix.suffix == ''
+        if: matrix.arch == 'arm64'
         run: |
           python3 Tests/CassiniLibraryTests/LibraryVectors/make.py UITests/Fixtures/Library
           python3 - <<'PY'
@@ -137,7 +128,7 @@ jobs:
           PY
           xcodegen generate
       - name: Build universal app and UI test bundles once
-        if: matrix.arch == 'arm64' && matrix.suffix == ''
+        if: matrix.arch == 'arm64'
         env:
           CASSINI_CI_ASSETS: ${{ github.workspace }}/build
         run: |
@@ -155,7 +146,7 @@ jobs:
           python3 scripts/check-signing-identifiers.py build/Build/Products/Debug/Cassini.app
           python3 scripts/ci-products.py pack debug build/ci-upload/debug
       - uses: actions/upload-artifact@v5
-        if: matrix.arch == 'arm64' && matrix.suffix == ''
+        if: matrix.arch == 'arm64'
         with:
           name: ci-debug
           path: build/ci-upload/debug
@@ -164,5 +155,5 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
-          name: build-diagnostics-${{ matrix.arch }}${{ matrix.suffix }}
+          name: build-diagnostics-${{ matrix.arch }}
           path: build/*build.log

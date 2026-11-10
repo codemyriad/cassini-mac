@@ -1,9 +1,6 @@
 name: Restore same-run products
 description: Verify source, pins, architecture and Xcode before extracting signed products.
 inputs:
-  headless:
-    default: 'false'
-    description: Separate same-toolchain rented SwiftPM/assets; never app/runtime/model products
   swiftpm:
     default: 'false'
     description: Native SwiftPM test bundles and executables
@@ -25,18 +22,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - if: inputs.headless == 'true'
-      shell: bash
-      env:
-        RESTORE_RELEASE: ${{ inputs.release }}
-        RESTORE_DEBUG: ${{ inputs.debug }}
-        RESTORE_RUNTIME: ${{ inputs.runtime }}
-        RESTORE_PARAKEET: ${{ inputs.parakeet }}
-      run: |
-        test "$RUNNER_ENVIRONMENT" = self-hosted
-        for flag in RESTORE_RELEASE RESTORE_DEBUG RESTORE_RUNTIME RESTORE_PARAKEET; do
-          test "${!flag}" != true
-        done
     - shell: bash
       run: bash scripts/ci-select-xcode.sh
     - id: arch
@@ -49,12 +34,12 @@ runs:
     - uses: actions/download-artifact@v5
       if: inputs.swiftpm == 'true'
       with:
-        name: ci-swiftpm-${{ steps.arch.outputs.name }}${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-swiftpm-${{ steps.arch.outputs.name }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.assets == 'true'
       with:
-        name: ci-assets${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-assets
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true'
@@ -100,12 +85,12 @@ runs:
     - uses: actions/download-artifact@v5
       if: inputs.swiftpm == 'true' && contains(steps.verify.outputs.retry, ' swiftpm ')
       with:
-        name: ci-swiftpm-${{ steps.arch.outputs.name }}${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-swiftpm-${{ steps.arch.outputs.name }}
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.assets == 'true' && contains(steps.verify.outputs.retry, ' assets ')
       with:
-        name: ci-assets${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-assets
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true' && contains(steps.verify.outputs.retry, ' parakeet ')

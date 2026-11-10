@@ -43,7 +43,6 @@ jobs:
     if: ${{ always() && !cancelled() }}
     uses: ./.github/workflows/ci-build.yml
     with:
-      headless_products: ${{ needs.changes.outputs.whistle != 'false' }}
       parakeet_models: ${{ needs.changes.outputs.parakeet != 'false' }}
   # D66 mac-P2-2: the Release app and its packaging (Cassini-<sha>), off the Debug consumers'
   # critical path; packaging, Parakeet and the optimized spectrogram probe wait for it.
