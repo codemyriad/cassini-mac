@@ -51,6 +51,7 @@ import Observation
     @ObservationIgnored private var generation = 0
 
     func start(parent: URL) async {
+        RecordingFixture.trace("start-requested","phase=\(phase) generation=\(generation) canStart=\(canStart)")
         guard canStart else { return }
         #if DEBUG
         guard !LibraryLaunchContext.current.screenshot || RecordingFixture.enabled else { return }
@@ -109,6 +110,7 @@ import Observation
                 }
             }
             phase = .recording
+            RecordingFixture.trace("started","generation=\(generation) folder=\(session.directory.lastPathComponent)")
             diskWatch.start(directory: session.directory) { [weak self] budget in
                 self?.applyDiskBudget(budget)
             }
@@ -122,12 +124,15 @@ import Observation
                     self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5 && ["microphone", "output"].contains { status.frames[$0, default: 0] == 0 }
                 }
             }
-        } catch { guard generation == attempt else { return }; stop(problem: error.localizedDescription) }
+        } catch {
+            RecordingFixture.trace("start-failed","generation=\(generation) attempt=\(attempt) error=\(error.localizedDescription)")
+            guard generation == attempt else { return }; stop(problem: error.localizedDescription)
+        }
     }
     private func applyDiskBudget(_ budget: DiskBudget) {
         guard isRecording else { return }
         diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
-        if budget.shouldStop { diskStopped = true; RecordingDiskWatch.clear(); stop(); return }
+        if budget.shouldStop { RecordingFixture.trace("disk-stop","reserve=\(budget.reserve) minutes=\(String(describing:budget.minutesLeft))"); diskStopped = true; RecordingDiskWatch.clear(); stop(); return }
         RecordingDiskWatch.updateWarning(diskLine)
     }
     #if DEBUG
@@ -136,6 +141,7 @@ import Observation
     }
     #endif
     func stop(problem: String? = nil) {
+        RecordingFixture.trace("stop-requested","phase=\(phase) generation=\(generation) problem=\(problem ?? "none")")
         guard phase == .starting || phase == .recording else { return }
         spectrogram?.stop(atMs:Double(elapsedMs))
         completedElapsedMs = elapsedMs
@@ -162,6 +168,7 @@ import Observation
             self.problem = problem ?? failure
             self.lastCompletedDirectory = directory
             self.phase = .idle; self.finishTask = nil; self.spectrogram = nil
+            RecordingFixture.trace("saved","generation=\(self.generation) folder=\(directory.lastPathComponent) elapsedMs=\(self.completedElapsedMs) problem=\(self.problem ?? "none")")
             self.onSaved?(directory)
             if let issue = self.problem { self.present(issue) }
         }
@@ -173,6 +180,13 @@ import Observation
 }
 
 enum RecordingFixture {
+    /// Private hosted inputs only; transition evidence never observes a user's capture.
+    static func trace(_ event: String, _ detail: @autoclosure () -> String) {
+        #if DEBUG
+        guard enabled else { return }
+        NSLog("CASSINI_RECORDING_FIXTURE %@ %@",event,detail())
+        #endif
+    }
     static var enabled: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && CommandLine.arguments.contains("--fixture-library-recording")

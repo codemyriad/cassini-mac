@@ -49,7 +49,11 @@ private let recordingHotKeySignature: OSType = 0x43415353
                 MemoryLayout<EventHotKeyID>.size, nil, &identifier) == noErr,
                 identifier.signature == recordingHotKeySignature, identifier.id == 1 else { return OSStatus(eventNotHandledErr) }
             let shortcut = Unmanaged<RecordingShortcut>.fromOpaque(data).takeUnretainedValue()
-            DispatchQueue.main.async { shortcut.perform?() }
+            let eventTime = GetEventTime(event)
+            DispatchQueue.main.async {
+                RecordingFixture.trace("hotkey-pressed","eventTime=\(eventTime)")
+                shortcut.perform?()
+            }
             return noErr
         }, 1, &type, Unmanaged.passUnretained(self).toOpaque(), &eventReference)
     }

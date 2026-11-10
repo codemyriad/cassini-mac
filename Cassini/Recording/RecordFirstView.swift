@@ -33,6 +33,7 @@ import CassiniRecording
         else { showingFirst = true }
     }
     func requestFromAnywhere() {
+        RecordingFixture.trace("shortcut-request","active=\(RecordingOverview.active) starting=\(RecordingOverview.starting) saving=\(RecordingOverview.saving) skipFirst=\(RecordingPreferences.skipFirst) appActive=\(NSApp.isActive)")
         if RecordingOverview.active || RecordingOverview.starting { _ = stopFromShortcut(notify:!NSApp.isActive); return }
         guard RecordingOverview.canStart else { return }
         let introduction = !RecordingPreferences.skipFirst
