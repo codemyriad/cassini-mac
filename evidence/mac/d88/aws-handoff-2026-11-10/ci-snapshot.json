@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T20:15:18+00:00",
+  "updated": "2026-11-10T20:20:19+00:00",
   "prs": [
     {
       "pr": 210,
@@ -111,7 +111,6 @@
         "CassiniKit tests and conformance",
         "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
-        "Whistle bundle / Whistle worker (macos-15-intel)",
         "Package tests (macos-15-intel)",
         "UX browser setup / Browser setup (macos-15)",
         "UX browser setup / Browser setup (macos-15-intel)"
