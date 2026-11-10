@@ -1,0 +1,11 @@
+[0/1] Planning build
+error: Exited with unexpected signal code 5
+Test Suite 'All tests' started at 2026-11-10 18:20:11.397.
+Test Suite 'PathFixturePackageTests.xctest' started at 2026-11-10 18:20:11.397.
+Test Suite 'PathTests' started at 2026-11-10 18:20:11.397.
+Test Case '-[PathTests.PathTests testConsumerOwnsResourceAndSourcePaths]' started.
+PathTests/resource_bundle_accessor.swift:12: Fatal error: could not load resource bundle: from /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/PathFixture_PathTests.bundle or /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/producer/.build/arm64-apple-macosx/debug/PathFixture_PathTests.bundle
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.

@@ -41,12 +41,36 @@ and Whistle publication pins. The original producer stays unavailable throughout
 consumption, and generated resource accessors must contain the consumer path.
 The small PATH wrapper delegates to the real Swift compiler and only appends
 `--jobs 4` to builds, respecting this shared Mac's compile budget. All fixture
-bytes are synthetic or metadata; there is no network fetch, GUI or audio device.
+bytes are synthetic or metadata; HTTP traffic is restricted to the local model
+fixture, with no external downloads, GUI or audio device.
 
 ## Results
 
-Pending the shared host lock. No successful execution is claimed yet. Logs and
-machine-readable results will be committed here after both proofs finish.
+Passed on AWS Mac M4, Xcode 16.4 / 16F6, 2026-11-10. Both runs held the shared
+mkdir lock and the local flock; neither lock was removed from another owner.
+
+- `two-path/result.json`: producer build/test/pack pass; foreign unpack rejects
+  before extraction; removing the workspace guard restores the incompatible
+  objects and the actual test fails with `could not load resource bundle` at
+  the producer's embedded buildPath. Restoring the guard rebuilds at the consumer
+  and its Bundle.module/#filePath byte/path assertions pass with the producer
+  unavailable. Same-path restore and skip-build execution pass without a build.
+- `cassini/result.json`: complete Cassini producer and consumer builds pass at
+  two different absolute paths using #208 base `17162d0`. The three selected
+  resource/source-dependent tests pass at both paths while the original producer
+  is unavailable for consumption. Foreign objects are rejected before extraction;
+  the saved consumer resource accessor embeds only the consumer build path.
+- `cassini/ci-contract.log`: all 41 CI transport/contract checks pass, including
+  digest, revision, architecture, toolchain, pins, archive safety and build-failure
+  rejection cases.
+
+The initial tiny fixture compile failed because its global `value` collided with
+XCTest's member lookup; it was qualified as `PathValue.value`. A subsequent harness
+comparison exposed Foundation's `/var` versus Python's `/private/var` spelling;
+printed paths are now resolved to real existing files before comparing roots.
+Those setup diagnostics are retained separately and are not baseline/mutation
+assertion evidence. The successful final logs and `workspace-guard.patch` are in
+`two-path/`. No additional app or test assertions were weakened.
 
 ## Checked bug classes
 

@@ -129,7 +129,9 @@ def main():
             output = run('consumer-restore', cli+['restore', 'swiftpm', artifact], consumer)
             assert 'building test products in this checkout' in output
             output = run('consumer-test', ['swift', 'test', '--skip-build'], consumer)
-            assert 'SOURCE_PATH='+str(consumer) in output and 'RESOURCE_PATH='+str(consumer) in output
+            paths = dict(line.split('=', 1) for line in output.splitlines() if line.startswith(('SOURCE_PATH=', 'RESOURCE_PATH=')))
+            assert set(paths) == {'SOURCE_PATH', 'RESOURCE_PATH'}
+            assert all(Path(path).resolve(strict=True).is_relative_to(consumer) for path in paths.values())
             assert not producer.exists()
         finally:
             hidden.rename(producer)
