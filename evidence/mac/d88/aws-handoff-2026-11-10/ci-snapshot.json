@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T23:09:45+00:00",
+  "updated": "2026-11-10T23:14:45+00:00",
   "prs": [
     {
       "pr": 210,
@@ -29,8 +29,7 @@
       "readyCandidate": false,
       "reviewHold": false,
       "pending": [
-        "UX Library boards / Library boards",
-        "UX Library boards / Native spectrogram and profiling"
+        "UX Library boards / Library boards"
       ],
       "failed": [],
       "runs": [
