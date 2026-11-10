@@ -1,0 +1,23 @@
+[0/1] Planning build
+Building for debugging...
+[0/26] Write sources
+[1/26] Write swift-version--79AA4F9932D1E87A.txt
+[3/21] Compiling CassiniModelsTests SupersessionPoolProbeTests.swift
+/private/tmp/cassini-aws-d88-before/Tests/CassiniModelsTests/SupersessionPoolProbeTests.swift:9:46: error: conformance of 'DispatchQueue' to 'TaskExecutor' is only available in macOS 15.4 or newer
+ 4 | 
+ 5 | /// Diagnostic-only probe: run with LIBDISPATCH_COOPERATIVE_POOL_STRICT=1.
+ 6 | struct SupersessionPoolProbeTests {
+   |        `- note: add @available attribute to enclosing struct
+ 7 |     @Test(arguments:[false,true]) func heldPoolCannotBlockReplacementFixture(_ cancel: Bool) async throws {
+   |                                        `- note: add @available attribute to enclosing instance method
+ 8 |         let controller = DispatchQueue(label:"CassiniSupersession.probe-controller")
+ 9 |         try await withTaskExecutorPreference(controller) {
+   |                                              |- error: conformance of 'DispatchQueue' to 'TaskExecutor' is only available in macOS 15.4 or newer
+   |                                              `- note: add 'if #available' version check
+10 |             let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0)
+11 |             let blocker = Task.detached {
+[4/21] Emitting module CassiniModelsTests
+[5/21] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[6/21] Emitting module CassiniTranscription
+[7/21] Compiling CassiniBrowserControl ControlHost.swift
+[8/21] Emitting module CassiniBrowserControl

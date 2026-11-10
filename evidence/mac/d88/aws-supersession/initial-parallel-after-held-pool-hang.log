@@ -1,0 +1,11 @@
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite SupersessionPoolProbeTests started.
+◇ Test heldPoolCannotBlockReplacementFixture(_:) started.
+◇ Passing 1 argument cancel → false to heldPoolCannotBlockReplacementFixture(_:)
+◇ Passing 1 argument cancel → true to heldPoolCannotBlockReplacementFixture(_:)
+✘ Test heldPoolCannotBlockReplacementFixture(_:) recorded an issue with 1 argument cancel → true at SupersessionPoolProbeTests.swift:18:17: Expectation failed: (observed → .timedOut) == .success
+↳ The global cooperative worker must enter its explicit hold
+
+HANG BOUND: diagnostic process group terminated, no pass claimed

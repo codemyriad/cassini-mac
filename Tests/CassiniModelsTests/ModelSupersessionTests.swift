@@ -77,7 +77,7 @@ struct ModelSupersessionTests {
     @Test(arguments:[false,true]) func replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_ cancel: Bool) async throws {
         // Both the controller and default-actor removal must progress while the
         // shared cooperative pool is occupied by unrelated synchronous fixtures.
-        let fixtureQueue = DispatchQueue(label:"CassiniSupersession.lock-fixture")
+        let fixtureQueue = SupersessionFixtureExecutor()
         try await withTaskExecutorPreference(fixtureQueue) {
             let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
             let bytes = Data("model bytes".utf8)
@@ -93,7 +93,11 @@ struct ModelSupersessionTests {
             let downloader = try ModelDownloader(appData:root,fixtureOrigin:URL(string:"http://127.0.0.1:1")!,userAgent:"Cassini test",removalLockWaiting:{ waiting.fulfill() })
             let task = Task(executorPreference:fixtureQueue) { try await downloader.removeSuperseded(old.pin,afterVerifying:new) }
             defer { task.cancel() }
-            let observed = await XCTWaiter.fulfillment(of:[waiting],timeout:10)
+            let observed = await withCheckedContinuation { continuation in
+                DispatchQueue.global().async {
+                    continuation.resume(returning:XCTWaiter.wait(for:[waiting],timeout:10))
+                }
+            }
             try #require(observed == .completed) // Failure-only guard; the failed flock is the event.
             #expect(ModelStorage.isInstalled(old,in:root))
             if cancel { task.cancel() }
@@ -159,5 +163,14 @@ struct ModelSupersessionTests {
         await #expect(throws:(any Error).self) { try await downloader.removeSuperseded(old.pin,afterVerifying:new) }
         #expect(ModelStorage.isInstalled(old,in:root))
         #expect(try Data(contentsOf:outside.appendingPathComponent("weights.bin")) == bytes)
+    }
+}
+
+/// A test-owned source of threads, independent of the shared cooperative pool.
+private final class SupersessionFixtureExecutor: TaskExecutor {
+    private let queue = DispatchQueue(label:"CassiniSupersession.lock-fixture")
+    func enqueue(_ ownedJob: consuming ExecutorJob) {
+        let job = UnownedJob(ownedJob)
+        queue.async { job.runSynchronously(on:self.asUnownedTaskExecutor()) }
     }
 }
