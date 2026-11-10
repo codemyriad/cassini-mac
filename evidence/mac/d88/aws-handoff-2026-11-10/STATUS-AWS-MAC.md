@@ -44,7 +44,7 @@ Periodic checkpoint cutoff is 08:15 UTC. The readiness watcher stops at 08:20 UT
 
 ## CI readiness
 
-Last checked: 2026-11-10T23:04:44+00:00
+Last checked: 2026-11-10T23:09:45+00:00
 
 - #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling; draft.
 - #211 `d1ebe14`: pending: UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
