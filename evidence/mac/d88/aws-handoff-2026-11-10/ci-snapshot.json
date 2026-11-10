@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T23:14:45+00:00",
+  "updated": "2026-11-10T23:19:46+00:00",
   "prs": [
     {
       "pr": 210,
@@ -62,7 +62,6 @@
       "reviewHold": false,
       "pending": [
         "CassiniKit tests and conformance",
-        "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling"
       ],
