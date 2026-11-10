@@ -1,0 +1,11 @@
+--- a/Sources/CassiniBrowserSetup/BackgroundSetup.swift
++++ b/Sources/CassiniBrowserSetup/BackgroundSetup.swift
+@@ -64,7 +64,7 @@
+     public func trigger() {
+         guard !stopped else { return }
+         generation &+= 1; timer?.cancel(); timer = nil; backoff.reset()
+-        if attempt != nil { again = true; return }
++        if attempt != nil { return }
+         run()
+     }
+     public func stop() {

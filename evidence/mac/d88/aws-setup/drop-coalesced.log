@@ -1,0 +1,29 @@
+Building for debugging...
+[0/25] Write sources
+[1/25] Write swift-version--79AA4F9932D1E87A.txt
+[3/9] Emitting module CassiniBrowserSetup
+[4/9] Compiling CassiniBrowserSetup BackgroundSetup.swift
+[4/12] Write Objects.LinkFileList
+[7/12] Linking cassini-browser-connect-probe
+[8/12] Linking cassini-browser-setup-service
+[9/12] Applying cassini-browser-connect-probe
+[10/12] Applying cassini-browser-setup-service
+[11/12] Linking CassiniKitPackageTests
+Build complete! (3.45s)
+Test Suite 'Selected tests' started at 2026-11-10 14:43:57.727.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:43:57.728.
+Test Suite 'BackgroundSetupTests' started at 2026-11-10 14:43:57.728.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:123: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Installer entered 2 attempts".
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:126: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor] : XCTAssertEqual failed: ("1") is not equal to ("2")
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor]' failed (5.670 seconds).
+Test Suite 'BackgroundSetupTests' failed at 2026-11-10 14:44:03.398.
+	 Executed 1 test, with 2 failures (0 unexpected) in 5.670 (5.670) seconds
+Test Suite 'CassiniKitPackageTests.xctest' failed at 2026-11-10 14:44:03.398.
+	 Executed 1 test, with 2 failures (0 unexpected) in 5.670 (5.670) seconds
+Test Suite 'Selected tests' failed at 2026-11-10 14:44:03.398.
+	 Executed 1 test, with 2 failures (0 unexpected) in 5.670 (5.671) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.

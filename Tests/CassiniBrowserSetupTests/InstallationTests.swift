@@ -141,8 +141,7 @@ final class InstallationTests: XCTestCase {
         }
         defer { setup.stop() }
         setup.trigger()
-        let deadline = ContinuousClock.now.advanced(by:.seconds(5))
-        while setup.state == .settingUp && ContinuousClock.now < deadline { await Task.yield() }
+        await waitForSetupState(setup,.waiting)
         XCTAssertEqual(setup.state,.waiting)
         for name in ["io.codemyriad.cassini","io.codemyriad.cassini.control"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath:leaf("Google/Chrome").appendingPathComponent(name + ".json").path))

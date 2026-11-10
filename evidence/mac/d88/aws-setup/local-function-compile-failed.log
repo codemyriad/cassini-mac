@@ -1,0 +1,16 @@
+[0/1] Planning build
+Building for debugging...
+[0/25] Write sources
+[1/25] Write swift-version--79AA4F9932D1E87A.txt
+[3/8] Emitting module CassiniBrowserSetupTests
+[4/8] Compiling CassiniBrowserSetupTests InstallationTests.swift
+[5/8] Compiling CassiniBrowserSetupTests BackgroundSetupTests.swift
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:152:20: error: main actor-isolated synchronous local function 'observe()' cannot be marked as '@Sendable'
+150 |     @MainActor func waitForSetupState(_ setup: BackgroundBrowserSetup, _ state: BackgroundBrowserSetup.State) async {
+151 |         let event = expectation(description:"Setup state published: \(state)")
+152 |         @MainActor @Sendable func observe() {
+    |                    `- error: main actor-isolated synchronous local function 'observe()' cannot be marked as '@Sendable'
+153 |             if setup.state == state { event.fulfill(); return }
+154 |             withObservationTracking { _ = setup.state } onChange: {
+[6/8] Emitting module CassiniPlaybackTests
+error: fatalError

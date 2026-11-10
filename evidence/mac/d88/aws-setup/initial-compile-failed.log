@@ -1,0 +1,16 @@
+Building for debugging...
+[0/26] Write sources
+[2/26] Write swift-version--79AA4F9932D1E87A.txt
+[4/9] Emitting module CassiniBrowserSetupTests
+[5/9] Emitting module CassiniPlaybackTests
+[6/9] Compiling CassiniBrowserSetupTests InstallationTests.swift
+[7/9] Compiling CassiniBrowserSetupTests BackgroundSetupTests.swift
+/private/tmp/cassini-aws-d88-before/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:156:38: error: capture of 'observe()' with non-sendable type '() -> ()' in a '@Sendable' closure
+154 |             if setup.state == state { event.fulfill(); return }
+155 |             withObservationTracking { _ = setup.state } onChange: {
+156 |                 Task { @MainActor in observe() }
+    |                                      |- error: capture of 'observe()' with non-sendable type '() -> ()' in a '@Sendable' closure
+    |                                      `- note: a function type must be marked '@Sendable' to conform to 'Sendable'
+157 |             }
+158 |         }
+error: fatalError
