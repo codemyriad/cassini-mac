@@ -28,7 +28,10 @@ def command(args, timeout=45, env=None):
     try:
         output, _ = child.communicate(timeout=min(timeout, remaining))
     except subprocess.TimeoutExpired:
-        os.killpg(child.pid, signal.SIGKILL)
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         output, _ = child.communicate()
         raise RuntimeError('Timed out: '+str(args[:3])+' '+output[-500:])
     if child.returncode:
@@ -64,7 +67,7 @@ def main():
                 os.killpg(pgid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
-        except RuntimeError as error:
+        except (RuntimeError, OSError, ValueError) as error:
             print(str(error), flush=True)  # A completed watcher may already be gone.
     audit_error = None
     env = dict(os.environ, AWS_MAC_RETIRE_AT='2026-11-11T08:24:00+00:00')
