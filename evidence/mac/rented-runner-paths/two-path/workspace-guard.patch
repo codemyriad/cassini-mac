@@ -1,0 +1,11 @@
+--- a/scripts/ci-products.py
++++ b/scripts/ci-products.py
+@@ -114,7 +114,7 @@
+             workspace = metadata.get('workspace')
+             if not isinstance(workspace, str) or not Path(workspace).is_absolute():
+                 raise ValueError('Missing or invalid SwiftPM workspace identity')
+-            if workspace != expected['workspace']:
++            if False: # diagnostic mutation
+                 raise WorkspaceMismatch('SwiftPM workspace differs: ' + workspace + ' -> ' + expected['workspace'])
+         packed.extractall(ROOT, members=members)
+     print('Restored verified', kind, 'products for', expected['commit'])
