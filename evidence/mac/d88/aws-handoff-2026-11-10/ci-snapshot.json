@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T22:18:32+00:00",
+  "updated": "2026-11-10T22:23:33+00:00",
   "prs": [
     {
       "pr": 210,
@@ -97,8 +97,7 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "UX Library boards / Library boards",
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)"
+        "UX Library boards / Library boards"
       ],
       "failed": [],
       "runs": [
