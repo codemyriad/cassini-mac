@@ -35,7 +35,7 @@ None. Await exact-head CI; the watcher keeps failed/pending heads draft and mark
 
 ## CI readiness
 
-Last checked: 2026-11-10T21:58:29+00:00
+Last checked: 2026-11-10T22:03:30+00:00
 
 - #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
 - #211 `d1ebe14`: pending: UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
