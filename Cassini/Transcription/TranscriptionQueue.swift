@@ -54,6 +54,11 @@ import Darwin
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
     @ObservationIgnored private var failedFixtureOnce = false
     @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
+    @ObservationIgnored var fixturePreparationStarted: ((URL) -> Void)?
+    func waitForFixturePreparation() async {
+        guard RecordingFixture.enabled else { return }
+        await preparation?.value
+    }
     #endif
     // Persist accepted queue intent before any inactive folder can move.
     // The active child's paths remain protected; queued folders are rediscovered.
@@ -95,6 +100,9 @@ import Darwin
                             try MeetingTranscriber.setStatus(directory:meeting.folder,id:meeting.id,status:"queued")
                         }
                         preparing = (meeting.folder,work)
+                        #if DEBUG
+                        if RecordingFixture.enabled { fixturePreparationStarted?(meeting.folder) }
+                        #endif
                         try await work.value
                     }
                     if !trashing.contains(meeting.folder.path), pending.contains(where:{ $0.folder == meeting.folder }) {
