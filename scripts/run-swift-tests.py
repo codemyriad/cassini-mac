@@ -36,8 +36,8 @@ def run(command, folder, idle_seconds=120, diagnose=stacks, forward=True,
     folder.mkdir(parents=True,exist_ok=True)
     process = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,start_new_session=True)
-    last = clock()
     try:
+        last = clock()
         with selectors.DefaultSelector() as events, (folder/'tests.log').open('wb') as log:
             events.register(process.stdout,selectors.EVENT_READ)
             while True:

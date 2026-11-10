@@ -12,20 +12,23 @@ runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
 class ManualIdle:
     def __init__(self):
         self.now = 0
-        self.saw_output = False
+        self.initial_budget = None
 
     def clock(self):
         return self.now
 
     def wait(self, selector, remaining):
-        if not self.saw_output:
+        if self.initial_budget is None:
             ready = selector.select(10)
             if not ready:
                 raise AssertionError('fixture did not publish its entry line')
-            self.saw_output = True
+            self.initial_budget = remaining
+            self.now += remaining - 1
             return ready
         if remaining <= 0:
             raise AssertionError('runner waited again at the expired deadline')
+        if remaining != self.initial_budget:
+            raise AssertionError('child output did not reset the idle budget')
         self.now += remaining
         return []
 
