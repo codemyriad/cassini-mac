@@ -86,7 +86,7 @@ struct MeetingExportTests {
         let file = try CassiniReader.read(contentsOf:artifact.url)
         #expect(file.state == .ok && file.manifest?.audio.sampleCount == 48000)
         #expect(file.manifest?.meeting.recordedAtLocal == nil)
-        #expect(file.manifest?.meeting.recordedAtUtc == nil)
+        #expect(file.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
         #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"]?["offsetsAssumedZero"] == .bool(true))
         #expect(file.manifest?.meeting.createdAtUtc == expected)
     }
