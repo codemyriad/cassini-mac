@@ -1,8 +1,8 @@
 # AWS Mac status
 
-**Destruction deadline: 2026-11-11 12:09 UTC. Move before this time.**
+**Stop using this Mac by 2026-11-11 08:30 UTC. Termination and disk deletion: 2026-11-11 09:30 UTC.**
 
-Updated: 2026-11-10 19:40 UTC
+Updated: 2026-11-10 21:48 UTC
 
 Main #208 (including #222) merged at `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f`. Per coordinator, all six draft branches now contain an ordinary merge from that main, with no rebase or force-push. All six heads are pushed and their affected-row plus seven shared supersession tests pass locally under the shared heavy-run lock, Xcode16.4/four jobs. PR bodies include new-head validation links and D87 entries. No new source work is planned; continue existing readiness monitoring only.
 
@@ -43,3 +43,9 @@ Last checked: 2026-11-10T21:45:32+00:00
 - #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
 - #214 `c2777e5`: pending: UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
 - #215 `612bb36`: pending: Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
+
+## Final handoff plan — earlier retirement
+
+All source branches and evidence are already pushed; a fresh remote-head inventory is archived as `pushed-heads.json`. Continue only the existing readiness watcher until the old-host cutoff. Periodic checkpoints stop at 08:15 UTC, periodic readiness stops at 08:20 UTC, and `aws-mac-d88-cutoff` starts the final audit/STATUS checkpoint at 08:20 UTC. It stops this task's two periodic sessions, audits exact-head CI once, writes what is pushed/what remains into this STATUS, pushes the final handoff branch and verifies its remote head. Retries stop by 08:28 UTC, before the mandatory 08:30 stop. The timer then exits; it never shuts down or modifies the host/CI runners.
+
+The cutoff script and plan are pushed on `test/d88-aws-handoff` under `evidence/mac/d88/aws-handoff-2026-11-10/retire-old-host.py` and `retirement-plan.json`. It refuses a different hostname. Do not resume the retirement timer on the replacement Mac; leave AWS_MAC_RETIRE_AT unset there and resume only the readiness/checkpoint scripts if needed. Nothing required for source restoration is intended to remain solely on this disk.

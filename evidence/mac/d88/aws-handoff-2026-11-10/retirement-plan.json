@@ -1,0 +1,9 @@
+{
+  "host": "ip-172-31-21-173.ec2.internal",
+  "checkpointStopAt": "2026-11-11T08:15:00+00:00",
+  "readinessStopAt": "2026-11-11T08:20:00+00:00",
+  "finalizeAt": "2026-11-11T08:20:00+00:00",
+  "commandsEndBy": "2026-11-11T08:28:00+00:00",
+  "stopUsingBy": "2026-11-11T08:30:00+00:00",
+  "terminationAt": "2026-11-11T09:30:00+00:00"
+}

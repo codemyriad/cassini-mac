@@ -1,10 +1,16 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
 prs={210: '30fc6f3db0ec9be68e2c197e62b69db351ac9a1d', 211: 'd1ebe142862c3a4147866ee6cb0d6cbd229c56b8', 212: '8c9c38988c93e2d3e142e2e26dd631287e12b88d', 213: '56bbf1e2adb703c94011a9e457ec8445dba44b55', 214: 'c2777e51e8a48cdb4ae3bd4419d063c2fd67a701', 215: '612bb36a1df7fd6296cba7061523ba743ffe7817'}
-fields='number headRefOid isDraft commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}}}}}'
+fields='number state headRefOid isDraft commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}}}}}'
+def retirement_due():
+    value=os.environ.get('AWS_MAC_RETIRE_AT')
+    return bool(value) and datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(value)
+def require_active_host():
+    if retirement_due():raise RuntimeError('Old AWS Mac retirement cutoff reached')
 def gh_json(*args):
     return json.loads(subprocess.check_output(['gh',*args],text=True))
 def mark_when_audited(summary, expected):
+    require_active_host()
     number=summary['pr']
     audit=[]
     for run_id in summary['runs']:
@@ -26,6 +32,7 @@ def mark_when_audited(summary, expected):
     body,count=re.subn(r'(?m)^- 19[^\n]*$',line,pull['body'])
     if count!=1:raise RuntimeError(f'#{number}: expected exactly one D87 class 19 checklist entry')
     body_file=pathlib.Path('/tmp')/f'aws-ready-pr-{number}.md';body_file.write_text(body)
+    require_active_host()
     if body!=pull['body']:
         subprocess.check_call(['gh','pr','edit',str(number),'--repo','codemyriad/cassini-mac','--body-file',str(body_file)],stdout=subprocess.DEVNULL)
     # Check again after the checklist update. This watcher never pushes branches.
@@ -36,6 +43,7 @@ def mark_when_audited(summary, expected):
         fresh=gh_json('api',f"repos/codemyriad/cassini-mac/actions/runs/{entry['id']}")
         if not (fresh['head_sha']==expected and fresh['status']=='completed' and fresh['conclusion']=='success' and fresh['run_attempt']==1):
             raise RuntimeError(f'#{number}: workflow changed immediately before readiness')
+    require_active_host()
     subprocess.check_call(['gh','pr','ready',str(number),'--repo','codemyriad/cassini-mac'])
     final=gh_json('api',f'repos/codemyriad/cassini-mac/pulls/{number}')
     if final['draft'] or final['head']['sha']!=expected:raise RuntimeError(f'#{number}: readiness verification failed')
@@ -55,6 +63,8 @@ def mark_when_audited(summary, expected):
     print(f'MARKED READY #{number} {expected}',flush=True)
 query='query {repository(owner:"codemyriad",name:"cassini-mac"){'+' '.join('p'+str(n)+':pullRequest(number:'+str(n)+'){'+fields+'}' for n in prs)+'}}'
 while True:
+    if retirement_due():
+        print('Old AWS Mac retirement cutoff reached; watcher stopped',flush=True);break
     summaries=[]
     try:
         payload=json.loads(subprocess.check_output(['gh','api','graphql','-f','query='+query],text=True))['data']['repository']
@@ -68,7 +78,7 @@ while True:
             if n==214: candidate=candidate and names.get('Package tests (macos-15-intel)')=='SUCCESS'
             if n==215: candidate=candidate and any(k and k.startswith('Whistle bundle') and v=='SUCCESS' for k,v in names.items())
             runs=sorted({int(m.group(1)) for x in contexts if (m:=re.search(r'/actions/runs/(\d+)',x.get('detailsUrl','')))})
-            summaries.append(dict(pr=n,head=pr['headRefOid'],headMatches=matches,draft=pr['isDraft'],readyCandidate=candidate,pending=pending,failed=failed,runs=runs))
+            summaries.append(dict(pr=n,state=pr['state'],head=pr['headRefOid'],headMatches=matches,draft=pr['isDraft'],readyCandidate=candidate,pending=pending,failed=failed,runs=runs))
         if '--mark-ready' in sys.argv:
             for summary in summaries:
                 if summary['draft'] and summary['readyCandidate']:

@@ -1,6 +1,6 @@
 # AWS Mac handoff — 2026-11-10
 
-**This Mac is destroyed after 2026-11-11 12:09 UTC**, earlier than the original
+**This Mac is destroyed after 2026-11-11 09:30 UTC**, earlier than the original
 brief. Move before this deadline. All task source and evidence are on origin;
 this branch additionally preserves operational scripts and the status snapshot.
 No build products, downloaded assets, credentials or machine lock files are needed.
@@ -90,3 +90,9 @@ Completed local proof and opened draft PR #222 targeting `ci/rented-mac-routing`
 ## #208 merged: current six PR heads
 
 Coordinator authorized ordinary main merges after #208 merged. All six branches contain main `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f` as their second merge parent, with no rebase or force-push. The published-work table and `routing-heads.json` name the new exact heads. Every affected row plus all seven shared supersession tests passes locally under the shared mkdir lock, Xcode16.4/four jobs; transport uses only generated silence for its supplemental publication check. Logs/results are in `routing-merge-validation/`, with staging recipe `aws-validate-routing-merges.py`. CI readiness is pending on these new heads; the watcher map is updated. Earlier #208 pending/failure observations are historical.
+
+## Final old-host deadline (latest instruction)
+
+**Stop using this Mac by 2026-11-11 08:30 UTC; termination/disk deletion is 09:30 UTC.** This supersedes the earlier12:09 deadline and the original brief. The old host runs three task-owned tmux sessions: readiness (`aws-mac-d88-ci`, stop08:20), periodic checkpoints (`aws-mac-d88-checkpoint`, stop08:15), and one-shot finalization (`aws-mac-d88-cutoff`, starts08:20, all commands end by08:28). `retirement-plan.json` records exact UTC times and hostname.
+
+At finalization the script stops the two periodic writers, performs a bounded final CI audit, writes a final STATUS with pushed work and remaining PRs, pushes the handoff branch with bounded ordinary-push retries, verifies the remote head, and exits. The host-specific cutoff is an environment variable, not a permanent expiration of the archived portable watcher. On the replacement Mac leave `AWS_MAC_RETIRE_AT` unset and **do not start `retire-old-host.py`**. Check the final STATUS section and readiness JSON before resuming. All task branches and restoration scripts are already pushed independently of the scheduled final refresh.

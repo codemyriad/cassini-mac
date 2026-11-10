@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -66,6 +67,9 @@ def checkpoint():
 
 
 while True:
+    stop_at=os.environ.get('AWS_MAC_RETIRE_AT')
+    if '--watch' in sys.argv and stop_at and datetime.now(timezone.utc)>=datetime.fromisoformat(stop_at):
+        print('Old AWS Mac checkpoint cutoff reached',flush=True);break
     try:
         checkpoint()
     except Exception as error:
