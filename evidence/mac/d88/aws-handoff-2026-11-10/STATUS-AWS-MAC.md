@@ -27,7 +27,7 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T18:53:36+00:00
+Last checked: 2026-11-10T18:58:36+00:00
 
 - #210 `9d373ff`: failed: CassiniKit tests and conformance; draft.
 - #211 `9f892f6`: failed: CassiniKit tests and conformance; draft.
