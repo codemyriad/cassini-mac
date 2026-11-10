@@ -2,7 +2,7 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 15:50 UTC
+Updated: 2026-11-10 16:18 UTC
 
 - IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `f0b06cc`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
 - Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `54c574b`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
@@ -19,7 +19,7 @@ All six work branches and evidence are pushed. Handoff scripts and a status snap
 
 ## Current blocker
 
-At 15:49 UTC, #210 and #214 have both architecture builds green and nine downstream checks pending each. #211–#213 still need architecture builds. No failures reported. Exact-head readiness monitoring continues; #215 follows #210–#214. See the live CI section below for subsequent changes.
+Exact-head hosted CI scheduling/completion. #210, #212 and #214 have both builds green; #211 and #213 each still need a build. No failures at the latest audit. `scripts/ci-changes.py` intentionally selects all UX areas for any Sources/Tests change, so these PRs require the broad downstream check set. Live status is below; no checks were weakened, rerun or bypassed. #215 follows #210–#214.
 
 ## Questions
 
@@ -27,7 +27,7 @@ None. All six assigned rows are pushed; exact-head CI is the remaining gate. No 
 
 ## CI readiness
 
-Last checked: 2026-11-10T16:14:57+00:00
+Last checked: 2026-11-10T16:15:18+00:00
 
 - #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
 - #211 `54c574b`: pending: build / Build products (x86_64, Xcode 16.4); draft.
