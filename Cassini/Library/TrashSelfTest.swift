@@ -66,18 +66,14 @@ import Darwin
             defer { flock(held,LOCK_UN); close(held) }
             queue.enqueue(blocked)
             try await wait { queue.preparingFixtureFolder == blocked.folder }
-            var released = false
-            let fallbackRelease = Task {
-                try? await Task.sleep(for:.seconds(2))
-                if !Task.isCancelled { flock(held,LOCK_UN); released = true }
-            }
             let stillActive = queue.active
+            // Keep the unrelated metadata lock held until the actual Trash task
+            // returns. The harness timeout only fails a hang; host descheduling
+            // cannot release the lock and change the independence assertion.
             trash.move(waiting,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && !FileManager.default.fileExists(atPath:waiting.folder.path),"queued meeting trashed")
             try check(queue.active == stillActive,"unrelated transcription still runs")
-            let returnedWithoutOtherMetadata = !released
-            fallbackRelease.cancel(); flock(held,LOCK_UN)
-            try check(returnedWithoutOtherMetadata,"Trash does not wait for another meeting’s metadata lock")
+            try check(flock(held,LOCK_UN) == 0,"release unrelated metadata only after Trash finishes")
             report["unrelatedMetadataDoesNotDelayTrash"] = true
             report["queuedCancelIsPerMeeting"] = true
             phase = "active trash"
