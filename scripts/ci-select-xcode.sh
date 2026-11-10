@@ -20,3 +20,7 @@ version="$(xcodebuild -version)"
 printf '%s\n' "$version"
 fingerprint="$(printf '%s' "$version" | shasum -a 256 | awk '{print $1}')"
 printf 'fingerprint=%s\n' "$fingerprint" >> "${GITHUB_OUTPUT:?Missing GITHUB_OUTPUT}"
+# Clang precompiled headers record the absolute module-cache path. Keep only
+# content downloads shared across different hosted/self-hosted workspaces.
+workspace="$(printf '%s' "${GITHUB_WORKSPACE:-$PWD}" | shasum -a 256 | awk '{print $1}')"
+printf 'workspace=%s\n' "$workspace" >> "$GITHUB_OUTPUT"

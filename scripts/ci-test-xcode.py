@@ -11,7 +11,7 @@ class Selection(unittest.TestCase):
   self.bin=self.root/'bin';self.bin.mkdir()
   tool=self.bin/'xcodebuild'
   tool.write_text('#!/bin/bash\nset -eu\n[[ "$1" = -version ]]\ncase "$DEVELOPER_DIR" in\n*Xcode_16.4.app*) printf "Xcode 16.4\\nBuild version 16F6\\n";;\n*Xcode-27.0.0.app*) printf "Xcode 27.0\\nBuild version 27A266a\\n";;\n*) exit 73;;\nesac\n');tool.chmod(0o755)
-  self.env=dict(os.environ,CI_XCODE_APPLICATIONS=str(self.apps),GITHUB_ENV=str(self.root/'env'),GITHUB_OUTPUT=str(self.root/'outputs'),PATH=str(self.bin)+':/usr/bin:/bin')
+  self.env=dict(os.environ,CI_XCODE_APPLICATIONS=str(self.apps),GITHUB_WORKSPACE=str(self.root/'checkout one'),GITHUB_ENV=str(self.root/'env'),GITHUB_OUTPUT=str(self.root/'outputs'),PATH=str(self.bin)+':/usr/bin:/bin')
  def install(self,bundle): (self.apps/bundle/'Contents/Developer').mkdir(parents=True)
  def run_selector(self): return subprocess.run(['bash',str(ROOT/'scripts/ci-select-xcode.sh')],env=self.env,capture_output=True,text=True)
  def test_hosted_prefers_164_even_if_both_exist(self):
@@ -24,8 +24,21 @@ class Selection(unittest.TestCase):
   result=self.run_selector();self.assertEqual(result.returncode,0,result.stderr)
   self.assertIn('Xcode-27.0.0.app/Contents/Developer',(self.root/'env').read_text())
   fingerprint=hashlib.sha256(b'Xcode 27.0\nBuild version 27A266a').hexdigest()
-  self.assertEqual((self.root/'outputs').read_text(),'fingerprint='+fingerprint+'\n')
+  workspace=hashlib.sha256(self.env['GITHUB_WORKSPACE'].encode()).hexdigest()
+  self.assertEqual((self.root/'outputs').read_text(),'fingerprint='+fingerprint+'\nworkspace='+workspace+'\n')
   self.assertNotEqual(fingerprint,hashlib.sha256(b'Xcode 16.4\nBuild version 16F6').hexdigest())
+ def test_same_xcode_in_different_workspaces_separates_precompiled_header_caches(self):
+  self.install('Xcode_16.4.app')
+  identities=[]
+  for workspace in ['/Users/runner/work/cassini-mac/cassini-mac','/Users/m1/runners/scw-m4-mac-1/_work/cassini-mac/cassini-mac']:
+   self.env['GITHUB_WORKSPACE']=workspace
+   (self.root/'outputs').unlink(missing_ok=True)
+   result=self.run_selector();self.assertEqual(result.returncode,0,result.stderr)
+   output=dict(line.split('=',1) for line in (self.root/'outputs').read_text().splitlines())
+   self.assertEqual(output['workspace'],hashlib.sha256(workspace.encode()).hexdigest())
+   identities.append(output)
+  self.assertEqual(identities[0]['fingerprint'],identities[1]['fingerprint'])
+  self.assertNotEqual(identities[0]['workspace'],identities[1]['workspace'])
  def test_failed_version_probe_cannot_publish_a_cache_identity(self):
   self.install('Xcode-27.0.0.app')
   (self.bin/'xcodebuild').write_text('#!/bin/bash\nexit 73\n')

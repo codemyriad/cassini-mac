@@ -265,6 +265,9 @@ class RentedRunnerRouting(unittest.TestCase):
             ['key: swiftpm-','restore-keys: swiftpm-','key: pinned-fetches-','restore-keys: pinned-fetches-'])]
         self.assertEqual(len(keys),4)
         for line in keys:self.assertIn('steps.xcode.outputs.fingerprint',line)
+        for line in keys:
+            if 'swiftpm-' in line:self.assertIn('steps.xcode.outputs.workspace',line)
+            else:self.assertNotIn('steps.xcode.outputs.workspace',line)
         self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
 
 
