@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T19:18:39+00:00",
+  "updated": "2026-11-10T19:23:39+00:00",
   "prs": [
     {
       "pr": 210,
@@ -25,9 +25,11 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "build_release / Build Release app and package (universal, Xcode 16.4)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
-        "Whistle bundle / Universal app and sandboxed Whistle helper"
+        "UX Library boards / Library boards",
+        "UX Library boards / Native spectrogram and profiling",
+        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
+        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel)"
       ],
       "failed": [
         "CassiniKit tests and conformance"
