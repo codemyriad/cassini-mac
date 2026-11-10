@@ -56,7 +56,8 @@ report=json.loads(output)
 for name in ['sandboxedBundledParakeet','unverifiedModelCannotBecomeDefault','verifiedInstallationBecomesDefault','legacyIdRetiredOnlyAfterV2Verifies','explicitWhistleChoiceSurvivesRelaunch',
              'firstWhistleSuggestionHonorsCapability','suggestionDismissalPersists','defaultNoticeShownOnce','removePreservesAcceptedJob','queuedJobUsesWhistle',
              'invalidModelRetriesWhistle','invalidModelDeleted','choicePersisted','metadataAndAudioPreserved',
-             'unusedDamagedInstallationRecovers','removeMessageFollowsDiskCommit','inventoryPreservesAcceptedModel','emptyTranscriptRetryRequeues']:
+             'unusedDamagedInstallationRecovers','removeMessageFollowsDiskCommit','inventoryPreservesAcceptedModel','emptyTranscriptRetryRequeues',
+             'removeLockObserved','acceptedJobHeldDuringRemove','queueCompletionEvents']:
     assert report[name] is True,(name,report)
 assert report['parakeetWords']>10 and report['audioDevicesOpened'] is False
 a.report.write_text(json.dumps(report,indent=2)+'\n')
