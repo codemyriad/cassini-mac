@@ -96,6 +96,7 @@ public struct Manifest: Sendable, Equatable {
     public var speakers: [Speaker]
     public var transcripts: [TranscriptEntry]
     public var provenance: JSON?
+    public var wordEndsBoundedByAudio: Bool { TranscriptRendering.endsBoundedByAudio(provenance:provenance) }
     public var summary: JSON?
     public var attachments: [Attachment]
     /// The whole decoded manifest, for display of members this reader does not model.

@@ -193,6 +193,7 @@ public struct LibraryScanner: Sendable {
                     guard let body = selected?.load.transcript else { throw MetadataError.invalid }
                     words = body.items.map { .init(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text) }
                     meeting.transcriptLanguage = body.language
+                    meeting.wordEndsBoundedByAudio = file.manifest?.wordEndsBoundedByAudio == true
                     readable = true
                 }
             } else if metadata == nil {

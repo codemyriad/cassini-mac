@@ -239,6 +239,7 @@ public enum MeetingPresentation {
             title: title, start: file.manifest.flatMap { recordingDate($0.meeting.createdAtUtc) }, durationMs: duration,
             speakers: speakers, quote: nil, notes: [], audioFiles: [url], issues: [])
         result.metadataReadOnly = true; result.transcriptItems = words
+        result.wordEndsBoundedByAudio = trusted && file.manifest?.wordEndsBoundedByAudio == true
         result.exportTitle = trusted || file.state == .plainAudio ? title : url.deletingPathExtension().lastPathComponent
         return result
     }
