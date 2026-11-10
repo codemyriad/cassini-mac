@@ -70,7 +70,9 @@
     "project.yml",
     "Package.swift",
     "scripts/*whistle*",
-    ".github/workflows/ux-whistle.yml"
+    ".github/workflows/ux-whistle.yml",
+    "scripts/worker_events.py",
+    "scripts/test-worker-events.py"
   ],
   "model_download": [
     "Sources/CassiniModels/**",
@@ -95,7 +97,9 @@
     "scripts/test-model-network-app.py",
     "project.yml",
     "Package.swift",
-    ".github/workflows/ux-parakeet.yml"
+    ".github/workflows/ux-parakeet.yml",
+    "scripts/worker_events.py",
+    "scripts/test-worker-events.py"
   ],
   "browser_setup": [
     "Spikes/BrowserGuide/**",

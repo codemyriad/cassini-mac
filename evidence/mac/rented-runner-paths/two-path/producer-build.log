@@ -1,0 +1,15 @@
+Building for debugging...
+[0/8] /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/producer/.build/arm64-apple-macosx/debug/PathFixturePackageTests.derived/runner.swift
+[1/8] Write sources
+[4/8] Copying Resources
+[5/8] Write swift-version--79AA4F9932D1E87A.txt
+[7/10] Compiling PathValue PathValue.swift
+[8/10] Emitting module PathValue
+[9/13] Compiling PathTests resource_bundle_accessor.swift
+[10/13] Emitting module PathTests
+[11/13] Compiling PathTests PathTests.swift
+[12/15] Compiling PathFixturePackageTests runner.swift
+[13/15] Emitting module PathFixturePackageTests
+[13/15] Write Objects.LinkFileList
+[14/15] Linking PathFixturePackageTests
+Build complete! (7.31s)

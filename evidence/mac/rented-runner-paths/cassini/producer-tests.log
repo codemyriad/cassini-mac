@@ -1,0 +1,24 @@
+[0/1] Planning build
+Test Suite 'Selected tests' started at 2026-11-10 18:18:01.862.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 18:18:01.863.
+Test Suite 'SharedCallWireTests' started at 2026-11-10 18:18:01.863.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testLiteralWireVectorsThroughTheProductionRegistry]' started.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testLiteralWireVectorsThroughTheProductionRegistry]' passed (0.006 seconds).
+Test Suite 'SharedCallWireTests' passed at 2026-11-10 18:18:01.869.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 18:18:01.869.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 18:18:01.869.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelDownloaderTests started.
+◇ Suite WhistleAssetTests started.
+◇ Test readinessCanDependOnTheCallingActorMakingProgress() started.
+◇ Test compiledSourcePinsMatchPublication() started.
+✔ Test compiledSourcePinsMatchPublication() passed after 0.001 seconds.
+✔ Suite WhistleAssetTests passed after 0.001 seconds.
+✔ Test readinessCanDependOnTheCallingActorMakingProgress() passed after 0.057 seconds.
+✔ Suite ModelDownloaderTests passed after 0.058 seconds.
+✔ Test run with 2 tests passed after 0.058 seconds.
