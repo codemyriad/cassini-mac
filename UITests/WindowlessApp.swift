@@ -168,7 +168,16 @@ extension LibraryBoards {
         XCTAssertTrue(waitForPresent(show,timeout:10));show.click()
         settings.buttons["_XCUI:CloseWindow"].click();library.buttons["_XCUI:CloseWindow"].click()
         app.typeKey("q",modifierFlags:.command);waitForWindowless { app.state == .notRunning }
-        app.launch();XCTAssertFalse(idle.waitForExistence(timeout:2));XCTAssertFalse(library.exists)
+        app.launch()
+        // The scene's Window route proves cold-launch command setup completed,
+        // even when no Library or status item is supposed to exist. Opening its
+        // menu does not mount a Library view; only the later Dock request does.
+        let windowMenu=app.menuBars.menuBarItems["Window"]
+        XCTAssertTrue(waitForPresent(windowMenu,timeout:15),app.debugDescription)
+        windowMenu.click()
+        XCTAssertTrue(waitForPresent(app.menuItems["Cassini talk"],timeout:10),app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertFalse(idle.exists);XCTAssertFalse(library.exists)
         try await dockReopen(app)
         XCTAssertTrue(waitForPresent(library,timeout:15),app.debugDescription)
         app.typeKey(",",modifierFlags:.command);XCTAssertTrue(waitForPresent(show,timeout:10));show.click()
