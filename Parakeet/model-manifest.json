@@ -3,9 +3,9 @@
   "base_url": "https://dist.gocassini.com",
   "models": [
     {
-      "id": "parakeet-ultra-0.6b-int8",
-      "name": "Parakeet Ultra 0.6B \u2014 int8",
-      "description": "Multilingual speech recognition, Parakeet v3 post-trained by Moondream, quantized weights",
+      "id": "parakeet-ultra-0.6b-int8-v2",
+      "name": "Parakeet Ultra 0.6B \u2014 int8 v2",
+      "description": "Multilingual speech recognition, Parakeet v3 post-trained by Moondream, quantized weights; depthwise and subsampling convolutions kept in fp32",
       "license": "CC-BY-4.0",
       "source_url": "https://huggingface.co/moondream/parakeet-ultra",
       "source_sha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",

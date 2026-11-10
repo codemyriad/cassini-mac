@@ -77,22 +77,53 @@ public actor ModelDownloader {
     public func remove(_ pin: ModelPin) async throws {
         _ = try await remove(pin,unlessValid:nil)
     }
+    /// Retire a known obsolete id only while its replacement is fully verified.
+    /// Both revision locks stay held through retirement, so concurrent Remove or
+    /// repair cannot invalidate the replacement between verification and cleanup.
+    public func removeSuperseded(_ obsolete: ModelPin, afterVerifying replacement: ModelPlan) async throws {
+        guard obsolete.id != replacement.pin.id, replacement.pin.valid else { throw ModelDownloadError.manifest }
+        guard operations[replacement.pin] == nil else { throw ModelDownloadError.busy }
+        _ = try await remove(obsolete,unlessValid:nil,replacement:replacement)
+    }
     /// Recheck after acquiring the revision lock: an old inventory result must
     /// not delete an installation another helper finished in the meantime.
     public func removeInvalid(_ plan: ModelPlan) async throws -> Bool {
         guard operations[plan.pin] == nil else { throw ModelDownloadError.busy }
         return try await remove(plan.pin,unlessValid:plan)
     }
-    private func remove(_ pin: ModelPin, unlessValid plan: ModelPlan?) async throws -> Bool {
+    private func remove(_ pin: ModelPin, unlessValid plan: ModelPlan?, replacement: ModelPlan? = nil) async throws -> Bool {
         guard pin.valid else { throw ModelDownloadError.manifest }
-        guard removing.insert(pin).inserted else { throw ModelDownloadError.busy }
-        defer { removing.remove(pin) }
+        let protected = [pin] + (replacement.map { [$0.pin] } ?? [])
+        guard protected.allSatisfy({ !removing.contains($0) }) else { throw ModelDownloadError.busy }
+        removing.formUnion(protected)
+        defer { removing.subtract(protected) }
         if let operation = operations[pin] { operation.task.cancel(); _ = try? await operation.task.value }
         try ModelFiles.directory(dataRoot)
+        try ModelFiles.directory(dataRoot.appendingPathComponent("models",isDirectory:true))
+        // Validate existing cache ancestors before retiring anything: a parent
+        // symlink must never redirect automatic cleanup outside model storage.
+        let cacheRoot = dataRoot.appendingPathComponent("model-downloads",isDirectory:true)
+        let cacheID = cacheRoot.appendingPathComponent(pin.id,isDirectory:true)
+        for directory in [cacheRoot,cacheID] where FileManager.default.fileExists(atPath:directory.path) {
+            try ModelFiles.directory(directory)
+        }
         let modelRoot = dataRoot.appendingPathComponent("models/" + pin.id,isDirectory:true)
         try ModelFiles.directory(modelRoot)
-        let lock = try await Self.removalLock(modelRoot.appendingPathComponent("." + pin.sourceSHA256 + ".lock"),waiting:removalLockWaiting); defer { Self.releaseLock(lock) }
-        lockAcquired?([lock])
+        var locks: [Int32] = []
+        defer { locks.reversed().forEach(Self.releaseLock) }
+        // A total order also prevents two supersession operations from taking
+        // the same pair in opposite order. Single-revision Remove uses this path.
+        for value in protected.sorted(by:{ ($0.id,$0.sourceSHA256) < ($1.id,$1.sourceSHA256) }) {
+            let directory = dataRoot.appendingPathComponent("models/" + value.id,isDirectory:true)
+            try ModelFiles.directory(directory)
+            locks.append(try await Self.removalLock(directory.appendingPathComponent("." + value.sourceSHA256 + ".lock"),waiting:removalLockWaiting))
+        }
+        lockAcquired?(locks)
+        if let replacement {
+            let directory = dataRoot.appendingPathComponent("models/" + replacement.pin.id + "/" + replacement.pin.sourceSHA256,isDirectory:true)
+            guard ModelFiles.existingDirectory(directory) else { throw ModelDownloadError.installation }
+            try Self.validateInstalled(directory,plan:replacement,verifyHashes:true)
+        }
         let installed = modelRoot.appendingPathComponent(pin.sourceSHA256,isDirectory:true)
         if FileManager.default.fileExists(atPath:installed.path) {
             try ModelFiles.directory(installed)

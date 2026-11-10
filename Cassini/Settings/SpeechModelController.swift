@@ -76,8 +76,22 @@ import CassiniTranscription
         defaults.set(adoption.announcedRevision,forKey:Self.announcedPreference)
         defaults.set(adoption.pendingAnnouncementRevision,forKey:Self.pendingAnnouncementPreference)
     }
-    private func adoptVerifiedInstallation() {
+    private func adoptVerifiedInstallation() async {
+        let token = generation
         adoption.verified(ParakeetPin.sourceSHA256); persistChoice()
+        let legacy = ModelPin.parakeetUltraLegacy
+        let old = Self.appData.appendingPathComponent("models/" + legacy.id + "/" + legacy.sourceSHA256)
+        let partial = Self.appData.appendingPathComponent("model-downloads/" + legacy.id + "/" + legacy.sourceSHA256)
+        guard FileManager.default.fileExists(atPath:old.path) || FileManager.default.fileExists(atPath:partial.path) else { return }
+        do {
+            let manifest = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!
+            let plan = try ModelManifest.plan(Data(contentsOf:manifest),pin:.parakeetUltra)
+            try await ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app()).removeSuperseded(legacy,afterVerifying:plan)
+        } catch {
+            // v2 remains the verified default; retry old-id cleanup on the next
+            // inventory instead of turning a cleanup failure into a download error.
+            if generation == token { refreshed = false }
+        }
     }
     func refreshRecommendation() async {
         recommendationSerial &+= 1; let serial = recommendationSerial
@@ -146,7 +160,7 @@ import CassiniTranscription
         let token = generation, status = await inventory!.value
         guard token == generation else { return }
         inventory = nil; refreshed = true; downloaded = status.valid
-        if status.valid { adoptVerifiedInstallation() }
+        if status.valid { await adoptVerifiedInstallation() }
         else if usesParakeet || status.exists { await invalidModel(generation:token) }
         else { adoption.unavailable(); persistChoice() }
     }
@@ -173,7 +187,7 @@ import CassiniTranscription
                 guard generation == token else { return }
                 downloaded = true; refreshed = true
                 // D78: installation has verified all pinned files before adoption.
-                adoptVerifiedInstallation()
+                await adoptVerifiedInstallation()
             } catch is CancellationError { }
             catch {
                 guard generation == token else { return }
@@ -236,7 +250,7 @@ import CassiniTranscription
             let removed = try await ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app()).removeInvalid(plan)
             guard cleanupGeneration == generation else { return }
             downloaded = !removed; refreshed = true; failedDownload = false
-            if !removed { adoption = previousAdoption; adoptVerifiedInstallation() }
+            if !removed { adoption = previousAdoption; await adoptVerifiedInstallation() }
             else if wasSelected { message = UXText.text("models.parakeetUltra.invalidFallback") }
         } catch {
             guard cleanupGeneration == generation else { return }

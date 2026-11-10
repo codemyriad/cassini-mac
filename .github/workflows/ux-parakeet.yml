@@ -32,7 +32,7 @@ jobs:
       DO_NOT_TRACK: '1'
       ORT_DISABLE_TELEMETRY: '1'
       CASSINI_PARAKEET_RUNTIME: ${{ github.workspace }}/build/Parakeet
-      CASSINI_PARAKEET_MODEL: ${{ github.workspace }}/build/ParakeetModel/models/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      CASSINI_PARAKEET_MODEL: ${{ github.workspace }}/build/ParakeetModel/models/parakeet-ultra-0.6b-int8-v2/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
     steps:
       - uses: actions/checkout@v5

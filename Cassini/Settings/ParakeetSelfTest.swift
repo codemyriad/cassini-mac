@@ -45,8 +45,15 @@ import CassiniModels
                 }
                 guard try FileHandle.standardInput.read(upToCount:1)?.isEmpty != false else { throw POSIXError(.EINVAL) }
             }.value
+            // The previous shipped id is deliberately independent of the new
+            // production constant: only verified v2 may retire this exact copy.
+            let legacy = dataRoot.appendingPathComponent("models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9")
+            try FileManager.default.createDirectory(at:legacy,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+            let legacyBytes = Data("Private legacy model sentinel".utf8)
+            try legacyBytes.write(to:legacy.appendingPathComponent("legacy-model"))
             phase("initial inventory")
             await models.reloadInventory()
+            guard try Data(contentsOf:legacy.appendingPathComponent("legacy-model")) == legacyBytes else { throw POSIXError(.EINVAL) }
             let recommendationEligible = models.recommendationCapable && models.recommendationDiskAvailable
             guard !models.downloaded, !models.usesParakeet, models.showsSettingsSuggestion == recommendationEligible,
                   !models.showsAfterFirstSuggestion else { throw POSIXError(.EINVAL) }
@@ -77,6 +84,7 @@ import CassiniModels
             phase("installing and verifying model")
             try install(backup)
             await models.reloadInventory()
+            guard !FileManager.default.fileExists(atPath:legacy.path) else { throw POSIXError(.EINVAL) }
             guard models.downloaded, models.usesParakeet,
                   models.takeDefaultAnnouncement() || models.hasAnnouncedDefault,
                   !models.takeDefaultAnnouncement() else { throw POSIXError(.EINVAL) }
@@ -176,7 +184,7 @@ import CassiniModels
             phase("all assertions completed")
             let report: [String:Any] = ["physicalMemoryBytes":ProcessInfo.processInfo.physicalMemory,"suggestionMemoryBytes":models.recommendationMemoryBytes,"suggestionEligible":recommendationEligible,
                 "sandboxedBundledParakeet":true,"parakeetWords":firstDone.transcriptItems.count,
-                "unverifiedModelCannotBecomeDefault":true,"verifiedInstallationBecomesDefault":true,"explicitWhistleChoiceSurvivesRelaunch":true,
+                "unverifiedModelCannotBecomeDefault":true,"verifiedInstallationBecomesDefault":true,"legacyIdRetiredOnlyAfterV2Verifies":true,"explicitWhistleChoiceSurvivesRelaunch":true,
                 "firstWhistleSuggestionHonorsCapability":true,"suggestionDismissalPersists":true,"defaultNoticeShownOnce":true,"removePreservesAcceptedJob":true,"queuedJobUsesWhistle":true,
                 "invalidModelRetriesWhistle":true,"invalidModelDeleted":true,"choicePersisted":true,
                 "metadataAndAudioPreserved":true,"audioDevicesOpened":false,

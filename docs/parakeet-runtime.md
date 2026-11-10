@@ -19,7 +19,9 @@ checks the exact fork and ORT versions before constructing a recognizer.
 `swift run cassini-model-fetch --output APP_DATA_DIRECTORY` is a build/test-only
 tool, excluded from the app bundle. It invokes the shared D4 installer with the
 D16 `(id,source_sha256)` and uses the four downloaded files unchanged. The model
-is optional app data; it is never a bundled resource. Runtime requests are made
+is optional app data; it is never a bundled resource. D86 uses the distinct
+`parakeet-ultra-0.6b-int8-v2` id. Once it verifies, the app retires the old
+id's known installation and partials under revision locks; active job links survive. Runtime requests are made
 only by the explicit Download action, and never by opening Settings or About.
 
 The recognizer uses the D16 zero-initialized C config, 16 kHz/128 features,
@@ -41,7 +43,7 @@ Local parity command (paths refer to private build assets):
 ```
 ORT_DISABLE_TELEMETRY=1 NEEDLE_TELEMETRY=0 DO_NOT_TRACK=1 \
 CASSINI_PARAKEET_RUNTIME=/tmp/cassini-parakeet-assets/runtime-original \
-CASSINI_PARAKEET_MODEL=/tmp/cassini-parakeet-model-data/models/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366 \
+CASSINI_PARAKEET_MODEL=/tmp/cassini-parakeet-model-data/models/parakeet-ultra-0.6b-int8-v2/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366 \
 CASSINI_PIPELINE_ASSETS=/tmp/cassini-wave3-pipeline-assets \
 swift test --jobs 2 --filter 'ParakeetTests|ParakeetGoldenTests'
 ```
