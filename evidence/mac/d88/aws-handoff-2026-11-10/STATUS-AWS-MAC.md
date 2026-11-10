@@ -2,7 +2,7 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 15:14 UTC
+Updated: 2026-11-10 15:18 UTC
 
 - IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `f0b06cc`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
 - Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `54c574b`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
@@ -23,7 +23,7 @@ None. All six assigned rows are pushed; exact-head CI is the remaining gate. No 
 
 ## CI readiness
 
-Last checked: 2026-11-10T15:13:00+00:00
+Last checked: 2026-11-10T15:18:00+00:00
 
 - #210 `f0b06cc`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #211 `54c574b`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
