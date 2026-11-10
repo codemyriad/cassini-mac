@@ -74,10 +74,10 @@ jobs:
         CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
       run: |
         python3 scripts/test-swift-test-runner.py
-        # Keep loopback transfer deadlines independent of the native writer/decoder load.
+        # Keep transfer and supersession-lock deadlines independent of native writer/decoder load.
         # The complementary filter/skip invocations still run every test exactly once.
-        python3 scripts/run-swift-tests.py --output build/unit-tests/models -- swift test --skip-build --filter ModelDownloaderTests
-        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip ModelDownloaderTests
+        python3 scripts/run-swift-tests.py --output build/unit-tests/models -- swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'
+        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
