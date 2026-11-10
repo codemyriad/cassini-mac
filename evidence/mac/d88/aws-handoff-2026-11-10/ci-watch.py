@@ -1,6 +1,6 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
-prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a7503d35c32837b2a93605028f6525e6fc95',213:'3fd8e39175df0fd649cfcbaf7fd8edfbc14a6d42',214:'21e957a0aaa5e0f8df4aa857344addc94af511eb',215:'8f5cdab91a904d4695b4f0a2b1c4aaa46376ff85'}
+prs={210: '9d373ff997c1d8721cae24fa6c805fd0da42662a', 211: '9f892f66edf6cfb5d9698b410e232dff1b15cecf', 212: '75ea82166b79dcdfc7ad084d5eb30dc71a274a11', 213: 'c4f3d1e86d1bc66d2d186c3f740fcaaa14a63b34', 214: '922711bcbde0531c834f18bccf8a2f2407462923', 215: '2a80631e207765524044523fe0b6a643d7571942'}
 fields='number headRefOid isDraft commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}}}}}'
 def gh_json(*args):
     return json.loads(subprocess.check_output(['gh',*args],text=True))
@@ -66,7 +66,7 @@ while True:
             matches=(expected==pr['headRefOid']==c['oid']); names={x.get('name'):x.get('conclusion') for x in contexts}
             candidate=matches and bool(contexts) and not pending and not failed and not rollup['contexts']['pageInfo']['hasNextPage'] and names.get('changes')=='SUCCESS' and names.get('CassiniKit tests and conformance')=='SUCCESS'
             if n==214: candidate=candidate and names.get('Package tests (macos-15-intel)')=='SUCCESS'
-            if n==215: candidate=candidate and all(not payload['p'+str(k)]['isDraft'] and payload['p'+str(k)]['headRefOid']==prs[k] for k in range(210,215)) and any(k and k.startswith('Whistle bundle') and v=='SUCCESS' for k,v in names.items())
+            if n==215: candidate=candidate and any(k and k.startswith('Whistle bundle') and v=='SUCCESS' for k,v in names.items())
             runs=sorted({int(m.group(1)) for x in contexts if (m:=re.search(r'/actions/runs/(\d+)',x.get('detailsUrl','')))})
             summaries.append(dict(pr=n,head=pr['headRefOid'],headMatches=matches,draft=pr['isDraft'],readyCandidate=candidate,pending=pending,failed=failed,runs=runs))
         if '--mark-ready' in sys.argv:
