@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import Darwin
 import Testing
 import CassiniKit
 @testable import CassiniLibrary
@@ -9,15 +10,17 @@ import CassiniKit
 /// preparation stops when cancelled. The sweeps give exactly the pair scans' results.
 struct M11SweepTests {
     /// 10,000 alternating one-second turns with no overlap: the pair scans needed about
-    /// 200 million iterations here. The bound is only a failure bound for a sweep that takes
-    /// milliseconds.
+    /// 200 million iterations here. Keep the existing generous CPU-work bound;
+    /// host descheduling and other agents' work do not consume this thread's CPU.
     @Test func aLongAlternatingTranscriptPreparesQuickly() throws {
         let items = (0..<10_000).map { index in
             LibraryTranscriptItem(speaker:index % 2 == 0 ? "a" : "b",startMs:Int64(index) * 1500,endMs:Int64(index) * 1500 + 1000,text:"word\(index)")
         }
-        let started = ProcessInfo.processInfo.systemUptime
+        let started = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         let turns = try MeetingPresentation.turns(items,cancellable:true)
-        #expect(ProcessInfo.processInfo.systemUptime - started < 5)
+        let cpuNanoseconds = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-started
+        #expect(cpuNanoseconds < 5_000_000_000,"10k-turn preparation exceeded its unchanged 5 s thread-CPU bound")
+        print("D88 M11: 10000 turns, thread CPU ms: \(Double(cpuNanoseconds)/1_000_000)")
         #expect(turns.count == 10_000 && turns.allSatisfy { $0.host == nil && $0.over.isEmpty })
     }
     /// A preparation whose task was cancelled stops with CancellationError instead of finishing.

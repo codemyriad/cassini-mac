@@ -6,6 +6,17 @@ import Darwin
 /// runs off the main actor, with concurrent stderr draining and an independent
 /// watchdog. The runtime queue can reuse the same descriptor primitives later.
 public enum WhistleSubprocess {
+    // Internal test seam: production waits on the same independent semaphores;
+    // tests can fire watchdog boundaries after the child acknowledges readiness.
+    struct WatchdogClock: Sendable {
+        enum Phase: Sendable, Hashable { case timeout, escalation }
+        var wait: @Sendable (Phase, DispatchSemaphore, TimeInterval) -> Bool
+        var didExit: @Sendable (Int32) -> Void = { _ in }
+        var inputPipeCreated: @Sendable (Int32) -> Void = { _ in }
+        static let live = WatchdogClock(wait: { _, event, delay in
+            event.wait(timeout:.now()+delay) == .timedOut
+        })
+    }
     public enum Failure: Error { case timedOut }
     public struct Output: Sendable {
         public let stdout: Data
@@ -14,6 +25,8 @@ public enum WhistleSubprocess {
         public let inputError: Int32?
     }
     private final class Control: @unchecked Sendable {
+        let clock: WatchdogClock
+        init(clock: WatchdogClock) { self.clock = clock }
         let lock = NSLock()
         let exited = DispatchSemaphore(value:0)
         private var process: Process?
@@ -32,8 +45,8 @@ public enum WhistleSubprocess {
             if process.isRunning { process.terminate() }
             // Escalation must remain runnable even when the shared dispatch
             // worker pool is occupied by other blocking process/pipe work.
-            Thread.detachNewThread { [exited] in
-                if exited.wait(timeout:.now()+0.3) == .timedOut, process.isRunning {
+            Thread.detachNewThread { [exited, clock] in
+                if clock.wait(.escalation,exited,0.3), process.isRunning {
                     kill(process.processIdentifier, SIGKILL)
                 }
             }
@@ -49,7 +62,10 @@ public enum WhistleSubprocess {
         func result() -> (Data, Data) { lock.lock(); defer { lock.unlock() }; return (stdout, stderr) }
     }
     public static func run(executable: URL, arguments: [String], environment: [String: String], input: Data, timeout: TimeInterval = 30) async throws -> Output {
-        let control = Control()
+        try await run(executable:executable,arguments:arguments,environment:environment,input:input,timeout:timeout,clock:.live)
+    }
+    static func run(executable: URL, arguments: [String], environment: [String: String], input: Data, timeout: TimeInterval = 30, clock: WatchdogClock) async throws -> Output {
+        let control = Control(clock:clock)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 // A process wait must not occupy the same finite worker pool
@@ -65,13 +81,14 @@ public enum WhistleSubprocess {
         if control.outcome().cancelled { throw CancellationError() }
         let process = Process(); process.executableURL = executable; process.arguments = arguments; process.environment = environment
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
+        if !input.isEmpty { control.clock.inputPipeCreated(stdin.fileHandleForReading.fileDescriptor) }
         process.standardInput = stdin; process.standardOutput = stdout; process.standardError = stderr
         process.terminationHandler = { [control] _ in control.exited.signal() }
         try process.run(); control.attach(process)
         let deadline = Date().addingTimeInterval(timeout)
         let finished = DispatchSemaphore(value:0)
         Thread.detachNewThread {
-            if finished.wait(timeout:.now()+timeout) == .timedOut { control.stop(timeout:true) }
+            if control.clock.wait(.timeout,finished,timeout) { control.stop(timeout:true) }
         }
         defer { finished.signal(); process.terminationHandler = nil }
         let group = DispatchGroup(), capture = Capture()
@@ -87,7 +104,9 @@ public enum WhistleSubprocess {
         catch WhistleIO.Failure.system(_, let code) { inputError = code }
         catch { inputError = EIO }
         try? stdin.fileHandleForWriting.close()
-        process.waitUntilExit(); group.wait()
+        process.waitUntilExit()
+        control.clock.didExit(process.terminationStatus)
+        group.wait()
         let outcome = control.outcome()
         if outcome.cancelled { throw CancellationError() }
         if outcome.timedOut { throw Failure.timedOut }
