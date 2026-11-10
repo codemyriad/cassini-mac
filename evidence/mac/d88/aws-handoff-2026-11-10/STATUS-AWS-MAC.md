@@ -1,37 +1,34 @@
 # AWS Mac status
 
-**Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
+**Destruction deadline: 2026-11-11 12:09 UTC. Move before this time.**
 
-Updated: 2026-11-10 19:38 UTC
+Updated: 2026-11-10 19:40 UTC
 
-- IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `30fc6f3`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
-- Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `d1ebe14`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
-- Playback cancellation: draft PR https://github.com/codemyriad/cassini-mac/pull/212, head `8c9c389`. All 33 local tests pass before/after/restoration; removing owner cancel fails intended assertions. The shared ModelSupersessionTests:93 failure is repaired locally on all six heads; changed playback cancellation and shared fixture tests pass. Await new exact-head CI.
-- Setup/watchers: draft PR https://github.com/codemyriad/cassini-mac/pull/213, head `56bbf1e`. 29 XCTest + 4 Swift Testing pass before/after/restoration; dropped-coalesced-attempt mutation fails intended assertions. Watcher timeout individually retained as failure-only.
-- Model fixture: draft PR https://github.com/codemyriad/cassini-mac/pull/214, head `c2777e5`. All 26 tests pass before/after/restoration; false-ready URL mutation fails. Manual expiry follows actual child-stall event; existing readiness/transfer/exit gates preserved.
-- Transport discovery/process exit: draft PR https://github.com/codemyriad/cassini-mac/pull/215, head `612bb36`. Focused 20 and broad 415 XCTest (22 inherited asset skips) + 5 Swift Testing pass before/after/restoration. Reintroduced 250 ms partial-frame deadline fails after manual 350 ms advance. Added generated-silence committed-write proof: passed locally with pinned VAD; notification-before-write mutation fails, restored 21 focused tests pass without skips. Real speech-resume golden remains for pipeline CI. All six may become ready independently when exact-head CI is green.
-- Full local test/build runs now acquire the shared directory lock via `mkdir ~/.aws-heavy.lock` and release it via `rmdir` in cleanup, in addition to the prior local flock. Wrapper: `~/coordination/aws-mac-test.py` (also `/tmp/aws-mac-test.py`), Xcode 16.4, 4 jobs. All six new heads passed their affected row tests plus seven ordinary supersession tests under the shared lock; no local heavy run currently active. Shared mkdir lock verified with a lightweight command; existing owners are never removed. Reusing `/tmp/cassini-aws-d88-before-build` when another run is needed.
-- Readiness automation: detached tmux session `aws-mac-d88-ci` (restarted with current exact heads), `~/coordination/AWS-MAC-CI-WATCH.py --watch --mark-ready`; log `~/coordination/aws-mac-ci-watch.log`. Polls every 300 s, audits exact head + completed successful first-attempt workflow/jobs before updating own D87 class 19 and marking ready. Seven offline success/rejection-gate checks pass. No push, merge or rerun capability. It continues after this turn; per-PR audit records go to `~/READY-AWS-MAC-<PR>.json`.
+Main #208 (including #222) merged at `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f`. Per coordinator, all six draft branches now contain an ordinary merge from that main, with no rebase or force-push. All six heads are pushed and their affected-row plus seven shared supersession tests pass locally under the shared heavy-run lock, Xcode16.4/four jobs. PR bodies include new-head validation links and D87 entries. No new source work is planned; continue existing readiness monitoring only.
 
-## Migration
+| PR | Row | Exact head | State |
+|---|---|---|---|
+| [#210](https://github.com/codemyriad/cassini-mac/pull/210) | IPC silence | `30fc6f3` | Local pass; exact-head CI pending |
+| [#211](https://github.com/codemyriad/cassini-mac/pull/211) | Browser broker/start/permissions | `d1ebe14` | Local pass; exact-head CI pending |
+| [#212](https://github.com/codemyriad/cassini-mac/pull/212) | Playback cancellation | `8c9c389` | Local pass; exact-head CI pending |
+| [#213](https://github.com/codemyriad/cassini-mac/pull/213) | Setup/watchers | `56bbf1e` | Local pass; exact-head CI pending |
+| [#214](https://github.com/codemyriad/cassini-mac/pull/214) | Model fixture startup | `c2777e5` | Local pass; exact-head CI pending |
+| [#215](https://github.com/codemyriad/cassini-mac/pull/215) | Transport discovery/process exit | `612bb36` | Local pass; exact-head CI pending |
 
-All six work branches and evidence are pushed. Handoff scripts and a status snapshot are preserved on `test/d88-aws-handoff`; no credentials or build caches are needed for restoration. Checkpoint branch: `test/d88-aws-handoff`, archive `evidence/mac/d88/aws-handoff-2026-11-10/`. A separate `aws-mac-d88-checkpoint` tmux session pushes status, scripts, and readiness audit records there every five minutes. Logs: `~/coordination/aws-mac-checkpoint.log`. Stop both old tmux sessions before resuming on the second Mac.
+ARM fast path confirmed: #210 run42886823413 requests `cm-mac-m4` for its ARM build; Intel remains `macos-15-intel`. Readiness automation is `aws-mac-d88-ci`, running `~/coordination/AWS-MAC-CI-WATCH.py --watch --mark-ready`. Its map contains the six full new SHAs and checks completed exact-head green workflows/jobs before updating D87 class19 and marking ready. It cannot push, merge or rerun. Per-PR audit records: `~/READY-AWS-MAC-<PR>.json`.
 
-## Current blocker
+## Evidence
 
-The shared ModelSupersessionTests:93 CI blocker is fixed on all six pushed heads. A controlled held-cooperative-worker reproduction failed both original parameter variants; the dedicated fixture executor passes both. Seven ordinary tests pass; removing replacement hash revalidation fails hash-error and old-copy-retention assertions; restored eight ordinary/probe tests pass. Each PR includes linked D87 and mutation evidence. Await exact-head full CI; no hosted reruns, merges or agy self-checks.
+All original row before/after/mutation evidence and the shared ModelSupersessionTests executor fix are on the six branches. Current merged-head local logs are pushed on `test/d88-aws-handoff` under `evidence/mac/d88/aws-handoff-2026-11-10/routing-merge-validation/`; `results.json` records all six exact source heads and passing exits. The shared lock reproduction, retained-old-copy mutation and final fixture proof also remain on `test/d88-aws-supersession-events` at `6ed212bb12abacec8ec1feaca1e30a9282c68fe9`. No agy self-checks.
+
+#222's real two-path SwiftPM proof is merged through #208. Its original pushed branch `ci/rented-mac-routing-paths` at `452c52f66d90fd5d1f987dff90197620554e833e` retains complete Cassini producer/consumer build evidence, three actual path-dependent tests, actual workspace-guard mutation failure, same-path reuse and 41 passing contract checks.
+
+## Migration and resource use
+
+All source/evidence and operational scripts are pushed. The separate `aws-mac-d88-checkpoint` tmux session pushes STATUS, CI observations, scripts and audit records onto `test/d88-aws-handoff` every five minutes. Stop both old tmux sessions before starting replacements on the second Mac. Handoff README contains restoration steps and full new head table. No credentials/build caches need migration.
+
+Heavy runs acquire `mkdir ~/.aws-heavy.lock` and the earlier local flock through `~/coordination/aws-mac-test.py`, releasing only their own directory in cleanup. All six merge validations finished and own locks are released. No new heavy runs are planned. Shared contract files come from cassini-ux main; no shared vectors/strings were edited.
 
 ## Questions
 
-None. Ownership of the shared blocker was explicitly assigned to aws-mac and the repair is complete locally. Proof/recipe is pushed on `test/d88-aws-supersession-events` and copied into each PR's evidence. #208 remains open at new head `17162d0` (17:28 UTC), owner progressing its routing fix. Previous ARM Whistle failure was Python setup attempting mkdir `/Users/runner` (permission denied), job 129993819438. No edits/reruns/comments by aws-mac; ARM routing awaits its merge. Continue monitoring all six independently. Once #208 merges, integrate main into the still-draft branches with ordinary merge/push, revalidate locally under the shared lock, and refresh exact heads/body links; no hosted reruns.
-
-## CI readiness
-
-Last checked: 2026-11-10T19:36:48+00:00
-
-- #210 `30fc6f3`: pending: changes; draft.
-- #211 `d1ebe14`: pending: changes; draft.
-- #212 `8c9c389`: pending: changes; draft.
-- #213 `56bbf1e`: pending: changes; draft.
-- #214 `c2777e5`: pending: changes; draft.
-- #215 `612bb36`: pending: changes; draft.
+None. Await exact-head CI; the watcher keeps failed/pending heads draft and marks green heads ready. No new work on this machine beyond the authorized monitoring/status checkpoints.

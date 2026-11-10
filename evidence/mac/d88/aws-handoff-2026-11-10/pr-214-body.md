@@ -20,6 +20,10 @@ A controlled held-cooperative-worker reproduction fails both original parameter 
 
 [Before reproduction](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/before-held-pool.log), [fixed reproduction](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/after-held-pool.log), [mutation patch](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/skip-revalidation.patch), [failing mutation](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/skip-revalidation.log), [restored run](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/restored.log), [this row plus shared suite](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/row-local.log), [recipe and scope](https://github.com/codemyriad/cassini-mac/blob/922711bcbde0531c834f18bccf8a2f2407462923/evidence/mac/d88/aws-supersession/README.md).
 
+## Rented-Mac routing merge validation
+
+Merged main `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f` with an ordinary merge commit, without rebasing. Current exact head: `c2777e51e8a48cdb4ae3bd4419d063c2fd67a701`. Affected row tests plus all seven shared supersession tests pass under the shared heavy-run lock, Xcode 16.4 / four jobs. [Merged-head local log](https://github.com/codemyriad/cassini-mac/blob/f3baf1172ebfcb93ecc66322cb4ee2c013718e66/evidence/mac/d88/aws-handoff-2026-11-10/routing-merge-validation/214.log); the log is archived on the handoff branch so preserving evidence does not change the tested PR head. Prior mutation links remain valid evidence for the unchanged row implementation. Full CI on this new head is pending; ARM build jobs now request `cm-mac-m4`.
+
 ## Checked bug classes
 
 - 15/16 checked for the shared fixture: actual cancellation, replacement revalidation and old-copy retention remain asserted; removing revalidation fails the mutation.
@@ -30,5 +34,5 @@ Reviewed [cassini-ux review/BUG-CLASSES.md](https://github.com/codemyriad/cassin
 - 15 checked: cancellation, bootstrap errors and cleanup remain covered.
 - 16 checked: existing atomic install/lock tests remain.
 - 18 checked: base main, independent of other drafts.
-- 19 pending exact-head CI; keep draft. Local checks passed.
+- 19 pending: keep draft until full CI is green on exact merged head `c2777e51e8a48cdb4ae3bd4419d063c2fd67a701`; merged-head local checks passed.
 - 1–13 not applicable to this fixture-only change.
