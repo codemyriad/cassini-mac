@@ -166,6 +166,11 @@ import ScreenCaptureKit
             var gates=SpectrogramHostedBudget.evaluate(mode:mode,seconds:work.seconds,analysis:analysis,drawing:drawing,
                 p95:controller.frameCPU.p95Ms,maximum:controller.frameCPU.maximumMs,frameCPUSamples:controller.frameCPU.count,
                 late:controller.lateColumns-initialLate,payload:controller.payloadBytes)
+            // The required late-budget proof uses the same SDK with controlled
+            // arrival/analysis/display clocks (CheckScheduling). Keep live host
+            // scheduling observations above as diagnostics, never a wall gate.
+            gates.removeValue(forKey:"late")
+            report["lateGatingPolicy"] = "controlled-scheduling-required"
             gates["frameClockValid"]=controller.frameCPU.valid
             gates["drops"]=controller.droppedColumns == initialDropped
             gates["inputDrops"]=controller.droppedBuffers == initialBufferDrops

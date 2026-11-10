@@ -9,6 +9,11 @@ import Foundation
 /// than multiplying the allowed lateness by lane or source-track count.
 enum SpectrogramHostedBudget {
     static func steadyColumns(seconds:Double)->Double {floor(seconds*50)}
+    static func latePasses(mode:String,seconds:Double,late:UInt64)->Bool {
+        let columns=steadyColumns(seconds:seconds)
+        guard seconds.isFinite,columns>0 else { return false }
+        return mode == "C" || mode == "E" ? late == 0 : Double(late)/columns <= 0.03
+    }
     static func evaluate(mode:String,seconds:Double,analysis:Double,drawing:Double,
                          p95:Double,maximum:Double,frameCPUSamples:UInt64,late:UInt64,payload:Int)->[String:Bool] {
         let hidden=mode == "C" || mode == "E"
@@ -17,7 +22,7 @@ enum SpectrogramHostedBudget {
         return ["analysis":valid && (hidden ? analysis == 0 : analysis <= 0.8),
                 "drawing":valid && drawing <= (mode == "A" ? 1.7 : 3.5),
                 "frameWork":valid && (hidden || (frameCPUSamples > 0 && (mode == "A" || (p95 <= 17.5 && maximum <= 100)))),
-                "late":valid && (hidden ? late == 0 : Double(late)/columns <= 0.03),
+                "late":latePasses(mode:mode,seconds:seconds,late:late),
                 "logicalViewPayload":payload >= 0 && payload <= 131072]
     }
 }
