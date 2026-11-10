@@ -209,6 +209,34 @@ final class TranscriptionMeetingTests: XCTestCase {
         let body = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("transcript.json"))) as? [String:Any]
         XCTAssertEqual(body?["language"] as? String,"und")
     }
+    func testSidecarWriteObserverReadsCommittedBytesForGeneratedSilence() throws {
+        guard let assets = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else {
+            throw XCTSkip("Pinned offline VAD supplied by pipeline CI")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Publication event",source:"macos")
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.append(id:"mic",pcm:Data(repeating:0,count:64000),offsetMs:0)
+        try session.finish()
+        let detector = try SpeechDetector(assets:VADAssets.forWorker(arguments:["--assets",assets]))
+        let sidecar = session.directory.appendingPathComponent("transcript.json")
+        var publications = 0
+        try MeetingTranscriber.run(directory:session.directory,detector:detector,model:"whistle",initialETA:0.15,sidecarWritten:{
+            do {
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with:Data(contentsOf:sidecar)) as? [String:Any])
+                XCTAssertEqual(body["language"] as? String,"und")
+                XCTAssertEqual((body["items"] as? [Any])?.count,0)
+                publications += 1
+            } catch { XCTFail("Publication event preceded committed transcript bytes: \(error)") }
+        },recognize:{ _ in
+            XCTFail("Generated silence must not invoke recognition")
+            return .init(text:"",language:"und",words:[])
+        })
+        XCTAssertGreaterThan(publications,0,"The real sidecar write must publish its completion event")
+        let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(meeting.state.transcript,.done)
+    }
     func testPausePreservesPartialWordsAndExistingMetadata() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

@@ -1,0 +1,11 @@
+--- a/Sources/CassiniTranscription/MeetingTranscriber.swift
++++ b/Sources/CassiniTranscription/MeetingTranscriber.swift
+@@ -186,7 +186,7 @@
+                 // D53.2: an unknown language is written as "und", never the "auto" request.
+                 let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
+                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
+-                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory); wroteSidecar = true; sidecarWritten() }
++                if status == "done" || ordered.count >= retained { sidecarWritten(); try atomicTranscript(data, directory: directory); wroteSidecar = true }
+                 let factor = processed > 0 ? elapsed / processed : initialETA
+                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
+                 try writer.transaction { metadata in
