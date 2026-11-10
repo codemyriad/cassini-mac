@@ -33,8 +33,9 @@ public enum MeetingFileExporter {
               FileManager.default.createFile(atPath:artifact.url.path,contents:data,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.tooLarge }
         return artifact
     }
-    /// `timeZone`: the Library device's zone, used only when names.py must choose a
-    /// namePrefix from a capture start without a recorded offset or from the import time.
+    /// `timeZone`: the Library device's zone, used for the wall-clock recording label
+    /// and when names.py chooses a namePrefix from a start without a recorded offset
+    /// or from the import time. The recording instant is also exported in UTC.
     public static func cassini(_ meeting: LibraryMeeting, assets: OpusAssets?,
                                temporaryRoot: URL = FileManager.default.temporaryDirectory,
                                timeZone: TimeZone = .current,
@@ -65,8 +66,11 @@ public enum MeetingFileExporter {
             // #116 r4: a trusted file opened from outside the Library that carries our namespace
             // goes out byte-for-byte (nothing of it can change on Mac, and a rebuild could drop
             // its other transcripts under the same revision), once its namespace is one this app
-            // can carry (D65).
-            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
+            // can carry (D65). A malformed v1 local label must instead be dropped.
+            let originalLocal = file.manifest?.raw["meeting"]?["recordedAtLocal"]
+            let canCarryLocal = originalLocal == nil || originalLocal?.string.map(validLocalRecordingLabel) == true
+            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryLocal,
+               let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
                 _ = try CodemyriadNamespace.validated(namespace)
                 guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
                 let copied = try CassiniReader.read(contentsOf:artifact.url)
@@ -261,12 +265,16 @@ public enum MeetingFileExporter {
         var info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
             ("createdAtUtc",.string(created.value)),("durationMs",.number(String(digest.durationMs)))])
         if meeting.state.origin == .own, let start = meeting.start {
-            let local = ISO8601DateFormatter(); local.formatOptions = [.withInternetDateTime,.withFractionalSeconds]; local.timeZone = .current
-            info = try info.setting("recordedAtLocal",to:.string(local.string(from:start)))
-        } else if let recorded = original?.meeting.recordedAtLocal {
-            // A received meeting's start is an R6 display/sort value: it may be
-            // the artifact's stamp or its import date. Neither is a recording
-            // start. Keep only the verified original field, including its zone.
+            let local = DateFormatter(); local.locale = Locale(identifier:"en_US_POSIX")
+            local.calendar = Calendar(identifier:.gregorian); local.timeZone = timeZone
+            local.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            let second = Date(timeIntervalSince1970:start.timeIntervalSince1970.rounded(.down))
+            info = try info.setting("recordedAtLocal",to:.string(local.string(from:second)))
+            iso.timeZone = TimeZone(secondsFromGMT:0)
+            info = try info.setting("recordedAtUtc",to:.string(iso.string(from:start)))
+        } else if let recorded = original?.meeting.recordedAtLocal, validLocalRecordingLabel(recorded) {
+            // The original label belongs to the recording site. An offset or fraction
+            // is invalid in v1; discard it rather than inventing a replacement label.
             info = try info.setting("recordedAtLocal",to:.string(recorded))
         }
         // Q2: one entry per speaker id the exported words use (none while they aren't exported).
@@ -373,6 +381,11 @@ public enum MeetingFileExporter {
             if let imported = meeting.received?.importedAtMs { return (iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)),false) }
         } else if let start = meeting.start { return (iso.string(from:start),false) }
         return (iso.string(from:Date()),true)
+    }
+    private static func validLocalRecordingLabel(_ label: String) -> Bool {
+        // Exact v1 schema shape. The length check also rejects a terminal newline,
+        // which a regex '$' alone may accept. Readers remain lenient for older files.
+        label.utf8.count == 19 && label.range(of:#"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"#,options:.regularExpression) != nil
     }
     /// MAPPING: DATE is the meeting's start, `YYYY-MM-DDTHH:MM:SS±HH:MM`, seconds floored.
     static func dateTag(_ start: Date?, zone: TimeZone) -> String? {
