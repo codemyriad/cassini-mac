@@ -75,29 +75,34 @@ struct ModelSupersessionTests {
         #expect(ModelStorage.isInstalled(new,in:root))
     }
     @Test(arguments:[false,true]) func replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_ cancel: Bool) async throws {
-        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let bytes = Data("model bytes".utf8)
-        let old = plan("old-model",revision:"a",bytes:bytes), new = plan("new-model",revision:"b",bytes:bytes)
-        _ = try install(old,bytes:bytes,in:root)
-        let current = try install(new,bytes:bytes,in:root)
-        let lockFile = current.deletingLastPathComponent().appendingPathComponent("."+new.pin.sourceSHA256+".lock")
-        let fd = open(lockFile.path,O_RDWR | O_CREAT | O_CLOEXEC,0o600)
-        try #require(fd >= 0); defer { _ = flock(fd,LOCK_UN); close(fd) }
-        try #require(flock(fd,LOCK_EX | LOCK_NB) == 0)
-        let waiting = XCTestExpectation(description:"Retirement reached the held replacement lock")
-        waiting.assertForOverFulfill = false
-        let downloader = try ModelDownloader(appData:root,fixtureOrigin:URL(string:"http://127.0.0.1:1")!,userAgent:"Cassini test",removalLockWaiting:{ waiting.fulfill() })
-        let task = Task { try await downloader.removeSuperseded(old.pin,afterVerifying:new) }
-        defer { task.cancel() }
-        let observed = await XCTWaiter.fulfillment(of:[waiting],timeout:10)
-        try #require(observed == .completed) // Failure-only guard; the failed flock is the event.
-        #expect(ModelStorage.isInstalled(old,in:root))
-        if cancel { task.cancel() }
-        else { try Data(repeating:0,count:bytes.count).write(to:current.appendingPathComponent("weights.bin")) }
-        _ = flock(fd,LOCK_UN)
-        if cancel { await #expect(throws:CancellationError.self) { try await task.value } }
-        else { await #expect(throws:ModelDownloadError.hash) { try await task.value } }
-        #expect(ModelStorage.isInstalled(old,in:root))
+        // Both the controller and default-actor removal must progress while the
+        // shared cooperative pool is occupied by unrelated synchronous fixtures.
+        let fixtureQueue = DispatchQueue(label:"CassiniSupersession.lock-fixture")
+        try await withTaskExecutorPreference(fixtureQueue) {
+            let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+            let bytes = Data("model bytes".utf8)
+            let old = plan("old-model",revision:"a",bytes:bytes), new = plan("new-model",revision:"b",bytes:bytes)
+            _ = try install(old,bytes:bytes,in:root)
+            let current = try install(new,bytes:bytes,in:root)
+            let lockFile = current.deletingLastPathComponent().appendingPathComponent("."+new.pin.sourceSHA256+".lock")
+            let fd = open(lockFile.path,O_RDWR | O_CREAT | O_CLOEXEC,0o600)
+            try #require(fd >= 0); defer { _ = flock(fd,LOCK_UN); close(fd) }
+            try #require(flock(fd,LOCK_EX | LOCK_NB) == 0)
+            let waiting = XCTestExpectation(description:"Retirement reached the held replacement lock")
+            waiting.assertForOverFulfill = false
+            let downloader = try ModelDownloader(appData:root,fixtureOrigin:URL(string:"http://127.0.0.1:1")!,userAgent:"Cassini test",removalLockWaiting:{ waiting.fulfill() })
+            let task = Task(executorPreference:fixtureQueue) { try await downloader.removeSuperseded(old.pin,afterVerifying:new) }
+            defer { task.cancel() }
+            let observed = await XCTWaiter.fulfillment(of:[waiting],timeout:10)
+            try #require(observed == .completed) // Failure-only guard; the failed flock is the event.
+            #expect(ModelStorage.isInstalled(old,in:root))
+            if cancel { task.cancel() }
+            else { try Data(repeating:0,count:bytes.count).write(to:current.appendingPathComponent("weights.bin")) }
+            _ = flock(fd,LOCK_UN)
+            if cancel { await #expect(throws:CancellationError.self) { try await task.value } }
+            else { await #expect(throws:ModelDownloadError.hash) { try await task.value } }
+            #expect(ModelStorage.isInstalled(old,in:root))
+        }
     }
     @Test(arguments:[false,true]) func symlinkedCacheAncestorsCannotRedirectCleanup(_ idOnly: Bool) async throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
