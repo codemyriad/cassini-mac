@@ -128,7 +128,8 @@ import Darwin
                     failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
                 }
                 if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniSlowTranscription") == "YES" {
-                    worker = URL(fileURLWithPath:"/bin/sleep"); arguments = ["60"]
+                    worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                    arguments = ["--fixture-wait-for-cancellation"]
                 }
                 #endif
                 var result = try await WhistleSubprocess.run(executable: worker, arguments: arguments, environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
@@ -171,7 +172,7 @@ import Darwin
 }
 
 #if DEBUG
-/// Private filesystem/RAM proof. The only worker is a cancellable sleep fixture.
+/// Private filesystem/RAM proof. The worker waits for explicit cancellation.
 @MainActor enum ImportLifecycleSelfTest {
     static func run() async {
         guard RecordingFixture.enabled, RecordingFixture.transcribes,
