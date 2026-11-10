@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Offline D16 worker, trust-boundary and owner-lifetime checks over private files."""
-import argparse,ctypes,hashlib,json,os,select,shutil,signal,subprocess,sys,tempfile,time,uuid
+import argparse,ctypes,hashlib,json,os,shutil,signal,subprocess,sys,tempfile,time,uuid
 from pathlib import Path
+from worker_events import OWNER_TICK_FD, ProcessExit, json_line, watchdog_ticks
 ROOT=Path(__file__).resolve().parent.parent
 SAFE=dict(NEEDLE_TELEMETRY='0',DO_NOT_TRACK='1',ORT_DISABLE_TELEMETRY='1',PATH='/usr/bin:/bin:/usr/sbin:/sbin',LANG='C',LC_ALL='C')
 p=argparse.ArgumentParser(description=__doc__)
@@ -58,28 +59,27 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
     assert rejected.returncode==78 and json.loads(rejected.stdout)['code']=='invalid-model',rejected
     assert (meeting/'meeting.json').read_bytes()==untouched
     # The grandparent keeps stdin open after killing only the worker's owner.
-    read_fd,write_fd=os.pipe()
-    shim='import json,subprocess,sys\np=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL)\nprint(json.dumps({"child":p.pid}),flush=True)\np.wait()\n'
-    owner=subprocess.Popen([sys.executable,'-u','-c',shim,str(read_fd),*command],pass_fds=(read_fd,),stdout=subprocess.PIPE,env=SAFE)
-    os.close(read_fd);child=None
+    read_fd,write_fd=os.pipe();tick_read,tick_write=os.pipe()
+    shim='import json,subprocess,sys,os\np=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL,pass_fds=(int(os.environ["CASSINI_TEST_OWNER_TICK_FD"]),))\nprint(json.dumps({"child":p.pid}),flush=True)\np.wait()\n'
+    owner=subprocess.Popen([sys.executable,'-u','-c',shim,str(read_fd),*command],pass_fds=(read_fd,tick_write),stdout=subprocess.PIPE,env=dict(SAFE,**{OWNER_TICK_FD:str(tick_write)}))
+    os.close(read_fd);os.close(tick_write);child=None
     try:
-        assert select.select([owner.stdout],[],[],10)[0],'Owner did not announce its worker'
-        child=json.loads(owner.stdout.readline())['child'];time.sleep(.6)
+        child=json_line(owner.stdout)['child']
+        # Observe two actual callbacks, including Swift6.1 Sendable/isolation
+        # checks. Startup speed cannot substitute for watchdog execution.
+        watchdog_ticks(tick_read)
         live=subprocess.run(['/bin/ps','-p',str(child),'-o','stat='],capture_output=True,text=True)
         assert live.returncode==0 and not live.stdout.strip().startswith('Z'),'Worker failed while owner was alive'
-        owner.kill();owner.wait(timeout=5)
-        deadline=time.monotonic()+3
-        while time.monotonic()<deadline:
-            status=subprocess.run(['/bin/ps','-p',str(child),'-o','stat='],capture_output=True,text=True)
-            if status.returncode or status.stdout.strip().startswith('Z'):child=None;break
-            time.sleep(.05)
-        assert child is None,'Worker survived owner death with stdin held open'
+        with ProcessExit(child) as exited:
+            owner.kill();owner.wait(timeout=10)
+            exited.wait();child=None
     finally:
         os.close(write_fd)
-        if owner.poll() is None:owner.kill();owner.wait(timeout=5)
+        if owner.poll() is None:owner.kill();owner.wait(timeout=10)
         if child:
             try:os.kill(child,signal.SIGKILL)
             except ProcessLookupError:pass
+        os.close(tick_read)
 report=dict(productionMeetingWorker=True,unverifiedConstructorRejected=True,privacyBeforeDlopen=True,sourceAudioUnchanged=True,language='und',speaker='track-original',storedSpeakerLabel='Intervenant 1',ownerDeathStopsWorker=True,invalidModelHasDistinctCode=True,wordCount=len(body['items']),audioDevicesOpened=False)
 a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(report,indent=2)+'\n')
 print('PASS D16 real meeting worker, source trust/privacy, unchanged audio, unnamed received speaker and owner death')

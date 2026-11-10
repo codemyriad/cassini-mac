@@ -19,7 +19,20 @@ do {
     guard owner > 1 else { exit(0) }
     let watchdog = DispatchSource.makeTimerSource(queue:.global())
     watchdog.schedule(deadline:.now() + .milliseconds(200),repeating:.milliseconds(200))
-    watchdog.setEventHandler { @Sendable in if getppid() != owner { exit(0) } }
+    #if DEBUG
+    // Private inherited-FD acknowledgement for event-driven owner-lifetime tests.
+    // No stdout/protocol message or release-worker behavior changes.
+    let ownerTickFD = Int32(ProcessInfo.processInfo.environment["CASSINI_TEST_OWNER_TICK_FD"] ?? "")
+    #endif
+    watchdog.setEventHandler { @Sendable in
+        if getppid() != owner { exit(0) }
+        #if DEBUG
+        if let fd = ownerTickFD, fd >= 3 {
+            var tick: UInt8 = 1
+            _ = write(fd,&tick,1)
+        }
+        #endif
+    }
     watchdog.resume(); defer { watchdog.cancel() }
     SegmentedAudio.removeAbandonedScratch()
     var arguments = Array(CommandLine.arguments.dropFirst()), standaloneVAD: URL?
