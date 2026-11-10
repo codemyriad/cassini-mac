@@ -3,7 +3,7 @@ description: Verify source, pins, architecture and Xcode before extracting signe
 inputs:
   headless:
     default: 'false'
-    description: Separate same-toolchain rented-runner products; never GUI or Release products
+    description: Separate same-toolchain rented SwiftPM/assets; never app/runtime/model products
   swiftpm:
     default: 'false'
     description: Native SwiftPM test bundles and executables
@@ -29,9 +29,14 @@ runs:
       shell: bash
       env:
         RESTORE_RELEASE: ${{ inputs.release }}
+        RESTORE_DEBUG: ${{ inputs.debug }}
+        RESTORE_RUNTIME: ${{ inputs.runtime }}
+        RESTORE_PARAKEET: ${{ inputs.parakeet }}
       run: |
         test "$RUNNER_ENVIRONMENT" = self-hosted
-        test "$RESTORE_RELEASE" != true
+        for flag in RESTORE_RELEASE RESTORE_DEBUG RESTORE_RUNTIME RESTORE_PARAKEET; do
+          test "${!flag}" != true
+        done
     - shell: bash
       run: bash scripts/ci-select-xcode.sh
     - id: arch
@@ -54,17 +59,17 @@ runs:
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true'
       with:
-        name: ci-parakeet${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-parakeet
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.runtime == 'true'
       with:
-        name: ci-runtime${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-runtime
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.debug == 'true'
       with:
-        name: ci-debug${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-debug
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.release == 'true'
@@ -105,17 +110,17 @@ runs:
     - uses: actions/download-artifact@v5
       if: inputs.parakeet == 'true' && contains(steps.verify.outputs.retry, ' parakeet ')
       with:
-        name: ci-parakeet${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-parakeet
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.runtime == 'true' && contains(steps.verify.outputs.retry, ' runtime ')
       with:
-        name: ci-runtime${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-runtime
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.debug == 'true' && contains(steps.verify.outputs.retry, ' debug ')
       with:
-        name: ci-debug${{ inputs.headless == 'true' && '-headless' || '' }}
+        name: ci-debug
         path: build/ci-products
     - uses: actions/download-artifact@v5
       if: inputs.release == 'true' && contains(steps.verify.outputs.retry, ' release ')

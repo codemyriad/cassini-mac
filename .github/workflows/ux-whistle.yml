@@ -13,6 +13,8 @@ jobs:
   build:
     if: ${{ !inputs.products_ready }}
     uses: ./.github/workflows/ci-build.yml
+    with:
+      headless_products: true
   worker:
     name: Whistle worker (${{ matrix.runner }})
     strategy:
