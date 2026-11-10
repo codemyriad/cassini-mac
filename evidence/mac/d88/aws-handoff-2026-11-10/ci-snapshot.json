@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T18:48:35+00:00",
+  "updated": "2026-11-10T18:53:36+00:00",
   "prs": [
     {
       "pr": 210,
@@ -32,8 +32,7 @@
         "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
-        "Whistle bundle / Universal app and sandboxed Whistle helper",
-        "UX browser setup / Browser setup (macos-15)"
+        "Whistle bundle / Universal app and sandboxed Whistle helper"
       ],
       "failed": [
         "CassiniKit tests and conformance"
@@ -72,7 +71,6 @@
       "pending": [
         "Whistle bundle / Whistle worker (macos-15)",
         "Whistle bundle / Whistle worker (macos-15-intel)",
-        "Whistle bundle / Universal app and sandboxed Whistle helper",
         "UX browser setup / Browser setup (macos-15)",
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
@@ -94,15 +92,14 @@
       "readyCandidate": false,
       "pending": [
         "build_release / Build Release app and package (universal, Xcode 16.4)",
-        "CassiniKit tests and conformance",
         "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15)",
-        "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper",
-        "Package tests (macos-15-intel)",
         "UX browser setup / Browser setup (macos-15)"
       ],
-      "failed": [],
+      "failed": [
+        "CassiniKit tests and conformance"
+      ],
       "runs": [
         42861351948
       ]

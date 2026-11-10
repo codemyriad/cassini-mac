@@ -27,11 +27,11 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T18:48:35+00:00
+Last checked: 2026-11-10T18:53:36+00:00
 
 - #210 `9d373ff`: failed: CassiniKit tests and conformance; draft.
 - #211 `9f892f6`: failed: CassiniKit tests and conformance; draft.
 - #212 `75ea821`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15-intel); draft.
 - #213 `c4f3d1e`: failed: CassiniKit tests and conformance; draft.
-- #214 `922711b`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15); draft.
+- #214 `922711b`: failed: CassiniKit tests and conformance; draft.
 - #215 `2a80631`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15-intel); draft.
