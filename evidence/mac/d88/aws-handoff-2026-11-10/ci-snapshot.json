@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T20:45:22+00:00",
+  "updated": "2026-11-10T20:50:23+00:00",
   "prs": [
     {
       "pr": 210,
@@ -73,7 +73,6 @@
         "UX window screenshots / Window and board-size screenshots",
         "Whistle bundle / Whistle worker (macos-15-intel)",
         "Whistle bundle / Universal app and sandboxed Whistle helper",
-        "Package tests (macos-15-intel)",
         "UX browser setup / Browser setup (macos-15)",
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
