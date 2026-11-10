@@ -27,15 +27,11 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T18:08:30+00:00
+Last checked: 2026-11-10T18:13:31+00:00
 
 - #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #211 `9f892f6`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15); draft.
-- #212 `75ea821`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
+- #212 `75ea821`: pending: build / Build products (x86_64, Xcode 16.4); draft.
 - #213 `c4f3d1e`: failed: CassiniKit tests and conformance; draft.
 - #214 `922711b`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #215 `2a80631`: pending: build / Build products (arm64, Xcode 16.4); draft.
-
-## Active #208 blocker 1 assignment
-
-Branch `ci/rented-mac-routing-paths`, based on #208 head `17162d0ab810ddaeb65a17d3b7abfbb8b5c295f2`, checkout `/tmp/cassini-rented-paths`. Current base already includes workspace identity + verified consumer-local rebuild. Adding real producer/consumer integration proof with Bundle.module and #filePath, producer hidden, foreign-object mutation, and same-path reuse. Regression + actual Cassini two-path recipes pushed at `d3e6a9f` on the assigned branch. Both compiled proofs queued behind the shared mkdir lock (another owner holds it); no result claimed yet. No edits to #208 itself or setup-python (drmeyers owns blocker 2). Will push and open a draft PR targeting `ci/rented-mac-routing` before ending.
