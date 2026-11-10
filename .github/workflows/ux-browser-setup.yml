@@ -75,7 +75,9 @@ jobs:
         run: python3 scripts/test-browser-capture-app.py build/Build/Products/Debug/Cassini.app --output build/browser-capture-app.json
       - name: Real Chromium navigation and app-owned source restoration
         if: ${{ !cancelled() && steps.browser_background.outcome == 'success' }}
-        run: node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
+        run: |
+          node --test scripts/test-wait-for-change.mjs
+          node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
       # D68 item 7: shared test 2 runs once on browser-path PRs (this job's area) and nightly
       # (ci.yml's schedule selects every area). One runner: the scenario is ~2 minutes of real call.
       - name: Shared test 2, live folder (protocol driver and oracle on the real app)
