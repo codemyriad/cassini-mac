@@ -28,7 +28,20 @@ do {
     // Top-level Swift code is main-actor isolated. Dispatch's preconcurrency
     // callback must explicitly be Sendable or Swift6.1 checks that isolation
     // on the global queue and traps at the first watchdog tick.
-    ownerWatchdog.setEventHandler { @Sendable in if getppid() != owner { exit(0) } }
+    #if DEBUG
+    // Private inherited-FD acknowledgement for event-driven owner-lifetime tests.
+    // No stdout/protocol message or release-worker behavior changes.
+    let ownerTickFD = Int32(ProcessInfo.processInfo.environment["CASSINI_TEST_OWNER_TICK_FD"] ?? "")
+    #endif
+    ownerWatchdog.setEventHandler { @Sendable in
+        if getppid() != owner { exit(0) }
+        #if DEBUG
+        if let fd = ownerTickFD, fd >= 3 {
+            var tick: UInt8 = 1
+            _ = write(fd,&tick,1)
+        }
+        #endif
+    }
     ownerWatchdog.resume()
     defer { ownerWatchdog.cancel() }
     SegmentedAudio.removeAbandonedScratch()

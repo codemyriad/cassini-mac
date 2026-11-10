@@ -1,0 +1,21 @@
+{
+  "kind": "swiftpm",
+  "commit": "e3eb2ad8cf19f11f1ab2cc9e075747f48f8b1539",
+  "xcode": "Xcode 16.4\nBuild version 16F6",
+  "pins": {
+    "project.yml": "27d25056e4d40786b1630746744ea66093fdbe9605241b2949c4585e30602ba4",
+    "scripts/fetch-sparkle.py": "0ff47e68f2ebd6ea97ee74fd5cf5452f65c249ceb217950d56708cafc94f7135",
+    "Distribution/sparkle-public-key.txt": "27076ccc3d7370f954add88f6ab1d9565e29ec758449ce1ab6d62be4a86578a2",
+    "Package.swift": "c6faac9b705e3dae907b1644b64b0eac539ad927b0bd7108be58322e7ead5565",
+    "Whistle/pins.json": "90f0022a867f9870f3186956fae5ffd2816feff5d0b67898857cc6929dc452d5",
+    "Opus/pins.json": "06d8d93c78f5450a967776382396fbba57d813ba3aaca93dd282cbda2a92612f",
+    "scripts/fetch-opus.py": "144e163213815c6deffa39a12b0f6eb8da24afb7b0fdb589b608a947ea9b9088",
+    "scripts/fetch-vad.py": "3dec424e9925572f152e784e12613437e7b5000dde23737b8f4c1e1f62ed6e42",
+    "Parakeet/pins.json": "6aea80f4368a38d73289fbf739cf1a7d5d1d50cea18034f5de18af3cb792d697",
+    "Parakeet/UPSTREAM.json": "df21e228504d7f90d935c44ddd1550acd3bccebb3af3f070cb91e715c4f48252",
+    "Parakeet/model-manifest.json": "2de6bdac2357927631fd805a1ba974753e32807c7384f688ea4cf3ed81e8c5c3"
+  },
+  "arch": "arm64",
+  "workspace": "/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/producer",
+  "sha256": "dcd617ab7c7dd299662454dd830e1ced31f2f6eb08e999773c48ed497babfa38"
+}
