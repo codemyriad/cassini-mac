@@ -22,6 +22,17 @@ enum SpectrogramHostedBudget {
     }
 }
 
+/// CPU cost per delivered media work, independent of hosted scheduler delays.
+/// Input is one shared 48 kHz timeline, never multiplied by lane/track count.
+struct SpectrogramMediaWork {
+    let frames: Int
+    var seconds: Double { Double(frames)/48000 }
+    func corePercent(cpuSeconds: Double) -> Double {
+        guard frames > 0, cpuSeconds.isFinite, cpuSeconds >= 0 else { return .infinity }
+        return cpuSeconds/seconds*100
+    }
+}
+
 /// Bounded probe-only histogram of main-thread work BETWEEN rendered updates.
 /// Sampling the thread clock across updates includes implicit CA commits and other
 /// main-thread work, while a process descheduled by the host consumes no CPU.
