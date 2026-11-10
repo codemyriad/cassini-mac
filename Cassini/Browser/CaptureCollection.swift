@@ -46,8 +46,17 @@ struct LiveCapture {
     var inputsAdmitted = false
     var signalReservation: UUID? = nil
     var admissionCancelled = false
+    #if DEBUG
+    var fixtureMicrophoneUptime: TimeInterval?
+    #endif
+    var microphoneUptime: TimeInterval {
+        #if DEBUG
+        if let fixtureMicrophoneUptime { return fixtureMicrophoneUptime }
+        #endif
+        return ProcessInfo.processInfo.systemUptime
+    }
     @MainActor var microphoneSilent: Bool {
-        snapshot.me && !input.failedSides.contains(.me) && ProcessInfo.processInfo.systemUptime-lastMicSound >= 20
+        snapshot.me && !input.failedSides.contains(.me) && microphoneUptime-lastMicSound >= 20
     }
     var elapsedMs: Int64 {
         if let savingSinceMs { return savingSinceMs }
@@ -741,12 +750,7 @@ private final class CaptureFiles: @unchecked Sendable {
             if follow.rebound, let key = follow.key { captures[id]?.key = key; feedOwnership(id) }
             guard let value = captures[id] else { continue }
             offerStandIn(id,value)
-            let status = value.input.status()
-            captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
-            if value.snapshot.browserAlive && value.snapshot.others {
-                captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
-            }
-            if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
+            refreshLevels(id, value)
             // A native stand-in joins this path once it asked a call to resume it; until the
             // take-over commits it is a plain native recording.
             let standIn = value.snapshot.manifest.source == "macos" && value.key != nil
@@ -859,6 +863,14 @@ private final class CaptureFiles: @unchecked Sendable {
             }
         }
     }
+    private func refreshLevels(_ id: UUID, _ value: LiveCapture) {
+        let status = value.input.status()
+        captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
+        if value.snapshot.browserAlive && value.snapshot.others {
+            captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
+        }
+        if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
+    }
     func title(_ id: UUID, _ text: String) { captures[id]?.displayTitle = text }
     private func applyDiskBudget(_ ids: [UUID], _ budget: DiskBudget) {
         for id in ids where captures[id] != nil {
@@ -869,6 +881,17 @@ private final class CaptureFiles: @unchecked Sendable {
         RecordingDiskWatch.updateWarning(line)
     }
     #if DEBUG
+    func setMicrophoneUptimeForTesting(_ ids: [UUID], at time: TimeInterval?) {
+        guard CaptureFixture.enabled else { return }
+        for id in ids {
+            guard let value = captures[id] else { continue }
+            if value.fixtureMicrophoneUptime == nil || time == nil {
+                captures[id]?.lastMicSound = time ?? ProcessInfo.processInfo.systemUptime
+            }
+            captures[id]?.fixtureMicrophoneUptime = time
+            if let updated = captures[id] { refreshLevels(id, updated) }
+        }
+    }
     func ageMicrophoneForTesting(_ id: UUID,seconds: TimeInterval) {
         guard CaptureFixture.enabled else { return }
         captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime-seconds

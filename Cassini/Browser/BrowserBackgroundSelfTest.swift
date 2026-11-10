@@ -14,10 +14,9 @@ import CassiniBrowserSetup
         return URL(fileURLWithPath:path,isDirectory:true)
     }
     static func run() async {
-        let deadline = ProcessInfo.processInfo.systemUptime + 85
         do {
-            while (!CaptureCollection.shared.connected || !CompanionSetup.shared.prepared) && ProcessInfo.processInfo.systemUptime < deadline {
-                try await Task.sleep(for:.milliseconds(50))
+            try await CaptureSelfTest.wait(timeout:85) {
+                CaptureCollection.shared.connected && CompanionSetup.shared.prepared
             }
             guard CaptureCollection.shared.connected, CompanionSetup.shared.started, CompanionSetup.shared.prepared else { throw BrowserSetupError.unavailable }
             guard let instance = CaptureCollection.shared.peers.first(where:{ $0.reconciled })?.browserInstance else {
