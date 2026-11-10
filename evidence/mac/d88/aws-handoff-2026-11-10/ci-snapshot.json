@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T20:50:23+00:00",
+  "updated": "2026-11-10T20:55:24+00:00",
   "prs": [
     {
       "pr": 210,
@@ -29,7 +29,6 @@
       "pending": [
         "CassiniKit tests and conformance",
         "Whistle bundle / Whistle worker (macos-15-intel)",
-        "Package tests (macos-15-intel)",
         "UX browser setup / Browser setup (macos-15)",
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
@@ -77,7 +76,6 @@
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel)"
       ],
       "failed": [],
