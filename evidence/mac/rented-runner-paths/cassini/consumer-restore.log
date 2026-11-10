@@ -1,0 +1,1066 @@
+SwiftPM workspace differs: /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/producer -> /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer; building test products in this checkout
+Building for debugging...
+[0/121] /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/.build/arm64-apple-macosx/debug/CassiniKitPackageTests.derived/runner.swift
+[1/121] Write swift-version--79AA4F9932D1E87A.txt
+[2/121] Write sources
+[13/121] Write cassini-whistle-worker-entitlement.plist
+[14/121] Write cassini-session-transition-probe-entitlement.plist
+[15/121] Write cassini-parakeet-worker-entitlement.plist
+[16/121] Write cassini-model-fetch-entitlement.plist
+[17/121] Write cassini-inspect-entitlement.plist
+[18/121] Write cassini-control-host-entitlement.plist
+[19/121] Write cassini-browser-setup-service-entitlement.plist
+[20/121] Write cassini-browser-setup-probe-service-entitlement.plist
+[21/121] Write cassini-browser-setup-probe-client-entitlement.plist
+[22/121] Write cassini-browser-host-entitlement.plist
+[23/121] Write cassini-browser-connect-probe-entitlement.plist
+[24/121] Write sources
+[25/121] Compiling xxhash.c
+[26/121] Compiling zstd_common.c
+[27/121] Compiling zstd_ddict.c
+[28/121] Compiling zstd_decompress_block.c
+[29/121] Compiling zstd_decompress.c
+[30/121] Compiling error_private.c
+[31/121] Compiling fse_decompress.c
+[32/121] Compiling entropy_common.c
+[33/121] Write sources
+[35/121] Compiling debug.c
+[36/121] Compiling CassiniZstd decoder.c
+[37/121] Compiling huf_decompress.c
+[38/121] Write sources
+[42/121] Compiling CassiniVAD fir.c
+[43/121] Write sources
+[51/128] Compiling CassiniSherpaBridge bridge.c
+[52/128] Write sources
+[57/128] Copying Fixtures
+[57/128] Copying Goldens
+[59/128] Copying Fixtures
+[60/128] Copying Resources
+[61/128] Copying Fixtures
+[62/128] Copying SessionEvents
+[63/128] Copying Goldens
+[64/128] Copying Fixtures
+[65/128] Copying LibraryVectors
+[66/128] Copying Golden
+[67/128] Copying ExportGolden
+[68/128] Copying Schema
+[69/128] Copying Localization
+[70/128] Copying Conformance
+[71/128] Copying Fixtures
+[74/128] Write sources
+[78/144] Compiling CassiniOpus OpusBridge.c
+[79/144] Write sources
+[83/144] Compiling CassiniVAD vad.c
+[85/150] Emitting module CassiniKit
+[86/154] Emitting module CassiniBrowserSetupProbe
+[87/154] Compiling CassiniBrowserSetupProbe Interface.swift
+[87/154] Write sources
+[89/154] Compiling CassiniKit Export.swift
+[90/154] Compiling CassiniKit Ogg.swift
+[91/155] Compiling CassiniKit AudioDigest.swift
+[92/155] Compiling CassiniKit BrowserCaptureLossCause.swift
+[93/155] Emitting module CassiniWhistle
+[94/155] Compiling CassiniKit CaptureEvents.swift
+[95/155] Compiling CassiniKit CassiniReader.swift
+[96/155] Compiling CassiniKit Timeline.swift
+[97/155] Compiling CassiniKit TranscriptRendering.swift
+[98/155] Compiling CassiniKit TranscriptText.swift
+[99/155] Compiling CassiniKit WriterLoss.swift
+[105/157] Compiling CassiniKit JSON.swift
+[106/157] Compiling CassiniKit JSONEncoding.swift
+[107/157] Compiling CassiniKit ManifestLimits.swift
+[108/157] Compiling CassiniKit ManifestParser.swift
+[109/157] Compiling CassiniKit Model.swift
+[111/157] Compiling CassiniKit OpusPacketWriter.swift
+[112/157] Compiling CassiniKit PayloadCodec.swift
+[113/157] Compiling CassiniKit PortableMeetingTags.swift
+[114/157] Compiling CassiniKit Tags.swift
+[115/157] Compiling CassiniWhistle WhistleSubprocess.swift
+[116/159] Compiling cassini_browser_setup_probe_service main.swift
+[117/159] Emitting module cassini_browser_setup_probe_service
+[118/165] Emitting module cassini_browser_setup_probe_client
+[119/165] Compiling cassini_browser_setup_probe_client main.swift
+[120/165] Compiling cassini_inspect main.swift
+[121/165] Emitting module cassini_inspect
+[122/182] Emitting module CassiniModels
+[123/184] Compiling CassiniModels ModelUserAgent.swift
+[124/184] Compiling CassiniModels SpeechModelAdoption.swift
+[125/184] Compiling CassiniModels ModelFiles.swift
+[126/184] Compiling CassiniModels ModelHTTP.swift
+[127/184] Compiling CassiniModels ModelManifest.swift
+[128/184] Compiling CassiniModels ModelStorage.swift
+[129/184] Compiling CassiniModels ModelDownloadServiceProtocol.swift
+[130/184] Compiling CassiniModels ModelDownloader.swift
+[131/211] Emitting module CassiniLibrary
+[132/219] Compiling CassiniBrowserSetup LocalCompanion.swift
+[133/219] Compiling CassiniBrowserSetup BackgroundSetup.swift
+[134/219] Emitting module CassiniBrowserSetup
+[135/219] Compiling CassiniBrowserSetup BrowserSetup.swift
+[136/221] Compiling cassini_model_fetch main.swift
+[137/221] Emitting module cassini_model_fetch
+[138/221] Compiling CassiniLibrary MeetingPresentation.swift
+[139/221] Compiling CassiniLibrary MeetingRename.swift
+[140/221] Compiling CassiniLibrary Metadata.swift
+[141/227] Compiling CassiniWhistleTests PrivacyTests.swift
+[142/227] Compiling CassiniWhistleTests AssetTests.swift
+[143/227] Emitting module CassiniWhistleTests
+[144/227] Compiling CassiniWhistleTests IOTests.swift
+[145/228] Compiling cassini_browser_setup_service main.swift
+[146/228] Compiling CassiniWhistleTests resource_bundle_accessor.swift
+[147/228] Emitting module cassini_browser_setup_service
+[148/228] Compiling cassini_browser_setup_service Service.swift
+[149/228] Emitting module CassiniRecording
+[150/228] Compiling CassiniLibrary MetadataSchema.swift
+[151/228] Compiling CassiniLibrary RecordingDetailsReport.swift
+[152/228] Compiling CassiniLibrary SourcePlacement.swift
+[153/232] Compiling CassiniLibrary SpeakerTurn.swift
+[154/232] Compiling CassiniLibrary TimelineReadout.swift
+[155/232] Compiling CassiniLibrary TrackPlacement.swift
+[156/232] Compiling CassiniLibrary TrackPresence.swift
+[157/232] Compiling CassiniLibrary TranscriptListening.swift
+[158/232] Compiling CassiniLibrary TranscriptSpeaker.swift
+[159/232] Compiling CassiniLibrary TurnPreparation.swift
+[160/232] Compiling CassiniLibrary resource_bundle_accessor.swift
+[161/234] Compiling cassini_browser_connect_probe main.swift
+[162/234] Emitting module cassini_browser_connect_probe
+[163/240] Compiling CassiniLibrary SpeakerMerges.swift
+[164/240] Compiling CassiniLibrary SpeakerRowPresentation.swift
+[165/240] Compiling CassiniLibrary AudioEncodePolicy.swift
+[166/240] Compiling CassiniRecording RecordingSink.swift
+[167/240] Compiling CassiniRecording StoppedProblem.swift
+[168/240] Compiling CassiniRecording SystemAudioCaptureKnowledge.swift
+[169/245] Compiling CassiniBrowserSetupTests BackgroundSetupTests.swift
+[170/245] Compiling CassiniBrowserSetupTests CompanionUpgradeTests.swift
+[171/245] Emitting module CassiniKitTests
+[172/245] Compiling CassiniKitTests CaptureEndEventsTests.swift
+[173/245] Compiling CassiniKitTests CassiniKitTests.swift
+[174/245] Compiling CassiniKitTests TranscriptTextTests.swift
+[175/246] Compiling CassiniKitTests resource_bundle_accessor.swift
+[176/248] Emitting module cassini_session_transition_probe
+[177/248] Compiling cassini_session_transition_probe main.swift
+[178/256] Compiling CassiniLibrary LibraryNames.swift
+[179/256] Compiling CassiniLibrary LibraryPendingMove.swift
+[180/256] Compiling CassiniLibrary LibraryRouting.swift
+[181/256] Compiling CassiniLibrary LibraryScanner.swift
+[182/256] Compiling CassiniLibrary LibraryTrash.swift
+[183/256] Compiling CassiniLibrary ListeningBarPresentation.swift
+[184/256] Compiling CassiniLibrary Meeting.swift
+[185/256] Compiling CassiniLibrary MeetingMarkdown.swift
+[186/256] Compiling CassiniLibrary MeetingMetadataWriter.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+[191/256] Compiling CassiniLibrary LibraryFormat.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+[192/256] Compiling CassiniLibrary LibraryImport.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+[193/256] Compiling CassiniLibrary LibraryLocalization.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+[194/256] Compiling CassiniLibrary LibraryLocation.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+[195/256] Compiling CassiniLibrary LibraryMove.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniLibrary/BrowserCompanionConnection.swift:49:58: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+47 |         var bytes = [CChar](repeating:0,count:4096)
+48 |         let length = bytes.withUnsafeMutableBufferPointer { proc_pidpath(getppid(),$0.baseAddress,UInt32($0.count)) }
+49 |         guard length > 0 else { return nil }; let path = String(cString:bytes)
+   |                                                          `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+50 |         for (component,name) in [("Google Chrome.app","Chrome"),("Chromium.app","Chromium"),("Microsoft Edge.app","Microsoft Edge"),("Brave Browser.app","Brave"),("Vivaldi.app","Vivaldi"),("Opera.app","Opera")] {
+51 |             if path.contains("/" + component + "/") { return name }
+[196/256] Compiling CassiniSpectrogram PixelRing.swift
+[197/256] Compiling CassiniSpectrogram Selection.swift
+[198/256] Compiling CassiniSpectrogram CaptureSelection.swift
+[199/256] Compiling CassiniSpectrogram DisplayClock.swift
+[200/256] Compiling CassiniSpectrogram Lane.swift
+[201/256] Compiling CassiniSpectrogram Session.swift
+[202/256] Compiling CassiniSpectrogram Spectrum.swift
+[203/256] Write Objects.LinkFileList
+[207/256] Linking cassini-session-transition-probe
+[211/256] Emitting module CassiniSpectrogram
+[211/258] Linking cassini-model-fetch
+[212/258] Applying cassini-session-transition-probe
+[213/258] Applying cassini-model-fetch
+[220/258] Compiling CassiniSpectrogram Surface.swift
+[221/258] Compiling CassiniSpectrogram Track.swift
+[221/258] Linking cassini-inspect
+[223/267] Compiling CassiniModelsTests SpeechModelAdoptionTests.swift
+[223/268] Linking cassini-browser-setup-service
+[224/268] Applying cassini-inspect
+[225/268] Applying cassini-browser-setup-service
+[227/268] Emitting module CassiniTranscription
+[228/270] Compiling CassiniModelsTests resource_bundle_accessor.swift
+[229/280] Compiling CassiniSpectrogramTests SurfacePackingTests.swift
+[230/280] Compiling CassiniTranscription resource_bundle_accessor.swift
+[231/280] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[232/280] Compiling CassiniBrowserSetupTests InstallationTests.swift
+[233/280] Compiling CassiniBrowserSetupTests LocalCompanionTests.swift
+[234/280] Emitting module CassiniBrowserSetupTests
+[235/280] Compiling CassiniSpectrogramTests CaptureSelectionTests.swift
+[236/280] Compiling CassiniSpectrogramTests DisplayClockTests.swift
+[237/281] Compiling CassiniBrowserSetupTests resource_bundle_accessor.swift
+[238/283] Compiling CassiniSpectrogramTests SessionTests.swift
+[239/283] Compiling CassiniSpectrogramTests SpectrumTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniTranscription/SpeechPipeline.swift:71:152: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 69 |         try WhistleEnvironment.validateLive()
+ 70 |         var error = [CChar](repeating: 0, count: 2048)
+ 71 |         guard let detector = cassini_vad_create(assets.library.path, assets.model.path, &error, error.count) else { throw TranscriptionFailure.runtime(String(cString: error)) }
+    |                                                                                                                                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 72 |         self.detector = detector
+ 73 |     }
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniTranscription/SpeechPipeline.swift:80:135: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 78 |         let filtered = inputFilter.process(frame)
+ 79 |         var value: Float = 0, error = [CChar](repeating: 0, count: 2048)
+ 80 |         guard cassini_vad_probability(detector, filtered, &value, &error, error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString: error)) }
+    |                                                                                                                                       `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 81 |         return value
+ 82 |     }
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniTranscription/SpeechPipeline.swift:71:152: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 69 |         try WhistleEnvironment.validateLive()
+ 70 |         var error = [CChar](repeating: 0, count: 2048)
+ 71 |         guard let detector = cassini_vad_create(assets.library.path, assets.model.path, &error, error.count) else { throw TranscriptionFailure.runtime(String(cString: error)) }
+    |                                                                                                                                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 72 |         self.detector = detector
+ 73 |     }
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniTranscription/SpeechPipeline.swift:80:135: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 78 |         let filtered = inputFilter.process(frame)
+ 79 |         var value: Float = 0, error = [CChar](repeating: 0, count: 2048)
+ 80 |         guard cassini_vad_probability(detector, filtered, &value, &error, error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString: error)) }
+    |                                                                                                                                       `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 81 |         return value
+ 82 |     }
+[242/283] Compiling CassiniSpectrogramTests LaneTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniTranscription/SpeechPipeline.swift:71:152: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 69 |         try WhistleEnvironment.validateLive()
+ 70 |         var error = [CChar](repeating: 0, count: 2048)
+ 71 |         guard let detector = cassini_vad_create(assets.library.path, assets.model.path, &error, error.count) else { throw TranscriptionFailure.runtime(String(cString: error)) }
+    |                                                                                                                                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 72 |         self.detector = detector
+ 73 |     }
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniTranscription/SpeechPipeline.swift:80:135: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 78 |         let filtered = inputFilter.process(frame)
+ 79 |         var value: Float = 0, error = [CChar](repeating: 0, count: 2048)
+ 80 |         guard cassini_vad_probability(detector, filtered, &value, &error, error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString: error)) }
+    |                                                                                                                                       `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+ 81 |         return value
+ 82 |     }
+[243/283] Compiling CassiniSpectrogramTests PixelRingTests.swift
+[244/283] Compiling CassiniSpectrogramTests SelectionTests.swift
+[245/283] Compiling CassiniSpectrogramTests SessionGoldenTests.swift
+[246/299] Emitting module CassiniSearch
+[247/299] Compiling CassiniSearch SearchIndex.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniSearch/SearchIndex.swift:148:23: warning: value 'paragraph' was defined but never used; consider replacing with boolean test
+146 |             let highlighted = statement.text(2)
+147 |             let parsed = Self.unmark(highlighted,begin:begin,end:end)
+148 |             guard let paragraph = prose[key]?[index] else { continue }
+    |                       `- warning: value 'paragraph' was defined but never used; consider replacing with boolean test
+149 |             let matches = parsed.spans.map { span in
+150 |                 let pieces = zip(row.ranges,row.seeks).compactMap { range,seek -> SearchSpan? in
+[248/301] Emitting module cassini_whistle_worker
+[249/301] Compiling cassini_whistle_worker main.swift
+[250/319] Emitting module CassiniModelsTests
+[251/319] Compiling CassiniModelsTests ModelDownloaderTests.swift
+[252/321] Compiling CassiniTranscriptionTests D56TranscriptMembersTranscriptionMeetingTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniTranscriptionTests/DCSpeechPipelineTests.swift:79:127: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+77 |         var segments = try gate.feed(pcm) { frame in
+78 |             var value: Float = 0
+79 |             guard cassini_vad_probability(raw,frame,&value,&error,error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString:error)) }
+   |                                                                                                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+80 |             maximum = max(maximum,value); return value
+81 |         }
+[253/321] Compiling CassiniTranscriptionTests D63FallbackVectorsTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniTranscriptionTests/DCSpeechPipelineTests.swift:79:127: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+77 |         var segments = try gate.feed(pcm) { frame in
+78 |             var value: Float = 0
+79 |             guard cassini_vad_probability(raw,frame,&value,&error,error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString:error)) }
+   |                                                                                                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+80 |             maximum = max(maximum,value); return value
+81 |         }
+[254/321] Compiling CassiniTranscriptionTests D63WritedownVectorsTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniTranscriptionTests/DCSpeechPipelineTests.swift:79:127: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+77 |         var segments = try gate.feed(pcm) { frame in
+78 |             var value: Float = 0
+79 |             guard cassini_vad_probability(raw,frame,&value,&error,error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString:error)) }
+   |                                                                                                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+80 |             maximum = max(maximum,value); return value
+81 |         }
+[255/321] Compiling CassiniTranscriptionTests D67FailedWriteDownTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniTranscriptionTests/DCSpeechPipelineTests.swift:79:127: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+77 |         var segments = try gate.feed(pcm) { frame in
+78 |             var value: Float = 0
+79 |             guard cassini_vad_probability(raw,frame,&value,&error,error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString:error)) }
+   |                                                                                                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+80 |             maximum = max(maximum,value); return value
+81 |         }
+[256/321] Compiling CassiniTranscriptionTests D67RetryTranscriptionMeetingTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniTranscriptionTests/DCSpeechPipelineTests.swift:79:127: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+77 |         var segments = try gate.feed(pcm) { frame in
+78 |             var value: Float = 0
+79 |             guard cassini_vad_probability(raw,frame,&value,&error,error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString:error)) }
+   |                                                                                                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+80 |             maximum = max(maximum,value); return value
+81 |         }
+[257/321] Compiling CassiniTranscriptionTests DCSpeechPipelineTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniTranscriptionTests/DCSpeechPipelineTests.swift:79:127: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+77 |         var segments = try gate.feed(pcm) { frame in
+78 |             var value: Float = 0
+79 |             guard cassini_vad_probability(raw,frame,&value,&error,error.count) == 1 else { throw TranscriptionFailure.runtime(String(cString:error)) }
+   |                                                                                                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+80 |             maximum = max(maximum,value); return value
+81 |         }
+[258/326] Compiling CassiniTranscriptionTests ScratchTests.swift
+[259/326] Compiling CassiniTranscriptionTests UnfilteredMicrophonePipelineTests.swift
+[260/326] Compiling CassiniTranscriptionTests UnfilteredTranscriptProjectionTests.swift
+[261/326] Compiling CassiniTranscriptionTests WhistleTextExceptions.swift
+[262/326] Compiling CassiniTranscriptionTests resource_bundle_accessor.swift
+[263/326] Compiling CassiniSearchTests SearchTests.swift
+[264/326] Emitting module CassiniSearchTests
+[265/331] Compiling CassiniTranscriptionTests D52ScratchTranscriptionMeetingTests.swift
+[266/331] Compiling CassiniTranscriptionTests D55PlacementTranscriptionMeetingTests.swift
+[267/331] Compiling CassiniTranscriptionTests D56SilentTracksTranscriptionMeetingTests.swift
+[268/331] Compiling CassiniTranscriptionTests MeetingTests.swift
+[269/331] Compiling CassiniTranscriptionTests PCMWindowLevelsTests.swift
+[270/331] Compiling CassiniTranscriptionTests PipelineTests.swift
+[274/333] Compiling CassiniSpectrogramTests TrackTests.swift
+[275/333] Compiling CassiniSpectrogramTests resource_bundle_accessor.swift
+[276/333] Emitting module CassiniTranscriptionTests
+[277/333] Compiling CassiniPlayback AVSessionTransport.swift
+[278/333] Compiling CassiniPlayback ListenController.swift
+[279/333] Compiling CassiniTranscriptionTests D52FallbackTranscriptionMeetingTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniRecordingTests/RecordingSinkTests.swift:39:31: warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 37 | private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 = 4) throws -> AVAudioPCMBuffer {
+ 38 |     let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels))
+ 39 |     let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout))
+    |                               `- warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 40 |     let result = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+ 41 |     result.frameLength = frames
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniRecordingTests/RecordingSinkTests.swift:39:31: warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 37 | private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 = 4) throws -> AVAudioPCMBuffer {
+ 38 |     let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels))
+ 39 |     let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout))
+    |                               `- warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 40 |     let result = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+ 41 |     result.frameLength = frames
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniRecordingTests/RecordingSinkTests.swift:39:31: warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 37 | private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 = 4) throws -> AVAudioPCMBuffer {
+ 38 |     let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels))
+ 39 |     let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout))
+    |                               `- warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 40 |     let result = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+ 41 |     result.frameLength = frames
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniRecordingTests/RecordingSinkTests.swift:39:31: warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 37 | private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 = 4) throws -> AVAudioPCMBuffer {
+ 38 |     let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels))
+ 39 |     let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout))
+    |                               `- warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 40 |     let result = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+ 41 |     result.frameLength = frames
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniRecordingTests/RecordingSinkTests.swift:39:31: warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 37 | private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 = 4) throws -> AVAudioPCMBuffer {
+ 38 |     let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels))
+ 39 |     let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout))
+    |                               `- warning: '#require(_:_:)' is redundant because 'AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)' never equals 'nil' (from macro 'require')
+ 40 |     let result = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+ 41 |     result.frameLength = frames
+[293/333] Emitting module CassiniRecordingTests
+[299/341] Compiling CassiniPlayback SessionComposition.swift
+[300/341] Compiling CassiniPlayback PlaybackStorage.swift
+[301/341] Emitting module CassiniPlayback
+[306/342] Compiling CassiniParakeet ParakeetAssets.swift
+[307/342] Compiling CassiniParakeet ParakeetModelLease.swift
+[308/342] Compiling CassiniParakeet ParakeetEngine.swift
+[309/342] Emitting module CassiniParakeet
+[310/342] Compiling CassiniPlayback SessionPlayback.swift
+[311/346] Compiling CassiniLibraryWatchers LibraryWatcher.swift
+[312/346] Emitting module CassiniLibraryWatchers
+[313/346] Compiling cassini_parakeet_worker main.swift
+[314/346] Emitting module cassini_parakeet_worker
+[315/346] Compiling CassiniRecordingTests SpectrogramFixtureClockTests.swift
+[316/346] Compiling CassiniRecordingTests SystemAudioCaptureKnowledgeTests.swift
+[317/346] Compiling CassiniRecordingTests TerminalEventTests.swift
+[318/346] Compiling CassiniRecordingTests resource_bundle_accessor.swift
+[322/346] Emitting module CassiniSpectrogramTests
+[323/393] Emitting module CassiniExport
+[324/394] Compiling CassiniParakeetTests ParakeetMeetingTests.swift
+[325/394] Compiling CassiniParakeetTests ParakeetTests.swift
+[326/394] Emitting module CassiniParakeetTests
+[327/394] Compiling CassiniExport MeetingFileExporter.swift
+[328/394] Compiling CassiniExport OpusEncoder.swift
+[329/395] Compiling CassiniExport PeakLimiter.swift
+[330/395] Compiling CassiniParakeetTests resource_bundle_accessor.swift
+[330/395] Write Objects.LinkFileList
+[332/395] Linking cassini-whistle-worker
+[334/395] Emitting module CassiniLibraryTests
+[335/405] Compiling CassiniExport CodemyriadNamespace.swift
+[336/405] Compiling CassiniExport ExportDestination.swift
+[337/405] Compiling CassiniExport PCMInput.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniExport/OpusEncoder.swift:70:68: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+68 |             cassini_opus_create($0,Int32(choice.bitrateBps),Int32(choice.cutoffHz),&lookahead,&error,error.count)
+69 |         }
+70 |         guard let pointer else { throw MeetingExportError.encoding(String(cString:error)) }
+   |                                                                    `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+71 |         guard (0...5760).contains(lookahead) else { cassini_opus_destroy(pointer); throw MeetingExportError.invalidAssets }
+72 |         handle = pointer; preSkip = Int(lookahead)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniExport/OpusEncoder.swift:78:66: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+76 |         var output = [UInt8](repeating:0,count:4096), error = [CChar](repeating:0,count:2048)
+77 |         let count = cassini_opus_encode(handle,samples,samples.count,&output,output.count,&error,error.count)
+78 |         guard count > 0 else { throw MeetingExportError.encoding(String(cString:error)) }
+   |                                                                  `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+79 |         return Data(output.prefix(Int(count)))
+80 |     }
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniExport/OpusEncoder.swift:70:68: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+68 |             cassini_opus_create($0,Int32(choice.bitrateBps),Int32(choice.cutoffHz),&lookahead,&error,error.count)
+69 |         }
+70 |         guard let pointer else { throw MeetingExportError.encoding(String(cString:error)) }
+   |                                                                    `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+71 |         guard (0...5760).contains(lookahead) else { cassini_opus_destroy(pointer); throw MeetingExportError.invalidAssets }
+72 |         handle = pointer; preSkip = Int(lookahead)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniExport/OpusEncoder.swift:78:66: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+76 |         var output = [UInt8](repeating:0,count:4096), error = [CChar](repeating:0,count:2048)
+77 |         let count = cassini_opus_encode(handle,samples,samples.count,&output,output.count,&error,error.count)
+78 |         guard count > 0 else { throw MeetingExportError.encoding(String(cString:error)) }
+   |                                                                  `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+79 |         return Data(output.prefix(Int(count)))
+80 |     }
+[339/405] Applying cassini-whistle-worker
+[340/407] Linking cassini-parakeet-worker
+[342/415] Emitting module CassiniExportTests
+[343/417] Emitting module SharedPlacementTests
+[344/417] Compiling SharedPlacementTests SharedPlacementTests.swift
+[344/417] Applying cassini-parakeet-worker
+[345/417] Write Objects.LinkFileList
+[348/417] Compiling CassiniPlaybackTests SessionCompositionTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniPlaybackTests/SessionCompositionTests.swift:171:69: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead
+169 |     private func read(_ asset: AVAsset, start: Double, duration: Double) throws -> [Float] {
+170 |         let reader = try AVAssetReader(asset: asset)
+171 |         let output = AVAssetReaderAudioMixOutput(audioTracks: asset.tracks(withMediaType: .audio), audioSettings: [
+    |                                                                     `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead
+172 |             AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48000, AVNumberOfChannelsKey: 1,
+173 |             AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true, AVLinearPCMIsNonInterleaved: false
+[349/417] Compiling CassiniPlaybackTests AVSpanBoundaryTests.swift
+[350/417] Emitting module CassiniPlaybackTests
+[351/417] Compiling CassiniPlaybackTests ListenControllerTests.swift
+[352/418] Compiling CassiniExportTests D70SpeakerMergesExportTests.swift
+[353/418] Compiling CassiniExportTests ExportDestinationTests.swift
+[353/418] Linking cassini-browser-setup-probe-service
+[354/418] Linking cassini-browser-setup-probe-client
+[355/418] Applying cassini-browser-setup-probe-service
+[356/418] Applying cassini-browser-setup-probe-client
+[357/418] Write Objects.LinkFileList
+[358/418] Write sources
+[360/418] Compiling CassiniPlaybackTests SessionPlaybackTests.swift
+[360/418] Linking cassini-browser-connect-probe
+[361/418] Applying cassini-browser-connect-probe
+[363/434] Compiling CassiniBrowserControl CaptureInputLifecycle.swift
+[364/434] Compiling CassiniBrowserControl CaptureRecordWriter.swift
+[365/434] Compiling CassiniBrowserControl ControlHeartbeat.swift
+[366/434] Compiling CassiniBrowserControl CallOwnership.swift
+[367/434] Compiling CassiniBrowserControl CallSignals.swift
+[373/434] Compiling CassiniBrowserControl AudioTransportWatchdog.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/BrowserInstance.swift:36:40: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+34 |         var bytes = [CChar](repeating:0,count:4096)
+35 |         let count = bytes.withUnsafeMutableBufferPointer { proc_pidpath(pid,$0.baseAddress,UInt32($0.count)) }
+36 |         guard count > 0, isBrowserPath(String(cString:bytes)), getppid() == pid, process(pid) == before else { return nil }
+   |                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+37 |         return before
+38 |     }
+[374/434] Compiling CassiniBrowserControl BrowserAudioBroker.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/BrowserInstance.swift:36:40: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+34 |         var bytes = [CChar](repeating:0,count:4096)
+35 |         let count = bytes.withUnsafeMutableBufferPointer { proc_pidpath(pid,$0.baseAddress,UInt32($0.count)) }
+36 |         guard count > 0, isBrowserPath(String(cString:bytes)), getppid() == pid, process(pid) == before else { return nil }
+   |                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+37 |         return before
+38 |     }
+[375/434] Compiling CassiniBrowserControl BrowserCallLifecycle.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/BrowserInstance.swift:36:40: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+34 |         var bytes = [CChar](repeating:0,count:4096)
+35 |         let count = bytes.withUnsafeMutableBufferPointer { proc_pidpath(pid,$0.baseAddress,UInt32($0.count)) }
+36 |         guard count > 0, isBrowserPath(String(cString:bytes)), getppid() == pid, process(pid) == before else { return nil }
+   |                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+37 |         return before
+38 |     }
+[376/434] Compiling CassiniBrowserControl BrowserCompanionHealth.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/BrowserInstance.swift:36:40: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+34 |         var bytes = [CChar](repeating:0,count:4096)
+35 |         let count = bytes.withUnsafeMutableBufferPointer { proc_pidpath(pid,$0.baseAddress,UInt32($0.count)) }
+36 |         guard count > 0, isBrowserPath(String(cString:bytes)), getppid() == pid, process(pid) == before else { return nil }
+   |                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+37 |         return before
+38 |     }
+[377/434] Compiling CassiniBrowserControl BrowserInstance.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/BrowserInstance.swift:36:40: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+34 |         var bytes = [CChar](repeating:0,count:4096)
+35 |         let count = bytes.withUnsafeMutableBufferPointer { proc_pidpath(pid,$0.baseAddress,UInt32($0.count)) }
+36 |         guard count > 0, isBrowserPath(String(cString:bytes)), getppid() == pid, process(pid) == before else { return nil }
+   |                                        `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+37 |         return before
+38 |     }
+[378/434] Emitting module CassiniBrowserControl
+[379/434] Compiling CassiniBrowserControl ControlHost.swift
+[380/434] Compiling CassiniBrowserControl ControlRegistry.swift
+[381/434] Compiling CassiniBrowserControl ControlService.swift
+[382/434] Compiling CassiniBrowserControl FirstBuffer.swift
+[383/434] Compiling CassiniBrowserControl FrameIO.swift
+[384/439] Compiling CassiniLibraryTests MeetingRenameTests.swift
+[385/439] Compiling CassiniLibraryTests NoSpeechTests.swift
+[386/439] Compiling CassiniLibraryTests QAFixesTests.swift
+[387/439] Compiling CassiniLibraryTests RecordingLibraryTests.swift
+[388/439] Compiling CassiniLibraryTests ScannerTests.swift
+[389/439] Compiling CassiniLibraryTests SharedLibraryVectorsTests.swift
+[390/439] Compiling CassiniLibraryTests SharedOutcomeLinesTests.swift
+[391/439] Compiling CassiniLibraryTests TurnPreparationTests.swift
+[392/439] Compiling CassiniLibraryTests WatcherTests.swift
+[393/439] Compiling CassiniLibraryTests resource_bundle_accessor.swift
+[396/439] Compiling CassiniBrowserControl OwnedBrowserCapture.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift:150:52: warning: reference to captured var 'value' in concurrently-executing code
+148 |         guard force || now - lastPublished >= 250_000_000 else { return }
+149 |         lastPublished = now
+150 |         notifications.async { [changed] in changed(value) }
+    |                                                    `- warning: reference to captured var 'value' in concurrently-executing code
+151 |     }
+152 |     public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, clock: ClockFacts? = nil) throws {
+[397/439] Compiling CassiniBrowserControl PipeTransport.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift:150:52: warning: reference to captured var 'value' in concurrently-executing code
+148 |         guard force || now - lastPublished >= 250_000_000 else { return }
+149 |         lastPublished = now
+150 |         notifications.async { [changed] in changed(value) }
+    |                                                    `- warning: reference to captured var 'value' in concurrently-executing code
+151 |     }
+152 |     public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, clock: ClockFacts? = nil) throws {
+[398/439] Compiling CassiniBrowserControl StagedNativeWriter.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift:150:52: warning: reference to captured var 'value' in concurrently-executing code
+148 |         guard force || now - lastPublished >= 250_000_000 else { return }
+149 |         lastPublished = now
+150 |         notifications.async { [changed] in changed(value) }
+    |                                                    `- warning: reference to captured var 'value' in concurrently-executing code
+151 |     }
+152 |     public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, clock: ClockFacts? = nil) throws {
+[399/439] Compiling CassiniBrowserControl UserStoppedCalls.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift:150:52: warning: reference to captured var 'value' in concurrently-executing code
+148 |         guard force || now - lastPublished >= 250_000_000 else { return }
+149 |         lastPublished = now
+150 |         notifications.async { [changed] in changed(value) }
+    |                                                    `- warning: reference to captured var 'value' in concurrently-executing code
+151 |     }
+152 |     public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, clock: ClockFacts? = nil) throws {
+[400/439] Compiling CassiniBrowserControl VerifiedCallAdmission.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift:150:52: warning: reference to captured var 'value' in concurrently-executing code
+148 |         guard force || now - lastPublished >= 250_000_000 else { return }
+149 |         lastPublished = now
+150 |         notifications.async { [changed] in changed(value) }
+    |                                                    `- warning: reference to captured var 'value' in concurrently-executing code
+151 |     }
+152 |     public func browserTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int, sourceTrackId: String? = nil, labelSource: String? = nil, clock: ClockFacts? = nil) throws {
+[401/477] Emitting module cassini_control_host
+[402/477] Compiling cassini_control_host main.swift
+[402/477] Write Objects.LinkFileList
+[404/477] Emitting module cassini_browser_host
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/cassini-browser-host/main.swift:19:47: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+17 |         var buffer = [CChar](repeating: 0, count: Int(length))
+18 |         guard _NSGetExecutablePath(&buffer, &length) == 0 else { throw RecordingError.invalid("Cannot locate the recording host executable.") }
+19 |         let executable = URL(fileURLWithPath: String(cString: buffer))
+   |                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+20 |         let installer = BrowserHostInstallation(executable: executable)
+21 |         if arguments == ["--uninstall-extension"] {
+[405/477] Compiling cassini_browser_host main.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Sources/cassini-browser-host/main.swift:19:47: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+17 |         var buffer = [CChar](repeating: 0, count: Int(length))
+18 |         guard _NSGetExecutablePath(&buffer, &length) == 0 else { throw RecordingError.invalid("Cannot locate the recording host executable.") }
+19 |         let executable = URL(fileURLWithPath: String(cString: buffer))
+   |                                               `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+20 |         let installer = BrowserHostInstallation(executable: executable)
+21 |         if arguments == ["--uninstall-extension"] {
+[405/477] Write Objects.LinkFileList
+[407/477] Compiling CassiniBrowserControlTests AudioBrokerTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[408/477] Compiling CassiniBrowserControlTests BrowserCompanionHealthTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[409/477] Compiling CassiniBrowserControlTests CallSignalRegistryTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[410/477] Compiling CassiniBrowserControlTests CallSignalTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[411/477] Compiling CassiniBrowserControlTests ControlHostTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[412/477] Compiling CassiniBrowserControlTests ControlRegistryTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[413/477] Compiling CassiniBrowserControlTests ControlServiceTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[414/477] Compiling CassiniBrowserControlTests D52CallOwnershipTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[415/477] Compiling CassiniBrowserControlTests D52CallPolicyTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[416/477] Compiling CassiniBrowserControlTests D52CaptureRecordTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:67:94: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+65 |         case "dayGroup": actual = format.dayGroup(at)
+66 |         case "rowTime": actual = format.rowTime(at)
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+   |                                                                                              `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:69:90: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+67 |         case "previewSubtitle": actual = format.previewSubtitle(at, durationMs: try #require(value.durationMs), received: value.received ?? false)
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+   |                                                                                          `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/GoldenTests.swift:70:81: warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+68 |         case "searchDate": actual = format.searchDate(at)
+69 |         case "searchContext": actual = format.searchContext(at, durationMs: try #require(value.durationMs), positionMs: try #require(value.positionMs))
+70 |         case "rowMeta": actual = LibraryFormat.rowMeta(durationMs: try #require(value.durationMs), names: try #require(value.names),locale:Locale(identifier:"en_GB"),language:.en)
+   |                                                                                 `- warning: '#require(_:_:)' is redundant because 'value.durationMs' never equals 'nil' (from macro 'require')
+71 |         case "eta": actual = LibraryFormat.eta(try #require(value.minutes),locale:Locale(identifier:"en_GB"),language:.en)
+72 |         case "searchCount": actual = LibraryFormat.searchCount(places: try #require(value.places), meetings: try #require(value.meetings),locale:Locale(identifier:"en_GB"),language:.en)
+
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/LibraryLocationTests.swift:27:28: warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 25 |             #expect(!FileManager.default.fileExists(atPath:old.path))
+ 26 |         }
+ 27 |         try LibraryRouting.withLock(file:config,exclusive:true) {
+    |                            `- warning: result of call to 'withLock(file:exclusive:wait:_:)' is unused
+ 28 |             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
+ 29 |         }
+[417/477] Emitting module CassiniBrowserControlTests
+[417/487] Linking cassini-control-host
+[418/487] Applying cassini-control-host
+[419/487] Linking cassini-browser-host
+[420/487] Applying cassini-browser-host
+[422/487] Compiling CassiniBrowserControlTests D61ClockFactsBrokerTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[423/487] Compiling CassiniBrowserControlTests D69WriterLossTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[424/487] Compiling CassiniBrowserControlTests DOMProvenanceTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[425/487] Compiling CassiniBrowserControlTests FrameIOTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[426/487] Compiling CassiniBrowserControlTests HeldStartTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[427/487] Compiling CassiniBrowserControlTests InputLifecycleTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[428/487] Compiling CassiniBrowserControlTests OwnedCallProofLossTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[429/487] Compiling CassiniBrowserControlTests OwnedCaptureTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[430/487] Compiling CassiniBrowserControlTests OwnedTerminalEventTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[431/487] Compiling CassiniBrowserControlTests PCMCheckpointTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[432/487] Compiling CassiniBrowserControlTests PageStateTests.swift
+/private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-real-paths-m05upb08/consumer/Tests/CassiniLibraryTests/BrowserConnectionTests.swift:15:13: warning: variable 'second' was written to, but never read
+13 |         #expect(snapshot.connected && snapshot.browser == "Chrome")
+14 |         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
+15 |         var second: BrowserCompanionConnection? = try .init(directory:root)
+   |             `- warning: variable 'second' was written to, but never read
+16 |         snapshot = BrowserCompanionConnection.snapshot(directory:root)
+17 |         #expect(snapshot.connected && snapshot.browser == nil)
+[433/487] Compiling CassiniBrowserControlTests D52ControlFieldsTests.swift
+[434/487] Compiling CassiniBrowserControlTests D52GapWriterTests.swift
+[435/487] Compiling CassiniBrowserControlTests D52HeartbeatTests.swift
+[436/487] Compiling CassiniBrowserControlTests D52LostCallTests.swift
+[437/487] Compiling CassiniBrowserControlTests D52ResumeTests.swift
+[438/487] Compiling CassiniBrowserControlTests D52SourceOutcomeTests.swift
+[439/487] Compiling CassiniBrowserControlTests D52TransportLivenessTests.swift
+[440/487] Compiling CassiniBrowserControlTests D52WorstCaseRecordTests.swift
+[441/487] Compiling CassiniBrowserControlTests D58RefusalWriterTests.swift
+[442/487] Compiling CassiniBrowserControlTests D58ResumeRefusalTests.swift
+[443/487] Compiling CassiniBrowserControlTests R94CommittedResumeTests.swift
+[444/487] Compiling CassiniBrowserControlTests RealProducerStartTests.swift
+[445/487] Compiling CassiniBrowserControlTests RecordedPCMTests.swift
+[446/487] Compiling CassiniBrowserControlTests SharedAutoStartVectorTests.swift
+[447/487] Compiling CassiniBrowserControlTests SharedCallWireTests.swift
+[448/487] Compiling CassiniBrowserControlTests StopReconnectRegressionTests.swift
+[449/487] Compiling CassiniBrowserControlTests StopReviewRegressionTests.swift
+[450/487] Compiling CassiniBrowserControlTests UserStoppedCallTests.swift
+[451/487] Compiling CassiniBrowserControlTests VerifiedAdmissionTests.swift
+[452/487] Compiling CassiniBrowserControlTests resource_bundle_accessor.swift
+[473/487] Compiling CassiniBrowserControlTests PassiveWebRTCStartTests.swift
+[474/487] Compiling CassiniBrowserControlTests PipeTransportTests.swift
+[486/489] Emitting module CassiniKitPackageTests
+[487/489] Compiling CassiniKitPackageTests runner.swift
+[487/489] Write Objects.LinkFileList
+[488/489] Linking CassiniKitPackageTests
+Build complete! (31.87s)
