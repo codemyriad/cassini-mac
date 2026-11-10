@@ -1,0 +1,12 @@
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelSupersessionTests started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+✘ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) recorded an issue with 1 argument cancel → false at ModelSupersessionTests.swift:107:26: Expectation failed: an error was expected but none was thrown
+✘ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) recorded an issue with 1 argument cancel → false at ModelSupersessionTests.swift:108:13: Expectation failed: ModelStorage.isInstalled((old → ModelPlan(pin: CassiniModels.ModelPin(id: "old-model", sourceSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), files: [CassiniModels.ModelAsset(path: "weights.bin", url: https://dist.gocassini.com/weights.bin, compressedBytes: 1, compressedSHA256: "9cb7487000bc86ac36ce83c4acfabe8878552be99572a6770f65ab1d048a5c48", rawBytes: 11, rawSHA256: "9cb7487000bc86ac36ce83c4acfabe8878552be99572a6770f65ab1d048a5c48")])), in: (root → file:///var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/CassiniSupersession-F28EB970-FA02-4305-B731-560E637F4F95))
+✘ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) failed after 0.077 seconds with 2 issues.
+✘ Suite ModelSupersessionTests failed after 0.077 seconds with 2 issues.
+✘ Test run with 1 test failed after 0.077 seconds with 2 issues.
