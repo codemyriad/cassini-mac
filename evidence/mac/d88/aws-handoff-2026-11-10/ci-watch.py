@@ -1,6 +1,6 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
-prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a75',213:'3fd8e39',214:'21e957a'}
+prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a75',213:'3fd8e39',214:'21e957a',215:'8f5cdab91a904d4695b4f0a2b1c4aaa46376ff85'}
 for n,v in list(prs.items()):
     if len(v)!=40:
         prs[n]=subprocess.check_output(['git','rev-parse',v],cwd=repo_path,text=True).strip()
@@ -69,7 +69,7 @@ while True:
             matches=(expected==pr['headRefOid']==c['oid']); names={x.get('name'):x.get('conclusion') for x in contexts}
             candidate=matches and bool(contexts) and not pending and not failed and not rollup['contexts']['pageInfo']['hasNextPage'] and names.get('changes')=='SUCCESS' and names.get('CassiniKit tests and conformance')=='SUCCESS'
             if n==214: candidate=candidate and names.get('Package tests (macos-15-intel)')=='SUCCESS'
-            if n==215: candidate=candidate and any(k and k.startswith('Whistle bundle') and v=='SUCCESS' for k,v in names.items())
+            if n==215: candidate=candidate and all(not payload['p'+str(k)]['isDraft'] and payload['p'+str(k)]['headRefOid']==prs[k] for k in range(210,215)) and any(k and k.startswith('Whistle bundle') and v=='SUCCESS' for k,v in names.items())
             runs=sorted({int(m.group(1)) for x in contexts if (m:=re.search(r'/actions/runs/(\d+)',x.get('detailsUrl','')))})
             summaries.append(dict(pr=n,head=pr['headRefOid'],headMatches=matches,draft=pr['isDraft'],readyCandidate=candidate,pending=pending,failed=failed,runs=runs))
         if '--mark-ready' in sys.argv:

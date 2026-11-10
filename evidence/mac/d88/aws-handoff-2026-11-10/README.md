@@ -14,7 +14,7 @@ No build products, downloaded assets, credentials or machine lock files are need
 | Playback cancellation | #212 | test/d88-aws-playback-gate | ac49a7503d35c32837b2a93605028f6525e6fc95 |
 | Setup/watcher | #213 | test/d88-aws-setup-events | 3fd8e39175df0fd649cfcbaf7fd8edfbc14a6d42 |
 | Model fixture | #214 | test/d88-aws-model-startup | 21e957a0aaa5e0f8df4aa857344addc94af511eb |
-| Transport discovery/process exit | #215 | test/d88-aws-transport-events | e4b8446b9f7101c587b02fc959b0b1ca696eab76 |
+| Transport discovery/process exit | #215 | test/d88-aws-transport-events | 8f5cdab91a904d4695b4f0a2b1c4aaa46376ff85 |
 
 Every branch has before/after and mutation evidence under `evidence/mac/d88/`.
 All local final suites pass. Transport retains 22 original asset-dependent skips;
@@ -74,3 +74,5 @@ Its log is `~/coordination/aws-mac-checkpoint.log`. Stop the old checkpoint sess
 along with the old CI watcher before moving; resume against a dedicated checkout
 of this branch on the second Mac. This archival branch has no PR and does not alter
 the six tested PR heads.
+
+Transport supplemental proof: generated silence with the pinned VAD cache passed, notification-before-write mutation failed, and all 21 focused tests passed after restoration. Recipe: `aws-sidecar-verify.py`. Readiness for #215 is held until #210–#214 are ready, following coordinator priority.
