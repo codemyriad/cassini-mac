@@ -180,11 +180,16 @@ class FoldedJobs(unittest.TestCase):
             r'^\s+python3 scripts/run-swift-tests.py --output (\S+) -- (.+)$',
             step, re.M)
         self.assertEqual(commands, [
-            ('build/unit-tests/models', 'swift test --skip-build --filter ModelDownloaderTests'),
-            ('build/unit-tests/remaining', 'swift test --skip-build --skip ModelDownloaderTests'),
+            ('build/unit-tests/models', "swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'"),
+            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'"),
         ])
-        self.assertEqual(kit.count('--filter ModelDownloaderTests'), 1)
-        self.assertEqual(kit.count('--skip ModelDownloaderTests'), 1)
+        model_filter = 'ModelDownloaderTests|ModelSupersessionTests'
+        self.assertEqual(kit.count("--filter '" + model_filter + "'"), 1)
+        self.assertEqual(kit.count("--skip '" + model_filter + "'"), 1)
+        for suite in ['ModelDownloaderTests', 'ModelSupersessionTests']:
+            self.assertRegex(suite, model_filter)
+        for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests']:
+            self.assertNotRegex(suite, model_filter)
         # Separate logs/stacks stay inside the single recursively uploaded artifact.
         self.assertIn('path: build/unit-tests\n', kit)
 
