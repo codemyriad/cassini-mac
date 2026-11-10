@@ -31,6 +31,7 @@ jobs:
         assets: 'true'
     - run: test "$GITHUB_ACTIONS" = true && { test "$RUNNER_ENVIRONMENT" = github-hosted || test "$RUNNER_ENVIRONMENT" = self-hosted; }
     - uses: actions/setup-python@v5
+      if: runner.environment == 'github-hosted'
       with:
         python-version: '3.12'
     - name: Build worker and Whistle regressions

@@ -238,6 +238,13 @@ class RentedRunnerRouting(unittest.TestCase):
         rows=re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',producer)
         self.assertEqual(rows,[('macos-15','arm64'),('macos-15-intel','x86_64')])
 
+    def test_self_hosted_worker_uses_existing_python_without_hosted_toolcache(self):
+        worker=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  worker:',1)[1].split('  bundle:',1)[0]
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(worker,'actions/setup-python'))
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        self.assertEqual(action.count('python3 scripts/ci-products.py restore'),2)
+        self.assertNotIn('python3 scripts/ci-products.py unpack',action)
+
     def test_constrained_jobs_and_all_original_artifact_names_remain_hosted(self):
         self.assertIn('runs-on: macos-15\n',ci_job('kit'))
         self.assertIn('runs-on: macos-15-intel',ci_job('package_tests'))
@@ -276,7 +283,7 @@ class Transport(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
         self.patch = patch.object(products, 'ROOT', self.root); self.patch.start()
-        self.identity = dict(kind='swiftpm', commit='a'*40, arch='arm64', xcode='Xcode 16.4', pins={})
+        self.identity = dict(kind='swiftpm', commit='a'*40, arch='arm64', xcode='Xcode 16.4', pins={},workspace=str(self.root))
         self.identity_patch = patch.object(products, 'identity', return_value=self.identity); self.identity_patch.start()
         folder = self.root/'.build/arm64/debug'; folder.mkdir(parents=True)
         self.executable = folder/'worker'; self.executable.write_bytes(b'fixture'); self.executable.chmod(0o755)
@@ -307,6 +314,47 @@ class Transport(unittest.TestCase):
         products.unpack('swiftpm', self.output)
         self.assertTrue(os.access(self.executable, os.X_OK))
         self.assertEqual((self.root/'.build/debug/worker').read_bytes(), b'fixture')
+
+    def test_relocated_swiftpm_is_not_extracted_and_builds_in_the_consumer(self):
+        products.pack('swiftpm', self.output)
+        self.executable.unlink()
+        consumer = {**self.identity, 'workspace': '/private/other-runner/checkout'}
+        with patch.object(products, 'identity', return_value=consumer):
+            with self.assertRaises(products.WorkspaceMismatch):
+                products.unpack('swiftpm', self.output)
+            self.assertFalse(self.executable.exists())
+            with patch.object(products.subprocess, 'run') as build:
+                products.restore('swiftpm', self.output)
+                build.assert_called_once_with(['swift','build','--build-tests'],cwd=self.root,check=True)
+            self.assertFalse(self.executable.exists(), 'Foreign objects never reach the consumer')
+
+    def test_compatible_workspace_restores_without_compiling(self):
+        products.pack('swiftpm', self.output)
+        self.executable.unlink()
+        with patch.object(products.subprocess, 'run') as build:
+            products.restore('swiftpm', self.output)
+            build.assert_not_called()
+        self.assertEqual(self.executable.read_bytes(),b'fixture')
+
+    def test_relocated_product_does_not_hide_tampering_or_build_failure(self):
+        products.pack('swiftpm', self.output)
+        consumer = {**self.identity, 'workspace': '/private/other-runner/checkout'}
+        with patch.object(products, 'identity', return_value=consumer):
+            with patch.object(products.subprocess, 'run', side_effect=subprocess.CalledProcessError(1,'swift')):
+                with self.assertRaises(subprocess.CalledProcessError): products.restore('swiftpm', self.output)
+            with (self.output/'swiftpm.tar.gz').open('ab') as stream: stream.write(b'tampered')
+            with patch.object(products.subprocess, 'run') as build:
+                with self.assertRaises(products.TransferError): products.restore('swiftpm', self.output)
+                build.assert_not_called()
+        products.pack('swiftpm', self.output)
+        for key in ['commit','arch','xcode','pins','workspace']:
+            metadata=json.loads((self.output/'swiftpm.json').read_text())
+            del metadata[key]
+            (self.output/'swiftpm.json').write_text(json.dumps(metadata))
+            with patch.object(products.subprocess,'run') as build:
+                with self.assertRaises(ValueError): products.restore('swiftpm',self.output)
+                build.assert_not_called()
+            products.pack('swiftpm',self.output)
 
     def test_different_commit_or_arch_is_rejected_before_extract(self):
         products.pack('swiftpm', self.output)

@@ -1,5 +1,5 @@
 name: Restore same-run products
-description: Verify source, pins, architecture and Xcode before extracting signed products.
+description: Verify source, pins, architecture and Xcode; rebuild SwiftPM at a different workspace.
 inputs:
   swiftpm:
     default: 'false'
@@ -75,7 +75,7 @@ runs:
         for kind in swiftpm assets parakeet runtime debug release; do
           flag="RESTORE_$(echo "$kind" | tr '[:lower:]' '[:upper:]')"
           [ "${!flag}" = true ] || continue
-          status=0; python3 scripts/ci-products.py unpack "$kind" build/ci-products || status=$?
+          status=0; python3 scripts/ci-products.py restore "$kind" build/ci-products || status=$?
           if [ "$status" -eq 75 ]; then
             echo "::warning::CI product $kind arrived incomplete; downloading it once more"
             rm -f "build/ci-products/$kind.json" "build/ci-products/$kind.tar.gz"; retry="$retry$kind "
@@ -117,4 +117,4 @@ runs:
       env:
         RETRY: ${{ steps.verify.outputs.retry }}
       run: |
-        for kind in $RETRY; do python3 scripts/ci-products.py unpack "$kind" build/ci-products; done
+        for kind in $RETRY; do python3 scripts/ci-products.py restore "$kind" build/ci-products; done
