@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T22:08:31+00:00",
+  "updated": "2026-11-10T22:13:31+00:00",
   "prs": [
     {
       "pr": 210,
@@ -29,7 +29,6 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "UX browser setup / Browser setup (macos-15)",
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
