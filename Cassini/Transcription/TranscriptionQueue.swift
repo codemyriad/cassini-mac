@@ -52,6 +52,10 @@ import Darwin
     }
     #if DEBUG
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
+    func waitForFixturePreparation() async {
+        precondition(RecordingFixture.enabled)
+        await preparation?.value
+    }
     @ObservationIgnored private var failedFixtureOnce = false
     @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
     #endif
@@ -188,7 +192,8 @@ import Darwin
             // A synchronous metadata write cannot pass by waiting for a timer
             // to unlock it: only completion of the action releases the lock.
             try await holdingDirectoryLock(session.directory) { queue.enqueue(meeting) }
-            try await wait { queue.active != nil }
+            await queue.waitForFixturePreparation()
+            guard queue.active == session.directory else { throw POSIXError(.EINVAL) }
             let document = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as! [String:Any]
             guard (document["transcript"] as? [String:Any])?["status"] as? String == "queued" else { throw POSIXError(.EINVAL) }
             let input = Bundle.main.resourceURL!.appendingPathComponent("Fixtures/Library/main/root/Received-a0000000-0000-4000-8000-000000000006/original.opus")
@@ -197,13 +202,14 @@ import Darwin
             let file = try CassiniReader.read(contentsOf:source)
             let detail = MeetingDetailModel(meeting:MeetingPresentation.external(file,url:source),fileURL:source,frozen:true)
             queue.writeDown(detail); queue.writeDown(detail)
-            try await wait { !importer.isBusy }
+            // This awaits the owned import task; it does not initiate shutdown.
+            await importer.waitForShutdown()
+            guard !importer.isBusy else { throw POSIXError(.EBUSY) }
             let imported = try LibraryScanner(root:root).scan().meetings.filter { $0.state.origin == .received }
             guard imported.count == 1 else { throw POSIXError(.EINVAL) }
             let received = imported[0]
-            try await wait {
-                (try? LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript) == .queued
-            }
+            await queue.waitForFixturePreparation()
+            guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             // A second accepted import is owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
@@ -241,9 +247,5 @@ import Darwin
         try await action()
     }
     private static func require<T>(_ value: T?) throws -> T { guard let value else { throw POSIXError(.EINVAL) }; return value }
-    private static func wait(_ condition: () -> Bool) async throws {
-        for _ in 0..<600 { if condition() { return }; try await Task.sleep(for:.milliseconds(25)) }
-        throw POSIXError(.ETIMEDOUT)
-    }
 }
 #endif
