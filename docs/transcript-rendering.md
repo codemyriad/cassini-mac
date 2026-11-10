@@ -96,3 +96,14 @@ Playback styling compares each atom with the playhead, and document search
 orders unique displayed ranges visually. Hidden speakers also leave overlap
 captions and continuation calculations. All product overlap-name lists use
 LibraryFormat.list with the surface's language/locale.
+
+Search occurrence IDs are assigned across the complete visible paragraph after
+sorting spoken-row matches by their displayed UTF16 start. Repeated asides from
+the same speaker cannot collide, and speaker filtering retains the same IDs. The
+existing meeting/turn/occurrence accessibility identifier stays unchanged.
+
+Every inline chip adapter uses meeting.turn.aside for the surface's language;
+French's non-breaking space before the colon remains in copy, seek offsets and
+Markdown. Markdown escapes overlap captions before adding the separating space.
+Legacy screenshot readiness follows asynchronous timeline completion, so the
+capture identifier is never published for a loading transcript.

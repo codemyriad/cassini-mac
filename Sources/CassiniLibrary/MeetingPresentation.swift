@@ -139,7 +139,7 @@ public enum MeetingPresentation {
         public let seeks: [Seek]
     }
     /// One copy/search/export projection; chips remain inline and every word keeps its seek anchor.
-    public static func prose(_ turn: Turn, in turns: [Turn], names: [String:String] = [:]) -> Prose {
+    public static func prose(_ turn: Turn, in turns: [Turn], names: [String:String] = [:], locale: Locale = .current, language: CassiniLanguage = .system) -> Prose {
         var text = "", seeks: [Prose.Seek] = []
         func append(_ item: LibraryTranscriptItem, turnID: Int) {
             let at = text.utf16.count
@@ -151,9 +151,11 @@ public enum MeetingPresentation {
             append(item,turnID:turn.id)
             for aside in turn.asides where aside.after == i && turns.indices.contains(aside.turn) {
                 let child = turns[aside.turn]
-                text += " (" + (names[child.speaker] ?? child.speaker) + ": "
+                let marker = "\u{E000}"
+                let template = LibraryLocalization.shared.text("meeting.turn.aside",["name":names[child.speaker] ?? child.speaker,"text":marker],language:language,locale:locale).components(separatedBy:marker)
+                text += " (" + template[0]
                 for (i,word) in child.items.enumerated() { if i > 0 { text += " " }; append(word,turnID:child.id) }
-                text += ")"
+                text += template.dropFirst().joined(separator:marker) + ")"
             }
         }
         return .init(text:text,seeks:seeks)

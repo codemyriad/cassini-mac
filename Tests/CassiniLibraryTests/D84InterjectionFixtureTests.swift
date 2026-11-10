@@ -89,6 +89,11 @@ struct D84InterjectionFixtureTests {
         let markdown = MeetingMarkdown.render(title:name,start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:[:],items:items,notes:[],locale:Locale(identifier:"en_GB"),language:.en)
         for text in expectedText { #expect(markdown.contains(MeetingMarkdown.escape(text))) }
         #expect(markdown.components(separatedBy:"** · ").count-1 == expected.rows.count,"Export has one block per readable row")
+        for row in expected.rows where !row.over.isEmpty {
+            let caption = LibraryLocalization.shared.text("meeting.turn.over",["names":LibraryFormat(locale:Locale(identifier:"en_GB"),language:.en).list(row.over)],language:.en,locale:Locale(identifier:"en_GB"))
+            let clock = LibraryFormat.position(row.startMs,locale:Locale(identifier:"en_GB"),language:.en)
+            #expect(markdown.contains(clock + " " + MeetingMarkdown.escape(caption) + "\n"),"Keep the separating space outside whitespace-normalizing Markdown escape")
+        }
     }
     @Test func reverseCanonicalWordsDoNotRejoinAcrossCaptureGap() {
         let items: [LibraryTranscriptItem] = [
@@ -150,6 +155,24 @@ struct D84InterjectionFixtureTests {
         let timeline = Timeline(input.items)
         #expect(timeline.upcomingWords([0,1],at:500) == [0])
         #expect(timeline.upcomingWords([0,1],at:1000).isEmpty)
+    }
+    @Test func frenchInlineChipsUseCatalogPunctuationAndPreserveSeekOffsets() throws {
+        let url = try #require(Bundle.module.url(forResource:"acknowledgment",withExtension:"words.json",subdirectory:"Golden/interjections"))
+        let input = try JSONDecoder().decode(Fixture.self,from:Data(contentsOf:url)).items
+        let items = input.map { LibraryTranscriptItem(speaker:$0.speaker,startMs:$0.startMs,endMs:$0.endMs,text:$0.text) }
+        let all = MeetingPresentation.turns(items)
+        let row = try #require(MeetingPresentation.visibleTurns(all).first)
+        let prose = MeetingPresentation.prose(row,in:all,names:["ben":"Ben"],locale:Locale(identifier:"fr_FR"),language:.fr)
+        #expect(prose.text.contains("(Ben\u{00A0}: Sounds good.)"))
+        for seek in prose.seeks {
+            #expect((prose.text as NSString).substring(with:NSRange(location:seek.range.lowerBound,length:seek.range.count)) == seek.item.text)
+        }
+        let legacy = Timeline(input.map { Word(speaker:$0.speaker,startMs:Int($0.startMs),endMs:Int($0.endMs),text:$0.text) })
+        let legacyRow = try #require(legacy.turns.first)
+        let text = legacy.text(legacyRow,names:["ben":"Ben"],aside:{ LibraryLocalization.shared.text("meeting.turn.aside",["name":$0,"text":$1],language:.fr,locale:Locale(identifier:"fr_FR")) })
+        #expect(text == prose.text)
+        let markdown = MeetingMarkdown.render(title:"Test",start:nil,durationMs:nil,timeZone:TimeZone(secondsFromGMT:0)!,names:["ben":"Ben"],items:items,notes:[],locale:Locale(identifier:"fr_FR"),language:.fr)
+        #expect(markdown.contains("(Ben\u{00A0}: Sounds good.)"))
     }
     private func w(_ speaker: String, _ start: Int64, _ end: Int64, _ text: String) -> TranscriptRendering.Word {
         .init(speaker:speaker,startMs:start,endMs:end,text:text)

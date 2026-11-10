@@ -95,7 +95,7 @@ enum PreviewText {
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: body,
             ]))
             let names = Dictionary(uniqueKeysWithValues:m.speakers.map { ($0.id,$0.label) })
-            let words = timeline.text(turn,names:names)
+            let words = timeline.text(turn,names:names,aside:{ PreviewCopy.text("meeting.turn.aside",["name":$0,"text":$1]) })
             out.append(NSAttributedString(string: words + "\n", attributes: [
                 .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
             ]))

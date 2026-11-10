@@ -295,11 +295,17 @@ extension MeetingTranscriptText {
         report["asideButtonAccessibility"] = button?.accessibilityRole() == .button
         report["asideButtonGeometry"] = (button?.frame.width ?? 0) > 0
         do {
-            let words = try ManifestParser.words(JSONParser.parse(Data(#"{"items":[{"speaker":"s1","startMs":0,"endMs":0,"text":"same"},{"speaker":"s1","startMs":1000,"endMs":1150,"text":"same"},{"speaker":"c","startMs":950,"endMs":1020,"text":"same"},{"speaker":"s1","startMs":800,"endMs":950,"text":"same"},{"speaker":"b","startMs":960,"endMs":970,"text":"same"},{"speaker":"b","startMs":975,"endMs":990,"text":"same"},{"speaker":"s1","startMs":1020,"endMs":1500,"text":"same"}]}"#.utf8)))
-            let timeline = Timeline(words.items,endsBoundedByAudio:true)
+            let words: [Word] = [.init(speaker:"s1",startMs:0,endMs:0,text:"same"),
+                .init(speaker:"s1",startMs:1000,endMs:1150,text:"same"),
+                .init(speaker:"c",startMs:950,endMs:1020,text:"same"),
+                .init(speaker:"s1",startMs:800,endMs:950,text:"same"),
+                .init(speaker:"b",startMs:960,endMs:970,text:"same"),
+                .init(speaker:"b",startMs:975,endMs:990,text:"same"),
+                .init(speaker:"s1",startMs:1020,endMs:1500,text:"same")]
+            let timeline = Timeline(words,endsBoundedByAudio:true)
             let layout = TranscriptBuilder.build(timeline:timeline,hidden:[],label:{ $0 },color:{ _ in .labelColor })
             report["legacySearchUsesUniqueVisualRanges"] = layout.matchingWords("same",in:timeline) == [0,1,3,4,6,2]
-        } catch { report["legacySearchUsesUniqueVisualRanges"] = false }
+        }
         report["inlineCopyHasSingleSpaces"] = storage.string == "We agree. (Unidentified voice: Yes.) Thanks."
         let prefix = string.range(of:"(Unidentified voice: "), suffix = string.range(of:")")
         let decorations = [prefix.location,prefix.location+prefix.length-2,prefix.location+prefix.length-1,suffix.location]

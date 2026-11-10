@@ -26,8 +26,8 @@ public enum MeetingMarkdown {
         blocks.append("## "+strings.text("export.markdown.transcriptHeading",language:language,locale:locale))
         for turn in turns {
             let others = turn.over.map { names[$0] ?? $0 }
-            let over = others.isEmpty ? "" : " " + strings.text("meeting.turn.over",["names":LibraryFormat(locale:locale,language:language).list(others)],language:language,locale:locale)
-            blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs,locale:locale,language:language) + escape(over) + "\n" + escape(MeetingPresentation.prose(turn,in:all,names:names).text))
+            let over = others.isEmpty ? "" : " " + escape(strings.text("meeting.turn.over",["names":LibraryFormat(locale:locale,language:language).list(others)],language:language,locale:locale))
+            blocks.append("**" + escape(names[turn.speaker] ?? turn.speaker) + "** · " + LibraryFormat.position(turn.startMs,locale:locale,language:language) + over + "\n" + escape(MeetingPresentation.prose(turn,in:all,names:names,locale:locale,language:language).text))
         }
         if !notes.isEmpty {
             blocks.append("## "+strings.text("export.markdown.notesHeading",language:language,locale:locale))
@@ -37,7 +37,7 @@ public enum MeetingMarkdown {
         return blocks.joined(separator:"\n\n") + "\n"
     }
     public static func escape(_ value: String) -> String {
-        let normalized = value.split(whereSeparator:\.isWhitespace).joined(separator:" ")
+        let normalized = value.split(whereSeparator:{ $0.isWhitespace && $0 != "\u{00A0}" && $0 != "\u{202F}" }).joined(separator:" ")
         var result = ""
         for scalar in normalized.unicodeScalars {
             if "\\`*_[]<>".unicodeScalars.contains(scalar) { result += "\\" }

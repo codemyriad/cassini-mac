@@ -95,11 +95,13 @@ struct LegacyDocumentView: View {
     var body: some View {
         Group {
             if let session = model.session {
+                let ready = !session.preparingTranscript
                 DocumentView(session: session)
                     .background(WindowAccessor { window in
                         guard let window else { return }
                         #if DEBUG
                         if ["window", "sheet"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "") {
+                            guard ready else { window.setAccessibilityIdentifier("cassini-legacy-loading"); return }
                             ScreenshotFixture.prepareLegacy(window); return
                         }
                         #endif

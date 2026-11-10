@@ -207,4 +207,35 @@ extension SearchTests {
         #expect(!hit.showsSpeakerHeader(at:hit.turn),"Later continuation rows retain the viewer rule")
     }
 
+    @Test func repeatedAsidesAndHostHitsHaveParagraphWideVisualOccurrences() async throws {
+        let fixture = try SearchFixture()
+        var meeting = try #require(fixture.meetings().first(where:{ !$0.speakers.isEmpty }))
+        meeting.transcriptItems = [
+            .init(speaker:"ada",startMs:0,endMs:1000,text:"before"),
+            .init(speaker:"ben",startMs:900,endMs:1100,text:"yes"),
+            .init(speaker:"ada",startMs:1100,endMs:2000,text:"middle"),
+            .init(speaker:"ben",startMs:1900,endMs:2100,text:"yes"),
+            .init(speaker:"ada",startMs:2100,endMs:3000,text:"yes")]
+        var ada = try #require(meeting.speakers.first); ada.id = "ada"; ada.name = "Ada"; ada.provenance = .user
+        var ben = ada; ben.id = "ben"; ben.name = "Ben"
+        meeting.speakers = [ada,ben]
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        let hits = try await index.search("yes")
+        #expect(hits.map(\.positionMs) == [900,1900,2100])
+        #expect(hits.map(\.speaker) == ["ben","ben","ada"])
+        #expect(hits.map(\.turn) == [0,0,0])
+        #expect(hits.map(\.occurrence) == [0,1,2])
+        #expect(Set(hits.map(\.id)).count == 3)
+        #expect(hits.map(\.id) == (0..<3).map { meeting.libraryKey + ":0:\($0)" },"Keep the existing accessibility identifier contract")
+        #expect(hits.allSatisfy { $0.spans.count == 3 })
+        let filtered = try await index.search("yes",filter:.init(speaker:"Ben"))
+        #expect(filtered.map(\.id) == Array(hits.prefix(2)).map(\.id))
+        #expect(filtered.map(\.positionMs) == [900,1900])
+        for hit in hits {
+            let selected = try #require(hit.spans.dropFirst(hit.occurrence).first)
+            #expect((hit.text as NSString).substring(with:NSRange(location:selected.start,length:selected.length)) == "yes")
+        }
+    }
+
 }

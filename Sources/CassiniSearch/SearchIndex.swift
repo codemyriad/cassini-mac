@@ -40,7 +40,7 @@ public struct SearchHit: Sendable, Identifiable {
         guard let row = context.first(where:{ $0.index == index }) else { return false }
         return !row.turn.continuation || index == context.first?.index
     }
-    public var id: String { meetingKey + ":\(turn):\(speaker):\(occurrence)" }
+    public var id: String { meetingKey + ":\(turn):\(occurrence)" }
     public var excerpt: (text: String, spans: [SearchSpan]) {
         guard let selected = spans.dropFirst(occurrence).first,
               let range = Range(NSRange(location:selected.start,length:selected.length),in:text) else { return (text,[]) }
@@ -133,7 +133,9 @@ public actor SearchIndex {
         let begin = "\u{F0000}" + UUID().uuidString, end = "\u{F0001}" + UUID().uuidString
         let statement = try database.prepare("SELECT meeting, turnIndex, highlight(turns,0,?,?) FROM turns WHERE turns MATCH ?")
         try statement.bind([begin,end,phrase])
-        var hits: [SearchHit] = []
+        struct Paragraph: Hashable { let key: String; let index: Int }
+        struct Match { let position: Int64; let speaker: String; let spans: [SearchSpan] }
+        var matchesByParagraph: [Paragraph:[Match]] = [:]
         while try statement.next() {
             let key = statement.text(0), rowIndex = statement.integer(1)
             guard rowIndex >= 0, let rows = spoken[key], rows.indices.contains(rowIndex) else { continue }
@@ -158,17 +160,28 @@ public actor SearchIndex {
                 }
                 return joined
             }
-            let spans = matches.flatMap { $0 }.sorted { $0.start < $1.start }
             for (match,span) in zip(matches,parsed.spans) where !match.isEmpty {
                 let matched = zip(row.ranges,row.seeks).first { $0.0.overlaps(span.start..<(span.start+span.length)) }?.1
-                let position = matched?.item.startMs ?? turn.startMs
-                let speakerID = row.speaker
+                matchesByParagraph[.init(key:key,index:index),default:[]].append(.init(position:matched?.item.startMs ?? turn.startMs,speaker:row.speaker,spans:match))
+            }
+        }
+        var hits: [SearchHit] = []
+        for (group,matches) in matchesByParagraph {
+            let key = group.key, index = group.index
+            guard let meeting = meetings[key], let paragraph = prose[key]?[index] else { continue }
+            let ordered = matches.sorted {
+                if $0.spans[0].start != $1.spans[0].start { return $0.spans[0].start < $1.spans[0].start }
+                return $0.position == $1.position ? $0.speaker < $1.speaker : $0.position < $1.position
+            }
+            let spans = ordered.flatMap(\.spans)
+            var occurrence = 0
+            for match in ordered {
+                defer { occurrence += match.spans.count }
                 if let name = filter.speaker {
-                    guard let speaker = meeting.speaker(for:speakerID), speaker.provenance != .unnamed,
+                    guard let speaker = meeting.speaker(for:match.speaker), speaker.provenance != .unnamed,
                           speaker.name?.compare(name,options:.caseInsensitive) == .orderedSame else { continue }
                 }
-                let occurrence = spans.firstIndex(of:match[0]) ?? 0
-                var hit = SearchHit(meetingKey:key,turn:index,positionMs:position,speaker:speakerID,text:paragraph.text,spans:spans,occurrence:occurrence)
+                var hit = SearchHit(meetingKey:key,turn:index,positionMs:match.position,speaker:match.speaker,text:paragraph.text,spans:spans,occurrence:occurrence)
                 if let all = turns[key] {
                     let range = max(0,index-1)...min(all.count-1,index+1)
                     hit.context = range.map { ($0,all[$0]) }

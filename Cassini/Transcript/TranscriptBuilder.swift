@@ -48,11 +48,11 @@ struct TranscriptLayout {
     func matchingWords(_ query: String, in timeline: Timeline) -> [Int] {
         guard !query.isEmpty else { return [] }
         let needle = query.lowercased()
-        let candidates = timeline.words.indices.filter { timeline.words[$0].text.lowercased().contains(needle) }
-            .compactMap { i in displayRange(of:i).map { (i,$0) } }
-            .sorted { $0.1.location == $1.1.location ? $0.0 < $1.0 : $0.1.location < $1.1.location }
+        let matchingIndices = timeline.words.indices.filter { timeline.words[$0].text.lowercased().contains(needle) }
+        let candidates: [(Int,NSRange)] = matchingIndices.compactMap { i in displayRange(of:i).map { (i,$0) } }
+        let ordered = candidates.sorted { $0.1.location == $1.1.location ? $0.0 < $1.0 : $0.1.location < $1.1.location }
         var seen: Set<NSRange> = []
-        return candidates.filter { seen.insert($0.1).inserted }.map { $0.0 }
+        return ordered.filter { seen.insert($0.1).inserted }.map { $0.0 }
     }
 
     /// Where a word is drawn: its body range, or the chip holding it; nil when it is not shown.
@@ -160,11 +160,13 @@ enum TranscriptBuilder {
         let chipIndex = layout.chips.count
         out.append(NSAttributedString(string: " ", attributes: [.font: bodyFont, .paragraphStyle: style]))
         let loc = out.length
-        out.append(NSAttributedString(string: "(" + label(j.speaker) + ":", attributes: [
+        let marker = "\u{E000}"
+        let template = UXText.text("meeting.turn.aside",["name":label(j.speaker),"text":marker]).components(separatedBy:marker)
+        out.append(NSAttributedString(string: "(" + template[0], attributes: [
             .font: chipNameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,
         ]))
-        out.append(NSAttributedString(string: " " + words + ")", attributes: [
+        out.append(NSAttributedString(string: words + template.dropFirst().joined(separator:marker) + ")", attributes: [
             .font: chipFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,
             .toolTip: "\(label(j.speaker)) at \(formatClock(j.startMs)): \(j.words.map { timeline.words[$0].text }.joined(separator: " "))",

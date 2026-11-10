@@ -88,12 +88,12 @@ public struct Timeline: Sendable {
         }
     }
     /// Copy and preview text keep short interjections inline, with no lost words.
-    public func text(_ turn: Turn, names: [String:String] = [:]) -> String {
+    public func text(_ turn: Turn, names: [String:String] = [:], aside: (String,String) -> String = { $0 + ": " + $1 }) -> String {
         var pieces: [String] = []
         for (position,index) in turn.words.enumerated() {
             pieces.append(words[index].text)
             for chip in turn.interjections where chip.anchor == position {
-                pieces.append("(" + (names[chip.speaker] ?? chip.speaker) + ": " + chip.words.map { words[$0].text }.joined(separator:" ") + ")")
+                pieces.append("(" + aside(names[chip.speaker] ?? chip.speaker,chip.words.map { words[$0].text }.joined(separator:" ")) + ")")
             }
         }
         return pieces.joined(separator:" ")
