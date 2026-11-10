@@ -417,6 +417,13 @@ class ProductDownloads(unittest.TestCase):
                                     env={**os.environ,'PATH':f'{folder}:{os.environ["PATH"]}','GITHUB_OUTPUT':str(output),**env})
             return result, output.read_text()
 
+    def test_headless_products_require_self_hosted_and_never_mix_release(self):
+        for environment,release,allowed in [('self-hosted','false',True),('self-hosted','true',False),('github-hosted','false',False)]:
+            with self.subTest(environment=environment,release=release):
+                result,_=self.run_step("- if: inputs.headless == 'true'",{},
+                    {'RUNNER_ENVIRONMENT':environment,'RESTORE_RELEASE':release})
+                self.assertEqual(result.returncode==0,allowed,result.stderr)
+
     def test_downloads_are_strict_and_each_retried_at_most_once(self):
         self.assertNotIn('continue-on-error', self.ACTION)
         for kind in self.KINDS:
