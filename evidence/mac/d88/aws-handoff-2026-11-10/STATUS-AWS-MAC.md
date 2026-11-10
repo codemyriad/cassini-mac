@@ -23,11 +23,10 @@ None. All six assigned rows are pushed; exact-head CI is the remaining gate. No 
 
 ## CI readiness
 
-Last checked: 2026-11-10T15:23:01+00:00
+Last checked: 2026-11-10T15:27:28+00:00
 
 - #210 `f0b06cc`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #211 `54c574b`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #212 `ac49a75`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #213 `3fd8e39`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
 - #214 `21e957a`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.
-- #215 `e4b8446`: pending: build / Build products (arm64, Xcode 16.4), build / Build products (x86_64, Xcode 16.4); draft.

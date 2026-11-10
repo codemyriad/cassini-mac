@@ -1,6 +1,6 @@
 import datetime,json,pathlib,re,subprocess,time,sys,os
 repo_path=os.environ.get("CASSINI_MAC_REPO",str(pathlib.Path.home()/"agents/cassini-mac"))
-prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a75',213:'3fd8e39',214:'21e957a',215:'e4b8446'}
+prs={210:'f0b06ccf8ceab27e2d33035a7b27ca5ea3d6fd51',211:'54c574b672ddd10b3ea5cfb9af42fb9d6734dc47',212:'ac49a75',213:'3fd8e39',214:'21e957a'}
 for n,v in list(prs.items()):
     if len(v)!=40:
         prs[n]=subprocess.check_output(['git','rev-parse',v],cwd=repo_path,text=True).strip()
