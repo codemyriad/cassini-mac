@@ -27,15 +27,11 @@ Coordinator assigned the ModelSupersessionTests blocker to aws-mac. Candidate fi
 
 ## CI readiness
 
-Last checked: 2026-11-10T16:35:20+00:00
+Last checked: 2026-11-10T16:40:21+00:00
 
-- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
 - #211 `54c574b`: failed: CassiniKit tests and conformance; draft.
 - #212 `ac49a75`: failed: CassiniKit tests and conformance; draft.
 - #213 `3fd8e39`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #214 `21e957a`: failed: CassiniKit tests and conformance; draft.
 - #215 `8f5cdab`: pending: build / Build products (arm64, Xcode 16.4); draft.
-
-## Turn checkpoint (16:36 UTC)
-
-Coordinator requested push/STATUS/end turn. Candidate shared-model fix is pushed on `test/d88-aws-supersession-events` at `a935f0e376437919cc947039126f7841533306dd`; no PR yet and no passing verification claim. The held-pool baseline run was interrupted before output; its process tree was stopped and the baseline checkout is clean. Next: resume a bounded controlled baseline/after proof, then the replacement-hash mutation and full ModelSupersession suite under `mkdir ~/.aws-heavy.lock`. Decide how to land the proven shared fix before updating #212’s tested head; do not rerun the red CI job. #214 also has a Kit failure at the latest audit; inspect its log before assuming the same cause. The exact-head readiness and off-host checkpoint tmux sessions remain active. All six PRs remain draft pending CI or this shared blocker.
