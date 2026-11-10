@@ -35,11 +35,11 @@ None. Await exact-head CI; the watcher keeps failed/pending heads draft and mark
 
 ## CI readiness
 
-Last checked: 2026-11-10T21:48:28+00:00
+Last checked: 2026-11-10T21:53:29+00:00
 
 - #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
 - #211 `d1ebe14`: pending: UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
-- #212 `8c9c389`: pending: UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #212 `8c9c389`: pending: UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
 - #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
 - #214 `c2777e5`: pending: UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
-- #215 `612bb36`: pending: Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
+- #215 `612bb36`: pending: UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.

@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T21:48:28+00:00",
+  "updated": "2026-11-10T21:53:29+00:00",
   "prs": [
     {
       "pr": 210,
@@ -48,7 +48,6 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15)",
         "UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel)"
       ],
       "failed": [],
@@ -99,7 +98,6 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "Package tests (macos-15-intel)",
         "UX browser setup / Browser setup (macos-15-intel)",
         "UX Library boards / Library boards",
         "UX Library boards / Native spectrogram and profiling",
