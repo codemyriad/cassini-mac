@@ -27,9 +27,9 @@ None. Ownership of the shared blocker was explicitly assigned to aws-mac and the
 
 ## CI readiness
 
-Last checked: 2026-11-10T18:23:32+00:00
+Last checked: 2026-11-10T18:28:33+00:00
 
-- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15-intel); draft.
+- #210 `9d373ff`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15-intel); draft.
 - #211 `9f892f6`: failed: CassiniKit tests and conformance; draft.
 - #212 `75ea821`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #213 `c4f3d1e`: failed: CassiniKit tests and conformance; draft.
