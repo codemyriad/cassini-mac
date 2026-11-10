@@ -1,0 +1,76 @@
+[0/1] Planning build
+Building for debugging...
+[0/27] Write sources
+[2/27] Write swift-version--79AA4F9932D1E87A.txt
+[4/11] Compiling CassiniModelsTests SpeechModelAdoptionTests.swift
+[5/12] Compiling CassiniModelsTests resource_bundle_accessor.swift
+[6/12] Emitting module CassiniBrowserControlTests
+[7/12] Compiling CassiniBrowserControlTests ControlServiceTests.swift
+[8/12] Emitting module CassiniModelsTests
+[9/12] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[10/12] Compiling CassiniModelsTests ModelDownloaderTests.swift
+[10/12] Write Objects.LinkFileList
+[11/12] Linking CassiniKitPackageTests
+Build complete! (2.48s)
+Test Suite 'Selected tests' started at 2026-11-10 17:04:48.913.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 17:04:48.913.
+Test Suite 'ControlServiceTests' started at 2026-11-10 17:04:48.913.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart]' passed (0.110 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover]' passed (0.108 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart]' passed (0.620 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection]' passed (0.420 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testMalformedPeerDisconnectDoesNotDisableAHealthyProfile]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testMalformedPeerDisconnectDoesNotDisableAHealthyProfile]' passed (0.313 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testNegotiatedSignalsOwnNativeReservationWithoutBrowserStartAndStopFencesReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testNegotiatedSignalsOwnNativeReservationWithoutBrowserStartAndStopFencesReconnect]' passed (0.213 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus]' passed (0.215 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart]' passed (0.734 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testReloadRunsThroughTheRealControlPipeAndFreshHealthCompletesIt]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testReloadRunsThroughTheRealControlPipeAndFreshHealthCompletesIt]' passed (0.110 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback]' passed (0.118 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testSignalFilesystemChecksRequireANewEligibleReservationOrPendingInputOpen]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testSignalFilesystemChecksRequireANewEligibleReservationOrPendingInputOpen]' passed (0.110 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testStopAllSuppressesSnapshotBeforeCanStartAdmissionThroughRealPipe]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testStopAllSuppressesSnapshotBeforeCanStartAdmissionThroughRealPipe]' passed (0.110 seconds).
+Test Suite 'ControlServiceTests' passed at 2026-11-10 17:04:52.096.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 3.182 (3.183) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 17:04:52.097.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 3.182 (3.183) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 17:04:52.097.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 3.182 (3.184) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelSupersessionTests started.
+◇ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) started.
+◇ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) started.
+◇ Test symlinkedModelNamespaceCannotRedirectCleanup() started.
+◇ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() started.
+◇ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() started.
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument failure → "partial" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument idOnly → true to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument idOnly → false to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument failure → "missing" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "same-size-corrupt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "bad-receipt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing-notice" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+✔ Test symlinkedModelNamespaceCannotRedirectCleanup() passed after 0.016 seconds.
+✔ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() passed after 0.017 seconds.
+✔ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) passed after 0.018 seconds.
+✔ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) passed after 0.018 seconds.
+✔ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() passed after 0.020 seconds.
+✔ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) passed after 0.066 seconds.
+✔ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() passed after 0.071 seconds.
+✔ Suite ModelSupersessionTests passed after 0.071 seconds.
+✔ Test run with 7 tests passed after 0.071 seconds.
