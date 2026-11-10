@@ -27,7 +27,7 @@ None. All six assigned rows are pushed; exact-head CI is the remaining gate. No 
 
 ## CI readiness
 
-Last checked: 2026-11-10T15:59:56+00:00
+Last checked: 2026-11-10T16:04:56+00:00
 
 - #210 `f0b06cc`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #211 `54c574b`: pending: build / Build products (x86_64, Xcode 16.4); draft.
