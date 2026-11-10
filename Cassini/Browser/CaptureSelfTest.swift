@@ -239,11 +239,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         }
         private func check() {
             guard continuation != nil else { return }
-            let ready = withObservationTracking {
-                _ = CaptureCollection.shared.captures
-                _ = CaptureCollection.shared.peers
-                return condition?() == true
-            } onChange: { [self] in
+            let ready = withObservationTracking { condition?() == true } onChange: { [self] in
                 // Observation fires before mutation. Check the committed value
                 // on the next actor turn, never a guessed settling interval.
                 Task { @MainActor in check() }
@@ -258,7 +254,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     static func wait(timeout: Double = 8, file: StaticString = #fileID, line: UInt = #line,
                      _ condition: @escaping @MainActor () -> Bool) async throws {
-        try await StateWait().run(timeout:timeout,message:"Private capture state did not settle at \(file):\(line)",condition:condition)
+        try await waitForState(timeout:timeout,file:file,line:line) {
+            _ = CaptureCollection.shared.captures
+            _ = CaptureCollection.shared.peers
+            return condition()
+        }
+    }
+    static func waitForState(timeout: Double, file: StaticString = #fileID, line: UInt = #line,
+                             _ condition: @escaping @MainActor () -> Bool) async throws {
+        try await StateWait().run(timeout:timeout,message:"Private fixture state did not settle at \(file):\(line)",condition:condition)
     }
     static func run() async {
         guard CaptureFixture.enabled, let root = RecordingFixture.root else { NSApp.terminate(nil); return }

@@ -20,7 +20,7 @@ import Darwin
     @ObservationIgnored private var known = Set<String>()
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var preparation: Task<Void,Never>?
-    @ObservationIgnored private var preparing: (folder: URL, work: Task<Void,Error>)?
+    private var preparing: (folder: URL, work: Task<Void,Error>)?
     @ObservationIgnored private var prepared = Set<String>()
     @ObservationIgnored private var schedulingFailures = Set<String>()
     @ObservationIgnored private var closing = false
