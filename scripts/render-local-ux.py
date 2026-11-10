@@ -29,9 +29,10 @@ fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.boa
 assert fixture.is_dir(),fixture
 with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     output,stderr = Path(temporary)/'stdout.json',Path(temporary)/'stderr.txt'
+    render_id = str(uuid.uuid4())
     command = ['open','-W','-n','-a',str(app),'--stdout',str(output),'--stderr',str(stderr),
                '--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
-               '-CassiniScreenshot',args.board,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
+               '-CassiniScreenshot',args.board,'-CassiniRenderID',render_id,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
                '-ApplePersistenceIgnoreState','YES','-AppleLanguages','(en-GB)','-AppleLocale','en_GB',
                '-AppleInterfaceStyle','Light','-AppleAccentColor','4']
     if args.listening: command += ['-CassiniListeningPreview',args.listening]
@@ -57,6 +58,6 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
         prefix = str(app/'Contents/MacOS/Cassini') + ' -CassiniScreenshot ' + args.board + ' '
         for line in subprocess.check_output(['ps','-axo','pid=,command='],text=True).splitlines():
             pid,command = line.strip().split(None,1)
-            if command.startswith(prefix):
+            if command.startswith(prefix) and '-CassiniRenderID ' + render_id + ' ' in command + ' ':
                 try: os.kill(int(pid),signal.SIGTERM)
                 except ProcessLookupError: pass
