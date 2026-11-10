@@ -11,6 +11,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,7 +74,7 @@ class Selection(unittest.TestCase):
         self.assertFalse(any(changes.select('pull_request', 'base', PATHS, ['README.md']).values()))
 
     def test_shared_dependency_or_ci_change_runs_everything(self):
-        for name in ['.github/actions/ci-products/action.yml', 'Sources/CassiniKit/Reader.swift', 'Tests/CassiniPlaybackTests/Seek.swift']:
+        for name in ['.github/actions/ci-products/action.yml', 'scripts/ci-select-xcode.sh', 'scripts/ci-test-xcode.py', 'Sources/CassiniKit/Reader.swift', 'Tests/CassiniPlaybackTests/Seek.swift']:
             self.assertTrue(all(changes.select('pull_request', 'base', PATHS, [name]).values()))
 
 
@@ -180,11 +181,16 @@ class FoldedJobs(unittest.TestCase):
             r'^\s+python3 scripts/run-swift-tests.py --output (\S+) -- (.+)$',
             step, re.M)
         self.assertEqual(commands, [
-            ('build/unit-tests/models', 'swift test --skip-build --filter ModelDownloaderTests'),
-            ('build/unit-tests/remaining', 'swift test --skip-build --skip ModelDownloaderTests'),
+            ('build/unit-tests/models', "swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'"),
+            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'"),
         ])
-        self.assertEqual(kit.count('--filter ModelDownloaderTests'), 1)
-        self.assertEqual(kit.count('--skip ModelDownloaderTests'), 1)
+        model_filter = 'ModelDownloaderTests|ModelSupersessionTests'
+        self.assertEqual(kit.count("--filter '" + model_filter + "'"), 1)
+        self.assertEqual(kit.count("--skip '" + model_filter + "'"), 1)
+        for suite in ['ModelDownloaderTests', 'ModelSupersessionTests']:
+            self.assertRegex(suite, model_filter)
+        for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests']:
+            self.assertNotRegex(suite, model_filter)
         # Separate logs/stacks stay inside the single recursively uploaded artifact.
         self.assertIn('path: build/unit-tests\n', kit)
 
@@ -206,6 +212,63 @@ class FoldedJobs(unittest.TestCase):
         self.assertLess(shot.index('python3 scripts/hosted-display.py'),
                         shot.index('python3 scripts/check-window-screenshots.py build/board-screenshots 1120x720'))
         self.assertFalse((ROOT/'.github/workflows/ux-board-shot.yml').exists())
+
+
+class RentedRunnerRouting(unittest.TestCase):
+    def evaluate(self, expression, event, head, label, runner):
+        expression=expression.strip().removeprefix('${{').removesuffix('}}').strip()
+        expression=expression.replace('&&',' and ').replace('||',' or ')
+        github=SimpleNamespace(event_name=event,repository='codemyriad/cassini-mac',
+            event=SimpleNamespace(pull_request=SimpleNamespace(head=SimpleNamespace(repo=SimpleNamespace(full_name=head)))))
+        return eval(expression,{'__builtins__':{}},{'github':github,'vars':SimpleNamespace(CM_MAC_RUNNER=label),
+                    'matrix':SimpleNamespace(runner=runner)})
+
+    def test_actual_expressions_route_only_trusted_arm_jobs_with_a_configured_runner(self):
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        worker=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  worker:',1)[1].split('  bundle:',1)[0]
+        for job in [producer,worker]:
+            route=re.search(r'^    runs-on: (.+)$',job,re.M).group(1)
+            for runner in ['macos-15','macos-15-intel']:
+                for event,head,label,enabled in [('pull_request','codemyriad/cassini-mac','cm-mac-m4',True),
+                    ('pull_request','fork/repo','cm-mac-m4',False),('pull_request','codemyriad/cassini-mac','',False),
+                    ('push','','cm-mac-m4',True),('schedule','','cm-mac-m4',True),('workflow_dispatch','','',False)]:
+                    with self.subTest(runner=runner,event=event,head=head,label=label):
+                        expected='cm-mac-m4' if enabled and runner=='macos-15' else runner
+                        self.assertEqual(self.evaluate(route,event,head,label,runner),expected)
+        rows=re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',producer)
+        self.assertEqual(rows,[('macos-15','arm64'),('macos-15-intel','x86_64')])
+
+    def test_constrained_jobs_and_all_original_artifact_names_remain_hosted(self):
+        self.assertIn('runs-on: macos-15\n',ci_job('kit'))
+        self.assertIn('runs-on: macos-15-intel',ci_job('package_tests'))
+        for name in ['ux-shot.yml','ux-boards.yml','ux-parakeet.yml','ux-browser-setup.yml','ci-build-release.yml']:
+            self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
+        body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
+        self.assertIn('runs-on: macos-15',body)
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        self.assertIn('name: ci-swiftpm-${{ matrix.arch }}\n',producer)
+        self.assertIn('name: ci-swiftpm-${{ steps.arch.outputs.name }}\n',action)
+        for name in ['ci-assets','ci-runtime','ci-parakeet','ci-debug']:
+            self.assertIn('name: '+name+'\n',producer)
+            self.assertIn('name: '+name+'\n',action)
+        self.assertIn('name: ci-release\n',action)
+        self.assertNotIn('-headless',producer+action)
+
+    def test_producers_and_restorers_select_the_same_xcode_and_fingerprint_caches(self):
+        producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        action=(ROOT/'.github/actions/ci-products/action.yml').read_text()
+        for body in [producer,action]:
+            self.assertIn('bash scripts/ci-select-xcode.sh',body)
+            self.assertNotIn('sudo xcode-select',body)
+        keys=[line for line in producer.splitlines() if any(marker in line for marker in
+            ['key: swiftpm-','restore-keys: swiftpm-','key: pinned-fetches-','restore-keys: pinned-fetches-'])]
+        self.assertEqual(len(keys),4)
+        for line in keys:self.assertIn('steps.xcode.outputs.fingerprint',line)
+        for line in keys:
+            if 'swiftpm-' in line:self.assertIn('steps.xcode.outputs.workspace',line)
+            else:self.assertNotIn('steps.xcode.outputs.workspace',line)
+        self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
 
 
 class Transport(unittest.TestCase):

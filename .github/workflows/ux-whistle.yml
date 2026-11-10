@@ -21,7 +21,7 @@ jobs:
         runner:
         - macos-15
         - macos-15-intel
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner == 'macos-15' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
     timeout-minutes: 20
     steps:
     - uses: actions/checkout@v5
@@ -29,7 +29,7 @@ jobs:
       with:
         swiftpm: 'true'
         assets: 'true'
-    - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+    - run: test "$GITHUB_ACTIONS" = true && { test "$RUNNER_ENVIRONMENT" = github-hosted || test "$RUNNER_ENVIRONMENT" = self-hosted; }
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
