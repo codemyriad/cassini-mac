@@ -1,0 +1,192 @@
+[0/1] Planning build
+Building for debugging...
+[0/24] Write swift-version--79AA4F9932D1E87A.txt
+Build complete! (0.48s)
+Test Suite 'Selected tests' started at 2026-11-10 14:35:33.179.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:35:33.180.
+Test Suite 'BackgroundSetupTests' started at 2026-11-10 14:35:33.180.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testActivationOrRetryResetsBackoffAndCancelsOldTimer]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testActivationOrRetryResetsBackoffAndCancelsOldTimer]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testBackoffAndJitterBounds]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testBackoffAndJitterBounds]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFailureClassificationSurvivesXPCAndDoesNotRetryPermissions]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFailureClassificationSurvivesXPCAndDoesNotRetryPermissions]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFakeClockRetryAndSuccessStopsTimer]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testFakeClockRetryAndSuccessStopsTimer]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testPermanentFailuresOnlyRetryOnTrigger]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testPermanentFailuresOnlyRetryOnTrigger]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testStopCancelsScheduledRetry]' started.
+Test Case '-[CassiniBrowserSetupTests.BackgroundSetupTests testStopCancelsScheduledRetry]' passed (0.000 seconds).
+Test Suite 'BackgroundSetupTests' passed at 2026-11-10 14:35:33.185.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'ControlHostTests' started at 2026-11-10 14:35:33.185.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' passed (0.418 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' passed (0.220 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' passed (0.229 seconds).
+Test Suite 'ControlHostTests' passed at 2026-11-10 14:35:34.052.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.867 (0.867) seconds
+Test Suite 'InstallationTests' started at 2026-11-10 14:35:34.052.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testChromeForTestingUsesItsOwnFixedManifestRoot]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testChromeForTestingUsesItsOwnFixedManifestRoot]' passed (0.007 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testConcurrentInstallerCannotInterleavePublications]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testConcurrentInstallerCannotInterleavePublications]' passed (0.018 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testDetectionUsesInstalledBundleIDsWithoutReadingAProfile]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testDetectionUsesInstalledBundleIDsWithoutReadingAProfile]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFailureRollsBackEveryPreviouslyPublishedManifestAndLeavesNoStagingFiles]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFailureRollsBackEveryPreviouslyPublishedManifestAndLeavesNoStagingFiles]' passed (0.038 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFreshPartialFailureRemovesEarlierNewManifests]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testFreshPartialFailureRemovesEarlierNewManifests]' passed (0.009 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testHardLinkedAndOversizedPreviousManifestsAreRejected]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testHardLinkedAndOversizedPreviousManifestsAreRejected]' passed (0.008 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testIdenticalManifestsKeepMtimeAndInodeEvenWithDifferentJSONFormatting]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testIdenticalManifestsKeepMtimeAndInodeEvenWithDifferentJSONFormatting]' passed (0.009 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testInstalledButNeverOpenedBrowserGetsOnlyRegistrationDirectories]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testInstalledButNeverOpenedBrowserGetsOnlyRegistrationDirectories]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLaunchTriggerInstallsMissingManifestsWithoutConnectAction]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLaunchTriggerInstallsMissingManifestsWithoutConnectAction]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyDeletionRollsBackTogetherWithNewManifests]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyDeletionRollsBackTogetherWithNewManifests]' passed (0.013 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyOwnershipRequiresFileNameManifestNameAndOwnExecutable]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testLegacyOwnershipRequiresFileNameManifestNameAndOwnExecutable]' passed (0.023 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMissingOrSymlinkedExecutableCannotBeRegistered]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMissingOrSymlinkedExecutableCannotBeRegistered]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMoveRewritesBothPathsAndWrongOriginIsRepaired]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testMoveRewritesBothPathsAndWrongOriginIsRepaired]' passed (0.014 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserCreatesNothingAndCannotUseUnlistedDirectories]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserCreatesNothingAndCannotUseUnlistedDirectories]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserMeansNoRegistrationOrProfileCreation]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testNoInstalledBrowserMeansNoRegistrationOrProfileCreation]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testOwnLegacyManifestsAreRemovedWithoutMatchingOrigins]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testOwnLegacyManifestsAreRemovedWithoutMatchingOrigins]' passed (0.028 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRegistersBothHostsWithPinnedOriginAndPrivateModesInAllFourBrowsers]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRegistersBothHostsWithPinnedOriginAndPrivateModesInAllFourBrowsers]' passed (0.018 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRepeatConnectRepairsAStalePathAndSkipsBrowsersThatNeverRan]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testRepeatConnectRepairsAStalePathAndSkipsBrowsersThatNeverRan]' passed (0.008 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkAndPipeManifestsAreRejectedBeforeAnyPublication]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkAndPipeManifestsAreRejectedBeforeAnyPublication]' passed (0.007 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkedBrowserParentCannotRedirectRegistration]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testSymlinkedBrowserParentCannotRedirectRegistration]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnsafeLegacyEntriesAreLeftAlone]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnsafeLegacyEntriesAreLeftAlone]' passed (0.025 seconds).
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnwritableConfigIsPermanentWithoutPublishingAnyManifest]' started.
+Test Case '-[CassiniBrowserSetupTests.InstallationTests testUnwritableConfigIsPermanentWithoutPublishingAnyManifest]' passed (0.004 seconds).
+Test Suite 'InstallationTests' passed at 2026-11-10 14:35:34.308.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.255 (0.257) seconds
+Test Suite 'PipeTransportTests' started at 2026-11-10 14:35:34.308.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' passed (0.016 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' passed (0.333 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' passed (0.224 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' passed (0.105 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' passed (0.213 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' passed (0.013 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' passed (0.468 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' passed (0.581 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' passed (0.211 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' passed (0.211 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' passed (0.001 seconds).
+Test Suite 'PipeTransportTests' passed at 2026-11-10 14:35:36.684.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 2.375 (2.376) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 14:35:36.684.
+	 Executed 43 tests, with 0 failures (0 unexpected) in 3.502 (3.504) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 14:35:36.684.
+	 Executed 43 tests, with 0 failures (0 unexpected) in 3.502 (3.505) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite SessionPlaybackTests started.
+◇ Suite BrowserHostInstallationTests started.
+◇ Suite LibraryWatcherTests started.
+◇ Test registersOnlyExistingBrowsersAndRetainsRecordingsOnUninstall() started.
+◇ Test trailingDebounceHasAMaximumWaitAndRootSupersedesMeetings() started.
+◇ Test metadataTargetsOnlyItsMeetingAndWaveGrowthIsIgnored() started.
+◇ Test fileEventsUseAnInjectedTemporaryRoot() started.
+◇ Test timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() started.
+✔ Test trailingDebounceHasAMaximumWaitAndRootSupersedesMeetings() passed after 0.001 seconds.
+✔ Test metadataTargetsOnlyItsMeetingAndWaveGrowthIsIgnored() passed after 0.001 seconds.
+✔ Test timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() passed after 0.005 seconds.
+◇ Test queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() started.
+✔ Test queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() passed after 0.001 seconds.
+◇ Test frozenListeningPreviewCreatesNoTransportOrPlayback() started.
+✔ Test frozenListeningPreviewCreatesNoTransportOrPlayback() passed after 0.001 seconds.
+◇ Test eofDistinguishesAnExplicitPauseFromANaturalBackendPause() started.
+✔ Test eofDistinguishesAnExplicitPauseFromANaturalBackendPause() passed after 0.001 seconds.
+◇ Test rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() started.
+✔ Test rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() passed after 0.001 seconds.
+◇ Test overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() started.
+✔ Test overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() passed after 0.001 seconds.
+◇ Test resumingAfterAClearedSpanReturnsToNormalEOFBehaviour() started.
+✔ Test resumingAfterAClearedSpanReturnsToNormalEOFBehaviour() passed after 0.001 seconds.
+◇ Test spanIsUncappedClampedAndKeepsItsEndWithoutRewinding() started.
+✔ Test spanIsUncappedClampedAndKeepsItsEndWithoutRewinding() passed after 0.001 seconds.
+◇ Test replacedSeeksAndBoundariesCannotFinishOrResumeTheNextSpan() started.
+✔ Test replacedSeeksAndBoundariesCannotFinishOrResumeTheNextSpan() passed after 0.001 seconds.
+◇ Test pauseSeekRateAndClearRespectTheCurrentSpan() started.
+✔ Test pauseSeekRateAndClearRespectTheCurrentSpan() passed after 0.001 seconds.
+◇ Test invalidBoundsDoNotStartOrPrepareAudio() started.
+✔ Test invalidBoundsDoNotStartOrPrepareAudio() passed after 0.001 seconds.
+◇ Test pauseAtABoundaryInvalidatesQueuedAdvanceUntilResume() started.
+✔ Test pauseAtABoundaryInvalidatesQueuedAdvanceUntilResume() passed after 0.001 seconds.
+◇ Test exactlyTwoSecondsDoesNotChain() started.
+✔ Test exactlyTwoSecondsDoesNotChain() passed after 0.001 seconds.
+◇ Test autoAdvanceUsesBoundaryEventsAndNearbyTurnsAreOneContinuousSpan() started.
+✔ Test autoAdvanceUsesBoundaryEventsAndNearbyTurnsAreOneContinuousSpan() passed after 0.001 seconds.
+◇ Test steppingInsideAChainSkipsLeadInAndShortFirstTurnClampsAtZero() started.
+✔ Test steppingInsideAChainSkipsLeadInAndShortFirstTurnClampsAtZero() passed after 0.001 seconds.
+◇ Test nextDoesNotSkipATurnAfterManualSeekIntoItsLeadIn() started.
+✔ Test registersOnlyExistingBrowsersAndRetainsRecordingsOnUninstall() passed after 0.010 seconds.
+✔ Suite BrowserHostInstallationTests passed after 0.010 seconds.
+✔ Test nextDoesNotSkipATurnAfterManualSeekIntoItsLeadIn() passed after 0.001 seconds.
+◇ Test seeksFollowTheTargetAndStartingMidMeetingUsesTheFirstTurnNotOver() started.
+✔ Test seeksFollowTheTargetAndStartingMidMeetingUsesTheFirstTurnNotOver() passed after 0.001 seconds.
+◇ Test staleCompletionCannotFinishPlayAgainOfTheSameTurn() started.
+✔ Test staleCompletionCannotFinishPlayAgainOfTheSameTurn() passed after 0.001 seconds.
+◇ Test mergeRecomputationKeepsPlayAgainAndAReplacedTargetInvalidatesCallbacks() started.
+✔ Test mergeRecomputationKeepsPlayAgainAndAReplacedTargetInvalidatesCallbacks() passed after 0.001 seconds.
+◇ Test speakerStepsUsePaneOrderAndStopDoesNotPauseOrSeek() started.
+✔ Test speakerStepsUsePaneOrderAndStopDoesNotPauseOrSeek() passed after 0.001 seconds.
+◇ Test pageSwitchGlobalStopAndFailureEndListeningAndFenceLateEvents() started.
+✔ Test pageSwitchGlobalStopAndFailureEndListeningAndFenceLateEvents() passed after 0.001 seconds.
+◇ Test explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() started.
+✔ Test explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() passed after 0.001 seconds.
+◇ Test playFromASearchHitSurvivesAsynchronousPreparation() started.
+✔ Test playFromASearchHitSurvivesAsynchronousPreparation() passed after 0.001 seconds.
+◇ Test aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() started.
+✔ Test aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() passed after 0.001 seconds.
+◇ Test pendingAndPreparedSeeksClampToTheActualAudioDuration() started.
+✔ Test pendingAndPreparedSeeksClampToTheActualAudioDuration() passed after 0.001 seconds.
+◇ Test pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() started.
+✔ Test pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() passed after 0.001 seconds.
+◇ Test finalSeekFailureReturnsToPlayAndReportsOnce() started.
+✔ Test finalSeekFailureReturnsToPlayAndReportsOnce() passed after 0.001 seconds.
+◇ Test pauseRemainsPossibleAfterEligibilityChanges() started.
+✔ Test pauseRemainsPossibleAfterEligibilityChanges() passed after 0.001 seconds.
+◇ Test refreshStopsInvalidChangedAndOfflineSources() started.
+✔ Test refreshStopsInvalidChangedAndOfflineSources() passed after 0.001 seconds.
+◇ Test backendPauseAndMidstreamFailureUpdateUIOnce() started.
+✔ Test backendPauseAndMidstreamFailureUpdateUIOnce() passed after 0.001 seconds.
+◇ Test endWaitsForRewindAndAQueuedPlayCanBeCancelled() started.
+✔ Test endWaitsForRewindAndAQueuedPlayCanBeCancelled() passed after 0.001 seconds.
+◇ Test replayStartsOnlyAfterRewindAndStopInvalidatesCompletion() started.
+✔ Test replayStartsOnlyAfterRewindAndStopInvalidatesCompletion() passed after 0.001 seconds.
+◇ Test abandonedPreparationIsCancelledWithItsOwner() started.
+✔ Test abandonedPreparationIsCancelledWithItsOwner() passed after 0.001 seconds.
+✔ Suite SessionPlaybackTests passed after 0.013 seconds.
+✔ Test fileEventsUseAnInjectedTemporaryRoot() passed after 0.327 seconds.
+✔ Suite LibraryWatcherTests passed after 0.328 seconds.
+✔ Test run with 37 tests passed after 0.328 seconds.
