@@ -44,11 +44,11 @@ Periodic checkpoint cutoff is 08:15 UTC. The readiness watcher stops at 08:20 UT
 
 ## CI readiness
 
-Last checked: 2026-11-10T23:50:04+00:00
+Last checked: 2026-11-10T23:55:05+00:00
 
 - #210 `30fc6f3`: pending: Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling; draft.
 - #211 `d1ebe14`: pending: UX Library boards / Library boards; draft.
 - #212 `8c9c389`: ready; ready.
-- #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
+- #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX Library boards / Native spectrogram and profiling; draft.
 - #214 `c2777e5`: ready; ready.
 - #215 `594bf71`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
