@@ -1,0 +1,11 @@
+...........................Path detection failed; running all UX checks: Command 'git' returned non-zero exit status 128.
+........Restored verified swiftpm products for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Restored verified swiftpm products for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Restored verified swiftpm products for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+SwiftPM workspace differs: /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/tmpdnwrxvcp -> /private/other-runner/checkout; building test products in this checkout
+.SwiftPM workspace differs: /private/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/tmp1uaks8t_ -> /private/other-runner/checkout; building test products in this checkout
+.....
+----------------------------------------------------------------------
+Ran 41 tests in 0.295s
+
+OK

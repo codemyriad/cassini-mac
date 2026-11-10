@@ -1,0 +1,18 @@
+[0/1] Planning build
+Test Suite 'All tests' started at 2026-11-10 18:20:20.442.
+Test Suite 'PathFixturePackageTests.xctest' started at 2026-11-10 18:20:20.442.
+Test Suite 'PathTests' started at 2026-11-10 18:20:20.443.
+Test Case '-[PathTests.PathTests testConsumerOwnsResourceAndSourcePaths]' started.
+Test Case '-[PathTests.PathTests testConsumerOwnsResourceAndSourcePaths]' passed (0.002 seconds).
+Test Suite 'PathTests' passed at 2026-11-10 18:20:20.444.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'PathFixturePackageTests.xctest' passed at 2026-11-10 18:20:20.444.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'All tests' passed at 2026-11-10 18:20:20.444.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+SOURCE_PATH=/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/consumer/Tests/PathTests/PathTests.swift
+RESOURCE_PATH=/var/folders/8t/fdtyk5ws5s54c6k8l_zz537c0000gn/T/cassini-product-paths-sr_fm0fx/consumer/.build/arm64-apple-macosx/debug/PathFixture_PathTests.bundle/Resources/payload.txt
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.
