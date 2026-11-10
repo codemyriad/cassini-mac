@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import XCTest
+import os
 import CassiniKit
 @testable import CassiniBrowserControl
 
@@ -36,15 +37,22 @@ final class PageStateTests: XCTestCase {
         }
     }
     func testClosedEvidenceAndItsObservationTimeSurviveLatePresentSnapshots() throws {
-        var state = BrowserControlRegistry(); let peer = try ready(&state,enabled:true)
-        let before = ProcessInfo.processInfo.systemUptime
+        let clock = OSAllocatedUnfairLock(initialState: TimeInterval(10))
+        var state = BrowserControlRegistry(clock:{ clock.withLock { $0 } })
+        let peer = try ready(&state,enabled:true)
+        clock.withLock { $0 = 20 }
         try send(status("closed"),&state,peer)
-        let first = try XCTUnwrap(state.snapshots.first?.captures.first?.pageStateAt)
-        XCTAssertGreaterThanOrEqual(first,before)
-        try send(meetings("present"),&state,peer); try send(status("present"),&state,peer)
-        XCTAssertEqual(state.snapshots.first?.captures.first?.pageState,.closed)
-        XCTAssertEqual(state.snapshots.first?.captures.first?.pageStateAt,first)
-        XCTAssertEqual(state.snapshots.first?.meetings.first?.pageState,.closed)
+        XCTAssertEqual(state.snapshots.first?.captures.first?.pageStateAt,20)
+
+        clock.withLock { $0 = 30 }
+        try send(meetings("present"),&state,peer)
+        clock.withLock { $0 = 40 }
+        try send(status("present"),&state,peer)
+        let snapshot = try XCTUnwrap(state.snapshots.first)
+        XCTAssertEqual(snapshot.captures.first?.pageState,.closed)
+        XCTAssertEqual(snapshot.captures.first?.pageStateAt,20)
+        XCTAssertEqual(snapshot.meetings.first?.pageState,.closed)
+        XCTAssertEqual(snapshot.meetings.first?.pageStateAt,20)
     }
     func testLegacyIgnoresInvalidPageFieldsButCapablePeerRejectsAtomically() throws {
         for enabled in [false,true] {
