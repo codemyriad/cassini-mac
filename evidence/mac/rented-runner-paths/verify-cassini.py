@@ -18,7 +18,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-real-paths-') as temporary:
         run(name+'-clone',['git','clone','--shared','--quiet',root,destination],work)
         run(name+'-checkout',['git','checkout','--quiet','--detach',base],destination)
     run('producer-build',['swift','build','--build-tests','--jobs','4'],a)
-    run('producer-tests',['swift','test','--skip-build','--filter',selected],a)
+    output=run('producer-tests',['swift','test','--skip-build','--filter',selected],a)
+    assert all(name in output for name in selected.split('|'))
     cli=[sys.executable,'scripts/ci-products.py']
     run('pack',cli+['pack','swiftpm',artifact],a)
     metadata=json.loads((artifact/'swiftpm.json').read_text());assert metadata['workspace']==str(a)
@@ -37,7 +38,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-real-paths-') as temporary:
         assert 'WorkspaceMismatch' in rejected and not (b/'.build').exists()
         restored=run('consumer-restore',cli+['restore','swiftpm',artifact],b,env=env)
         assert 'building test products in this checkout' in restored
-        run('consumer-tests',['swift','test','--skip-build','--filter',selected],b,env=env)
+        output=run('consumer-tests',['swift','test','--skip-build','--filter',selected],b,env=env)
+        assert all(name in output for name in selected.split('|'))
         assert not a.exists()
         accessors=list((b/'.build').rglob('resource_bundle_accessor.swift'))
         assert accessors and all(str(a) not in p.read_text() for p in accessors)

@@ -7,6 +7,7 @@ The tiny package deliberately requires both Bundle.module and #filePath; hiding
 the producer prevents a relocated consumer from passing via the original files.
 """
 import argparse
+import difflib
 import importlib.util
 import json
 from pathlib import Path
@@ -39,7 +40,7 @@ final class PathTests: XCTestCase {
         XCTAssertTrue(resource.resolvingSymlinksInPath().path.hasPrefix(root), "Bundle.module must belong to the consumer")
         XCTAssertEqual(try String(contentsOf:resource, encoding:.utf8), "resource bytes\\n")
         XCTAssertEqual(try String(contentsOf:source.deletingLastPathComponent().appendingPathComponent("source-marker.txt"), encoding:.utf8), "source bytes\\n")
-        XCTAssertEqual(value, 42)
+        XCTAssertEqual(PathValue.value, 42)
     }
 }
 '''
@@ -89,7 +90,8 @@ def main():
                        'commit', '-qm', 'Identical producer and consumer source'], producer)
         run('clone', ['git', 'clone', '--local', '--quiet', producer, consumer], folder)
         run('producer-build', ['swift', 'build', '--build-tests', '--jobs', '4'], producer)
-        run('producer-test', ['swift', 'test', '--skip-build'], producer)
+        output = run('producer-test', ['swift', 'test', '--skip-build'], producer)
+        assert 'testConsumerOwnsResourceAndSourcePaths' in output and 'Executed 1 test' in output
         artifact = folder/'artifact'
         cli = [sys.executable, 'scripts/ci-products.py']
         run('pack', cli+['pack', 'swiftpm', artifact], producer)
@@ -113,10 +115,12 @@ def main():
             guard = "if workspace != expected['workspace']:"
             assert original.count(guard) == 1
             try:
-                script.write_text(original.replace(guard, 'if False: # diagnostic mutation'))
+                mutated = original.replace(guard, 'if False: # diagnostic mutation')
+                (evidence/'workspace-guard.patch').write_text(''.join(difflib.unified_diff(original.splitlines(keepends=True), mutated.splitlines(keepends=True), fromfile='a/scripts/ci-products.py', tofile='b/scripts/ci-products.py')))
+                script.write_text(mutated)
                 run('mutation-restore', cli+['restore', 'swiftpm', artifact], consumer)
                 output = run('mutation-test', ['swift', 'test', '--skip-build'], consumer, succeeds=False)
-                assert 'unable to find bundle' in output or '#filePath must belong to the consumer' in output
+                assert 'could not load resource bundle' in output or 'unable to find bundle' in output or '#filePath must belong to the consumer' in output
             finally:
                 script.write_text(original)
                 if (consumer/'.build').exists():
@@ -134,7 +138,8 @@ def main():
         shutil.rmtree(producer/'.build')
         output = run('same-path-restore', cli+['restore', 'swiftpm', artifact], producer)
         assert 'Restored verified swiftpm' in output and 'building test products' not in output
-        run('same-path-test', ['swift', 'test', '--skip-build'], producer)
+        output = run('same-path-test', ['swift', 'test', '--skip-build'], producer)
+        assert 'testConsumerOwnsResourceAndSourcePaths' in output and 'Executed 1 test' in output
         result = dict(producer=str(producer), consumer=str(consumer),
                       commit=metadata['commit'], xcode=metadata['xcode'], arch=metadata['arch'],
                       mutation='foreign objects fail with producer unavailable',
