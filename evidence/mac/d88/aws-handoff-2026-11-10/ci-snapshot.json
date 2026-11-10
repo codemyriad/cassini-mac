@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T21:10:26+00:00",
+  "updated": "2026-11-10T21:15:27+00:00",
   "prs": [
     {
       "pr": 210,
@@ -87,7 +87,6 @@
       "draft": true,
       "readyCandidate": false,
       "pending": [
-        "Whistle bundle / Whistle worker (macos-15-intel)",
         "Package tests (macos-15-intel)",
         "UX browser setup / Browser setup (macos-15)",
         "UX Library boards / Library boards",
