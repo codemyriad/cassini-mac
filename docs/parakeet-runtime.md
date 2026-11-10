@@ -28,8 +28,9 @@ values are promoted to double before half-away-from-zero rounding. All Unicode
 L*/N* categories count toward word ends; punctuation and combining marks do not
 extend them. Output language is `und`; segment text is only trimmed at its ends.
 
-The shared Parakeet goldens are copied verbatim into
-`Tests/CassiniParakeetTests/Goldens`, including their SHA256SUMS. The tests use the
+The Parakeet goldens in `Tests/CassiniParakeetTests/Goldens` were refreshed for
+D86 through the Mac production pipeline with the #4179 encoder; their metadata
+records the actual unchanged Mac runtime, and SHA256SUMS pins each file. The tests use the
 existing D11 FIR/Silero/SpeechGate implementation and its input fixtures, compare
 every segment range and input hash before decoding, require 66 words per golden,
 and then apply only D16's trailing ASCII punctuation and 80 ms time tolerances.
@@ -40,10 +41,13 @@ Local parity command (paths refer to private build assets):
 ```
 ORT_DISABLE_TELEMETRY=1 NEEDLE_TELEMETRY=0 DO_NOT_TRACK=1 \
 CASSINI_PARAKEET_RUNTIME=/tmp/cassini-parakeet-assets/runtime-original \
-CASSINI_PARAKEET_MODEL=/tmp/cassini-parakeet-model-data/models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9 \
+CASSINI_PARAKEET_MODEL=/tmp/cassini-parakeet-model-data/models/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366 \
 CASSINI_PIPELINE_ASSETS=/tmp/cassini-wave3-pipeline-assets \
 swift test --jobs 2 --filter 'ParakeetTests|ParakeetGoldenTests'
 ```
+
+For a model cache on another volume, set `CASSINI_PARAKEET_TEST_TEMP` to an
+existing scratch directory on that volume: the lease test uses hard links.
 
 The hosted Parakeet area runs both goldens and the production worker/app probes
 on native ARM and Intel runners. Local parity establishes the M4 result only;

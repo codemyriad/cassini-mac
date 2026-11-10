@@ -9,7 +9,10 @@ final class ParakeetLeaseTests: XCTestCase {
     func testRemovingAnInstalledRevisionKeepsAcceptedJobFiles() throws {
         let env = ProcessInfo.processInfo.environment
         guard let original = env["CASSINI_PARAKEET_MODEL"], let runtime = env["CASSINI_PARAKEET_RUNTIME"] else { throw XCTSkip("D16 source files supplied by Parakeet CI") }
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        // Hard links require one filesystem; external model caches need an external
+        // scratch root too (Foundation on macOS may ignore a TMPDIR override).
+        let temporary = env["CASSINI_PARAKEET_TEST_TEMP"].map { URL(fileURLWithPath:$0,isDirectory:true) } ?? FileManager.default.temporaryDirectory
+        let root = temporary.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         defer { try? FileManager.default.removeItem(at:root) }
         let installed = root.appendingPathComponent("installed")
