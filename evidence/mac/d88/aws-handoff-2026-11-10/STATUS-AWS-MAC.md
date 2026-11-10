@@ -15,7 +15,7 @@ Updated: 2026-11-10 15:14 UTC
 
 ## Migration
 
-All six work branches and evidence are pushed. Handoff scripts and a status snapshot are preserved on `test/d88-aws-handoff`; no credentials or build caches are needed for restoration. Stop the old `aws-mac-d88-ci` tmux watcher before starting it on the second Mac.
+All six work branches and evidence are pushed. Handoff scripts and a status snapshot are preserved on `test/d88-aws-handoff`; no credentials or build caches are needed for restoration. Checkpoint branch: `test/d88-aws-handoff`, archive `evidence/mac/d88/aws-handoff-2026-11-10/`. A separate `aws-mac-d88-checkpoint` tmux session pushes status, scripts, and readiness audit records there every five minutes. Logs: `~/coordination/aws-mac-checkpoint.log`. Stop both old tmux sessions before resuming on the second Mac.
 
 ## Questions
 

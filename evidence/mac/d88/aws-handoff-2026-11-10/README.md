@@ -63,3 +63,14 @@ host paths and expect a disposable baseline at main `9a22168`; adapt paths befor
 reuse. Their resulting complete logs and patches are already pushed on the six
 work branches, so rerunning them is unnecessary for migration. Run any future
 full local suite through the shared mkdir lock.
+
+## Ongoing off-host checkpoints
+
+`checkpoint.py --watch` runs in the separate `aws-mac-d88-checkpoint` tmux session
+and checkpoints the latest status, CI observations, readiness audit records and
+operational scripts every five minutes onto this handoff branch. It only stages
+this archive's named public artifacts. It cannot write another branch or force-push.
+Its log is `~/coordination/aws-mac-checkpoint.log`. Stop the old checkpoint session
+along with the old CI watcher before moving; resume against a dedicated checkout
+of this branch on the second Mac. This archival branch has no PR and does not alter
+the six tested PR heads.
