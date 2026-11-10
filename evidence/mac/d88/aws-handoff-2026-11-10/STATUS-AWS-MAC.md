@@ -2,10 +2,10 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 17:08 UTC
+Updated: 2026-11-10 17:10 UTC
 
-- IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `9d373ff`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
-- Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `9f892f6`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
+- IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `9d373ff`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
+- Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `9f892f6`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. New-head changes check passed; architecture builds queued/running.
 - Playback cancellation: draft PR https://github.com/codemyriad/cassini-mac/pull/212, head `75ea821`. All 33 local tests pass before/after/restoration; removing owner cancel fails intended assertions. The shared ModelSupersessionTests:93 failure is repaired locally on all six heads; changed playback cancellation and shared fixture tests pass. Await new exact-head CI.
 - Setup/watchers: draft PR https://github.com/codemyriad/cassini-mac/pull/213, head `c4f3d1e`. 29 XCTest + 4 Swift Testing pass before/after/restoration; dropped-coalesced-attempt mutation fails intended assertions. Watcher timeout individually retained as failure-only.
 - Model fixture: draft PR https://github.com/codemyriad/cassini-mac/pull/214, head `922711b`. All 26 tests pass before/after/restoration; false-ready URL mutation fails. Manual expiry follows actual child-stall event; existing readiness/transfer/exit gates preserved.
@@ -23,7 +23,7 @@ The shared ModelSupersessionTests:93 CI blocker is fixed on all six pushed heads
 
 ## Questions
 
-None. Ownership of the shared blocker was explicitly assigned to aws-mac and the repair is complete locally. Proof/recipe is pushed on `test/d88-aws-supersession-events` and copied into each PR's evidence. #208 remains open at the last check; ARM routing awaits its merge. Continue monitoring all six independently.
+None. Ownership of the shared blocker was explicitly assigned to aws-mac and the repair is complete locally. Proof/recipe is pushed on `test/d88-aws-supersession-events` and copied into each PR's evidence. #208 is ready/open with only its Intel build pending and no failed checks at 2026-11-10 17:10 UTC; ARM routing awaits its merge. Continue monitoring all six independently.
 
 ## CI readiness
 
