@@ -2,7 +2,7 @@
 
 **Stop using this Mac by 2026-11-11 08:30 UTC. Termination and disk deletion: 2026-11-11 09:30 UTC.**
 
-Updated: 2026-11-10 21:48 UTC
+Updated: 2026-11-10 22:43 UTC
 
 Main #208 (including #222) merged at `b1b031bb0fd5f250aeb305b53b8a24c0280fcd4f`. Per coordinator, all six draft branches now contain an ordinary merge from that main, with no rebase or force-push. All six heads are pushed and their affected-row plus seven shared supersession tests pass locally under the shared heavy-run lock, Xcode16.4/four jobs. PR bodies include new-head validation links and D87 entries. No new source work is planned; continue existing readiness monitoring only.
 
@@ -35,11 +35,11 @@ None. Await exact-head CI; the watcher keeps failed/pending heads draft and mark
 
 ## CI readiness
 
-Last checked: 2026-11-10T22:38:35+00:00
+Last checked: 2026-11-10T22:43:41+00:00
 
-- #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
+- #210 `30fc6f3`: pending: CassiniKit tests and conformance, Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
 - #211 `d1ebe14`: pending: UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
 - #212 `8c9c389`: pending: UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
 - #213 `56bbf1e`: pending: CassiniKit tests and conformance, UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling; draft.
 - #214 `c2777e5`: pending: UX browser setup / Browser setup (macos-15), UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15); draft.
-- #215 `612bb36`: pending: UX Library boards / Library boards; draft.
+- #215 `612bb36`: ready; ready.
