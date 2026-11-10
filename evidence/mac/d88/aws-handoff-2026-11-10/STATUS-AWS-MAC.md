@@ -2,7 +2,7 @@
 
 **Destruction deadline: 2026-11-11 12:09 UTC. Move to the second Mac before this time.**
 
-Updated: 2026-11-10 16:25 UTC
+Updated: 2026-11-10 16:36 UTC
 
 - IPC silence: draft PR https://github.com/codemyriad/cassini-mac/pull/210, branch `test/d88-aws-ipc-barriers`, head `f0b06cc`. Baseline 73 tests pass; changed/restored IPC 12/12 pass. Premature-Start and forgotten-Stop mutations fail intended assertions. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
 - Browser broker/start/permissions: draft PR https://github.com/codemyriad/cassini-mac/pull/211, branch `test/d88-aws-browser-gates`, head `54c574b`. Changed/restored 61/61 pass; stale-generation mutation fails intended assertions. Initial cleanup hook overfulfillment fixed and recorded. Await exact-head CI; not ready. Changes passed; architecture builds pending at 14:54.
@@ -23,15 +23,19 @@ All six work branches and evidence are pushed. Handoff scripts and a status snap
 
 ## Questions
 
-Ownership clarification pending: should the existing ModelSupersessionTests CI blocker stay with drmeyers/coordinator, or be assigned to aws-mac? It is outside this brief’s ONLY-listed rows. Other PR readiness continues. All source/evidence is pushed; no merges, reruns or force-pushes performed.
+Coordinator assigned the ModelSupersessionTests blocker to aws-mac. Candidate fixture-only executor fix and controlled held-pool probe are on `test/d88-aws-supersession-events`; verification was intentionally stopped at the coordinator’s 70-minute checkpoint before baseline probe output. No result claimed; baseline restored clean and own test process tree stopped. Candidate branch head `a935f0e376437919cc947039126f7841533306dd`. Other PR readiness continues. All source/evidence is pushed; no merges, reruns or force-pushes performed.
 
 ## CI readiness
 
-Last checked: 2026-11-10T16:30:20+00:00
+Last checked: 2026-11-10T16:35:20+00:00
 
-- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
-- #211 `54c574b`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #211 `54c574b`: failed: CassiniKit tests and conformance; draft.
 - #212 `ac49a75`: failed: CassiniKit tests and conformance; draft.
 - #213 `3fd8e39`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #214 `21e957a`: failed: CassiniKit tests and conformance; draft.
 - #215 `8f5cdab`: pending: build / Build products (arm64, Xcode 16.4); draft.
+
+## Turn checkpoint (16:36 UTC)
+
+Coordinator requested push/STATUS/end turn. Candidate shared-model fix is pushed on `test/d88-aws-supersession-events` at `a935f0e376437919cc947039126f7841533306dd`; no PR yet and no passing verification claim. The held-pool baseline run was interrupted before output; its process tree was stopped and the baseline checkout is clean. Next: resume a bounded controlled baseline/after proof, then the replacement-hash mutation and full ModelSupersession suite under `mkdir ~/.aws-heavy.lock`. Decide how to land the proven shared fix before updating #212’s tested head; do not rerun the red CI job. #214 also has a Kit failure at the latest audit; inspect its log before assuming the same cause. The exact-head readiness and off-host checkpoint tmux sessions remain active. All six PRs remain draft pending CI or this shared blocker.

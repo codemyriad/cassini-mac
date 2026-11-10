@@ -76,3 +76,5 @@ of this branch on the second Mac. This archival branch has no PR and does not al
 the six tested PR heads.
 
 Transport supplemental proof: generated silence with the pinned VAD cache passed, notification-before-write mutation failed, and all 21 focused tests passed after restoration. Recipe: `aws-sidecar-verify.py`. Readiness for #215 is held until #210–#214 are ready, following coordinator priority.
+
+Additional coordinator-assigned shared-model blocker: `test/d88-aws-supersession-events` at `a935f0e376437919cc947039126f7841533306dd` (WIP, no PR, verification deliberately interrupted at the 70-minute checkpoint). Source, held-pool probe, mutation recipe and interruption record are on that branch. No test result is claimed. See the status snapshot for next steps.
