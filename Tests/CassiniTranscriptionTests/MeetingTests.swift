@@ -255,7 +255,11 @@ final class TranscriptionMeetingTests: XCTestCase {
         }
         final class Outcome: @unchecked Sendable {
             let lock = NSLock(); private var result: Result<Void,Error>?
-            func finish(_ result: Result<Void,Error>) { lock.lock(); self.result = result; lock.unlock() }
+            let finished = DispatchSemaphore(value:0)
+            private var mixed = false
+            func finish(_ result: Result<Void,Error>) { lock.withLock { self.result = result }; finished.signal() }
+            func sawMixedProgress() { lock.withLock { mixed = true } }
+            var retainedTail: Bool { lock.withLock { mixed } }
             func snapshot() -> Result<Void,Error>? { lock.lock(); defer { lock.unlock() }; return result }
         }
         let outcome = Outcome(), folder = session.directory
@@ -264,20 +268,20 @@ final class TranscriptionMeetingTests: XCTestCase {
                 let vad = try VADAssets.forWorker(arguments:["--assets",assets])
                 let detector = try SpeechDetector(assets:vad)
                 let engine = try WhistleEngine(assets:WhistleAssets.pinned(directory:URL(fileURLWithPath:assets)))
-                try MeetingTranscriber.run(directory:folder,engine:engine,detector:detector)
+                try MeetingTranscriber.run(directory:folder,engine:engine,detector:detector,sidecarWritten:{
+                    // Observe committed bytes synchronously before a later publication
+                    // can replace them. No filesystem-sampling window can miss the mix.
+                    if let data = try? Data(contentsOf:sidecar), let body = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+                       let words = body["items"] as? [[String:Any]], words.count > 1,
+                       words.contains(where:{ ($0["text"] as? String) == "Retained old partial" }),
+                       words.contains(where:{ ($0["startMs"] as? Int ?? Int.max) < 10000 }) { outcome.sawMixedProgress() }
+                })
             })
         }
         // Hosted Intel must finish real FIR/VAD/recognition, not a timer stub.
-        let deadline = Date().addingTimeInterval(120); var sawMixedProgress = false
-        while outcome.snapshot() == nil, Date() < deadline {
-            if let data = try? Data(contentsOf:sidecar), let body = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
-               let words = body["items"] as? [[String:Any]], words.count > 1,
-               words.contains(where: { ($0["text"] as? String) == "Retained old partial" }),
-               words.contains(where: { ($0["startMs"] as? Int ?? Int.max) < 10000 }) { sawMixedProgress = true }
-            Thread.sleep(forTimeInterval:0.01)
-        }
+        XCTAssertEqual(outcome.finished.wait(timeout:.now()+120),.success,"Real recognition must complete")
         let result = try XCTUnwrap(outcome.snapshot()); try result.get()
-        XCTAssertTrue(sawMixedProgress,"Saved later words must remain while the beginning is re-recognized")
+        XCTAssertTrue(outcome.retainedTail,"Saved later words must remain while the beginning is re-recognized")
         let meeting = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
         XCTAssertEqual(meeting.state.transcript,.done)
         XCTAssertFalse(meeting.transcriptItems.contains { $0.text == "Retained old partial" })

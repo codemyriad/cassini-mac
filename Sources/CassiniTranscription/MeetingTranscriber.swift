@@ -50,11 +50,13 @@ public enum MeetingTranscriber {
             return .init(text:word.word,startMs:startMs + from,endMs:startMs + min(max(b,from),lengthMs))
         }
     }
-    public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system) throws {
-        try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,uiLanguage:uiLanguage,recognize:engine.transcribe)
+    /// Called synchronously after each committed transcript sidecar, before the next publication.
+    public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system, sidecarWritten: () -> Void = {}) throws {
+        try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,uiLanguage:uiLanguage,sidecarWritten:sidecarWritten,recognize:engine.transcribe)
     }
     public static func run(directory inputDirectory: URL, detector: SpeechDetector, model: String,
                            initialETA: Double, initialLanguage: String = "auto", me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system,
+                           sidecarWritten: () -> Void = {},
                            recognize: ([Float]) throws -> WhistleTranscript) throws {
         var folderInfo = stat()
         guard lstat(inputDirectory.path, &folderInfo) == 0, folderInfo.st_mode & S_IFMT == S_IFDIR else { throw TranscriptionFailure.invalidMeeting }
@@ -184,7 +186,7 @@ public enum MeetingTranscriber {
                 // D53.2: an unknown language is written as "und", never the "auto" request.
                 let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
-                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory); wroteSidecar = true }
+                if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory); wroteSidecar = true; sidecarWritten() }
                 let factor = processed > 0 ? elapsed / processed : initialETA
                 let eta = Int64(ceil(max(0, remaining) * factor / 60))
                 try writer.transaction { metadata in

@@ -1,0 +1,111 @@
+Building for debugging...
+[0/28] Write sources
+[4/28] Write swift-version--79AA4F9932D1E87A.txt
+[6/19] Emitting module CassiniBrowserControl
+[7/19] Compiling CassiniBrowserControl PipeTransport.swift
+[8/19] Compiling CassiniBrowserControl FrameIO.swift
+[9/23] Emitting module CassiniTranscription
+[10/23] Compiling CassiniTranscription MeetingTranscriber.swift
+[11/39] Emitting module cassini_whistle_worker
+[12/39] Compiling cassini_whistle_worker main.swift
+[13/39] Emitting module CassiniTranscriptionTests
+[13/43] Write Objects.LinkFileList
+[15/43] Compiling CassiniTranscriptionTests D63WritedownVectorsTests.swift
+[16/43] Compiling CassiniTranscriptionTests D67FailedWriteDownTests.swift
+[17/43] Compiling CassiniTranscriptionTests D67RetryTranscriptionMeetingTests.swift
+[18/45] Compiling CassiniBrowserControl ControlRegistry.swift
+[19/45] Compiling CassiniBrowserControl ControlHost.swift
+[20/45] Compiling CassiniBrowserControl BrowserAudioBroker.swift
+[21/45] Compiling CassiniBrowserControl ControlService.swift
+[22/48] Emitting module cassini_parakeet_worker
+[23/48] Compiling cassini_parakeet_worker main.swift
+[24/48] Compiling CassiniTranscriptionTests D55PlacementTranscriptionMeetingTests.swift
+[25/48] Compiling CassiniTranscriptionTests D56SilentTracksTranscriptionMeetingTests.swift
+[26/48] Compiling CassiniTranscriptionTests D56TranscriptMembersTranscriptionMeetingTests.swift
+[27/48] Emitting module SharedPlacementTests
+[28/48] Compiling SharedPlacementTests SharedPlacementTests.swift
+[28/48] Linking cassini-whistle-worker
+[29/48] Write Objects.LinkFileList
+[30/50] Applying cassini-whistle-worker
+[32/55] Emitting module CassiniParakeetTests
+[33/55] Compiling CassiniParakeetTests ParakeetMeetingTests.swift
+[33/55] Write Objects.LinkFileList
+[35/55] Linking cassini-parakeet-worker
+[37/55] Compiling CassiniTranscriptionTests MeetingTests.swift
+[38/55] Compiling CassiniTranscriptionTests RecognitionFallbackTests.swift
+[39/55] Compiling CassiniTranscriptionTests UnfilteredMicrophonePipelineTests.swift
+[39/55] Linking cassini-control-host
+[40/55] Applying cassini-parakeet-worker
+[41/55] Applying cassini-control-host
+[42/55] Linking cassini-browser-host
+[43/55] Applying cassini-browser-host
+[45/55] Emitting module CassiniBrowserControlTests
+[46/55] Compiling CassiniBrowserControlTests FrameIOTests.swift
+[47/55] Compiling CassiniBrowserControlTests AudioBrokerTests.swift
+[48/55] Compiling CassiniBrowserControlTests ControlHostTests.swift
+[49/55] Compiling CassiniBrowserControlTests D52HeartbeatTests.swift
+[52/56] Compiling CassiniTranscriptionTests D52FallbackTranscriptionMeetingTests.swift
+[53/56] Compiling CassiniTranscriptionTests D52ScratchTranscriptionMeetingTests.swift
+[54/56] Compiling CassiniBrowserControlTests PipeTransportTests.swift
+[54/56] Write Objects.LinkFileList
+[55/56] Linking CassiniKitPackageTests
+Build complete! (6.79s)
+Test Suite 'Selected tests' started at 2026-11-10 14:48:40.873.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:48:40.873.
+Test Suite 'ControlHostTests' started at 2026-11-10 14:48:40.873.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' passed (0.313 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' passed (0.207 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' passed (0.211 seconds).
+Test Suite 'ControlHostTests' passed at 2026-11-10 14:48:41.604.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.730 (0.730) seconds
+Test Suite 'FrameIOTests' started at 2026-11-10 14:48:41.604.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testCancellationDoesNotNeedToCloseAnActiveDescriptor]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testCancellationDoesNotNeedToCloseAnActiveDescriptor]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFrameLimitsAndTruncatedHeaderAreRejected]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFrameLimitsAndTruncatedHeaderAreRejected]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testNormalizingPreservesValuesAndLexicalNumbersWithoutLineBreaks]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testNormalizingPreservesValuesAndLexicalNumbersWithoutLineBreaks]' passed (0.000 seconds).
+Test Suite 'FrameIOTests' passed at 2026-11-10 14:48:41.606.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'PipeTransportTests' started at 2026-11-10 14:48:41.606.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' passed (0.332 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' passed (0.204 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' passed (0.112 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' passed (0.204 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' passed (0.111 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' passed (0.219 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' passed (0.102 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' passed (0.203 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' passed (0.001 seconds).
+Test Suite 'PipeTransportTests' passed at 2026-11-10 14:48:43.096.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 1.489 (1.490) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 14:48:43.096.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 2.222 (2.223) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 14:48:43.096.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 2.222 (2.223) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.

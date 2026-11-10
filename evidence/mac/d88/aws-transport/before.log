@@ -1,0 +1,1099 @@
+[0/1] Planning build
+Building for debugging...
+[0/28] Write sources
+[4/28] Write swift-version--79AA4F9932D1E87A.txt
+[6/19] Compiling CassiniBrowserControl FrameIO.swift
+[7/19] Emitting module CassiniBrowserControl
+[8/19] Compiling CassiniBrowserControl PipeTransport.swift
+[9/23] Emitting module CassiniTranscription
+[10/23] Compiling CassiniTranscription MeetingTranscriber.swift
+[11/39] Emitting module cassini_whistle_worker
+[12/39] Compiling cassini_whistle_worker main.swift
+[13/39] Emitting module CassiniTranscriptionTests
+[14/40] Compiling CassiniBrowserControl BrowserAudioBroker.swift
+[15/42] Compiling CassiniBrowserControl ControlRegistry.swift
+[15/42] Write Objects.LinkFileList
+[17/43] Compiling CassiniTranscriptionTests D63WritedownVectorsTests.swift
+[18/43] Compiling CassiniTranscriptionTests D67FailedWriteDownTests.swift
+[19/43] Compiling CassiniTranscriptionTests D67RetryTranscriptionMeetingTests.swift
+[20/43] Compiling CassiniBrowserControl ControlService.swift
+[21/43] Compiling CassiniBrowserControl ControlHost.swift
+[21/48] Linking cassini-whistle-worker
+[23/48] Compiling CassiniTranscriptionTests D55PlacementTranscriptionMeetingTests.swift
+[24/48] Compiling CassiniTranscriptionTests D56SilentTracksTranscriptionMeetingTests.swift
+[25/48] Compiling CassiniTranscriptionTests D56TranscriptMembersTranscriptionMeetingTests.swift
+[26/48] Emitting module SharedPlacementTests
+[27/48] Compiling SharedPlacementTests SharedPlacementTests.swift
+[27/48] Applying cassini-whistle-worker
+[29/48] Emitting module cassini_parakeet_worker
+[30/48] Compiling cassini_parakeet_worker main.swift
+[30/48] Write Objects.LinkFileList
+[33/55] Emitting module CassiniParakeetTests
+[34/55] Compiling CassiniParakeetTests ParakeetMeetingTests.swift
+[35/55] Compiling CassiniBrowserControlTests FrameIOTests.swift
+[36/56] Compiling CassiniBrowserControlTests D52HeartbeatTests.swift
+[36/56] Linking cassini-parakeet-worker
+[36/56] Write Objects.LinkFileList
+[38/56] Applying cassini-parakeet-worker
+[40/56] Emitting module CassiniBrowserControlTests
+[41/56] Compiling CassiniTranscriptionTests MeetingTests.swift
+[42/56] Compiling CassiniTranscriptionTests RecognitionFallbackTests.swift
+[43/56] Compiling CassiniTranscriptionTests UnfilteredMicrophonePipelineTests.swift
+[43/56] Linking cassini-control-host
+[45/56] Compiling CassiniBrowserControlTests PipeTransportTests.swift
+[45/56] Applying cassini-control-host
+[46/56] Linking cassini-browser-host
+[47/56] Applying cassini-browser-host
+[49/56] Compiling CassiniBrowserControlTests AudioBrokerTests.swift
+[50/56] Compiling CassiniBrowserControlTests ControlHostTests.swift
+[51/56] Compiling CassiniTranscriptionTests D52CorpusTests.swift
+[52/56] Compiling CassiniTranscriptionTests D52CorpusTranscriptionMeetingTests.swift
+[53/56] Compiling CassiniTranscriptionTests D52FallbackTranscriptionMeetingTests.swift
+[54/56] Compiling CassiniTranscriptionTests D52ScratchTranscriptionMeetingTests.swift
+[54/56] Write Objects.LinkFileList
+[55/56] Linking CassiniKitPackageTests
+Build complete! (10.47s)
+Test Suite 'Selected tests' started at 2026-11-10 14:49:48.001.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:49:48.002.
+Test Suite 'AudioBrokerTests' started at 2026-11-10 14:49:48.002.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain]' passed (0.388 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testControlLossBeforeLostStopKeepsFirstNonNilCauseThroughFallbackAndDetails]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testControlLossBeforeLostStopKeepsFirstNonNilCauseThroughFallbackAndDetails]' passed (0.523 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testIndependentFramingFailuresReturnAnErrorFrameAndExitNonzero]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testIndependentFramingFailuresReturnAnErrorFrameAndExitNonzero]' passed (0.640 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testInvalidIndependentStartMetadataNeverCreatesARecordingFolder]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testInvalidIndependentStartMetadataNeverCreatesARecordingFolder]' passed (0.314 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLossKeepsTheOwnedFolderAndRejectsReuseOfItsOpaqueCaptureID]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLossKeepsTheOwnedFolderAndRejectsReuseOfItsOpaqueCaptureID]' passed (0.369 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLostStopCauseSurvivesRealStoppedResponseAndNativeFallbackPersistence]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testLostStopCauseSurvivesRealStoppedResponseAndNativeFallbackPersistence]' passed (0.265 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testMalformedSourceGetsAFramedErrorWithoutStoppingAnotherNativeProcess]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testMalformedSourceGetsAFramedErrorWithoutStoppingAnotherNativeProcess]' passed (0.372 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testManagementDisconnectLeavesThePCMProcessRecording]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testManagementDisconnectLeavesThePCMProcessRecording]' passed (0.353 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPinnedLostStopDiagnosticVectorsThroughTheNativeHost]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPinnedLostStopDiagnosticVectorsThroughTheNativeHost]' passed (2.057 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPipelinedRequestsDrainAllRepliesBeforeInputEOFExitsZero]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testPipelinedRequestsDrainAllRepliesBeforeInputEOFExitsZero]' passed (0.145 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture]' passed (0.393 seconds).
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory]' started.
+Test Case '-[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory]' passed (0.289 seconds).
+Test Suite 'AudioBrokerTests' passed at 2026-11-10 14:49:54.112.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 6.109 (6.110) seconds
+Test Suite 'BrowserCompanionHealthTests' started at 2026-11-10 14:49:54.112.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testFreshResultUpdatesHealthButAbsentAndInvalidHealthClearOldReloadAdvice]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testFreshResultUpdatesHealthButAbsentAndInvalidHealthClearOldReloadAdvice]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testHealthBoundsAndCapabilityAndCaptureGuards]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testHealthBoundsAndCapabilityAndCaptureGuards]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testLegacyAndPendingSelfCheckHellosPermitDoneUntilExplicitFailure]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testLegacyAndPendingSelfCheckHellosPermitDoneUntilExplicitFailure]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testPinnedConsumerReadinessAndHelloVectors]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testPinnedConsumerReadinessAndHelloVectors]' passed (0.007 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testReloadGuidanceRequiresActionCapabilityAndNoCaptureOnTheSamePeerTab]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testReloadGuidanceRequiresActionCapabilityAndNoCaptureOnTheSamePeerTab]' passed (0.005 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testReloadIsExplicitNamespacedAndDoesNotRequireDiscoverableMeetingOrInferIdleFailure]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testReloadIsExplicitNamespacedAndDoesNotRequireDiscoverableMeetingOrInferIdleFailure]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testSetupRequiresReconciledConnectionAndOnlyExplicitFileFailuresBlock]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testSetupRequiresReconciledConnectionAndOnlyExplicitFileFailuresBlock]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testStaleReloadResultCannotReviveNewerHealthOrSelfCheck]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testStaleReloadResultCannotReviveNewerHealthOrSelfCheck]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testStopAllDoesNotTurnPendingReloadIntoCaptureOrUserStopMemory]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testStopAllDoesNotTurnPendingReloadIntoCaptureOrUserStopMemory]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testUnknownAndMalformedDiagnosticsRemainOptionalAndAnInstanceChangeClearsOldChecks]' started.
+Test Case '-[CassiniBrowserControlTests.BrowserCompanionHealthTests testUnknownAndMalformedDiagnosticsRemainOptionalAndAnInstanceChangeClearsOldChecks]' passed (0.003 seconds).
+Test Suite 'BrowserCompanionHealthTests' passed at 2026-11-10 14:49:54.145.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.032 (0.033) seconds
+Test Suite 'CallSignalRegistryTests' started at 2026-11-10 14:49:54.145.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testBrowserStartBeforeProfileNegotiationBlocksSignalAdmission]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testBrowserStartBeforeProfileNegotiationBlocksSignalAdmission]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testConfigurationSequenceProfileAndAtomicReplacement]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testConfigurationSequenceProfileAndAtomicReplacement]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testManualRecordAndStandInUseRecordableProjectionWithoutLosingEvidence]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testManualRecordAndStandInUseRecordableProjectionWithoutLosingEvidence]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testMixedRowsCannotEnterLegacyBrowserStartAndRouteOwnerBlocksSeparatedReclassification]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testMixedRowsCannotEnterLegacyBrowserStartAndRouteOwnerBlocksSeparatedReclassification]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testNewStableProfilePeerFencesLegacyAdmissionEvenAfterItDisconnects]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testNewStableProfilePeerFencesLegacyAdmissionEvenAfterItDisconnects]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testReconnectBeforeSignalsAndReconfigurationFenceTheRunningNativeOwner]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testReconnectBeforeSignalsAndReconfigurationFenceTheRunningNativeOwner]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testRefusedStandInDoesNotConsumeOneShotOrAllowConcurrentOffers]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalRegistryTests testRefusedStandInDoesNotConsumeOneShotOrAllowConcurrentOffers]' passed (0.000 seconds).
+Test Suite 'CallSignalRegistryTests' passed at 2026-11-10 14:49:54.157.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.011 (0.012) seconds
+Test Suite 'CallSignalTests' started at 2026-11-10 14:49:54.157.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testDifferentGenerationEndStartsExactGraceWithoutExtendingIt]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testDifferentGenerationEndStartsExactGraceWithoutExtendingIt]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testDiskAndInputFailureStopCannotAutomaticallyLoopTheSameCalls]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testDiskAndInputFailureStopCannotAutomaticallyLoopTheSameCalls]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testOpaqueGenerationDocumentAndProfileIdentitiesCompareExactUTF8]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testOpaqueGenerationDocumentAndProfileIdentitiesCompareExactUTF8]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testOptInMixedAndPositiveProofRequired]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testOptInMixedAndPositiveProofRequired]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testOverlapSharesOwnerAndLastPositiveEndStopsImmediately]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testOverlapSharesOwnerAndLastPositiveEndStopsImmediately]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testParserRunsSharedValidAndInvalidSignalVectors]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testParserRunsSharedValidAndInvalidSignalVectors]' passed (0.020 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testPendingLossHasNoRunningGraceAndFreshProofCanReserveAfterCancellation]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testPendingLossHasNoRunningGraceAndFreshProofCanReserveAfterCancellation]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testPendingRouteProvenanceCannotRebindToAnotherSiteDuringPermissionWork]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testPendingRouteProvenanceCannotRebindToAnotherSiteDuringPermissionWork]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testPendingUnknownEndAndStopCannotOpenInputs]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testPendingUnknownEndAndStopCannotOpenInputs]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testRenewedActiveProofMovesGraceOriginButInventoryDoesNot]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testRenewedActiveProofMovesGraceOriginButInventoryDoesNot]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testReplacementPeerReconcilesAndOldPeerCannotEndOrReviveIt]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testReplacementPeerReconcilesAndOldPeerCannotEndOrReviveIt]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testRouteStaysSystemAndBrowserOwnedCallCannotJoinSignalOwner]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testRouteStaysSystemAndBrowserOwnedCallCannotJoinSignalOwner]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testStartupCancellationNeverSuppressesReturningEvidenceAndReleasesOnlyOnce]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testStartupCancellationNeverSuppressesReturningEvidenceAndReleasesOnlyOnce]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testStopAlsoSuppressesUnadmittedFactsWhileRecordingOrRetiring]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testStopAlsoSuppressesUnadmittedFactsWhileRecordingOrRetiring]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testStopBeforeAdmissionSuppressesAcrossReconnectWithoutAnOwner]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testStopBeforeAdmissionSuppressesAcrossReconnectWithoutAnOwner]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testUnknownOrDisconnectAfterUntickedProofExpiryKeepsOriginalGrace]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testUnknownOrDisconnectAfterUntickedProofExpiryKeepsOriginalGrace]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testUnrelatedReloadEndDoesNotFenceMixedOwnerButMatchingEndDoes]' started.
+Test Case '-[CassiniBrowserControlTests.CallSignalTests testUnrelatedReloadEndDoesNotFenceMixedOwnerButMatchingEndDoes]' passed (0.000 seconds).
+Test Suite 'CallSignalTests' passed at 2026-11-10 14:49:54.184.
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.026 (0.027) seconds
+Test Suite 'ControlHostTests' started at 2026-11-10 14:49:54.184.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testBrokerShutdownReleasesAnIdleHostWithoutClosingBrowserInput]' passed (0.417 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed]' passed (0.227 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' started.
+Test Case '-[CassiniBrowserControlTests.ControlHostTests testNativeHostRoundTripAndInputEOFReleaseItsPeer]' passed (0.224 seconds).
+Test Suite 'ControlHostTests' passed at 2026-11-10 14:49:55.052.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.868 (0.868) seconds
+Test Suite 'ControlRegistryTests' started at 2026-11-10 14:49:55.052.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testAnAppRequiringMultiStreamStartsNothingOnAnOlderCompanion]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testAnAppRequiringMultiStreamStartsNothingOnAnOlderCompanion]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testAutoStartFailureDoesNotLoopButFutureMeetingCanStart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testAutoStartFailureDoesNotLoopButFutureMeetingCanStart]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testBatchUsesEachMeetingsMicrophoneChoice]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testBatchUsesEachMeetingsMicrophoneChoice]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testCommandSnapshotsRespectIssueOrderWithoutAnInterveningStatus]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testCommandSnapshotsRespectIssueOrderWithoutAnInterveningStatus]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testControlLossDropsDiscoveryWithoutInventingStopAndLeavesOtherPeerUsable]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testControlLossDropsDiscoveryWithoutInventingStopAndLeavesOtherPeerUsable]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEmptySessionsOverridesLegacyTopLevelRecording]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEmptySessionsOverridesLegacyTopLevelRecording]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceAwareAutoWaitsForAudioWhileManualRecordStillWorks]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceAwareAutoWaitsForAudioWhileManualRecordStillWorks]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceHandoffAndTransientLossCannotRestartStoppedCall]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceHandoffAndTransientLossCannotRestartStoppedCall]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceIsStrictBooleanAndScopedToCompanion]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceIsStrictBooleanAndScopedToCompanion]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceMissingFailsClosedForAutoOnly]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceMissingFailsClosedForAutoOnly]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceNeverChangesLegacyAutoPolicyOrSourceCountGate]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testEvidenceNeverChangesLegacyAutoPolicyOrSourceCountGate]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testExplicitRecordNamespacesTwoProfilesAndPreservesMicrophoneChoice]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testExplicitRecordNamespacesTwoProfilesAndPreservesMicrophoneChoice]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testFirstStatusReconcilesExistingCaptureBeforeAutoStartAndNeverRestartsIt]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testFirstStatusReconcilesExistingCaptureBeforeAutoStartAndNeverRestartsIt]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testLegacyPeerCanStopExistingCaptureButCannotStartIndependentCapture]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testLegacyPeerCanStopExistingCaptureButCannotStartIndependentCapture]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testMalformedReplacementIsAtomicAndUnknownMessagesOrResultsAreHarmless]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testMalformedReplacementIsAtomicAndUnknownMessagesOrResultsAreHarmless]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testOldStopAcknowledgementPreservesAReplacementCapture]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testOldStopAcknowledgementPreservesAReplacementCapture]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testOutOfOrderResultsCorrelateByRequestAndDoNotResurrectNewerStatus]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testOutOfOrderResultsCorrelateByRequestAndDoNotResurrectNewerStatus]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testRecoveredWorkerCannotRestartTheSameCallWhileItsOwnedFolderUsesFallback]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testRecoveredWorkerCannotRestartTheSameCallWhileItsOwnedFolderUsesFallback]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testResultSnapshotIncludesRetainedInterruptedCaptures]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testResultSnapshotIncludesRetainedInterruptedCaptures]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testRetainedCaptureIdentityDoesNotSuppressSameTabInAnotherProfile]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testRetainedCaptureIdentityDoesNotSuppressSameTabInAnotherProfile]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testStopAllIntentSurvivesThe128CommandWindow]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testStopAllIntentSurvivesThe128CommandWindow]' passed (0.077 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testStopCancelsPendingStartOnlyOnceAndDoesNotTargetOtherPeer]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testStopCancelsPendingStartOnlyOnceAndDoesNotTargetOtherPeer]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testStopWhileStartIsPendingBindsTheStartedCaptureIdentity]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testStopWhileStartIsPendingBindsTheStartedCaptureIdentity]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testSuccessfulStopRetiresItsCaptureDespiteAnInterveningStatus]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testSuccessfulStopRetiresItsCaptureDespiteAnInterveningStatus]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testTransientZeroDiscoveryCannotArmAnActiveCallForAutoRestart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testTransientZeroDiscoveryCannotArmAnActiveCallForAutoRestart]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testTransientZeroDiscoveryPreservesRetainedInterruptedCallSuppression]' started.
+Test Case '-[CassiniBrowserControlTests.ControlRegistryTests testTransientZeroDiscoveryPreservesRetainedInterruptedCallSuppression]' passed (0.001 seconds).
+Test Suite 'ControlRegistryTests' passed at 2026-11-10 14:49:55.164.
+	 Executed 26 tests, with 0 failures (0 unexpected) in 0.111 (0.112) seconds
+Test Suite 'ControlServiceTests' started at 2026-11-10 14:49:55.164.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart]' passed (0.318 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testBlockedDestinationIssuesNoManualOrAutomaticStartAndCanRecover]' passed (0.106 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart]' passed (0.619 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection]' passed (0.419 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testMalformedPeerDisconnectDoesNotDisableAHealthyProfile]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testMalformedPeerDisconnectDoesNotDisableAHealthyProfile]' passed (0.312 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testNegotiatedSignalsOwnNativeReservationWithoutBrowserStartAndStopFencesReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testNegotiatedSignalsOwnNativeReservationWithoutBrowserStartAndStopFencesReconnect]' passed (0.209 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus]' passed (0.622 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart]' passed (0.719 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testReloadRunsThroughTheRealControlPipeAndFreshHealthCompletesIt]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testReloadRunsThroughTheRealControlPipeAndFreshHealthCompletesIt]' passed (0.107 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testRunningSignalGateAllowsInputStartsDuringGraceAndReturningCallAfterRollback]' passed (0.115 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testSignalFilesystemChecksRequireANewEligibleReservationOrPendingInputOpen]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testSignalFilesystemChecksRequireANewEligibleReservationOrPendingInputOpen]' passed (0.115 seconds).
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testStopAllSuppressesSnapshotBeforeCanStartAdmissionThroughRealPipe]' started.
+Test Case '-[CassiniBrowserControlTests.ControlServiceTests testStopAllSuppressesSnapshotBeforeCanStartAdmissionThroughRealPipe]' passed (0.106 seconds).
+Test Suite 'ControlServiceTests' passed at 2026-11-10 14:49:58.933.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 3.768 (3.769) seconds
+Test Suite 'D52CallOwnershipTests' started at 2026-11-10 14:49:58.933.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testACallChangeIsSeenFromTheSameBrowsersNewPeer]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testACallChangeIsSeenFromTheSameBrowsersNewPeer]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testACallRecordedAtStartIsHeldByItsGeneration]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testACallRecordedAtStartIsHeldByItsGeneration]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAControlGapStartsThePolicysReturnGrace]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAControlGapStartsThePolicysReturnGrace]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAHeldCallIsNeverOfferedToAStandIn]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAHeldCallIsNeverOfferedToAStandIn]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALearnedGenerationIsNeverForgotten]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALearnedGenerationIsNeverForgotten]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALiveRecordingKeepsTheKeyItsCollectionLearned]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALiveRecordingKeepsTheKeyItsCollectionLearned]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALostRecordingEndsWhenItsTabStartsAnotherCall]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALostRecordingEndsWhenItsTabStartsAnotherCall]' passed (0.459 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALostRecordingHoldsItsCallUntilItSavesOrResumes]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALostRecordingHoldsItsCallUntilItSavesOrResumes]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALostRecordingStopsWhenItsMeetingRowDisappears]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testALostRecordingStopsWhenItsMeetingRowDisappears]' passed (0.475 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAReconnectNeverStartsALostCallWhileTheAppIsBehind]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAReconnectNeverStartsALostCallWhileTheAppIsBehind]' passed (0.515 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testARecordingLostBeforeAnyStatusStillHoldsItsCall]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testARecordingLostBeforeAnyStatusStillHoldsItsCall]' passed (0.517 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAResumeIsRefusedWhenTheTabMovedToAnotherCall]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAResumeIsRefusedWhenTheTabMovedToAnotherCall]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testARetryNeverStartsAHeldCall]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testARetryNeverStartsAHeldCall]' passed (0.457 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAUserStopReleasesTheHoldAfterItsStopMemory]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAUserStopReleasesTheHoldAfterItsStopMemory]' passed (0.460 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAWorkerRestartWithInterruptedHistoryResumesOnceIntoTheOriginalFolder]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testAWorkerRestartWithInterruptedHistoryResumesOnceIntoTheOriginalFolder]' passed (0.727 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testInterruptedHistoryIsNotAListedSession]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testInterruptedHistoryIsNotAListedSession]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testOnlyAStandInWhoseTakeOverCommittedHoldsItsCall]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testOnlyAStandInWhoseTakeOverCommittedHoldsItsCall]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testTheCreationCallbackSeesTheCallAlreadyRecorded]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testTheCreationCallbackSeesTheCallAlreadyRecorded]' passed (0.246 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testTheStartRecordAndTheAppFeedAgreeInEitherOrder]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallOwnershipTests testTheStartRecordAndTheAppFeedAgreeInEitherOrder]' passed (0.000 seconds).
+Test Suite 'D52CallOwnershipTests' passed at 2026-11-10 14:50:02.793.
+	 Executed 19 tests, with 0 failures (0 unexpected) in 3.859 (3.860) seconds
+Test Suite 'D52CallPolicyTests' started at 2026-11-10 14:50:02.793.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testACallGenerationChangeEndsTheSessionAsCallEnded]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testACallGenerationChangeEndsTheSessionAsCallEnded]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testAFallbackAfterACancelledNavigationLossCommitsTheLoss]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testAFallbackAfterACancelledNavigationLossCommitsTheLoss]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testARetainedLossStampIsAcknowledgedOnce]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testARetainedLossStampIsAcknowledgedOnce]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testAReturnRestoresAFallbackThatHasNotCommittedYet]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testAReturnRestoresAFallbackThatHasNotCommittedYet]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testProducerStampsDriveDeadlinesForADelayedPoll]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testProducerStampsDriveDeadlinesForADelayedPoll]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testSharedMultiStreamLifecycleVectors]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testSharedMultiStreamLifecycleVectors]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testTheNativeMicrophoneIsNotBrowserEvidenceAndTheOthersOffNeverFallsBack]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testTheNativeMicrophoneIsNotBrowserEvidenceAndTheOthersOffNeverFallsBack]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testTheResumeAskWaitsForTheTabSessionToLeaveTheStatus]' started.
+Test Case '-[CassiniBrowserControlTests.D52CallPolicyTests testTheResumeAskWaitsForTheTabSessionToLeaveTheStatus]' passed (0.000 seconds).
+Test Suite 'D52CallPolicyTests' passed at 2026-11-10 14:50:02.801.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.007 (0.008) seconds
+Test Suite 'D52CaptureRecordTests' started at 2026-11-10 14:50:02.801.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testADurablyInterruptedSessionStillWritesItsRecord]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testADurablyInterruptedSessionStillWritesItsRecord]' passed (0.037 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testAFailedRecordWriteIsRetriedThenGivenUp]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testAFailedRecordWriteIsRetriedThenGivenUp]' passed (0.068 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testARetryScanNeverBlocksBrokerControlWhilePersistenceStalls]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testARetryScanNeverBlocksBrokerControlWhilePersistenceStalls]' passed (0.035 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testFinalizationWritesTheRecordWithEveryAnnouncedSourceAndNoPaths]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testFinalizationWritesTheRecordWithEveryAnnouncedSourceAndNoPaths]' passed (0.261 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testMergeKeepsUnknownFieldsReplacesExpectationAndNeverDowngrades]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testMergeKeepsUnknownFieldsReplacesExpectationAndNeverDowngrades]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testMixedRouteSiteUsesUnicodeCodePointsForMetadataAndGenericDisplay]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testMixedRouteSiteUsesUnicodeCodePointsForMetadataAndGenericDisplay]' passed (0.034 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testMixedRouteSurvivesFinalizationMetadataEditsAndSessionRemoval]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testMixedRouteSurvivesFinalizationMetadataEditsAndSessionRemoval]' passed (0.074 seconds).
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testTheCaptureStaysSavingUntilItsRecordIsWritten]' started.
+Test Case '-[CassiniBrowserControlTests.D52CaptureRecordTests testTheCaptureStaysSavingUntilItsRecordIsWritten]' passed (0.034 seconds).
+Test Suite 'D52CaptureRecordTests' passed at 2026-11-10 14:50:03.344.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.543 (0.543) seconds
+Test Suite 'D52ControlFieldsTests' started at 2026-11-10 14:50:03.344.
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testANewCallGenerationAtTheSameURLStartsAgain]' started.
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testANewCallGenerationAtTheSameURLStartsAgain]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testIdentitiesAreBoundedByUTF8Bytes]' started.
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testIdentitiesAreBoundedByUTF8Bytes]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testMalformedGenerationIsRejected]' started.
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testMalformedGenerationIsRejected]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testMultiStreamRowsStatusAndEchoedCommandFields]' started.
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testMultiStreamRowsStatusAndEchoedCommandFields]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testOlderExtensionsGetNeitherEcho]' started.
+Test Case '-[CassiniBrowserControlTests.D52ControlFieldsTests testOlderExtensionsGetNeitherEcho]' passed (0.001 seconds).
+Test Suite 'D52ControlFieldsTests' passed at 2026-11-10 14:50:03.352.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+Test Suite 'D52CorpusTranscriptionMeetingTests' started at 2026-11-10 14:50:03.352.
+Test Case '-[CassiniTranscriptionTests.D52CorpusTranscriptionMeetingTests testEveryWordLiesInItsSpeakersRecognizedTime]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D52CorpusTranscriptionMeetingTests.swift:25: -[CassiniTranscriptionTests.D52CorpusTranscriptionMeetingTests testEveryWordLiesInItsSpeakersRecognizedTime] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D52CorpusTranscriptionMeetingTests testEveryWordLiesInItsSpeakersRecognizedTime]' skipped (0.001 seconds).
+Test Suite 'D52CorpusTranscriptionMeetingTests' passed at 2026-11-10 14:50:03.354.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'D52DroppedFramesTests' started at 2026-11-10 14:50:03.354.
+Test Case '-[CassiniBrowserControlTests.D52DroppedFramesTests testDropsStayOnTheRecordedSpanAndCountOnce]' started.
+Test Case '-[CassiniBrowserControlTests.D52DroppedFramesTests testDropsStayOnTheRecordedSpanAndCountOnce]' passed (0.101 seconds).
+Test Suite 'D52DroppedFramesTests' passed at 2026-11-10 14:50:03.455.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.101 (0.101) seconds
+Test Suite 'D52FallbackTranscriptionMeetingTests' started at 2026-11-10 14:50:03.455.
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAnExcludedPrefixThenRetainedAudioMetersTheSame]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D52FallbackTranscriptionMeetingTests.swift:51: -[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAnExcludedPrefixThenRetainedAudioMetersTheSame] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAnExcludedPrefixThenRetainedAudioMetersTheSame]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testARejoiningRemoteFallsBackOnItsPooledActiveAudio]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D52FallbackTranscriptionMeetingTests.swift:51: -[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testARejoiningRemoteFallsBackOnItsPooledActiveAudio] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testARejoiningRemoteFallsBackOnItsPooledActiveAudio]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAShortActiveTrackStreamsWithoutTheFallback]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D52FallbackTranscriptionMeetingTests.swift:51: -[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAShortActiveTrackStreamsWithoutTheFallback] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAShortActiveTrackStreamsWithoutTheFallback]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAVADRejectedActiveTrackIsWrittenDownByTheFallbackOnce]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D52FallbackTranscriptionMeetingTests.swift:51: -[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAVADRejectedActiveTrackIsWrittenDownByTheFallbackOnce] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D52FallbackTranscriptionMeetingTests testAVADRejectedActiveTrackIsWrittenDownByTheFallbackOnce]' skipped (0.000 seconds).
+Test Suite 'D52FallbackTranscriptionMeetingTests' passed at 2026-11-10 14:50:03.456.
+	 Executed 4 tests, with 4 tests skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'D52GapWriterTests' started at 2026-11-10 14:50:03.456.
+Test Case '-[CassiniBrowserControlTests.D52GapWriterTests testSharedWriterVectors]' started.
+Test Case '-[CassiniBrowserControlTests.D52GapWriterTests testSharedWriterVectors]' passed (2.612 seconds).
+Test Suite 'D52GapWriterTests' passed at 2026-11-10 14:50:06.068.
+	 Executed 1 test, with 0 failures (0 unexpected) in 2.612 (2.612) seconds
+Test Suite 'D52HeartbeatTests' started at 2026-11-10 14:50:06.068.
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testALegacyHelloIsNeverPingedOrTimedOut]' started.
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testALegacyHelloIsNeverPingedOrTimedOut]' passed (0.721 seconds).
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testEachStatusFeedsItsSessionsDocumentToTheAudioWatchdog]' started.
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testEachStatusFeedsItsSessionsDocumentToTheAudioWatchdog]' passed (0.113 seconds).
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testPingsOverTheRealPipeAndSilenceLosesControl]' started.
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testPingsOverTheRealPipeAndSilenceLosesControl]' passed (0.104 seconds).
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testSharedHeartbeatVectors]' started.
+Test Case '-[CassiniBrowserControlTests.D52HeartbeatTests testSharedHeartbeatVectors]' passed (0.002 seconds).
+Test Suite 'D52HeartbeatTests' passed at 2026-11-10 14:50:07.009.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.941 (0.941) seconds
+Test Suite 'D52LostCallTests' started at 2026-11-10 14:50:07.009.
+Test Case '-[CassiniBrowserControlTests.D52LostCallTests testACallWithALostRecordingIsNeverAutoStartedAfresh]' started.
+Test Case '-[CassiniBrowserControlTests.D52LostCallTests testACallWithALostRecordingIsNeverAutoStartedAfresh]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.D52LostCallTests testAnAdoptedStandInFollowsItsCallAcrossAControlReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.D52LostCallTests testAnAdoptedStandInFollowsItsCallAcrossAControlReconnect]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.D52LostCallTests testTheSuppressionFollowsTheBrowserAcrossAControlReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.D52LostCallTests testTheSuppressionFollowsTheBrowserAcrossAControlReconnect]' passed (0.001 seconds).
+Test Suite 'D52LostCallTests' passed at 2026-11-10 14:50:07.011.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'D52ResumeTests' started at 2026-11-10 14:50:07.011.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testACallChangeDuringAPendingResumeKeepsTheNativeRecording]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testACallChangeDuringAPendingResumeKeepsTheNativeRecording]' passed (0.125 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAcceptedResumeJoinsTheStandInAndCommitsCallConnected]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAcceptedResumeJoinsTheStandInAndCommitsCallConnected]' passed (0.244 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAControlLossBeforeTakeOverNeverEndsTheStandIn]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAControlLossBeforeTakeOverNeverEndsTheStandIn]' passed (0.228 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAHeldFallbackKeepsTheResumeAskUntilItsFirstPCM]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAHeldFallbackKeepsTheResumeAskUntilItsFirstPCM]' passed (0.526 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testALossStopMakesTheRecordingAResumeTarget]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testALossStopMakesTheRecordingAResumeTarget]' passed (0.486 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testALostBrowserRecordingResumesOntoItsFallbackAsRestored]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testALostBrowserRecordingResumesOntoItsFallbackAsRestored]' passed (0.739 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAnExpiredGraceBeforeTakeOverStillCommitsCallConnected]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAnExpiredGraceBeforeTakeOverStillCommitsCallConnected]' passed (0.238 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAResumedStandInStaysRetainedAcrossABrowserRestart]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAResumedStandInStaysRetainedAcrossABrowserRestart]' passed (0.228 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAStopWinsOverTheFallbackItArrivesWith]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testAStopWinsOverTheFallbackItArrivesWith]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testATakenOverStandInFallsBackToSystemSoundOnNavigation]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testATakenOverStandInFallsBackToSystemSoundOnNavigation]' passed (0.266 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testDecideHoldsTheResumeAskUntilTheFallbackCommits]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testDecideHoldsTheResumeAskUntilTheFallbackCommits]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testResumedTransportEOFKeepsTheNativeRecording]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testResumedTransportEOFKeepsTheNativeRecording]' passed (0.536 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testSharedResumeSeamOwnership]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testSharedResumeSeamOwnership]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testSharedResumeTargets]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testSharedResumeTargets]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testStopFencesAResumeAndAFreshRecordStillWorks]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testStopFencesAResumeAndAFreshRecordStillWorks]' passed (0.442 seconds).
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testUnarmedStaleOrMismatchedResumesAreRefusedWithoutSideEffects]' started.
+Test Case '-[CassiniBrowserControlTests.D52ResumeTests testUnarmedStaleOrMismatchedResumesAreRefusedWithoutSideEffects]' passed (0.731 seconds).
+Test Suite 'D52ResumeTests' passed at 2026-11-10 14:50:11.806.
+	 Executed 16 tests, with 0 failures (0 unexpected) in 4.794 (4.795) seconds
+Test Suite 'D52ScratchTranscriptionMeetingTests' started at 2026-11-10 14:50:11.806.
+Test Case '-[CassiniTranscriptionTests.D52ScratchTranscriptionMeetingTests testManySpansNeverHoldMoreThanOneScratch]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D52ScratchTranscriptionMeetingTests.swift:17: -[CassiniTranscriptionTests.D52ScratchTranscriptionMeetingTests testManySpansNeverHoldMoreThanOneScratch] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D52ScratchTranscriptionMeetingTests testManySpansNeverHoldMoreThanOneScratch]' skipped (0.000 seconds).
+Test Suite 'D52ScratchTranscriptionMeetingTests' passed at 2026-11-10 14:50:11.806.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'D52SourceOutcomeTests' started at 2026-11-10 14:50:11.806.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testASecondSpanOverlappingAClosedSpanIsRefusedOnItsFirstChunk]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testASecondSpanOverlappingAClosedSpanIsRefusedOnItsFirstChunk]' passed (0.290 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testCallChangedRetirementIsNotAFailureAndRetiredPacketsAreRefused]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testCallChangedRetirementIsNotAFailureAndRetiredPacketsAreRefused]' passed (0.285 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testMalformedSourcesAndMismatchedStopAreCommandRefusalsThatKeepRecording]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testMalformedSourcesAndMismatchedStopAreCommandRefusalsThatKeepRecording]' passed (0.250 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testNegotiationIsEchoedAndOlderExtensionsStayOnTheLegacyPath]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testNegotiationIsEchoedAndOlderExtensionsStayOnTheLegacyPath]' passed (0.341 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testPacketsAfterANativeFirstStopAreCommandRefusals]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testPacketsAfterANativeFirstStopAreCommandRefusals]' passed (0.248 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testRefusalsWithTheMicrophoneOnLeaveTheMicrophoneAndHealthySourcesRecording]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testRefusalsWithTheMicrophoneOnLeaveTheMicrophoneAndHealthySourcesRecording]' passed (1.701 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testRepeatedIdenticalTrackIsIdempotentAndRefusedDeclarationsKeepTheLiveSpan]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testRepeatedIdenticalTrackIsIdempotentAndRefusedDeclarationsKeepTheLiveSpan]' passed (0.317 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testSharedOutcomeVectorsThroughTheRealHost]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testSharedOutcomeVectorsThroughTheRealHost]' passed (1.035 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testThe65thSourceIsRefusedWhileTheOther64KeepWriting]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testThe65thSourceIsRefusedWhileTheOther64KeepWriting]' passed (1.482 seconds).
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testTrackEndFailedMarksOnlyThatSource]' started.
+Test Case '-[CassiniBrowserControlTests.D52SourceOutcomeTests testTrackEndFailedMarksOnlyThatSource]' passed (0.283 seconds).
+Test Suite 'D52SourceOutcomeTests' passed at 2026-11-10 14:50:18.039.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 6.232 (6.233) seconds
+Test Suite 'D52TransportLivenessTests' started at 2026-11-10 14:50:18.039.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testAGoneDocumentsSpansNeverCloseTheTransport]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testAGoneDocumentsSpansNeverCloseTheTransport]' passed (0.365 seconds).
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testASlowSaveAfterStopIsNotClosedByTheWatchdog]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testASlowSaveAfterStopIsNotClosedByTheWatchdog]' passed (0.240 seconds).
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testAStaleDeliveringTransportClosesThroughTheEOFPath]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testAStaleDeliveringTransportClosesThroughTheEOFPath]' passed (0.349 seconds).
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testATerminalRefusalRetiresItsSpanFromTheWatchdog]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testATerminalRefusalRetiresItsSpanFromTheWatchdog]' passed (0.368 seconds).
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testRefusedFramesAreActivityButOpenNoSpan]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testRefusedFramesAreActivityButOpenNoSpan]' passed (0.250 seconds).
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testSharedStaleWatchdogVectors]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testSharedStaleWatchdogVectors]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testTheWatchdogIsArmedOnlyWhileAnOpenSpanHasDeliveredPCM]' started.
+Test Case '-[CassiniBrowserControlTests.D52TransportLivenessTests testTheWatchdogIsArmedOnlyWhileAnOpenSpanHasDeliveredPCM]' passed (0.268 seconds).
+Test Suite 'D52TransportLivenessTests' passed at 2026-11-10 14:50:19.886.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 1.847 (1.847) seconds
+Test Suite 'D52UnselectedSourceTests' started at 2026-11-10 14:50:19.886.
+Test Case '-[CassiniBrowserControlTests.D52UnselectedSourceTests testADeselectedSpanIsBoundButNotExpected]' started.
+Test Case '-[CassiniBrowserControlTests.D52UnselectedSourceTests testADeselectedSpanIsBoundButNotExpected]' passed (0.034 seconds).
+Test Case '-[CassiniBrowserControlTests.D52UnselectedSourceTests testAPageMicrophoneIsNotExpectedEvenWithTheOthersOn]' started.
+Test Case '-[CassiniBrowserControlTests.D52UnselectedSourceTests testAPageMicrophoneIsNotExpectedEvenWithTheOthersOn]' passed (0.023 seconds).
+Test Case '-[CassiniBrowserControlTests.D52UnselectedSourceTests testUnselectedSourceIsNeutralUntilSelected]' started.
+Test Case '-[CassiniBrowserControlTests.D52UnselectedSourceTests testUnselectedSourceIsNeutralUntilSelected]' passed (0.064 seconds).
+Test Suite 'D52UnselectedSourceTests' passed at 2026-11-10 14:50:20.007.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.121 (0.121) seconds
+Test Suite 'D55PlacementTranscriptionMeetingTests' started at 2026-11-10 14:50:20.007.
+Test Case '-[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testAnUnknownOffsetIsPlacedAtZeroAndFlagged]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D55PlacementTranscriptionMeetingTests.swift:25: -[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testAnUnknownOffsetIsPlacedAtZeroAndFlagged] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testAnUnknownOffsetIsPlacedAtZeroAndFlagged]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testASilentTrackWithAnUnknownOffsetDoesNotFlag]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D55PlacementTranscriptionMeetingTests.swift:25: -[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testASilentTrackWithAnUnknownOffsetDoesNotFlag] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testASilentTrackWithAnUnknownOffsetDoesNotFlag]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testWordsArePlacedAtTheSharedPlacementSample]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D55PlacementTranscriptionMeetingTests.swift:25: -[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testWordsArePlacedAtTheSharedPlacementSample] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D55PlacementTranscriptionMeetingTests testWordsArePlacedAtTheSharedPlacementSample]' skipped (0.000 seconds).
+Test Suite 'D55PlacementTranscriptionMeetingTests' passed at 2026-11-10 14:50:20.008.
+	 Executed 3 tests, with 3 tests skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'D56SilentTracksTranscriptionMeetingTests' started at 2026-11-10 14:50:20.008.
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testANeverCapturedTrackIsListedAsSilent]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D56SilentTracksTranscriptionMeetingTests.swift:130: -[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testANeverCapturedTrackIsListedAsSilent] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testANeverCapturedTrackIsListedAsSilent]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testGnomeSilentTrackGeometry]' started.
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testGnomeSilentTrackGeometry]' passed (0.893 seconds).
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testRecoveredTrackWithStaleZeroHeaderIsTranscribed]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D56SilentTracksTranscriptionMeetingTests.swift:157: -[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testRecoveredTrackWithStaleZeroHeaderIsTranscribed] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testRecoveredTrackWithStaleZeroHeaderIsTranscribed]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testSilenceUsesPhysicalFramesNotTheDeclaredSize]' started.
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testSilenceUsesPhysicalFramesNotTheDeclaredSize]' passed (0.677 seconds).
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testSilentTracksAreLeftOutOfRecognitionAndListed]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D56SilentTracksTranscriptionMeetingTests.swift:94: -[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testSilentTracksAreLeftOutOfRecognitionAndListed] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D56SilentTracksTranscriptionMeetingTests testSilentTracksAreLeftOutOfRecognitionAndListed]' skipped (0.001 seconds).
+Test Suite 'D56SilentTracksTranscriptionMeetingTests' passed at 2026-11-10 14:50:21.581.
+	 Executed 5 tests, with 3 tests skipped and 0 failures (0 unexpected) in 1.572 (1.572) seconds
+Test Suite 'D56TranscriptMembersTranscriptionMeetingTests' started at 2026-11-10 14:50:21.581.
+Test Case '-[CassiniTranscriptionTests.D56TranscriptMembersTranscriptionMeetingTests testUnknownTranscriptAndSpeakerMembersSurviveAWriteDown]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D56TranscriptMembersTranscriptionMeetingTests.swift:15: -[CassiniTranscriptionTests.D56TranscriptMembersTranscriptionMeetingTests testUnknownTranscriptAndSpeakerMembersSurviveAWriteDown] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D56TranscriptMembersTranscriptionMeetingTests testUnknownTranscriptAndSpeakerMembersSurviveAWriteDown]' skipped (0.000 seconds).
+Test Suite 'D56TranscriptMembersTranscriptionMeetingTests' passed at 2026-11-10 14:50:21.581.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'D58RefusalWriterTests' started at 2026-11-10 14:50:21.581.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testADeniedBrowserFallbackReadsAsAPermissionDenial]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testADeniedBrowserFallbackReadsAsAPermissionDenial]' passed (0.075 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testALateBufferCannotOpenASideWhoseBoundPassed]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testALateBufferCannotOpenASideWhoseBoundPassed]' passed (0.048 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAnAdmittedBufferOpensTheSideWhileTheDiskIsStalled]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAnAdmittedBufferOpensTheSideWhileTheDiskIsStalled]' passed (0.059 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAnInvalidFirstBufferIsRefusedWithoutFailingTheRecording]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAnInvalidFirstBufferIsRefusedWithoutFailingTheRecording]' passed (0.047 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAnInvalidFirstBufferJustBeforeStopIsStillARefusal]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAnInvalidFirstBufferJustBeforeStopIsStillARefusal]' passed (0.045 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAReopenedSilentSystemInputFailingBeforeItsFirstBufferIsRefused]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAReopenedSilentSystemInputFailingBeforeItsFirstBufferIsRefused]' passed (0.077 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testARetryAfterADenialIsJudgedOnItsOwnAttempt]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testARetryAfterADenialIsJudgedOnItsOwnAttempt]' passed (0.056 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentBrowserFallbackFailingBeforeItsFirstBufferIsRefused]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentBrowserFallbackFailingBeforeItsFirstBufferIsRefused]' passed (0.068 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentBrowserFallbackOpensOnItsLateFirstBuffer]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentBrowserFallbackOpensOnItsLateFirstBuffer]' passed (0.086 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentMicrophoneIsRefusedWhenTheBoundPasses]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentMicrophoneIsRefusedWhenTheBoundPasses]' passed (0.049 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentStartThenLateSoundRecordsTheOthers]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testASilentStartThenLateSoundRecordsTheOthers]' passed (0.047 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAStartSideFailingBeforeItsFirstBufferIsRefusedNotFailed]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testAStartSideFailingBeforeItsFirstBufferIsRefusedNotFailed]' passed (0.049 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testATurnedOnSystemInputFailingBeforeItsFirstBufferIsRefused]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testATurnedOnSystemInputFailingBeforeItsFirstBufferIsRefused]' passed (0.058 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testSharedWriterCasesOnTheNoFallbackProfile]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testSharedWriterCasesOnTheNoFallbackProfile]' passed (0.651 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testStoppingAnArmedSilentSystemInputTearsItDownQuietly]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testStoppingAnArmedSilentSystemInputTearsItDownQuietly]' passed (0.040 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testStopRefusesAReenabledInputDespiteAnEarlierRefusal]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testStopRefusesAReenabledInputDespiteAnEarlierRefusal]' passed (0.055 seconds).
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testWireCasesBecomeBrowserRefusals]' started.
+Test Case '-[CassiniBrowserControlTests.D58RefusalWriterTests testWireCasesBecomeBrowserRefusals]' passed (0.005 seconds).
+Test Suite 'D58RefusalWriterTests' passed at 2026-11-10 14:50:23.097.
+	 Executed 17 tests, with 0 failures (0 unexpected) in 1.515 (1.516) seconds
+Test Suite 'D58ResumeOutcomeTests' started at 2026-11-10 14:50:23.098.
+Test Case '-[CassiniBrowserControlTests.D58ResumeOutcomeTests testAnOrdinaryStartIsNotAResume]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeOutcomeTests testAnOrdinaryStartIsNotAResume]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeOutcomeTests testResumeOutcomesAreFlaggedAndNeverAStartRefusal]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeOutcomeTests testResumeOutcomesAreFlaggedAndNeverAStartRefusal]' passed (0.002 seconds).
+Test Suite 'D58ResumeOutcomeTests' passed at 2026-11-10 14:50:23.101.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'D58ResumeRefusalTests' started at 2026-11-10 14:50:23.101.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAClosedConnectionKeepsTheAskButATimeoutForgetsIt]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAClosedConnectionKeepsTheAskButATimeoutForgetsIt]' passed (0.226 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAnAttachAnswersEveryAskAndAStopForgetsThem]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAnAttachAnswersEveryAskAndAStopForgetsThem]' passed (0.259 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAPresentRequestIdOutsideTheDomainRefusesTheResumeAndRecordsNothing]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAPresentRequestIdOutsideTheDomainRefusesTheResumeAndRecordsNothing]' passed (1.129 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testARefusedResumeNeverBlocksTheMainActorOnAStalledDisk]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testARefusedResumeNeverBlocksTheMainActorOnAStalledDisk]' passed (0.044 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAReplyWithoutACodeWritesNoMessage]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAReplyWithoutACodeWritesNoMessage]' passed (0.044 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAskAttributionVectors]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testAskAttributionVectors]' passed (1.586 seconds).
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testOnlyTheNewestEightAsksStayAnswerable]' started.
+Test Case '-[CassiniBrowserControlTests.D58ResumeRefusalTests testOnlyTheNewestEightAsksStayAnswerable]' passed (0.033 seconds).
+Test Suite 'D58ResumeRefusalTests' passed at 2026-11-10 14:50:26.421.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 3.320 (3.321) seconds
+Test Suite 'D61ClockFactsBrokerTests' started at 2026-11-10 14:50:26.421.
+Test Case '-[CassiniBrowserControlTests.D61ClockFactsBrokerTests testASilentSourceKeepsItsClockFactsOnItsLazySpanAfterRestore]' started.
+Test Case '-[CassiniBrowserControlTests.D61ClockFactsBrokerTests testASilentSourceKeepsItsClockFactsOnItsLazySpanAfterRestore]' passed (0.358 seconds).
+Test Case '-[CassiniBrowserControlTests.D61ClockFactsBrokerTests testIndependentTrackFactsReachTheSpanAndTheRecord]' started.
+Test Case '-[CassiniBrowserControlTests.D61ClockFactsBrokerTests testIndependentTrackFactsReachTheSpanAndTheRecord]' passed (0.271 seconds).
+Test Case '-[CassiniBrowserControlTests.D61ClockFactsBrokerTests testRestoredAndReselectedSpansKeepTheirClockFacts]' started.
+Test Case '-[CassiniBrowserControlTests.D61ClockFactsBrokerTests testRestoredAndReselectedSpansKeepTheirClockFacts]' passed (0.439 seconds).
+Test Suite 'D61ClockFactsBrokerTests' passed at 2026-11-10 14:50:27.489.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 1.068 (1.068) seconds
+Test Suite 'D67RetryTranscriptionMeetingTests' started at 2026-11-10 14:50:27.489.
+Test Case '-[CassiniTranscriptionTests.D67RetryTranscriptionMeetingTests testARetryThatFailsBeforeCatchingUpKeepsTheLongerSnapshot]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/D67RetryTranscriptionMeetingTests.swift:28: -[CassiniTranscriptionTests.D67RetryTranscriptionMeetingTests testARetryThatFailsBeforeCatchingUpKeepsTheLongerSnapshot] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.D67RetryTranscriptionMeetingTests testARetryThatFailsBeforeCatchingUpKeepsTheLongerSnapshot]' skipped (0.001 seconds).
+Test Suite 'D67RetryTranscriptionMeetingTests' passed at 2026-11-10 14:50:27.490.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'D69WriterLossTests' started at 2026-11-10 14:50:27.490.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testKnownLossWithoutHostStampsStaysExactAndUnstampedTailIsRejected]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testKnownLossWithoutHostStampsStaysExactAndUnstampedTailIsRejected]' passed (0.030 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testLossCopyUsesPaddingTotalsAfterRangeOverflowAndIgnoresProducerDrops]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testLossCopyUsesPaddingTotalsAfterRangeOverflowAndIgnoresProducerDrops]' passed (1.066 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testNativeSourceLossAcrossReenabledSpansRoundsOnce]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testNativeSourceLossAcrossReenabledSpansRoundsOnce]' passed (0.252 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testOneSourceWithDifferentSpanRatesRoundsTheExactCombinedDurationOnce]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testOneSourceWithDifferentSpanRatesRoundsTheExactCombinedDurationOnce]' passed (0.031 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testOwnedCaptureWriterOnlyLossDoesNotFailTheSource]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testOwnedCaptureWriterOnlyLossDoesNotFailTheSource]' passed (0.045 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testQueueDroppedTailKeepsEverySourceDiagnosticAfterUserStop]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testQueueDroppedTailKeepsEverySourceDiagnosticAfterUserStop]' passed (0.195 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testStoppedResponseDoesNotRelabelBrowserJumpsAsHostTimeGaps]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testStoppedResponseDoesNotRelabelBrowserJumpsAsHostTimeGaps]' passed (1.061 seconds).
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testStoppedResponseKeepsInputGapsWhileHidingWriterLoss]' started.
+Test Case '-[CassiniBrowserControlTests.D69WriterLossTests testStoppedResponseKeepsInputGapsWhileHidingWriterLoss]' passed (1.503 seconds).
+Test Suite 'D69WriterLossTests' passed at 2026-11-10 14:50:31.674.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 4.182 (4.183) seconds
+Test Suite 'DOMProvenanceTests' started at 2026-11-10 14:50:31.674.
+Test Case '-[CassiniBrowserControlTests.DOMProvenanceTests testDiscoverySnapshotSurvivesReplacementReselectionAndRealStop]' started.
+Test Case '-[CassiniBrowserControlTests.DOMProvenanceTests testDiscoverySnapshotSurvivesReplacementReselectionAndRealStop]' passed (1.160 seconds).
+Test Case '-[CassiniBrowserControlTests.DOMProvenanceTests testInvalidProvenanceIsRefusedAtomicallyAndLegacyMetadataDefaultsToBrowser]' started.
+Test Case '-[CassiniBrowserControlTests.DOMProvenanceTests testInvalidProvenanceIsRefusedAtomicallyAndLegacyMetadataDefaultsToBrowser]' passed (1.206 seconds).
+Test Case '-[CassiniBrowserControlTests.DOMProvenanceTests testRestoredAndLazyReselectedSpansRetainDOMProvenance]' started.
+Test Case '-[CassiniBrowserControlTests.DOMProvenanceTests testRestoredAndLazyReselectedSpansRetainDOMProvenance]' passed (0.952 seconds).
+Test Suite 'DOMProvenanceTests' passed at 2026-11-10 14:50:34.993.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 3.317 (3.319) seconds
+Test Suite 'FrameIOTests' started at 2026-11-10 14:50:34.993.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testBufferedFinalFrameIsReadAfterTheWriterLeaseEnds]' passed (0.007 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testCancellationDoesNotNeedToCloseAnActiveDescriptor]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testCancellationDoesNotNeedToCloseAnActiveDescriptor]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFinalBytesArrivingBetweenEmptyReadAndLeaseCheckAreDrained]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFramedPipeHandlesBodiesLargerThanTheKernelPipeBuffer]' passed (0.025 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFrameLimitsAndTruncatedHeaderAreRejected]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testFrameLimitsAndTruncatedHeaderAreRejected]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testNormalizingPreservesValuesAndLexicalNumbersWithoutLineBreaks]' started.
+Test Case '-[CassiniBrowserControlTests.FrameIOTests testNormalizingPreservesValuesAndLexicalNumbersWithoutLineBreaks]' passed (0.001 seconds).
+Test Suite 'FrameIOTests' passed at 2026-11-10 14:50:35.031.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.037 (0.039) seconds
+Test Suite 'HeldStartTests' started at 2026-11-10 14:50:35.031.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testABrowserExitOrShutdownFailsAHeldStart]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testABrowserExitOrShutdownFailsAHeldStart]' passed (0.012 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAnotherCallOrBrowserNeverSettlesItAndItFailsAtTheDeadline]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAnotherCallOrBrowserNeverSettlesItAndItFailsAtTheDeadline]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAStartLostToAWorkerRestartSettlesOkWhenTheNewLinkReportsItsCapture]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAStartLostToAWorkerRestartSettlesOkWhenTheNewLinkReportsItsCapture]' passed (0.005 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAUserStopWhileHeldEndsItQuietly]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAUserStopWhileHeldEndsItQuietly]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAUserStopWhileHeldEndsItQuietlyWhicheverArrivedFirst]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testAUserStopWhileHeldEndsItQuietlyWhicheverArrivedFirst]' passed (0.015 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testOnlyASentMultiStreamStartOnAClosedLinkIsHeld]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testOnlyASentMultiStreamStartOnAClosedLinkIsHeld]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testTheServiceCompletesALostStartOnceWhenTheRestartedLinkReportsTheCapture]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testTheServiceCompletesALostStartOnceWhenTheRestartedLinkReportsTheCapture]' passed (0.700 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testTheServiceEndsAHeldStartQuietlyAfterAUserStopWhenStatusCameFirst]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testTheServiceEndsAHeldStartQuietlyAfterAUserStopWhenStatusCameFirst]' passed (0.426 seconds).
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testUnacknowledgedBrowserStartContinuesToFenceSignalsWhileControlIsDisconnected]' started.
+Test Case '-[CassiniBrowserControlTests.HeldStartTests testUnacknowledgedBrowserStartContinuesToFenceSignalsWhileControlIsDisconnected]' passed (0.039 seconds).
+Test Suite 'HeldStartTests' passed at 2026-11-10 14:50:36.240.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 1.207 (1.208) seconds
+Test Suite 'InputLifecycleTests' started at 2026-11-10 14:50:36.240.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testADeadOriginalTransportCannotRestoreUsingAPagesDiscovery]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testADeadOriginalTransportCannotRestoreUsingAPagesDiscovery]' passed (0.256 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testADeclarationBeforeTheRestoreWritesNoTrackAndTheRestoreOpensOneSpan]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testADeclarationBeforeTheRestoreWritesNoTrackAndTheRestoreOpensOneSpan]' passed (0.287 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testARefusedReturningSourceDeclaredAgainRestoresOnItsFirstPCM]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testARefusedReturningSourceDeclaredAgainRestoresOnItsFirstPCM]' passed (0.432 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testASecondReturnedSourceWithLaterPCMStillGetsItsOwnFreshSpan]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testASecondReturnedSourceWithLaterPCMStillGetsItsOwnFreshSpan]' passed (0.414 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testBrowserReturnCancelsPendingFallbackWithoutAnOSReplyOrALateSystemStart]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testBrowserReturnCancelsPendingFallbackWithoutAnOSReplyOrALateSystemStart]' passed (0.137 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testBrowserReturningBeforeFallbackRecordsWithoutInventingASystemRestoration]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testBrowserReturningBeforeFallbackRecordsWithoutInventingASystemRestoration]' passed (0.187 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testChangedObservationRejectsQueuedLossAndFallbackBeforeAnyDeviceWork]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testChangedObservationRejectsQueuedLossAndFallbackBeforeAnyDeviceWork]' passed (0.085 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testCurrentFallbackCanUseTheGrantFromAnEarlierCancelledWaiter]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testCurrentFallbackCanUseTheGrantFromAnEarlierCancelledWaiter]' passed (0.214 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testDeniedMeSelectionLeavesTheWorkingSelectionAndBrowserUntouched]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testDeniedMeSelectionLeavesTheWorkingSelectionAndBrowserUntouched]' passed (0.025 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testDeniedMicrophoneDoesNotPreventSystemFallbackOrKeepRequestingPermission]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testDeniedMicrophoneDoesNotPreventSystemFallbackOrKeepRequestingPermission]' passed (0.153 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testFailedNewMicrophoneKeepsBrowserChoiceEventsAndAudioUnchanged]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testFailedNewMicrophoneKeepsBrowserChoiceEventsAndAudioUnchanged]' passed (0.089 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testFailedSystemReplacementKeepsMicrophoneRunningInItsExistingTrack]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testFailedSystemReplacementKeepsMicrophoneRunningInItsExistingTrack]' passed (0.180 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testLateMicFailureStopsOnlyItsInputAndRetainsSystemSamples]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testLateMicFailureStopsOnlyItsInputAndRetainsSystemSamples]' passed (0.083 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testManagedFallbackAndReturnKeepTheFolderClockMicAndActualSourceSpans]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testManagedFallbackAndReturnKeepTheFolderClockMicAndActualSourceSpans]' passed (0.381 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testMeOffOnDrainsAndCreatesAFreshMicSpanWithoutStoppingBrowser]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testMeOffOnDrainsAndCreatesAFreshMicSpanWithoutStoppingBrowser]' passed (0.088 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testNavigationDuringSystemDrainRejectsRestorationAndResumesTheSameWriter]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testNavigationDuringSystemDrainRejectsRestorationAndResumesTheSameWriter]' passed (0.213 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testNavigationRequiresFreshPCMFromANewDocumentSource]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testNavigationRequiresFreshPCMFromANewDocumentSource]' passed (0.299 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testNetworkRecoveryCanResumeTheSameSourceWithAFreshSpan]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testNetworkRecoveryCanResumeTheSameSourceWithAFreshSpan]' passed (0.240 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain]' passed (0.226 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testOthersOnlyDoesNotAuthorizeMicAndLossStartsOnlySystemInItsOwnFolder]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testOthersOnlyDoesNotAuthorizeMicAndLossStartsOnlySystemInItsOwnFolder]' passed (0.049 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testPageClosesDuringPreparedSystemStartDiscardsEveryBufferedSample]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testPageClosesDuringPreparedSystemStartDiscardsEveryBufferedSample]' passed (2.472 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testPreparedDriverFailureBeforeActivationCannotPublishItsBufferedSystemPCM]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testPreparedDriverFailureBeforeActivationCannotPublishItsBufferedSystemPCM]' passed (0.202 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRejectedBrowserResumeRestartsOldMicWithoutEndingItsTrack]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRejectedBrowserResumeRestartsOldMicWithoutEndingItsTrack]' passed (2.467 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRejectedFallbackDoesNotPublishSystemOrStopMicAndUserCanRetry]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRejectedFallbackDoesNotPublishSystemOrStopMicAndUserCanRetry]' passed (0.239 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRejectedReturnResumesTheExistingSystemSpanAndKeepsMicRunning]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRejectedReturnResumesTheExistingSystemSpanAndKeepsMicRunning]' passed (1.810 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest]' passed (0.228 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testReplacementFailureDuringOldInputDrainRollsBackToItsExistingWriter]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testReplacementFailureDuringOldInputDrainRollsBackToItsExistingWriter]' passed (0.083 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRestoringOneMeetingCannotChangeOrStopTheOtherMeetingsFallback]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRestoringOneMeetingCannotChangeOrStopTheOtherMeetingsFallback]' passed (0.526 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic]' passed (0.252 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testReturningPCMBeforeTheLossIsNoReturnUntilItReachesTheLoss]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testReturningPCMBeforeTheLossIsNoReturnUntilItReachesTheLoss]' passed (0.102 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testSignalPermissionCompletionRevalidatesEndUnknownAndStopBeforeAnyInput]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testSignalPermissionCompletionRevalidatesEndUnknownAndStopBeforeAnyInput]' passed (0.215 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testSignalStopBetweenEligibilityCheckAndDriverStartIsAtomic]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testSignalStopBetweenEligibilityCheckAndDriverStartIsAtomic]' passed (0.025 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testSignalWithdrawalOrStopDuringOthersPermissionNeverPromptsMeAndThrowsCancellation]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testSignalWithdrawalOrStopDuringOthersPermissionNeverPromptsMeAndThrowsCancellation]' passed (0.120 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testStopDuringPermissionWaitPreventsALateMicrophoneStart]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testStopDuringPermissionWaitPreventsALateMicrophoneStart]' passed (0.085 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testTrackLimitRejectsPreparedInputWithoutChangingBrowserSelection]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testTrackLimitRejectsPreparedInputWithoutChangingBrowserSelection]' passed (1.507 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testTurningMeOffAfterACountedGapStillAppliesSelection]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testTurningMeOffAfterACountedGapStillAppliesSelection]' passed (0.042 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testTwoMeetingsOwnTheirNativeInputsAndOnlyTheLostOneStartsSystem]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testTwoMeetingsOwnTheirNativeInputsAndOnlyTheLostOneStartsSystem]' passed (0.208 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testUnwritableRestoreCheckpointKeepsTheExistingSystemAndMicWriters]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testUnwritableRestoreCheckpointKeepsTheExistingSystemAndMicWriters]' passed (0.250 seconds).
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testWithoutSourceOutcomesASourceDeclaredDuringTheLossIsStillSaved]' started.
+Test Case '-[CassiniBrowserControlTests.InputLifecycleTests testWithoutSourceOutcomesASourceDeclaredDuringTheLossIsStillSaved]' passed (0.203 seconds).
+Test Suite 'InputLifecycleTests' passed at 2026-11-10 14:50:51.320.
+	 Executed 39 tests, with 0 failures (0 unexpected) in 15.073 (15.081) seconds
+Test Suite 'OwnedCallProofLossTests' started at 2026-11-10 14:50:51.321.
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testPositiveEndAndUserStopStillFenceTheRunningOwner]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testPositiveEndAndUserStopStillFenceTheRunningOwner]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testReloadedDocumentIsLossNotPositiveEndForMixedOwnerWithAutoOff]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testReloadedDocumentIsLossNotPositiveEndForMixedOwnerWithAutoOff]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testReloadedDocumentIsLossNotPositiveEndForSeparatedOwner]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testReloadedDocumentIsLossNotPositiveEndForSeparatedOwner]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testRunningBrowserInputFallbackAndMeRestartSurviveProofLoss]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCallProofLossTests testRunningBrowserInputFallbackAndMeRestartSurviveProofLoss]' passed (0.858 seconds).
+Test Suite 'OwnedCallProofLossTests' passed at 2026-11-10 14:50:52.181.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.860 (0.860) seconds
+Test Suite 'OwnedCaptureTests' started at 2026-11-10 14:50:52.181.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testFailedNativeSystemPublishesNoneOnceAndUserRetryPublishesActualSamples]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testFailedNativeSystemPublishesNoneOnceAndUserRetryPublishesActualSamples]' passed (0.088 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testFirstBrowserPacketPublishesWithoutMicrophoneAndSnapshotTracksEveryAck]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testFirstBrowserPacketPublishesWithoutMicrophoneAndSnapshotTracksEveryAck]' passed (0.034 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testFirstFractionalSystemPacketIsLiveFallbackBeforeTheRoundedUIClockCatchesUp]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testFirstFractionalSystemPacketIsLiveFallbackBeforeTheRoundedUIClockCatchesUp]' passed (0.125 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testLossStampIsOwnedByTheProducerAndDoesNotRestartOnRepeatedObservation]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testLossStampIsOwnedByTheProducerAndDoesNotRestartOnRepeatedObservation]' passed (0.025 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testLostBrowserKeepsMicAndSystemFallbackInTheSameFolderWithoutRestoring]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testLostBrowserKeepsMicAndSystemFallbackInTheSameFolderWithoutRestoring]' passed (0.092 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMalformedSourceAndClockFailuresDoNotAffectAnotherCapture]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMalformedSourceAndClockFailuresDoNotAffectAnotherCapture]' passed (0.065 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMicAndBrowserShareOneFolderButFinishingMicDoesNotStopBrowser]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMicAndBrowserShareOneFolderButFinishingMicDoesNotStopBrowser]' passed (0.198 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMicResumeTrimsBufferedSamplesFromTheOffInterval]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMicResumeTrimsBufferedSamplesFromTheOffInterval]' passed (0.080 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMicrophoneFrameClockCannotShiftBrowserLossOrSystemStart]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testMicrophoneFrameClockCannotShiftBrowserLossOrSystemStart]' passed (0.085 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testNativeGapCountsSurviveOwnedSpanFinalizationAndReload]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testNativeGapCountsSurviveOwnedSpanFinalizationAndReload]' passed (0.096 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testNativeSourceAndUserResumePublishOnlyActualSystemBuffers]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testNativeSourceAndUserResumePublishOnlyActualSystemBuffers]' passed (0.151 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testNoMicrophoneChoiceCannotCreateOrWriteANativeMic]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testNoMicrophoneChoiceCannotCreateOrWriteANativeMic]' passed (0.020 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testOthersOffOnCreatesDistinctSpansWithStableSourceAndExcludesTheGap]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testOthersOffOnCreatesDistinctSpansWithStableSourceAndExcludesTheGap]' passed (0.081 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testSourceArrivingWhileOthersOffIsEndedWithoutPersistingPCM]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testSourceArrivingWhileOthersOffIsEndedWithoutPersistingPCM]' passed (0.234 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testTwoCapturesKeepIndependentFoldersClocksAndStop]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedCaptureTests testTwoCapturesKeepIndependentFoldersClocksAndStop]' passed (0.152 seconds).
+Test Suite 'OwnedCaptureTests' passed at 2026-11-10 14:50:53.709.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 1.528 (1.529) seconds
+Test Suite 'OwnedTerminalEventTests' started at 2026-11-10 14:50:53.710.
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testBrokerSharesOneDrainAndPreservesTheOriginalDiskTrigger]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testBrokerSharesOneDrainAndPreservesTheOriginalDiskTrigger]' passed (0.021 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testEveryClaimedTriggerSurvivesTheLaterGenericBrowserStopAndTail]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testEveryClaimedTriggerSurvivesTheLaterGenericBrowserStopAndTail]' passed (0.615 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testInvalidBrokerEndTimeCannotStopNativeInputs]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testInvalidBrokerEndTimeCannotStopNativeInputs]' passed (0.087 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testInvalidTimeCannotClaimIntentOrMutateTheSession]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testInvalidTimeCannotClaimIntentOrMutateTheSession]' passed (0.041 seconds).
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testQuitOfAnOwnerNotYetPublishedToUIUsesItsMonotonicClock]' started.
+Test Case '-[CassiniBrowserControlTests.OwnedTerminalEventTests testQuitOfAnOwnerNotYetPublishedToUIUsesItsMonotonicClock]' passed (0.039 seconds).
+Test Suite 'OwnedTerminalEventTests' passed at 2026-11-10 14:50:54.514.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.803 (0.804) seconds
+Test Suite 'PCMCheckpointTests' started at 2026-11-10 14:50:54.514.
+Test Case '-[CassiniBrowserControlTests.PCMCheckpointTests testWrittenBrowserPCMIsAvailableBeforeItsPeriodicDurabilityCheckpointCompletes]' started.
+Test Case '-[CassiniBrowserControlTests.PCMCheckpointTests testWrittenBrowserPCMIsAvailableBeforeItsPeriodicDurabilityCheckpointCompletes]' passed (0.049 seconds).
+Test Suite 'PCMCheckpointTests' passed at 2026-11-10 14:50:54.563.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.049 (0.049) seconds
+Test Suite 'PageStateTests' started at 2026-11-10 14:50:54.563.
+Test Case '-[CassiniBrowserControlTests.PageStateTests testCapabilityScopesPagesAndMissingIsUnknown]' started.
+Test Case '-[CassiniBrowserControlTests.PageStateTests testCapabilityScopesPagesAndMissingIsUnknown]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.PageStateTests testClosedEvidenceAndItsObservationTimeSurviveLatePresentSnapshots]' started.
+Test Case '-[CassiniBrowserControlTests.PageStateTests testClosedEvidenceAndItsObservationTimeSurviveLatePresentSnapshots]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.PageStateTests testLegacyIgnoresInvalidPageFieldsButCapablePeerRejectsAtomically]' started.
+Test Case '-[CassiniBrowserControlTests.PageStateTests testLegacyIgnoresInvalidPageFieldsButCapablePeerRejectsAtomically]' passed (0.008 seconds).
+Test Case '-[CassiniBrowserControlTests.PageStateTests testTerminalReasonAndNavigationOptInAreScopedToCapablePeers]' started.
+Test Case '-[CassiniBrowserControlTests.PageStateTests testTerminalReasonAndNavigationOptInAreScopedToCapablePeers]' passed (0.002 seconds).
+Test Suite 'PageStateTests' passed at 2026-11-10 14:50:54.580.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.015 (0.017) seconds
+Test Suite 'PassiveWebRTCStartTests' started at 2026-11-10 14:50:54.580.
+Test Case '-[CassiniBrowserControlTests.PassiveWebRTCStartTests testAutomaticStartCannotBypassBoundaryGuard]' started.
+Test Case '-[CassiniBrowserControlTests.PassiveWebRTCStartTests testAutomaticStartCannotBypassBoundaryGuard]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserControlTests.PassiveWebRTCStartTests testCapturedPassiveViewerCannotAutomaticallyStart]' started.
+Test Case '-[CassiniBrowserControlTests.PassiveWebRTCStartTests testCapturedPassiveViewerCannotAutomaticallyStart]' passed (0.112 seconds).
+Test Suite 'PassiveWebRTCStartTests' passed at 2026-11-10 14:50:54.699.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.118 (0.119) seconds
+Test Suite 'PipeTransportTests' started at 2026-11-10 14:50:54.699.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testAbandonedStagingIsRemovedButLiveStagingIsPreserved]' passed (0.018 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBackpressureDisconnectsOnlyTheSlowPeer]' passed (0.337 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire]' passed (0.210 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testFreshHomeWithoutMusicCanStartTheProtectedBroker]' passed (0.111 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPeerDeathBeforeItsFirstMessageReleasesTheServerSide]' passed (0.208 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired]' passed (0.015 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease]' passed (0.465 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame]' passed (0.585 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand]' passed (0.212 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testTwoPeersWithTheSameBrowserAndTabKeepDistinctConnections]' passed (0.210 seconds).
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' started.
+Test Case '-[CassiniBrowserControlTests.PipeTransportTests testUnsafeRootAndInactiveBrokerAreRejectedWithoutCreatingClients]' passed (0.001 seconds).
+Test Suite 'PipeTransportTests' passed at 2026-11-10 14:50:57.072.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 2.372 (2.373) seconds
+Test Suite 'R94CommittedResumeTests' started at 2026-11-10 14:50:57.072.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testAReferenceCannotEscapeItsSerializedCallback]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testAReferenceCannotEscapeItsSerializedCallback]' passed (0.060 seconds).
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testFailedCheckpointNeverAuthorizesResume]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testFailedCheckpointNeverAuthorizesResume]' passed (2.207 seconds).
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testHeldCheckpointPublishesExactFractionalSeamAndReconnectUsesItAgain]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testHeldCheckpointPublishesExactFractionalSeamAndReconnectUsesItAgain]' passed (0.519 seconds).
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testInitialStandInPreservesZero]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testInitialStandInPreservesZero]' passed (0.219 seconds).
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testNoneLostAndDeselectedSourcesAreNotResumeTargets]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testNoneLostAndDeselectedSourcesAreNotResumeTargets]' passed (0.047 seconds).
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testStopAfterReferenceReadIsRevalidatedAtDispatch]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testStopAfterReferenceReadIsRevalidatedAtDispatch]' passed (0.454 seconds).
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testStopDuringHeldCheckpointNeverSendsResume]' started.
+Test Case '-[CassiniBrowserControlTests.R94CommittedResumeTests testStopDuringHeldCheckpointNeverSendsResume]' passed (0.454 seconds).
+Test Suite 'R94CommittedResumeTests' passed at 2026-11-10 14:51:01.032.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 3.960 (3.960) seconds
+Test Suite 'RealProducerStartTests' started at 2026-11-10 14:51:01.032.
+Test Case '-[CassiniBrowserControlTests.RealProducerStartTests testRealTalkSplitPCAndMediaNegativesAtActualStartBoundary]' started.
+Test Case '-[CassiniBrowserControlTests.RealProducerStartTests testRealTalkSplitPCAndMediaNegativesAtActualStartBoundary]' passed (1.875 seconds).
+Test Suite 'RealProducerStartTests' passed at 2026-11-10 14:51:02.907.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.875 (1.875) seconds
+Test Suite 'SharedAutoStartVectorTests' started at 2026-11-10 14:51:02.907.
+Test Case '-[CassiniBrowserControlTests.SharedAutoStartVectorTests testSharedAutomaticAndManualStartVectors]' started.
+Test Case '-[CassiniBrowserControlTests.SharedAutoStartVectorTests testSharedAutomaticAndManualStartVectors]' passed (0.084 seconds).
+Test Suite 'SharedAutoStartVectorTests' passed at 2026-11-10 14:51:02.990.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.084 (0.084) seconds
+Test Suite 'SharedCallWireTests' started at 2026-11-10 14:51:02.990.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testAStaleCommandResultCannotInvalidateANewerInventory]' started.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testAStaleCommandResultCannotInvalidateANewerInventory]' passed (0.014 seconds).
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testExplicitSessionsRemainAuthoritativeEvenWithIDlessEntries]' started.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testExplicitSessionsRemainAuthoritativeEvenWithIDlessEntries]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testInactiveStatusAlsoInvalidatesOnlyItsOwnTab]' started.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testInactiveStatusAlsoInvalidatesOnlyItsOwnTab]' passed (0.008 seconds).
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testLiteralWireVectorsThroughTheProductionRegistry]' started.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testLiteralWireVectorsThroughTheProductionRegistry]' passed (0.118 seconds).
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testTabScopedEvidencePreservesOtherCapturesAndAcceptedResultIdentity]' started.
+Test Case '-[CassiniBrowserControlTests.SharedCallWireTests testTabScopedEvidencePreservesOtherCapturesAndAcceptedResultIdentity]' passed (0.021 seconds).
+Test Suite 'SharedCallWireTests' passed at 2026-11-10 14:51:03.157.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.165 (0.166) seconds
+Test Suite 'StopReconnectRegressionTests' started at 2026-11-10 14:51:03.157.
+Test Case '-[CassiniBrowserControlTests.StopReconnectRegressionTests testStopRequestedAfterControlDisconnectDoesNotAutoStartOnReturn]' started.
+Test Case '-[CassiniBrowserControlTests.StopReconnectRegressionTests testStopRequestedAfterControlDisconnectDoesNotAutoStartOnReturn]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReconnectRegressionTests testUserStopDoesNotAutoStartAfterControlReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.StopReconnectRegressionTests testUserStopDoesNotAutoStartAfterControlReconnect]' passed (0.005 seconds).
+Test Suite 'StopReconnectRegressionTests' passed at 2026-11-10 14:51:03.165.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds
+Test Suite 'StopReviewRegressionTests' started at 2026-11-10 14:51:03.166.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testAuthoritativeNavigationCannotReviveItsStopOnALaterReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testAuthoritativeNavigationCannotReviveItsStopOnALaterReconnect]' passed (0.011 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testAutomaticStartCannotOverrideOrForgetAnExplicitStop]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testAutomaticStartCannotOverrideOrForgetAnExplicitStop]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testAutomaticTerminalReasonsDoNotBecomeUserStopsAfterTheD33Rebase]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testAutomaticTerminalReasonsDoNotBecomeUserStopsAfterTheD33Rebase]' passed (0.059 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testDisconnectedHistoriesStayBoundedAndResolveOnlyOverlappingProfiles]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testDisconnectedHistoriesStayBoundedAndResolveOnlyOverlappingProfiles]' passed (8.858 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testDisconnectedLineageHistoryExpiresAndCannotRestoreAnOldStop]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testDisconnectedLineageHistoryExpiresAndCannotRestoreAnOldStop]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testDisconnectedOwnerHistoryStillRestoresStopOnLateOverlap]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testDisconnectedOwnerHistoryStillRestoresStopOnLateOverlap]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testGlobalStopIncludesTheSupersededProfilesNotYetRediscoveredTab]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testGlobalStopIncludesTheSupersededProfilesNotYetRediscoveredTab]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testGlobalStopRetainsAnUnboundStartAcrossDisconnect]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testGlobalStopRetainsAnUnboundStartAcrossDisconnect]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testGlobalStopRetainsAnUnretiredStatusCaptureBeforeAudioRegistrationAfterDisconnect]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testGlobalStopRetainsAnUnretiredStatusCaptureBeforeAudioRegistrationAfterDisconnect]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testHistoricalInterruptedStatusWithoutAnOwnedCaptureIsNotAnActiveStopTarget]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testHistoricalInterruptedStatusWithoutAnOwnedCaptureIsNotAnActiveStopTarget]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testLateOverlapNeverRestoresAnExpiredRetirement]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testLateOverlapNeverRestoresAnExpiredRetirement]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testLateOverlapRestoresStopRetiredByTheOldConnectionsStaleInventory]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testLateOverlapRestoresStopRetiredByTheOldConnectionsStaleInventory]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testOlderInventoryCannotEraseAStopAfterANewerEmptyPeerReconciles]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testOlderInventoryCannotEraseAStopAfterANewerEmptyPeerReconciles]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testReplacementIdentifiedByEarlierTabsStillProtectsAgainstOldNavigation]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testReplacementIdentifiedByEarlierTabsStillProtectsAgainstOldNavigation]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testRetiredCapturesAndFailedStartsAreNotRememberedByLaterStopAll]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testRetiredCapturesAndFailedStartsAreNotRememberedByLaterStopAll]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testSlowFirstInventoryKeepsAnUnexpiredExactStopIncludingInitialEmptyLists]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testSlowFirstInventoryKeepsAnUnexpiredExactStopIncludingInitialEmptyLists]' passed (0.057 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testStopAllAfterNavigationUsesTheCapturesOriginalCallAndLeavesNewURLRecordable]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testStopAllAfterNavigationUsesTheCapturesOriginalCallAndLeavesNewURLRecordable]' passed (0.092 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testTwoProfilesNavigateAwayAndBackDoesNotPreserveOldStop]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testTwoProfilesNavigateAwayAndBackDoesNotPreserveOldStop]' passed (0.025 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testTwoProfilesVerifiedAbsenceStillRetiresOldStopAfterItsWindow]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testTwoProfilesVerifiedAbsenceStillRetiresOldStopAfterItsWindow]' passed (0.011 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testUnboundIndividualStopResolvesWhenTheCaptureIDIsReportedLater]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testUnboundIndividualStopResolvesWhenTheCaptureIDIsReportedLater]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testUnboundStopResolvesToOriginalStartURLAfterDisconnectedNavigation]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testUnboundStopResolvesToOriginalStartURLAfterDisconnectedNavigation]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testVerifiedAbsenceStillRetiresOldStopAfterItsWindow]' started.
+Test Case '-[CassiniBrowserControlTests.StopReviewRegressionTests testVerifiedAbsenceStillRetiresOldStopAfterItsWindow]' passed (0.003 seconds).
+Test Suite 'StopReviewRegressionTests' passed at 2026-11-10 14:51:12.308.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 9.135 (9.143) seconds
+Test Suite 'TranscriptionMeetingTests' started at 2026-11-10 14:51:12.309.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testOpaqueBrowserIdentityGroupsSpansAndNeverUsesTheirLabels]' started.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testOpaqueBrowserIdentityGroupsSpansAndNeverUsesTheirLabels]' passed (0.001 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testOverlappingSpansOfOneSourceBecomeSeparateSpeakers]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:149: -[CassiniTranscriptionTests.TranscriptionMeetingTests testOverlappingSpansOfOneSourceBecomeSeparateSpeakers] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testOverlappingSpansOfOneSourceBecomeSeparateSpeakers]' skipped (0.001 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testPausePreservesPartialWordsAndExistingMetadata]' started.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testPausePreservesPartialWordsAndExistingMetadata]' passed (0.052 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testProducedLabelsFollowFirstAppearanceWhenTheEarlierTrackFinishesLast]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:104: -[CassiniTranscriptionTests.TranscriptionMeetingTests testProducedLabelsFollowFirstAppearanceWhenTheEarlierTrackFinishesLast] : Test skipped - Pinned offline VAD supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testProducedLabelsFollowFirstAppearanceWhenTheEarlierTrackFinishesLast]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testProductionWriterPipelineOffsetsAndReadOnlyAudio]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:306: -[CassiniTranscriptionTests.TranscriptionMeetingTests testProductionWriterPipelineOffsetsAndReadOnlyAudio] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testProductionWriterPipelineOffsetsAndReadOnlyAudio]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testReceivedPlainOpusBecomesOneUnnamedSpeaker]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:176: -[CassiniTranscriptionTests.TranscriptionMeetingTests testReceivedPlainOpusBecomesOneUnnamedSpeaker] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testReceivedPlainOpusBecomesOneUnnamedSpeaker]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testResumeKeepsTheSavedTailUntilRecognitionCatchesUp]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:239: -[CassiniTranscriptionTests.TranscriptionMeetingTests testResumeKeepsTheSavedTailUntilRecognitionCatchesUp] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testResumeKeepsTheSavedTailUntilRecognitionCatchesUp]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testRetryDiscardsFailedWordsWithoutChangingNotesOrSpeakers]' started.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testRetryDiscardsFailedWordsWithoutChangingNotesOrSpeakers]' passed (0.034 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSafeScannerSourcesSurviveBadTracksAndUnsupportedManifests]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:12: -[CassiniTranscriptionTests.TranscriptionMeetingTests testSafeScannerSourcesSurviveBadTracksAndUnsupportedManifests] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSafeScannerSourcesSurviveBadTracksAndUnsupportedManifests]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSilentMeetingWritesUndAsItsLanguage]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:199: -[CassiniTranscriptionTests.TranscriptionMeetingTests testSilentMeetingWritesUndAsItsLanguage] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSilentMeetingWritesUndAsItsLanguage]' skipped (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSourceNamesAndPlainOpusIdentity]' started.
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testSourceNamesAndPlainOpusIdentity]' passed (0.000 seconds).
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testTwoBrowserSpansWriteDownAsOneSpeakerThroughTheRealScanner]' started.
+/private/tmp/cassini-aws-d88-before/Tests/CassiniTranscriptionTests/MeetingTests.swift:75: -[CassiniTranscriptionTests.TranscriptionMeetingTests testTwoBrowserSpansWriteDownAsOneSpeakerThroughTheRealScanner] : Test skipped - Pinned offline assets supplied by pipeline CI
+Test Case '-[CassiniTranscriptionTests.TranscriptionMeetingTests testTwoBrowserSpansWriteDownAsOneSpeakerThroughTheRealScanner]' skipped (0.000 seconds).
+Test Suite 'TranscriptionMeetingTests' passed at 2026-11-10 14:51:12.401.
+	 Executed 12 tests, with 8 tests skipped and 0 failures (0 unexpected) in 0.090 (0.092) seconds
+Test Suite 'UserStoppedCallTests' started at 2026-11-10 14:51:12.401.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testAutomaticStopAndFailedStartAreNotLearnedAcrossReconnect]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testAutomaticStopAndFailedStartAreNotLearnedAcrossReconnect]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testDirectAddressChangeClearsSuppressionWithoutAnEmptyInventory]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testDirectAddressChangeClearsSuppressionWithoutAnEmptyInventory]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testDisconnectedCaptureInsertionsShareTheBoundedStoreAndUnknownURLIsNeverWildcard]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testDisconnectedCaptureInsertionsShareTheBoundedStoreAndUnknownURLIsNeverWildcard]' passed (2.322 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testDrainingOldConnectionCannotRegainAuthorityAfterReplacementDisconnects]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testDrainingOldConnectionCannotRegainAuthorityAfterReplacementDisconnects]' passed (0.005 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testExpiredStopIsNotRevivedByTheReturningInventory]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testExpiredStopIsNotRevivedByTheReturningInventory]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testExplicitRecordOverridesTheUsersPreviousStop]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testExplicitRecordOverridesTheUsersPreviousStop]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testFailedStartCannotClaimAnotherCallsCaptureForItsOldAddress]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testFailedStartCannotClaimAnotherCallsCaptureForItsOldAddress]' passed (0.099 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testFirstStatusBindsBeforeAudioRegistrationAndDisconnectedStopUsesOriginalURL]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testFirstStatusBindsBeforeAudioRegistrationAndDisconnectedStopUsesOriginalURL]' passed (0.012 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testKernelIdentityAndMetadataValidation]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testKernelIdentityAndMetadataValidation]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testLateWorkerReportsAndFreshDisconnectedStopUseTheStopTime]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testLateWorkerReportsAndFreshDisconnectedStopUseTheStopTime]' passed (0.011 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testLiveInventoryProtectsLongCallsButDeadBrowserAndAbsentCallsExpire]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testLiveInventoryProtectsLongCallsButDeadBrowserAndAbsentCallsExpire]' passed (0.002 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testNavigationBeforeStartResultStillBindsTheRequestedOriginalURL]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testNavigationBeforeStartResultStillBindsTheRequestedOriginalURL]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testNavigationWhileOldStopIsPendingCanStartAfterItsAcknowledgement]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testNavigationWhileOldStopIsPendingCanStartAfterItsAcknowledgement]' passed (0.012 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testOlderConnectionAndDisconnectedOldCaptureCannotEraseANewerCallStop]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testOlderConnectionAndDisconnectedOldCaptureCannotEraseANewerCallStop]' passed (0.013 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testRetirementRollbackCannotUndoExplicitRecordAndSharesTheStopBudget]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testRetirementRollbackCannotUndoExplicitRecordAndSharesTheStopBudget]' passed (0.011 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testUserStopDuringAutomaticStopIsRememberedBeforeBusyCheck]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testUserStopDuringAutomaticStopIsRememberedBeforeBusyCheck]' passed (0.005 seconds).
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testUserStopSurvivesReconnectButAnotherProfileAndBrowserInstanceCanStart]' started.
+Test Case '-[CassiniBrowserControlTests.UserStoppedCallTests testUserStopSurvivesReconnectButAnotherProfileAndBrowserInstanceCanStart]' passed (0.007 seconds).
+Test Suite 'UserStoppedCallTests' passed at 2026-11-10 14:51:14.914.
+	 Executed 17 tests, with 0 failures (0 unexpected) in 2.511 (2.514) seconds
+Test Suite 'VerifiedAdmissionTests' started at 2026-11-10 14:51:14.914.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testBrowserReservationLeaseAndAcceptedOwnerGrace]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testBrowserReservationLeaseAndAcceptedOwnerGrace]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testContinuousFreshReloadProofDoesNotRebindSeparatedOwnerOrExtendItsGrace]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testContinuousFreshReloadProofDoesNotRebindSeparatedOwnerOrExtendItsGrace]' passed (0.115 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testCreatedDirectoryDoesNotMakePendingInputAnAcceptedOwner]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testCreatedDirectoryDoesNotMakePendingInputAnAcceptedOwner]' passed (0.005 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testCurrentReloadEndImmediatelyFencesSeparatedFallbackOwner]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testCurrentReloadEndImmediatelyFencesSeparatedFallbackOwner]' passed (0.009 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testCurrentReloadEndRetiresAllMixedAssociationsOfTheSameCall]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testCurrentReloadEndRetiresAllMixedAssociationsOfTheSameCall]' passed (0.006 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testDelayedNativeStartAtExactExpiryCannotReachRecordingFactory]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testDelayedNativeStartAtExactExpiryCannotReachRecordingFactory]' passed (0.234 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testExplicitManualInputDoesNotNeedAutomaticLeaseButRequiresItsRequestID]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testExplicitManualInputDoesNotNeedAutomaticLeaseButRequiresItsRequestID]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testFinalInputGateExpiresAtExactBoundary]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testFinalInputGateExpiresAtExactBoundary]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testFinalWriteGuardRejectsExpiryAfterScheduling]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testFinalWriteGuardRejectsExpiryAfterScheduling]' passed (0.139 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testHeldDisconnectedManualStartRetiresItsNativeAuthorization]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testHeldDisconnectedManualStartRetiresItsNativeAuthorization]' passed (0.215 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testLegacyExceptionCannotAuthorizeAutomaticOrAmbiguousManualAsks]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testLegacyExceptionCannotAuthorizeAutomaticOrAmbiguousManualAsks]' passed (0.000 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testLegacyManualStartWithoutRequestIDAndVerifiedACKAtActualBoundary]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testLegacyManualStartWithoutRequestIDAndVerifiedACKAtActualBoundary]' passed (0.969 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testMixedExpiryKeepsAcceptedOwnerAndFixedGrace]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testMixedExpiryKeepsAcceptedOwnerAndFixedGrace]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testMixedServiceChecksPendingBindingAndAcceptedGrace]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testMixedServiceChecksPendingBindingAndAcceptedGrace]' passed (0.114 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testNativeStartCorrelationVectorsAtActualBrokerBoundary]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testNativeStartCorrelationVectorsAtActualBrokerBoundary]' passed (2.094 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testPassiveReloadWithAutoOnCannotAdmitOrRefreshEitherRoute]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testPassiveReloadWithAutoOnCannotAdmitOrRefreshEitherRoute]' passed (0.003 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testReloadEndCannotFenceAnotherProfileTabOrGeneration]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testReloadEndCannotFenceAnotherProfileTabOrGeneration]' passed (0.004 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSharedReceiptTimeFreshnessForBothRoutes]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSharedReceiptTimeFreshnessForBothRoutes]' passed (0.017 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSharedRoutingAtBrowserStartAndMixedReservationBoundaries]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSharedRoutingAtBrowserStartAndMixedReservationBoundaries]' passed (0.130 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSignalKeyEqualityIncludesExactSourceDocumentBytes]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSignalKeyEqualityIncludesExactSourceDocumentBytes]' passed (0.001 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSignalsBeforeMatchingMeetingsRetainReceiptTimeForBothRoutes]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testSignalsBeforeMatchingMeetingsRetainReceiptTimeForBothRoutes]' passed (0.073 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testStopDuringStartupCannotBeReopenedByFreshEvidence]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testStopDuringStartupCannotBeReopenedByFreshEvidence]' passed (0.015 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testUnknownAndMissingRowsWithdrawWithoutSourceUpdatesRenewing]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testUnknownAndMissingRowsWithdrawWithoutSourceUpdatesRenewing]' passed (0.008 seconds).
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testVerifiedNegotiationIsVisibleToSetupHealth]' started.
+Test Case '-[CassiniBrowserControlTests.VerifiedAdmissionTests testVerifiedNegotiationIsVisibleToSetupHealth]' passed (0.002 seconds).
+Test Suite 'VerifiedAdmissionTests' passed at 2026-11-10 14:51:19.078.
+	 Executed 24 tests, with 0 failures (0 unexpected) in 4.159 (4.164) seconds
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 14:51:19.079.
+	 Executed 415 tests, with 22 tests skipped and 0 failures (0 unexpected) in 91.023 (91.076) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 14:51:19.079.
+	 Executed 415 tests, with 22 tests skipped and 0 failures (0 unexpected) in 91.023 (91.078) seconds
+D80 guarded actual automatic Start commands: 0; audio captures: 0
+D80 explicit browser Start commands: 1; unverified mixed native actions: 0; actual captures: 0
+D80 real producer real-talk-split-pc: automatic browser Starts=1, native Starts=0, captures=0
+D80 real producer passive-viewer: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer mic-preview: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer synthetic-sender: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer unanswered-ringing-no-capture: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer cross-frame-capture: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer cross-frame-split: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer cross-document-split: automatic browser Starts=0, native Starts=0, captures=0
+D80 real producer forged-page-evidence: automatic browser Starts=0, native Starts=0, captures=0
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite CapturePCMTests started.
+◇ Suite D52WorstCaseRecordTests started.
+◇ Test stagedNativeAudioPublishesOnlyAfterActivationAndUsesTheTrimmedSpan() started.
+◇ Test twoCapturesWithTheSameBrowserSourceDoNotShareObservers() started.
+◇ Test failedBrowserSourceRetiresItsAnalysis(_:) started.
+◇ Test browserObserverReceivesTheAdmittedSliceAndNewSpanAfterSelection() started.
+◇ Passing 1 argument refused → false to failedBrowserSourceRetiresItsAnalysis(_:)
+◇ Passing 1 argument refused → true to failedBrowserSourceRetiresItsAnalysis(_:)
+◇ Test theSupportedWorstCaseRoundTripsThroughEveryReaderAndWriter() started.
+✔ Test stagedNativeAudioPublishesOnlyAfterActivationAndUsesTheTrimmedSpan() passed after 0.082 seconds.
+✔ Test failedBrowserSourceRetiresItsAnalysis(_:) passed after 0.092 seconds.
+✔ Test browserObserverReceivesTheAdmittedSliceAndNewSpanAfterSelection() passed after 0.113 seconds.
+✔ Test twoCapturesWithTheSameBrowserSourceDoNotShareObservers() passed after 0.122 seconds.
+✔ Suite CapturePCMTests passed after 0.123 seconds.
+cassini: slow checkpoint 500 ms, 64 writers, at uptime 9354681 ms
+cassini: slow checkpoint 501 ms, 64 writers, at uptime 9356303 ms
+✔ Test theSupportedWorstCaseRoundTripsThroughEveryReaderAndWriter() passed after 117.412 seconds.
+✔ Suite D52WorstCaseRecordTests passed after 117.412 seconds.
+✔ Test run with 5 tests passed after 117.412 seconds.

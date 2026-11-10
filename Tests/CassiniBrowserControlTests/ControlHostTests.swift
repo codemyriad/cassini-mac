@@ -5,6 +5,7 @@ import Darwin
 @testable import CassiniBrowserControl
 
 final class ControlHostTests: XCTestCase {
+    private var exits: [ObjectIdentifier:DispatchSemaphore] = [:]
     private func exercise(_ action: (Process,Pipe,Pipe,BrowserPipeServer) throws -> Void) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniHostTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
@@ -17,7 +18,10 @@ final class ControlHostTests: XCTestCase {
         process.environment = ["CASSINI_CONTROL_PIPE_ROOT":root.path]
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
         let finished = expectation(description:"native host exits without a stop command")
-        process.terminationHandler = { _ in finished.fulfill() }
+        let exit = DispatchSemaphore(value:0)
+        process.terminationHandler = { _ in finished.fulfill(); exit.signal() }
+        exits[ObjectIdentifier(process)] = exit
+        defer { exits.removeValue(forKey:ObjectIdentifier(process)) }
         try process.run()
         defer {
             if process.isRunning { kill(process.processIdentifier,SIGKILL) }
@@ -58,8 +62,8 @@ final class ControlHostTests: XCTestCase {
         }
     }
     private func assertExit(_ process: Process, status: Int32?, file: StaticString = #filePath, line: UInt = #line) {
-        let limit = Date().addingTimeInterval(4)
-        while process.isRunning && Date() < limit { Thread.sleep(forTimeInterval:0.01) }
+        guard let exit = exits[ObjectIdentifier(process)] else { return XCTFail("Missing process exit event",file:file,line:line) }
+        XCTAssertEqual(exit.wait(timeout:.now()+4),.success,file:file,line:line)
         XCTAssertFalse(process.isRunning,file:file,line:line)
         if !process.isRunning, let status { XCTAssertEqual(process.terminationStatus,status,file:file,line:line) }
     }
