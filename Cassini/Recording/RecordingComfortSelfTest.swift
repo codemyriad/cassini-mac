@@ -141,19 +141,24 @@ import CassiniRecording
             try session.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let recording = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([session.manifest.id:.recording]))
                 .scan().meetings.first.unwrap("recording fixture")
-            let editor = RecordingPageModel.editor(for:recording), initial = editor.elapsedMs
-            try await Task.sleep(for:.milliseconds(1100))
-            guard editor.elapsedMs >= initial + 1000 else { throw POSIXError(.EINVAL) }
+            var uptime: TimeInterval = 100
+            let editor = RecordingPageModel.editor(for:recording,uptime:{ uptime }), initial = editor.elapsedMs
+            uptime += 2
+            guard editor.elapsedMs == initial + 2000 else { throw POSIXError(.EINVAL) }
             // The cached editor is reopened after the source stopped. Its known
             // physical end is only 100 ms; the hidden wall clock must not win.
             let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([session.manifest.id:.saving]))
                 .scan().meetings.first.unwrap("saving fixture")
+            guard RecordingPageModel.editor(for:saving) === editor else { throw POSIXError(.EINVAL) }
             editor.update(saving)
-            guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
-            try await Task.sleep(for:.milliseconds(100))
+            guard editor.elapsedMs == 100 else {
+                throw NSError(domain:"SavingProbeProducerEnd",code:1,userInfo:[NSLocalizedDescriptionKey:"Expected 100 ms producer end; got \(editor.elapsedMs)"])
+            }
+            uptime += 1000
             guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
             var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
             editor.update(noStart)
+            uptime += 1000
             editor.title = "Title while saving"; editor.changeTitle()
             await RecordingPageModel.flushAll()
             guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }

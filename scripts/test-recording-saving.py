@@ -5,7 +5,8 @@ import argparse,json,os,subprocess,uuid
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('app',type=Path);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS')=='1' or (os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted'),'Explicit workflow opt-in required'
-command=[str(a.app.resolve()/'Contents/MacOS/Cassini'),'--recording-saving-self-test','-CassiniCaptureID',str(uuid.uuid4()),'-ApplePersistenceIgnoreState','YES']
+key=str(uuid.uuid4())
+command=[str(a.app.resolve()/'Contents/MacOS/Cassini'),'--recording-saving-self-test','-CassiniCaptureID',key,'-CassiniSettingsID',key,'-ApplePersistenceIgnoreState','YES']
 r=subprocess.run(command,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),capture_output=True,text=True,timeout=15)
 a.output.parent.mkdir(parents=True,exist_ok=True);a.output.with_suffix('.stderr.txt').write_text(r.stderr)
 assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
