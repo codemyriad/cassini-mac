@@ -27,11 +27,11 @@ None. All six assigned rows are pushed; exact-head CI is the remaining gate. No 
 
 ## CI readiness
 
-Last checked: 2026-11-10T16:15:18+00:00
+Last checked: 2026-11-10T16:20:18+00:00
 
-- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
+- #210 `f0b06cc`: pending: CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel), UX Library boards / Library boards, UX Library boards / Native spectrogram and profiling, UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15), UX Parakeet Ultra / Parakeet runtime, goldens and app (macos-15-intel); draft.
 - #211 `54c574b`: pending: build / Build products (x86_64, Xcode 16.4); draft.
-- #212 `ac49a75`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, UX window screenshots / Window and board-size screenshots, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, Package tests (macos-15-intel), UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
+- #212 `ac49a75`: failed: CassiniKit tests and conformance; draft.
 - #213 `3fd8e39`: pending: build / Build products (arm64, Xcode 16.4); draft.
 - #214 `21e957a`: pending: build_release / Build Release app and package (universal, Xcode 16.4), CassiniKit tests and conformance, Whistle bundle / Whistle worker (macos-15), Whistle bundle / Whistle worker (macos-15-intel), Whistle bundle / Universal app and sandboxed Whistle helper, UX browser setup / Browser setup (macos-15), UX browser setup / Browser setup (macos-15-intel); draft.
 - #215 `8f5cdab`: pending: build / Build products (arm64, Xcode 16.4); draft.
