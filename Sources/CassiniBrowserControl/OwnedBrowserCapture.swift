@@ -463,7 +463,11 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         }
     }
     public func browserLost(atMs: Double, transportAlive: Bool = false, cause: BrowserCaptureLossCause? = nil, allowed: @Sendable () -> Bool = { true }) throws {
-        let lost = ProcessInfo.processInfo.systemUptime
+        try browserLost(atMs:atMs,observedAtUptime:ProcessInfo.processInfo.systemUptime,
+                        transportAlive:transportAlive,cause:cause,allowed:allowed)
+    }
+    func browserLost(atMs: Double, observedAtUptime lost: TimeInterval, transportAlive: Bool,
+                     cause: BrowserCaptureLossCause? = nil, allowed: @Sendable () -> Bool = { true }) throws {
         try sync {
             guard allowed() else { throw CancellationError() }
             guard phase == .recording else { return }
