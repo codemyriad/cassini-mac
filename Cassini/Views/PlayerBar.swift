@@ -108,6 +108,8 @@ struct PlayerBar: View {
             in: 0...Double(max(player.durationMs, 1))
         )
         .controlSize(.small)
+        // ViewThatFits must reserve usable travel, not just the native knob.
+        .frame(minWidth:100)
         .accessibilityLabel(UXText.text("player.position"))
     }
 
