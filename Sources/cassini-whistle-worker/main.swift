@@ -44,6 +44,15 @@ do {
     }
     ownerWatchdog.resume()
     defer { ownerWatchdog.cancel() }
+    #if DEBUG
+    if Array(CommandLine.arguments.dropFirst()) == ["--fixture-wait-for-cancellation"] {
+        // The app's private queue fixtures need a real owned child that cannot
+        // complete because a host-time sleep elapsed. Keep the owner watchdog
+        // running, but load no model and open no audio device.
+        DispatchSemaphore(value:0).wait()
+        exit(0)
+    }
+    #endif
     SegmentedAudio.removeAbandonedScratch()
     let assets = try WhistleAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
     let engine = try WhistleEngine(assets: assets)

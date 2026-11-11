@@ -21,12 +21,60 @@ def worker_env(**extra):
     return dict(SAFE,PATH='/usr/bin:/bin:/usr/sbin:/sbin',LANG='C',LC_ALL='C',**extra)
 
 
+def parked_fixture(worker):
+    """Real DEBUG helper: cancellation and owner death, with no model or audio."""
+    command = [str(worker.resolve()), '--fixture-wait-for-cancellation']
+    for close_input in [False, True]:
+        tick_read, tick_write = os.pipe()
+        child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, env=worker_env(**{OWNER_TICK_FD:str(tick_write)}), pass_fds=(tick_write,))
+        os.close(tick_write)
+        try:
+            if close_input: child.stdin.close()
+            watchdog_ticks(tick_read)
+            assert child.poll() is None, 'Parked fixture ended before cancellation'
+            with ProcessExit(child.pid) as exited:
+                child.terminate(); exited.wait()
+            assert child.wait(timeout=10) == -signal.SIGTERM, 'Cancellation must stop the owned helper'
+            assert child.stdout.read() == b'' and child.stderr.read() == b'', 'Parked fixture must not run inference'
+        finally:
+            if child.poll() is None: child.kill(); child.wait(timeout=10)
+            child.stdin.close(); child.stdout.close(); child.stderr.close(); os.close(tick_read)
+    # The same watchdog must stop a parked orphan even with stdin held open.
+    read_fd, write_fd = os.pipe(); tick_read, tick_write = os.pipe()
+    parent_script = '''import json,subprocess,sys,os
+child=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL,pass_fds=(int(os.environ['CASSINI_TEST_OWNER_TICK_FD']),))
+print(json.dumps({'ownedChild':child.pid}),flush=True)
+child.wait()
+'''
+    owner = subprocess.Popen([sys.executable,'-u','-c',parent_script,str(read_fd),*command],
+        pass_fds=(read_fd,tick_write),stdout=subprocess.PIPE,bufsize=0,
+        env=worker_env(**{OWNER_TICK_FD:str(tick_write)}))
+    os.close(read_fd); os.close(tick_write)
+    orphan = None
+    try:
+        orphan = json_line(owner.stdout)['ownedChild']
+        watchdog_ticks(tick_read)
+        assert owner.poll() is None, 'Parked worker owner ended before the test killed it'
+        with ProcessExit(orphan) as exited:
+            owner.kill(); owner.wait(timeout=10); exited.wait(); orphan = None
+    finally:
+        os.close(write_fd); os.close(tick_read)
+        if owner.poll() is None: owner.kill(); owner.wait(timeout=10)
+        if orphan:
+            try: os.kill(orphan,signal.SIGKILL)
+            except ProcessLookupError: pass
+        owner.stdout.close()
+    return dict(parkedFixtureCancellation=True,parkedFixtureIgnoresEOF=True,parkedFixtureOwnerDeath=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker', required=True, type=Path)
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--report', required=True, type=Path)
     args = parser.parse_args()
+    parked = parked_fixture(args.worker)
     pins = json.loads((ROOT / 'Whistle/pins.json').read_text())
     fixture = ROOT / 'Tests/CassiniWhistleTests/Fixtures'
     for name, expected in pins['fixtures'].items():
@@ -139,6 +187,7 @@ child.wait()
     report = dict(architecture=platform.machine(), engineVersion=pins['engineVersion'], text=text, reference=reference,
                   exactReferenceMatch=text == reference, wordReferenceMatch=True, twoRequestsIdentical=True,
                   constructorPrivacyGuard=True, orphanStopsWithoutEOF=True, boundedInputGuards=True, closedStdoutHandled=True, pinnedAssets=True, telemetry=SAFE)
+    report.update(parked)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
