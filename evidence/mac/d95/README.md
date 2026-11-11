@@ -74,54 +74,45 @@ Generate the extra cases by running `unreadableCassiniDoesNotBorrowDATE` with
 production mutations remove the manifest trust guard and reintroduce the
 midnight day-end bug; they must fail behavioral assertions.
 
-## Exact-head CI Settings footer follow-up
+## Settings footer layout proof
 
-CI run `42999320756` passed builds, conformance, package tests and board renders,
-but its final Settings proof failed with `scanning: missing footer disappear
-signal`. The updater had resumed; the standalone NSHostingView did not deliver
-SwiftUI's `onDisappear` callback. After a normal merge of main `9fb263c`,
-the DEBUG-only observer now follows native mount/removal of the actual footer
-subtree via NSViewRepresentable. Release UI and updater behavior are unchanged.
-No timeout was increased and the disappearance assertion remains required.
+Run `43019387841` passed every check except the final Settings proof, which
+reported `transcription: missing footer disappear signal`. Earlier runs failed
+the same callback for other activities. Native SwiftUI container teardown is
+not reliable evidence of whether the footer occupies layout. No failed run was
+retried unchanged or counted as green.
 
-`footer-mount-probe.py` compiles the exact footer source and verifies 40 real
-mount/removal cycles. With `D95_SPARKLE_FRAMEWORKS` set to the directory
-containing the reviewed Sparkle 2.10.1 framework (including its SDK headers),
-it also compiles the actual ApplicationUpdates and UpdateDeferralSelfTest
-sources. Only unrelated live-work globals and catalog/theme adapters are
-stubbed; the actual updater's fixture supplies each protected activity. The
-real Sparkle ready window and mounted footer pass for recording, saving,
-scanning, transcription and the Quit path. Both probes pass; 56 current CI
-contracts pass. Run under heavy-run/Xcode 16.4, with
-`D95_FOOTER_EVIDENCE_DIR` outside the checkout. Full local logs are in
-`~/coordination/evidence/big-mac-d95/footer/`. Integrated Settings CI is still
-required on the new head.
+The proof now uses a window-owned NSHostingController around the production
+footer and a GeometryReader preference that records actual height and the
+current updater state. After the real updater's busy/resume events, it awaits
+the corresponding rendered layout and asserts positive busy height and zero
+idle height. Including state in the preference means a footer that stays
+visible reports idle layout with positive height and fails an assertion;
+model state alone cannot prove removal. No callback is synthesized, no subtree
+is manually removed and no success sleep or longer deadline is used. The
+custom DEBUG native visibility observer is removed; production footer behavior
+is unchanged.
 
-The next cached build exposed old compiled test clients referencing the original
-four-argument RecordingSession initializer. That public initializer is retained
-as a forwarding convenience overload; the explicit-zone initializer handles the
-new capture-site recording. Both compiled symbols are verified in the rebuilt
-object, and all 26 D95-focused tests pass after this compatibility change. This
-preserves the existing public API while allowing explicit site-zone tests.
+`footer-mount-probe.py` compiles the exact ApplicationUpdates, footer and
+UpdateDeferralSelfTest sources against the real Sparkle framework. Unrelated
+live-work globals and catalog/theme adapters are stubbed; each protected
+activity is supplied through the production fixture. Forty complete runs with
+an occluding window pass for recording/saving/scanning/transcription and Quit.
+`replay-footer-mutations.py` changes only the production footer conditional to
+always visible or always absent. Both fail the intended layout assertion
+without timeout; restored forty cycles pass. Patches and compact outcomes are
+alongside this file. Earlier native-transition results are historical and
+superseded by this measured-layout proof.
 
-## Native hiding and detachment
+Run both scripts under heavy-run/Xcode 16.4 in an idle genuine Aqua session.
+Set `D95_FOOTER_EVIDENCE_DIR` outside the checkout and
+`D95_SPARKLE_FRAMEWORKS` to the directory containing reviewed Sparkle 2.10.1
+with its SDK headers. Optional `D95_UPDATER_CYCLES` controls repetitions.
+The mutation runner's optional `D95_GUI_PREFIX_JSON` wraps the proof command
+when the checkout belongs to a separate coordinator account. Sources restore
+in finally; do not build concurrently while mutating. Full logs remain under
+`~/coordination/evidence/big-mac-d95/footer/`. Exact-head CI remains required.
 
-Run `43009832544` was interrupted on two rented runners (GitHub annotations:
-runner lost communication), and its hosted Settings job independently exposed
-`recording: missing footer disappear signal`. No retry was started. NSView
-representables may hide/detach before dismantling. The DEBUG observer now
-reports those native transitions after a confirmed mount, once only; an
-initial nil window cannot pre-seed successful removal. Release UI is unchanged.
-The portable probe checks detachment, direct/ancestor hiding, initial-state
-rejection and one-shot delivery, then 40 actual footer render/removal cycles
-and the real Sparkle deferral self-test. All pass in a genuine Aqua session.
-Three source mutations disable detachment, hiding or the mounted guard; each
-fails a native transition assertion immediately, without waiting for a timeout.
-Full logs: `~/coordination/evidence/big-mac-d95/footer/native-*.log`.
-
-The standalone Settings host now explicitly lays out after the observed idle
-transaction, just as it does for its initial presentation. This drives the real
-SwiftUI subtree even if the test window is occluded; it does not synthesize a
-visibility callback or remove the footer itself. Native callbacks and the
-required disappearance assertion remain authoritative. The complete portable
-probe, including actual Sparkle deferral, passes with this host layout step.
+The original four-argument RecordingSession initializer remains a forwarding
+convenience overload for compiled test clients. The explicit-zone initializer
+handles capture-site recording. Both symbols and 26 focused cases passed.

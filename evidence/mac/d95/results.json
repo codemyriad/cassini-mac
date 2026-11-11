@@ -60,38 +60,33 @@
     "EST5EDT",
     "<+0545>-5:45"
   ],
-  "footerCI": {
-    "failedRun": 42999320756,
-    "failure": "scanning: missing footer disappear signal",
-    "mountRemovalCycles": 40,
-    "actualSparkleDeferralSelfTest": "passed for all protected activities and Quit",
-    "ciContracts": 56
-  },
   "initializerCompatibility": {
     "focusedTestsPassed": 26,
     "originalFourArgumentSymbol": "preserved",
     "explicitZoneInitializer": "preserved"
   },
-  "footerNativeTransitions": {
-    "detachment": "pass",
-    "directAndAncestorHiding": "pass",
-    "initialNilWindow": "no removal",
-    "oneShot": "pass",
-    "productionMutations": [
+  "footerLayout": {
+    "completeOccludedUpdaterCycles": 40,
+    "activities": [
+      "recording",
+      "saving",
+      "scanning",
+      "transcription",
+      "Quit"
+    ],
+    "mutations": [
       {
-        "case": "detach",
-        "result": "native transition assertion fails without a timeout"
+        "case": "always-visible",
+        "failure": "Idle removes the real footer from layout",
+        "timeout": false
       },
       {
-        "case": "hide",
-        "result": "native transition assertion fails without a timeout"
-      },
-      {
-        "case": "initial-guard",
-        "result": "native transition assertion fails without a timeout"
+        "case": "always-absent",
+        "failure": "Busy activity renders the real footer",
+        "timeout": false
       }
     ],
-    "actualSparkleSelfTest": "pass in console Aqua session",
-    "standaloneHostPostTransactionLayout": "actual layout before waiting for native removal; probe passed"
+    "restoredCycles": 40,
+    "fullExactHeadCI": "pending"
   }
 }
