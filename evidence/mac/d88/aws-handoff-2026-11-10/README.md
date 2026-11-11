@@ -1,3 +1,7 @@
+# Ownership transferred to big-mac
+
+PRs #210–#215 and their branches are owned by big-mac on the 32 GB Scaleway Mac. See the final [STATUS](STATUS-AWS-MAC.md) and the [GitHub snapshot](ownership-handover.json). The AWS watcher and finalizer were stopped at handover. The prior automation and restoration instructions below are historical.
+
 # AWS Mac handoff — 2026-11-10
 
 **This Mac is destroyed after 2026-11-11 09:30 UTC**, earlier than the original

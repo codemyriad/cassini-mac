@@ -1,11 +1,22 @@
 {
-  "verified": "2026-11-10T21:48:28+00:00",
+  "verified": "2026-11-11T00:06:27+00:00",
   "branches": {
     "ci/rented-mac-routing-paths": "452c52f66d90fd5d1f987dff90197620554e833e",
     "test/d88-aws-browser-gates": "d1ebe142862c3a4147866ee6cb0d6cbd229c56b8",
-    "test/d88-aws-handoff": "1d40e18585e29c74e5ec566dcdff8f2403add5a6",
+    "test/d88-aws-handoff": "3781ae876f52cdf0edc70d3d13c3b8d3df90f223",
     "test/d88-aws-ipc-barriers": "30fc6f3db0ec9be68e2c197e62b69db351ac9a1d",
     "test/d88-aws-model-startup": "c2777e51e8a48cdb4ae3bd4419d063c2fd67a701",
+    "test/d88-aws-playback-gate": "8c9c38988c93e2d3e142e2e26dd631287e12b88d",
+    "test/d88-aws-setup-events": "56bbf1e2adb703c94011a9e457ec8445dba44b55",
+    "test/d88-aws-supersession-events": "6ed212bb12abacec8ec1feaca1e30a9282c68fe9",
+    "test/d88-aws-transport-events": "594bf715de569c46b1237c82d73bbc259eaec3d6"
+  },
+  "remoteHeads": {
+    "ci/rented-mac-routing-paths": "452c52f66d90fd5d1f987dff90197620554e833e",
+    "test/d88-aws-browser-gates": "d1ebe142862c3a4147866ee6cb0d6cbd229c56b8",
+    "test/d88-aws-handoff": "3781ae876f52cdf0edc70d3d13c3b8d3df90f223",
+    "test/d88-aws-ipc-barriers": "30fc6f3db0ec9be68e2c197e62b69db351ac9a1d",
+    "test/d88-aws-model-startup": "396061010cb7c50368fa4858726874f849f2ba74",
     "test/d88-aws-playback-gate": "8c9c38988c93e2d3e142e2e26dd631287e12b88d",
     "test/d88-aws-setup-events": "56bbf1e2adb703c94011a9e457ec8445dba44b55",
     "test/d88-aws-supersession-events": "6ed212bb12abacec8ec1feaca1e30a9282c68fe9",
