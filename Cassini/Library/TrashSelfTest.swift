@@ -25,7 +25,8 @@ import Darwin
     }
     static func run() async {
         let env = ProcessInfo.processInfo.environment
-        guard env["GITHUB_ACTIONS"] == "true", env["RUNNER_ENVIRONMENT"] == "github-hosted",
+        guard env["GITHUB_ACTIONS"] == "true",
+              env["RUNNER_ENVIRONMENT"] == "github-hosted" || (env["RUNNER_ENVIRONMENT"] == "self-hosted" && env["CASSINI_CI_GUI"] == "1"),
               RecordingFixture.enabled, let id = SettingsFixture.id,
               let file = LibraryLaunchContext.argument("-CassiniTrashRelocationFile") else { exit(78) }
         let primary = LibraryLocation.userHome.appendingPathComponent("Music/CassiniTrashFixture-" + id.uuidString)

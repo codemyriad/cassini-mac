@@ -5,7 +5,10 @@
     "project.yml",
     "scripts/hosted-display.py",
     "scripts/check-window-screenshots.py",
-    ".github/workflows/ux-shot.yml"
+    ".github/workflows/ux-shot.yml",
+    "scripts/gui_session.py",
+    "scripts/test-gui-session.py",
+    "scripts/gui-runner/**"
   ],
   "boards": [
     "Cassini/**",
@@ -37,7 +40,10 @@
     "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
     "Sources/CassiniBrowserControl/StagedNativeWriter.swift",
     "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
-    "Tests/CassiniRecordingTests/SpectrogramFixtureClock*"
+    "Tests/CassiniRecordingTests/SpectrogramFixtureClock*",
+    "scripts/gui_session.py",
+    "scripts/test-gui-session.py",
+    "scripts/gui-runner/**"
   ],
   "exports": [
     "Sources/**",

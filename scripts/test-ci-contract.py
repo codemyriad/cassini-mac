@@ -301,7 +301,7 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertIn('name: whistle-${{ matrix.runner }}\n',worker)
         for name in ['name: downloader-macos-15-intel\n','name: exports-macos-15-intel\n']:self.assertIn(name,package)
 
-    def test_gui_jobs_and_original_artifact_names_remain_hosted(self):
+    def test_unqualified_gui_jobs_and_artifact_names_remain_hosted(self):
         self.assertIn('runs-on: macos-15\n',ci_job('native_sink'))
         # App, XPC and GUI jobs need a login session; both their architectures stay hosted.
         for name in ['ux-parakeet.yml','ux-browser-setup.yml']:
@@ -313,7 +313,14 @@ class RentedRunnerRouting(unittest.TestCase):
             job=body[body.index('runner: [macos-15, macos-15-intel]'):]
             self.assertEqual(re.search(r'(?m)^    timeout-minutes: (\d+)$',job).group(1),'25',name)
         for name in ['ux-shot.yml','ux-boards.yml']:
-            self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
+            gui=(ROOT/'.github/workflows'/name).read_text()
+            expected="runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}"
+            self.assertIn(expected,gui,name)
+            self.assertIn('python3 scripts/gui_session.py',gui,name)
+            self.assertNotIn('cancel-in-progress: true',gui,name)
+            self.assertNotIn('concurrency:',gui,name) # One runner queues all GUI jobs without dropping pending work.
+            self.assertNotIn('CM_MAC_RUNNER',gui,name)
+
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()

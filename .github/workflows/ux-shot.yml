@@ -17,7 +17,7 @@ jobs:
   # larger mode and captures 1120x720. Each phase runs whatever the other one's result, so a
   # failure in one still leaves the other's evidence.
   screenshots:
-    runs-on: macos-15
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 25
     steps:
     - uses: actions/checkout@v5
@@ -25,9 +25,9 @@ jobs:
       uses: ./.github/actions/ci-products
       with:
         debug: 'true'
-    - name: Require GitHub-hosted runner
+    - name: Require a qualified GUI session
       id: hosted
-      run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      run: python3 scripts/gui_session.py
     - name: Capture actual windows with XCUITest
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
@@ -68,7 +68,7 @@ jobs:
     # Board-size phase (formerly ux-board-shot.yml).
     - name: Install capture tools
       if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
-      run: brew install displayplacer
+      run: command -v displayplacer >/dev/null || brew install displayplacer
     - name: Select and verify a larger display mode
       if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
       run: |

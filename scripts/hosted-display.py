@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select a listed 1× mode for board screenshots, on an ephemeral hosted runner only.
+"""Select a listed 1× mode for board screenshots, on a qualified hosted or dedicated GUI runner.
 
 Uses displayplacer's documented `list` and `id:... mode:...` interface. Refuses
 fallbacks that do not actually take effect. No screen capture or TCC API is used.
@@ -10,8 +10,8 @@ from pathlib import Path
 import re
 import subprocess
 
-if os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted" or os.environ.get("GITHUB_ACTIONS") != "true":
-    raise SystemExit("Display mode changes are restricted to GitHub-hosted Actions")
+from gui_session import check
+check()
 
 root = Path("build")
 root.mkdir(exist_ok=True)
