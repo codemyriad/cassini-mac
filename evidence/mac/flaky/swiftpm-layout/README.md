@@ -32,7 +32,7 @@ Select Xcode 16.4 and its SDK, set CASSINI_ABI_EVIDENCE outside the checkout,
 and run probe.py under ~/bin/heavy-run. The probe generates only a tiny temporary
 package. To check the mutation, apply restore-prefix.patch and run the same
 probe; restore the workflow afterward. No clock/CPU assertion, fixed sleep or
-wall-time success path is involved. All 57 CI contracts pass. Logs remain under
+wall-time success path is involved. All 58 CI contracts pass after the ordinary merge of main eb60a0b; the live workflow-policy probe passes again. Logs remain under
 ~/coordination/evidence/mac-flaky/cache-* on the coordinator.
 
 D87 #12 checks exact-source compiled artifact coherence; #17 uses actual native
