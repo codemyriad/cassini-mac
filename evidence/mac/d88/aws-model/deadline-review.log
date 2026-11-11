@@ -1,9 +1,0 @@
-before
-deadlineExpired=true
-before-mutated
-deadlineExpired=true
-fixed
-reason=startupDeadline
-mutated
-reason=hangBound
-PASS the fixed assertion rejects the hang-bound exit
