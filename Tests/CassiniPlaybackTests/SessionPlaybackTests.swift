@@ -43,6 +43,31 @@ import XCTest
         #expect(fake.lastSeek == 400 && fake.plays == 2 && actual.isPlaying)
         actual.stop()
     }
+    @Test func transcriptSeekDefersTransportUntilExplicitPlay() async {
+        let fake = FakeTransport(), actual = state(fake), meeting = meeting()
+        defer { actual.stop() }
+        actual.seek(meeting,toMs:100)
+        actual.seek(meeting,toMs:400)
+        #expect(actual.positionMs == 400 && actual.preparation == nil)
+        #expect(fake.lastSeek == nil && fake.plays == 0)
+
+        actual.toggle(meeting)
+        await actual.preparation?.value
+        #expect(fake.lastSeek == 400 && fake.plays == 0)
+        fake.completion?(true)
+        #expect(fake.plays == 1 && actual.isPlaying && actual.positionMs == 400)
+    }
+    @Test func stagedSeekToEndStillPlaysFromTheBeginning() async {
+        let fake = FakeTransport(), actual = state(fake)
+        var source = meeting(); source.durationMs = 1000
+        defer { actual.stop() }
+        actual.seek(source,toMs:2000)
+        #expect(actual.positionMs == 1000 && actual.preparation == nil)
+
+        actual.toggle(source)
+        await actual.preparation?.value
+        #expect(actual.positionMs == 0 && fake.lastSeek == nil && fake.plays == 1)
+    }
     @Test func playFromASearchHitSurvivesAsynchronousPreparation() async {
         let fake = FakeTransport(), actual = state(fake), meeting = meeting()
         actual.prepare(meeting); actual.seek(toMs:400); actual.toggle(meeting)
