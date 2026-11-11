@@ -17,6 +17,9 @@ import Testing
         let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: source.appendingPathComponent("cases.json"))) as! [String: Any]
         let cases = manifest["cases"] as! [[String: Any]]
         let ids = Set(cases.map { $0["id"] as! String })
+        let timeFile = try #require(Bundle.module.url(forResource:"MeetingTimeExpectations",withExtension:"json"))
+        let timeExpectations = try JSONSerialization.jsonObject(with:Data(contentsOf:timeFile)) as! [String:Any]
+        let creationOnly = timeExpectations["creationOnlyReceived"] as! [String:[String]]
         // 13 S-3a cases plus the 9 of shared test 8 (D67).
         try #require(cases.count == 22 && ids.count == 22)
         try #require(ids.contains("main") && Set(cases.flatMap { $0["rules"] as! [String] }).isSuperset(of: (1...9).map { "R\($0)" }))
@@ -52,7 +55,8 @@ import Testing
             } catch {
                 actual = ["scan": "failed", "groups": []]
             }
-            let expected = try JSONSerialization.jsonObject(with: Data(contentsOf: source.appendingPathComponent("expected/\(id).json")))
+            let originalExpected = try JSONSerialization.jsonObject(with: Data(contentsOf: source.appendingPathComponent("expected/\(id).json")))
+            let expected = Self.d95Expectation(originalExpected,creationOnly:Set(creationOnly[id] ?? []))
             let actualData = try JSONSerialization.data(withJSONObject: actual, options: [.sortedKeys, .prettyPrinted])
             let expectedData = try JSONSerialization.data(withJSONObject: expected, options: [.sortedKeys, .prettyPrinted])
             if let results {
@@ -62,6 +66,24 @@ import Testing
             #expect(String(decoding: actualData, as: UTF8.self) == String(decoding: expectedData, as: UTF8.self), "S-3a \(id)")
             print("S-3a \(id): compared exact scan/groups/meeting fields")
         }
+    }
+    /// Explicit D95 deltas to the frozen S-3a oracle, not output-derived expectations.
+    /// Preserve row order (creation remains a sorting fallback) and every non-time field.
+    private static func d95Expectation(_ original: Any, creationOnly: Set<String>) -> Any {
+        guard !creationOnly.isEmpty else { return original }
+        var expected = original as! [String:Any], groups: [[String:Any]] = []
+        for group in expected["groups"] as! [[String:Any]] {
+            for var row in group["meetings"] as! [[String:Any]] {
+                let unknown = row["origin"] as? String == "received" && creationOnly.contains(row["id"] as! String)
+                let title = unknown ? "Date unknown" : group["title"] as! String
+                if unknown { row["startMs"] = NSNull() }
+                if groups.last?["title"] as? String == title {
+                    var rows = groups[groups.count-1]["meetings"] as! [[String:Any]]; rows.append(row)
+                    groups[groups.count-1]["meetings"] = rows
+                } else { groups.append(["title":title,"meetings":[row]]) }
+            }
+        }
+        expected["groups"] = groups; return expected
     }
     private static func nullable<T>(_ value: T?) -> Any { value.map { $0 as Any } ?? NSNull() }
     private static func row(_ meeting: LibraryMeeting) -> [String: Any] {

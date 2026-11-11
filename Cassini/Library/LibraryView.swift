@@ -109,7 +109,7 @@ struct LibraryView: View {
                             .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
                             .help(UXText.text("meeting.renameEllipsis"))
                             .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-                        if let start = detail.meeting.start {
+                        if let start = detail.meeting.meetingTime {
                             Text(store.format.previewSubtitle(start,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
                                 .font(.system(size:11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
                         }
@@ -327,7 +327,7 @@ struct LibraryView: View {
             HStack(spacing: 8) {
                 Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
                 Spacer(minLength: 2)
-                if let start = meeting.start { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
+                if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
             }
             HStack(spacing: 6) {
                 if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
@@ -368,7 +368,7 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
-                    if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
+                    if let start = meeting.meetingTime { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("preview-subtitle") }
                 }
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(.orange) }
                 if meeting.state.transcript == .queued || meeting.state.transcript == .running {

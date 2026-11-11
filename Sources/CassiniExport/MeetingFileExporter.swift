@@ -33,9 +33,8 @@ public enum MeetingFileExporter {
               FileManager.default.createFile(atPath:artifact.url.path,contents:data,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.tooLarge }
         return artifact
     }
-    /// `timeZone`: the Library device's zone, used for the wall-clock recording label
-    /// and when names.py chooses a namePrefix from a start without a recorded offset
-    /// or from the import time. The recording instant is also exported in UTC.
+    /// `timeZone`: the Library device's zone for legacy namePrefix selection.
+    /// A site-local label requires the offset actually recorded at capture start.
     public static func cassini(_ meeting: LibraryMeeting, assets: OpusAssets?,
                                temporaryRoot: URL = FileManager.default.temporaryDirectory,
                                timeZone: TimeZone = .current,
@@ -69,7 +68,12 @@ public enum MeetingFileExporter {
             // can carry (D65). A malformed v1 local label must instead be dropped.
             let originalLocal = file.manifest?.raw["meeting"]?["recordedAtLocal"]
             let canCarryLocal = originalLocal == nil || originalLocal?.string.map(validLocalRecordingLabel) == true
-            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryLocal,
+            let canCarryTime = file.manifest.map { m in
+                file.tags?["CASSINI_RECORDED_AT_UTC"] == m.meeting.recordedAtUtc &&
+                file.tags?["CASSINI_RECORDED_AT_LOCAL"] == m.meeting.recordedAtLocal &&
+                file.tags?["DATE"] == MeetingTime.dateTag(recordedAtUtc:m.meeting.recordedAtUtc,createdAtUtc:m.meeting.createdAtUtc,legacy:file.tags?["DATE"])
+            } ?? false
+            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryLocal, canCarryTime,
                let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
                 _ = try CodemyriadNamespace.validated(namespace)
                 guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
@@ -132,16 +136,11 @@ public enum MeetingFileExporter {
                 let writtenOnMac = original != nil && CodemyriadNamespace.transcribedOnMac(stored,importedTranscript:importedTranscript)
                 let mine = original == nil || (writtenOnMac && complete)
                 let set = try PortableMeetingTags.transcripts(own:mine ? (body,language,words.count) : nil,carried:original,shouldCancel:shouldCancel)
-                // D65: the file's DATE: a received file keeps its own; a Mac recording's is its start.
-                let fileDate = current.state.origin == .own ? Self.dateTag(current.start,zone:timeZone) : tagSource?.tags?["DATE"]
                 let manifest = try self.manifest(current,digest:digest,original:original,choice:choice,dateTag:dateTag,originalTitle:originalTitle,
                                                  timeZone:timeZone,importedTranscript:importedTranscript,transcripts:set,carriedOnly:!mine,
-                                                 damaged:(original == nil || writtenOnMac) && current.state.transcript == .damaged,stored:stored,words:words,date:fileDate)
-                // D65: a received file keeps its own DATE (carried); a Mac recording's is its start.
-                // Both count in the revision (#133 review).
-                let date = current.state.origin == .own ? fileDate.map { [Comment(name:"DATE",value:$0)] } ?? [] : []
+                                                 damaged:(original == nil || writtenOnMac) && current.state.transcript == .damaged,stored:stored,words:words)
                 tags = try PortableMeetingTags.make(manifest:manifest,transcripts:set,
-                                                    carriedTags:(tagSource.map { PortableMeetingTags.carriedTags($0,besides:set) } ?? []) + date,shouldCancel:shouldCancel)
+                                                    carriedTags:tagSource.map { PortableMeetingTags.carriedTags($0,besides:set) } ?? [],shouldCancel:shouldCancel)
                 items = mine ? words : []; carried = set.entries.count; break
             } catch is CodemyriadNamespace.MetadataChanged {
                 attempt += 1
@@ -198,11 +197,17 @@ public enum MeetingFileExporter {
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
                                  importedTranscript: [String:Any]?, transcripts: PortableTranscripts, carriedOnly: Bool,
-                                 damaged: Bool, stored: JSON?, words: [LibraryTranscriptItem], date: String?) throws -> JSON {
+                                 damaged: Bool, stored: JSON?, words: [LibraryTranscriptItem]) throws -> JSON {
         // D65: the file's creation time and DATE, decided before any revision is (#133 review): a
         // revision always covers them. Only an export-time fallback stays out of the comparison.
         let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag)
-        let dated = (created.exportTime ? "" : created.value) + "\u{0}" + (date ?? "")
+        let recordedUtc: String?
+        if meeting.state.origin == .own { recordedUtc = meeting.start.map(MeetingTime.utcString) }
+        else if let original = file?.manifest { recordedUtc = original.meeting.recordedAtUtc }
+        else { recordedUtc = dateTag.flatMap(MeetingTime.parseInstant).map(MeetingTime.utcString) }
+        let mirrorDate = MeetingTime.dateTag(recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)
+        let revisionDate = created.exportTime ? "" : mirrorDate
+        let dated = (created.exportTime ? "" : created.value) + "\u{0}" + revisionDate
         // `damaged`: Mac's own words (a recording's, or a received file's Write down) were read as
         // damaged; a received file's originals go out as they came, whatever Mac read of them.
         let original = file?.manifest
@@ -257,21 +262,20 @@ public enum MeetingFileExporter {
         // so a later language change never changes the title under the same revision.
         let untitled = meeting.titleIsUntitled ? CodemyriadNamespace.untitled(stored) : nil
         guard let title = implied ?? untitled ?? meeting.exportTitle ?? meeting.title, !title.isEmpty else { throw MeetingExportError.invalidSource }
-        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         let audio: JSON = .object([("container",.string("ogg")),("codec",.string("opus")),("sampleRate",.number("48000")),
             ("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
         let integrity: JSON = .object([("matchPolicy",.string("exact-opus-audio-v1")),("opusAudioSha256",.string(digest.sha256)),
             ("sampleRate",.number("48000")),("channels",.number(String(digest.channels))),("sampleCount",.number(String(digest.sampleCount))),("durationMs",.number(String(digest.durationMs)))])
         var info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
             ("createdAtUtc",.string(created.value)),("durationMs",.number(String(digest.durationMs)))])
-        if meeting.state.origin == .own, let start = meeting.start {
+        if let recordedUtc { info = try info.setting("recordedAtUtc",to:.string(recordedUtc)) }
+        if meeting.state.origin == .own, let start = meeting.start,
+           let offset = meeting.recordingUtcOffsetMinutes, let siteZone = TimeZone(secondsFromGMT:offset * 60) {
             let local = DateFormatter(); local.locale = Locale(identifier:"en_US_POSIX")
-            local.calendar = Calendar(identifier:.gregorian); local.timeZone = timeZone
+            local.calendar = Calendar(identifier:.gregorian); local.timeZone = siteZone
             local.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
             let second = Date(timeIntervalSince1970:start.timeIntervalSince1970.rounded(.down))
             info = try info.setting("recordedAtLocal",to:.string(local.string(from:second)))
-            iso.timeZone = TimeZone(secondsFromGMT:0)
-            info = try info.setting("recordedAtUtc",to:.string(iso.string(from:start)))
         } else if let recorded = original?.meeting.recordedAtLocal, validLocalRecordingLabel(recorded) {
             // The original label belongs to the recording site. An offset or fraction
             // is invalid in v1; discard it rather than inventing a replacement label.
@@ -354,7 +358,7 @@ public enum MeetingFileExporter {
             // carries except the export stamp and the revision itself.
             var content = created.exportTime ? try root.setting("meeting",to:root["meeting"]!.setting("createdAtUtc",to:nil)) : root
             content = try content.setting("x",to:extensions.setting(CodemyriadNamespace.key,to:namespace.setting("revision",to:nil)))
-            var data = try content.encoded(); data.append(0); data.append(Data(transcripts.digest.utf8)); data.append(0); data.append(Data((date ?? "").utf8))
+            var data = try content.encoded(); data.append(0); data.append(Data(transcripts.digest.utf8)); data.append(0); data.append(Data(revisionDate.utf8))
             do {
                 let revision = try CodemyriadNamespace.ownRevision(meeting,digest:SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined())
                 namespace = try namespace.setting("revision",to:.number(String(revision)))
@@ -387,12 +391,10 @@ public enum MeetingFileExporter {
         // which a regex '$' alone may accept. Readers remain lenient for older files.
         label.utf8.count == 19 && label.range(of:#"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"#,options:.regularExpression) != nil
     }
-    /// MAPPING: DATE is the meeting's start, `YYYY-MM-DDTHH:MM:SS±HH:MM`, seconds floored.
+    /// D95: DATE is the same UTC string as recordedAtUtc, including its precision.
     static func dateTag(_ start: Date?, zone: TimeZone) -> String? {
         guard let start else { return nil }
-        let format = DateFormatter(); format.locale = Locale(identifier:"en_US_POSIX"); format.timeZone = zone
-        format.dateFormat = "yyyy-MM-dd'T'HH:mm:ssxxx"
-        return format.string(from:Date(timeIntervalSince1970:start.timeIntervalSince1970.rounded(.down)))
+        return MeetingTime.utcString(start)
     }
     private static func regular(_ url: URL) throws {
         var info = stat()

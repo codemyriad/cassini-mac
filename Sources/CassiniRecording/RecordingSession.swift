@@ -18,7 +18,9 @@ public struct RecordingManifest: Codable, Sendable {
     public var captureOutcome: SessionCaptureOutcome? = nil
     /// D58: sides requested but never opened; absent when empty.
     public var refusals: [CaptureRefusal]? = nil
-    enum CodingKeys: String, CodingKey { case version, id, createdAt, title, source, state, problem, tracks, problemKind, events, captureOutcome, refusals }
+    /// The recording site's offset at playback position zero; absent in legacy captures.
+    public var startedAtUtcOffsetMinutes: Int? = nil
+    enum CodingKeys: String, CodingKey { case version, id, createdAt, title, source, state, problem, tracks, problemKind, events, captureOutcome, refusals, startedAtUtcOffsetMinutes }
 }
 
 /// D52 per-source outcome. neverAudio: no admitted frames; lowAudio: under 1000 ms;
@@ -111,6 +113,7 @@ extension RecordingManifest {
         if (events?.count ?? 0) > 1000 { events = nil }
         captureOutcome = (try? c.decodeIfPresent(SessionCaptureOutcome.self,forKey:.captureOutcome)) ?? nil
         refusals = ((try? c.decode([CaptureRefusal.Lossy].self,forKey:.refusals)) ?? []).compactMap(\.value).nilIfEmpty
+        startedAtUtcOffsetMinutes = (try? c.decode(Int.self,forKey:.startedAtUtcOffsetMinutes)).flatMap { (-720...840).contains($0) ? $0 : nil }
     }
 }
 extension RecordingTrack {
@@ -211,12 +214,13 @@ public final class RecordingSession {
     /// Exercise the real periodic checkpoint on the next append without a wall-clock sleep.
     @_spi(Testing) public func requirePeriodicCheckpoint() { lastCheckpoint = .distantPast }
 
-    public init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
+    public init(parent: URL, title: String, source: String, id: UUID = UUID(), timeZone: TimeZone = .current) throws {
         let observers = RecordedPCMObservers(); pcmObservers = observers
         recordedPCM = RecordedPCMPolicy(observers:observers)
         directory = parent.appendingPathComponent("Recording-\(id.uuidString.lowercased())", isDirectory: true)
         manifest = RecordingManifest(version: 1, id: id, createdAt: Date(), title: String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))),
                                      source: source, state: "recording", tracks: [])
+        manifest.startedAtUtcOffsetMinutes = timeZone.secondsFromGMT(for:manifest.createdAt) / 60
         try FileManager.default.createDirectory(at:parent,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
         guard mkdir(directory.path,0o700) == 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
         do { try checkpoint() }

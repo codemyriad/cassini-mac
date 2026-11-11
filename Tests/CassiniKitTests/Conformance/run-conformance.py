@@ -28,7 +28,7 @@ def codes(items):
 LOAD_BEARING = {"state", "classification", "payloadTrust", "audioTrust", "errors"}
 PROFILES = ("metadata", "full")
 EXPECT_KEYS = set(SCALARS) | {"transcriptIds", "speakerIds", "wordCounts", "errors",
-                              "warnings", "sameContentAs", "mustNot"}
+                              "warnings", "sameContentAs", "mustNot", "meetingStart"}
 MUST_NOT = {"emit-transcript", "report-payload-verified", "report-audio-verified",
             "fail", "discard-transcript", "present-as-current",
             "sum-word-counts-across-transcripts"}
@@ -105,6 +105,17 @@ def check(expect, obs, profile, index):
             fail.append(f"wordCounts: no count for the default transcript {d!r}")
         elif expect["wordCounts"] and not d and not got:
             fail.append(f"wordCounts: expected {expect['wordCounts']}, got none")
+    if "meetingStart" in expect:
+        # Showing a meeting time is optional, so a reader that reports none is
+        # only noted. One that reports a time must take it from the right
+        # field, and give that field's text unconverted.
+        if "meetingStart" not in obs:
+            note.append("meetingStart: not reported")
+        else:
+            got = obs["meetingStart"]
+            got = {k: got.get(k) for k in ("source", "value")} if isinstance(got, dict) else got
+            if got != expect["meetingStart"]:
+                fail.append(f"meetingStart: expected {expect['meetingStart']}, got {got}")
     if "errors" in expect:
         want, got = codes(expect["errors"]), codes(obs.get("errors"))
         if want and not set(want) <= set(got) and not (got and want == ["decode-failed"]):

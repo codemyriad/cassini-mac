@@ -110,7 +110,7 @@ jobs:
     - uses: actions/checkout@v5
       with:
         repository: codemyriad/cassini-format
-        ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+        ref: 32f37a6200c88bdd4d23c1f44497f1761f3401da
         path: build/format-reference
         persist-credentials: 'false'
     - name: Independent pure metadata and audio readers
@@ -317,7 +317,7 @@ jobs:
       if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
       with:
         repository: codemyriad/cassini-format
-        ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+        ref: 32f37a6200c88bdd4d23c1f44497f1761f3401da
         path: build/format-reference
         persist-credentials: 'false'
     - name: Independent pure metadata and audio readers

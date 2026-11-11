@@ -3,6 +3,7 @@ import Foundation
 import CryptoKit
 import Testing
 import CassiniLibrary
+import CassiniKit
 @testable import CassiniSearch
 
 private final class SearchFixture {
@@ -36,6 +37,26 @@ private final class SearchFixture {
 }
 
 struct SearchTests {
+    @Test func recordingLabelsAndUnknownTimesRefreshWithoutChangingTranscriptCache() async throws {
+        let fixture = try SearchFixture()
+        var meeting = try #require(fixture.meetings().first { $0.transcriptItems.contains { $0.text.lowercased().contains("budget") } })
+        let repository = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        var info = try #require(CassiniReader.read(contentsOf:repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/028-date-is-created-at.opus")).manifest?.meeting)
+        info.recordedAtLocal = "2026-11-09T00:15:00"
+        meeting.start = nil; meeting.recordedTime = MeetingTime.resolve(meeting:info,dateTag:info.createdAtUtc)
+        let now = try #require(MeetingTime.parseInstant("2026-11-08T23:30:00Z"))
+        let index = try SearchIndex(cache:fixture.cache)
+        try await index.replace([meeting])
+        #expect(try await !index.search("budget",filter:.init(date:.today),now:now,timeZone:fixture.zone).isEmpty)
+        info.recordedAtLocal = "2026-11-08T00:15:00"
+        meeting.recordedTime = MeetingTime.resolve(meeting:info,dateTag:info.createdAtUtc)
+        try await index.replace([meeting])
+        #expect(try await index.search("budget",filter:.init(date:.today),now:now,timeZone:fixture.zone).isEmpty)
+        meeting.recordedTime = nil; meeting.sortingFallback = now
+        try await index.replace([meeting])
+        #expect(try await index.search("budget",filter:.init(date:.today),now:now,timeZone:fixture.zone).isEmpty)
+        #expect(try await !index.search("budget",now:now,timeZone:fixture.zone).isEmpty)
+    }
     @Test func sharedMainHasFourPlacesInThreeMeetingsInD14OrderWithoutWritingTheLibrary() async throws {
         let fixture = try SearchFixture(), before = try fixture.bytes(), meetings = try fixture.meetings()
         let index = try SearchIndex(cache:fixture.cache); try await index.replace(meetings)

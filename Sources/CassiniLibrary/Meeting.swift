@@ -116,6 +116,22 @@ public struct LibraryMeeting: Sendable {
     /// use this independently trusted local/verified title or filename instead.
     public var exportTitle: String? = nil
     public var start: Date?
+    public var recordingUtcOffsetMinutes: Int? = nil
+    /// An unzoned recording label remains separate from `start`, which is an instant.
+    public var recordedTime: MeetingTime? = nil
+    /// Creation/import time is usable for ordering, never for a meeting-time label.
+    public var sortingFallback: Date? = nil
+    public var meetingTime: MeetingTime? {
+        if let recordedTime, recordedTime.instant == start { return recordedTime }
+        return start.map { MeetingTime(instant:$0) }
+    }
+    public var sortingInstant: Date? {
+        recordedTime?.source == .recordedAtLocal && start == nil ? nil : (start ?? sortingFallback)
+    }
+    public var timeSortKey: String? {
+        if let recordedTime, recordedTime.instant == start { return recordedTime.orderingKey }
+        return (start ?? sortingFallback).map { MeetingTime(instant:$0).orderingKey }
+    }
     /// Display duration only; D3 substitutes zero for unknown source starts. Never playback alignment.
     public var durationMs: Int64?
     public var speakers: [MeetingSpeaker] { didSet { transcriptTurns = [] } }
@@ -261,7 +277,7 @@ public struct LibraryScan: Sendable {
     public func groups(format: LibraryFormat) -> [LibraryDayGroup] {
         var groups: [LibraryDayGroup] = []
         for meeting in meetings {
-            let title = meeting.start.map(format.dayGroup) ?? "Date unknown"
+            let title = meeting.meetingTime.map(format.dayGroup) ?? "Date unknown"
             if groups.last?.title == title { groups[groups.count - 1].meetings.append(meeting) }
             else { groups.append(.init(title: title, meetings: [meeting])) }
         }
