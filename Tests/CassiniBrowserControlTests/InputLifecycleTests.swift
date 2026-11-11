@@ -55,8 +55,9 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.select(me:false,others:true)
         let event = try XCTUnwrap(owner.snapshot.manifest.events?.last(where:{ $0.type == "selection" }))
         let expected = AVAudioTime.seconds(forHostTime:now-origin)*1000
-        XCTAssertEqual(event.atMs,expected,accuracy:0.000001)
-        XCTAssertGreaterThan(event.atMs,2490.663,"the 2490.663ms request must not be backdated to the display's 2490ms")
+        let at = try XCTUnwrap(event.atMs)
+        XCTAssertEqual(at,expected,accuracy:0.000001)
+        XCTAssertGreaterThan(at,2490.663,"the 2490.663ms request must not be backdated to the display's 2490ms")
         XCTAssertEqual(event.me,false); XCTAssertEqual(event.others,true)
         try await inputs.stop(); try await owner.finish()
     }
