@@ -11,7 +11,7 @@ public struct MeetingTime: Sendable, Equatable {
     public let orderingKey:String
     public init(instant:Date) {
         source = .recordedAtUtc;value=Self.utcString(instant);self.instant=instant
-        orderingKey=Self.dateKey(instant)
+        orderingKey=Self.sortKey(for:instant)
     }
     private init(source:Source,value:String,instant:Date? = nil) {
         self.source=source;self.value=value;self.instant=instant
@@ -133,7 +133,8 @@ public struct MeetingTime: Sendable, Equatable {
     private static func text(_ p:Parts,yearWidth:Int) -> String {
         String(format:yearWidth==6 ? "%06lld-%02lld-%02lldT%02lld:%02lld:%02lld" : "%04lld-%02lld-%02lldT%02lld:%02lld:%02lld",p.year,p.month,p.day,p.hour,p.minute,p.second)
     }
-    private static func dateKey(_ date:Date) -> String {
+    /// Sort-only key without allocating a date formatter in comparator hot paths.
+    public static func sortKey(for date:Date) -> String {
         let value=date.timeIntervalSince1970,floor=value.rounded(.down)
         guard value.isFinite,abs(floor)<1e15 else {return ""}
         var seconds=Int64(floor),nanoseconds=Int64(((value-floor)*1e9).rounded())

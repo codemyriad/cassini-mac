@@ -2,6 +2,7 @@
 import Foundation
 import CryptoKit
 import Testing
+import CassiniKit
 import CassiniLibrary
 import CassiniKit
 @testable import CassiniSearch
@@ -102,6 +103,23 @@ struct SearchTests {
         let pasted = try await index.search("cafe\0budget").map(\.id)
         let spaced = try await index.search("cafe budget").map(\.id)
         #expect(pasted == spaced)
+    }
+    @Test func preciseRecordingKeysOrderSearchHitsWithoutRoundedDateTies() async throws {
+        let fixture=try SearchFixture(),all=try fixture.meetings()
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        var source=try #require(CassiniReader.read(contentsOf:repo.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/028-date-is-created-at.opus")).manifest?.meeting)
+        source.recordedAtLocal=nil
+        func item(_ digit:Int,_ value:String) throws -> LibraryMeeting {
+            var m=try #require(all.first {$0.id.uuidString.hasSuffix(String(digit)) && $0.state.origin == .own})
+            source.recordedAtUtc=value
+            let time=try #require(MeetingTime.resolve(meeting:source,dateTag:nil))
+            m.recordedTime=time;m.start=time.instant;m.state.lifecycle = .saved;m.state.transcript = .done
+            m.transcriptItems=[.init(speaker:"marta",startMs:0,endMs:100,text:"needle")]
+            return m
+        }
+        let a=try item(1,"2026-11-09T10:00:00.0000000001Z"),b=try item(3,"2026-11-09T10:00:00.0000000009Z")
+        let index=try SearchIndex(cache:fixture.cache);try await index.replace([a,b])
+        #expect(try await index.search("needle").map(\.meetingKey)==[b.libraryKey,a.libraryKey])
     }
     @Test func changedRemovedAndRenamedMeetingsDoNotLeaveStaleHits() async throws {
         let fixture = try SearchFixture(); let all = try fixture.meetings()

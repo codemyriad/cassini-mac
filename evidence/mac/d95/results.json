@@ -1,9 +1,9 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
   "mainMerged": "89c568b",
-  "headlessTests": 421,
+  "headlessTests": 433,
   "ciContracts": 56,
-  "restoredFocusedTests": 31,
+  "restoredFocusedTests": 43,
   "fullConformance": {
     "pass": 29,
     "warn": 0,
@@ -17,43 +17,49 @@
     "skip": 2
   },
   "sourceSHA256": {
-    "Sources/CassiniKit/MeetingTime.swift": "ad0e66cb05f48714db7de1e93e27ed83d36e37a3ab969da432ac45ca3d3ab6b6",
-    "Sources/CassiniKit/PortableMeetingTags.swift": "a12d108c19bc67d62b79e0fc9ed4a9e7153ab5eb40bfec714ac69977f27ef494",
-    "Sources/CassiniExport/MeetingFileExporter.swift": "2aa8e5f55e01516e25845834af18575b5b616378d9657f33ffa538b02e0c8108",
-    "Tests/CassiniExportTests/MeetingExportTests.swift": "f878ad0343d28591803925f01751b5c53fa701e0807e6e03000f0c2ac18169e2",
-    "Sources/CassiniSearch/SearchIndex.swift": "098cf8538440e70013e839a289285199875374d27856bb75a57ceee7d45bc89e",
-    "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "059c1a0479b62097ce769df8b9cf15e87b834d019512d0a96469d57bec84b185",
-    "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
-    "Cassini/Library/LibraryView.swift": "ce5ea5bbabe2f083542673116cae4cf06d7a843e4c69af2acaf744e203813936",
-    "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
+    "Cassini/Library/LibraryView.swift": "d7dbd8ea0f890b9edee67e13b3f06e3e6c2170c98c9819a72efaf4edb5fdeacf",
     "Cassini/Settings/UpdateDeferralSelfTest.swift": "10d8a679ac3dc3fcb6ab4296c86491057d8f5ec13c09d2031ce9dbb16f7189b8",
-    "Sources/CassiniLibrary/Metadata.swift": "cf6e380ed7090604a192e2712e783dbde21415bbcf9ecba9071ffdd09492efa7",
-    "Tests/CassiniLibraryTests/SharedLibraryVectorsTests.swift": "dfdf82102663cebf91a02a47200b4738cc582fd435840d57e49404e16c2159a7",
-    "Sources/CassiniLibrary/MeetingTimeFormatting.swift": "1a4633e3a774e1cadde059a04bc8a7857bc0054aac16ac18f4e17bee8c2a051b",
+    "QuickLook/PreviewViewController.swift": "60d854754e9a09665b8f13a7d071d3a7fdcdbb0829bd2fe217e64b77d92b8df0",
+    "Sources/CassiniExport/MeetingFileExporter.swift": "4bc5bdad209056457e519bedc9fe5384f0c50f4fedbc4d1ba589347fca452bd9",
+    "Sources/CassiniKit/MeetingTime.swift": "bbabade4de38e1b37e1e728158e04ba96bafa442795d00ee9d0c4fb4a958d685",
+    "Sources/CassiniKit/PortableMeetingTags.swift": "a12d108c19bc67d62b79e0fc9ed4a9e7153ab5eb40bfec714ac69977f27ef494",
+    "Sources/CassiniLibrary/LibraryFormat.swift": "ac8a33ae81bf806357594b0302f9415a50a2282db08bc5f389401d2a4fcb2f75",
     "Sources/CassiniLibrary/LibraryNames.swift": "2fb868a8a8cfc0d77dff103d89ed226544fd88de9b95198c20d8ce1b5be69b40",
-    "Sources/CassiniLibrary/Meeting.swift": "827e59c8fab00b329107bb4fbcdb50d478ff7a91f2081c6a58cf33b37e1811ad",
-    "Tests/CassiniKitTests/MeetingTimeTests.swift": "e694887a6b2aefd792fc6e20266a6e05f6c2604dcdebb9682cbac2d205277760"
+    "Sources/CassiniLibrary/LibraryScanner.swift": "02f3c7d76fa8d9d80ff75feba4c3a46912e98ce7382fa03a9d3362ff38b0aae4",
+    "Sources/CassiniLibrary/Meeting.swift": "50f819688f5935bc45cc197d808f83e8db0047a55dfe2da0e490aa6545d5cc12",
+    "Sources/CassiniLibrary/MeetingTimeFormatting.swift": "912ae6ca0a48685c5155044341d0bbe44d02e055cd2e5d7d84ce615718255cfc",
+    "Sources/CassiniLibrary/Metadata.swift": "cf6e380ed7090604a192e2712e783dbde21415bbcf9ecba9071ffdd09492efa7",
+    "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
+    "Sources/CassiniSearch/SearchIndex.swift": "496a853f8e35fe1136f300db48d89ae0c4949176ae06602ccc9bbbd80ff1431a",
+    "Tests/CassiniExportTests/MeetingExportTests.swift": "92f8653c4e55874639c6a873354efcdea922817f082c31e513a29d5cb7a5bc2d",
+    "Tests/CassiniExportTests/RecordingTimeR2ExportTests.swift": "0008d0b463c1f7877aa1521466a36f58b7eb179a1eeffab5706be8e8bd2d4514",
+    "Tests/CassiniKitTests/MeetingTimeTests.swift": "46c556906d5e0149b2185143f50bb945151ca45aea5903872b2695ea3dd9b16e",
+    "Tests/CassiniLibraryTests/MeetingTimeR2LibraryTests.swift": "1a1e716dd3450dc3889f749a15a2c8d22d9b6cb9c0f2b476fc949eadcf119a75",
+    "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "059c1a0479b62097ce769df8b9cf15e87b834d019512d0a96469d57bec84b185",
+    "Tests/CassiniLibraryTests/SharedLibraryVectorsTests.swift": "dfdf82102663cebf91a02a47200b4738cc582fd435840d57e49404e16c2159a7",
+    "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
+    "Tests/CassiniSearchTests/SearchTests.swift": "9deba70b2d46bded06f7ba38fd48df2764809d272b2decfdc5499064111f841a"
   },
   "mutations": {
     "utc-priority": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test lowercaseRFC3339RecordingTimesAreInstants(_:) recorded an issue with 1 argument value \u2192 \"2026-11-09t09:31:48.250Z\" at MeetingTimeTests.swift:48:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:nil)?.instant \u2192 nil) == (expected \u2192 2026-11-09 09:31:48 +0000)"
+      "example": "\u2718 Test normativeVectors(vector:source:value:) recorded an issue with 3 arguments vector \u2192 \"027-recorded-at-utc\", source \u2192 \"recordedAtUtc\", value \u2192 \"2026-11-09T09:31:48.250Z\" at MeetingTimeTests.swift:17:9: Expectation failed: (file.meetingTime?.source.rawValue \u2192 \"DATE\") == (source \u2192 \"recordedAtUtc\")"
     },
     "utc-mirror": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test receivedExportsPreserveOnlyTheKnownRecordingTime(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"2001-02-03T04:05:06.125\") at MeetingExportTests.swift:283:9: Expectation failed: (result.tags?[\"CASSINI_RECORDED_AT_UTC\"] \u2192 nil) == \"2001-02-02T19:05:06.125Z\""
+      "example": "\u2718 Test receivedExportsPreserveOnlyTheKnownRecordingTime(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"2001-02-03T04:05:06+09:00\") at MeetingExportTests.swift:317:9: Expectation failed: (result.tags?[\"CASSINI_RECORDED_AT_UTC\"] \u2192 nil) == \"2001-02-02T19:05:06.125Z\""
     },
     "utc-sanitization": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test receivedExportsDropMalformedUTC(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"not UTC\") at MeetingExportTests.swift:324:13: Expectation failed: (result.manifest?.raw[\"meeting\"]?[\"recordedAtUtc\"] \u2192 .string(\"not UTC\")) == nil"
+      "example": "\u2718 Test receivedExportsDropMalformedUTC(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"not UTC\") at MeetingExportTests.swift:358:13: Expectation failed: (result.manifest?.raw[\"meeting\"]?[\"recordedAtUtc\"] \u2192 .string(\"not UTC\")) == nil"
     },
     "manifest-trust": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test unreadableCassiniDoesNotBorrowDATE(_:) recorded an issue with 1 argument kind \u2192 \"unknown-major\" at MeetingTimeTests.swift:41:9: Expectation failed: (file.meetingTime \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.date, value: \"2001-02-03T04:05:06+01:00\", instant: Optional(2001-02-03 03:05:06 +0000), orderingKey: \"2001-02-03T03:05:06.000\")) == nil"
+      "example": "\u2718 Test unreadableCassiniDoesNotBorrowDATE(_:) recorded an issue with 1 argument kind \u2192 \"damaged-manifest\" at MeetingTimeTests.swift:41:9: Expectation failed: (file.meetingTime \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.date, value: \"2001-02-03T04:05:06+01:00\", instant: Optional(2001-02-03 03:05:06 +0000), orderingKey: \"002001-02-03T03:05:06.0\")) == nil"
     },
     "midnight-day-end": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test midnightDSTUsesCalendarDayBounds(zoneID:nowText:firstText:endText:weekText:) recorded an issue with 5 arguments zoneID \u2192 \"America/Havana\", nowText \u2192 \"2015-03-08T15:00:00Z\", firstText \u2192 \"2015-03-08T05:00:00Z\", endText \u2192 \"2015-03-09T04:00:00Z\", weekText \u2192 \"2015-03-02T05:00:00Z\" at MeetingTimeTests.swift:18:13: Expectation failed: (SearchDate.today.contains(meetingTime:MeetingTime(instant:instant),now:now,timeZone:zone) \u2192 true) == (expected \u2192 false)"
+      "example": "\u2718 Test midnightDSTUsesCalendarDayBounds(zoneID:nowText:firstText:endText:weekText:) recorded an issue with 5 arguments zoneID \u2192 \"America/Sao_Paulo\", nowText \u2192 \"2018-11-04T15:00:00Z\", firstText \u2192 \"2018-11-04T03:00:00Z\", endText \u2192 \"2018-11-05T02:00:00Z\", weekText \u2192 \"2018-10-29T03:00:00Z\" at MeetingTimeTests.swift:18:13: Expectation failed: (SearchDate.today.contains(meetingTime:MeetingTime(instant:instant),now:now,timeZone:zone) \u2192 true) == (expected \u2192 false)"
     },
     "rfc3339-case": {
       "result": "behavioral assertion failure",
@@ -70,13 +76,57 @@
     "unknown-date-catalog": {
       "result": "behavioral assertion failure",
       "example": "\u2718 Test mixedRecordingAndCreationTimesFormUniqueLocalizedSections() recorded an issue at MeetingTimeTests.swift:102:9: Expectation failed: (localized.first?.title \u2192 \"Date unknown\") == (LibraryLocalization.shared.text(\"library.group.unknownDate\",language:.fr,locale:french.locale) \u2192 \"Date inconnue\")"
+    },
+    "calendar-day": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test impossibleInstantsCannotOverrideAValidDATE(_:) recorded an issue with 1 argument value \u2192 \"2026-02-29T09:00:00Z\" at MeetingTimeTests.swift:67:9: Expectation failed: (MeetingTime.parseInstant(value) \u2192 2026-03-01 09:00:00 +0000) == nil"
+    },
+    "clock-hour": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test invalidUTCDoesNotReplaceDistinctDATEOnReadExportOrReimport(_:) recorded an issue with 1 argument invalid \u2192 \"2026-11-09T24:00:00Z\" at RecordingTimeR2ExportTests.swift:35:9: Expectation failed: (file.meetingTime?.source == .date \u2192 false) && (file.meetingTime?.value==date \u2192 <not evaluated>)"
+    },
+    "fraction-equality": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test fractionalCreationComparisonDoesNotRoundToMilliseconds() recorded an issue at MeetingTimeTests.swift:78:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:distinct)?.value \u2192 nil) == (distinct \u2192 \"2026-11-09T09:31:48.0009Z\")"
+    },
+    "raw-reader-value": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test lowercaseRFC3339RecordingTimesAreInstants(_:) recorded an issue with 1 argument value \u2192 \"2026-11-09t09:31:48.250z\" at MeetingTimeTests.swift:50:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:nil)?.value \u2192 \"2026-11-09T09:31:48.250Z\") == (value \u2192 \"2026-11-09t09:31:48.250z\")"
+    },
+    "canonical-copy": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test lowercaseRecordingUTCReexportsAndReimports(_:lowercaseCreation:) recorded an issue with 2 arguments recorded \u2192 \"2001-02-02t19:05:06.125Z\", lowercaseCreation \u2192 false at MeetingExportTests.swift:249:13: Expectation failed: (file.manifest?.meeting.recordedAtUtc \u2192 \"2001-02-02t19:05:06.125Z\") == \"2001-02-02T19:05:06.125Z\""
+    },
+    "canonical-creation": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test lowercaseRecordingUTCReexportsAndReimports(_:lowercaseCreation:) recorded an issue with 2 arguments recorded \u2192 \"2001-02-02T19:05:06.125Z\", lowercaseCreation \u2192 true at MeetingExportTests.swift:252:13: Expectation failed: (file.manifest?.meeting.createdAtUtc \u2192 \"2026-11-09t10:47:02z\") == \"2026-11-09T10:47:02Z\""
+    },
+    "civil-validation": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test malformedCivilLabelsNeverBecomeMeetingTime(_:) recorded an issue with 1 argument value \u2192 \"2026-11-09T09:00:00Z\" at MeetingTimeTests.swift:99:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc) \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.recordedAtLocal, value: \"2026-11-09T09:00:00Z\", instant: nil, orderingKey: \"\")) == nil"
+    },
+    "library-date-branch": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test exactFractionOrderingDoesNotFallBackToRoundedDate() recorded an issue at MeetingTimeR2LibraryTests.swift:41:9: Expectation failed: (LibraryScanner.ordered(b,a) \u2192 false) && (!LibraryScanner.ordered(a,b) \u2192 <not evaluated>)"
+    },
+    "search-date-branch": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test preciseRecordingKeysOrderSearchHitsWithoutRoundedDateTies() recorded an issue at SearchTests.swift:122:9: Expectation failed: try await index.search(\"needle\").map(\\.meetingKey)==[b.libraryKey,a.libraryKey]"
+    },
+    "quicklook-created": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test quickLookDateAssemblyUsesTheSharedRecordingTime() recorded an issue at MeetingTimeR2LibraryTests.swift:66:9: Expectation failed: (format.quickLookRecordingDate(local) \u2192 [\"Sunday 8 November 2026\"]) == ([civilFormat.absoluteDate(known)] \u2192 [\"Monday 9 November 2026\"])"
+    },
+    "unknown-subtitle-duration": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test unknownDateKeepsDurationProvenanceAndHitPosition(_:) recorded an issue with 1 argument language \u2192 .fr at MeetingTimeR2LibraryTests.swift:50:9: Expectation failed: (preview.contains(unknown) && preview.contains(duration) \u2192 false) && (preview.contains(received) \u2192 <not evaluated>)"
     }
   },
   "referenceWhen": {
     "pin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
-    "matchingCases": 31,
+    "matchingCases": 43,
     "vectors": 29,
-    "generatedUnreadableManifests": 2
+    "generatedRoundtripFiles": 14
   },
   "processTimeZones": [
     "EST5EDT",
@@ -128,17 +178,23 @@
     "sourceAndMetadataUnchanged": true,
     "mixedSections": "stable day ids; one trailing unknown group; catalog language/locale",
     "lowercaseRFC3339": "read, compare, import naming and export/reimport",
-    "nativeAppBuild": "Debug arm64, Xcode 16.4; xcodegen-generated project; ad-hoc signing: passed",
+    "nativeAppBuild": "Debug arm64 app and Quick Look, Xcode 16.4; generated project; ad-hoc signing: passed",
     "exactHeadCI": "pending",
-    "headlessTestsAfterMain": 421,
+    "headlessTestsAfterMain": 433,
     "ciContractsAfterMain": 56
   },
-  "validatedRevision": "60e30942d169ab29ab8188128fbed58ef71a349d",
-  "r2Checkpoint": {
-    "status": "unverified in-progress",
+  "priorValidatedRevision": "60e30942d169ab29ab8188128fbed58ef71a349d",
+  "secondReview": {
     "baselineRegressionIssues": 55,
-    "syntaxParse": "passed",
-    "heavyVerification": "queued, stopped at coordinator checkpoint",
-    "priorResultsApplyTo": "60e30942d169ab29ab8188128fbed58ef71a349d"
+    "strictCalendarClockAndOffsets": true,
+    "fullFractionPrecisionEqualityAndOrdering": true,
+    "rawReaderValuePreserved": true,
+    "canonicalProducerTimestamps": true,
+    "quickLookUsesSharedResolver": true,
+    "unknownSubtitlesPreserveComponents": "all six languages",
+    "productionMutations": 20,
+    "nativeBuild": "passed",
+    "ciContracts": 56,
+    "validationScope": "source hashes above; exact-head CI pending"
   }
 }

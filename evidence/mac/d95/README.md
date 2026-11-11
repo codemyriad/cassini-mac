@@ -29,7 +29,7 @@ Run `replay.py` under `~/bin/heavy-run` with Xcode 16.4 selected, SDKROOT set,
 `CASSINI_OPUS_ASSETS` pointing at verified test Opus assets, and
 `D95_EVIDENCE_DIR` pointing outside the checkout. It archives the current
 commit into private scratch and runs the affected headless partition, both
-conformance profiles, five separate production mutations, then restoration.
+conformance profiles, twenty separate production mutations, then restoration.
 Each mutation must compile and fail an executed behavioral assertion.
 The existing security-scoped bookmark case requires the login-session CI job;
 this headless partition uses the same exclusion as CI. Integrated app builds
@@ -164,21 +164,31 @@ linkage; that invocation is retained in evidence and is not counted as a pass.
 Generated project/workspace changes are excluded from the PR. Exact-head CI
 (including the login-session and Intel checks) remains the readiness gate.
 
-## Unverified coordinator checkpoint: second review follow-up
+## Second review corrections
 
-The next revision is in progress, not ready. New Codex r2 and agy reviews are
-`~/coordination/REVIEWS/cassini-mac-248-codex-r2.md` and
-`cassini-mac-248-agy.md`. The new parser/export regression slice fails 55
-assertions against the reviewed head. Local source now validates calendar,
-clock and offset fields; compares full fractional precision; preserves raw
-reader values; canonicalizes producer times; validates civil labels; uses a
-single sort key; moves Quick Look onto shared recording-time resolution; and
-keeps unknown-date subtitle components. Additional Quick Look, locale and sort
-tests are written. Only syntax parsing has run on this checkpoint. Heavy-run
-verification was queued and stopped at the coordinator's checkpoint request.
-No new successful typecheck, test or mutation result is claimed for this revision.
-The prior results.json hashes and pass counts describe the reviewed 60e3094
-revision; they must be refreshed after the follow-up is validated. Still needed:
-compile/fix the new code and tests, add precise export/re-import and Search sort
-regressions, update/replay production mutations and reference-reader cases,
-run affected checks/native builds, then wait for complete exact-head CI.
+Calendar days, leap years, clock fields and UTC offsets are validated before an
+instant can win over DATE. Equality uses integer UTC seconds and all fractional
+digits, independent of Foundation Date rounding. Distinct submillisecond DATE
+values survive read, export and re-import; equivalent values with different
+precision or offsets remain creation-only. Reader values preserve their selected
+text while exports canonicalize T/Z and retain fractional digits.
+
+The same follow-up addresses the agy review: legacy DATE whitespace and space
+separators match the pinned reader; civil labels are validated; Quick Look uses
+the shared recording-time resolver; Library and Search use one total ordering
+key, including fractions too small for Date. Unknown-date subtitles retain their
+duration, Received provenance and Search position in all six catalog languages.
+
+The regression slice failed 55 assertions against reviewed 60e3094. The affected
+partition now passes 433 tests and the restored focused slice passes 43 tests.
+All twenty independently applied production mutations compile and fail executed
+behavioral assertions, without asynchronous expectation timeouts. Full
+conformance passes all 29 vectors; metadata passes 27 with two expected skips.
+The pinned reference reader agrees on all 29 normative vectors and 14 generated
+actual read/export/re-import files, including impossible dates, submillisecond
+DATE differences/equivalences and legacy space separators. Current hashes and
+representative failures are recorded in results.json. Native build and CI
+results are recorded separately; readiness requires complete exact-head CI.
+
+The Debug arm64 app and Quick Look build and all 56 CI contracts pass with
+Xcode 16.4. Generated project/workspace files are restored after the build.

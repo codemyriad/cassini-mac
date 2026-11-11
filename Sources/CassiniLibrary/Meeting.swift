@@ -130,7 +130,7 @@ public struct LibraryMeeting: Sendable {
     }
     public var timeSortKey: String? {
         if let recordedTime, recordedTime.instant == start { return recordedTime.orderingKey }
-        return (start ?? sortingFallback).map { MeetingTime(instant:$0).orderingKey }
+        return (start ?? sortingFallback).map { MeetingTime.sortKey(for:$0) }
     }
     /// Display duration only; D3 substitutes zero for unknown source starts. Never playback alignment.
     public var durationMs: Int64?

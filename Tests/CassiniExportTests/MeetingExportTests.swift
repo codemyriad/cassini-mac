@@ -222,15 +222,15 @@ struct MeetingExportTests {
         #expect(try Data(contentsOf:input)==bytes)
         #expect(try Data(contentsOf:metadata)==before)
     }
-    @Test(arguments:["2001-02-02t19:05:06.125Z","2001-02-02T19:05:06.125z","2001-02-02t19:05:06.125z"])
-    func lowercaseRecordingUTCReexportsAndReimports(_ recorded:String) throws {
+    @Test(arguments:["2001-02-02t19:05:06.125Z","2001-02-02T19:05:06.125z","2001-02-02t19:05:06.125z","2001-02-02T19:05:06.125Z"],[false,true])
+    func lowercaseRecordingUTCReexportsAndReimports(_ recorded:String,lowercaseCreation:Bool) throws {
         let root=try root();defer {try? FileManager.default.removeItem(at:root)}
         let source=try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         let plain=try LibraryImport.copy(source,into:root.appendingPathComponent("Plain"))
         let encoded=try MeetingFileExporter.cassini(plain,assets:nil,temporaryRoot:root)
         let base=try CassiniReader.read(contentsOf:encoded.url)
         var manifest=try #require(base.manifest?.raw),info=try #require(base.manifest?.raw["meeting"])
-        info=try info.setting("recordedAtUtc",to:.string(recorded)).setting("createdAtUtc",to:.string("2026-11-09t10:47:02z"))
+        info=try info.setting("recordedAtUtc",to:.string(recorded)).setting("createdAtUtc",to:.string(lowercaseCreation ? "2026-11-09t10:47:02z" : "2026-11-09T10:47:02Z"))
         manifest=try manifest.setting("meeting",to:info)
         let input=root.appendingPathComponent("Lowercase.opus")
         _ = try OpusStreamFile.rewrite(Data(contentsOf:encoded.url),tags:PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)),to:input)
@@ -252,6 +252,40 @@ struct MeetingExportTests {
             #expect(file.manifest?.meeting.createdAtUtc=="2026-11-09T10:47:02Z")
             let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent(UUID().uuidString))
             #expect(again.meetingTime?.instant==expected)
+        }
+    }
+    @Test(arguments:[false,true])
+    func fractionalDATEPreservesItsMeaningThroughExportAndReimport(equivalent:Bool) throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source=repo.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/027-recorded-at-utc.opus")
+        let bytes=try Data(contentsOf:source),base=try CassiniReader.read(bytes)
+        var manifest=try #require(base.manifest?.raw),info=try #require(manifest["meeting"])
+        let created="2026-11-09T09:31:48.0001Z"
+        let date=equivalent ? "2026-11-09T10:31:48.000100+01:00" : "2026-11-09T09:31:48.0009Z"
+        info=try info.setting("recordedAtUtc",to:nil).setting("recordedAtLocal",to:nil).setting("createdAtUtc",to:.string(created))
+        manifest=try manifest.setting("meeting",to:info)
+        var tags=try TagSet.parse(PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)))
+        tags.comments.removeAll {$0.name.uppercased()=="DATE"};tags.comments.append(.init(name:"DATE",value:date))
+        let input=root.appendingPathComponent("fraction.opus")
+        _=try OpusStreamFile.rewrite(bytes,tags:PortableMeetingTags.packet(comments:tags.comments),to:input)
+        let file=try CassiniReader.read(contentsOf:input)
+        #expect(file.state == .ok)
+        #expect(file.meetingTime?.value==(equivalent ? nil : date))
+        let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Imported"))
+        let direct=MeetingPresentation.external(file,url:input)
+        for (index,m) in [direct,imported].enumerated() {
+            let artifact=try MeetingFileExporter.cassini(m,assets:nil,temporaryRoot:root)
+            let result=try CassiniReader.read(contentsOf:artifact.url)
+            #expect(result.tags?["DATE"]==(equivalent ? created : date))
+            #expect(result.manifest?.meeting.createdAtUtc==created)
+            #expect(result.meetingTime?.value==(equivalent ? nil : date))
+            let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Again-"+String(index)))
+            #expect(again.meetingTime?.value==(equivalent ? nil : date))
+            if let output=ProcessInfo.processInfo.environment["CASSINI_D95_R2_CASES"] {
+                let folder=URL(fileURLWithPath:output);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+                try Data(contentsOf:artifact.url).write(to:folder.appendingPathComponent("fraction-\(equivalent)-\(index).opus"))
+            }
         }
     }
     @Test(arguments:[nil,.string("2026-02-30T10:00:00"),.string("2026-11-09T24:00:00"),.string("2001-02-03T04:05:06"),.string("2001-02-03T04:05:06.125+09:00"),

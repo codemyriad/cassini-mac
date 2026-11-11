@@ -26,6 +26,20 @@ struct MeetingTimeR2LibraryTests {
             #expect(input.sorted(by:LibraryScanner.ordered).map(\.title)==["3","1","2"])
         }
     }
+    @Test func exactFractionOrderingDoesNotFallBackToRoundedDate() throws {
+        var manifest=try #require(vector("028-date-is-created-at").1.manifest?.meeting)
+        manifest.recordedAtLocal=nil
+        func item(_ digit:Int,_ value:String) throws -> LibraryMeeting {
+            manifest.recordedAtUtc=value
+            let time=try #require(MeetingTime.resolve(meeting:manifest,dateTag:nil))
+            let id=UUID(uuidString:"00000000-0000-4000-8000-00000000000"+String(digit))!
+            var m=LibraryMeeting(id:id,folder:URL(fileURLWithPath:"/tmp/Recording-"+id.uuidString.lowercased()),state:.init(),title:String(digit),start:time.instant,durationMs:nil,speakers:[],quote:nil,notes:[],audioFiles:[],issues:[])
+            m.recordedTime=time;return m
+        }
+        let a=try item(1,"2026-11-09T10:00:00.0000000001Z"),b=try item(3,"2026-11-09T10:00:00.0000000009Z")
+        #expect(a.sortingInstant==b.sortingInstant,"Foundation display dates cannot represent this difference")
+        #expect(LibraryScanner.ordered(b,a) && !LibraryScanner.ordered(a,b))
+    }
     @Test(arguments:CassiniLanguage.allCases)
     func unknownDateKeepsDurationProvenanceAndHitPosition(_ language:CassiniLanguage) throws {
         let locale=Locale(identifier:"en_US"),format=LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,locale:locale,language:language)
