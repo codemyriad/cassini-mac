@@ -60,10 +60,6 @@ import Darwin
     @ObservationIgnored var fixtureAcceptance: ((URL,String) async -> Void)?
     @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
     @ObservationIgnored var fixturePreparationStarted: ((URL) -> Void)?
-    func waitForFixturePreparation() async {
-        guard RecordingFixture.enabled else { return }
-        await preparation?.value
-    }
     #endif
     // Persist accepted queue intent before any inactive folder can move.
     // The active child's paths remain protected; queued folders are rediscovered.
