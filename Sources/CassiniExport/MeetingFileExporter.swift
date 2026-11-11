@@ -66,6 +66,8 @@ public enum MeetingFileExporter {
             // goes out byte-for-byte (nothing of it can change on Mac, and a rebuild could drop
             // its other transcripts under the same revision), once its namespace is one this app
             // can carry (D65). A malformed v1 local label must instead be dropped.
+            let originalUTC = file.manifest?.raw["meeting"]?["recordedAtUtc"]
+            let canCarryUTC = originalUTC == nil || originalUTC?.string.map(validUTCRecordingInstant) == true
             let originalLocal = file.manifest?.raw["meeting"]?["recordedAtLocal"]
             let canCarryLocal = originalLocal == nil || originalLocal?.string.map(validLocalRecordingLabel) == true
             let canCarryTime = file.manifest.map { m in
@@ -73,7 +75,7 @@ public enum MeetingFileExporter {
                 file.tags?["CASSINI_RECORDED_AT_LOCAL"] == m.meeting.recordedAtLocal &&
                 file.tags?["DATE"] == MeetingTime.dateTag(recordedAtUtc:m.meeting.recordedAtUtc,createdAtUtc:m.meeting.createdAtUtc,legacy:file.tags?["DATE"])
             } ?? false
-            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryLocal, canCarryTime,
+            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryUTC, canCarryLocal, canCarryTime,
                let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
                 _ = try CodemyriadNamespace.validated(namespace)
                 guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
@@ -194,6 +196,9 @@ public enum MeetingFileExporter {
         }
         try emit(limiter.finish())
     }
+    private static func validUTCRecordingInstant(_ value: String) -> Bool {
+        value.hasSuffix("Z") && MeetingTime.parseInstant(value) != nil
+    }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
                                  importedTranscript: [String:Any]?, transcripts: PortableTranscripts, carriedOnly: Bool,
@@ -203,7 +208,9 @@ public enum MeetingFileExporter {
         let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag)
         let recordedUtc: String?
         if meeting.state.origin == .own { recordedUtc = meeting.start.map(MeetingTime.utcString) }
-        else if let original = file?.manifest { recordedUtc = original.meeting.recordedAtUtc }
+        else if let original = file?.manifest {
+            recordedUtc = original.meeting.recordedAtUtc.flatMap { validUTCRecordingInstant($0) ? $0 : nil }
+        }
         else { recordedUtc = dateTag.flatMap(MeetingTime.parseInstant).map(MeetingTime.utcString) }
         let mirrorDate = MeetingTime.dateTag(recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)
         let revisionDate = created.exportTime ? "" : mirrorDate
@@ -324,7 +331,7 @@ public enum MeetingFileExporter {
             speakers = .array(merged)
         }
         // The original meeting's members Mac doesn't write stay (Mac's own facts win).
-        for (name,value) in original?.raw["meeting"]?.object ?? [] where info[name] == nil && name != "recordedAtLocal" {
+        for (name,value) in original?.raw["meeting"]?.object ?? [] where info[name] == nil && !["recordedAtLocal","recordedAtUtc"].contains(name) {
             info = try info.setting(name,to:value)
         }
         var root: JSON = .object([("kind",.string("cassini-portable-meeting")),("version",.number("1")),("profile",.string("ogg-opus")),
