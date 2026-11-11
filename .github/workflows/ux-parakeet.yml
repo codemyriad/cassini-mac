@@ -17,19 +17,27 @@ jobs:
     needs: [build]
     if: ${{ !inputs.products_ready && needs.build.result == 'success' }}
     uses: ./.github/workflows/ci-build-release.yml
-  parakeet:
-    name: Parakeet runtime, goldens and app (${{ matrix.runner }})
-    needs: [build, release]
-    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+  runtime:
+    name: Parakeet runtime and goldens (${{ matrix.runner }})
+    needs: [build]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-15-intel]
-    runs-on: ${{ matrix.runner }}
+        include:
+        - runner: macos-15
+          arch: arm64
+        - runner: macos-15-intel
+          arch: x86_64
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
     # The hosted Intel row compiles the SwiftPM products itself when they were built in another
     # workspace (a rented Mac): about 3.5 minutes on top of a job that has taken up to 10.
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}
     env:
+      CASSINI_CI_ARCH: ${{ matrix.arch }}
       NEEDLE_TELEMETRY: '0'
       DO_NOT_TRACK: '1'
       ORT_DISABLE_TELEMETRY: '1'
@@ -43,12 +51,18 @@ jobs:
           swiftpm: 'true'
           assets: 'true'
           parakeet: 'true'
-          debug: 'true'
-          release: 'true'
       - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
         with:
           python-version: '3.12'
-      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      # The constructor sentinel must load into an interpreter with the worker's architecture.
+      - name: Use universal Xcode Python for the rented Intel row
+        if: runner.environment != 'github-hosted' && matrix.arch == 'x86_64'
+        run: |
+          mkdir -p "$RUNNER_TEMP/parakeet-python"
+          ln -sf "$(xcrun -f python3)" "$RUNNER_TEMP/parakeet-python/python3"
+          echo "$RUNNER_TEMP/parakeet-python" >> "$GITHUB_PATH"
+      - run: test "$(python3 -c 'import platform; print(platform.machine())')" = "$CASSINI_CI_ARCH"
       - name: Both strict D16 input goldens, token conversion and accepted model leases
         run: |
           set -o pipefail
@@ -59,6 +73,43 @@ jobs:
           python3 scripts/test-parakeet-worker.py --worker .build/debug/cassini-parakeet-worker \
             --runtime "$CASSINI_PARAKEET_RUNTIME" --model "$CASSINI_PARAKEET_MODEL" --vad "$CASSINI_PIPELINE_ASSETS" \
             --report build/parakeet-reports/worker.json
+      - uses: actions/upload-artifact@v5
+        continue-on-error: true
+        if: always()
+        with:
+          retention-days: 14
+          name: parakeet-runtime-${{ matrix.runner }}
+          path: build/parakeet-reports
+  parakeet:
+    name: Parakeet signed app (${{ matrix.runner }})
+    needs: [build, release]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    # Signed NSApplication probes stay on runners with a login session.
+    timeout-minutes: 25
+    env:
+      NEEDLE_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+      ORT_DISABLE_TELEMETRY: '1'
+      CASSINI_PARAKEET_RUNTIME: ${{ github.workspace }}/build/Parakeet
+      CASSINI_PARAKEET_MODEL: ${{ github.workspace }}/build/ParakeetModel/models/parakeet-ultra-0.6b-int8-v2/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-products
+        with:
+          assets: 'true'
+          parakeet: 'true'
+          debug: 'true'
+          release: 'true'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: test "$RUNNER_ENVIRONMENT" = github-hosted
       - name: Signed Debug and Release runtimes with no optional model bundled
         run: |
           python3 scripts/check-parakeet-bundle.py build/Build/Products/Release/Cassini.app

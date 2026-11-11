@@ -10,7 +10,8 @@ permissions:
 jobs:
   release:
     name: Build Release app and package (universal, Xcode 16.4)
-    runs-on: macos-15
+    # Ad-hoc CI packaging only; no production signing credentials are used here.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -19,7 +20,7 @@ jobs:
           assets: 'true'
           runtime: 'true'
       - name: Install build tools
-        run: brew install xcodegen
+        run: command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
       - name: Verify pinned Sparkle ZIP before package resolution
         run: python3 scripts/fetch-sparkle.py --spm-cache "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
       # No generated Library fixtures here: they belong to the Debug screenshot products only.
