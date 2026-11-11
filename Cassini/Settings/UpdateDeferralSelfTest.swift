@@ -4,7 +4,16 @@ import AppKit
 import SwiftUI
 import Sparkle
 
-/// Real updater/delegate, Sparkle status window and mounted Library footer.
+private struct FooterLayout: Equatable {
+    let ready: Bool
+    let height: CGFloat
+}
+private struct FooterLayoutKey: PreferenceKey {
+    static let defaultValue:FooterLayout?=nil
+    static func reduce(value:inout FooterLayout?,nextValue:()->FooterLayout?) {value=nextValue() ?? value}
+}
+
+/// Real updater/delegate, Sparkle status window and measured Library footer.
 /// Assertions follow their signals; elapsed time is only a failure bound.
 @MainActor enum UpdateDeferralSelfTest {
     private enum Failure: Error { case check(String) }
@@ -13,6 +22,7 @@ import Sparkle
     }
     @MainActor private final class Signals {
         let context: String
+        var footerLayout:FooterLayout?
         private var received=Set<String>()
         private var pending:[String:CheckedContinuation<Void,Error>]=[:]
         init(_ context:String){self.context=context}
@@ -73,24 +83,35 @@ import Sparkle
             try check(updates.readyWhenIdle && !updates.canCheckForUpdates,"Deferral state disables Check for Updates")
             try await signals.wait("Sparkle close")
             try check(!installationWindow.isVisible,"The real Sparkle install window closed")
-            let footer=NSHostingView(rootView:UpdateReadyFooter(updates:updates,fixtureVisibility:{signals.send($0 ? "footer appear":"footer disappear")}))
-            let window=NSWindow(contentRect:NSRect(x:0,y:0,width:600,height:70),styleMask:[.titled],backing:.buffered,defer:false)
-            window.isReleasedWhenClosed=false;window.contentView=footer;window.orderFront(nil)
+            let content=UpdateReadyFooter(updates:updates).fixedSize(horizontal:false,vertical:true)
+                .background(GeometryReader { geometry in
+                    Color.clear.preference(key:FooterLayoutKey.self,value:FooterLayout(ready:updates.readyWhenIdle,height:geometry.size.height))
+                })
+                .onPreferenceChange(FooterLayoutKey.self) { layout in
+                    MainActor.assumeIsolated {
+                        guard let layout else{return}
+                        signals.footerLayout=layout;signals.send(layout.ready ? "busy footer layout":"idle footer layout")
+                    }
+                }
+            let host=NSHostingController(rootView:content)
+            let window=NSWindow(contentViewController:host)
+            window.isReleasedWhenClosed=false;window.setContentSize(NSSize(width:600,height:70));window.orderFront(nil)
             defer {window.close()}
-            footer.layoutSubtreeIfNeeded()
-            try await signals.wait("footer appear")
+            host.view.layoutSubtreeIfNeeded()
+            try await signals.wait("busy footer layout")
+            try check((signals.footerLayout?.height ?? 0) > 0,"Busy activity renders the real footer")
             try await signals.wait("busy poll")
             try check(window.isVisible && resumes==0,"Visible footer and a real busy poll never resume installation")
             let waiter=updates.fixtureWaitingTask
             activity=[]
             try await signals.wait("resume")
             await waiter?.value
-            // This standalone test host can be occluded in CI. Drive its real
-            // layout after the observed model transaction; callbacks still come
-            // only from the actual footer subtree, never from the model alone.
-            footer.needsLayout = true
-            footer.layoutSubtreeIfNeeded()
-            try await signals.wait("footer disappear")
+            // Measure real production layout after the observed updater event.
+            // The preference includes model state, so a footer that incorrectly
+            // stays visible delivers idle layout and fails the height assertion.
+            host.view.needsLayout=true;host.view.layoutSubtreeIfNeeded()
+            try await signals.wait("idle footer layout")
+            try check(signals.footerLayout?.height == 0,"Idle removes the real footer from layout")
             try check(resumes==1 && !updates.readyWhenIdle && updates.fixtureWaitingTask==nil,"Idle consumes the continuation exactly once")
             updates.cancelTermination()
             try check(resumes==1 && updates.fixtureWaitingTask==nil,"Another idle evaluation cannot invoke a consumed continuation")

@@ -640,53 +640,11 @@ private final class LibraryToolbarActionView: NSView {
 
 struct UpdateReadyFooter: View {
     let updates: ApplicationUpdates
-    #if DEBUG
-    var fixtureVisibility: ((Bool) -> Void)? = nil
-    #endif
-    private var line: some View {
-        Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
-            .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
-            .accessibilityIdentifier("library-update-ready")
-    }
     var body: some View {
         if updates.readyWhenIdle {
-            #if DEBUG
-            line.background {
-                if let fixtureVisibility { UpdateFooterVisibility(changed:fixtureVisibility) }
-            }
-            #else
-            line
-            #endif
+            Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
+                .accessibilityIdentifier("library-update-ready")
         }
     }
 }
-
-#if DEBUG
-/// Native mount/removal signals for the real footer subtree. SwiftUI's
-/// onDisappear is not reliably delivered by a standalone NSHostingView.
-private struct UpdateFooterVisibility: NSViewRepresentable {
-    let changed: (Bool) -> Void
-    func makeNSView(context: Context) -> Mount { Mount(changed:changed) }
-    func updateNSView(_ view: Mount, context: Context) {}
-    static func dismantleNSView(_ view: Mount, coordinator: ()) { view.removed() }
-    final class Mount: NSView {
-        private var changed: ((Bool) -> Void)?
-        private var mounted = false
-        init(changed: @escaping (Bool) -> Void) { self.changed = changed; super.init(frame:.zero) }
-        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if window != nil { mounted = true; changed?(true) }
-            else if mounted { removed() }
-        }
-        override func viewDidHide() {
-            super.viewDidHide()
-            if mounted { removed() }
-        }
-        func removed() {
-            guard mounted else { return }
-            mounted = false; changed?(false); changed = nil
-        }
-    }
-}
-#endif

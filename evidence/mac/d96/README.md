@@ -105,9 +105,13 @@ without starting another heavy build; the private app must then be rebuilt.
 
 The actual sandboxed Settings/move/relaunch proof also passes, including import
 intent resuming at the new root, deferred work and retained selection. The local
-Debug app bundles the same generated Library fixtures as CI. Its first attempt
+Debug app bundles the same generated Library fixtures as CI. The first attempt
 without those fixtures failed during initial import and is retained externally;
-it did not reach the move checks. The independently included DEBUG native footer
-observer and real-host layout are identical to #248 at `698dad9` (its native
-transition assertions/mutations are linked from that PR). Release behavior is
-unchanged; this avoids depending on the D95 feature branch for a reliable proof.
+it did not reach the move checks. Settings and bulk proofs both pass again on
+the final rebuilt product with the measured-layout proof from #248 `d3d7609`.
+That proof awaits real SwiftUI geometry paired with updater state and checks
+positive busy height / zero idle height. Always-visible and always-absent
+production footer mutants fail immediate layout assertions in #248's evidence;
+forty restored occluded updater cycles pass. The unreliable custom native
+visibility observer is removed. Release behavior is unchanged, and the D96
+branch remains independent of the D95 time feature.
