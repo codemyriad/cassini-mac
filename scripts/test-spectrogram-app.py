@@ -9,6 +9,7 @@ import uuid
 import json
 import os
 import plistlib
+import platform
 import threading
 import signal
 from pathlib import Path
@@ -83,6 +84,17 @@ def tracing_started():
         notify.notify_cancel(token.value)
 
 
+def profiler_environment():
+    """Use OS-compatible Instruments without changing the pinned build SDK."""
+    environment=dict(os.environ)
+    if environment.get('RUNNER_ENVIRONMENT') == 'self-hosted' and int(platform.mac_ver()[0].split('.')[0]) >= 27:
+        developer=Path('/Applications/Xcode-27.0.0.app/Contents/Developer')
+        if not developer.is_dir():
+            raise RuntimeError('macOS 27 profiling requires installed Xcode 27 Instruments')
+        environment['DEVELOPER_DIR']=str(developer)
+    return environment
+
+
 def record_profile(app: Path, output: Path):
     """A second generated-input process: profile overhead never enters A–E."""
     process = trace = None
@@ -96,7 +108,7 @@ def record_profile(app: Path, output: Path):
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, text=True)
                 trace = subprocess.Popen(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler',
                     '--attach', str(process.pid), '--output', str(output/'B-TimeProfiler.trace'),
-                    '--notify-tracing-started', notification, '--no-prompt'], stdout=stderr, stderr=subprocess.STDOUT)
+                    '--notify-tracing-started', notification, '--no-prompt'], env=profiler_environment(), stdout=stderr, stderr=subprocess.STDOUT)
                 # A cold recorder can outlive the entire generated-input interval.
                 # Start the fixture clock only after Instruments confirms recording.
                 if not wait_started():

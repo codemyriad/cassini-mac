@@ -34,6 +34,22 @@ class HostAdmission(unittest.TestCase):
             run.assert_not_called()
 
 
+class ProfilerToolchain(unittest.TestCase):
+    def test_hosted_retains_pinned_toolchain(self):
+        with patch.dict(harness.os.environ,{'RUNNER_ENVIRONMENT':'github-hosted','DEVELOPER_DIR':'pinned'},clear=True), patch.object(harness.platform,'mac_ver',return_value=('27.0','','')):
+            self.assertEqual(harness.profiler_environment()['DEVELOPER_DIR'],'pinned')
+
+    def test_native_27_instruments_only_changes_recorder_toolchain(self):
+        with patch.dict(harness.os.environ,{'RUNNER_ENVIRONMENT':'self-hosted','DEVELOPER_DIR':'pinned'},clear=True), patch.object(harness.platform,'mac_ver',return_value=('27.0','','')), patch.object(harness.Path,'is_dir',return_value=True):
+            self.assertEqual(harness.profiler_environment()['DEVELOPER_DIR'],'/Applications/Xcode-27.0.0.app/Contents/Developer')
+            self.assertEqual(harness.os.environ['DEVELOPER_DIR'],'pinned')
+
+    def test_missing_native_instruments_fails_explicitly(self):
+        with patch.dict(harness.os.environ,{'RUNNER_ENVIRONMENT':'self-hosted'},clear=True), patch.object(harness.platform,'mac_ver',return_value=('27.0','','')), patch.object(harness.Path,'is_dir',return_value=False):
+            with self.assertRaisesRegex(RuntimeError,'requires installed Xcode 27'):
+                harness.profiler_environment()
+
+
 class MotionCompletion(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
