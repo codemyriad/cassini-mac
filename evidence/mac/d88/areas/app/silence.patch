@@ -1,0 +1,5 @@
+--- a/Cassini/Browser/CaptureCollection.swift
++++ b/Cassini/Browser/CaptureCollection.swift
+@@ -59 +59 @@
+-        snapshot.me && !input.failedSides.contains(.me) && microphoneUptime-lastMicSound >= 20
++        snapshot.me && !input.failedSides.contains(.me) && microphoneUptime-lastMicSound > 20

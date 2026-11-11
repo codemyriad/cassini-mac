@@ -1,0 +1,38 @@
+companion baseline
+PASS companion
+companion mutation
+FAIL companion Error Domain=CaptureSelfTest Code=1 "Private fixture state did not settle at main/Probe.swift:113" UserInfo={NSLocalizedDescription=Private fixture state did not settle at main/Probe.swift:113}
+
+browser-return baseline
+PASS browser-return
+browser-return mutation
+FAIL browser-return Error Domain=BrowserReturnSelfTest Code=1 "Real browser did not discover the call" UserInfo={NSLocalizedDescription=Real browser did not discover the call}
+
+live-folder baseline
+PASS live-folder
+live-folder mutation
+FAIL live-folder Error Domain=CaptureSelfTest Code=1 "Private fixture state did not settle at main/Probe.swift:124" UserInfo={NSLocalizedDescription=Private fixture state did not settle at main/Probe.swift:124}
+
+trash baseline
+PASS trash
+trash mutation
+FAIL trash Error Domain=CaptureSelfTest Code=1 "Private fixture state did not settle at main/Probe.swift:129" UserInfo={NSLocalizedDescription=Private fixture state did not settle at main/Probe.swift:129}
+
+silence baseline
+PASS silence
+silence mutation
+FAIL silence MissingCompletion()
+
+child
+PASS fixture stdin EOF and actual child termination
+PASS removed termination event caused the fixture to hang after child exit
+
+browser-js
+PASS connection event and failure-time diagnostic without polling or a diagnostic timer
+Generated call diagnostics {"context":"running","peers":[{"key":"sender","connection":"connecting","gathering":"complete","localCandidates":0,"remoteCandidates":0},{"key":"receiver","connection":"connected","gathering":"complete","localCandidates":0,"remoteCandidates":0}]}
+PASS mutation rejected when receiver event is ignored
+
+display
+before passed
+after passed
+mutation wrong readback rejected

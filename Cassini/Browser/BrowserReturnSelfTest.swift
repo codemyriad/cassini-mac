@@ -9,10 +9,12 @@ import CassiniRecording
     private static func report(_ value: [String:Any]) throws {
         try FileHandle.standardOutput.write(contentsOf:JSONSerialization.data(withJSONObject:value,options:[.sortedKeys]) + Data([10]))
     }
-    private static func wait(_ message: String, _ condition: () -> Bool) async throws {
-        let deadline = ProcessInfo.processInfo.systemUptime + 35
-        while !condition(), ProcessInfo.processInfo.systemUptime < deadline { try await Task.sleep(for:.milliseconds(25)) }
-        if !condition() { throw NSError(domain:"BrowserReturnSelfTest",code:1,userInfo:[NSLocalizedDescriptionKey:message]) }
+    private static func wait(_ message: String, _ condition: @escaping @MainActor () -> Bool) async throws {
+        do {
+            try await CaptureSelfTest.wait(timeout:35,condition)
+        } catch {
+            throw NSError(domain:"BrowserReturnSelfTest",code:1,userInfo:[NSLocalizedDescriptionKey:message])
+        }
     }
     /// The owner, policy inputs and call row at the failure, so an intermittent CI failure says
     /// which gate held (no paths, URLs or device identities).
@@ -49,8 +51,8 @@ import CassiniRecording
             let id = capture.snapshot.manifest.id, folder = capture.owner.snapshot.directory
             let before = Set(capture.owner.snapshot.manifest.tracks.filter { $0.kind == "remote" }.map(\.id))
             try report(["phase":"recording","id":id.uuidString])
-            // D66 mac-P0-1: whether the original transport ever died (then resumed, D52.4). A
-            // dead transport stays dead until the resume, seconds later, so the 25 ms waits see it.
+            // D66 mac-P0-1: keep track of transport loss across the fallback
+            // and restore events. The driver holds the returning call until fallback.
             var transportDied = false
             let navigated = ProcessInfo.processInfo.systemUptime
             try await wait("Navigation did not start computer-sound fallback") {
