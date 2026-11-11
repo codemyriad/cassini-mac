@@ -261,3 +261,8 @@ warm-cache CI reused incompatible transitive clients: the separate #260 proof
 reproduces Swift6.1 SIGBUS on a nested-layout change and fixes compiled cache
 coherence. The separate #256 fixes the remaining Whistle EPIPE fixture. These
 are readiness dependencies; neither failed job was accepted as green.
+
+After ordinary merge of main eb60a0b, the generated-project native app/Quick Look
+build, all 57 CI contracts, and 40 input-lifecycle XCTest cases pass. Generated
+project/workspace files are restored; the owned export source is unchanged by
+that merge. Complete exact-head CI remains required.

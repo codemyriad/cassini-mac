@@ -1,8 +1,8 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
-  "mainMerged": "fc2ad76",
+  "mainMerged": "eb60a0b",
   "headlessTests": 436,
-  "ciContracts": 56,
+  "ciContracts": 57,
   "restoredFocusedTests": 46,
   "fullConformance": {
     "pass": 29,
@@ -192,10 +192,9 @@
     "sourceAndMetadataUnchanged": true,
     "mixedSections": "stable day ids; one trailing unknown group; catalog language/locale",
     "lowercaseRFC3339": "read, compare, import naming and export/reimport",
-    "nativeAppBuild": "Debug arm64 app and Quick Look, Xcode 16.4; generated project; ad-hoc signing: passed",
+    "nativeAppBuild": "Debug arm64 app and Quick Look, Xcode 16.4, generated project, ad-hoc signing: passed at merged source2c31311",
     "exactHeadCI": "pending",
-    "headlessTestsAfterMain": 434,
-    "ciContractsAfterMain": 56
+    "ciContractsAfterMain": 57
   },
   "priorValidatedRevision": "60e30942d169ab29ab8188128fbed58ef71a349d",
   "secondReview": {
@@ -219,12 +218,12 @@
       "canonical-copy",
       "canonical-creation"
     ],
-    "referenceMatchingFiles": 59,
-    "timestampSchemaCheckedExports": 26,
-    "restoredFocusedTests": 44,
+    "referenceMatchingFiles": 67,
+    "timestampSchemaCheckedExports": 32,
+    "restoredFocusedTests": 46,
     "exactHeadCI": "pending",
-    "affectedTests": 434,
-    "ciContracts": 56
+    "affectedTests": 436,
+    "ciContracts": 57
   },
   "exportPrecisionFollowup": {
     "baselineRegressionIssues": 20,
@@ -236,7 +235,15 @@
     "referenceMatchingFiles": 67,
     "schemaCheckedExports": 32,
     "plainInputPolicy": "app legacy import policy tested separately; pure format reader supplies no when for non-Cassini plain audio",
-    "nativeBuild": "pending at this source",
+    "nativeBuild": "passed after ordinary main eb60a0b merge",
     "exactHeadCI": "pending; known EPIPE and stale-layout fixes are #256/#260"
+  },
+  "mainIntegration": {
+    "main": "eb60a0b69f875df00e9c89270411c1caec3e7764",
+    "inputLifecycleXCTests": 40,
+    "ciContracts": 57,
+    "nativeAppAndQuickLook": "passed",
+    "affectedTestsBeforeMainMerge": 436,
+    "ownedExportSourceUnchangedByMerge": true
   }
 }
