@@ -24,9 +24,11 @@ runs:
   steps:
     - shell: bash
       run: bash scripts/ci-select-xcode.sh
+    # CASSINI_CI_ARCH names the products a job runs when they are not the machine's own
+    # architecture: x86_64 on a rented Apple Silicon Mac, executed through Rosetta 2.
     - id: arch
       shell: bash
-      run: echo "name=$(uname -m)" >> "$GITHUB_OUTPUT"
+      run: bash scripts/ci-product-arch.sh
     # D66 mac-P0-4 (rule 2): every download is strict (download-artifact retries the service
     # itself and logs it). A product that arrives incomplete (missing or truncated archive,
     # ci-products.py exit 75) is downloaded once more with a warning and verified again; any

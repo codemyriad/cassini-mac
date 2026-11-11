@@ -234,9 +234,16 @@ jobs:
     name: Package tests (macos-15-intel)
     needs: [changes, build]
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && (needs.changes.outputs.exports != 'false' || needs.changes.outputs.model_download != 'false') }}
-    runs-on: macos-15-intel
+    # Trusted runs use the rented Apple Silicon Macs and execute the x86_64 products through
+    # Rosetta 2; fork pull requests and an unset CM_MAC_RUNNER keep the hosted Intel runner,
+    # where `arch -x86_64` changes nothing.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || 'macos-15-intel' }}
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}
     env:
+      CASSINI_CI_ARCH: x86_64
       EXPORTS: ${{ needs.changes.outputs.exports != 'false' }}
       MODEL_DOWNLOAD: ${{ needs.changes.outputs.model_download != 'false' }}
     steps:
@@ -267,8 +274,10 @@ jobs:
         path: |
           downloader.log
           build/model-bootstrap
+    # The installer needs the hosted tool directory; a rented Mac runs the pure-Python reference
+    # reader with its own python3.
     - uses: actions/setup-python@v5
-      if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
+      if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' && runner.environment == 'github-hosted' }}
       with:
         python-version: '3.12'
     - name: Portable exports, golden text, policy, packet preservation, safe save and audio round trips
