@@ -21,6 +21,7 @@ import Observation
         let access: FileAccessLease
     }
 
+    private(set) var busy = false
     private(set) var progress: Progress?
     private(set) var receipt: Receipt?
     private(set) var directory: URL = {
@@ -29,12 +30,20 @@ import Observation
         return home.appendingPathComponent("Documents")
     }()
 
-    @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var presentationTask: Task<Void, Never>?
-    @ObservationIgnored private var savePanel: NSSavePanel?
+    @ObservationIgnored private var task: Task<Void, Never>? { didSet { refreshBusy() } }
+    @ObservationIgnored private var presentationTask: Task<Void, Never>? { didSet { refreshBusy() } }
+    @ObservationIgnored private var savePanel: NSSavePanel? { didSet { refreshBusy() } }
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var chooserGeneration: UInt64 = 0
     @ObservationIgnored private var runToken: UInt64 = 0
+    #if DEBUG
+    @ObservationIgnored var fixtureOnProgressGate: (@Sendable (Int, Int) -> Void)?
+    #endif
+
+    private func refreshBusy() {
+        let next = task != nil || presentationTask != nil || savePanel != nil
+        if busy != next { busy = next }
+    }
 
     private final class ProgressCoalescer: @unchecked Sendable {
         private let lock = NSLock()
@@ -58,7 +67,7 @@ import Observation
         }
     }
 
-    var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil }
+    var isBusy: Bool { busy }
 
     var hasSelection: Bool {
         MeetingNavigation.shared.detail == nil &&
@@ -132,6 +141,12 @@ import Observation
         guard let receipt else { return }
         NSWorkspace.shared.activateFileViewerSelecting([receipt.url])
     }
+
+    #if DEBUG
+    func startExportForTesting(_ meetings: [LibraryMeeting], to destinationURL: URL) {
+        startExport(meetings, file: FileAccessLease(destinationURL))
+    }
+    #endif
 
     /// Pure in-memory check (zero filesystem syscalls on `@MainActor`).
     private func hasAnyInMemoryExportable(in meetings: [LibraryMeeting]) -> Bool {
@@ -254,6 +269,9 @@ import Observation
         let nativeDir = (recorder.isRecording || recorder.isSaving) ? recorder.directory : nil
         let browserDirs = CaptureCollection.shared.captures.values.map(\.snapshot.directory)
         let coalescer = ProgressCoalescer()
+        #if DEBUG
+        let progressGate = fixtureOnProgressGate
+        #endif
 
         task = Task {
             do {
@@ -287,12 +305,16 @@ import Observation
                             return false
                         },
                         onProgress: { done, total in
-                            guard coalescer.enqueue(done: done, total: total) else { return }
-                            Task { @MainActor in
-                                if let latest = coalescer.consume() {
-                                    BulkZipExportCoordinator.shared.updateProgress(done: latest.done, total: latest.total, token: token)
+                            if coalescer.enqueue(done: done, total: total) {
+                                Task { @MainActor in
+                                    if let latest = coalescer.consume() {
+                                        BulkZipExportCoordinator.shared.updateProgress(done: latest.done, total: latest.total, token: token)
+                                    }
                                 }
                             }
+                            #if DEBUG
+                            progressGate?(done, total)
+                            #endif
                         },
                         shouldCancel: { Task.isCancelled }
                     )

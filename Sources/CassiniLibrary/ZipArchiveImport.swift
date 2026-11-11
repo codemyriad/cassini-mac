@@ -59,7 +59,6 @@ public enum ZipArchiveImport {
         let uncompressedSize: UInt64
         let localHeaderOffset: UInt64
         var dataOffset: UInt64 = 0
-        var localMethod: UInt16 = 0
         let kind: EntryKind
     }
 
@@ -131,7 +130,8 @@ public enum ZipArchiveImport {
                     try? FileManager.default.removeItem(at: stagedFile)
                     defer { try? FileManager.default.removeItem(at: stagedFile) }
 
-                    guard entry.localMethod == entry.method, entry.method == 0 || entry.method == 8 else {
+                    guard entry.method == 0 || entry.method == 8 else {
+                        try addRuntimeBytes(max(entry.compressedSize, entry.uncompressedSize), to: &cumulativeActualUncompressed)
                         summary.failed += 1
                         onPartialSummary(summary)
                         continue
@@ -305,6 +305,9 @@ public enum ZipArchiveImport {
                 }
             }
             guard diskStart == 0 else { throw ZipArchiveFailure.damaged }
+            if method == 0 && compressedSize != uncompressedSize {
+                throw ZipArchiveFailure.damaged
+            }
 
             let kind = classifyEntry(name: name, uncompressedSize: uncompressedSize, externalAttributes: externalAttrs)
             if case .directory = kind {
@@ -385,6 +388,9 @@ public enum ZipArchiveImport {
             if isEncryptedHeader(flags: localFlags, method: localMethod, extra: localExtraBytes) {
                 throw ZipArchiveFailure.encrypted
             }
+            guard localMethod == entry.method else {
+                throw ZipArchiveFailure.damaged
+            }
             if !localNameBytes.isEmpty {
                 if localNameBytes.contains(0) {
                     throw ZipArchiveFailure.unsafePaths
@@ -398,14 +404,22 @@ public enum ZipArchiveImport {
             if (localFlags & 0x0008) == 0 && !(localCompressed32 == 0 && localUncompressed32 == 0) {
                 var lhUncompressed = UInt64(localUncompressed32)
                 var lhCompressed = UInt64(localCompressed32)
+                var resolvedLocalSizes = localUncompressed32 != 0xFFFF_FFFF && localCompressed32 != 0xFFFF_FFFF
                 if localUncompressed32 == 0xFFFF_FFFF || localCompressed32 == 0xFFFF_FFFF {
                     if let payload = try findExtraField(id: 0x0001, in: localExtraBytes, strict: false), payload.count >= 16 {
                         lhUncompressed = payload.u64LE(at: 0)
                         lhCompressed = payload.u64LE(at: 8)
+                        resolvedLocalSizes = true
                     }
                 }
-                if exceedsCompressionRatio(uncompressed: lhUncompressed, compressed: lhCompressed) {
-                    throw ZipArchiveFailure.tooLarge
+                if resolvedLocalSizes {
+                    if lhUncompressed > maxTotalUncompressedBytes ||
+                        exceedsCompressionRatio(uncompressed: lhUncompressed, compressed: lhCompressed) {
+                        throw ZipArchiveFailure.tooLarge
+                    }
+                    if lhUncompressed != entry.uncompressedSize || lhCompressed != entry.compressedSize {
+                        throw ZipArchiveFailure.damaged
+                    }
                 }
             }
 
@@ -414,7 +428,6 @@ public enum ZipArchiveImport {
                 throw ZipArchiveFailure.damaged
             }
             entries[i].dataOffset = dataOffset
-            entries[i].localMethod = localMethod
         }
 
         return entries
@@ -606,7 +619,7 @@ public enum ZipArchiveImport {
                 shouldCancel: shouldCancel
             )
         } else {
-            try addRuntimeBytes(entry.uncompressedSize, to: &cumulativeActualUncompressed)
+            try addRuntimeBytes(max(entry.compressedSize, entry.uncompressedSize), to: &cumulativeActualUncompressed)
         }
     }
 
@@ -625,7 +638,7 @@ public enum ZipArchiveImport {
                 shouldCancel: shouldCancel
             )
         } else {
-            try addRuntimeBytes(entry.uncompressedSize, to: &cumulativeActualUncompressed)
+            try addRuntimeBytes(max(entry.compressedSize, entry.uncompressedSize), to: &cumulativeActualUncompressed)
         }
     }
 
@@ -766,10 +779,6 @@ public enum ZipArchiveImport {
                         actualUncompressed += UInt64(produced)
                         try addRuntimeBytes(UInt64(produced), to: &cumulativeActualUncompressed)
                         if exceedsCompressionRatio(uncompressed: actualUncompressed, compressed: entry.compressedSize) {
-                            throw ZipArchiveFailure.tooLarge
-                        }
-                        if actualConsumedInput > 0 && actualUncompressed > 6_400_000 &&
-                            exceedsCompressionRatio(uncompressed: actualUncompressed, compressed: actualConsumedInput) {
                             throw ZipArchiveFailure.tooLarge
                         }
                         if writingToDisk {

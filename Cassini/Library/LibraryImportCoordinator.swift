@@ -74,6 +74,9 @@ import Observation
     @ObservationIgnored private var paused = false
     @ObservationIgnored private var cancellingCurrent = false
     @ObservationIgnored private var runToken: UInt64 = 0
+    #if DEBUG
+    @ObservationIgnored var fixtureOnProgressGate: (@Sendable (Int, Int) -> Void)?
+    #endif
 
     var isBusy: Bool { task != nil || !pending.isEmpty }
 
@@ -242,6 +245,9 @@ import Observation
             notice = nil
             progress = Progress(done: 1, total: max(1, leases.count))
             let box = SummaryBox()
+            #if DEBUG
+            let progressGate = fixtureOnProgressGate
+            #endif
 
             task = Task {
                 do {
@@ -260,12 +266,16 @@ import Observation
                                 box.update(partial)
                             },
                             onProgress: { done, total in
-                                guard box.enqueueProgress(done: done, total: total) else { return }
-                                Task { @MainActor in
-                                    if let latest = box.consumeProgress() {
-                                        LibraryImportCoordinator.shared.updateProgress(done: latest.done, total: latest.total, token: token)
+                                if box.enqueueProgress(done: done, total: total) {
+                                    Task { @MainActor in
+                                        if let latest = box.consumeProgress() {
+                                            LibraryImportCoordinator.shared.updateProgress(done: latest.done, total: latest.total, token: token)
+                                        }
                                     }
                                 }
+                                #if DEBUG
+                                progressGate?(done, total)
+                                #endif
                             },
                             shouldCancel: {
                                 Task.isCancelled

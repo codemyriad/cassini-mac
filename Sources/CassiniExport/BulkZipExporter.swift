@@ -130,7 +130,7 @@ public enum BulkZipExporter {
             )
             let modifiedDate = current.start ?? Date()
 
-            if let rawSourceURL = try uneditedReceivedSourceURL(for: current) {
+            if let rawSourceURL = try directCopySourceURL(for: current) {
                 try writer.appendFile(
                     from: rawSourceURL,
                     entryName: entryName,
@@ -138,19 +138,28 @@ public enum BulkZipExporter {
                     shouldCancel: shouldCancel
                 )
             } else {
-                try autoreleasepool {
-                    let artifact = try MeetingFileExporter.cassini(
-                        current,
-                        assets: current.state.origin == .own ? assets : nil,
-                        temporaryRoot: temporaryRoot,
-                        timeZone: timeZone,
-                        shouldCancel: shouldCancel
-                    )
-                    defer {
-                        try? manager.removeItem(at: artifact.url.deletingLastPathComponent())
+                do {
+                    try autoreleasepool {
+                        let artifact = try MeetingFileExporter.cassini(
+                            current,
+                            assets: current.state.origin == .own ? assets : nil,
+                            temporaryRoot: temporaryRoot,
+                            timeZone: timeZone,
+                            shouldCancel: shouldCancel
+                        )
+                        defer {
+                            try? manager.removeItem(at: artifact.url.deletingLastPathComponent())
+                        }
+                        try writer.appendFile(
+                            from: artifact.url,
+                            entryName: entryName,
+                            modifiedAt: modifiedDate,
+                            shouldCancel: shouldCancel
+                        )
                     }
+                } catch MeetingExportError.newerFormat where current.state.origin == .received && current.audioFiles.count == 1 {
                     try writer.appendFile(
-                        from: artifact.url,
+                        from: current.audioFiles[0],
                         entryName: entryName,
                         modifiedAt: modifiedDate,
                         shouldCancel: shouldCancel
@@ -183,9 +192,12 @@ public enum BulkZipExporter {
         return writtenEntries
     }
 
-    /// Determines whether `meeting` is an unedited received meeting whose `original.opus`
-    /// can be copied byte-for-byte (both Cassini documents and plain untranscribed audio).
-    static func uneditedReceivedSourceURL(for meeting: LibraryMeeting) throws -> URL? {
+    /// Determines whether `meeting` must have its `original.opus` copied byte-for-byte:
+    /// - Any non-OK Cassini source (`.unverified`, `.staleAudio`, `.unknownCassiniFormat`, `.invalidCassiniMetadata`),
+    ///   even when locally edited, because rebuilding would strip its original transcripts, manifest, and tags;
+    /// - Any `.ok` source carrying a foreign `codemyriad.io` namespace this app cannot advance;
+    /// - Any unedited `.ok` Cassini document or unedited `.plainAudio` file, so re-import detects duplicates.
+    static func directCopySourceURL(for meeting: LibraryMeeting) throws -> URL? {
         guard meeting.state.origin == .received,
               meeting.state.lifecycle == .saved,
               meeting.audioFiles.count == 1,
@@ -204,14 +216,23 @@ public enum BulkZipExporter {
             throw MeetingExportError.invalidSource
         }
 
+        let trusted = [.ok, .plainAudio].contains(file.state)
+        if !trusted {
+            return sourceURL
+        }
+
+        if let foreign = file.manifest?.raw["x"]?[CodemyriadNamespace.key],
+           (try? CodemyriadNamespace.validated(foreign)) == nil {
+            return sourceURL
+        }
+
         if !LibraryScanner.isMeetingFolder(meeting.folder) {
             return sourceURL
         }
 
         let metadataURL = meeting.folder.appendingPathComponent("meeting.json")
         let raw = (try? Data(contentsOf: metadataURL)).flatMap { try? JSONParser.parse($0) }
-        let trusted = [.ok, .plainAudio].contains(file.state)
-        let embeddedTitle = [trusted ? file.manifest?.meeting.title : nil, trusted ? file.tags?["TITLE"] : nil]
+        let embeddedTitle = [file.manifest?.meeting.title, file.tags?["TITLE"]]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
 
@@ -222,7 +243,7 @@ public enum BulkZipExporter {
             return nil
         }
 
-        let originalNotes = trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"] : nil
+        let originalNotes = file.manifest?.raw["x"]?["gocassini.com"]?["notes"]
         let (_, notesChanged) = CodemyriadNamespace.exportNotes(
             local: CodemyriadNamespace.localNotes(raw),
             original: originalNotes

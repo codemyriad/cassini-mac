@@ -6,67 +6,93 @@ struct TransferStatusBanner: View {
     @State private var importer = LibraryImportCoordinator.shared
     @State private var bulkExporter = BulkZipExportCoordinator.shared
     @State private var singleExporter = MeetingExportCoordinator.shared
+    var fixtureVisibleCards: (([TransferBannerPresentation.Card]) -> Void)? = nil
+
+    private var presentation: TransferBannerPresentation {
+        TransferBannerPresentation(
+            importProgress: importer.progress.map { .init(done: $0.done, total: $0.total) },
+            importNotice: importer.notice.map { .init(id: $0.id, message: $0.message, isWarning: $0.isWarning, autoDismiss: $0.autoDismiss) },
+            bulkExportProgress: bulkExporter.progress.map { .init(done: $0.done, total: $0.total) },
+            bulkExportReceipt: bulkExporter.receipt.map { .init(id: $0.id, count: $0.count) },
+            singleExportReceipt: singleExporter.receipt.map {
+                .init(id: $0.id, title: $0.title, folderName: $0.url.deletingLastPathComponent().lastPathComponent)
+            }
+        )
+    }
 
     var body: some View {
-        if let progress = importer.progress {
-            card(warning: false) {
-                ProgressView().controlSize(.small)
-                Text(UXText.text("import.progress", ["done": String(progress.done), "total": String(progress.total)]))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("import-progress")
-                Button(UXText.text("common.cancel")) { importer.cancelCurrentRun() }
-                    .accessibilityIdentifier("import-cancel")
-            }
-        } else if let progress = bulkExporter.progress {
-            card(warning: false) {
-                ProgressView().controlSize(.small)
-                Text(UXText.text("export.zip.progress", ["done": String(progress.done), "total": String(progress.total)]))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export-zip-progress")
-                Button(UXText.text("common.cancel")) { bulkExporter.cancel() }
-                    .accessibilityIdentifier("export-zip-cancel")
-            }
-        } else if let notice = importer.notice {
-            card(warning: notice.isWarning) {
-                if notice.isWarning {
-                    Image(systemName: "exclamationmark.triangle.fill").accessibilityHidden(true)
+        let current = presentation
+        Group {
+            if !current.cards.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(current.cards) { item in
+                        switch item {
+                        case .importProgress(let done, let total):
+                            card(warning: false) {
+                                ProgressView().controlSize(.small)
+                                Text(UXText.text("import.progress", ["done": String(done), "total": String(total)]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("import-progress")
+                                Button(UXText.text("common.cancel")) { importer.cancelCurrentRun() }
+                                    .accessibilityIdentifier("import-cancel")
+                            }
+                        case .importNotice(let notice):
+                            card(warning: notice.isWarning) {
+                                if notice.isWarning {
+                                    Image(systemName: "exclamationmark.triangle.fill").accessibilityHidden(true)
+                                }
+                                Text(notice.message)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier(notice.isWarning ? "import-warning" : "import-summary")
+                                Button(UXText.text("common.done")) { importer.dismissNotice(notice.id) }
+                                    .accessibilityIdentifier("import-notice-done")
+                            }
+                            .task(id: notice.id) {
+                                guard notice.autoDismiss else { return }
+                                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                                importer.dismissNotice(notice.id)
+                            }
+                        case .bulkExportProgress(let done, let total):
+                            card(warning: false) {
+                                ProgressView().controlSize(.small)
+                                Text(UXText.text("export.zip.progress", ["done": String(done), "total": String(total)]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("export-zip-progress")
+                                Button(UXText.text("common.cancel")) { bulkExporter.cancel() }
+                                    .accessibilityIdentifier("export-zip-cancel")
+                            }
+                        case .bulkExportReceipt(let receipt):
+                            card(warning: false) {
+                                Text(UXText.text("export.zip.done", ["n": String(receipt.count)]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("export-zip-success")
+                                Button(UXText.text("common.show")) { bulkExporter.revealReceipt() }
+                                    .accessibilityIdentifier("export-zip-show")
+                            }
+                            .task(id: receipt.id) {
+                                do { try await Task.sleep(for: .seconds(10)) } catch { }
+                                bulkExporter.clearReceipt(receipt.id)
+                            }
+                        case .singleExportReceipt(let receipt):
+                            card(warning: false) {
+                                Text(UXText.text("meeting.exported", ["title": receipt.title, "folder": receipt.folderName]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("export-success")
+                                Button(UXText.text("common.show")) { singleExporter.revealReceipt() }
+                                    .accessibilityIdentifier("export-show")
+                            }
+                            .task(id: receipt.id) {
+                                do { try await Task.sleep(for: .seconds(10)) } catch { }
+                                singleExporter.clearReceipt(receipt.id)
+                            }
+                        }
+                    }
                 }
-                Text(notice.message)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier(notice.isWarning ? "import-warning" : "import-summary")
-                Button(UXText.text("common.done")) { importer.dismissNotice(notice.id) }
-                    .accessibilityIdentifier("import-notice-done")
-            }
-            .task(id: notice.id) {
-                guard notice.autoDismiss else { return }
-                do { try await Task.sleep(for: .seconds(10)) } catch { return }
-                importer.dismissNotice(notice.id)
-            }
-        } else if let receipt = bulkExporter.receipt {
-            card(warning: false) {
-                Text(UXText.text("export.zip.done", ["n": String(receipt.count)]))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export-zip-success")
-                Button(UXText.text("common.show")) { bulkExporter.revealReceipt() }
-                    .accessibilityIdentifier("export-zip-show")
-            }
-            .task(id: receipt.id) {
-                do { try await Task.sleep(for: .seconds(10)) } catch { }
-                bulkExporter.clearReceipt(receipt.id)
-            }
-        } else if let receipt = singleExporter.receipt {
-            card(warning: false) {
-                Text(UXText.text("meeting.exported", ["title": receipt.title, "folder": receipt.url.deletingLastPathComponent().lastPathComponent]))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export-success")
-                Button(UXText.text("common.show")) { singleExporter.revealReceipt() }
-                    .accessibilityIdentifier("export-show")
-            }
-            .task(id: receipt.id) {
-                do { try await Task.sleep(for: .seconds(10)) } catch { }
-                singleExporter.clearReceipt(receipt.id)
+                .padding(20)
             }
         }
+        .onAppear { fixtureVisibleCards?(current.cards) }
+        .onChange(of: current.cards) { _, updated in fixtureVisibleCards?(updated) }
     }
 
     @ViewBuilder
@@ -84,7 +110,6 @@ struct TransferStatusBanner: View {
             }
         }
         .shadow(radius: 6)
-        .padding(20)
         .accessibilityElement(children: .contain)
     }
 }

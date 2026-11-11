@@ -875,6 +875,209 @@ import Testing
         )
     }
 
+    // MARK: - 7. Regression Tests: Method Mismatch Preflight, Mixed-Compressibility Ratio, Linear CPU Scaling & Info.plist
+
+    @Test(arguments: ["bomb.opus", "bomb.txt"])
+    func centralVsLocalMethodMismatchRefusesWholeArchiveBeforeImportingEarlierMembers(memberName: String) throws {
+        let f = try Fixture()
+        let library = f.root.appendingPathComponent("Library")
+        let staging = f.root.appendingPathComponent("Temp")
+        let validOpus = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let goodMember = RawZipEntry(name: "Good.opus", method: 0, uncompressedData: validOpus)
+
+        // 1. Central method 8 (Deflate), Local method 0 (Stored), understated sizes after a valid .opus member ->
+        // must be rejected during preflight so the whole archive is refused and Good.opus is NEVER imported!
+        var method8Local0 = RawZipEntry(name: memberName, method: 8, uncompressedData: Data(repeating: 0, count: 50_000))
+        method8Local0.localMethod = 0
+        method8Local0.centralUncompressedSize = 16
+        method8Local0.localUncompressedSize32 = 16
+        method8Local0.localCompressedSize32 = UInt32(method8Local0.compressedPayload.count)
+        let mismatch1URL = f.root.appendingPathComponent("mismatch-c8-l0-\(memberName).zip")
+        try Self.buildZip(entries: [goodMember, method8Local0]).write(to: mismatch1URL)
+
+        var s1 = LibraryImportSummary()
+        #expect(throws: ZipArchiveFailure.damaged) {
+            try ZipArchiveImport.importArchive(mismatch1URL, into: library, temporaryRoot: staging, summary: &s1)
+        }
+        #expect(s1.imported == 0 && s1.failed == 0 && s1.unsupported == 0)
+        #expect(!FileManager.default.fileExists(atPath: library.path))
+
+        // 2. Central method 0 (Stored), Local method 8 (Deflate) after a valid .opus member -> refused in preflight!
+        var method0Local8 = RawZipEntry(name: memberName, method: 0, uncompressedData: Data("stored-payload".utf8))
+        method0Local8.localMethod = 8
+        let mismatch2URL = f.root.appendingPathComponent("mismatch-c0-l8-\(memberName).zip")
+        try Self.buildZip(entries: [goodMember, method0Local8]).write(to: mismatch2URL)
+
+        var s2 = LibraryImportSummary()
+        #expect(throws: ZipArchiveFailure.damaged) {
+            try ZipArchiveImport.importArchive(mismatch2URL, into: library, temporaryRoot: staging, summary: &s2)
+        }
+        #expect(s2.imported == 0)
+        #expect(!FileManager.default.fileExists(atPath: library.path))
+
+        // 3. Stored (method 0) with mismatched compressedSize != uncompressedSize -> refused in preflight!
+        var storedSizeMismatch = RawZipEntry(name: memberName, method: 0, uncompressedData: Data(repeating: 0x41, count: 128))
+        storedSizeMismatch.centralUncompressedSize = 16
+        storedSizeMismatch.localUncompressedSize32 = 16
+        storedSizeMismatch.localCompressedSize32 = 128
+        let mismatch3URL = f.root.appendingPathComponent("mismatch-stored-size-\(memberName).zip")
+        try Self.buildZip(entries: [goodMember, storedSizeMismatch]).write(to: mismatch3URL)
+
+        var s3 = LibraryImportSummary()
+        #expect(throws: ZipArchiveFailure.damaged) {
+            try ZipArchiveImport.importArchive(mismatch3URL, into: library, temporaryRoot: staging, summary: &s3)
+        }
+        #expect(s3.imported == 0)
+        #expect(!FileManager.default.fileExists(atPath: library.path))
+    }
+
+    @Test func mixedCompressibilityEntriesAboveSixMegabytesSucceedAtStreamCompletion() throws {
+        let f = try Fixture()
+        let library = f.root.appendingPathComponent("Library")
+        let staging = f.root.appendingPathComponent("Temp")
+
+        // Build 7 MB of zeros followed by 1 MB of incompressible xorshift64* bytes (overall ratio ~7.9:1,
+        // while the 6.5 MB prefix alone has ratio > 500:1).
+        var mixedBytes = Data(repeating: 0, count: 7_000_000)
+        var incompressibleTail = Data(count: 1_000_000)
+        incompressibleTail.withUnsafeMutableBytes { raw in
+            let ptr = raw.bindMemory(to: UInt64.self)
+            var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+            for i in 0..<ptr.count {
+                state ^= state >> 12
+                state ^= state << 25
+                state ^= state >> 27
+                ptr[i] = state &* 0x2545_F491_4F6C_DD1D
+            }
+        }
+        mixedBytes.append(incompressibleTail)
+
+        let mixedTxtEntry = RawZipEntry(name: "notes-with-zero-prefix.txt", method: 8, uncompressedData: mixedBytes)
+        // Confirm complete ratio is ~7.9:1 (well below 100:1).
+        #expect(!ZipArchiveImport.exceedsCompressionRatio(
+            uncompressed: mixedTxtEntry.centralUncompressedSize!,
+            compressed: mixedTxtEntry.centralCompressedSize!
+        ))
+
+        // Also build a > 8 MB valid .opus member whose Vorbis comment starts with 7 MB of 'A's followed by ~1.33 MB of base64 entropy!
+        let baseOpus = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus"))
+        let mixedCommentValue = String(repeating: "A", count: 7_000_000) + incompressibleTail.base64EncodedString()
+        let mixedOpusURL = f.root.appendingPathComponent("mixed-audio.opus")
+        _ = try OpusStreamFile.rewrite(
+            baseOpus,
+            tags: PortableMeetingTags.packet(comments: [
+                Comment(name: "TITLE", value: "Mixed compressibility audio"),
+                Comment(name: "DESCRIPTION", value: mixedCommentValue),
+            ]),
+            to: mixedOpusURL
+        )
+        let mixedOpusData = try Data(contentsOf: mixedOpusURL)
+        #expect(mixedOpusData.count > 8_000_000)
+        let mixedOpusEntry = RawZipEntry(name: "Mixed compressibility audio.opus", method: 8, uncompressedData: mixedOpusData)
+
+        let archiveURL = f.root.appendingPathComponent("mixed-compressibility.zip")
+        try Self.buildZip(entries: [mixedTxtEntry, mixedOpusEntry]).write(to: archiveURL)
+
+        var summary = LibraryImportSummary()
+        _ = try ZipArchiveImport.importArchive(archiveURL, into: library, temporaryRoot: staging, summary: &summary)
+        #expect(summary.imported == 1)
+        #expect(summary.unsupported == 1)
+        #expect(summary.duplicates == 0)
+        #expect(summary.failed == 0)
+        #expect(summary.lastSelected?.title == "Mixed compressibility audio")
+    }
+
+    @Test func distinctSupportedDocumentsScaleLinearlyWithoutRescanningLibrary() throws {
+        let f = try Fixture()
+        let staging = f.root.appendingPathComponent("Temp")
+        let baseDoc = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+
+        // Build 200 distinct valid Cassini .opus documents, each carrying its own word-timed transcript payload
+        // so any accidental full-Library rescan + sort would do quadratic O(N^2) transcript/metadata work.
+        let smallCount = 25
+        let largeCount = 200 // 8x input size -> linear ~8x CPU, quadratic would be ~62x CPU!
+        var distinctEntries: [RawZipEntry] = []
+        distinctEntries.reserveCapacity(largeCount)
+
+        let parsedBase = try CassiniReader.read(baseDoc)
+        let baseManifest = try #require(parsedBase.manifest?.raw)
+        let baseMeeting = try #require(baseManifest["meeting"])
+        let scratchOpus = f.root.appendingPathComponent("distinct-scratch.opus")
+        defer { try? FileManager.default.removeItem(at: scratchOpus) }
+
+        for idx in 0..<largeCount {
+            var info = try baseMeeting.setting("id", to: .string("mtg_distinct_\(idx)"))
+            info = try info.setting("title", to: .string("Distinct meeting \(idx)"))
+            let manifest = try baseManifest.setting("meeting", to: info)
+            let wordsJSON = Data("{\"language\":\"en\",\"items\":[{\"speaker\":\"s1\",\"startMs\":0,\"endMs\":200,\"text\":\"hello\"},{\"speaker\":\"s1\",\"startMs\":200,\"endMs\":400,\"text\":\"meeting-\(idx)\"}]}".utf8)
+            let tags = try PortableMeetingTags.make(manifest: manifest, transcript: wordsJSON, language: "en", wordCount: 2)
+            try? FileManager.default.removeItem(at: scratchOpus)
+            _ = try OpusStreamFile.rewrite(baseDoc, tags: tags, to: scratchOpus)
+            let docBytes = try Data(contentsOf: scratchOpus)
+            try? FileManager.default.removeItem(at: scratchOpus)
+            distinctEntries.append(RawZipEntry(name: "Distinct-\(idx).opus", method: 0, uncompressedData: docBytes))
+        }
+
+        let smallZip = f.root.appendingPathComponent("distinct-\(smallCount).zip")
+        try Self.buildZip(entries: Array(distinctEntries.prefix(smallCount))).write(to: smallZip)
+        let largeZip = f.root.appendingPathComponent("distinct-\(largeCount).zip")
+        try Self.buildZip(entries: distinctEntries).write(to: largeZip)
+
+        // Warm up code paths with 1 document before measuring thread CPU scaling.
+        let warmupLib = f.root.appendingPathComponent("WarmupLib")
+        let warmupZip = f.root.appendingPathComponent("warmup.zip")
+        try Self.buildZip(entries: [distinctEntries[0]]).write(to: warmupZip)
+        var warmupSummary = LibraryImportSummary()
+        _ = try ZipArchiveImport.importArchive(warmupZip, into: warmupLib, temporaryRoot: staging, summary: &warmupSummary)
+        #expect(warmupSummary.imported == 1)
+
+        let smallLib = f.root.appendingPathComponent("SmallLib")
+        var smallSummary = LibraryImportSummary()
+        let startSmall = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        _ = try ZipArchiveImport.importArchive(smallZip, into: smallLib, temporaryRoot: staging, summary: &smallSummary)
+        let cpuSmall = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - startSmall
+        #expect(smallSummary.imported == smallCount && smallSummary.duplicates == 0 && smallSummary.failed == 0)
+
+        let largeLib = f.root.appendingPathComponent("LargeLib")
+        var largeSummary = LibraryImportSummary()
+        let startLarge = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        _ = try ZipArchiveImport.importArchive(largeZip, into: largeLib, temporaryRoot: staging, summary: &largeSummary)
+        let cpuLarge = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - startLarge
+        #expect(largeSummary.imported == largeCount && largeSummary.duplicates == 0 && largeSummary.failed == 0)
+
+        // 8x input count: linear scaling is ~8x; quadratic rescanning was ~62x. Bound at 22x (with a 250ms floor for fast machines).
+        #expect(cpuLarge <= max(cpuSmall * 22, 250_000_000), "Expected linear CPU scaling for 8x distinct imports (small=\(cpuSmall)ns, large=\(cpuLarge)ns)")
+
+        let scannedLarge = try LibraryScanner(root: largeLib).scan().meetings
+        #expect(scannedLarge.count == largeCount)
+
+        // Re-importing all 200 distinct documents into the populated Library hits the authoritative O(1) digest index!
+        var dupSummary = LibraryImportSummary()
+        let startDup = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        _ = try ZipArchiveImport.importArchive(largeZip, into: largeLib, temporaryRoot: staging, summary: &dupSummary)
+        let cpuDup = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - startDup
+        #expect(dupSummary.imported == 0 && dupSummary.duplicates == largeCount && dupSummary.failed == 0)
+        #expect(cpuDup <= max(cpuLarge, 250_000_000))
+    }
+
+    @Test func bundleInfoPlistRegistersZipAndOggOpusAsAlternateViewerDocumentTypes() throws {
+        let f = try Fixture()
+        let plistData = try Data(contentsOf: f.repository.appendingPathComponent("Cassini/Info.plist"))
+        let plist = try #require(PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
+        let docTypes = try #require(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+
+        let oggEntry = try #require(docTypes.first { ($0["LSItemContentTypes"] as? [String])?.contains("org.xiph.ogg-audio") == true })
+        #expect(oggEntry["CFBundleTypeRole"] as? String == "Viewer")
+        #expect(oggEntry["LSHandlerRank"] as? String == "Alternate")
+
+        let zipEntry = try #require(docTypes.first { ($0["LSItemContentTypes"] as? [String])?.contains("public.zip-archive") == true })
+        #expect(zipEntry["CFBundleTypeRole"] as? String == "Viewer")
+        #expect(zipEntry["LSHandlerRank"] as? String == "Alternate")
+
+        let projectYML = try String(contentsOf: f.repository.appendingPathComponent("project.yml"), encoding: .utf8)
+        #expect(projectYML.contains("public.zip-archive"))
+    }
+
     private static func pwriteData(_ data: Data, fd: Int32, offset: UInt64) {
         data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress, !raw.isEmpty else { return }

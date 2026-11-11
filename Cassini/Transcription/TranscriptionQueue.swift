@@ -5,6 +5,7 @@ import CassiniTranscription
 import CassiniWhistle
 import Observation
 #if DEBUG
+import SwiftUI
 import CassiniRecording
 import CassiniKit
 import Darwin
@@ -219,6 +220,7 @@ import Darwin
             let received = imported[0]
             await queue.waitForFixturePreparation()
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
+            try await verifyConcurrentImportKeepsExportProgressAndCancel(root:root, source:source, exportedMeeting:received)
             // A second accepted import is owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
@@ -240,7 +242,7 @@ import Darwin
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown(); await importer.waitForShutdown(); await queue.waitForShutdown()
@@ -256,5 +258,140 @@ import Darwin
         try await action()
     }
     private static func require<T>(_ value: T?) throws -> T { guard let value else { throw POSIXError(.EINVAL) }; return value }
+
+    private final class GateLatch: @unchecked Sendable {
+        private let condition = NSCondition()
+        private var entered = false
+        private var released = false
+        private var onEnter: (@Sendable () -> Void)?
+
+        init(onEnter: @escaping @Sendable () -> Void) {
+            self.onEnter = onEnter
+        }
+
+        func enterAndWait() {
+            let callback: (@Sendable () -> Void)?
+            condition.lock()
+            if !entered {
+                entered = true
+                callback = onEnter
+                onEnter = nil
+            } else {
+                callback = nil
+            }
+            callback?()
+            while !released {
+                condition.wait()
+            }
+            condition.unlock()
+        }
+
+        func release() {
+            condition.lock()
+            released = true
+            condition.broadcast()
+            condition.unlock()
+        }
+    }
+
+    private static func verifyConcurrentImportKeepsExportProgressAndCancel(root: URL, source: URL, exportedMeeting: LibraryMeeting) async throws {
+        let importer = LibraryImportCoordinator.shared
+        let bulkExporter = BulkZipExportCoordinator.shared
+        let scratch = root.deletingLastPathComponent()
+        let batchA = scratch.appendingPathComponent("Batch-A.opus")
+        let batchB = scratch.appendingPathComponent("Batch-B.opus")
+        let raw = try Data(contentsOf: source)
+        _ = try OpusStreamFile.rewrite(raw, tags: PortableMeetingTags.packet(comments: [Comment(name: "TITLE", value: "Batch A")]), to: batchA)
+        _ = try OpusStreamFile.rewrite(raw, tags: PortableMeetingTags.packet(comments: [Comment(name: "TITLE", value: "Batch B")]), to: batchB)
+        let zipDest = scratch.appendingPathComponent("ConcurrentCancelled.zip")
+
+        let (exportEnteredStream, exportEnteredCont) = AsyncStream<Void>.makeStream()
+        let exportLatch = GateLatch { exportEnteredCont.yield(()); exportEnteredCont.finish() }
+        let (importEnteredStream, importEnteredCont) = AsyncStream<Void>.makeStream()
+        let importLatch = GateLatch { importEnteredCont.yield(()); importEnteredCont.finish() }
+
+        defer {
+            exportLatch.release()
+            importLatch.release()
+            bulkExporter.fixtureOnProgressGate = nil
+            importer.fixtureOnProgressGate = nil
+            importer.dismissNotice()
+        }
+
+        bulkExporter.fixtureOnProgressGate = { done, _ in
+            if done == 1 { exportLatch.enterAndWait() }
+        }
+        importer.fixtureOnProgressGate = { done, _ in
+            if done == 1 { importLatch.enterAndWait() }
+        }
+
+        let (renderedCardsStream, renderedCardsCont) = AsyncStream<[TransferBannerPresentation.Card]>.makeStream()
+        let host = NSHostingView(rootView: TransferStatusBanner(fixtureVisibleCards: { cards in
+            renderedCardsCont.yield(cards)
+        }))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        host.layoutSubtreeIfNeeded()
+        defer {
+            renderedCardsCont.finish()
+            window.close()
+        }
+
+        var cardsIter = renderedCardsStream.makeAsyncIterator()
+        func waitForRenderedCards(
+            label: String,
+            matching predicate: @escaping @Sendable ([TransferBannerPresentation.Card]) -> Bool
+        ) async throws {
+            let timeoutTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(10))
+                renderedCardsCont.finish()
+            }
+            defer { timeoutTask.cancel() }
+            while let cards = await cardsIter.next() {
+                if predicate(cards) { return }
+            }
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing rendered banner cards: \(label)"])
+        }
+
+        bulkExporter.startExportForTesting([exportedMeeting, exportedMeeting], to: zipDest)
+        var exportIter = exportEnteredStream.makeAsyncIterator()
+        _ = await exportIter.next()
+
+        importer.openBatch([batchA, batchB])
+        var importIter = importEnteredStream.makeAsyncIterator()
+        _ = await importIter.next()
+        host.layoutSubtreeIfNeeded()
+
+        try await waitForRenderedCards(label: "both import and export progress + cancel") { cards in
+            let primaryIDs = Set(cards.map(\.primaryAccessibilityID))
+            let actionIDs = Set(cards.map(\.actionAccessibilityID))
+            return primaryIDs.contains("import-progress") && primaryIDs.contains("export-zip-progress") &&
+                   actionIDs.contains("import-cancel") && actionIDs.contains("export-zip-cancel")
+        }
+        guard importer.progress != nil, bulkExporter.progress != nil else { throw POSIXError(.EINVAL) }
+
+        // Cancel export while concurrent import remains active; import must stay running and complete.
+        bulkExporter.cancel()
+        exportLatch.release()
+        await bulkExporter.waitForShutdown()
+        host.layoutSubtreeIfNeeded()
+        guard bulkExporter.progress == nil, !FileManager.default.fileExists(atPath: zipDest.path) else {
+            throw POSIXError(.EINVAL)
+        }
+        guard importer.progress != nil else { throw POSIXError(.EINVAL) }
+        try await waitForRenderedCards(label: "import progress retained after export cancel") { cards in
+            let primaryIDs = Set(cards.map(\.primaryAccessibilityID))
+            let actionIDs = Set(cards.map(\.actionAccessibilityID))
+            return primaryIDs.contains("import-progress") && !primaryIDs.contains("export-zip-progress") &&
+                   actionIDs.contains("import-cancel") && !actionIDs.contains("export-zip-cancel")
+        }
+
+        importLatch.release()
+        await importer.waitForShutdown()
+        guard !importer.isBusy, importer.notice != nil else { throw POSIXError(.EINVAL) }
+        importer.dismissNotice()
+    }
 }
 #endif

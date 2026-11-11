@@ -60,6 +60,115 @@ public struct LibraryImportSummary: Sendable {
     }
 }
 
+/// Independent transfer lanes rendered by `TransferStatusBanner` so concurrent import and export
+/// operations never hide one another's progress, Cancel action, or completion notice.
+public struct TransferBannerPresentation: Equatable, Sendable {
+    public struct ImportProgress: Equatable, Sendable {
+        public let done: Int
+        public let total: Int
+        public init(done: Int, total: Int) { self.done = done; self.total = total }
+    }
+
+    public struct ImportNotice: Equatable, Sendable {
+        public let id: UUID
+        public let message: String
+        public let isWarning: Bool
+        public let autoDismiss: Bool
+        public init(id: UUID, message: String, isWarning: Bool, autoDismiss: Bool) {
+            self.id = id
+            self.message = message
+            self.isWarning = isWarning
+            self.autoDismiss = autoDismiss
+        }
+    }
+
+    public struct BulkExportProgress: Equatable, Sendable {
+        public let done: Int
+        public let total: Int
+        public init(done: Int, total: Int) { self.done = done; self.total = total }
+    }
+
+    public struct BulkExportReceipt: Equatable, Sendable {
+        public let id: UUID
+        public let count: Int
+        public init(id: UUID, count: Int) { self.id = id; self.count = count }
+    }
+
+    public struct SingleExportReceipt: Equatable, Sendable {
+        public let id: UUID
+        public let title: String
+        public let folderName: String
+        public init(id: UUID, title: String, folderName: String) {
+            self.id = id
+            self.title = title
+            self.folderName = folderName
+        }
+    }
+
+    public enum Card: Equatable, Sendable, Identifiable {
+        case importProgress(done: Int, total: Int)
+        case importNotice(ImportNotice)
+        case bulkExportProgress(done: Int, total: Int)
+        case bulkExportReceipt(BulkExportReceipt)
+        case singleExportReceipt(SingleExportReceipt)
+
+        public var id: String {
+            switch self {
+            case .importProgress: return "import-progress"
+            case .importNotice(let notice): return "import-notice-\(notice.id.uuidString)"
+            case .bulkExportProgress: return "export-zip-progress"
+            case .bulkExportReceipt(let receipt): return "export-zip-receipt-\(receipt.id.uuidString)"
+            case .singleExportReceipt(let receipt): return "export-single-receipt-\(receipt.id.uuidString)"
+            }
+        }
+
+        public var primaryAccessibilityID: String {
+            switch self {
+            case .importProgress: return "import-progress"
+            case .importNotice(let notice): return notice.isWarning ? "import-warning" : "import-summary"
+            case .bulkExportProgress: return "export-zip-progress"
+            case .bulkExportReceipt: return "export-zip-success"
+            case .singleExportReceipt: return "export-success"
+            }
+        }
+
+        public var actionAccessibilityID: String {
+            switch self {
+            case .importProgress: return "import-cancel"
+            case .importNotice: return "import-notice-done"
+            case .bulkExportProgress: return "export-zip-cancel"
+            case .bulkExportReceipt: return "export-zip-show"
+            case .singleExportReceipt: return "export-show"
+            }
+        }
+    }
+
+    public let cards: [Card]
+
+    public init(
+        importProgress: ImportProgress? = nil,
+        importNotice: ImportNotice? = nil,
+        bulkExportProgress: BulkExportProgress? = nil,
+        bulkExportReceipt: BulkExportReceipt? = nil,
+        singleExportReceipt: SingleExportReceipt? = nil
+    ) {
+        var resolved: [Card] = []
+        if let importProgress {
+            resolved.append(.importProgress(done: importProgress.done, total: importProgress.total))
+        } else if let importNotice {
+            resolved.append(.importNotice(importNotice))
+        }
+        if let bulkExportProgress {
+            resolved.append(.bulkExportProgress(done: bulkExportProgress.done, total: bulkExportProgress.total))
+        } else if let bulkExportReceipt {
+            resolved.append(.bulkExportReceipt(bulkExportReceipt))
+        } else if let singleExportReceipt {
+            resolved.append(.singleExportReceipt(singleExportReceipt))
+        }
+        self.cards = resolved
+    }
+}
+
 /// R1.4: original bytes are private and complete before meeting.json commits the
 /// import. A full-file hash identifies repeats, regardless of source filename.
 public enum LibraryImport {
@@ -94,25 +203,17 @@ public enum LibraryImport {
                 }
                 knownByDigest = seeded
             }
-            if let cached = knownByDigest?[digest],
-               FileManager.default.fileExists(atPath: cached.folder.appendingPathComponent("meeting.json").path) {
-                return cached
-            }
-            knownByDigest?[digest] = nil
-            for candidate in ([root] + additionalRoots) where FileManager.default.fileExists(atPath: candidate.path) {
-                let scanner = candidate == root ? primaryScanner : (additionalScanners[candidate] ?? LibraryScanner(root: candidate))
-                if let found = try scanner.scan().meetings.first(where: { $0.received?.sha256 == digest }) {
-                    knownByDigest?[digest] = found
-                    return found
+            if let cached = knownByDigest?[digest] {
+                if FileManager.default.fileExists(atPath: cached.folder.appendingPathComponent("meeting.json").path) {
+                    return cached
                 }
+                knownByDigest?[digest] = nil
             }
             return nil
         }
 
         fileprivate func recordImported(folder: URL, id: UUID, digest: String) throws -> LibraryMeeting {
-            guard let meeting = try primaryScanner.scan(affected: folder).meetings.first(where: { $0.id == id }) else {
-                throw POSIXError(.EINVAL)
-            }
+            let meeting = try LibraryImport.readSingleImportedMeeting(root: root, folder: folder, id: id)
             knownByDigest?[digest] = meeting
             return meeting
         }
@@ -122,8 +223,16 @@ public enum LibraryImport {
                 knownByDigest?[digest] = nil
             }
             try? FileManager.default.removeItem(at: folder)
-            _ = try? primaryScanner.scan(affected: folder)
         }
+    }
+
+    fileprivate static func readSingleImportedMeeting(root: URL, folder: URL, id: UUID) throws -> LibraryMeeting {
+        let resolvedRoot = try physicalURL(root)
+        let canonicalFolder = URL(fileURLWithPath: resolvedRoot.path + "/" + folder.lastPathComponent, isDirectory: false)
+        guard let meeting = LibraryScanner(root: resolvedRoot).meeting(at: canonicalFolder), meeting.id == id else {
+            throw POSIXError(.EINVAL)
+        }
+        return meeting
     }
 
     public static func copy(_ source: URL, into root: URL, additionalRoots: [URL] = [], shouldCancel: () -> Bool = { false }) throws -> LibraryMeeting {
@@ -201,8 +310,7 @@ public enum LibraryImport {
         if let session {
             meeting = try session.recordImported(folder: folder, id: id, digest: digest)
         } else {
-            guard let scanned = try LibraryScanner(root:root).scan().meetings.first(where: { $0.id == id }) else { throw POSIXError(.EINVAL) }
-            meeting = scanned
+            meeting = try readSingleImportedMeeting(root: root, folder: folder, id: id)
         }
         committed = true
         return .imported(meeting)
