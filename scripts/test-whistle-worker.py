@@ -14,7 +14,7 @@ import sys
 import shutil
 import signal
 import tempfile
-from worker_events import OWNER_TICK_FD, ProcessExit, json_line, watchdog_ticks, discard_ticks
+from worker_events import OWNER_TICK_FD, ENGINE_READY_FD, ProcessExit, json_line, watchdog_ticks, discard_ticks, engine_ready
 
 ROOT = Path(__file__).resolve().parent.parent
 SAFE = dict(NEEDLE_TELEMETRY='0', DO_NOT_TRACK='1', ORT_DISABLE_TELEMETRY='1')
@@ -76,35 +76,54 @@ WORKER_HANG_GUARD = 60
 
 @contextmanager
 def worker_session(command):
-    # Drain model diagnostics to a file, so stderr cannot fill a pipe while the
-    # test waits for a particular JSON response on stdout.
+    # Separate startup from the first stdin/stdout operation without adding a
+    # protocol message or priming the parser/SIGPIPE state with an earlier write.
     with tempfile.TemporaryFile() as diagnostics:
-        child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=diagnostics, env=worker_env(), bufsize=0)
+        ready_read, ready_write = os.pipe(); child = None
         try:
+            child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=diagnostics, env=worker_env(**{ENGINE_READY_FD:str(ready_write)}),
+                pass_fds=(ready_write,), bufsize=0)
+            os.close(ready_write); ready_write = None
+            engine_ready(ready_read, timeout=WORKER_HANG_GUARD)
             yield child
         except BaseException:
-            if child.poll() is None: child.kill(); child.wait(timeout=10)
+            if child is not None:
+                if child.poll() is None: child.kill(); child.wait(timeout=10)
+                if not child.stdout.closed:
+                    output = child.stdout.read()
+                    if output: print(output.decode(errors='replace'), file=sys.stderr)
             diagnostics.seek(0)
             output = diagnostics.read()
             if output: print(output.decode(errors='replace'), file=sys.stderr)
             raise
         finally:
-            if child.poll() is None: child.kill(); child.wait(timeout=10)
-            child.stdin.close(); child.stdout.close()
+            os.close(ready_read)
+            if ready_write is not None: os.close(ready_write)
+            if child is not None:
+                if child.poll() is None: child.kill(); child.wait(timeout=10)
+                child.stdin.close(); child.stdout.close()
+
+
+def fails_before_ready(command, environment):
+    ready_read, ready_write = os.pipe()
+    try:
+        result = subprocess.run(command, input='', capture_output=True, text=True,
+            env=dict(environment,**{ENGINE_READY_FD:str(ready_write)}),
+            pass_fds=(ready_write,), timeout=10)
+        os.close(ready_write); ready_write = None
+        assert os.read(ready_read,1) == b'', 'Rejected invocation announced an initialized engine'
+        return result
+    finally:
+        os.close(ready_read)
+        if ready_write is not None: os.close(ready_write)
+
 
 def worker_request(child, request):
     child.stdin.write((json.dumps(request)+'\n').encode()); child.stdin.flush()
     response = json_line(child.stdout, timeout=WORKER_HANG_GUARD)
     assert response.get('id') == request['id'], response
     return response
-
-def acknowledge_startup(child):
-    # The real worker initializes its verified engine before reading any request.
-    # An existing invalid request acknowledges that point without another decode
-    # or any new worker protocol message.
-    response = worker_request(child, dict(id='startup-barrier'))
-    assert 'error' in response and 'transcript' not in response, response
 
 def exercise_requests(command, fixture):
     requests = [dict(id=str(i), wav=str(fixture/'jfk.wav')) for i in range(2)]
@@ -128,11 +147,9 @@ def exercise_requests(command, fixture):
             child.stdin.close(); exited.wait(timeout=WORKER_HANG_GUARD)
         assert child.wait(timeout=10) == 0 and child.stdout.read() == b'', 'Worker must finish cleanly at EOF without extra responses'
     with worker_session(command) as child:
-        acknowledge_startup(child)
         output, _ = child.communicate(input=b'x'*1_000_000+b'\n', timeout=WORKER_HANG_GUARD)
         assert child.returncode == 78 and b'tooLarge' in output, (child.returncode,output)
     with worker_session(command) as child:
-        acknowledge_startup(child)
         with ProcessExit(child.pid) as exited:
             child.stdout.close()
             child.stdin.write((json.dumps(requests[0])+'\n').encode()); child.stdin.close()
@@ -167,11 +184,11 @@ __attribute__((constructor)) static void loaded(void) {
         command = [str(args.worker.resolve()), '--library', str(library), '--model', str(args.bundle / 'whistle.cact')]
         for missing in SAFE:
             environment = worker_env(CASSINI_TELEMETRY_SENTINEL=str(marker)); environment.pop(missing)
-            result = subprocess.run(command, input='', capture_output=True, text=True, env=environment, timeout=10)
+            result = fails_before_ready(command, environment)
             assert result.returncode == 78 and 'Required privacy environment missing' in result.stdout, result
             assert not marker.exists(), 'Unsafe worker loaded a library constructor'
         environment = worker_env(CASSINI_TELEMETRY_SENTINEL=str(marker))
-        result = subprocess.run(command, input='', capture_output=True, text=True, env=environment, timeout=10)
+        result = fails_before_ready(command, environment)
         assert not marker.exists(), 'Unverified library was loaded'
         assert result.returncode == 78 and 'requires --assets' in result.stdout, result
         # Positive control outside the worker proves this constructor fixture is
@@ -186,11 +203,11 @@ __attribute__((constructor)) static void loaded(void) {
         changed=temporary/'whistle.cact'
         with changed.open('r+b') as stream: stream.write(b'bad!')
         untrusted=[str(args.worker.resolve()),'--assets',str(temporary)]
-        result=subprocess.run(untrusted,input='',capture_output=True,text=True,env=worker_env(),timeout=10)
+        result=fails_before_ready(untrusted,worker_env())
         assert result.returncode==78 and 'checksum mismatch' in result.stdout,result
         shutil.copyfile(args.bundle/'whistle.cact',changed)
         (temporary/'libneedle3.dylib').write_bytes(b'not a pinned engine')
-        result=subprocess.run(untrusted,input='',capture_output=True,text=True,env=worker_env(),timeout=10)
+        result=fails_before_ready(untrusted,worker_env())
         assert result.returncode==78 and 'checksum mismatch' in result.stdout,result
     # Hold stdin open in the grandparent: the orphan cannot pass this test by
     # simply seeing EOF. First complete real inference, then kill only its owner.

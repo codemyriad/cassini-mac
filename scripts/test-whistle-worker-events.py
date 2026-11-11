@@ -7,7 +7,6 @@ import json
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('whistle_worker_test', Path(__file__).with_name('test-whistle-worker.py'))
 worker = importlib.util.module_from_spec(spec); spec.loader.exec_module(worker)
@@ -24,20 +23,24 @@ def emit(value):
  try:
   sys.stdout.write(json.dumps(value)+'\n');sys.stdout.flush()
  except BrokenPipeError:os._exit(0 if mode=='closed-zero' else 78)
-record('start');armed=False
+record('start')
+fd=int(os.environ['CASSINI_TEST_ENGINE_READY_FD'])
+if mode in ['reject','early-ready-reject']:
+ if mode=='early-ready-reject':os.write(fd,bytes([1]))
+ os.close(fd);emit(dict(error='rejected'));sys.exit(78)
+record('ready')
+if mode!='missing-ready':os.write(fd,b'0' if mode=='bad-ready' else bytes([1]))
+os.close(fd)
 for line in sys.stdin.buffer:
  if len(line)>999999:
-  record('oversize',armed=armed)
-  emit(dict(error='tooLarge'));sys.exit(78 if armed else 77)
+  record('oversize')
+  emit(dict(error='tooLarge'));sys.exit(0 if mode=='oversize-zero' else 78)
  request=json.loads(line);identity=request['id'];record('request',id=identity)
- if number>1 and not armed and identity!='startup-barrier':sys.exit(77)
- if identity=='startup-barrier':
-  armed=True;emit(dict(id='stale' if mode=='stale-barrier' else identity,error='invalidMeeting'));continue
  valid=Path(request['wav']).name=='jfk.wav'
  if not valid and mode!='accept-invalid':emit(dict(id=identity,error='invalidWav'));continue
  if identity=='input-3' and mode=='no-recovery':emit(dict(id=identity,error='invalidWav'));continue
  text='Changed.' if identity=='1' and mode=='different-repeat' else 'An English fixture.'
- emit(dict(id=identity,transcript=dict(text=text)))
+ emit(dict(id='stale' if mode=='stale-request' else identity,transcript=dict(text=text)))
 if mode=='extra-response':emit(dict(id='unexpected'))
 sys.exit(78 if mode=='bad-eof' else 0)
 '''
@@ -55,13 +58,19 @@ class WorkerEvents(unittest.TestCase):
         rows=[json.loads(line) for line in self.log.read_text().splitlines()]
         self.assertEqual([r['child'] for r in rows if r['kind']=='start'],[1,2,3])
         self.assertEqual([r['id'] for r in rows if r['child']==1 and r['kind']=='request'],['0','1','input-0','input-1','input-2','input-3'])
-        self.assertEqual([r['id'] for r in rows if r['child']==3 and r['kind']=='request'],['startup-barrier','0'])
-        self.assertEqual([r['armed'] for r in rows if r['kind']=='oversize'],[True])
-    def test_removing_the_startup_barrier_is_rejected(self):
-        with patch.object(worker,'acknowledge_startup',lambda child:None),self.assertRaises(AssertionError):
-            worker.exercise_requests(self.command(),self.root)
+        self.assertEqual([r['id'] for r in rows if r['child']==3 and r['kind']=='request'],['0'])
+        self.assertEqual([r['child'] for r in rows if r['kind']=='ready'],[1,2,3])
+    def test_missing_or_invalid_engine_ready_event_is_rejected(self):
+        for mode,error in [('missing-ready',EOFError),('bad-ready',ValueError)]:
+            with self.subTest(mode=mode),self.assertRaises(error):
+                worker.exercise_requests(self.command(mode),self.root)
+    def test_rejected_invocation_cannot_announce_an_initialized_engine(self):
+        result=worker.fails_before_ready(self.command('reject'),worker.worker_env())
+        self.assertEqual(result.returncode,78)
+        with self.assertRaises(AssertionError):
+            worker.fails_before_ready(self.command('early-ready-reject'),worker.worker_env())
     def test_bad_input_repeated_transcript_recovery_eof_and_closed_output_assertions_are_preserved(self):
-        for mode in ['accept-invalid','different-repeat','no-recovery','bad-eof','extra-response','closed-zero','stale-barrier']:
+        for mode in ['accept-invalid','different-repeat','no-recovery','bad-eof','extra-response','closed-zero','stale-request','oversize-zero']:
             with self.subTest(mode=mode):
                 self.log.unlink(missing_ok=True)
                 with self.assertRaises(AssertionError):worker.exercise_requests(self.command(mode),self.root)
