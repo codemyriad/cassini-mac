@@ -359,7 +359,8 @@ class ProductArchitecture(unittest.TestCase):
         # softwareupdate refuses a second concurrent install. The fake installer does the same and
         # only finishes once the test has seen the second runner waiting for the first.
         self.tool('sudo','[[ "$*" = "-n softwareupdate --install-rosetta --agree-to-license" ]]\necho called >> "$FAKE_SUDO_LOG"\n'
-                  'mkdir "$FAKE_STATE.installing" || exit 1\nwhile [[ ! -e "$FAKE_RELEASE" ]]; do sleep 0.05; done\n: > "$FAKE_STATE"\nrmdir "$FAKE_STATE.installing"')
+                  'mkdir "$FAKE_STATE.installing" || exit 1\nIFS= read -r release < "$FAKE_RELEASE"\n: > "$FAKE_STATE"\nrmdir "$FAKE_STATE.installing"')
+        os.mkfifo(self.root/'release')
         outputs=[self.root/'first.out',self.root/'second.out'];log=self.root/'sudo.log';log.write_text('')
         for output in outputs:output.write_text('')
         start=lambda output:subprocess.Popen(['/bin/bash',str(ROOT/'scripts/ci-product-arch.sh')],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
@@ -371,7 +372,7 @@ class ProductArchitecture(unittest.TestCase):
         self.addCleanup(lambda:[process.kill() for process in (second,) if process.poll() is None])
         self.assertEqual(second.stderr.readline(),'Another runner is installing Rosetta 2; waiting for it\n')
         self.assertIsNone(second.poll(),'the second runner must not fail while the first installs')
-        (self.root/'release').write_text('')
+        (self.root/'release').write_text('continue\n')
         for process,output in zip([first,second],outputs):
             self.assertEqual(process.wait(timeout=60),0,process.stderr.read())
             self.assertEqual(output.read_text(),'name=x86_64\n')
