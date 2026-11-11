@@ -54,7 +54,23 @@ import CassiniRecording
     private var timer: Timer?
     private var frames: UInt64 = 0
     private var speech: [Float] = []
+    private var manualClock = false
+    private var rate: Int { RecordingFixture.transcribes ? 16000 : 48000 }
     private var origin = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime)
+    func useFixtureClock(origin: TimeInterval) {
+        manualClock = true; self.origin = AVAudioTime.hostTime(forSeconds:origin)
+    }
+    func advanceFixtureMedia(toMilliseconds ms: Int, sink: RecordingSink) -> UInt64 {
+        precondition(manualClock)
+        let target = UInt64(ms * rate / 1000)
+        while frames < target {
+            emit(sink)
+            // Keep bursts below the real writer's per-source pending-frame budget.
+            if frames % UInt64(rate) == 0 { sink.flush() }
+        }
+        sink.flush()
+        return target
+    }
     func authorize() async throws {}
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if RecordingFixture.transcribes {
@@ -66,12 +82,12 @@ import CassiniRecording
             }
         }
         emit(sink)
+        guard !manualClock else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.emit(sink) }
         }
     }
     private func emit(_ sink: RecordingSink) {
-        let rate = RecordingFixture.transcribes ? 16000 : 48000
         let count = rate / 50
         let format = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 1)!
         let host = origin + AVAudioTime.hostTime(forSeconds: Double(frames) / Double(rate))

@@ -3,6 +3,7 @@
 import AppKit
 import CassiniLibrary
 import CassiniRecording
+import Observation
 
 /// Real app/controller/metadata/power/registration proof with RAM inputs only.
 /// This complements XCTest; it does not claim to test Finder keystroke delivery.
@@ -10,6 +11,17 @@ import CassiniRecording
     private enum Failure: Error { case check(String) }
     private static func require(_ value: Bool, _ message: String) throws {
         guard value else { throw Failure.check(message) }
+    }
+    private static func waitForPower(_ runtime: RecordingRuntime, held expected: Bool) async throws {
+        let values = AsyncStream<Bool> { continuation in
+            let current = withObservationTracking { runtime.power.held } onChange: {
+                Task { @MainActor in continuation.yield(runtime.power.held); continuation.finish() }
+            }
+            continuation.yield(current)
+            if current == expected { continuation.finish() }
+        }
+        for await held in values where held == expected { return }
+        throw Failure.check("expected power assertion state \(expected)")
     }
     static func run() async {
         let environment = ProcessInfo.processInfo.environment
@@ -21,8 +33,10 @@ import CassiniRecording
         do {
             runtime.start()
             try require(runtime.shortcut.registered,"global shortcut registration")
+            try recorder.useFixtureClock()
             await recorder.start(parent:root)
-            try await Task.sleep(for:.milliseconds(500))
+            try await recorder.advanceFixtureMedia(toMilliseconds:200)
+            try await waitForPower(runtime,held:true)
             try require(recorder.isRecording && runtime.power.held,"recording and real power assertion")
             let folder = try recorder.directory.unwrap("capture directory")
             let id = try UUID(uuidString:String(folder.lastPathComponent.dropFirst("Recording-".count))).unwrap("capture identity")
@@ -44,9 +58,10 @@ import CassiniRecording
             try require(updated.title == model.title && recorder.title == model.title,"title persisted and published")
             try require(RecordingPageModel.editor(for:updated) === model,"Back/Open retains editor")
             for window in NSApp.windows { window.orderOut(nil) }
-            // Real elapsed time and real sink peaks, without a clock shortcut.
-            try await Task.sleep(for:.seconds(20))
-            try require(recorder.microphoneSilent && recorder.elapsedMs >= 20000,"20-second silent-microphone rule (phase=\(recorder.phase), elapsed=\(recorder.elapsedMs), levels=\(recorder.levels))")
+            try await recorder.advanceFixtureMedia(toMilliseconds:19_980)
+            try require(!recorder.microphoneSilent,"microphone is not silent before 20 seconds")
+            try await recorder.advanceFixtureMedia(toMilliseconds:20_000)
+            try require(recorder.microphoneSilent && recorder.elapsedMs == 20_000,"20-second silent-microphone rule (phase=\(recorder.phase), elapsed=\(recorder.elapsedMs), levels=\(recorder.levels))")
             // A moved/imported duplicate can share the basename while referring
             // to another folder. It must not control this native capture.
             let activeFolder = try recorder.directory.unwrap("active native folder")
@@ -83,11 +98,11 @@ import CassiniRecording
             FileHandle.standardError.write(Data("Private disk probe: warning lifecycle completed\n".utf8))
             try require(recorder.isSaving,"Saving visible while finalizing")
             await recorder.finishTask?.value
-            try await Task.sleep(for:.milliseconds(100))
+            try await waitForPower(runtime,held:false)
             try require(!runtime.power.held && recorder.canStart,"power released after Stop")
             try require(RecordingDiskWatch.warningTitle == nil,"no late disk sample recreates the warning")
             let saved = try LibraryScanner(root:root).scan().meetings.first.unwrap("saved meeting")
-            try require(saved.state.lifecycle == .saved && saved.canPlaySession && saved.title == model.title && saved.notes == updated.notes,"saved title, notes and playable audio")
+            try require(saved.state.lifecycle == .saved && saved.canPlaySession && saved.durationMs == 20_000 && saved.title == model.title && saved.notes == updated.notes,"saved title, notes and 20 seconds of playable audio")
             runtime.stop()
             // Independent synthetic browser source: no browser, device or live
             // desktop is involved. A quiet source must still advance its clock.
