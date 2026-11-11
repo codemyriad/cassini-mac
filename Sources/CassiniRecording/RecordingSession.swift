@@ -214,7 +214,11 @@ public final class RecordingSession {
     /// Exercise the real periodic checkpoint on the next append without a wall-clock sleep.
     @_spi(Testing) public func requirePeriodicCheckpoint() { lastCheckpoint = .distantPast }
 
-    public init(parent: URL, title: String, source: String, id: UUID = UUID(), timeZone: TimeZone = .current) throws {
+    /// Retain the original public initializer, including its compiled symbol.
+    public convenience init(parent: URL, title: String, source: String, id: UUID = UUID()) throws {
+        try self.init(parent:parent,title:title,source:source,id:id,timeZone:.current)
+    }
+    public init(parent: URL, title: String, source: String, id: UUID = UUID(), timeZone: TimeZone) throws {
         let observers = RecordedPCMObservers(); pcmObservers = observers
         recordedPCM = RecordedPCMPolicy(observers:observers)
         directory = parent.appendingPathComponent("Recording-\(id.uuidString.lowercased())", isDirectory: true)

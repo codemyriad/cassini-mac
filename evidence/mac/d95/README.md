@@ -96,3 +96,10 @@ contracts pass. Run under heavy-run/Xcode 16.4, with
 `D95_FOOTER_EVIDENCE_DIR` outside the checkout. Full local logs are in
 `~/coordination/evidence/big-mac-d95/footer/`. Integrated Settings CI is still
 required on the new head.
+
+The next cached build exposed old compiled test clients referencing the original
+four-argument RecordingSession initializer. That public initializer is retained
+as a forwarding convenience overload; the explicit-zone initializer handles the
+new capture-site recording. Both compiled symbols are verified in the rebuilt
+object, and all 26 D95-focused tests pass after this compatibility change. This
+preserves the existing public API while allowing explicit site-zone tests.
