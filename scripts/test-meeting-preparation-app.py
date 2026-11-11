@@ -32,7 +32,7 @@ report = json.loads(result.stdout)
 assert all(report[name] is True for name in ('preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
     'nativeTrackMatchesThumbTravel','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
     'nativeMouseDownSnapsNearTurn','nativeDisabledPointerIsIgnored',
-    'nativeMouseDownPreservesOffCenterGrab','nativePointerKeepsTranscriptFocus','nativeMouseUpDoesNotRepeatSeek',
+    'nativeMouseDownPreservesOffCenterGrab','nativeThumbGrabPreservesExactValues','nativePointerKeepsTranscriptFocus','nativeMouseUpDoesNotRepeatSeek',
     'nativeMouseDragUsesWindowCoordinates','nativeMouseDownClampsBothEnds','nativeMouseDragStopsWhenDisabled','nativeMouseDragStopsWhenDetached',
     'nativeAccessibilitySeekDoesNotSnap','nativeAccessibilityTenSecondStep','nativeStopClearsSnap',
     'mergeWhilePreparedResolvesReadoutAndHeaders','mergeWhilePreparedResolvesBar','mergedSpeakerRowStopsCachedListening',

@@ -106,9 +106,21 @@ struct MeetingPositionSlider: View {
         slider.doubleValue = initialPosition
         let center = cell.knobRect(flipped:slider.isFlipped).midX
         pointer(center+5,nil,center+5)
-        report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && abs(slider.doubleValue-initialPosition) < 0.001
+        report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && slider.doubleValue == initialPosition
         report["nativePointerKeepsTranscriptFocus"] = window.firstResponder === editor
         report["nativeMouseUpDoesNotRepeatSeek"] = values.count == 1
+        var exactGrabs = true
+        for width in [CGFloat(171),240,691] {
+            slider.frame.size.width = width
+            for value in [10001.25,18800,40000.0/3] {
+                slider.doubleValue = value
+                let x = cell.knobRect(flipped:slider.isFlipped).midX+5
+                pointer(x,nil,x)
+                exactGrabs = exactGrabs && values.count == 1 && slider.doubleValue == value
+            }
+        }
+        report["nativeThumbGrabPreservesExactValues"] = exactGrabs
+        slider.frame.size.width = 240; slider.doubleValue = initialPosition
         pointer(center+5,center+25,center+25)
         let expected = initialPosition + 20/slider.track.width*slider.maxValue
         report["nativeMouseDragUsesWindowCoordinates"] = values.count == 2 && abs(slider.doubleValue-expected) < 0.001
@@ -240,10 +252,10 @@ private struct NativeMeetingSlider: NSViewRepresentable {
             guard let window, let cell = cell as? NSSliderCell else { return }
             let knob = cell.knobRect(flipped:isFlipped)
             let point = convert(event.locationInWindow,from:nil)
-            // Native knob geometry is pixel-rounded. Preserve the numeric value
-            // under a thumb grab instead of inverse-mapping its rounded center.
-            let offset = NSMouseInRect(point,knob,isFlipped)
-                ? point.x-CGFloat(track.x(at:doubleValue,duration:maxValue)) : 0
+            // Drag from the original numeric value. Inverse-mapping even the
+            // ideal thumb center can round just below a displayed whole second.
+            let grabbed = NSMouseInRect(point,knob,isFlipped)
+            let initialPosition = doubleValue
             // macOS27's click animation can restore its unsnapped destination
             // after the action has snapped the value. Track pointer events with
             // public APIs; keyboard and accessibility still use NSSlider.
@@ -254,7 +266,11 @@ private struct NativeMeetingSlider: NSViewRepresentable {
                 let x = convert(current.locationInWindow,from:nil).x
                 if current.type != .leftMouseUp || x != lastX {
                     lastX = x
-                    doubleValue = pointerPosition(at:x,knobOffset:offset)
+                    if grabbed, track.width > 0 {
+                        doubleValue = min(maxValue,max(minValue,initialPosition + Double(x-point.x)/track.width*(maxValue-minValue)))
+                    } else {
+                        doubleValue = pointerPosition(at:x,knobOffset:0)
+                    }
                     sendAction(action,to:target)
                 }
                 if current.type == .leftMouseUp || !isEnabled || self.window !== window { break }
