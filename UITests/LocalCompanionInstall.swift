@@ -18,7 +18,9 @@ final class LocalCompanionInstall: XCTestCase {
         chrome.launchArguments = ["--user-data-dir=" + (try value("profile")), "--no-first-run", "--no-default-browser-check",
             "--disable-background-networking", "--force-renderer-accessibility",
             "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost", "about:blank"]
-        let app = XCUIApplication(url:URL(fileURLWithPath:try value("app")))
+        let appURL = URL(fileURLWithPath:try value("app"))
+        let appPath = appURL.resolvingSymlinksInPath().path
+        let app = XCUIApplication(url:appURL)
         configure(app)
         defer {
             for (name,application) in [("cassini",app),("chromium",chrome)] {
@@ -33,7 +35,13 @@ final class LocalCompanionInstall: XCTestCase {
         }
         chrome.launch()
         app.launch()
-        app.typeKey(",",modifierFlags:.command)
+        app.activate()
+        wait("Cassini is foreground before its Settings shortcut") {
+            NSWorkspace.shared.frontmostApplication?.bundleURL?.resolvingSymlinksInPath().path == appPath
+        }
+        // The hosted event synthesizer can stall before dispatching app-directed
+        // keys. Use the same trusted HID path as the browser steps below.
+        key(0x2B,flags:.maskCommand) // Comma: preserve the actual Settings shortcut.
         let settings = app.windows["cassini-settings-window"]
         XCTAssertTrue(settings.waitForExistence(timeout:10),app.debugDescription)
         settings.toolbars.buttons["Browser companion"].click()
