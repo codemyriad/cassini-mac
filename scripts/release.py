@@ -275,11 +275,21 @@ def build_dmg(python, application, output):
     run([python, ROOT/'scripts/build-dmg.py', application, output], timeout=600)
 
 
+def heavy_environment():
+    stats=run(['vm_stat'],timeout=30).decode()
+    swap=re.search(r'^Swapouts:\s+(\d+)',stats,re.M)
+    if not swap:raise ValueError('Cannot inspect swap before a heavy release phase')
+    return dict(os.environ,CASSINI_LOCK_MINUTES='5',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
+
+
 def release(args):
-    urls = release_urls(args.base_url, args.version)
+    test_release = getattr(args,'test_release',False)
+    if test_release and not re.fullmatch(r'[0-9]+(?:\.[0-9]+){1,2}',args.version):
+        raise ValueError('Expected a numeric test version')
+    urls = None if test_release else release_urls(args.base_url, args.version)
     if args.build < 1:
         raise ValueError('Expected a numeric version and positive increasing build number')
-    if not args.release_notes or not args.release_notes.is_file() or args.release_notes.stat().st_size == 0:
+    if not test_release and (not args.release_notes or not args.release_notes.is_file() or args.release_notes.stat().st_size == 0):
         raise ValueError('Release notes must name an existing HTML file')
     # Refuse to overwrite or mix artifacts from earlier builds/submissions.
     output = args.output.resolve()
@@ -287,24 +297,28 @@ def release(args):
         raise ValueError('Release output already exists; use a new empty destination')
     reject_generated_library(ROOT/'UITests/Fixtures/Library')
     credentials = notary_credentials(args.notary_config)
-    key = verify_update_key(SECRETS/'sparkle-ed25519.key')
-    run(['xcrun', 'swift', ROOT/'scripts/check-update-key.swift', key, ROOT/'Distribution/sparkle-public-key.txt'], timeout=60)
+    key = None
+    if not test_release:
+        key = verify_update_key(SECRETS/'sparkle-ed25519.key')
+        run(['xcrun', 'swift', ROOT/'scripts/check-update-key.swift', key, ROOT/'Distribution/sparkle-public-key.txt'], timeout=60)
     keychain, identity = unlock_signing_keychain()
     output.mkdir(parents=True)
     tools = Path(run(['python3', ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
     image_tools = dmg_tools()
     run(['xcodegen', 'generate'], cwd=ROOT, timeout=120)
     run(['python3', ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
-    derived = ROOT/'.build/developer-id'
+    derived = getattr(args,'derived_data',None) or ROOT/'.build/developer-id'
     command = ['xcodebuild', 'build', '-project', 'Cassini.xcodeproj', '-scheme', 'Cassini', '-configuration', 'Release',
         '-derivedDataPath', derived, '-jobs', '2', 'ARCHS=arm64 x86_64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGNING_ALLOWED=YES',
         'CODE_SIGN_IDENTITY='+identity, 'CODE_SIGN_STYLE=Manual', 'DEVELOPMENT_TEAM='+TEAM,
         'CASSINI_APP_HARDENED_RUNTIME=YES', 'MARKETING_VERSION='+args.version, 'CURRENT_PROJECT_VERSION='+str(args.build),
-        'CASSINI_UPDATE_FEED='+urls['feed'], 'CASSINI_UPDATES_ENABLED=YES']
+        'CASSINI_UPDATE_FEED='+('' if test_release else urls['feed']), 'CASSINI_UPDATES_ENABLED='+('NO' if test_release else 'YES')]
     # Build logs contain no password/ASC metadata; retain diagnostics for review. This is the
     # one direct call: xcodebuild's argv carries no secret (the identity is a public hash).
     with (output/'build.log').open('wb') as log:
-        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)  # no-secret-argv
+        if test_release:
+            command = [ROOT/'scripts/heavy.sh', sys.executable, ROOT/'scripts/release-resources.py', '15', *command]
+        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else None)  # no-secret-argv
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
     # Xcode's internal product/executable paths stay stable for developer tools.
@@ -313,6 +327,10 @@ def release(args):
     app = output/(PRODUCT_NAME+'.app')
     run(['ditto', derived/'Build/Products/Release/Cassini.app', app])
     reject_generated_library(app/'Contents/Resources/Fixtures/Library')
+    if test_release:
+        info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
+        if info.get('CassiniUpdatesEnabled') not in ('NO',False) or info.get('SUFeedURL'):
+            raise ValueError('Test application unexpectedly enables public updates')
     run(['python3', ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
     run(['python3', ROOT/'scripts/check-developer-id.py', app])
     run(['codesign', '--verify', '--deep', '--strict', app])
@@ -323,11 +341,23 @@ def release(args):
     submit_and_wait(submission, credentials, output/'app-notary.json')
     run(['xcrun', 'stapler', 'staple', app], timeout=180)
     run(['xcrun', 'stapler', 'validate', app], timeout=180)
-    dmg = output/('Cassini-talk-'+args.version+'.dmg')
-    build_dmg(image_tools, app, dmg)
+    dmg = output/('Cassini-talk-'+args.version+('-test.'+str(args.build) if test_release else '')+'.dmg')
+    if test_release:
+        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','3',image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=900,env=heavy_environment())
+    else:
+        build_dmg(image_tools, app, dmg)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)
     notarize(dmg, credentials, output/'dmg-notary.json')
     run(['codesign', '--verify', '--strict', dmg])
+    if test_release:
+        checksum=sha256_file(dmg)
+        report=dict(channel='nightly',commit=run(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip(),
+            version=args.version,build=args.build,dmg=dmg.name,bytes=dmg.stat().st_size,sha256=checksum,
+            notarized=True,updatesEnabled=False)
+        (output/'test-release.json').write_text(json.dumps(report,indent=2)+'\n')
+        (output/'SHA256SUMS').write_text(checksum+'  '+dmg.name+'\n')
+        print('Signed, notarized test DMG: '+dmg.name)
+        return
     signature = run([tools/'sign_update', '--ed-key-file', key, '-p', dmg], timeout=180).decode().strip()
     run([tools/'sign_update', '--verify', '--ed-key-file', key, dmg, signature], timeout=180)
     verify_signature(dmg, signature)
@@ -346,10 +376,12 @@ def release(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--test-release',action='store_true',help='Notarized test DMG only; public updates and feed generation disabled')
+    parser.add_argument('--derived-data',type=Path,help='Dedicated build output for this release')
     parser.add_argument('--version', required=True)
     parser.add_argument('--build', type=int, required=True)
     parser.add_argument('--base-url', default=BASE_URL, help='HTTPS directory for downloads, feed and optional notes')
-    parser.add_argument('--release-notes', type=Path, required=True, help='HTML release notes, copied into notes/<version>.html')
+    parser.add_argument('--release-notes', type=Path, help='HTML release notes, copied into notes/<version>.html')
     parser.add_argument('--notary-config', type=Path, default=SECRETS/'notary.json')
     parser.add_argument('--output', type=Path, required=True)
     # Any exception, a timeout or Ctrl-C included, ends in one sanitized line: argv may hold a password.
