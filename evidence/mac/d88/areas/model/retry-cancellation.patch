@@ -1,0 +1,7 @@
+--- a/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift
++++ b/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift
+@@ -34,3 +34 @@
+-        if let continuation = sleepers.removeValue(forKey:id) { continuation.resume(throwing:CancellationError()) }
+-        else { cancelled.insert(id) }
+-        changed()
++        // Mutation leaves the retry registered.
