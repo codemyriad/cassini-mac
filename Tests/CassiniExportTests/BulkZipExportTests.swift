@@ -797,24 +797,31 @@ import CassiniRecording
         func waitForCards(
             matching predicate: ([TransferBannerPresentation.Card]) -> Bool
         ) async throws -> [TransferBannerPresentation.Card] {
+            let (cancelledStream, cancelledCont) = AsyncStream<Void>.makeStream()
             let timeoutTask = Task { @MainActor in
+                defer {
+                    cancelledCont.yield(())
+                    cancelledCont.finish()
+                }
                 do { try await Task.sleep(for: .seconds(10)) } catch { return }
                 continuation.finish()
             }
-            defer { timeoutTask.cancel() }
             while let cards = await iterator.next() {
-                if predicate(cards) { return cards }
+                if predicate(cards) {
+                    timeoutTask.cancel()
+                    await timeoutTask.value
+                    var cancelledIter = cancelledStream.makeAsyncIterator()
+                    _ = await cancelledIter.next()
+                    return cards
+                }
             }
+            timeoutTask.cancel()
+            await timeoutTask.value
             throw POSIXError(.ETIMEDOUT)
         }
 
-        func drainMainActor() async {
-            await Task { @MainActor in
-                for _ in 0..<6 { await Task.yield() }
-            }.value
-        }
-
-        // 1. Emit initial concurrent state and consume via timeout-guarded wait.
+        // 1. Emit initial concurrent state and consume via timeout-guarded wait;
+        // waitForCards cancels and awaits timeoutTask completion + explicit cleanup event before returning.
         continuation.yield(TransferBannerPresentation(
             importProgress: .init(done: 1, total: 2),
             bulkExportProgress: .init(done: 1, total: 2)
@@ -824,10 +831,7 @@ import CassiniRecording
         }
         #expect(first.map(\.actionAccessibilityID) == ["import-cancel", "export-zip-cancel"])
 
-        // Let the cancelled timeout task run to completion on @MainActor BEFORE yielding the next state.
-        await drainMainActor()
-
-        // 2. Stream must remain open and deliver export-cancel transition + subsequent receipt cards!
+        // 2. Stream must remain open after cancelled timeoutTask completed and deliver subsequent transitions!
         continuation.yield(TransferBannerPresentation(
             importProgress: .init(done: 1, total: 2)
         ).cards)
@@ -835,8 +839,6 @@ import CassiniRecording
             cards.map(\.primaryAccessibilityID) == ["import-progress"]
         }
         #expect(second.map(\.actionAccessibilityID) == ["import-cancel"])
-
-        await drainMainActor()
 
         let receiptID = UUID()
         continuation.yield(TransferBannerPresentation(

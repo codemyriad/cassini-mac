@@ -7,6 +7,7 @@ struct TransferStatusBanner: View {
     @State private var bulkExporter = BulkZipExportCoordinator.shared
     @State private var singleExporter = MeetingExportCoordinator.shared
     var fixtureVisibleCards: (([TransferBannerPresentation.Card]) -> Void)? = nil
+    var fixtureOnCleanup: (() -> Void)? = nil
 
     private var presentation: TransferBannerPresentation {
         TransferBannerPresentation(
@@ -80,6 +81,7 @@ struct TransferStatusBanner: View {
         }
         .onAppear { fixtureVisibleCards?(current.cards) }
         .onChange(of: current.cards) { _, updated in fixtureVisibleCards?(updated) }
+        .modifier(BannerCleanupProbe(onCleanup: fixtureOnCleanup))
     }
 
     @ViewBuilder
@@ -98,6 +100,58 @@ struct TransferStatusBanner: View {
         }
         .shadow(radius: 6)
         .accessibilityElement(children: .contain)
+    }
+}
+
+@MainActor private final class BannerCleanupTracker {
+    private var disappeared = false
+    private var taskFinished = false
+    private var fired = false
+
+    func markDisappeared(onCleanup: () -> Void) {
+        disappeared = true
+        fireIfReady(onCleanup: onCleanup)
+    }
+
+    func markTaskFinished(onCleanup: () -> Void) {
+        taskFinished = true
+        fireIfReady(onCleanup: onCleanup)
+    }
+
+    private func fireIfReady(onCleanup: () -> Void) {
+        guard disappeared, taskFinished, !fired else { return }
+        fired = true
+        onCleanup()
+    }
+}
+
+private struct BannerCleanupProbe: ViewModifier {
+    let onCleanup: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let onCleanup {
+            content.modifier(ActiveBannerCleanupProbe(onCleanup: onCleanup))
+        } else {
+            content
+        }
+    }
+}
+
+private struct ActiveBannerCleanupProbe: ViewModifier {
+    let onCleanup: () -> Void
+    @State private var tracker = BannerCleanupTracker()
+
+    func body(content: Content) -> some View {
+        let capturedTracker = tracker
+        let callback = onCleanup
+        content
+            .onDisappear {
+                capturedTracker.markDisappeared(onCleanup: callback)
+            }
+            .task {
+                defer { capturedTracker.markTaskFinished(onCleanup: callback) }
+                do { try await Task.sleep(for: .seconds(3600)) } catch { return }
+            }
     }
 }
 

@@ -842,6 +842,52 @@ import Testing
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: zipCancelLib.path)) ?? []).isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: staging.path).isEmpty)
 
+        // Deterministic mid-publication cancellation: cancel right after the first archive member is
+        // renamed into root (before the second member is renamed). Both summaries must report imported == 1,
+        // preserve the committed meeting on disk, remove unpublished staging, and render "Import cancelled · Imported 1".
+        let pubCancelLib = f.root.appendingPathComponent("PubCancelLibrary")
+        let pubSession = LibraryImport.BatchSession(root: pubCancelLib)
+        var pubCancelSummary = LibraryImportSummary()
+        var pubStreamedPartial = LibraryImportSummary()
+        #expect(throws: CancellationError.self) {
+            try ZipArchiveImport.importArchive(
+                zipForCancel,
+                into: pubCancelLib,
+                temporaryRoot: staging,
+                session: pubSession,
+                summary: &pubCancelSummary,
+                onPartialSummary: { pubStreamedPartial = $0 },
+                shouldCancel: {
+                    ((try? LibraryScanner(root: pubCancelLib).scan().meetings.count) ?? 0) >= 1
+                }
+            )
+        }
+        #expect(pubCancelSummary.imported == 1 && pubStreamedPartial.imported == 1)
+        #expect(pubCancelSummary.failed == 0 && pubStreamedPartial.failed == 0)
+        #expect(pubCancelSummary.lastSelected?.title == "Conformance vector 001")
+        #expect(pubStreamedPartial.lastSelected?.title == "Conformance vector 001")
+        let committedAfterPubCancel = try LibraryScanner(root: pubCancelLib).scan()
+        #expect(committedAfterPubCancel.meetings.count == 1 && committedAfterPubCancel.issues.isEmpty)
+        #expect(committedAfterPubCancel.meetings.first?.title == "Conformance vector 001")
+        let pubRemnants = try FileManager.default.contentsOfDirectory(atPath: pubCancelLib.path).filter { $0.hasPrefix(".cassini-zip-import-") }
+        #expect(pubRemnants.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: staging.path).isEmpty)
+
+        pubCancelSummary.cancelled = true
+        #expect(pubCancelSummary.rendered(language: .en, locale: Locale(identifier: "en_US")) == "Import cancelled · Imported 1")
+
+        // Re-importing the same archive with the same BatchSession skips the committed first member and imports the second!
+        var pubResumeSummary = LibraryImportSummary()
+        _ = try ZipArchiveImport.importArchive(
+            zipForCancel,
+            into: pubCancelLib,
+            temporaryRoot: staging,
+            session: pubSession,
+            summary: &pubResumeSummary
+        )
+        #expect(pubResumeSummary.imported == 1 && pubResumeSummary.duplicates == 1 && pubResumeSummary.failed == 0)
+        #expect(try LibraryScanner(root: pubCancelLib).scan().meetings.count == 2)
+
         // Deterministic mid-batch multi-file cancellation: cancel at file 2 after file 1 has committed!
         let cancelLib = f.root.appendingPathComponent("CancelLibrary")
         var cancelSummary = LibraryImportSummary()
