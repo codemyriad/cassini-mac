@@ -47,6 +47,7 @@ struct RecordingTimeReaderTests {
         #expect(MeetingTime.parseInstant(value)==expected)
         #expect(MeetingTime.resolve(meeting:meeting,dateTag:nil)?.instant==expected)
         #expect(MeetingTime.resolve(meeting:meeting,dateTag:nil)?.source == .recordedAtUtc)
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:nil)?.value==value)
     }
     @Test(arguments:["2026-11-09T10:47:02Z","2026-11-09t11:47:02+01:00","2026-11-09t10:47:02.000z"])
     func lowercaseCreationTimesNeverLeakThroughDATE(_ tag:String) throws {
@@ -56,4 +57,45 @@ struct RecordingTimeReaderTests {
         #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:tag)==meeting.createdAtUtc)
     }
 
+}
+
+extension RecordingTimeReaderTests {
+    @Test(arguments:["2026-02-30T09:00:00Z","2026-11-09T24:00:00Z","2026-11-09T09:60:00Z","2026-11-09T09:00:60Z","2026-02-29T09:00:00Z","2026-11-09T09:00:00+24:00","2026-11-09T09:00:00+00:60","0000-01-01T00:00:00Z"])
+    func impossibleInstantsCannotOverrideAValidDATE(_ value:String) throws {
+        var meeting=try #require(file("027-recorded-at-utc").manifest?.meeting)
+        meeting.recordedAtUtc=value
+        #expect(MeetingTime.parseInstant(value)==nil)
+        #expect(MeetingTime.normalizedUTC(value)==nil)
+        let fallback="2026-11-09T10:31:48.250+01:00"
+        let time=MeetingTime.resolve(meeting:meeting,dateTag:fallback)
+        #expect(time?.source == .date && time?.value==fallback)
+    }
+    @Test func fractionalCreationComparisonDoesNotRoundToMilliseconds() throws {
+        var meeting=try #require(file("028-date-is-created-at").manifest?.meeting)
+        meeting.recordedAtUtc=nil;meeting.recordedAtLocal=nil
+        meeting.createdAtUtc="2026-11-09T09:31:48.0001Z"
+        let distinct="2026-11-09T09:31:48.0009Z"
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:distinct)?.value==distinct)
+        #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:distinct)==distinct)
+        for equivalent in ["2026-11-09T09:31:48.0001000Z","2026-11-09T10:31:48.000100+01:00"] {
+            #expect(MeetingTime.resolve(meeting:meeting,dateTag:equivalent)==nil)
+            #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:equivalent)==meeting.createdAtUtc)
+        }
+    }
+    @Test(arguments:["2026-11-09 10:31:48+01:00"," \t2026-11-09t10:31:48+01:00\r\n","2026-11-09 09:31:48z"])
+    func legacyDATEAcceptsReferenceSeparatorsAndTrimsItsValue(_ value:String) throws {
+        var meeting=try #require(file("028-date-is-created-at").manifest?.meeting)
+        meeting.recordedAtUtc=nil;meeting.recordedAtLocal=nil
+        let time=MeetingTime.resolve(meeting:meeting,dateTag:value)
+        #expect(time?.source == .date)
+        #expect(time?.value==value.trimmingCharacters(in:.whitespacesAndNewlines))
+        meeting.createdAtUtc=" 2026-11-09 09:31:48Z "
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:value)==nil)
+    }
+    @Test(arguments:["not-a-date","2026-02-30T10:00:00","2026-11-09T24:00:00","2026-11-09T09:00:00Z","2026-11-09T09:00:00+01:00"])
+    func malformedCivilLabelsNeverBecomeMeetingTime(_ value:String) throws {
+        var meeting=try #require(file("028-date-is-created-at").manifest?.meeting)
+        meeting.recordedAtUtc=nil;meeting.recordedAtLocal=value
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc)==nil)
+    }
 }

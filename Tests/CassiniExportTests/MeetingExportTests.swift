@@ -246,15 +246,15 @@ struct MeetingExportTests {
             let file=try CassiniReader.read(contentsOf:artifact.url)
             #expect(file.state == .ok)
             #expect(file.meetingTime?.instant==expected)
-            #expect(file.manifest?.meeting.recordedAtUtc?.uppercased()=="2001-02-02T19:05:06.125Z")
+            #expect(file.manifest?.meeting.recordedAtUtc=="2001-02-02T19:05:06.125Z")
             #expect(file.tags?["DATE"]==file.manifest?.meeting.recordedAtUtc)
             #expect(file.tags?["CASSINI_RECORDED_AT_UTC"]==file.manifest?.meeting.recordedAtUtc)
-            #expect(file.manifest?.meeting.createdAtUtc=="2026-11-09t10:47:02z")
+            #expect(file.manifest?.meeting.createdAtUtc=="2026-11-09T10:47:02Z")
             let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent(UUID().uuidString))
             #expect(again.meetingTime?.instant==expected)
         }
     }
-    @Test(arguments:[nil,.string("2001-02-03T04:05:06"),.string("2001-02-03T04:05:06.125+09:00"),
+    @Test(arguments:[nil,.string("2026-02-30T10:00:00"),.string("2026-11-09T24:00:00"),.string("2001-02-03T04:05:06"),.string("2001-02-03T04:05:06.125+09:00"),
                      .string("2001-02-03T04:05:06+09:00"),.string("2001-02-03T04:05:06Z"),
                      .string("2001-02-03T04:05:06.125"),.string("2001-02-03T04:05:06\n"),
                      .number("123"),.bool(true),.null] as [JSON?])
@@ -296,7 +296,7 @@ struct MeetingExportTests {
         // D65 (MAPPING): a received file keeps its own creation time, never the export time.
         #expect(result.manifest?.meeting.createdAtUtc == "2020-01-02T03:04:05Z")
     }
-    @Test(arguments:[.string("2001-02-03T04:05:06+01:00"),.string("not UTC"),.number("123"),.null] as [JSON])
+    @Test(arguments:[.string("2026-02-30T09:00:00Z"),.string("2026-11-09T24:00:00Z"),.string("2001-02-03T04:05:06+01:00"),.string("not UTC"),.number("123"),.null] as [JSON])
     func receivedExportsDropMalformedUTC(recorded: JSON) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))

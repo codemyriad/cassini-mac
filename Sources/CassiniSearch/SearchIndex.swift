@@ -204,9 +204,6 @@ public actor SearchIndex {
         }
         return hits.sorted {
             if $0.meetingKey != $1.meetingKey {
-                if let a = meetings[$0.meetingKey]?.sortingInstant, let b = meetings[$1.meetingKey]?.sortingInstant {
-                    return a == b ? $0.meetingKey < $1.meetingKey : a > b
-                }
                 let a = meetings[$0.meetingKey]?.timeSortKey ?? "", b = meetings[$1.meetingKey]?.timeSortKey ?? ""
                 return a == b ? $0.meetingKey < $1.meetingKey : a > b
             }

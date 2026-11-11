@@ -76,6 +76,7 @@ public enum MeetingFileExporter {
             // can carry (D65). A malformed v1 local label must instead be dropped.
             let originalUTC = file.manifest?.raw["meeting"]?["recordedAtUtc"]
             let canCarryUTC = originalUTC == nil || originalUTC?.string.map(validUTCRecordingInstant) == true
+            let canCarryCreated = file.manifest.map {MeetingTime.normalizedUTC($0.meeting.createdAtUtc) == $0.meeting.createdAtUtc} ?? false
             let originalLocal = file.manifest?.raw["meeting"]?["recordedAtLocal"]
             let canCarryLocal = originalLocal == nil || originalLocal?.string.map(validLocalRecordingLabel) == true
             let canCarryTime = file.manifest.map { m in
@@ -83,7 +84,7 @@ public enum MeetingFileExporter {
                 file.tags?["CASSINI_RECORDED_AT_LOCAL"] == m.meeting.recordedAtLocal &&
                 file.tags?["DATE"] == MeetingTime.dateTag(recordedAtUtc:m.meeting.recordedAtUtc,createdAtUtc:m.meeting.createdAtUtc,legacy:file.tags?["DATE"])
             } ?? false
-            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryUTC, canCarryLocal, canCarryTime,
+            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryUTC, canCarryCreated, canCarryLocal, canCarryTime,
                let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
                 _ = try CodemyriadNamespace.validated(namespace)
                 guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
@@ -205,7 +206,7 @@ public enum MeetingFileExporter {
         try emit(limiter.finish())
     }
     private static func validUTCRecordingInstant(_ value: String) -> Bool {
-        MeetingTime.normalizedUTC(value) != nil
+        MeetingTime.normalizedUTC(value) == value
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
@@ -395,7 +396,7 @@ public enum MeetingFileExporter {
                                      exportTime: () -> Date) -> (value: String, exportTime: Bool) {
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         if meeting.state.origin == .received {
-            if let kept = original?.meeting.createdAtUtc { return (kept,false) }
+            if let kept = original.flatMap({MeetingTime.canonicalUTC($0.meeting.createdAtUtc)}) { return (kept,false) }
             // The shared DATE rules (LibraryNames): an unknown or out-of-range offset names no instant.
             if let tag = dateTag, let date = LibraryNames.dateTagInstant(tag) { return (iso.string(from:date),false) }
             if let imported = meeting.received?.importedAtMs { return (iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)),false) }
@@ -405,7 +406,7 @@ public enum MeetingFileExporter {
     private static func validLocalRecordingLabel(_ label: String) -> Bool {
         // Exact v1 schema shape. The length check also rejects a terminal newline,
         // which a regex '$' alone may accept. Readers remain lenient for older files.
-        label.utf8.count == 19 && label.range(of:#"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"#,options:.regularExpression) != nil
+        MeetingTime.isValidLocalLabel(label)
     }
     /// D95: DATE is the same UTC string as recordedAtUtc, including its precision.
     static func dateTag(_ start: Date?, zone: TimeZone) -> String? {

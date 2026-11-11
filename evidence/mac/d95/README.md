@@ -163,3 +163,22 @@ initial build using the stale checked-in generated project failed Quick Look
 linkage; that invocation is retained in evidence and is not counted as a pass.
 Generated project/workspace changes are excluded from the PR. Exact-head CI
 (including the login-session and Intel checks) remains the readiness gate.
+
+## Unverified coordinator checkpoint: second review follow-up
+
+The next revision is in progress, not ready. New Codex r2 and agy reviews are
+`~/coordination/REVIEWS/cassini-mac-248-codex-r2.md` and
+`cassini-mac-248-agy.md`. The new parser/export regression slice fails 55
+assertions against the reviewed head. Local source now validates calendar,
+clock and offset fields; compares full fractional precision; preserves raw
+reader values; canonicalizes producer times; validates civil labels; uses a
+single sort key; moves Quick Look onto shared recording-time resolution; and
+keeps unknown-date subtitle components. Additional Quick Look, locale and sort
+tests are written. Only syntax parsing has run on this checkpoint. Heavy-run
+verification was queued and stopped at the coordinator's checkpoint request.
+No new successful typecheck, test or mutation result is claimed for this revision.
+The prior results.json hashes and pass counts describe the reviewed 60e3094
+revision; they must be refreshed after the follow-up is validated. Still needed:
+compile/fix the new code and tests, add precise export/re-import and Search sort
+regressions, update/replay production mutations and reference-reader cases,
+run affected checks/native builds, then wait for complete exact-head CI.

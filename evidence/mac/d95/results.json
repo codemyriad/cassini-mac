@@ -132,5 +132,13 @@
     "exactHeadCI": "pending",
     "headlessTestsAfterMain": 421,
     "ciContractsAfterMain": 56
+  },
+  "validatedRevision": "60e30942d169ab29ab8188128fbed58ef71a349d",
+  "r2Checkpoint": {
+    "status": "unverified in-progress",
+    "baselineRegressionIssues": 55,
+    "syntaxParse": "passed",
+    "heavyVerification": "queued, stopped at coordinator checkpoint",
+    "priorResultsApplyTo": "60e30942d169ab29ab8188128fbed58ef71a349d"
   }
 }

@@ -83,7 +83,6 @@ public struct LibraryScanner: Sendable {
         return (id, received)
     }
     static func ordered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
-        if let x = a.sortingInstant, let y = b.sortingInstant { return x == y ? identityOrdered(a, b) : x > y }
         if let x = a.timeSortKey, let y = b.timeSortKey { return x == y ? identityOrdered(a,b) : x > y }
         if a.timeSortKey != nil || b.timeSortKey != nil { return a.timeSortKey != nil }
         let x = (a.title ?? "").folding(options: .caseInsensitive, locale: Locale(identifier: "en_GB"))

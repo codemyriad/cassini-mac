@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
+import Testing
+import CassiniKit
+@testable import CassiniLibrary
+
+struct MeetingTimeR2LibraryTests {
+    private func vector(_ name:String) throws -> (URL,CassiniFile) {
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let url=repo.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/"+name+".opus")
+        return (url,try CassiniReader.read(contentsOf:url))
+    }
+    @Test func mixedCivilAndSubmillisecondInstantsHaveOneTotalOrder() throws {
+        var manifest=try #require(vector("028-date-is-created-at").1.manifest?.meeting)
+        manifest.recordedAtUtc=nil;manifest.recordedAtLocal="2026-11-09T10:00:00"
+        let civil=try #require(MeetingTime.resolve(meeting:manifest,dateTag:nil))
+        let base=try #require(MeetingTime.parseInstant("2026-11-09T10:00:00Z"))
+        func item(_ digit:Int,_ time:MeetingTime) -> LibraryMeeting {
+            let id=UUID(uuidString:"00000000-0000-4000-8000-00000000000"+String(digit))!
+            var m=LibraryMeeting(id:id,folder:URL(fileURLWithPath:"/tmp/Recording-"+id.uuidString.lowercased()),state:.init(),title:String(digit),start:time.instant,durationMs:nil,speakers:[],quote:nil,notes:[],audioFiles:[],issues:[])
+            m.recordedTime=time;return m
+        }
+        let a=item(1,MeetingTime(instant:base.addingTimeInterval(0.0001))),b=item(3,MeetingTime(instant:base.addingTimeInterval(0.0004))),c=item(2,civil)
+        #expect(LibraryScanner.ordered(b,a) && LibraryScanner.ordered(a,c) && LibraryScanner.ordered(b,c))
+        for input in [[a,b,c],[a,c,b],[b,a,c],[b,c,a],[c,a,b],[c,b,a]] {
+            #expect(input.sorted(by:LibraryScanner.ordered).map(\.title)==["3","1","2"])
+        }
+    }
+    @Test(arguments:CassiniLanguage.allCases)
+    func unknownDateKeepsDurationProvenanceAndHitPosition(_ language:CassiniLanguage) throws {
+        let locale=Locale(identifier:"en_US"),format=LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,locale:locale,language:language)
+        let unknown=LibraryLocalization.shared.text("library.group.unknownDate",language:language,locale:locale)
+        let received=LibraryLocalization.shared.text("states.badge.received",language:language,locale:locale)
+        let duration=LibraryFormat.meetingDuration(3_120_000,locale:locale,language:language)
+        let preview=format.previewSubtitle(nil as MeetingTime?,durationMs:3_120_000,received:true)
+        #expect(preview.contains(unknown) && preview.contains(duration) && preview.contains(received))
+        #expect(!preview.contains("{time}") && !preview.contains(", ·"))
+        let context=format.searchContext(nil as MeetingTime?,durationMs:3_120_000,positionMs:872_000)
+        #expect(context.contains(unknown) && context.contains(duration) && context.contains(LibraryFormat.position(872_000,locale:locale,language:language)))
+        #expect(format.searchDate(nil as MeetingTime?)==unknown)
+        #expect(format.previewSubtitle(nil as MeetingTime?,durationMs:nil,received:true).contains(received))
+    }
+    @Test func quickLookDateAssemblyUsesTheSharedRecordingTime() throws {
+        let format=LibraryFormat(timeZone:TimeZone(secondsFromGMT:-12*3600)!,locale:Locale(identifier:"en_GB"),language:.en)
+        let known=try #require(MeetingTime.parseInstant("2026-11-09T09:31:48.250Z"))
+        for name in ["027-recorded-at-utc","029-date-with-offset"] {
+            let file=try vector(name).1
+            #expect(format.quickLookRecordingDate(file)==[format.absoluteDate(known)])
+        }
+        let local=try vector("028-date-is-created-at").1
+        let civilFormat=LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,locale:format.locale,language:.en)
+        #expect(format.quickLookRecordingDate(local)==[civilFormat.absoluteDate(known)])
+        let (url,base)=try vector("028-date-is-created-at")
+        var manifest=try #require(base.manifest?.raw),meeting=try #require(manifest["meeting"])
+        meeting=try meeting.setting("recordedAtLocal",to:nil).setting("recordedAtUtc",to:nil)
+        manifest=try manifest.setting("meeting",to:meeting)
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer {try? FileManager.default.removeItem(at:root)}
+        let target=root.appendingPathComponent("creation.opus")
+        _=try OpusStreamFile.rewrite(Data(contentsOf:url),tags:PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)),to:target)
+        #expect(format.quickLookRecordingDate(try CassiniReader.read(contentsOf:target)).isEmpty)
+    }
+}
