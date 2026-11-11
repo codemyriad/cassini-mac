@@ -39,6 +39,7 @@ struct CassiniSettingsView: View {
             .sheet(isPresented:Binding(get:{ companion.presenter == .settings },set:{ if !$0 { companion.close() } })) {
                 CompanionSetupView()
             }
+            .overlay(alignment:.bottom) { TransferStatusBanner() }
     }
 }
 private struct SettingsUpdatesView: View {

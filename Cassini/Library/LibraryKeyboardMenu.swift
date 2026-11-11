@@ -21,15 +21,25 @@ import CassiniLibrary
             DispatchQueue.main.async { [handler] in handler() }
         }
     }
-    static func show(_ meeting: LibraryMeeting, trash: MeetingTrashCoordinator, undo: UndoManager?) -> Bool {
+    static func show(_ meeting: LibraryMeeting?, trash: MeetingTrashCoordinator, undo: UndoManager?) -> Bool {
         guard let view = anchor, view.window === NSApp.keyWindow else { return false }
         let menu = NSMenu(); menu.autoenablesItems = false
-        let renameItem = ActionItem(title:UXText.text("meeting.renameEllipsis")) { MeetingRenameCoordinator.shared.show(meeting) }
-        renameItem.isEnabled = MeetingRenameCoordinator.shared.canRename(meeting)
+        let renameItem = ActionItem(title:UXText.text("meeting.renameEllipsis")) { if let meeting { MeetingRenameCoordinator.shared.show(meeting) } }
+        renameItem.isEnabled = meeting.map { MeetingRenameCoordinator.shared.canRename($0) } ?? false
         renameItem.setAccessibilityIdentifier("library-keyboard-rename"); menu.addItem(renameItem)
-        let exportItem = ActionItem(title:UXText.text("common.exportEllipsis")) { MeetingExportCoordinator.shared.show(meeting) }
+        let exportItem = ActionItem(title:UXText.text("common.exportEllipsis")) { if let meeting { MeetingExportCoordinator.shared.show(meeting) } }
         exportItem.isEnabled = MeetingExportCoordinator.canExport(meeting); menu.addItem(exportItem)
-        if trash.canTrash(meeting) {
+        if BulkZipExportCoordinator.shared.hasSelection {
+            let exportSelectedItem = ActionItem(title:UXText.text("export.zip.selected")) { BulkZipExportCoordinator.shared.exportSelected() }
+            exportSelectedItem.isEnabled = BulkZipExportCoordinator.shared.canExportSelected
+            exportSelectedItem.setAccessibilityIdentifier("library-keyboard-export-selected-zip")
+            menu.addItem(exportSelectedItem)
+        }
+        let exportAllItem = ActionItem(title:UXText.text("export.zip.all")) { BulkZipExportCoordinator.shared.exportAll() }
+        exportAllItem.isEnabled = BulkZipExportCoordinator.shared.canExportAll
+        exportAllItem.setAccessibilityIdentifier("library-keyboard-export-all-zip")
+        menu.addItem(exportAllItem)
+        if let meeting, trash.canTrash(meeting) {
             menu.addItem(.separator())
             let removeItem = ActionItem(title:UXText.text("common.moveToTrash")) { trash.move(meeting,undoManager:undo) }
             removeItem.identifier = NSUserInterfaceItemIdentifier("library-keyboard-trash")

@@ -3,6 +3,7 @@ import AppKit
 import CassiniKit
 import CassiniLibrary
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Scene identity contains no transport request, including in restoration data.
 struct LegacyRoute: Codable, Hashable {
@@ -26,6 +27,29 @@ enum LegacyOpening {
     private static var pendingAccess: [URL: FileAccessLease] = [:]
     private static var openPanel: NSOpenPanel?
 
+    static func openDocuments(_ requestedURLs: [URL]) {
+        let urls = requestedURLs.filter(\.isFileURL)
+        guard !urls.isEmpty else { return }
+        SessionPlaybackController.stopAll()
+        #if DEBUG
+        let legacyFixture = ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && ["window", "sheet"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "")
+        #else
+        let legacyFixture = false
+        #endif
+        if legacyFixture {
+            urls.forEach { openDocument($0) }
+            return
+        }
+        if urls.count == 1 {
+            let ext = urls[0].pathExtension.lowercased()
+            if ext != "zip" && LibraryImport.supportedAudioExtensions.contains(ext) {
+                LibraryImportCoordinator.shared.open(urls[0])
+                return
+            }
+        }
+        LibraryImportCoordinator.shared.openBatch(urls)
+    }
+
     static func openDocument(_ requestedURL: URL, autoplay: Bool = false) {
         SessionPlaybackController.stopAll()
         #if DEBUG
@@ -33,7 +57,14 @@ enum LegacyOpening {
         #else
         let legacyFixture = false
         #endif
-        if !legacyFixture { LibraryImportCoordinator.shared.open(requestedURL); return }
+        if !legacyFixture {
+            if requestedURL.pathExtension.lowercased() == "zip" {
+                LibraryImportCoordinator.shared.openBatch([requestedURL])
+            } else {
+                LibraryImportCoordinator.shared.open(requestedURL)
+            }
+            return
+        }
         let url = requestedURL.standardizedFileURL
         if let model = documents[url]?.model {
             if autoplay { model.requestPlay() }
@@ -59,13 +90,14 @@ enum LegacyOpening {
     static func chooseDocuments() {
         if let openPanel { openPanel.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = CassiniDocument.readableContentTypes
+        panel.allowedContentTypes = CassiniDocument.readableContentTypes + [.zip]
+        panel.message = UXText.text("import.filter.cassiniAndZip")
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
         openPanel = panel
         panel.begin { response in
             MainActor.assumeIsolated {
                 openPanel = nil
-                if response == .OK { panel.urls.forEach { openDocument($0) } }
+                if response == .OK { openDocuments(panel.urls) }
             }
         }
     }
@@ -109,6 +141,7 @@ struct LegacyDocumentView: View {
                     })
             } else { ProgressView() }
         }
+        .overlay(alignment: .bottom) { TransferStatusBanner() }
         .onAppear {
             let dismiss = dismissWindow, route = LegacyRoute(url: model.url)
             model.onFailure = { error in
@@ -137,6 +170,7 @@ private struct TranscriptDetailView: View {
                 }
             }.padding(32)
         }
+        .overlay(alignment: .bottom) { TransferStatusBanner() }
     }
 }
 @MainActor private final class TranscriptWindowController: NSWindowController, NSWindowDelegate {

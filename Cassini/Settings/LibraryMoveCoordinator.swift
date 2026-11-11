@@ -129,6 +129,7 @@ import CassiniLibrary
                 if destination != nil {
                     RecordCoordinator.shared.showingFirst = false
                     MeetingExportCoordinator.shared.cancel(); await MeetingExportCoordinator.shared.waitForShutdown()
+                    BulkZipExportCoordinator.shared.cancel(); await BulkZipExportCoordinator.shared.waitForShutdown()
                     LibrarySearchModel.shared.close(); MeetingNavigation.shared.back(); SessionPlaybackController.stopAll()
                 }
                 await RecordingPageModel.flushAll()

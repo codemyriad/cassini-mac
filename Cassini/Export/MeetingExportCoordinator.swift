@@ -87,6 +87,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         }
     }
     func clearReceipt(_ id: UUID) { if receipt?.id == id { receipt = nil } }
+    func clearReceiptIfAny() { receipt = nil }
     func revealReceipt() {
         guard let receipt else { return }
         NSWorkspace.shared.activateFileViewerSelecting([receipt.url])
