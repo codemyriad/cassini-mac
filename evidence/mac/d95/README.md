@@ -82,16 +82,24 @@ the same callback for other activities. Native SwiftUI container teardown is
 not reliable evidence of whether the footer occupies layout. No failed run was
 retried unchanged or counted as green.
 
-The proof now uses a window-owned NSHostingController around the production
-footer and a GeometryReader preference that records actual height and the
-current updater state. After the real updater's busy/resume events, it awaits
-the corresponding rendered layout and asserts positive busy height and zero
-idle height. Including state in the preference means a footer that stays
-visible reports idle layout with positive height and fails an assertion;
-model state alone cannot prove removal. No callback is synthesized, no subtree
-is manually removed and no success sleep or longer deadline is used. The
-custom DEBUG native visibility observer is removed; production footer behavior
-is unchanged.
+The proof uses a window-owned NSHostingController and a stable measurement view
+around the production footer. Its permanent one-point sibling keeps geometry
+mounted even when the footer is empty; the reported footer height subtracts
+that known point. Readiness is observed in the measurement view's `body`, then
+paired with measured height in the geometry preference. Busy must occupy space;
+idle must occupy zero height. An always-visible footer delivers idle layout
+with positive height and fails an assertion; an always-absent footer fails the
+busy-height assertion. Model state alone cannot prove removal. No subtree is
+manually removed, no callback is synthesized and no success sleep or longer
+deadline is used. The custom native observer is removed; production footer
+behavior is unchanged.
+
+The prior direct-background geometry proof in run `43030139951` failed with
+`saving: missing idle footer layout signal`. The stable sibling prevents an
+empty child from removing the measuring surface, and observing state in
+`View.body` keeps invalidation independent of GeometryReader's deferred closure.
+Fresh always-visible/always-absent mutations fail immediate height assertions;
+forty restored occluded full updater cycles pass with this final host.
 
 `footer-mount-probe.py` compiles the exact ApplicationUpdates, footer and
 UpdateDeferralSelfTest sources against the real Sparkle framework. Unrelated

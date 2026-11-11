@@ -26,7 +26,7 @@
     "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
     "Cassini/Library/LibraryView.swift": "112a04600f6f23e9534769da323c2d089a8ac00cbf233deff9df8d84569fa6c5",
     "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
-    "Cassini/Settings/UpdateDeferralSelfTest.swift": "bce5278fc423fef12dc5d031b0bc7a757a1d7692a342b6ddaf553fe20eb72e6b"
+    "Cassini/Settings/UpdateDeferralSelfTest.swift": "10d8a679ac3dc3fcb6ab4296c86491057d8f5ec13c09d2031ce9dbb16f7189b8"
   },
   "mutations": {
     "utc-priority": {
@@ -87,6 +87,8 @@
       }
     ],
     "restoredCycles": 40,
-    "fullExactHeadCI": "pending"
+    "fullExactHeadCI": "pending",
+    "measurementSiblingPoints": 1,
+    "stateObservedInViewBody": true
   }
 }

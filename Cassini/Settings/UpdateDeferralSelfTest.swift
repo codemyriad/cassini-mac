@@ -13,6 +13,27 @@ private struct FooterLayoutKey: PreferenceKey {
     static func reduce(value:inout FooterLayout?,nextValue:()->FooterLayout?) {value=nextValue() ?? value}
 }
 
+/// A permanent one-point sibling keeps geometry alive when the footer is empty.
+/// Read state in View.body so observation also invalidates a broken, unchanged footer.
+private struct FooterLayoutProbe: View {
+    let updates:ApplicationUpdates
+    let report:(FooterLayout)->Void
+    var body:some View {
+        let ready=updates.readyWhenIdle
+        return VStack(spacing:0) {
+            UpdateReadyFooter(updates:updates)
+            Color.clear.frame(height:1)
+        }
+        .fixedSize(horizontal:false,vertical:true)
+        .background(GeometryReader { geometry in
+            Color.clear.preference(key:FooterLayoutKey.self,value:FooterLayout(ready:ready,height:geometry.size.height - 1))
+        })
+        .onPreferenceChange(FooterLayoutKey.self) { layout in
+            MainActor.assumeIsolated {if let layout {report(layout)}}
+        }
+    }
+}
+
 /// Real updater/delegate, Sparkle status window and measured Library footer.
 /// Assertions follow their signals; elapsed time is only a failure bound.
 @MainActor enum UpdateDeferralSelfTest {
@@ -83,17 +104,11 @@ private struct FooterLayoutKey: PreferenceKey {
             try check(updates.readyWhenIdle && !updates.canCheckForUpdates,"Deferral state disables Check for Updates")
             try await signals.wait("Sparkle close")
             try check(!installationWindow.isVisible,"The real Sparkle install window closed")
-            let content=UpdateReadyFooter(updates:updates).fixedSize(horizontal:false,vertical:true)
-                .background(GeometryReader { geometry in
-                    Color.clear.preference(key:FooterLayoutKey.self,value:FooterLayout(ready:updates.readyWhenIdle,height:geometry.size.height))
-                })
-                .onPreferenceChange(FooterLayoutKey.self) { layout in
-                    MainActor.assumeIsolated {
-                        guard let layout else{return}
-                        signals.footerLayout=layout;signals.send(layout.ready ? "busy footer layout":"idle footer layout")
-                    }
-                }
-            let host=NSHostingController(rootView:content)
+            let host=NSHostingController(rootView:FooterLayoutProbe(updates:updates,report:{ layout in
+                signals.footerLayout=layout
+                NSLog("Update footer layout %@ ready=%d height=%g",signals.context,layout.ready ? 1:0,layout.height)
+                signals.send(layout.ready ? "busy footer layout":"idle footer layout")
+            }))
             let window=NSWindow(contentViewController:host)
             window.isReleasedWhenClosed=false;window.setContentSize(NSSize(width:600,height:70));window.orderFront(nil)
             defer {window.close()}
