@@ -51,11 +51,14 @@ import CassiniRecording
 /// Hosted-only driver exercises the actual controller/sink/files without devices
 /// or permissions. Release builds contain no synthetic recording entry point.
 @MainActor final class HostedRecordingInputs: RecordingInputs {
+    // Fixture configuration is immutable for this driver. In particular, do
+    // not copy ProcessInfo.environment once per PCM sample in a manual burst.
+    private let transcribes = RecordingFixture.transcribes
     private var timer: Timer?
     private var frames: UInt64 = 0
     private var speech: [Float] = []
     private var manualClock = false
-    private var rate: Int { RecordingFixture.transcribes ? 16000 : 48000 }
+    private var rate: Int { transcribes ? 16000 : 48000 }
     private var origin = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime)
     func useFixtureClock(origin: TimeInterval) {
         manualClock = true; self.origin = AVAudioTime.hostTime(forSeconds:origin)
@@ -73,7 +76,7 @@ import CassiniRecording
     }
     func authorize() async throws {}
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
-        if RecordingFixture.transcribes {
+        if transcribes {
             let url = Bundle.main.resourceURL!.appendingPathComponent("Whistle/jfk.wav")
             let data = try Data(contentsOf: url)
             guard data.count > 44 else { throw CocoaError(.fileReadCorruptFile) }
@@ -99,7 +102,7 @@ import CassiniRecording
                 let at = Int(frames) + n
                 // A constant-valued fixture is DC, not audible sound. Preserve
                 // the same expected peak with a generated 400 Hz AC tone.
-                buffer.floatChannelData![0][n] = RecordingFixture.transcribes
+                buffer.floatChannelData![0][n] = transcribes
                     ? (id == "microphone" && at < speech.count ? speech[at] : 0)
                     : level * Float(cos(2 * Double.pi * 400 * Double(at) / Double(rate)))
             }
