@@ -17,24 +17,30 @@ jobs:
   # larger mode and captures 1120x720. Each phase runs whatever the other one's result, so a
   # failure in one still leaves the other's evidence.
   screenshots:
-    runs-on: macos-15
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 25
     steps:
+    # This runner-temp subdirectory belongs only to the screenshot job. A stable
+    # name also lets startup remove leftovers from an interrupted prior job.
+    - name: Clean interrupted screenshot DerivedData
+      run: rm -rf -- "$RUNNER_TEMP/cassini-window-screenshots-derived-data"
     - uses: actions/checkout@v5
     - id: products
       uses: ./.github/actions/ci-products
       with:
         debug: 'true'
-    - name: Require GitHub-hosted runner
+    - name: Require a qualified GUI session
       id: hosted
-      run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      run: python3 scripts/gui_session.py
     - name: Capture actual windows with XCUITest
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_GUI_SCREENSHOTS: ${{ runner.environment == 'self-hosted' && '1' || '0' }}
       run: |
         set -o pipefail
         mkdir -p build
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -derivedDataPath "$RUNNER_TEMP/cassini-window-screenshots-derived-data" \
           -resultBundlePath build/WindowScreenshots.xcresult \
           2>&1 | tee build/window-tests.log
     - name: Export window PNGs
@@ -68,7 +74,7 @@ jobs:
     # Board-size phase (formerly ux-board-shot.yml).
     - name: Install capture tools
       if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
-      run: brew install displayplacer
+      run: command -v displayplacer >/dev/null || brew install displayplacer
     - name: Select and verify a larger display mode
       if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
       run: |
@@ -80,10 +86,12 @@ jobs:
       if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_GUI_SCREENSHOTS: ${{ runner.environment == 'self-hosted' && '1' || '0' }}
         TEST_RUNNER_CASSINI_SCREENSHOT_SIZE: 1120x720
       run: |
         set -o pipefail
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -derivedDataPath "$RUNNER_TEMP/cassini-window-screenshots-derived-data" \
           -resultBundlePath build/BoardScreenshots.xcresult \
           2>&1 | tee build/board-tests.log
     - name: Export board-size PNGs
@@ -115,6 +123,9 @@ jobs:
         name: board-screenshot-diagnostics-${{ github.sha }}
         path: build/BoardScreenshots.xcresult
         if-no-files-found: ignore
+    - name: Clean screenshot DerivedData after artifact upload
+      if: always()
+      run: rm -rf -- "$RUNNER_TEMP/cassini-window-screenshots-derived-data"
     needs:
     - build
     if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
