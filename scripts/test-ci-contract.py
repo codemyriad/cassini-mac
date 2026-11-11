@@ -262,6 +262,7 @@ class RentedRunnerRouting(unittest.TestCase):
                 fallback_match=re.search(r"\|\| (matrix\.runner|'([^']+)') \}\}$",route)
                 self.assertIsNotNone(fallback_match,route)
                 fallback=runner if fallback_match.group(1)=='matrix.runner' else fallback_match.group(2)
+                self.assertIn(fallback,['macos-15','macos-15-intel'])
                 for event in events:
                     for head in ['codemyriad/cassini-mac','fork/repo','']:
                         for label in ['cm-mac-m4','']:
