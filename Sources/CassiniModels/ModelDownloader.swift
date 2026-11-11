@@ -44,6 +44,16 @@ public actor ModelDownloader {
         budget = ModelDiskSpace.measured
         removalLockWaiting = nil; lockAcquired = nil
     }
+    #if DEBUG
+    /// Signed-app fixture observation of an actual contended removal lock.
+    /// The production initializer never installs an observer or changes locking.
+    public init(appData: URL, userAgent: String, fixtureRemovalLockWaiting: @escaping @Sendable () -> Void) {
+        dataRoot = appData.resolvingSymlinksInPath(); self.userAgent = userAgent
+        origin = try! ModelOrigin(URL(string:"https://dist.gocassini.com")!)
+        budget = ModelDiskSpace.measured
+        removalLockWaiting = fixtureRemovalLockWaiting; lockAcquired = nil
+    }
+    #endif
     // Loopback HTTP is available only to module tests, never the app consumer.
     init(appData: URL, fixtureOrigin: URL, userAgent: String, budget: @escaping @Sendable (URL) throws -> ModelDiskSpace = ModelDiskSpace.measured,
          removalLockWaiting: (@Sendable () -> Void)? = nil, lockAcquired: (@Sendable ([Int32]) -> Void)? = nil) throws {

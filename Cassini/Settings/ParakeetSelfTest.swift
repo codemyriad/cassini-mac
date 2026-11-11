@@ -109,8 +109,18 @@ import CassiniModels
             let first = try meeting(root:root,title:"Parakeet active")
             let second = try meeting(root:root,title:"Whistle queued")
             phase("accepting Parakeet queue job")
+            let (acceptedEvents,accepted) = AsyncStream<(URL,String)>.makeStream(bufferingPolicy:.bufferingNewest(1))
+            let (workerEvents,workerRelease) = AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1))
+            defer { queue.fixtureAcceptance = nil; accepted.finish(); workerRelease.yield(()); workerRelease.finish() }
+            queue.fixtureAcceptance = { folder,engine in
+                accepted.yield((folder,engine))
+                var next = workerEvents.makeAsyncIterator(); _ = await next.next()
+            }
             queue.enqueue(first)
-            try await wait { queue.activeModel == "parakeet" }
+            var acceptance = acceptedEvents.makeAsyncIterator()
+            guard let firstAccepted = await acceptance.next(), firstAccepted.0 == first.folder,
+                  firstAccepted.1 == "parakeet",queue.activeModel == "parakeet" else { throw POSIXError(.EINVAL) }
+            queue.fixtureAcceptance = nil; accepted.finish()
             await models.reloadInventory()
             guard models.downloaded,models.usesParakeet,
                   FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
@@ -122,12 +132,17 @@ import CassiniModels
             let previousMessage = models.message
             let release = DispatchSemaphore(value:0)
             defer { release.signal() }
-            Thread.detachNewThread { _ = release.wait(timeout:.now()+5); flock(held,LOCK_UN); close(held) }
+            Thread.detachNewThread { release.wait(); flock(held,LOCK_UN); close(held) }
             phase("removing accepted model while lock held")
+            let (lockEvents,lockWaiting) = AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1))
+            models.fixtureRemovalLockWaiting = { lockWaiting.yield(()) }
+            defer { models.fixtureRemovalLockWaiting = nil; lockWaiting.finish() }
             models.remove()
             try FileManager.default.removeItem(at:SpeechModelController.modelDirectory.appendingPathComponent("NOTICE.txt"))
+            var waiting = lockEvents.makeAsyncIterator()
+            guard await waiting.next() != nil else { throw POSIXError(.EINVAL) }
+            models.fixtureRemovalLockWaiting = nil; lockWaiting.finish()
             await models.reloadInventory() // Reopening Settings cannot start a second cleanup during Remove.
-            try await Task.sleep(for:.milliseconds(50))
             guard models.busy,models.downloaded,models.message == previousMessage else { throw POSIXError(.EINVAL) }
             release.signal()
             phase("waiting for Remove disk commit")
@@ -135,9 +150,10 @@ import CassiniModels
             guard !models.usesParakeet, !models.downloaded,
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path),
                   models.message == UXText.text("models.parakeetUltra.removedFallback") else { throw POSIXError(.EINVAL) }
+            guard queue.activeModel == "parakeet",queue.active == first.folder else { throw POSIXError(.EINVAL) }
             phase("waiting for Parakeet and queued Whistle")
-            queue.enqueue(second)
-            try await wait { !queue.isBusy }
+            workerRelease.yield(()); workerRelease.finish()
+            try await completion(of:second,queue:queue) { queue.enqueue(second) }
             phase("Parakeet and queued Whistle completed")
             let firstDone = try checked(first,model:ParakeetPin.transcriptModel,language:"und")
             _ = try checked(second,model:"whistle",language:nil)
@@ -162,7 +178,7 @@ import CassiniModels
             guard models.usesParakeet else { throw POSIXError(.EINVAL) }
             phase("invalid-model Whistle fallback")
             let third = try meeting(root:root,title:"Invalid model fallback")
-            queue.enqueue(third); try await wait { !queue.isBusy }
+            try await completion(of:third,queue:queue) { queue.enqueue(third) }
             _ = try checked(third,model:"whistle",language:nil)
             guard !models.usesParakeet, !models.downloaded,
                   models.message == UXText.text("models.parakeetUltra.invalidFallback"),
@@ -170,15 +186,16 @@ import CassiniModels
                   !FileManager.default.fileExists(atPath:SpeechModelController.modelDirectory.path) else { throw POSIXError(.EINVAL) }
             phase("DC-only empty transcript")
             let quiet = try meeting(root:root,title:"DC-only empty transcript",dcOnly:true)
-            queue.enqueue(quiet); try await wait { !queue.isBusy }
+            try await completion(of:quiet,queue:queue) { queue.enqueue(quiet) }
             let empty = try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })
             guard let empty,empty.hasNoSpeech,empty.canWriteDown,!empty.canQueueAutomatically else { throw POSIXError(.EINVAL) }
             let before = try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json"))
             let detail = MeetingDetailModel(meeting:empty,frozen:true)
             phase("empty-transcript explicit retry")
-            queue.writeDown(detail); queue.writeDown(detail)
-            guard queue.isBusy else { throw POSIXError(.EINVAL) } // Must clear the prior completed job's known key.
-            try await wait { !queue.isBusy }
+            try await completion(of:quiet,queue:queue) {
+                queue.writeDown(detail); queue.writeDown(detail)
+                guard queue.isBusy else { throw POSIXError(.EINVAL) } // Must clear the prior completed job's known key.
+            }
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quiet.id })?.hasNoSpeech == true,
                   try Data(contentsOf:quiet.folder.appendingPathComponent("meeting.json")) != before else { throw POSIXError(.EINVAL) }
             phase("all assertions completed")
@@ -189,7 +206,8 @@ import CassiniModels
                 "invalidModelRetriesWhistle":true,"invalidModelDeleted":true,"choicePersisted":true,
                 "metadataAndAudioPreserved":true,"audioDevicesOpened":false,
                 "unusedDamagedInstallationRecovers":true,"removeMessageFollowsDiskCommit":true,
-                "inventoryPreservesAcceptedModel":true,"emptyTranscriptRetryRequeues":true]
+                "inventoryPreservesAcceptedModel":true,"emptyTranscriptRetryRequeues":true,
+                "removeLockObserved":true,"acceptedJobHeldDuringRemove":true,"queueCompletionEvents":true]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             // Retain the initiating failure even if shutdown itself stalls.
@@ -245,9 +263,16 @@ import CassiniModels
               found.transcriptItems.allSatisfy({ $0.speaker == "me" }) else { throw POSIXError(.EINVAL) }
         return found
     }
-    private static func wait(_ condition: () -> Bool) async throws {
-        for _ in 0..<4800 { if condition() { return }; try await Task.sleep(for:.milliseconds(25)) }
-        throw POSIXError(.ETIMEDOUT)
+    private static func completion(of meeting: LibraryMeeting,queue: TranscriptionQueue,start: () throws -> Void) async throws {
+        let succeeded: Bool = try await withCheckedThrowingContinuation { continuation in
+            queue.fixtureCompletion = { folder,_,succeeded in
+                guard folder == meeting.folder else { return }
+                queue.fixtureCompletion = nil; continuation.resume(returning:succeeded)
+            }
+            do { try start() }
+            catch { queue.fixtureCompletion = nil; continuation.resume(throwing:error) }
+        }
+        guard succeeded,!queue.isBusy else { throw POSIXError(.EINVAL) }
     }
 }
 #endif
