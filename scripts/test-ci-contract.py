@@ -98,6 +98,11 @@ class NativeSpectrogramScheduling(unittest.TestCase):
                             'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
                             'if: always()','name: ux-spectrogram']:
             self.assertIn(requirement,native)
+        # Routing is useless if the entry point or CPU instrumentation still
+        # rejects the newly qualified host. Normal app measurement stays unchanged.
+        for source in ['Spikes/Spectrogram/main.swift','Spikes/Spectrogram/Probe.swift','Cassini/Recording/RecordingSpectrogram.swift']:
+            self.assertIn('SpectrogramFixtureHost.current',(ROOT/source).read_text(),source)
+        self.assertIn("Spikes/Spectrogram/Host.swift",(ROOT/'scripts/build-spectrogram-probe.py').read_text())
         # Keep every production proof exactly once, including the motion XCTest
         # driver supplied by Debug products and the same-build optimized objects.
         for script in ['CheckBudget.swift','test-spectrogram-harness.py',

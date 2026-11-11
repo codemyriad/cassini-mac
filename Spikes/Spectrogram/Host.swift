@@ -10,7 +10,7 @@ enum SpectrogramFixtureHost {
         return environment["RUNNER_ENVIRONMENT"] == "self-hosted" &&
             environment["CASSINI_CI_GUI"] == "1" && uid == 503 && consoleUID == uid && aqua
     }
-    static var current: Bool {
+    static let current: Bool = {
         let environment=ProcessInfo.processInfo.environment
         if environment["RUNNER_ENVIRONMENT"] == "github-hosted" {
             return admits(environment,uid:getuid(),consoleUID:0,aqua:false)
@@ -24,5 +24,5 @@ enum SpectrogramFixtureHost {
         process.standardOutput=FileHandle.nullDevice;process.standardError=FileHandle.nullDevice
         do { try process.run();process.waitUntilExit() } catch { return false }
         return admits(environment,uid:uid,consoleUID:console,aqua:process.terminationStatus == 0)
-    }
+    }()
 }
