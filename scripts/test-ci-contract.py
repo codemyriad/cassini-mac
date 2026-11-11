@@ -87,17 +87,25 @@ class NativeSpectrogramScheduling(unittest.TestCase):
     def test_native_measurements_have_their_own_bounded_gui_job(self):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
-        boards, native = jobs['boards'], jobs['spectrogram']
+        boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
         self.assertIn('timeout-minutes: 25',boards)
         self.assertNotIn('test-spectrogram-app.py',boards)
         self.assertNotIn("release: 'true'",boards)
         self.assertNotIn('needs: [boards]',native)
         for requirement in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-15' }}",'needs: [build, release]',
                             'inputs.products_ready','!cancelled()',
-                            "debug: 'true'","release: 'true'",'github-hosted',
+                            "release: 'true'",'github-hosted',
                             'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
                             'if: always()','name: ux-spectrogram']:
             self.assertIn(requirement,native)
+        self.assertNotIn("debug: 'true'",native)
+        self.assertIn('--phase budgets',native)
+        self.assertNotIn('--phase diagnostics',native)
+        for requirement in ['runs-on: macos-15','needs: [build, release]',"debug: 'true'","release: 'true'",'--phase diagnostics','name: ux-spectrogram-diagnostics','if: always()']:
+            self.assertIn(requirement,diagnostics)
+        self.assertNotIn('CM_MAC_GUI_RUNNER',diagnostics)
+        self.assertNotIn('--phase budgets',diagnostics)
+        self.assertNotIn('needs: [spectrogram]',diagnostics)
         # Routing is useless if the entry point or CPU instrumentation still
         # rejects the newly qualified host. Normal app measurement stays unchanged.
         for source in ['Spikes/Spectrogram/main.swift','Spikes/Spectrogram/Probe.swift','Cassini/Recording/RecordingSpectrogram.swift']:
@@ -107,7 +115,7 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         # driver supplied by Debug products and the same-build optimized objects.
         for script in ['CheckBudget.swift','test-spectrogram-harness.py',
                        'CheckSampleClock.swift','build-spectrogram-probe.py','test-spectrogram-app.py']:
-            self.assertEqual(body.count(script),1)
+            self.assertEqual(body.count(script),2 if script in ['build-spectrogram-probe.py','test-spectrogram-app.py'] else 1)
             self.assertIn(script,native)
 
 
@@ -349,14 +357,14 @@ class RentedRunnerRouting(unittest.TestCase):
         board_job=boards.split('  boards:',1)[1].split('  spectrogram:',1)[0]
         self.assertNotIn('CM_MAC_GUI_RUNNER',board_job)
         self.assertIn('runs-on: macos-15',board_job)
-        native=boards.split('  spectrogram:',1)[1]
+        native,diagnostics=boards.split('  spectrogram:',1)[1].split('  spectrogram_diagnostics:',1)
         self.assertIn('vars.CM_MAC_GUI_RUNNER',native)
         self.assertIn('python3 scripts/gui_session.py',native)
         self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- uses: actions/setup-python'))
         self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- name: Disable Spotlight'))
         self.assertIn('command -v displayplacer',native)
-        self.assertIn('Clean interrupted profiling DerivedData',native)
-        self.assertIn('Clean profiling DerivedData after artifact upload',native)
+        self.assertIn('Clean interrupted profiling DerivedData',diagnostics)
+        self.assertIn('Clean profiling DerivedData after artifact upload',diagnostics)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()

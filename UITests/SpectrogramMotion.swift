@@ -16,11 +16,7 @@ final class SpectrogramMotion: XCTestCase {
     }
     @MainActor private func motionControl(_ settings: XCUIApplication) throws -> XCUIElement {
         settings.launch()
-        // macOS 27 moved Reduce motion out of Display into its own Motion pane.
-        // The real 27 Display AX tree contains contrast/transparency, not motion.
-        let section: String
-        if #available(macOS 27.0, *) { section = "Motion" } else { section = "Display" }
-        let pane=try XCTUnwrap(URL(string:"x-apple.systempreferences:com.apple.Accessibility-Settings.extension?\(section)"))
+        let pane=try XCTUnwrap(URL(string:"x-apple.systempreferences:com.apple.Accessibility-Settings.extension?Display"))
         XCTAssertTrue(NSWorkspace.shared.open(pane))
         // macOS15 exposes the label as a separate static text, while its
         // switch has this identifier and no label. Verified in the real
