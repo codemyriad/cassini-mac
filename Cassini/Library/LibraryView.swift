@@ -100,7 +100,7 @@ struct LibraryView: View {
             if !search.visible && navigation.detail == nil && !store.meetings.isEmpty {
                 ToolbarItem(placement:.primaryAction) {
                     bulkExportMenu
-                    LibrarySearchField(text:$search.query,onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
+                    LibrarySearchField(text:$search.query,onClick:{ search.open() },onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
                 }
             }
         }

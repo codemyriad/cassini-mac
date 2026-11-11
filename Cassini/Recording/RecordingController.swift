@@ -39,9 +39,15 @@ import Observation
     @ObservationIgnored private var timelineStart: TimeInterval?
     @ObservationIgnored private var lastMicSound: TimeInterval = 0
     @ObservationIgnored private var completedElapsedMs: Int64 = 0
+    private var uptime: TimeInterval {
+        #if DEBUG
+        if let fixtureUptime { return fixtureUptime }
+        #endif
+        return ProcessInfo.processInfo.systemUptime
+    }
     var elapsedMs: Int64 {
         guard isRecording, let timelineStart else { return completedElapsedMs }
-        return Int64(max(0, ProcessInfo.processInfo.systemUptime - timelineStart) * 1000)
+        return Int64(max(0, uptime - timelineStart) * 1000)
     }
     @ObservationIgnored var onSaved: ((URL) -> Void)?
     @ObservationIgnored private(set) var finishTask: Task<Void, Never>?
@@ -88,11 +94,15 @@ import Observation
             directory = session.directory; startedAt = session.manifest.createdAt
             let writer: any RecordingSinkWriter
             #if DEBUG
-            writer = RecordingFixture.enabled ? HostedFinalizationWriter(session) : session
+            // The manual probe observes Saving before yielding; it needs no artificial stall.
+            writer = RecordingFixture.enabled && fixtureUptime == nil ? HostedFinalizationWriter(session) : session
             #else
             writer = session
             #endif
-            let origin = ProcessInfo.processInfo.systemUptime
+            let origin = uptime
+            #if DEBUG
+            if fixtureUptime != nil { (inputs as? HostedRecordingInputs)?.useFixtureClock(origin:origin) }
+            #endif
             spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:session.pcmObservers) : nil
             timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
             let sink = RecordingSink(session: writer, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
@@ -114,12 +124,24 @@ import Observation
             }
             statusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, let status = self.sink?.status() else { return }
+                    guard let self else { return }
+                    #if DEBUG
+                    // Only consume a fixture meter sample when its media was advanced.
+                    if self.fixtureUptime != nil, self.fixtureStatus == nil { return }
+                    #endif
+                    guard let status = self.sink?.status() else { return }
                     self.levels = status.levels; self.warnings = status.warnings
-                    let now = ProcessInfo.processInfo.systemUptime
+                    let now = self.uptime
                     if status.levels["microphone",default:0] >= 0.01 { self.lastMicSound = now }
                     self.microphoneSilent = now - self.lastMicSound >= 20
                     self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5 && ["microphone", "output"].contains { status.frames[$0, default: 0] == 0 }
+                    #if DEBUG
+                    if let waiter = self.fixtureStatus {
+                        self.fixtureStatus = nil
+                        if status.droppedMs == 0, status.gapMs == 0 { waiter.resume(returning:status.frames) }
+                        else { waiter.resume(throwing:RecordingError.invalid("Fixture PCM was lost.")) }
+                    }
+                    #endif
                 }
             }
         } catch { guard generation == attempt else { return }; stop(problem: error.localizedDescription) }
@@ -131,6 +153,26 @@ import Observation
         RecordingDiskWatch.updateWarning(diskLine)
     }
     #if DEBUG
+    @ObservationIgnored private var fixtureUptime: TimeInterval?
+    @ObservationIgnored private var fixtureStatus: CheckedContinuation<[String:UInt64],Error>?
+    func useFixtureClock() throws {
+        guard RecordingFixture.enabled, phase == .idle,
+              CommandLine.arguments.contains("--recording-comfort-self-test") else { throw POSIXError(.EINVAL) }
+        fixtureUptime = 100
+    }
+    func advanceFixtureMedia(toMilliseconds ms: Int) async throws {
+        guard let fixtureUptime, let origin = timelineStart, let sink, let hosted = inputs as? HostedRecordingInputs,
+              isRecording, fixtureStatus == nil, (20...20_000).contains(ms), ms % 20 == 0 else { throw POSIXError(.EINVAL) }
+        let target = origin + Double(ms)/1000
+        guard target >= fixtureUptime else { throw POSIXError(.EINVAL) }
+        let expected = hosted.advanceFixtureMedia(toMilliseconds:ms,sink:sink)
+        self.fixtureUptime = target
+        // The real status timer must consume the delivered PCM and publish its levels.
+        let frames: [String:UInt64] = try await withCheckedThrowingContinuation { fixtureStatus = $0 }
+        guard frames["microphone"] == expected, frames["output"] == expected else {
+            throw RecordingError.invalid("Fixture status did not cover the delivered media.")
+        }
+    }
     func applyDiskBudgetForTesting(_ budget: DiskBudget) {
         guard RecordingFixture.enabled else { return }; applyDiskBudget(budget)
     }
@@ -145,6 +187,9 @@ import Observation
         if !diskStopped { RecordingDiskWatch.clear() }
         diskWatch.stop()
         statusTimer?.invalidate(); statusTimer = nil
+        #if DEBUG
+        fixtureStatus?.resume(throwing:CancellationError()); fixtureStatus = nil
+        #endif
         inputs?.stop(); inputs = nil
         levels = [:]; waitingForAudio = false
         let sink = self.sink; self.sink = nil
