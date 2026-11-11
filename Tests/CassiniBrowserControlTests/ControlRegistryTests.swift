@@ -230,7 +230,7 @@ final class ControlRegistryTests: XCTestCase {
         for request in requests {
             let json = try JSONParser.parse(request.data)
             XCTAssertEqual(json["tabId"]?.int,2); XCTAssertEqual(json["independent"]?.bool,true)
-            XCTAssertEqual(json["captureLocal"]?.bool,false); XCTAssertEqual(json["microphone"]?.bool,false)
+            XCTAssertEqual(json["captureLocal"]?.bool,true); XCTAssertEqual(json["microphone"]?.bool,false)
             XCTAssertEqual(json["mode"]?.string,"tracks"); XCTAssertNil(json["path"])
         }
         XCTAssertTrue(state.startAll(microphone:true).isEmpty)

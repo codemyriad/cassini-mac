@@ -164,7 +164,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                         try await self.prepare(.others,driver:self.system(),source:selectionToken,refusingAt:atMs)
                     }
                 }
-                if me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
+                if self.capture.nativeMe && me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
                     prepared[.me] = try await self.turnOn(.me,turningOn:!before.me,into:refusedNow) {
                         try await self.prepare(.me,driver:self.microphone(),refusingAt:atMs)
                     }
@@ -489,7 +489,7 @@ private final class SourceChangeToken: @unchecked Sendable {
               if closed { return }; noteFailure(.others,error,opened:signal.hasFired)
           }
         }
-        if capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
+        if capture.nativeMe && capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
           let signal = FirstBufferSignal()
           do {
             guard !closed, admission() else { throw CancellationError() }

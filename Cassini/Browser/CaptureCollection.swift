@@ -319,9 +319,8 @@ private final class CaptureFiles: @unchecked Sendable {
         let generation = autoGeneration
         autoRecord = enabled; RecordingPreferences.defaults.set(enabled,forKey:"CassiniAutoRecord")
         if !enabled { service.setAutoRecord(false,microphone:true); return }
-        // Microphone consent precedes automatic capture admission. Optional
-        // notification consent is requested only after working inputs start.
-        await authorizeMicrophone()
+        // Input authorization belongs to the selected route; separated calls
+        // never request hardware microphone consent.
         guard !shuttingDown, generation == autoGeneration else { return }
         service.setAutoRecord(true,microphone:true)
     }
@@ -869,6 +868,9 @@ private final class CaptureFiles: @unchecked Sendable {
         if value.snapshot.browserAlive && value.snapshot.others {
             captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
         }
+        if !value.owner.nativeMe {
+            captures[id]?.levels[.me] = value.snapshot.me && value.snapshot.browserAlive && ProcessInfo.processInfo.systemUptime - value.snapshot.meLevelTimestamp <= 1 ? value.snapshot.browserMeLevel : 0
+        }
         if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
     }
     func title(_ id: UUID, _ text: String) { captures[id]?.displayTitle = text }
@@ -918,11 +920,5 @@ private final class CaptureFiles: @unchecked Sendable {
         #endif
         return side == .me ? MeetingMicrophoneInput() : MeetingSystemInput()
     }
-    private func authorizeMicrophone() async {
-        #if DEBUG
-        if CaptureFixture.enabled { try? await CaptureFixtureInput(.me).authorize(); return }
-        if RecordingFixture.enabled { return }
-        #endif
-        try? await NativeRecordingInputs().authorize()
-    }
+
 }

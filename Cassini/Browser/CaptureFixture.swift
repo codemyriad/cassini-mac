@@ -68,10 +68,11 @@ final class CaptureFixtureAdmissionClock: @unchecked Sendable {
         let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
         let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:160)!
         buffer.frameLength = 160
+        let microphoneHz = ProcessInfo.processInfo.environment["CASSINI_CONTROL_PIPE_ROOT"]?.contains("/live-folder-") == true ? 660.0 : 440.0
         for index in 0..<160 {
             let phase = Double(frames + UInt64(index))/8000 * 2 * Double.pi
             buffer.floatChannelData![0][index] = side == .me
-                ? (CaptureFixture.silentMicrophone ? 0 : Float(sin(440*phase))*0.12) + CaptureFixture.microphoneDC
+                ? (CaptureFixture.silentMicrophone ? 0 : Float(sin(microphoneHz*phase))*0.12) + CaptureFixture.microphoneDC
                 : Float(sin(880*phase))*0.33
         }
         // Input stamps follow the generated source frames, not timer delivery.

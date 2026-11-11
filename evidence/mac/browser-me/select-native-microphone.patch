@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
++++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
+@@ -165,5 +165,5 @@
+                     }
+                 }
+-                if self.capture.nativeMe && me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
++                if me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
+                     prepared[.me] = try await self.turnOn(.me,turningOn:!before.me,into:refusedNow) {
+                         try await self.prepare(.me,driver:self.microphone(),refusingAt:atMs)

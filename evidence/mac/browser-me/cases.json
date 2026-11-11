@@ -1,0 +1,37 @@
+[
+  {
+    "name": "capture-local-command",
+    "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+    "test": "ControlRegistryTests"
+  },
+  {
+    "name": "start-native-microphone",
+    "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+    "test": "BrowserLocalMeTests/testNoNativeMicrophoneOnStartSelectFallbackOrReload"
+  },
+  {
+    "name": "select-native-microphone",
+    "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+    "test": "BrowserLocalMeTests/testNoNativeMicrophoneOnStartSelectFallbackOrReload"
+  },
+  {
+    "name": "native-writer-admission",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM"
+  },
+  {
+    "name": "local-side-selection",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testLocalSelectionMuteMeterAndAnalysisAreIndependentOfOthers"
+  },
+  {
+    "name": "local-discovery",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "D52UnselectedSourceTests/testASelectedPageMicrophoneIsExpectedIndependentlyOfOthers"
+  },
+  {
+    "name": "local-ac-meter",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM"
+  }
+]

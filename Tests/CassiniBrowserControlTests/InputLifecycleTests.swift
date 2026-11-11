@@ -356,7 +356,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(owner.snapshot.restoreReady)
         try await inputs.restoreBrowser(atMs:3000)
         XCTAssertTrue(owner.snapshot.browserAlive); XCTAssertFalse(owner.snapshot.usingSystem)
-        XCTAssertEqual(mic.starts,1); XCTAssertEqual(mic.stops,0)
+        XCTAssertEqual(mic.starts,0); XCTAssertEqual(mic.stops,0)
         XCTAssertEqual(system.starts,1); XCTAssertEqual(system.stops,1)
         let cutover = try XCTUnwrap(owner.snapshot.manifest.events?.last(where:{ $0.reason == "restored" })?.atMs)
         let firstAfter = ceil(cutover)+100
@@ -371,7 +371,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(state.source,"browser"); XCTAssertEqual(state.me,true); XCTAssertEqual(state.others,true)
         let resumed = try XCTUnwrap(manifest.tracks.last { $0.sourceTrackId == "after" && $0.frames > 0 })
         XCTAssertEqual(resumed.startOffsetMs,firstAfter); XCTAssertEqual(resumed.frames,800)
-        XCTAssertEqual(manifest.tracks.first { $0.kind == "microphone" }?.frames,1600)
+        XCTAssertNil(manifest.tracks.first { $0.kind == "microphone" })
         XCTAssertTrue(manifest.tracks.filter { $0.kind == "system" }.allSatisfy { $0.ended == true })
     }
     @MainActor func testBrowserReturningBeforeFallbackRecordsWithoutInventingASystemRestoration() async throws {
@@ -553,7 +553,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
         XCTAssertEqual(owner.snapshot.manifest.tracks.filter { $0.kind == "system" }.count,1)
         XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.frames,1600)
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.frames,1600)
+        XCTAssertNil(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" })
         XCTAssertFalse(owner.snapshot.manifest.events?.contains { $0.reason == "restored" } ?? true)
     }
     @MainActor func testUnwritableRestoreCheckpointKeepsTheExistingSystemAndMicWriters() async throws {
@@ -574,7 +574,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         mic.emit(at:0.1)
         try await inputs.stop(); try await owner.finish()
         XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.frames,1600)
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.frames,1600)
+        XCTAssertNil(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" })
     }
 
     @MainActor func testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain() async throws {
@@ -601,7 +601,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(owner.snapshot.usingSystem); XCTAssertEqual(mic.stops,0)
         XCTAssertFalse(owner.snapshot.manifest.events?.contains { $0.source == "system" } ?? true)
         system.failingAfterSamples = false; try await inputs.retry(.others)
-        XCTAssertTrue(owner.snapshot.usingSystem); XCTAssertEqual(mic.starts,1)
+        XCTAssertTrue(owner.snapshot.usingSystem); XCTAssertEqual(mic.starts,0)
         try await inputs.stop(); try await owner.finish()
     }
     @MainActor func testADeadOriginalTransportCannotRestoreUsingAPagesDiscovery() async throws {
@@ -655,7 +655,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
         XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
     }
-    @MainActor func testRejectedBrowserResumeRestartsOldMicWithoutEndingItsTrack() async throws {
+    @MainActor func testRejectedBrowserResumeNeverOpensNativeMic() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Resume rollback",microphone:true)
@@ -664,17 +664,17 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
         try await inputs.start()
         try await inputs.select(me:true,others:false,atMs:100)
-        for index in 0..<63 { try owner.browserTrack(id:"r\(index)",label:"Other",kind:"remote",sampleRate:8000,channels:1) }
+        for index in 0..<64 { try owner.browserTrack(id:"r\(index)",label:"Other",kind:"remote",sampleRate:8000,channels:1) }
         let before = owner.snapshot.manifest
         mic.firstAt = 0.1
         do { try await inputs.select(me:false,others:true,atMs:200); XCTFail("Browser resume must exceed track limit") } catch {}
         XCTAssertTrue(owner.snapshot.me); XCTAssertFalse(owner.snapshot.others)
         XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
-        XCTAssertEqual(mic.starts,2); XCTAssertEqual(mic.stops,1)
+        XCTAssertEqual(mic.starts,0); XCTAssertEqual(mic.stops,0)
         XCTAssertFalse(inputs.failedSides.contains(.me))
         try await inputs.stop(); try await owner.finish()
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
-        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
+        XCTAssertTrue(tracks.isEmpty)
     }
     @MainActor func testFailedSystemReplacementKeepsMicrophoneRunningInItsExistingTrack() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -700,7 +700,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
         XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
     }
-    @MainActor func testTrackLimitRejectsPreparedInputWithoutChangingBrowserSelection() async throws {
+    @MainActor func testMeSelectionNeedsNoNativeTrackSlotAtBrowserTrackLimit() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Track limit",microphone:false)
@@ -711,16 +711,16 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         for index in 0..<64 { try owner.browserTrack(id:"r\(index)",label:"Other",kind:"remote",sampleRate:8000,channels:1) }
         let before = owner.snapshot.manifest
         let files = try FileManager.default.contentsOfDirectory(atPath:owner.snapshot.directory.path).sorted()
-        do { try await inputs.select(me:true,others:false,atMs:100); XCTFail("Track limit must reject new microphone") } catch {}
-        XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
-        XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
+        try await inputs.select(me:true,others:false,atMs:100)
+        XCTAssertTrue(owner.snapshot.me); XCTAssertFalse(owner.snapshot.others)
+        XCTAssertEqual(owner.snapshot.manifest.events?.count,(before.events?.count ?? 0)+2)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:owner.snapshot.directory.path).sorted(),files)
-        XCTAssertEqual(mic.starts,1); XCTAssertEqual(mic.stops,1)
+        XCTAssertEqual(mic.starts,0); XCTAssertEqual(mic.stops,0)
         try owner.browserAudio(id:"r0",sequence:0,offsetMs:100,pcm:Data(repeating:1,count:1600))
         try await inputs.stop(); try await owner.finish()
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.frames,800)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.frames,0)
     }
-    @MainActor func testFailedNewMicrophoneKeepsBrowserChoiceEventsAndAudioUnchanged() async throws {
+    @MainActor func testHardwareMicFailureCannotRefuseBrowserMeSelection() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Rejected source change",microphone:false)
@@ -734,19 +734,19 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let before = owner.snapshot.manifest
         // D58: refused at 100, and the browser choice stands (the change would leave nothing).
         let refused = try await inputs.select(me:true,others:false,atMs:100)
-        XCTAssertEqual(refused,[.me:"deviceUnavailable"])
-        XCTAssertEqual(owner.snapshot.manifest.refusals?.map(\.atMs),[100])
-        XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
-        XCTAssertEqual(owner.snapshot.manifest.events?.count,before.events?.count)
+        XCTAssertTrue(refused.isEmpty); XCTAssertEqual(mic.authorized,0)
+        XCTAssertTrue(owner.snapshot.manifest.refusals?.isEmpty != false)
+        XCTAssertTrue(owner.snapshot.me); XCTAssertFalse(owner.snapshot.others)
+        XCTAssertEqual(owner.snapshot.manifest.events?.count,(before.events?.count ?? 0)+2)
         XCTAssertEqual(owner.snapshot.manifest.tracks.count,before.tracks.count)
         try owner.browserAudio(id:"r",sequence:1,offsetMs:100,pcm:Data(repeating:2,count:1600))
         try await inputs.stop(); try await owner.finish()
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.frames,1600)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.frames,800)
     }
     @MainActor func testTurningMeOffAfterACountedGapStillAppliesSelection() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Turn off after gap",microphone:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Turn off after gap",microphone:true,browser:false)
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
@@ -755,8 +755,8 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         do { try await inputs.select(me:false,others:true,atMs:1200) }
         catch { try? await inputs.stop(); try? await owner.finish(); throw error }
         XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.gapFrames,8000)
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first?.ended,true)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.gapFrames,8000)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.ended,true)
         try await inputs.stop(); try await owner.finish()
         XCTAssertEqual(owner.snapshot.manifest.problemKind,"gap")
     }
@@ -812,7 +812,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
     @MainActor func testDeniedMicrophoneDoesNotPreventSystemFallbackOrKeepRequestingPermission() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Partial permission",microphone:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Partial permission",microphone:true,browser:false)
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         mic.denied = true
@@ -827,7 +827,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
         XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.kind),["system"])
     }
-    @MainActor func testTwoMeetingsOwnTheirNativeInputsAndOnlyTheLostOneStartsSystem() async throws {
+    @MainActor func testTwoBrowserMeetingsNeverOpenNativeMeAndOnlyTheLostOneStartsSystem() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let a = try OwnedBrowserCapture(parent:root,title:"One",microphone:true)
@@ -838,15 +838,17 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let first = CaptureInputLifecycle(capture:a,originHostTime:origin,microphone:{ micA },system:{ systemA },failure:{ _ in })
         let second = CaptureInputLifecycle(capture:b,originHostTime:origin,microphone:{ micB },system:{ systemB },failure:{ _ in })
         try await first.start(); try await second.start()
+        try b.browserTrack(id:"local",label:"Me",kind:"local",sampleRate:8000,channels:1)
+        try b.browserAudio(id:"local",sequence:0,offsetMs:0,pcm:Data(repeating:0,count:1600))
         try a.browserLost(atMs:0); try await first.update()
         XCTAssertEqual(systemA.starts,1); XCTAssertEqual(systemB.starts,0)
         try await first.stop(); try await a.finish()
-        XCTAssertEqual(micA.stops,1); XCTAssertEqual(micB.stops,0)
-        micB.emit(at:0.1)
+        XCTAssertEqual(micA.stops,0); XCTAssertEqual(micB.stops,0)
+        try b.browserAudio(id:"local",sequence:1,offsetMs:100,pcm:Data(repeating:0,count:1600))
         try await second.stop(); try await b.finish()
         XCTAssertEqual(b.snapshot.manifest.tracks.count,1)
         XCTAssertEqual(b.snapshot.manifest.tracks[0].frames,1600)
-        XCTAssertEqual(a.snapshot.manifest.tracks.map(\.kind),["microphone","system"])
+        XCTAssertEqual(a.snapshot.manifest.tracks.map(\.kind),["system"])
     }
     @MainActor func testOthersOnlyDoesNotAuthorizeMicAndLossStartsOnlySystemInItsOwnFolder() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -865,23 +867,21 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source,"system")
         XCTAssertEqual(owner.snapshot.manifest.events?.last?.type,"end")
     }
-    @MainActor func testMeOffOnDrainsAndCreatesAFreshMicSpanWithoutStoppingBrowser() async throws {
+    @MainActor func testNativeMeOffOnDrainsAndCreatesAFreshMicSpanWithoutStoppingSystem() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Me toggle",microphone:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Me toggle",microphone:true,browser:false)
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         var microphones: [GeneratedInput] = []
         let system = GeneratedInput("system",origin:origin)
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ let mic = GeneratedInput("microphone",origin:origin); mic.firstAt = Double(microphones.count)*0.3; microphones.append(mic); return mic },system:{ system },failure:{ _ in })
         try await inputs.start()
-        try owner.browserTrack(id:"r",label:"Other",kind:"remote",sampleRate:8000,channels:1)
         try await inputs.select(me:false,others:true,atMs:100)
         XCTAssertEqual(microphones[0].stops,1)
         XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.ended,true)
         microphones[0].emit(at:0.1) // Stopped driver has no route to a sink.
-        try owner.browserAudio(id:"r",sequence:0,offsetMs:100,pcm:Data(repeating:0,count:1600))
         try await inputs.select(me:true,others:true,atMs:200)
-        XCTAssertEqual(microphones.count,2); XCTAssertEqual(system.starts,0)
+        XCTAssertEqual(microphones.count,2); XCTAssertEqual(system.starts,1)
         try await inputs.stop(); try await owner.finish()
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
         XCTAssertEqual(tracks.count,2); XCTAssertNotEqual(tracks[0].id,tracks[1].id)
@@ -891,12 +891,12 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let reselected = owner.snapshot.manifest.events?.last { $0.type == "selection" && $0.me == true }?.atMs
         XCTAssertEqual(tracks[1].startOffsetMs,reselected); XCTAssertEqual(tracks[1].gaps?.map(\.kind),["prefix"])
         XCTAssertEqual(tracks[1].frames - (tracks[1].gaps?.first?.frames ?? 0),800); XCTAssertNil(tracks[1].gapFrames)
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "remote" }?.frames,800)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.frames,800)
     }
     @MainActor func testDeniedMeSelectionLeavesTheWorkingSelectionAndBrowserUntouched() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Denied mic",microphone:false)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Denied mic",microphone:false,browser:false)
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         mic.denied = true
@@ -904,7 +904,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         // D58: refused, and the working selection stands (the change would leave nothing).
         let refused = try await inputs.select(me:true,others:false,atMs:0)
         XCTAssertEqual(refused,[.me:"permissionDenied"])
-        XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others); XCTAssertTrue(owner.snapshot.browserAlive)
+        XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others); XCTAssertFalse(owner.snapshot.browserAlive)
         XCTAssertEqual(owner.snapshot.manifest.events?.count,2); XCTAssertEqual(mic.starts,0)
         try await inputs.stop(); try await owner.finish()
     }

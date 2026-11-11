@@ -90,6 +90,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
     var control: CaptureProbeProcess
     var audio: CaptureProbeProcess?
     var captureID: String?, path: String?
+    var localSequence = 0, audioOriginMs = 0, remoteLastMs = -100, localLastMs = -100
     var sequence = 0
     var meetingURL = "https://meeting.example/2"
     var pageState = "present", sourceID = "remote"
@@ -163,16 +164,20 @@ final class CaptureProbeProcess: @unchecked Sendable {
         }
         if action == "start" {
             let token = UUID().uuidString.lowercased(), audio = try CaptureProbeProcess("cassini-browser-host",root:root)
-            self.audio = audio; captureID = token; sequence = 0; sourceID = "remote"; offsetBaseMs = 0
+            self.audio = audio; captureID = token; sequence = 0; localSequence = 0; sourceID = "remote"; offsetBaseMs = 0
+            remoteLastMs = -100; localLastMs = -100
+            audioOriginMs = Int(Date().timeIntervalSince1970*1000)
+            try CaptureSelfTest.require(command["captureLocal"]?.bool == true,"Separated Start captures the selected browser sender")
             try CaptureSelfTest.require(command["keepOnNavigation"]?.bool == true,"Start must retain the original audio transport")
             try CaptureSelfTest.require(command["callGeneration"]?.string == callGeneration,"Start names the probe's call")
-            var start: [String:Any] = ["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
+            var start: [String:Any] = ["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":audioOriginMs,"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
             if verified { start["requestId"] = request; start["documentGeneration"] = sourceDocument }
             let started = try await audio.request(start)
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
             path = started["path"]?.string
             if sendAudioOnStart {
                 _ = try await audio.request(["type":"track","id":"remote","label":"Generated remote","kind":"remote","sampleRate":8000,"channels":1])
+                _ = try await audio.request(["type":"track","id":"local","label":"Me","kind":"local","sampleRate":8000,"channels":1])
                 try await emit()
             }
         } else {
@@ -189,16 +194,31 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     func emit() async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
-        let answer = try await audio.request(["type":"audio","id":sourceID,"sequence":sequence,"offsetMs":offsetBaseMs+sequence*100,"pcm":Data(repeating:0x12,count:1600).base64EncodedString()])
+        let nextOffset = max(remoteLastMs+100,max(offsetBaseMs+sequence*100,Int(Date().timeIntervalSince1970*1000)-audioOriginMs))
+        let answer = try await audio.request(["type":"audio","id":sourceID,"sequence":sequence,"offsetMs":nextOffset,"pcm":Data(repeating:0x12,count:1600).base64EncodedString()])
         guard answer["type"]?.string == "ack" else { throw CocoaError(.fileWriteUnknown) }
-        sequence += 1
+        sequence += 1; remoteLastMs = nextOffset
+        try await emitLocal()
+    }
+    func emitLocal() async throws {
+        guard let audio, sendAudioOnStart else { return }
+        let samples = (0..<800).flatMap { index -> [UInt8] in
+            let ac = CaptureFixture.silentMicrophone ? 0 : sin(Double(index)*2 * .pi*440/8000)*0.12
+            let value = Int16(max(-1,min(1,ac+Double(CaptureFixture.microphoneDC)))*32767)
+            return [UInt8(truncatingIfNeeded:value),UInt8(truncatingIfNeeded:value >> 8)]
+        }
+        let nextOffset = max(localLastMs+100,Int(Date().timeIntervalSince1970*1000)-audioOriginMs)
+        let reply = try await audio.request(["type":"audio","id":"local","sequence":localSequence,
+            "offsetMs":nextOffset,"pcm":Data(samples).base64EncodedString()])
+        try CaptureSelfTest.require(reply["type"]?.string == "ack","Synthetic browser Me is admitted")
+        localSequence += 1; localLastMs = nextOffset
     }
     func page(_ state: String, active: Bool) async throws {
         pageState = state; try await control.send(status()); try await meetings(active)
     }
     func returnedSource(atMs: Int) async throws {
         guard let audio else { throw CocoaError(.fileReadUnknown) }
-        sourceID = UUID().uuidString.lowercased(); sequence = 0; offsetBaseMs = atMs
+        sourceID = UUID().uuidString.lowercased(); sequence = 0; offsetBaseMs = atMs; remoteLastMs = atMs-100
         let reply = try await audio.request(["type":"track","id":sourceID,"label":"Returned remote","kind":"remote","sampleRate":8000,"channels":1])
         try CaptureSelfTest.require(reply["type"]?.string == "ack","The original audio transport accepts the returning frame")
         try await emit()
@@ -290,15 +310,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             CaptureFixture.microphoneAuthorizationFixture = {
                 await withCheckedContinuation { microphoneReplies.append($0) }
             }
-            var autoEnabled = false
-            let enableAuto = Task { try await collection.setAutoRecord(true); autoEnabled = true }
-            try await wait { !microphoneReplies.isEmpty }
-            try require(notificationReply == nil && !autoEnabled,"Automatic recording asks for microphone before optional notifications")
-            microphoneReplies.removeFirst().resume()
-            try await enableAuto.value
-            try require(autoEnabled && notificationReply == nil,"Auto-record settings never wait for notification consent or ask before a capture starts")
+            try await collection.setAutoRecord(true)
+            try require(microphoneReplies.isEmpty && notificationReply == nil,"Enabling auto-record does not request hardware microphone or notification consent")
             try await collection.setAutoRecord(false)
-            report["autoRecordMicrophonePrecedesNotifications"] = true
+            report["autoRecordUsesBrowserMicrophone"] = true
             let one = try CaptureProbeProfile(root:pipe,title:"Generated profile one"), two = try CaptureProbeProfile(root:pipe,title:"Generated profile two")
             profiles = [one,two]
             try await one.ready(); try await two.ready()
@@ -317,19 +332,16 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(notificationReply == nil,"No notification prompt before the browser accepts the first Start")
             report["firstStartDeliveredWhileAcceptanceGated"] = true
             _ = try await one.perform(firstStart); _ = try await two.performNext()
-            try await wait { microphoneReplies.count == 2 }
-            try require(notificationReply == nil,"Browser recording requests microphone before optional notification consent")
-            let admitted = microphoneReplies; microphoneReplies.removeAll()
+            try require(microphoneReplies.isEmpty && CaptureFixture.microphoneStarts == 0,"Separated browser recording never authorizes or starts hardware Me")
             CaptureFixture.microphoneAuthorizationFixture = nil
-            admitted.forEach { $0.resume() }
-            try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } } }
+            try await wait { collection.captures.count == 2 && collection.captures.values.allSatisfy { $0.key != nil && $0.snapshot.manifest.tracks.contains { $0.kind == "local" && $0.frames > 0 } } }
+            report["browserMeNeverAuthorizesHardware"] = true
             try await wait { notificationReply != nil }
             try require(!RecordCoordinator.shared.showingFirst,"First confirmation dismissed while recording actually started")
             let framesBeforeConsent = collection.captures.values.reduce(UInt64(0)) { $0 + $1.owner.snapshot.manifest.tracks.reduce(UInt64(0)) { $0 + $1.frames } }
             try await one.emit(); try await two.emit()
             try await wait { collection.captures.values.reduce(UInt64(0), { $0 + $1.owner.snapshot.manifest.tracks.reduce(UInt64(0), { $0 + $1.frames }) }) > framesBeforeConsent }
             try require(notificationReply != nil,"Recording continues while the notification banner is unanswered")
-            report["browserMicrophonePrecedesNotifications"] = true
             notificationReply?.resume(); notificationReply = nil
             CaptureNotifications.authorizationFixture = nil
             report["firstRecordingDoesNotWaitForNotifications"] = true
@@ -367,18 +379,20 @@ final class CaptureProbeProcess: @unchecked Sendable {
             // The fixture microphones run at 8 kHz. Consume a complete fresh
             // 100 ms AC window at uptime 20 before checking the DC rejection.
             let micFramesAt20 = Dictionary(uniqueKeysWithValues:ownedIDs.compactMap { id in
-                collection.captures[id].map { (id,$0.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }) }
+                collection.captures[id].map { (id,$0.owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames }) }
             })
+            try await one.emitLocal(); try await two.emitLocal()
             try await wait {
                 ownedIDs.allSatisfy { id in
                     guard let baseline = micFramesAt20[id], let owner = collection.captures[id]?.owner else { return false }
-                    return owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } >= baseline + 800
+                    return owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames } >= baseline + 800
                 }
             }
             collection.setMicrophoneUptimeForTesting(ownedIDs, at:20)
             try require(RecordingOverview.microphoneSilent && originalEditor.microphoneSilent,"Owned silent microphone is shown at twenty seconds")
             try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
             CaptureFixture.silentMicrophone = false
+            try await one.emitLocal(); try await two.emitLocal()
             try await wait { !RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent }
             collection.setMicrophoneUptimeForTesting(ownedIDs, at:nil)
             CaptureFixture.microphoneDC = 0
@@ -409,45 +423,32 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["deferredMovePreservesUnrelatedViewAndExport"] = true
             stage = "change per-meeting sources"
             try await collection.select(first.snapshot.manifest.id,me:false,others:true)
-            let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
+            let micEnd = collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await one.emit() // Real browser request/ack is the admission barrier.
-            try require(collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } == micEnd,"Me off stops native admission")
-            stage = "reject unavailable replacement input"
-            let beforeChoice = first.owner.snapshot.manifest
+            try require(collection.captures[first.snapshot.manifest.id]!.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames } == micEnd,"Me off stops native admission")
+            stage = "browser Me ignores unavailable hardware"
             CaptureFixture.microphoneStartsAllowed = false
-            // D58 (M16): a refused turn-on does not fail the selection. It returns the side's
-            // code, keeps the previous selection and is recorded once, at the ask time.
             let refusalsBefore = first.owner.snapshot.manifest.refusals?.count ?? 0
-            let refusedChoice = try await collection.select(first.snapshot.manifest.id,me:true,others:false)
+            let selected = try await collection.select(first.snapshot.manifest.id,me:true,others:false)
             CaptureFixture.microphoneStartsAllowed = true
-            try require(refusedChoice[.me] != nil && refusedChoice[.others] == nil && !first.owner.snapshot.me && first.owner.snapshot.others,"Failed microphone keeps Others selected")
-            let refusals = first.owner.snapshot.manifest.refusals ?? []
-            try require(refusals.count == refusalsBefore + 1 && refusals.last?.side == "me" && refusals.last?.code == refusedChoice[.me],"Refused microphone is recorded once as a me refusal")
-            try require(first.owner.snapshot.manifest.events?.count == beforeChoice.events?.count && first.owner.snapshot.manifest.tracks.count == beforeChoice.tracks.count,"Rejected selection publishes no events or tracks")
-            let remoteTrack = try first.owner.snapshot.manifest.tracks.first { $0.kind == "remote" }.unwrap()
-            let remoteURL = first.owner.snapshot.directory.appendingPathComponent(remoteTrack.file)
-            let browserBefore = try FileManager.default.attributesOfItem(atPath:remoteURL.path)[.size] as? UInt64 ?? 0
-            try await one.emit()
-            let browserAfter = try FileManager.default.attributesOfItem(atPath:remoteURL.path)[.size] as? UInt64 ?? 0
-            try require(browserAfter > browserBefore,"Browser audio continues after rejected input")
-            report["failedSourceChangeKeepsSelectionAndAudio"] = true
-            stage = "accept replacement input"
-            try await collection.select(first.snapshot.manifest.id,me:true,others:false)
+            try require(selected.isEmpty && first.owner.snapshot.me && !first.owner.snapshot.others,"Browser Me stays selectable when hardware input is unavailable")
+            try require((first.owner.snapshot.manifest.refusals?.count ?? 0) == refusalsBefore && CaptureFixture.microphoneStarts == 0,"No hardware attempt or Me refusal on browser selection")
             try await one.emit()
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
             try await one.emit()
+            report["browserSelectionIgnoresHardwareFailure"] = true
             report["realSelectionUsesOwnedInputLifecycle"] = true
             stage = "stop only first meeting"
             collection.stop(first.snapshot.manifest.id)
             try require(MeetingNavigation.shared.detail == nil,"Stop returns the viewed recording to the Library")
             try require(RecordingOverview.saving && !LibraryMoveCoordinator.shared.canChoose,"Move is disabled while an owned recording saves")
             report["ownedStopReturnsToLibraryBeforeFlush"] = true
-            try await wait { first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.allSatisfy { $0.ended == true } }
-            let stoppedMicFrames = first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }
+            try require(CaptureFixture.microphoneStarts == 0,"Stop cannot open a native microphone")
+            let stoppedMicFrames = first.owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await two.emit() // Another source progresses while this tail remains open.
             try require(first.owner.snapshot.phase == .recording,"Browser tail remains pending in the fixture")
-            try require(first.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } == stoppedMicFrames,"Native microphone stops before the browser flush")
-            report["nativeStopsBeforeBrowserFlush"] = true
+            try require(first.owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames } == stoppedMicFrames,"Another meeting cannot append to this browser Me span")
+            report["browserMeOwnsBrowserFlush"] = true
             _ = try await one.performNext()
             try await wait { collection.captures[first.snapshot.manifest.id] == nil && collection.captures[second.snapshot.manifest.id] != nil }
             try await two.emit()
@@ -514,49 +515,26 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.setAutoRecord(false)
             try await one.meetings(false); try await two.meetings(false)
             try await wait { !collection.hasCalls }
-            for transition in ["expiry","cancel"] {
-                stage = "separated automatic admission closes during microphone permission: "+transition
-                try await collection.setAutoRecord(true)
-                let announcementCount = automatic.count, microphoneStarts = CaptureFixture.microphoneStarts
-                let (entered, enteredEvent) = AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1))
-                let (finished, finishedEvent) = AsyncStream<(Bool,Bool)>.makeStream(bufferingPolicy:.bufferingNewest(1))
-                var permission: CheckedContinuation<Void,Never>?
-                CaptureFixture.microphoneAuthorizationFixture = {
-                    await withCheckedContinuation { reply in
-                        permission = reply; enteredEvent.yield(()); enteredEvent.finish()
-                    }
-                }
-                CaptureFixture.createdFinished = { _,problem,admitted in
-                    finishedEvent.yield((problem,admitted)); finishedEvent.finish()
-                }
-                defer {
-                    CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
-                    CaptureFixtureAdmissionClock.shared.reset()
-                }
-                let pending = try CaptureProbeProfile(root:pipe,title:"Generated pending "+transition,verified:true)
-                pending.sendAudioOnStart = false; profiles.append(pending)
-                try await pending.ready(); _ = try await pending.performNext()
-                for await _ in entered { break } // Actual permission suspension, not a settling delay.
-                try await wait { collection.peers.flatMap(\.captures).contains { $0.captureID == pending.captureID } }
-                let pendingID = try collection.captures.keys.first.unwrap()
-                if transition == "expiry" { CaptureFixtureAdmissionClock.shared.advance(by:10) }
-                else { collection.stop(pendingID) }
-                permission?.resume(); permission = nil
-                for await (problem,admitted) in finished {
-                    try require(!problem && !admitted,"Withdrawn automatic startup is cancellation, never a source failure or accepted input")
-                }
-                try require(automatic.count == announcementCount,"No automatic-start announcement before an accepted input")
-                try require(CaptureFixture.microphoneStarts == microphoneStarts,"No microphone input may start after withdrawal")
-                try await collection.setAutoRecord(false)
-                _ = try await pending.performNext()
-                await collection.stopAndWait()
-                CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
-                CaptureFixtureAdmissionClock.shared.reset()
-                try await pending.meetings(false)
-                try await wait { collection.captures.isEmpty && !collection.isSaving && !collection.hasCalls }
-                try require(!collection.recordFailed,"A withdrawn automatic startup is not a failed manual Record")
-            }
-            report["separatedAdmissionCancellationIsQuiet"] = true
+            stage = "separated automatic admission needs no microphone permission"
+            try await collection.setAutoRecord(true)
+            let microphoneStarts = CaptureFixture.microphoneStarts
+            var authorizationAttempts = 0
+            CaptureFixture.microphoneAuthorizationFixture = { authorizationAttempts += 1 }
+            let (finished, finishedEvent) = AsyncStream<(Bool,Bool)>.makeStream(bufferingPolicy:.bufferingNewest(1))
+            CaptureFixture.createdFinished = { _,problem,admitted in finishedEvent.yield((problem,admitted)); finishedEvent.finish() }
+            let browserPending = try CaptureProbeProfile(root:pipe,title:"Generated browser-only admission",verified:true)
+            browserPending.sendAudioOnStart = false; profiles.append(browserPending)
+            try await browserPending.ready(); _ = try await browserPending.performNext()
+            for await (problem,admitted) in finished { try require(!problem && admitted,"Accepted browser transport admits independently of hardware permission") }
+            try require(authorizationAttempts == 0 && CaptureFixture.microphoneStarts == microphoneStarts,"Automatic admission never requests native Me")
+            CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
+            try await collection.setAutoRecord(false)
+            let pendingID = try collection.captures.keys.first.unwrap()
+            collection.stop(pendingID); _ = try await browserPending.performNext()
+            await collection.stopAndWait()
+            try await browserPending.meetings(false)
+            try await wait { collection.captures.isEmpty && !collection.isSaving && !collection.hasCalls }
+            report["separatedAdmissionNeedsNoHardwarePermission"] = true
             stage = "partial failure: discover both calls"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)
@@ -728,7 +706,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await collection.record(); _ = try await waiting.performNext()
             try await wait {
                 collection.captures.count == 1 && collection.captures.values.first?.peerKnown == true &&
-                collection.captures.values.first?.owner.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } == true
+                collection.captures.values.first?.owner.snapshot.manifest.tracks.contains { $0.kind == "local" && $0.frames > 0 } == true
             }
             let permissionCapture = try collection.captures.values.first.unwrap()
             let previousSystemStarts = CaptureFixture.systemStarts

@@ -22,6 +22,8 @@ public struct OwnedCaptureSnapshot: Sendable {
     public var isSystemFallback: Bool { phase == .recording && fallbackReason != nil && usingSystem }
     public let fallbackReason: String?
     public let browserLostUptime: TimeInterval?
+    public let browserMeLevel: Float
+    public let meLevelTimestamp: TimeInterval
     public let browserLevel: Float
     public let levelTimestamp: TimeInterval
     /// Audio and the final session are saved; only the portable capture record is pending
@@ -34,6 +36,8 @@ public struct OwnedCaptureSnapshot: Sendable {
 /// budget and a native span writer; browser requests use this owner's I/O queue.
 /// No file I/O occurs under a store-wide lock or in snapshot/UI getters.
 public final class OwnedBrowserCapture: @unchecked Sendable {
+    /// Separated calls own Me in the browser, including throughout transport gaps.
+    public let nativeMe: Bool
     public let pcmObservers: RecordedPCMObservers
     private struct BrowserSource {
         let id: String, label: String, kind: String
@@ -50,6 +54,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         var returning = false
         var lastPacketAt: Double?
         var current = true
+        var meter = ACLevelWindow()
         /// A new span of this source. D61: every span repeats the declaration's clock facts,
         /// whichever path starts it (a resumed chunk, Others turned back on, a restore).
         func start(_ span: String, boundaryMs: Double? = nil) -> RecordingSource {
@@ -114,10 +119,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void = { _ in }) throws {
         recording = try RecordingSession(parent:parent,title:title,source:browser ? "chromium" : "macos",id:id)
         pcmObservers = recording.pcmObservers
+        nativeMe = !browser
         me = microphone; self.changed = changed
-        // The microphone's track slot is held from the start: browser sources declared
-        // before its first buffer cannot take it (it is released if Me is turned off).
-        if microphone { reservedNative.insert(.me) }
+        // Only native recordings reserve a microphone slot before their first PCM.
+        if microphone && !browser { reservedNative.insert(.me) }
         browserAlive = browser; transportAlive = browser; self.managedBrowser = managedBrowser && browser
         // D52.3b/D49: a Record with no call records the others as a system-sound
         // stand-in (system/missing), which a later call may take over once. Like any
@@ -128,7 +133,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         notifications = DispatchQueue(label:"io.codemyriad.cassini.capture-notify." + recording.manifest.id.uuidString)
         try recording.transition(events:[.init(atMs:0,type:"othersSource",source:browser ? "browser" : "none",reason:"start"),
             .init(atMs:0,type:"selection",reason:"start",me:microphone,others:true)])
-        cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,transportAlive:browser,restoreReady:false,browserReturnPCMAt:nil,managedBrowser:managedBrowser && browser,fallbackRequested:false,fallbackReason:nil,browserLostUptime:nil,browserLevel:0,levelTimestamp:0)
+        cached = .init(manifest:recording.manifest,directory:recording.directory,phase:.recording,me:microphone,others:true,browserAlive:browser,transportAlive:browser,restoreReady:false,browserReturnPCMAt:nil,managedBrowser:managedBrowser && browser,fallbackRequested:false,fallbackReason:nil,browserLostUptime:nil,browserMeLevel:0,meLevelTimestamp:0,browserLevel:0,levelTimestamp:0)
         queue.setSpecific(key:key,value:1)
     }
     public var snapshot: OwnedCaptureSnapshot {
@@ -141,8 +146,11 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private func publish(force: Bool = true) {
         let now = DispatchTime.now().uptimeNanoseconds
         let uptime = ProcessInfo.processInfo.systemUptime
-        let peak = others && browserAlive ? browserPeaks.values.filter { uptime - $0.1 <= 1 }.map(\.0).max() ?? 0 : 0
-        var value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,transportAlive:transportAlive,restoreReady:readyForBrowser,browserReturnPCMAt:freshestReturn,managedBrowser:managedBrowser,fallbackRequested:fallbackRequested,fallbackReason:fallbackReason,browserLostUptime:browserLostUptime,browserLevel:peak,levelTimestamp:browserPeaks.values.map(\.1).max() ?? 0)
+        let mePeaks = browserPeaks.filter { browserSources[$0.key]?.kind == "local" }.map(\.value)
+        let otherPeaks = browserPeaks.filter { browserSources[$0.key]?.kind != "local" }.map(\.value)
+        let peak = others && browserAlive ? otherPeaks.filter { uptime - $0.1 <= 1 }.map(\.0).max() ?? 0 : 0
+        let mePeak = me && browserAlive ? mePeaks.filter { uptime - $0.1 <= 1 }.map(\.0).max() ?? 0 : 0
+        var value = OwnedCaptureSnapshot(manifest:recording.manifest,directory:recording.directory,phase:phase,me:me,others:others,browserAlive:browserAlive,transportAlive:transportAlive,restoreReady:readyForBrowser,browserReturnPCMAt:freshestReturn,managedBrowser:managedBrowser,fallbackRequested:fallbackRequested,fallbackReason:fallbackReason,browserLostUptime:browserLostUptime,browserMeLevel:mePeak,meLevelTimestamp:mePeaks.map(\.1).max() ?? 0,browserLevel:peak,levelTimestamp:otherPeaks.map(\.1).max() ?? 0)
         value.recordPending = audioClosed && phase == .saving
         snapshotLock.lock(); cached = value; snapshotLock.unlock()
         guard force || now - lastPublished >= 250_000_000 else { return }
@@ -156,9 +164,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             guard phase == .recording, transportAlive, browserAlive || managedBrowser else { throw BrowserProtocolError("state","No active browser capture.") }
             guard sourceTrackId == nil || CaptureLedger.validIdentity(sourceTrackId) else { throw BrowserProtocolError("source","Invalid source identity.") }
             // Validate the declaration before it can change the ledger or be echoed.
-            guard CaptureLedger.validIdentity(id), ["remote","media","tab"].contains(kind), (8000...192000).contains(sampleRate), (1...2).contains(channels) else {
+            guard CaptureLedger.validIdentity(id), (["remote","media","tab"].contains(kind) || (kind == "local" && !nativeMe)), (8000...192000).contains(sampleRate), (1...2).contains(channels) else {
                 throw BrowserProtocolError("source","Invalid or duplicate browser source.")
             }
+            let selectedSide = kind == "local" ? me : others
             let key = sourceTrackId ?? id
             if ledger != nil {
                 guard !retired.contains(id) else { throw BrowserProtocolError("state","Audio source has ended.") }
@@ -173,7 +182,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 // Refused without failing or retiring anything: the live span keeps recording,
                 // and this id may be declared again once that span ends.
                 guard !browserSources.values.contains(where:{ $0.key == key }) else { throw KeptSourceRefusal("source","Overlapping live source spans.") }
-                do { try ledger!.observe(key,kind:kind,label:RecordingSession.cleanLabel(label),expected:others,labelSource:provenance) }
+                do { try ledger!.observe(key,kind:kind,label:RecordingSession.cleanLabel(label),expected:selectedSide,labelSource:provenance) }
                 catch { throw BrowserProtocolError("source",error.localizedDescription) }
                 if let snapshot = ledger!.labelSnapshot(key) { label = snapshot.label; provenance = snapshot.labelSource ?? "browser" }
                 declarations[id] = declaration
@@ -185,7 +194,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             guard browserSources[Data(id.utf8)] == nil else { throw BrowserProtocolError("source","Invalid or duplicate browser source.") }
             guard browserSources.count < 64, recording.manifest.tracks.count + pendingNative < 64 else { throw BrowserProtocolError("limit","Too many browser sources.") }
-            let live = others && browserAlive
+            let live = selectedSide && browserAlive
             // D68 (#49 review): a source a resumed transport declares before the restore gets no
             // track yet. restoreBrowser (or its first packet after the restore) opens its one real
             // span; an inert, start-less 0-frame span here would only be a second track for the key.
@@ -224,18 +233,20 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if managedBrowser, transportAlive, !browserAlive, normalized >= browserReturnAt {
                 source.returning = true
             }
-            if managedBrowser, browserAlive, others, source.span == nil,
-               normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > resumeAt {
+            let selectedSide = source.kind == "local" ? me : others
+            let boundary = source.kind == "local" ? meResumeAt : resumeAt
+            if managedBrowser, browserAlive, selectedSide, source.span == nil,
+               normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > boundary {
                 let span = UUID().uuidString.lowercased()
                 let start = source.start(span)
                 try commitBound([(span,source.key,true)],starting:[start])
                 source.span = span; source.current = true
                 browserSources[Data(id.utf8)] = source
             }
-            if browserAlive && others, let span = source.span {
+            if browserAlive && selectedSide, let span = source.span {
                 // A packet buffered before the user turned a side back on must
                 // not write the excluded interval into its new span.
-                let trim = min(pcm.count/(source.channels*2),max(0,Int(ceil((resumeAt-normalized)*Double(source.rate)/1000))))
+                let trim = min(pcm.count/(source.channels*2),max(0,Int(ceil((boundary-normalized)*Double(source.rate)/1000))))
                 if trim*source.channels*2 < pcm.count {
                     firstSamples = recording.manifest.tracks.first { $0.id == span }?.frames == 0
                     let bytes = Data(pcm.dropFirst(trim*source.channels*2)), at = normalized + Double(trim)/Double(source.rate)*1000
@@ -257,7 +268,19 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                             peak = max(peak,abs(Float(sample))/32768)
                         }
                     }
-                    browserPeaks[Data(id.utf8)] = (peak,ProcessInfo.processInfo.systemUptime)
+                    if source.kind == "local" {
+                        var completed: Float?
+                        admitted.withUnsafeBytes { bytes in
+                            for frame in 0..<(bytes.count/(source.channels*2)) {
+                                for channel in 0..<source.channels {
+                                    let sample = Int16(littleEndian:bytes.loadUnaligned(fromByteOffset:(frame*source.channels+channel)*2,as:Int16.self))
+                                    source.meter.receive(Float(sample)/32768,channel:channel)
+                                }
+                                if let level = source.meter.endFrame(channels:source.channels,window:source.rate/10) { completed = level }
+                            }
+                        }
+                        if let completed { browserPeaks[Data(id.utf8)] = (completed,ProcessInfo.processInfo.systemUptime) }
+                    } else { browserPeaks[Data(id.utf8)] = (peak,ProcessInfo.processInfo.systemUptime) }
                 }
             }
             source.clockStart = start; source.frames += Int64(pcm.count/(source.channels*2)); source.nextSequence += 1
@@ -345,8 +368,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try sync {
             guard phase == .recording, ledger != nil else { throw BrowserProtocolError("state","Capture already saved.") }
             guard !sources.isEmpty else { throw BrowserProtocolError("source","Invalid discovered audio sources.") }
-            let selected = others
-            do { try ledger!.discover(sources) { $0 != "local" && selected } }
+            do { try ledger!.discover(sources) { $0 == "local" ? (!nativeMe && me) : others } }
             catch { throw BrowserProtocolError("source",error.localizedDescription) }
             try publishLedger()
         }
@@ -415,6 +437,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard self.phase == .recording, newMe || newOthers else { throw RecordingError.invalid("Choose at least one recording side.") }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid selection time.") }
+            let reservingNative = reservingNative.filter { $0 != .me || self.nativeMe }
             if newMe == self.me && newOthers == self.others {
                 guard self.recording.manifest.tracks.count + self.pendingNative + reservingNative.subtracting(self.reservedNative).count <= 64 else { throw RecordingError.limit("Too many recording tracks.") }
                 self.reservedNative.formUnion(reservingNative)
@@ -426,14 +449,15 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             var ends: [String] = []
             if !newMe { ends += self.nativeSpans.filter { $0.value.side == .me && $0.value.registered }.map(\.key) }
             if !newOthers {
-                ends += self.browserSources.values.compactMap(\.span)
+                ends += self.browserSources.values.filter { $0.kind != "local" }.compactMap(\.span)
                 ends += self.nativeSpans.filter { $0.value.side == .others && $0.value.registered }.map(\.key)
             }
+            ends += self.browserSources.values.filter { $0.kind == "local" && !newMe }.compactMap(\.span)
             let browserAvailable = self.browserAlive || self.readyForBrowser
             var starts: [RecordingSource] = []
             var spans: [Data:String] = [:]
-            if newOthers && !self.others && browserAvailable {
-                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where (self.browserAlive && source.current) || source.returning {
+            if browserAvailable {
+                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where ((self.browserAlive && source.current) || source.returning) && (source.kind == "local" ? resumingMe : resuming) {
                     let span = UUID().uuidString.lowercased(); spans[id] = span
                     starts.append(source.start(span,boundaryMs:time))
                 }
@@ -448,10 +472,11 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let bound = spans.compactMap { id,span in self.browserSources[id].map { (span,$0.key,true) } }
             try self.commitBound(bound,starting:starts,ending:ends,events:events)
             for id in Array(self.browserSources.keys) {
-                if !newOthers { self.browserSources[id]?.span = nil }
+                let selected = self.browserSources[id]?.kind == "local" ? newMe : newOthers
+                if !selected { self.browserSources[id]?.span = nil; self.browserSources[id]?.meter = .init(); self.browserPeaks.removeValue(forKey:id) }
                 else if let span = spans[id] { self.browserSources[id]?.span = span }
             }
-            if newOthers { self.ledger?.select { $0 != "local" } }
+            self.ledger?.select { $0 == "local" ? (newMe && !self.nativeMe) : newOthers }
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me ? newMe : newOthers }
             self.reservedNative = reservations
             self.me = newMe; self.others = newOthers
@@ -485,9 +510,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             try commitTransition(ending:browserSources.values.compactMap(\.span),events:events)
             for id in Array(browserSources.keys) {
                 guard var source = browserSources[id] else { continue }
-                source.span = nil; source.returning = false; source.current = false
+                source.span = nil; source.returning = false; source.current = false; source.meter = .init()
                 browserSources[id] = source
             }
+            browserPeaks.removeAll()
             browserReturnAt = eventTime(atMs)
             // A committed browser loss, also of a call that took over the D49 stand-in, falls
             // back as system/lost: the stand-in's "missing" belongs to the time before the call.
@@ -532,7 +558,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                   self.freshestReturn.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
             let time = self.eventTime(atMs)
             var spans: [Data:String] = [:], starts: [RecordingSource] = []
-            for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.returning && (source.lastPacketAt ?? -1) >= (notBeforeMs ?? 0) {
+            for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.returning && (source.lastPacketAt ?? -1) >= (notBeforeMs ?? 0) && (source.kind == "local" ? self.me : self.others) {
                 let span = UUID().uuidString.lowercased(); spans[id] = span
                 starts.append(source.start(span))
             }
@@ -551,7 +577,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me }; self.reservedNative.remove(.others)
             self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil
-            self.fallbackRequested = false; self.resumeAt = time; self.publish()
+            self.fallbackRequested = false; self.resumeAt = time
+            if !self.nativeMe { self.meResumeAt = time }
+            self.publish()
         }
     }
     public func nativeWriter(side: CaptureSide) -> any RecordingSinkWriter { NativeSpanWriter(owner:self,side:side) }
@@ -588,7 +616,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     }
     fileprivate func nativeTrack(side: CaptureSide, label: String, rate: Int, channels: Int) throws -> String? {
         try sync {
-            guard phase == .recording, side == .me ? me : others && !browserAlive else { return nil }
+            guard phase == .recording, side == .me ? (me && nativeMe) : others && !browserAlive else { return nil }
             guard (8000...192000).contains(rate), (1...2).contains(channels) else { throw RecordingError.invalid("Unsupported native source format.") }
             guard reservedNative.contains(side) || recording.manifest.tracks.count + pendingNative < 64 else { throw RecordingError.limit("Too many recording tracks.") }
             reservedNative.remove(side)

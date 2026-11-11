@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -985,5 +985,5 @@
+         if action == .stop, let reason { fields.append(("reason",.string(reason.rawValue))) }
+         if action == .start, keepOnNavigation { fields.append(("keepOnNavigation",.bool(true))) }
+-        if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(true)),("microphone",.bool(microphone))] }
++        if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(false)),("microphone",.bool(microphone))] }
+         // D52 M6: a Start names the call it was chosen for; a Stop names its capture.
+         if action == .start, let callGeneration { fields.append(("callGeneration",.string(callGeneration))) }

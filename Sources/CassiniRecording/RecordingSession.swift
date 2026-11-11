@@ -243,7 +243,7 @@ public final class RecordingSession {
             if event.type == "othersSource", event.reason == "restored" || event.reason == "callConnected" {
                 guard CaptureSourceState(events:history,atMs:time).admitsBrowserReturn(event.reason),
                       manifest.tracks.filter({ $0.kind == "system" && $0.ended != true }).allSatisfy({ ids.contains($0.id) }),
-                      sources.contains(where:{ ["remote","media","tab"].contains($0.kind) && $0.sourceTrackId != nil && !$0.endsImmediately }) else {
+                      sources.contains(where:{ ["local","remote","media","tab"].contains($0.kind) && $0.sourceTrackId != nil && !$0.endsImmediately }) else {
                     throw RecordingError.invalid("Browser restoration requires an active fallback and its new source span.")
                 }
             }

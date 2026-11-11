@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -234,5 +234,5 @@
+                 source.returning = true
+             }
+-            let selectedSide = source.kind == "local" ? me : others
++            let selectedSide = others
+             let boundary = source.kind == "local" ? meResumeAt : resumeAt
+             if managedBrowser, browserAlive, selectedSide, source.span == nil,

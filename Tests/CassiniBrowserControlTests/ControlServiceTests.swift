@@ -344,7 +344,7 @@ final class ControlServiceTests: XCTestCase {
         let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
         try hello(client,heartbeat:true); try send(status(false),client)
         let start = try receive(client)
-        XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["captureLocal"]?.bool,false)
+        XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["captureLocal"]?.bool,true)
         XCTAssertEqual(start["microphone"]?.bool,false); XCTAssertEqual(notifications.value,0)
         try send(["type":"result","requestId":try XCTUnwrap(start["requestId"]?.string),"ok":true,"status":status(true)],client)
         wait(for:[announced],timeout:3)

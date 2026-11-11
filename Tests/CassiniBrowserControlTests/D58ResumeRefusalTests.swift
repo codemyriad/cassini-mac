@@ -234,6 +234,7 @@ final class D58ResumeOutcomeTests: XCTestCase {
         var state = BrowserControlRegistry(); try ready(&state)
         let key = BrowserMeetingKey(peer:peer,tabID:2)
         let (first,generation) = try state.resume(key,captureID:"native-1",timelineOriginMs:1793500000000,lostAtMs:0)
+        XCTAssertEqual(try JSONParser.parse(first.data)["captureLocal"]?.bool,true,"Resume requests the browser sender; the owner retains the selected Me state")
         XCTAssertTrue(first.resume); XCTAssertEqual(generation,"call-A")
         let command = try JSONParser.parse(first.data)
         XCTAssertEqual(command["requestId"]?.string,first.id); XCTAssertNotNil(command["resumeCapture"])

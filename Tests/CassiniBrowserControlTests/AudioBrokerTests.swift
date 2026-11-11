@@ -13,6 +13,12 @@ final class NativeFixtureInputs: @unchecked Sendable {
     private var sinks: [UUID:RecordingSink] = [:]
     func started(_ capture: OwnedBrowserCapture, info: BrowserAudioStart) {
         guard info.microphone else { return }
+        if !capture.nativeMe {
+            // Synthetic browser sender, through the same owner API as framed PCM.
+            XCTAssertNoThrow(try capture.browserTrack(id:"fixture-local",label:"Me",kind:"local",sampleRate:8000,channels:1,sourceTrackId:"fixture-local"))
+            XCTAssertNoThrow(try capture.browserAudio(id:"fixture-local",sequence:0,offsetMs:0,pcm:Data(repeating:0x12,count:16000)))
+            return
+        }
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let sink = capture.nativeSink(side:.me,originHostTime:origin,failure:{ _ in })
         lock.withLock { sinks[capture.snapshot.manifest.id] = sink }
@@ -200,7 +206,7 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(try second.request(["type":"stop"])["type"]?.string,"stopped")
             let one = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(a["path"]?.string)))
             let two = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(b["path"]?.string)))
-            XCTAssertEqual(one.tracks.count,2); XCTAssertEqual(one.tracks.filter { $0.kind == "microphone" }.count,1)
+            XCTAssertEqual(one.tracks.count,2); XCTAssertEqual(one.tracks.filter { $0.kind == "local" }.count,1)
             XCTAssertEqual(two.tracks.count,1); XCTAssertEqual(two.tracks[0].frames,16000)
             XCTAssertEqual(one.state,"completed"); XCTAssertEqual(two.state,"completed")
             XCTAssertTrue(fixture.broker.activeCaptures.isEmpty)

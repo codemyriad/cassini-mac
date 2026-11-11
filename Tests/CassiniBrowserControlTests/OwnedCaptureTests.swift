@@ -145,7 +145,7 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
     }
     func testMicResumeTrimsBufferedSamplesFromTheOffInterval() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
-        let capture = try OwnedBrowserCapture(parent:root,title:"Mic resume",microphone:true)
+        let capture = try OwnedBrowserCapture(parent:root,title:"Mic resume",microphone:true,browser:false)
         let first = capture.nativeWriter(side:.me)
         try first.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
         try first.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:0)
@@ -179,22 +179,22 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(a.tracks[0].frames,8000); XCTAssertEqual(b.tracks[0].frames,16000)
         XCTAssertEqual(b.tracks[0].startOffsetMs,125); XCTAssertEqual(a.state,"completed"); XCTAssertEqual(b.state,"completed")
     }
-    func testMicAndBrowserShareOneFolderButFinishingMicDoesNotStopBrowser() async throws {
+    func testLocalAndRemoteShareOneFolderButEndingLocalDoesNotStopRemote() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Both",microphone:true)
-        let mic = capture.nativeWriter(side:.me)
-        try mic.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
-        try mic.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:40)
+        capture.enableSourceOutcomes()
+        try capture.browserTrack(id:"mic",label:"Me",kind:"local",sampleRate:8000,channels:1)
+        try capture.browserAudio(id:"mic",sequence:0,offsetMs:40,pcm:Data(repeating:0,count:16000))
         try capture.browserTrack(id:"remote",label:"Other",kind:"remote",sampleRate:8000,channels:1)
         try capture.browserAudio(id:"remote",sequence:0,offsetMs:0,pcm:Data(repeating:0,count:16000))
-        try mic.finish(problem:nil)
+        try capture.trackEnd(id:"mic",reason:"ended",droppedFrames:0)
         try capture.browserAudio(id:"remote",sequence:1,offsetMs:1000,pcm:Data(repeating:0,count:16000))
         try await capture.finish()
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
         XCTAssertEqual(manifest.tracks.count,2)
         // D52.2: the mic starts at its selection boundary (0); its first 40 ms are a prefix.
-        let micTrack = try XCTUnwrap(manifest.tracks.first { $0.kind == "microphone" })
-        XCTAssertEqual(micTrack.startOffsetMs,0); XCTAssertEqual(micTrack.gaps,[.init(atMs:0,durationMs:40,frames:320,kind:"prefix")]); XCTAssertNil(micTrack.gapFrames)
+        let micTrack = try XCTUnwrap(manifest.tracks.first { $0.kind == "local" })
+        XCTAssertEqual(micTrack.startOffsetMs,40); XCTAssertTrue(micTrack.gaps?.isEmpty != false); XCTAssertNil(micTrack.gapFrames)
         XCTAssertEqual(manifest.tracks.filter { $0.kind == "remote" }.first?.frames,16000)
         XCTAssertEqual(manifest.source,"chromium")
     }
@@ -221,12 +221,11 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(CaptureSourceState(events:manifest.events ?? [],atMs:1500).source,"none")
         XCTAssertEqual(CaptureSourceState(events:manifest.events ?? [],atMs:2500).source,"browser")
     }
-    func testLostBrowserKeepsMicAndSystemFallbackInTheSameFolderWithoutRestoring() async throws {
+    func testLostBrowserEndsLocalMeAndKeepsSystemFallbackInTheSameFolderWithoutRestoring() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let capture = try OwnedBrowserCapture(parent:root,title:"Fallback",microphone:true)
-        let mic = capture.nativeWriter(side:.me)
-        try mic.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
-        try mic.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:0)
+        try capture.browserTrack(id:"mic",label:"Me",kind:"local",sampleRate:8000,channels:1)
+        try capture.browserAudio(id:"mic",sequence:0,offsetMs:0,pcm:Data(repeating:0,count:16000))
         try capture.browserTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
         try capture.browserAudio(id:"remote",sequence:0,offsetMs:0,pcm:Data(repeating:0,count:16000))
         try capture.browserLost(atMs:1000)
@@ -236,15 +235,14 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(capture.snapshot.manifest.tracks.contains { $0.kind == "system" })
         try system.appendNative(id:"output",pcm:Data(repeating:0,count:16000),offsetMs:1000)
         XCTAssertFalse(capture.snapshot.needsSystem)
-        try mic.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:1000)
         // Late browser packets cannot restore it or duplicate computer sound. The closed
         // transport's sources are gone (D52.4): a resumed transport declares fresh spans.
         XCTAssertThrowsError(try capture.browserAudio(id:"remote",sequence:1,offsetMs:1000,pcm:Data(repeating:0x77,count:16000)))
         XCTAssertThrowsError(try capture.browserTrack(id:"new",label:"New",kind:"remote",sampleRate:8000,channels:1))
-        try mic.finish(problem:nil); try system.finish(problem:nil); try await capture.finish()
+        try system.finish(problem:nil); try await capture.finish()
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
         XCTAssertEqual(manifest.tracks.count,3)
-        XCTAssertEqual(manifest.tracks.first { $0.kind == "microphone" }?.frames,16000)
+        XCTAssertEqual(manifest.tracks.first { $0.kind == "local" }?.frames,8000)
         let fallback = try XCTUnwrap(manifest.tracks.first { $0.kind == "system" })
         XCTAssertEqual(fallback.startOffsetMs,1000); XCTAssertNil(fallback.sourceTrackId)
         let source = manifest.events?.last(where:{ $0.type == "othersSource" })
@@ -254,7 +252,7 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
     }
     func testMicrophoneFrameClockCannotShiftBrowserLossOrSystemStart() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
-        let capture = try OwnedBrowserCapture(parent:root,title:"Separate clocks",microphone:true)
+        let capture = try OwnedBrowserCapture(parent:root,title:"Separate clocks",microphone:true,browser:false)
         let mic = capture.nativeWriter(side:.me)
         try mic.addTrack(id:"mic",label:"Me",kind:"microphone",sampleRate:8000,channels:1)
         try mic.appendNative(id:"mic",pcm:Data(repeating:0,count:16000),offsetMs:100)
@@ -266,8 +264,8 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         let manifest = try RecordingLoader.load(directory:capture.snapshot.directory)
         XCTAssertEqual(manifest.events?.last(where:{ $0.type == "othersSource" })?.atMs,1000)
         XCTAssertEqual(manifest.events?.last?.type,"end")
-        XCTAssertEqual(manifest.tracks.first { $0.kind == "system" }?.startOffsetMs,1000)
-        XCTAssertEqual(manifest.tracks.first { $0.kind == "system" }?.frames,8000)
+        XCTAssertEqual(manifest.tracks.first { $0.kind == "system" }?.startOffsetMs,0)
+        XCTAssertEqual(manifest.tracks.first { $0.kind == "system" }?.receivedFrames,8000)
     }
     func testNoMicrophoneChoiceCannotCreateOrWriteANativeMic() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -276,10 +274,11 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
         try mic.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:8000,channels:1)
         try mic.appendNative(id:"mic",pcm:Data(repeating:0x7f,count:16000),offsetMs:0)
         try mic.finish(problem:nil)
-        XCTAssertTrue(capture.snapshot.manifest.tracks.isEmpty)
-        XCTAssertThrowsError(try capture.browserTrack(id:"sender",label:"Page microphone",kind:"local",sampleRate:8000,channels:1))
+        XCTAssertTrue(capture.snapshot.manifest.tracks.allSatisfy { $0.kind == "local" && $0.frames == 0 })
+        try capture.browserTrack(id:"sender",label:"Page microphone",kind:"local",sampleRate:8000,channels:1)
+        try capture.browserAudio(id:"sender",sequence:0,offsetMs:0,pcm:Data(repeating:0x7f,count:1600))
         try await capture.finish()
-        XCTAssertTrue(try RecordingLoader.load(directory:capture.snapshot.directory).tracks.isEmpty)
+        XCTAssertTrue(try RecordingLoader.load(directory:capture.snapshot.directory).tracks.allSatisfy { $0.kind == "local" && $0.frames == 0 })
     }
     func testMalformedSourceAndClockFailuresDoNotAffectAnotherCapture() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }

@@ -984,7 +984,7 @@ public struct BrowserControlRegistry: Sendable {
         if independent { fields.append(("independent",.bool(true))) }
         if action == .stop, let reason { fields.append(("reason",.string(reason.rawValue))) }
         if action == .start, keepOnNavigation { fields.append(("keepOnNavigation",.bool(true))) }
-        if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(false)),("microphone",.bool(microphone))] }
+        if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(true)),("microphone",.bool(microphone))] }
         // D52 M6: a Start names the call it was chosen for; a Stop names its capture.
         if action == .start, let callGeneration { fields.append(("callGeneration",.string(callGeneration))) }
         if action == .stop, let captureID { fields.append(("captureId",.string(captureID))) }
