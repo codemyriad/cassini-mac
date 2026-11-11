@@ -392,13 +392,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:free,object:nil)],timeout:5),.completed,"Stopping listening clears pointer snapping")
     }
     @MainActor func testScrubberDragClampsAtBothEndsWithAnOffCenterThumbGrab() throws {
-        let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","playing","-CassiniListeningSpeaker","guest"])
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","finished","-CassiniListeningSpeaker","guest"])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"], slider = window.sliders["meeting-seek"]
         XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
-        window.buttons["listen-stop"].click()
-        let stopped = NSPredicate { _,_ in !window.descendants(matching:.any)["listening-bar"].exists }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stopped,object:nil)],timeout:5),.completed)
         let thumb = slider.valueIndicators.firstMatch
         XCTAssertTrue(thumb.waitForExistence(timeout:5),slider.debugDescription)
         let frame = slider.frame
@@ -406,9 +403,14 @@ final class LibraryBoards: XCTestCase {
         func grab(_ offset:CGFloat) -> XCUICoordinate {
             anchor.withOffset(CGVector(dx:thumb.frame.midX-frame.minX+offset,dy:thumb.frame.midY-frame.minY))
         }
-        let before = slider.value as? String
+        XCTAssertEqual(slider.value as? String,"00:03:12")
+        XCTAssertTrue(window.buttons["listen-again"].exists,"Finished Listening is the regression precondition")
         grab(5).click()
-        XCTAssertEqual(slider.value as? String,before,"An off-center stationary thumb grab must not seek")
+        XCTAssertEqual(slider.value as? String,"00:03:12","An off-center stationary thumb grab must not snap to 00:03:08")
+        XCTAssertTrue(window.buttons["listen-again"].exists,"A stationary grab must preserve finished Listening")
+        window.buttons["listen-stop"].click()
+        let stopped = NSPredicate { _,_ in !window.descendants(matching:.any)["listening-bar"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stopped,object:nil)],timeout:5),.completed)
         grab(5).press(forDuration:0,
             thenDragTo:anchor.withOffset(CGVector(dx:frame.width+40,dy:frame.height/2)))
         let atEnd = NSPredicate { _,_ in slider.value as? String == "00:47:05" }

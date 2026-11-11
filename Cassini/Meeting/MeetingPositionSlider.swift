@@ -86,8 +86,8 @@ struct MeetingPositionSlider: View {
         slider.testingAcceptsFirstResponder = true
         var values: [Double] = []
         coordinator.seek = { values.append($0) }
-        func event(_ type:NSEvent.EventType,_ x:CGFloat) -> NSEvent {
-            NSEvent.mouseEvent(with:type,location:slider.convert(NSPoint(x:x,y:slider.bounds.midY),to:nil),
+        func event(_ type:NSEvent.EventType,_ x:CGFloat,_ yOffset:CGFloat = 0) -> NSEvent {
+            NSEvent.mouseEvent(with:type,location:slider.convert(NSPoint(x:x,y:slider.bounds.midY+yOffset),to:nil),
                 modifierFlags:[],timestamp:0,windowNumber:window.windowNumber,context:nil,
                 eventNumber:0,clickCount:1,pressure:1)!
         }
@@ -95,9 +95,9 @@ struct MeetingPositionSlider: View {
             while window.nextEvent(matching:[.leftMouseDragged,.leftMouseUp],until:.distantPast,
                                    inMode:.eventTracking,dequeue:true) != nil {}
         }
-        func pointer(_ down:CGFloat,_ drag:CGFloat? = nil,_ up:CGFloat) {
+        func pointer(_ down:CGFloat,_ drag:CGFloat? = nil,_ up:CGFloat,dragY:CGFloat = 0) {
             values = []
-            if let drag { window.postEvent(event(.leftMouseDragged,drag),atStart:false) }
+            if let drag { window.postEvent(event(.leftMouseDragged,drag,dragY),atStart:false) }
             window.postEvent(event(.leftMouseUp,up),atStart:false)
             slider.mouseDown(with:event(.leftMouseDown,down))
             drain()
@@ -106,12 +106,21 @@ struct MeetingPositionSlider: View {
         slider.doubleValue = initialPosition
         let center = cell.knobRect(flipped:slider.isFlipped).midX
         pointer(center+5,nil,center+5)
-        report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && slider.doubleValue == initialPosition
+        report["nativeMouseDownPreservesOffCenterGrab"] = values.isEmpty && slider.doubleValue == initialPosition
         report["nativePointerKeepsTranscriptFocus"] = window.firstResponder === editor
-        report["nativeMouseUpDoesNotRepeatSeek"] = values.count == 1
+        report["nativeMouseUpDoesNotRepeatSeek"] = values.isEmpty
+        pointer(center+5,center+5,center+5,dragY:3)
+        report["nativeVerticalThumbMovementDoesNotSeek"] = values.isEmpty && slider.doubleValue == initialPosition
+        coordinator.timeline = timeline
+        slider.doubleValue = 10500
+        let nearCenter = cell.knobRect(flipped:slider.isFlipped).midX
+        pointer(nearCenter+5,nil,nearCenter+5)
+        report["nativeStationaryThumbDoesNotSnap"] = values.isEmpty && slider.doubleValue == 10500 && dragged == nil
+        coordinator.timeline = ListeningTimeline()
+        slider.doubleValue = initialPosition
         pointer(center+5,center+25,center+25)
         let expected = initialPosition + 20/slider.track.width*slider.maxValue
-        report["nativeMouseDragUsesWindowCoordinates"] = values.count == 2 && abs(slider.doubleValue-expected) < 0.001
+        report["nativeMouseDragUsesWindowCoordinates"] = values.count == 1 && abs(slider.doubleValue-expected) < 0.001
         if report["nativeMouseDragUsesWindowCoordinates"] == false {
             NSLog("Native drag proof: values=%@ expected=%f width=%f center=%f",String(describing:values),expected,slider.track.width,Double(center))
         }
@@ -122,10 +131,14 @@ struct MeetingPositionSlider: View {
                 slider.doubleValue = value
                 let x = cell.knobRect(flipped:slider.isFlipped).midX+5
                 pointer(x,nil,x)
-                exactGrabs = exactGrabs && values.count == 1 && slider.doubleValue == value
+                exactGrabs = exactGrabs && values.isEmpty && slider.doubleValue == value
             }
         }
         report["nativeThumbGrabPreservesExactValues"] = exactGrabs
+        slider.frame.size.width = 1; slider.doubleValue = initialPosition
+        let collapsedCenter = cell.knobRect(flipped:slider.isFlipped).midX
+        pointer(collapsedCenter,collapsedCenter+20,collapsedCenter+40)
+        report["nativeZeroWidthThumbDoesNotSeek"] = slider.track.width == 0 && values.isEmpty && slider.doubleValue == initialPosition
         slider.frame.size.width = 240; slider.doubleValue = initialPosition
         pointer(-100,nil,-100)
         let atStart = slider.doubleValue == 0
@@ -142,11 +155,11 @@ struct MeetingPositionSlider: View {
         slider.isEnabled = true
         slider.doubleValue = 10000
         coordinator.seek = { values.append($0); slider.isEnabled = false }
-        pointer(center+5,center+25,center+25)
+        pointer(center+5,center+25,center+45)
         report["nativeMouseDragStopsWhenDisabled"] = values.count == 1 && !slider.mouseTracking && dragged == nil
         slider.isEnabled = true; slider.doubleValue = 10000
         coordinator.seek = { values.append($0); slider.removeFromSuperview() }
-        pointer(center+5,center+25,center+25)
+        pointer(center+5,center+25,center+45)
         report["nativeMouseDragStopsWhenDetached"] = values.count == 1 && slider.window == nil && !slider.mouseTracking
         coordinator.seek = { _ in }
         return report
@@ -263,18 +276,21 @@ private struct NativeMeetingSlider: NSViewRepresentable {
             // after the action has snapped the value. Track pointer events with
             // public APIs; keyboard and accessibility still use NSSlider.
             var next: NSEvent? = event
-            var lastX: CGFloat?
+            var lastX: CGFloat? = grabbed ? point.x : nil
             while let current = next {
                 guard isEnabled, self.window === window else { break }
                 let x = convert(current.locationInWindow,from:nil).x
-                if current.type != .leftMouseUp || x != lastX {
+                if x != lastX {
                     lastX = x
-                    if grabbed, track.width > 0 {
-                        doubleValue = min(maxValue,max(minValue,initialPosition + Double(x-point.x)/track.width*(maxValue-minValue)))
+                    if grabbed {
+                        if track.width > 0 {
+                            doubleValue = min(maxValue,max(minValue,initialPosition + Double(x-point.x)/track.width*(maxValue-minValue)))
+                            sendAction(action,to:target)
+                        }
                     } else {
                         doubleValue = pointerPosition(at:x,knobOffset:0)
+                        sendAction(action,to:target)
                     }
-                    sendAction(action,to:target)
                 }
                 if current.type == .leftMouseUp || !isEnabled || self.window !== window { break }
                 next = window.nextEvent(matching:[.leftMouseDragged,.leftMouseUp],
