@@ -20,7 +20,7 @@ jobs:
           assets: 'true'
           runtime: 'true'
       - name: Install build tools
-        run: brew install xcodegen
+        run: command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
       - name: Verify pinned Sparkle ZIP before package resolution
         run: python3 scripts/fetch-sparkle.py --spm-cache "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
       # No generated Library fixtures here: they belong to the Debug screenshot products only.

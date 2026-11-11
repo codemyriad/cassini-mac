@@ -691,6 +691,103 @@ class Transport(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Unsafe'): products.unpack('swiftpm',self.output)
 
 
+class ReleaseArchitecture(unittest.TestCase):
+    """Transport rejects incomplete slices even when metadata and archive digest agree.
+
+    The lipo boundary is stubbed so these fast cases also run on the Linux changes job;
+    the real lipo is separately exercised against the actual CI Release artifact.
+    """
+    BOTH = b'\xca\xfe\xba\xbe' + b'two slices'
+    ARM_FAT = b'\xca\xfe\xba\xbe' + b'one arm slice'
+    ARM = Transport.thin(0x0100000c)
+    INTEL = Transport.thin(0x01000007)
+
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name).resolve()
+        self.folder=self.root/'build/Build/Products/Release'
+        self.output=self.root/'upload'
+        self.paths=[self.folder/'Cassini.app/Contents/MacOS/Cassini',
+                    *[self.folder/(name+'.o') for name in products.RELEASE_SDK_OBJECTS],
+                    self.folder/'Cassini.app/Contents/Frameworks/Engine.framework/Versions/A/Engine',
+                    self.folder/'Cassini.app/Contents/Resources/libengine.dylib',
+                    self.folder/'libstatic.a']
+        self.identity={'kind':'release','commit':'a'*40,'arch':'universal','xcode':'Xcode 16.4','pins':{}}
+        for target,attribute,value in [(products,'ROOT',self.root),(products,'identity',None)]:
+            replacement=patch.object(target,attribute,side_effect=lambda kind: dict(self.identity)) if attribute=='identity' else patch.object(target,attribute,value)
+            replacement.start();self.addCleanup(replacement.stop)
+        lipo=patch.object(products.subprocess,'check_output',side_effect=self.slices)
+        self.lipo=lipo.start();self.addCleanup(lipo.stop)
+        self.reset_products()
+
+    def reset_products(self):
+        for path in self.paths:
+            path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(self.BOTH)
+        script=self.folder/'Cassini.app/Contents/Resources/script'
+        script.write_text('#!/bin/sh\nexit 0\n');script.chmod(0o755)
+        alias=self.folder/'engine-link'
+        if not alias.exists():alias.symlink_to('Cassini.app/Contents/Resources/libengine.dylib')
+
+    def slices(self,command,text):
+        self.assertEqual(command[:3],['xcrun','lipo','-archs']);self.assertTrue(text)
+        data=Path(command[3]).read_bytes()
+        return {self.BOTH:'x86_64 arm64\n',self.ARM:'arm64\n',self.INTEL:'x86_64\n',self.ARM_FAT:'arm64\n'}[data]
+
+    def test_pack_and_restore_inspect_app_framework_library_and_every_consumed_object(self):
+        products.pack('release',self.output)
+        self.assertEqual({Path(call.args[0][3]) for call in self.lipo.call_args_list},set(self.paths))
+        self.assertEqual(json.loads((self.output/'release.json').read_text())['arch'],'universal')
+        self.lipo.reset_mock();shutil.rmtree(self.folder)
+        products.unpack('release',self.output)
+        self.assertEqual({Path(call.args[0][3]) for call in self.lipo.call_args_list},set(self.paths))
+        self.assertTrue((self.folder/'engine-link').is_symlink())
+
+    def test_pack_rejects_each_missing_slice_in_every_binary_role_including_fat_header(self):
+        for path in self.paths:
+            for data in [self.ARM,self.INTEL,self.ARM_FAT]:
+                with self.subTest(path=path.relative_to(self.folder),data=data):
+                    path.write_bytes(data)
+                    with self.assertRaisesRegex(ValueError,'missing required slices'):
+                        products.pack('release',self.output)
+                    path.write_bytes(self.BOTH)
+
+    def test_restore_rejects_incomplete_slices_even_with_a_matching_digest(self):
+        products.pack('release',self.output)
+        archive=self.output/'release.tar.gz';original=archive.read_bytes()
+        for path in self.paths:
+            for data in [self.ARM,self.INTEL,self.ARM_FAT]:
+                with self.subTest(path=path.relative_to(self.folder),data=data):
+                    with tarfile.open(fileobj=io.BytesIO(original)) as source,tarfile.open(archive,'w:gz') as target:
+                        for item in source.getmembers():
+                            if item.isfile():
+                                contents=data if item.name==str(path.relative_to(self.root)) else source.extractfile(item).read()
+                                item.size=len(contents);target.addfile(item,io.BytesIO(contents))
+                            else:target.addfile(item)
+                    metadata={**self.identity,'sha256':products.digest(archive)}
+                    (self.output/'release.json').write_text(json.dumps(metadata))
+                    shutil.rmtree(self.folder,ignore_errors=True)
+                    with self.assertRaisesRegex(ValueError,'missing required slices') as caught:
+                        products.restore('release',self.output)
+                    self.assertNotIsInstance(caught.exception,products.TransferError)
+
+    def test_missing_required_executable_or_sdk_object_does_not_pass_empty_inspection(self):
+        for path in self.paths[:6]:
+            with self.subTest(path=path.name):
+                path.unlink()
+                with self.assertRaisesRegex(ValueError,'Missing Release binary'):
+                    products.pack('release',self.output)
+                path.write_bytes(self.BOTH)
+        self.paths[0].write_text('not a native executable')
+        with self.assertRaisesRegex(ValueError,'was not inspected'):
+            products.pack('release',self.output)
+
+    def test_lipo_failure_is_not_an_incomplete_download_retry(self):
+        products.pack('release',self.output)
+        self.lipo.side_effect=subprocess.CalledProcessError(1,['xcrun','lipo'])
+        with self.assertRaises(subprocess.CalledProcessError):products.pack('release',self.output)
+        with self.assertRaises(subprocess.CalledProcessError):products.restore('release',self.output)
+
+
 class Concurrency(unittest.TestCase):
     """D66 mac-P1-1: only a pull request's own newer run cancels it; every other run (push,
     nightly, manual) has a group of its own, so GitHub never cancels or replaces it while pending."""
@@ -775,6 +872,7 @@ class ReleaseOffTheCriticalPath(unittest.TestCase):
         release = (self.WORKFLOWS/'ci-build-release.yml').read_text()
         self.assertIn('-configuration Release', release)
         self.assertIn('pack release', release)
+        self.assertIn('command -v xcodegen >/dev/null 2>&1 || brew install xcodegen', release)
         self.assertIn('scripts/package-release.py', release)
         self.assertIn('name: Cassini-${{ github.sha }}', release)
         self.assertIn("assets: 'true'", release); self.assertIn("runtime: 'true'", release)
