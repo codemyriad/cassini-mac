@@ -1,0 +1,116 @@
+Building for debugging...
+[0/27] Write sources
+[3/27] Write swift-version--79AA4F9932D1E87A.txt
+[5/14] Compiling CassiniPlaybackTests SessionPlaybackTests.swift
+[6/14] Emitting module CassiniPlaybackTests
+[7/15] Compiling CassiniBrowserControl BrowserAudioBroker.swift
+[8/15] Emitting module CassiniBrowserControl
+[9/15] Compiling CassiniBrowserControl CaptureInputLifecycle.swift
+[9/18] Write Objects.LinkFileList
+[12/34] Emitting module CassiniBrowserControlTests
+[12/34] Linking cassini-control-host
+[13/39] Linking cassini-browser-host
+[14/39] Applying cassini-browser-host
+[15/39] Applying cassini-control-host
+[17/39] Compiling CassiniPlaybackTests ListenControllerTests.swift
+[18/39] Compiling CassiniBrowserControlTests OwnedTerminalEventTests.swift
+[19/39] Compiling CassiniBrowserControlTests PassiveWebRTCStartTests.swift
+[20/39] Compiling CassiniBrowserControlTests R94CommittedResumeTests.swift
+[21/39] Compiling CassiniBrowserControlTests RealProducerStartTests.swift
+[22/39] Compiling CassiniBrowserControlTests VerifiedAdmissionTests.swift
+[23/39] Compiling CassiniBrowserControlTests AudioBrokerTests.swift
+[24/39] Compiling CassiniBrowserControlTests ControlServiceTests.swift
+[25/39] Compiling CassiniBrowserControlTests D52CallOwnershipTests.swift
+[26/39] Compiling CassiniBrowserControlTests D52CaptureRecordTests.swift
+[27/39] Compiling CassiniBrowserControlTests D52ResumeTests.swift
+[28/39] Compiling CassiniBrowserControlTests D69WriterLossTests.swift
+[29/39] Compiling CassiniBrowserControlTests DOMProvenanceTests.swift
+[30/39] Compiling CassiniBrowserControlTests InputLifecycleTests.swift
+[31/39] Compiling CassiniBrowserControlTests OwnedCallProofLossTests.swift
+[32/39] Compiling CassiniBrowserControlTests OwnedCaptureTests.swift
+[33/39] Compiling CassiniBrowserControlTests D52SourceOutcomeTests.swift
+[34/39] Compiling CassiniBrowserControlTests D52TransportLivenessTests.swift
+[35/39] Compiling CassiniBrowserControlTests D58RefusalWriterTests.swift
+[36/39] Compiling CassiniBrowserControlTests D58ResumeRefusalTests.swift
+[37/39] Compiling CassiniBrowserControlTests D61ClockFactsBrokerTests.swift
+[37/39] Write Objects.LinkFileList
+[38/39] Linking CassiniKitPackageTests
+Build complete! (12.82s)
+Test Suite 'Selected tests' started at 2026-11-10 14:38:09.480.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:38:09.482.
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 14:38:09.482.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 14:38:09.482.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite SessionPlaybackTests started.
+◇ Test timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() started.
+✔ Test timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() passed after 0.009 seconds.
+◇ Test queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() started.
+✔ Test queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() passed after 0.001 seconds.
+◇ Test frozenListeningPreviewCreatesNoTransportOrPlayback() started.
+✔ Test frozenListeningPreviewCreatesNoTransportOrPlayback() passed after 0.001 seconds.
+◇ Test eofDistinguishesAnExplicitPauseFromANaturalBackendPause() started.
+✔ Test eofDistinguishesAnExplicitPauseFromANaturalBackendPause() passed after 0.001 seconds.
+◇ Test rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() started.
+✔ Test rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() passed after 0.001 seconds.
+◇ Test overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() started.
+✔ Test overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() passed after 0.001 seconds.
+◇ Test resumingAfterAClearedSpanReturnsToNormalEOFBehaviour() started.
+✔ Test resumingAfterAClearedSpanReturnsToNormalEOFBehaviour() passed after 0.001 seconds.
+◇ Test spanIsUncappedClampedAndKeepsItsEndWithoutRewinding() started.
+✔ Test spanIsUncappedClampedAndKeepsItsEndWithoutRewinding() passed after 0.001 seconds.
+◇ Test replacedSeeksAndBoundariesCannotFinishOrResumeTheNextSpan() started.
+✔ Test replacedSeeksAndBoundariesCannotFinishOrResumeTheNextSpan() passed after 0.001 seconds.
+◇ Test pauseSeekRateAndClearRespectTheCurrentSpan() started.
+✔ Test pauseSeekRateAndClearRespectTheCurrentSpan() passed after 0.001 seconds.
+◇ Test invalidBoundsDoNotStartOrPrepareAudio() started.
+✔ Test invalidBoundsDoNotStartOrPrepareAudio() passed after 0.001 seconds.
+◇ Test pauseAtABoundaryInvalidatesQueuedAdvanceUntilResume() started.
+✔ Test pauseAtABoundaryInvalidatesQueuedAdvanceUntilResume() passed after 0.001 seconds.
+◇ Test exactlyTwoSecondsDoesNotChain() started.
+✔ Test exactlyTwoSecondsDoesNotChain() passed after 0.001 seconds.
+◇ Test autoAdvanceUsesBoundaryEventsAndNearbyTurnsAreOneContinuousSpan() started.
+✔ Test autoAdvanceUsesBoundaryEventsAndNearbyTurnsAreOneContinuousSpan() passed after 0.001 seconds.
+◇ Test steppingInsideAChainSkipsLeadInAndShortFirstTurnClampsAtZero() started.
+✔ Test steppingInsideAChainSkipsLeadInAndShortFirstTurnClampsAtZero() passed after 0.001 seconds.
+◇ Test nextDoesNotSkipATurnAfterManualSeekIntoItsLeadIn() started.
+✔ Test nextDoesNotSkipATurnAfterManualSeekIntoItsLeadIn() passed after 0.001 seconds.
+◇ Test seeksFollowTheTargetAndStartingMidMeetingUsesTheFirstTurnNotOver() started.
+✔ Test seeksFollowTheTargetAndStartingMidMeetingUsesTheFirstTurnNotOver() passed after 0.001 seconds.
+◇ Test staleCompletionCannotFinishPlayAgainOfTheSameTurn() started.
+✔ Test staleCompletionCannotFinishPlayAgainOfTheSameTurn() passed after 0.001 seconds.
+◇ Test mergeRecomputationKeepsPlayAgainAndAReplacedTargetInvalidatesCallbacks() started.
+✔ Test mergeRecomputationKeepsPlayAgainAndAReplacedTargetInvalidatesCallbacks() passed after 0.001 seconds.
+◇ Test speakerStepsUsePaneOrderAndStopDoesNotPauseOrSeek() started.
+✔ Test speakerStepsUsePaneOrderAndStopDoesNotPauseOrSeek() passed after 0.001 seconds.
+◇ Test pageSwitchGlobalStopAndFailureEndListeningAndFenceLateEvents() started.
+✔ Test pageSwitchGlobalStopAndFailureEndListeningAndFenceLateEvents() passed after 0.001 seconds.
+◇ Test explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() started.
+✔ Test explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() passed after 0.001 seconds.
+◇ Test playFromASearchHitSurvivesAsynchronousPreparation() started.
+✔ Test playFromASearchHitSurvivesAsynchronousPreparation() passed after 0.001 seconds.
+◇ Test aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() started.
+✔ Test aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() passed after 0.001 seconds.
+◇ Test pendingAndPreparedSeeksClampToTheActualAudioDuration() started.
+✔ Test pendingAndPreparedSeeksClampToTheActualAudioDuration() passed after 0.001 seconds.
+◇ Test pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() started.
+✔ Test pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() passed after 0.001 seconds.
+◇ Test finalSeekFailureReturnsToPlayAndReportsOnce() started.
+✔ Test finalSeekFailureReturnsToPlayAndReportsOnce() passed after 0.001 seconds.
+◇ Test pauseRemainsPossibleAfterEligibilityChanges() started.
+✔ Test pauseRemainsPossibleAfterEligibilityChanges() passed after 0.001 seconds.
+◇ Test refreshStopsInvalidChangedAndOfflineSources() started.
+✔ Test refreshStopsInvalidChangedAndOfflineSources() passed after 0.001 seconds.
+◇ Test backendPauseAndMidstreamFailureUpdateUIOnce() started.
+✔ Test backendPauseAndMidstreamFailureUpdateUIOnce() passed after 0.001 seconds.
+◇ Test endWaitsForRewindAndAQueuedPlayCanBeCancelled() started.
+✔ Test endWaitsForRewindAndAQueuedPlayCanBeCancelled() passed after 0.001 seconds.
+◇ Test replayStartsOnlyAfterRewindAndStopInvalidatesCompletion() started.
+✔ Test replayStartsOnlyAfterRewindAndStopInvalidatesCompletion() passed after 0.001 seconds.
+◇ Test abandonedPreparationIsCancelledWithItsOwner() started.
+✔ Test abandonedPreparationIsCancelledWithItsOwner() passed after 0.008 seconds.
+✔ Suite SessionPlaybackTests passed after 0.025 seconds.
+✔ Test run with 33 tests passed after 0.025 seconds.

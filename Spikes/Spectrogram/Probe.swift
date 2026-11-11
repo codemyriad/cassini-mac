@@ -109,21 +109,33 @@ import ScreenCaptureKit
             controller.resetFrameMeasurements()
             let cpuStart = processCPU(), began = ProcessInfo.processInfo.systemUptime
             let mainCPUStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
-            // CPU duration is the subject under measurement. Completion comes
-            // from a real producer callback after the sixty-second interval;
-            // a separate deadline can only fail, never complete, the run.
-            try await input.waitForProgress(afterUptime:began+60)
+            let initialSampleFrames = input.sampleFrameCount
+            // Complete after 60 seconds of delivered PCM, not elapsed host time.
+            // CPU is normalized to actual media work; descheduling cannot make
+            // expensive work appear cheaper. The deadline only fails a hang.
+            try await input.waitForSamples(throughMs:Double(initialSampleFrames)/48+60_000,timeout:90)
+            if mode != "C" && mode != "E" {
+                // The same minimum display/FFT/surface work must complete. Host
+                // scheduling may stretch its duration, never determine success.
+                try await SpectrogramProbeEvent().wait("measured display and FFT work",controller:controller,timeout:90) {
+                    controller.frameCallbacks > (mode == "A" ? 1000 : 2500) && controller.analyzedFrames > initialFrames &&
+                    controller.surfaceRevision > 50 && controller.surfaceBytes > 0
+                }
+            }
+            // CPU brackets the media snapshots, including synchronization work.
+            let work = SpectrogramMediaWork(frames:input.sampleFrameCount-initialSampleFrames)
             let mainCPU = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-mainCPUStart
             let elapsed = ProcessInfo.processInfo.systemUptime-began, cpu = processCPU()-cpuStart
-            let analysis = Double(controller.analysisNanoseconds-initialAnalysis)/1e9/elapsed*100
+            let analysis = work.corePercent(cpuSeconds:Double(controller.analysisNanoseconds-initialAnalysis)/1e9)
             // Implicit CA transactions commit after the paint callback. Include
             // all main-thread CPU, so batching cannot move work outside the gate.
-            let drawing = Double(mainCPU)/1e9/elapsed*100
-            let regions = Double(controller.drawingNanoseconds)/1e9/elapsed*100
+            let drawing = work.corePercent(cpuSeconds:Double(mainCPU)/1e9)
+            let regions = work.corePercent(cpuSeconds:Double(controller.drawingNanoseconds)/1e9)
             let hidden = mode == "C" || mode == "E"
             report = ["case":mode,"seconds":elapsed,"audioDevicesOpened":false,
                 "input":"production RecordingSink"+(mode == "D" ? " + OwnedBrowserCapture.browserAudio" : ""),
-                "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":cpu/elapsed*100,
+                "chunkFrames":mode == "D" ? 8192 : 4096,"cpuCorePercent":work.corePercent(cpuSeconds:cpu),
+                "mediaSeconds":work.seconds,"measurementFrames":work.frames,
                 "measurementStartMs":(began-input.origin)*1000,"measurementEndMs":(began+elapsed-input.origin)*1000,
                 "analysisCorePercent":analysis,"drawingCorePercent":drawing,"frameCallbacks":controller.frameCallbacks,
                 "instrumentedDrawingCorePercent":regions,
@@ -132,8 +144,8 @@ import ScreenCaptureKit
                 "p95FrameCPUMs":controller.frameCPU.p95Ms,"maxFrameCPUMs":controller.frameCPU.maximumMs,
                 "frameCPUSamples":controller.frameCPU.count,
                 "analyzedFrames":controller.analyzedFrames-initialFrames,"lateColumns":controller.lateColumns-initialLate,
-                "budgetPolicy":"D88-frame-work","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
-                "lateColumnFraction":Double(controller.lateColumns-initialLate)/SpectrogramHostedBudget.steadyColumns(seconds:elapsed),
+                "budgetPolicy":"D88-media-and-frame-work","steadyStateColumns":SpectrogramHostedBudget.steadyColumns(seconds:work.seconds),
+                "lateColumnFraction":Double(controller.lateColumns-initialLate)/SpectrogramHostedBudget.steadyColumns(seconds:work.seconds),
                 "droppedColumns":controller.droppedColumns-initialDropped,
                 "droppedBuffers":controller.droppedBuffers-initialBufferDrops,
                 "lateTiming":controller.lateTiming.filter { $0.ordinal > initialLate }.map {
@@ -151,9 +163,14 @@ import ScreenCaptureKit
                 try require(controller.frameCallbacks > (mode == "A" ? 1000 : 2500) && controller.analyzedFrames > initialFrames,"production display and FFT callbacks (callbacks=\(controller.frameCallbacks), applied=\(controller.framesApplied), FFT=\(controller.analyzedFrames-initialFrames), reduced=\(controller.usingReducedMotion))")
                 try require(controller.surfaceRevision > 50 && controller.surfaceBytes > 0,"native surfaces updated")
             }
-            var gates=SpectrogramHostedBudget.evaluate(mode:mode,seconds:elapsed,analysis:analysis,drawing:drawing,
+            var gates=SpectrogramHostedBudget.evaluate(mode:mode,seconds:work.seconds,analysis:analysis,drawing:drawing,
                 p95:controller.frameCPU.p95Ms,maximum:controller.frameCPU.maximumMs,frameCPUSamples:controller.frameCPU.count,
                 late:controller.lateColumns-initialLate,payload:controller.payloadBytes)
+            // The required late-budget proof uses the same SDK with controlled
+            // arrival/analysis/display clocks (CheckScheduling). Keep live host
+            // scheduling observations above as diagnostics, never a wall gate.
+            gates.removeValue(forKey:"late")
+            report["lateGatingPolicy"] = "controlled-scheduling-required"
             gates["frameClockValid"]=controller.frameCPU.valid
             gates["drops"]=controller.droppedColumns == initialDropped
             gates["inputDrops"]=controller.droppedBuffers == initialBufferDrops
@@ -377,7 +394,8 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     private var intentionalGapFrames: UInt64 = 0
     private let chunk: Int
     var chunkFrames: Int { chunk }
-    var samplePositionMs: Double { queue.sync { Double(frames)/48 } }
+    var sampleFrameCount: Int { queue.sync { frames } }
+    var samplePositionMs: Double { Double(sampleFrameCount)/48 }
     private struct ProgressWait {
         let ready: (Int, Double) -> Bool
         let continuation: CheckedContinuation<Void, Error>
@@ -393,8 +411,8 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
                 "actualDroppedMs":actual.droppedMs,"warnings":actual.warnings]
     }
     private enum ProgressFailure: Error { case timeout(String), finished }
-    func waitForSamples(throughMs target:Double) async throws {
-        try await waitForProgress("producer sample position \(target) ms",timeout:15) { frames,_ in Double(frames)/48 >= target }
+    func waitForSamples(throughMs target:Double,timeout:Double = 15) async throws {
+        try await waitForProgress("producer sample position \(target) ms",timeout:timeout) { frames,_ in Double(frames)/48 >= target }
     }
     func waitForProgress(afterUptime target:Double) async throws {
         try await waitForProgress("sixty-second source progress",timeout:90) { _,uptime in uptime >= target }
