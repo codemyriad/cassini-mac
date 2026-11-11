@@ -451,8 +451,12 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
             try await owner.requestSystemFallback()
             let stage = StagedNativeWriter()
             try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
-            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            // The real pipe close publishes its timeline boundary. Do not assume
+            // it happens within one second on a loaded runner: earlier PCM is trimmed.
+            let nativeOffset = try XCTUnwrap(owner.snapshot.manifest.events?.last?.atMs)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:nativeOffset)
             try await owner.activateNative(stage,side:.others,allowed:{ true })
+            XCTAssertTrue(owner.snapshot.isSystemFallback,"first PCM really commits the fallback before resume")
             var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
             var asks = 0
             let armed = expectation(description:"the resume is armed with the call's generation")
