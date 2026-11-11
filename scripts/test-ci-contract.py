@@ -171,7 +171,7 @@ class FoldedJobs(unittest.TestCase):
                 self.assertNotIn('--filter ModelDownloaderTests', model_text)
                 self.assertNotIn("--filter 'ExportGoldenTests|", text)
 
-    def test_arm64_full_suite_has_one_model_partition_and_its_exact_complement(self):
+    def test_full_suite_partitions_keep_models_native_and_real_bookmark_coverage(self):
         kit = ci_job('kit')
         self.assertIn('vars.CM_MAC_RUNNER', kit)
         start = kit.index('    - name: Test\n')
@@ -183,11 +183,26 @@ class FoldedJobs(unittest.TestCase):
             step, re.M)
         self.assertEqual(commands, [
             ('build/unit-tests/models', "swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'"),
-            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'"),
+            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'"),
         ])
         model_filter = 'ModelDownloaderTests|ModelSupersessionTests'
         self.assertEqual(kit.count("--filter '" + model_filter + "'"), 1)
-        self.assertEqual(kit.count("--skip '" + model_filter + "'"), 1)
+        bookmark = 'recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
+        native_skip = model_filter + '|' + bookmark
+        self.assertEqual(kit.count("--skip '" + native_skip + "'"), 1)
+        sink = ci_job('native_sink')
+        self.assertIn('runs-on: macos-15\n', sink)
+        self.assertIn("swiftpm: 'true'", sink)
+        self.assertIn(' -- swift test --skip-build --filter ' + bookmark + '\n', sink)
+        self.assertIn('name: scoped-bookmark-${{ github.sha }}', sink)
+        self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 1)
+        self.assertIn("--filter 'Library|SearchTests' --skip " + bookmark, kit)
+        for suite in ['ModelDownloaderTests', 'ModelSupersessionTests', bookmark,
+                      'ModelManifestTests', 'D52WorstCaseRecordTests']:
+            # Exactly one full-suite partition admits each example, including the real OS test.
+            admitted = [bool(re.search(model_filter, suite)), not bool(re.search(native_skip, suite)),
+                        suite == bookmark]
+            self.assertEqual(sum(admitted), 1, suite)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests']:
             self.assertRegex(suite, model_filter)
         for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests']:

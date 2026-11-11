@@ -74,9 +74,10 @@ jobs:
       run: |
         python3 scripts/test-swift-test-runner.py
         # Keep transfer and supersession-lock deadlines independent of native writer/decoder load.
-        # The complementary filter/skip invocations still run every test exactly once.
+        # The model, remaining and hosted bookmark partitions retain every test.
+        # Security-scoped bookmark creation requires the login session in native_sink.
         python3 scripts/run-swift-tests.py --output build/unit-tests/models -- swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'
-        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'
+        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
@@ -178,7 +179,7 @@ jobs:
         CASSINI_LIBRARY_RESULTS: ux-library-vector-results
       run: |
         set -o pipefail
-        swift test --skip-build --filter 'Library|SearchTests' 2>&1 | tee ux-library-tests.log
+        swift test --skip-build --filter 'Library|SearchTests' --skip recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication 2>&1 | tee ux-library-tests.log
     - uses: actions/upload-artifact@v5
       if: always()
       continue-on-error: true
@@ -192,7 +193,7 @@ jobs:
     - build
   native_sink:
     name: Native recording sink app
-    # Even this device-free NSApplication probe requires a macOS login session.
+    # NSApplication and ScopedBookmarksAgent require a macOS login session.
     runs-on: macos-15
     timeout-minutes: 10
     needs: [build]
@@ -201,6 +202,17 @@ jobs:
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
+        swiftpm: 'true'
+    - name: Real scoped bookmark follows a renamed Library root
+      run: |
+        python3 scripts/run-swift-tests.py --output build/unit-tests/scoped-bookmark -- swift test --skip-build --filter recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication
+    - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
+      with:
+        name: scoped-bookmark-${{ github.sha }}
+        path: build/unit-tests/scoped-bookmark
+        retention-days: 14
     - name: Native recording sink (generated 440/880 Hz stereo through the production sink and WAV writer)
       timeout-minutes: 5
       run: |
