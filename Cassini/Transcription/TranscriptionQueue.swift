@@ -52,9 +52,14 @@ import Darwin
     }
     #if DEBUG
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
+    func waitForFixturePreparation() async {
+        precondition(RecordingFixture.enabled)
+        await preparation?.value
+    }
     @ObservationIgnored private var failedFixtureOnce = false
     @ObservationIgnored var fixtureAcceptance: ((URL,String) async -> Void)?
     @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
+    @ObservationIgnored var fixturePreparationStarted: ((URL) -> Void)?
     #endif
     // Persist accepted queue intent before any inactive folder can move.
     // The active child's paths remain protected; queued folders are rediscovered.
@@ -96,6 +101,9 @@ import Darwin
                             try MeetingTranscriber.setStatus(directory:meeting.folder,id:meeting.id,status:"queued")
                         }
                         preparing = (meeting.folder,work)
+                        #if DEBUG
+                        if RecordingFixture.enabled { fixturePreparationStarted?(meeting.folder) }
+                        #endif
                         try await work.value
                     }
                     if !trashing.contains(meeting.folder.path), pending.contains(where:{ $0.folder == meeting.folder }) {
@@ -132,7 +140,8 @@ import Darwin
                     failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
                 }
                 if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniSlowTranscription") == "YES" {
-                    worker = URL(fileURLWithPath:"/bin/sleep"); arguments = ["60"]
+                    worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                    arguments = ["--fixture-wait-for-cancellation"]
                 }
                 #endif
                 var result = try await WhistleSubprocess.run(executable: worker, arguments: arguments, environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
@@ -175,7 +184,7 @@ import Darwin
 }
 
 #if DEBUG
-/// Private filesystem/RAM proof. The only worker is a cancellable sleep fixture.
+/// Private filesystem/RAM proof. The worker waits for explicit cancellation.
 @MainActor enum ImportLifecycleSelfTest {
     static func run() async {
         guard RecordingFixture.enabled, RecordingFixture.transcribes,
@@ -188,13 +197,12 @@ import Darwin
             try session.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try session.finish()
             try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).createIfNeeded()
             let meeting = try require(LibraryScanner(root:root).scan().meetings.first)
-            let fd = open(session.directory.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard fd >= 0, flock(fd,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
-            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(fd,LOCK_UN); close(fd) }
-            let began = ProcessInfo.processInfo.systemUptime
-            queue.enqueue(meeting)
-            guard ProcessInfo.processInfo.systemUptime - began < 0.6 else { throw POSIXError(.ETIMEDOUT) }
-            try await wait { queue.active != nil }
+            // Enqueue must return while this test still owns the metadata lock.
+            // A synchronous metadata write cannot pass by waiting for a timer
+            // to unlock it: only completion of the action releases the lock.
+            try await holdingDirectoryLock(session.directory) { queue.enqueue(meeting) }
+            await queue.waitForFixturePreparation()
+            guard queue.active == meeting.folder else { throw POSIXError(.EINVAL) }
             let document = try JSONSerialization.jsonObject(with:Data(contentsOf:session.directory.appendingPathComponent("meeting.json"))) as! [String:Any]
             guard (document["transcript"] as? [String:Any])?["status"] as? String == "queued" else { throw POSIXError(.EINVAL) }
             let input = Bundle.main.resourceURL!.appendingPathComponent("Fixtures/Library/main/root/Received-a0000000-0000-4000-8000-000000000006/original.opus")
@@ -203,13 +211,14 @@ import Darwin
             let file = try CassiniReader.read(contentsOf:source)
             let detail = MeetingDetailModel(meeting:MeetingPresentation.external(file,url:source),fileURL:source,frozen:true)
             queue.writeDown(detail); queue.writeDown(detail)
-            try await wait { !importer.isBusy }
+            // This awaits the owned import task; it does not initiate shutdown.
+            await importer.waitForShutdown()
+            guard !importer.isBusy else { throw POSIXError(.EBUSY) }
             let imported = try LibraryScanner(root:root).scan().meetings.filter { $0.state.origin == .received }
             guard imported.count == 1 else { throw POSIXError(.EINVAL) }
             let received = imported[0]
-            try await wait {
-                (try? LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript) == .queued
-            }
+            await queue.waitForFixturePreparation()
+            guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             // A second accepted import is owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
@@ -218,13 +227,12 @@ import Darwin
             try waiting.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try waiting.finish()
             try MeetingMetadataWriter(directory:waiting.directory,id:waiting.manifest.id).createIfNeeded()
             let waitingMeeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == waiting.manifest.id }))
-            let held = open(waiting.directory.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard held >= 0, flock(held,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
-            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(held,LOCK_UN); close(held) }
-            queue.enqueue(waitingMeeting)
-            importer.open(another)
-            await Task.yield()
-            importer.beginShutdown(); queue.beginShutdown()
+            try await holdingDirectoryLock(waiting.directory) {
+                queue.enqueue(waitingMeeting)
+                importer.open(another)
+                await Task.yield()
+                importer.beginShutdown(); queue.beginShutdown()
+            }
             await importer.waitForShutdown(); await queue.waitForShutdown()
             guard !importer.isBusy, !queue.isBusy else { throw POSIXError(.EBUSY) }
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == waiting.manifest.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
@@ -232,7 +240,7 @@ import Darwin
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown(); await importer.waitForShutdown(); await queue.waitForShutdown()
@@ -240,10 +248,13 @@ import Darwin
             FileHandle.standardError.write(Data("Import lifecycle proof failed: \(error)\n".utf8)); exit(1)
         }
     }
-    private static func require<T>(_ value: T?) throws -> T { guard let value else { throw POSIXError(.EINVAL) }; return value }
-    private static func wait(_ condition: () -> Bool) async throws {
-        for _ in 0..<600 { if condition() { return }; try await Task.sleep(for:.milliseconds(25)) }
-        throw POSIXError(.ETIMEDOUT)
+    private static func holdingDirectoryLock(_ folder: URL, action: @MainActor () async throws -> Void) async throws {
+        let fd = open(folder.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+        defer { flock(fd,LOCK_UN); close(fd) }
+        guard flock(fd,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+        try await action()
     }
+    private static func require<T>(_ value: T?) throws -> T { guard let value else { throw POSIXError(.EINVAL) }; return value }
 }
 #endif

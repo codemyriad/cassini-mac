@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
 import {mkdir, mkdtemp, readFile, writeFile, stat, rm} from 'node:fs/promises';
 import {attachNativeLog} from './extension-native-log.mjs';
+import {EventEmitter} from 'node:events';
+import {waitForChange} from './wait-for-change.mjs';
 import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
@@ -66,16 +68,16 @@ const server = http.createServer((request,response) => {
 const release = () => { released = true; for (const response of held.splice(0)) { response.writeHead(200); response.end('go'); } };
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
 const url = `http://127.0.0.1:${server.address().port}`;
-let ownsProfile = false, context, child, stderr = '', stdout = '', exited = false, exitCode;
+let ownsProfile = false, context, child, stderr = '', stdout = '', exited = false, closed = false, exitCode;
 const phases = new Map();
-const wait = async (predicate, message, timeout=45000) => {
- const deadline = Date.now()+timeout;
- while (!predicate() && Date.now()<deadline) {
-  if (exited && exitCode !== 0) throw new Error(`App failed (${exitCode}): ${stderr}\n${stdout}`);
-  await new Promise(resolve => setTimeout(resolve,25));
- }
- assert.ok(predicate(), `${message}\n${stderr}\n${stdout}`);
-};
+const changes = new EventEmitter();
+const wait = (predicate, message, timeout=45000) => waitForChange({
+ predicate, timeout,
+ subscribe: listener => { changes.on('change',listener); return () => changes.off('change',listener); },
+ failure: () => closed || exitCode === -1
+  ? new Error(`${message}: app finished (${exitCode})\n${stderr}\n${stdout}`) : null,
+ diagnostic: () => `${message}\n${stderr}\n${stdout}`
+});
 const connected = async page => {
  try {
   const result = await page.evaluate(async () => {
@@ -159,10 +161,14 @@ try {
   for (const line of stdout.split('\n').slice(0,-1)) {
    try { const report=JSON.parse(line); if(report.phase) phases.set(report.phase,report); } catch {}
   }
+  changes.emit('change');
  });
  child.stderr.on('data',data => {stderr+=data;});
- child.on('error',error => {stderr+=String(error); exited=true; exitCode=-1;});
- child.on('exit',code => {exited=true; exitCode=code;});
+ child.on('error',error => {stderr+=String(error); exited=true; exitCode=-1; changes.emit('change');});
+ child.on('exit',code => {exited=true; exitCode=code; changes.emit('change');});
+ // A phase may still be buffered when exit fires. Fail missing phases only
+ // after close, when both output streams have drained.
+ child.on('close',() => {closed=true; changes.emit('change');});
  await wait(() => phases.has('recording'),'No real app-owned browser recording');
  // Reload the same call address: the old document unloads and the new one
  // keeps its call silent until the app has fallen back to computer sound.

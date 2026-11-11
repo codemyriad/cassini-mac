@@ -4,6 +4,7 @@ import AppKit
 import CassiniLibrary
 import CassiniSearch
 import Darwin
+import Observation
 
 /// Exercises the real app model/cache and navigation without UI automation or
 /// audio playback. It reads only the bundled public Library fixture.
@@ -16,26 +17,31 @@ import Darwin
               let resources = Bundle.main.resourceURL,
               context.root.resolvingSymlinksInPath().path.hasPrefix(resources.appendingPathComponent("Fixtures/Library/main").resolvingSymlinksInPath().path + "/") else { exit(78) }
         do {
-            LibraryStore.shared.start()
-            try await wait { LibraryStore.shared.loaded && !LibraryStore.shared.meetings.isEmpty }
+            let store = LibraryStore.shared
+            store.start()
+            try await waitForLibrary(store)
+            guard !store.meetings.isEmpty else { throw POSIXError(.EINVAL) }
             let model = LibrarySearchModel.shared
             model.query = "budget"; model.speaker = "Marta"; model.open()
-            try await wait { !model.searching && model.hits.count == 4 }
-            guard model.count == "4 places in 3 meetings", model.hits.map(\.positionMs) == [4000,872000,1870000,527000],
+            await model.waitForFixtureSearch()
+            guard !model.searching, model.hits.count == 4, model.count == "4 places in 3 meetings", model.hits.map(\.positionMs) == [4000,872000,1870000,527000],
                   !model.names.contains(where:{ $0.hasPrefix("Speaker ") }) else { throw POSIXError(.EINVAL) }
             model.date = .today; model.refresh()
-            try await wait { !model.searching && model.hits.count == 2 }
+            await model.waitForFixtureSearch()
+            guard !model.searching, model.hits.count == 2 else { throw POSIXError(.EINVAL) }
             model.speaker = "Dario"; model.refresh()
-            try await wait { !model.searching && model.hits.isEmpty }
+            await model.waitForFixtureSearch()
+            guard !model.searching, model.hits.isEmpty else { throw POSIXError(.EINVAL) }
             model.date = .any; model.speaker = "Marta"; model.own = true; model.refresh()
-            try await wait { !model.searching && model.hits.count == 4 }
+            await model.waitForFixtureSearch()
+            guard !model.searching, model.hits.count == 4 else { throw POSIXError(.EINVAL) }
             model.selectedID = model.hits.first(where:{ $0.positionMs == 872000 })?.id
             model.openSelected(play:false)
             guard !model.visible, MeetingNavigation.shared.detail?.meeting.title == "Budget review",
                   MeetingNavigation.shared.detail?.positionMs == 872000 else { throw POSIXError(.EINVAL) }
             model.open()
-            try await wait { !model.searching }
-            guard model.query.isEmpty, model.speaker == nil, model.date == .any, !model.own, model.hits.isEmpty else { throw POSIXError(.EINVAL) }
+            await model.waitForFixtureSearch()
+            guard !model.searching, model.query.isEmpty, model.speaker == nil, model.date == .any, !model.own, model.hits.isEmpty else { throw POSIXError(.EINVAL) }
             model.speaker = "Marta"; model.own = true
             guard let meeting = LibraryStore.shared.meetings.first else { throw POSIXError(.EINVAL) }
             MeetingNavigation.shared.open(meeting,frozen:true)
@@ -46,10 +52,11 @@ import Darwin
             let recovering = LibrarySearchModel(makeIndex:{ try startup.create($0) },reportFailure:{ _ in failures.value += 1 })
             recovering.visible = true; recovering.query = "budget"; recovering.speaker = "Marta"
             recovering.update(LibraryStore.shared.meetings)
-            try await wait { !recovering.searching && failures.value == 1 }
+            await recovering.waitForFixtureSearch()
+            guard !recovering.searching, failures.value == 1 else { throw POSIXError(.EINVAL) }
             recovering.refresh()
-            try await wait { !recovering.searching && recovering.hits.count == 4 }
-            guard failures.value == 1 else { throw POSIXError(.EINVAL) }
+            await recovering.waitForFixtureSearch()
+            guard !recovering.searching, recovering.hits.count == 4, failures.value == 1 else { throw POSIXError(.EINVAL) }
             recovering.close()
             let report: [String:Any] = ["realAppFTS5":true,"places":4,"meetings":3,"d14Order":[4000,872000,1870000,527000],
                                       "andFilters":true,"selectAllPreserved":true,"navigationClosesSearch":true,"hitSeekMs":872000,"filtersResetOnClose":true,"indexFailureRecovers":true,"audioDevicesOpened":false]
@@ -72,9 +79,17 @@ import Darwin
             (item.keyEquivalent.lowercased() == "a" && item.keyEquivalentModifierMask.contains(.command)) || hasSelectAll(item.submenu)
         } ?? false
     }
-    private static func wait(_ condition: () -> Bool) async throws {
-        for _ in 0..<150 { if condition() { return }; try await Task.sleep(for:.milliseconds(100)) }
-        throw POSIXError(.ETIMEDOUT)
+    private static func waitForLibrary(_ store: LibraryStore) async throws {
+        while !store.loaded {
+            let (changes, continuation) = AsyncStream<Void>.makeStream()
+            withObservationTracking { _ = store.loaded } onChange: {
+                continuation.yield(())
+                continuation.finish()
+            }
+            var iterator = changes.makeAsyncIterator()
+            _ = await iterator.next()
+            try Task.checkCancellation()
+        }
     }
 }
 #endif

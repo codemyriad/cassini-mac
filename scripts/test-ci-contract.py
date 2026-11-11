@@ -38,9 +38,12 @@ class Selection(unittest.TestCase):
     def test_direct_workflow_scripts_and_app_privacy_changes_run_their_consumers(self):
         for area, workflow in [('boards','ux-boards'),('whistle','ux-whistle'),('browser_setup','ux-browser-setup')]:
             body = (ROOT/'.github/workflows'/f'{workflow}.yml').read_text()
-            for script in re.findall(r'python3\s+(scripts/[\w.-]+\.py)',body):
+            for script in re.findall(r'(?:python3|node(?: --test)?)\s+(scripts/[\w.-]+\.(?:py|mjs))',body):
                 with self.subTest(area=area,script=script):
                     self.assertTrue(changes.select('pull_request','base',PATHS,[script])[area])
+        # Imported helpers must also select the real browser consumer on their
+        # own, without relying on a workflow edit to select every area.
+        self.assertTrue(changes.select('pull_request','base',PATHS,['scripts/wait-for-change.mjs'])['browser_setup'])
         for source in ['Cassini/Transcription/TranscriptionQueue.swift','Cassini/Cassini.entitlements','Cassini/Info.plist']:
             self.assertTrue(changes.select('pull_request','base',PATHS,[source])['whistle'])
 
