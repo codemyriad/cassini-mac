@@ -640,16 +640,15 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
-    @MainActor func testSearchClickKeepsTheFirstTypedCharacter() throws {
+    @MainActor func testSearchClickOpensSidebarBeforeTyping() throws {
         let app = try launch("library",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         let field = window.searchFields["library-search-field"]
         XCTAssertTrue(field.waitForExistence(timeout:20),app.debugDescription)
         field.click()
-        // XCTest completes the native click before typing. The Search panel
-        // appears on the first edit, so it cannot be a pre-typing readiness
-        // condition. Await the complete query below, never a settling pause.
+        // Wait for the sidebar before sending the first keyboard event.
         let count = window.staticTexts["search-count"]
+        XCTAssertTrue(count.waitForExistence(timeout:5),app.debugDescription)
         app.typeText("budget")
         let value = NSPredicate { _,_ in field.value as? String == "budget" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
