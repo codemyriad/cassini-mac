@@ -34,7 +34,12 @@ import Observation
         await task?.value
     }
     #endif
-    func pauseForMove() async { await LibraryBulkTransfer.shared.pauseForMove(); paused = true; task?.cancel(); await task?.value }
+    func pauseForMove() async {
+        // Pause both intake paths before yielding to either worker's cleanup.
+        paused = true; task?.cancel()
+        await LibraryBulkTransfer.shared.pauseForMove()
+        await task?.value
+    }
     func resumeAfterMove() { guard !closing else { return }; paused = false; LibraryBulkTransfer.shared.resumeAfterMove(); startNext() }
     private func startNext() {
         guard !closing, !paused, task == nil, !pending.isEmpty else { return }
