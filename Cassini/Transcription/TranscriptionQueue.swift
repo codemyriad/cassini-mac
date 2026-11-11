@@ -221,6 +221,7 @@ import Darwin
             await queue.waitForFixturePreparation()
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             try await verifyConcurrentImportKeepsExportProgressAndCancel(root:root, source:source, exportedMeeting:received)
+            try await verifyBannerRemovalPreservesSharedExportReceipts(exportedMeeting:received, scratch:root.deletingLastPathComponent())
             // A second accepted import is owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
@@ -242,10 +243,13 @@ import Darwin
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
-            importer.beginShutdown(); queue.beginShutdown(); await importer.waitForShutdown(); await queue.waitForShutdown()
+            importer.beginShutdown(); queue.beginShutdown()
+            BulkZipExportCoordinator.shared.beginShutdown(); MeetingExportCoordinator.shared.beginShutdown()
+            await importer.waitForShutdown(); await queue.waitForShutdown()
+            await BulkZipExportCoordinator.shared.waitForShutdown(); await MeetingExportCoordinator.shared.waitForShutdown()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             FileHandle.standardError.write(Data("Import lifecycle proof failed: \(error)\n".utf8)); exit(1)
         }
@@ -345,7 +349,7 @@ import Darwin
             matching predicate: @escaping @Sendable ([TransferBannerPresentation.Card]) -> Bool
         ) async throws {
             let timeoutTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(10))
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
                 renderedCardsCont.finish()
             }
             defer { timeoutTask.cancel() }
@@ -372,6 +376,12 @@ import Darwin
         }
         guard importer.progress != nil, bulkExporter.progress != nil else { throw POSIXError(.EINVAL) }
 
+        // Yield on @MainActor so the cancelled timeoutTask from the first wait runs before
+        // the next state transition; if cancellation mistakenly finished renderedCardsCont,
+        // the second wait below would deterministically fail.
+        await Task.yield()
+        await Task.yield()
+
         // Cancel export while concurrent import remains active; import must stay running and complete.
         bulkExporter.cancel()
         exportLatch.release()
@@ -392,6 +402,156 @@ import Darwin
         await importer.waitForShutdown()
         guard !importer.isBusy, importer.notice != nil else { throw POSIXError(.EINVAL) }
         importer.dismissNotice()
+    }
+
+    private static func verifyBannerRemovalPreservesSharedExportReceipts(exportedMeeting: LibraryMeeting, scratch: URL) async throws {
+        let importer = LibraryImportCoordinator.shared
+        let bulkExporter = BulkZipExportCoordinator.shared
+        let singleExporter = MeetingExportCoordinator.shared
+
+        func waitOnStream(
+            iterator: inout AsyncStream<[TransferBannerPresentation.Card]>.AsyncIterator,
+            continuation: AsyncStream<[TransferBannerPresentation.Card]>.Continuation,
+            label: String,
+            matching predicate: @escaping @Sendable ([TransferBannerPresentation.Card]) -> Bool
+        ) async throws {
+            let timeoutTask = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                continuation.finish()
+            }
+            defer { timeoutTask.cancel() }
+            while let cards = await iterator.next() {
+                if predicate(cards) { return }
+            }
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing rendered banner cards: \(label)"])
+        }
+
+        func makeBannerWindow(
+            continuation: AsyncStream<[TransferBannerPresentation.Card]>.Continuation,
+            onUpdate: (([TransferBannerPresentation.Card]) -> Void)? = nil
+        ) -> (window: NSWindow, host: NSHostingView<TransferStatusBanner>) {
+            let host = NSHostingView(rootView: TransferStatusBanner(fixtureVisibleCards: { cards in
+                onUpdate?(cards)
+                continuation.yield(cards)
+            }))
+            let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 240), styleMask: [.titled], backing: .buffered, defer: false)
+            win.isReleasedWhenClosed = false
+            win.contentView = host
+            win.orderFront(nil)
+            host.layoutSubtreeIfNeeded()
+            return (win, host)
+        }
+
+        var latestOpenCards: [TransferBannerPresentation.Card] = []
+        let (openStream, openCont) = AsyncStream<[TransferBannerPresentation.Card]>.makeStream()
+        let (openWindow, openHost) = makeBannerWindow(continuation: openCont) { cards in
+            latestOpenCards = cards
+        }
+        var openIter = openStream.makeAsyncIterator()
+        defer {
+            openCont.finish()
+            openWindow.contentView = nil
+            openWindow.close()
+            if let id = bulkExporter.receipt?.id { bulkExporter.clearReceipt(id) }
+            singleExporter.clearReceiptIfAny()
+            importer.dismissNotice()
+        }
+
+        // 1. Bulk .zip export receipt remains visible in openWindow when secondWindow's banner is removed.
+        let (bulkClosingStream, bulkClosingCont) = AsyncStream<[TransferBannerPresentation.Card]>.makeStream()
+        let (bulkClosingWin, bulkClosingHost) = makeBannerWindow(continuation: bulkClosingCont)
+        var bulkClosingIter = bulkClosingStream.makeAsyncIterator()
+        defer {
+            bulkClosingCont.finish()
+            bulkClosingWin.contentView = nil
+            bulkClosingWin.close()
+        }
+
+        let bulkZipURL = scratch.appendingPathComponent("ReceiptPreserved.zip")
+        bulkExporter.startExportForTesting([exportedMeeting], to: bulkZipURL)
+        await bulkExporter.waitForShutdown()
+        openHost.layoutSubtreeIfNeeded()
+        bulkClosingHost.layoutSubtreeIfNeeded()
+
+        let hasBulkReceipt: @Sendable ([TransferBannerPresentation.Card]) -> Bool = { cards in
+            cards.contains { $0.primaryAccessibilityID == "export-zip-success" && $0.actionAccessibilityID == "export-zip-show" }
+        }
+        try await waitOnStream(iterator: &openIter, continuation: openCont, label: "openWindow bulk receipt", matching: hasBulkReceipt)
+        try await waitOnStream(iterator: &bulkClosingIter, continuation: bulkClosingCont, label: "closingWindow bulk receipt", matching: hasBulkReceipt)
+        let bulkReceiptID = try require(bulkExporter.receipt?.id)
+
+        bulkClosingWin.contentView = nil
+        bulkClosingWin.close()
+        for _ in 0..<6 { await Task.yield() }
+        openHost.layoutSubtreeIfNeeded()
+        guard bulkExporter.receipt?.id == bulkReceiptID, hasBulkReceipt(latestOpenCards) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 3, userInfo: [NSLocalizedDescriptionKey: "Bulk export receipt dismissed early upon banner removal"])
+        }
+        bulkExporter.clearReceipt(bulkReceiptID)
+
+        // 2. Single-meeting export receipt remains visible in openWindow when another banner is removed.
+        let (singleClosingStream, singleClosingCont) = AsyncStream<[TransferBannerPresentation.Card]>.makeStream()
+        let (singleClosingWin, singleClosingHost) = makeBannerWindow(continuation: singleClosingCont)
+        var singleClosingIter = singleClosingStream.makeAsyncIterator()
+        defer {
+            singleClosingCont.finish()
+            singleClosingWin.contentView = nil
+            singleClosingWin.close()
+        }
+
+        let singleURL = scratch.appendingPathComponent("ReceiptPreservedSingle.opus")
+        singleExporter.startExportForTesting(exportedMeeting, kind: .cassini, to: singleURL)
+        await singleExporter.waitForShutdown()
+        openHost.layoutSubtreeIfNeeded()
+        singleClosingHost.layoutSubtreeIfNeeded()
+
+        let hasSingleReceipt: @Sendable ([TransferBannerPresentation.Card]) -> Bool = { cards in
+            cards.contains { $0.primaryAccessibilityID == "export-success" && $0.actionAccessibilityID == "export-show" }
+        }
+        try await waitOnStream(iterator: &openIter, continuation: openCont, label: "openWindow single receipt", matching: hasSingleReceipt)
+        try await waitOnStream(iterator: &singleClosingIter, continuation: singleClosingCont, label: "closingWindow single receipt", matching: hasSingleReceipt)
+        let singleReceiptID = try require(singleExporter.receipt?.id)
+
+        singleClosingWin.contentView = nil
+        singleClosingWin.close()
+        for _ in 0..<6 { await Task.yield() }
+        openHost.layoutSubtreeIfNeeded()
+        guard singleExporter.receipt?.id == singleReceiptID, hasSingleReceipt(latestOpenCards) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 4, userInfo: [NSLocalizedDescriptionKey: "Single export receipt dismissed early upon banner removal"])
+        }
+        singleExporter.clearReceipt(singleReceiptID)
+
+        // 3. Auto-dismiss import notice remains visible in openWindow when another banner is removed.
+        let (noticeClosingStream, noticeClosingCont) = AsyncStream<[TransferBannerPresentation.Card]>.makeStream()
+        let (noticeClosingWin, noticeClosingHost) = makeBannerWindow(continuation: noticeClosingCont)
+        var noticeClosingIter = noticeClosingStream.makeAsyncIterator()
+        defer {
+            noticeClosingCont.finish()
+            noticeClosingWin.contentView = nil
+            noticeClosingWin.close()
+        }
+
+        importer.openBatch([singleURL, singleURL])
+        await importer.waitForShutdown()
+        openHost.layoutSubtreeIfNeeded()
+        noticeClosingHost.layoutSubtreeIfNeeded()
+
+        let hasImportSummary: @Sendable ([TransferBannerPresentation.Card]) -> Bool = { cards in
+            cards.contains { $0.primaryAccessibilityID == "import-summary" && $0.actionAccessibilityID == "import-notice-done" }
+        }
+        try await waitOnStream(iterator: &openIter, continuation: openCont, label: "openWindow import summary", matching: hasImportSummary)
+        try await waitOnStream(iterator: &noticeClosingIter, continuation: noticeClosingCont, label: "closingWindow import summary", matching: hasImportSummary)
+        let noticeID = try require(importer.notice?.id)
+        guard importer.notice?.autoDismiss == true else { throw POSIXError(.EINVAL) }
+
+        noticeClosingWin.contentView = nil
+        noticeClosingWin.close()
+        for _ in 0..<6 { await Task.yield() }
+        openHost.layoutSubtreeIfNeeded()
+        guard importer.notice?.id == noticeID, hasImportSummary(latestOpenCards) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 5, userInfo: [NSLocalizedDescriptionKey: "Auto-dismiss import notice dismissed early upon banner removal"])
+        }
+        importer.dismissNotice(noticeID)
     }
 }
 #endif

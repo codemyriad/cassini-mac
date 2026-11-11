@@ -23,7 +23,19 @@ import Observation
 
     private(set) var busy = false
     private(set) var progress: Progress?
-    private(set) var receipt: Receipt?
+    private(set) var receipt: Receipt? {
+        didSet {
+            receiptExpiryTask?.cancel()
+            if let id = receipt?.id {
+                receiptExpiryTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                    self?.clearReceipt(id)
+                }
+            } else {
+                receiptExpiryTask = nil
+            }
+        }
+    }
     private(set) var directory: URL = {
         let home = getpwuid(getuid()).map { URL(fileURLWithPath: String(cString: $0.pointee.pw_dir)) }
             ?? FileManager.default.homeDirectoryForCurrentUser
@@ -33,6 +45,7 @@ import Observation
     @ObservationIgnored private var task: Task<Void, Never>? { didSet { refreshBusy() } }
     @ObservationIgnored private var presentationTask: Task<Void, Never>? { didSet { refreshBusy() } }
     @ObservationIgnored private var savePanel: NSSavePanel? { didSet { refreshBusy() } }
+    @ObservationIgnored private var receiptExpiryTask: Task<Void, Never>?
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var chooserGeneration: UInt64 = 0
     @ObservationIgnored private var runToken: UInt64 = 0
@@ -114,6 +127,8 @@ import Observation
 
     func beginShutdown() {
         closing = true
+        receiptExpiryTask?.cancel()
+        receiptExpiryTask = nil
         cancel()
     }
 

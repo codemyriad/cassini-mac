@@ -64,12 +64,26 @@ import Observation
     }
 
     private(set) var progress: Progress?
-    private(set) var notice: Notice?
+    private(set) var notice: Notice? {
+        didSet {
+            noticeExpiryTask?.cancel()
+            if let current = notice, current.autoDismiss {
+                let id = current.id
+                noticeExpiryTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                    self?.dismissNotice(id)
+                }
+            } else {
+                noticeExpiryTask = nil
+            }
+        }
+    }
 
     @ObservationIgnored private var pending: [Job] = []
     @ObservationIgnored private var requestedTranscription = Set<String>()
     @ObservationIgnored private var scheduled = Set<String>()
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var noticeExpiryTask: Task<Void, Never>?
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var paused = false
     @ObservationIgnored private var cancellingCurrent = false
@@ -140,6 +154,8 @@ import Observation
 
     func beginShutdown() {
         closing = true
+        noticeExpiryTask?.cancel()
+        noticeExpiryTask = nil
         pending.removeAll()
         requestedTranscription.removeAll()
         progress = nil

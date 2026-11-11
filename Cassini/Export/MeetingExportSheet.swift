@@ -47,11 +47,6 @@ struct TransferStatusBanner: View {
                                 Button(UXText.text("common.done")) { importer.dismissNotice(notice.id) }
                                     .accessibilityIdentifier("import-notice-done")
                             }
-                            .task(id: notice.id) {
-                                guard notice.autoDismiss else { return }
-                                do { try await Task.sleep(for: .seconds(10)) } catch { return }
-                                importer.dismissNotice(notice.id)
-                            }
                         case .bulkExportProgress(let done, let total):
                             card(warning: false) {
                                 ProgressView().controlSize(.small)
@@ -69,10 +64,6 @@ struct TransferStatusBanner: View {
                                 Button(UXText.text("common.show")) { bulkExporter.revealReceipt() }
                                     .accessibilityIdentifier("export-zip-show")
                             }
-                            .task(id: receipt.id) {
-                                do { try await Task.sleep(for: .seconds(10)) } catch { }
-                                bulkExporter.clearReceipt(receipt.id)
-                            }
                         case .singleExportReceipt(let receipt):
                             card(warning: false) {
                                 Text(UXText.text("meeting.exported", ["title": receipt.title, "folder": receipt.folderName]))
@@ -80,10 +71,6 @@ struct TransferStatusBanner: View {
                                     .accessibilityIdentifier("export-success")
                                 Button(UXText.text("common.show")) { singleExporter.revealReceipt() }
                                     .accessibilityIdentifier("export-show")
-                            }
-                            .task(id: receipt.id) {
-                                do { try await Task.sleep(for: .seconds(10)) } catch { }
-                                singleExporter.clearReceipt(receipt.id)
                             }
                         }
                     }

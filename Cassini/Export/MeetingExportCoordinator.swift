@@ -17,7 +17,19 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         let title: String
         let access: FileAccessLease
     }
-    private(set) var receipt: Receipt?
+    private(set) var receipt: Receipt? {
+        didSet {
+            receiptExpiryTask?.cancel()
+            if let id = receipt?.id {
+                receiptExpiryTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                    self?.clearReceipt(id)
+                }
+            } else {
+                receiptExpiryTask = nil
+            }
+        }
+    }
     private(set) var meeting: LibraryMeeting?
     private(set) var estimatedBytes: Int64?
     private(set) var working = false
@@ -39,6 +51,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     @ObservationIgnored private var estimateTask: Task<Void,Never>?
     @ObservationIgnored private var presentationTask: Task<Void,Never>?
     @ObservationIgnored private var savePanel: NSSavePanel?
+    @ObservationIgnored private var receiptExpiryTask: Task<Void,Never>?
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var chooserGeneration: UInt64 = 0
     var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil }
@@ -76,7 +89,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         cancel(); await waitForShutdown()
         meeting = nil; estimatedBytes = nil
     }
-    func beginShutdown() { closing = true; cancel() }
+    func beginShutdown() { closing = true; receiptExpiryTask?.cancel(); receiptExpiryTask = nil; cancel() }
     func waitForShutdown() async { await presentationTask?.value; await task?.value }
     func dismissForQuit() async {
         let parent = NSApp.keyWindow?.sheetParent ?? NSApp.mainWindow
@@ -92,6 +105,11 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         guard let receipt else { return }
         NSWorkspace.shared.activateFileViewerSelecting([receipt.url])
     }
+    #if DEBUG
+    func startExportForTesting(_ meeting: LibraryMeeting, kind: MeetingExportKind = .cassini, to destinationURL: URL) {
+        start(meeting, kind: kind, file: FileAccessLease(destinationURL))
+    }
+    #endif
     private func presentSavePanel(_ meeting: LibraryMeeting, kind: MeetingExportKind, exportOnSelection: Bool = true) {
         chooserGeneration &+= 1
         let generation = chooserGeneration

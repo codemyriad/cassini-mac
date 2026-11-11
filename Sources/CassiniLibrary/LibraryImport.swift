@@ -217,13 +217,18 @@ public enum LibraryImport {
             knownByDigest?[digest] = meeting
             return meeting
         }
+    }
 
-        fileprivate func removeRolledBack(folder: URL, digest: String?) {
-            if let digest, knownByDigest?[digest]?.folder == folder {
-                knownByDigest?[digest] = nil
-            }
-            try? FileManager.default.removeItem(at: folder)
-        }
+    internal struct ProvisionalImport {
+        let id: UUID
+        let folderName: String
+        let digest: String
+    }
+
+    internal enum ArchiveStageOutcome {
+        case staged(ProvisionalImport)
+        case existingDuplicate(LibraryMeeting)
+        case provisionalDuplicate(Int)
     }
 
     fileprivate static func readSingleImportedMeeting(root: URL, folder: URL, id: UUID) throws -> LibraryMeeting {
@@ -233,6 +238,132 @@ public enum LibraryImport {
             throw POSIXError(.EINVAL)
         }
         return meeting
+    }
+
+    /// Stages a validated archive audio entry into an unpublished hidden directory inside `root`
+    /// so `LibraryScanner`, watchers, and UI cannot discover or edit it until every archive member passes runtime limits.
+    internal static func stageArchiveMember(
+        _ source: URL,
+        into root: URL,
+        provisionalRoot: inout URL?,
+        titleFallback: String,
+        session: BatchSession,
+        provisionalIndexByDigest: [String: Int],
+        shouldCancel: () -> Bool
+    ) throws -> ArchiveStageOutcome {
+        let (input, identity) = try openRegular(source); defer { close(input) }
+        guard identity.size > 0, identity.size <= Int64(UInt32.max) else { throw POSIXError(.EFBIG) }
+        let data = try Data(contentsOf: source, options: .mappedIfSafe)
+        guard Int64(data.count) == identity.size else { throw POSIXError(.EINVAL) }
+        var after = stat()
+        guard fstat(input, &after) == 0, FileKey(after) == identity else { throw POSIXError(.EINVAL) }
+        if shouldCancel() { throw CancellationError() }
+
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let file = try CassiniReader.read(data)
+        guard case .success? = file.audioDigest else { throw MetadataError.invalid }
+
+        if let existing = try session.duplicate(for: digest) {
+            return .existingDuplicate(existing)
+        }
+        if let earlierIndex = provisionalIndexByDigest[digest] {
+            return .provisionalDuplicate(earlierIndex)
+        }
+        if shouldCancel() { throw CancellationError() }
+
+        let stageDir: URL
+        if let existingStage = provisionalRoot {
+            stageDir = existingStage
+        } else {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let created = root.appendingPathComponent(".cassini-zip-import-" + UUID().uuidString.lowercased())
+            try FileManager.default.createDirectory(at: created, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            provisionalRoot = created
+            stageDir = created
+        }
+
+        let id = UUID()
+        let folderName = "Received-" + id.uuidString.lowercased()
+        let folder = stageDir.appendingPathComponent(folderName)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        var staged = false
+        defer { if !staged { try? FileManager.default.removeItem(at: folder) } }
+
+        let original = folder.appendingPathComponent("original.opus")
+        let output = open(original.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard output >= 0 else { throw POSIXError(.EIO) }
+        do {
+            let write = FileHandle(fileDescriptor: output, closeOnDealloc: true)
+            defer { try? write.close() }
+            try write.write(contentsOf: data)
+            try write.synchronize()
+        }
+
+        if shouldCancel() { throw CancellationError() }
+        let trusted = [.ok, .plainAudio].contains(file.state)
+        let importedNotes = Self.importedNotes(trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"] : nil)
+        let title = [trusted ? file.manifest?.meeting.title : nil, trusted ? file.tags?["TITLE"] : nil, titleFallback]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        if shouldCancel() { throw CancellationError() }
+
+        try MeetingMetadataWriter(directory: folder, id: id).transaction { metadata in
+            metadata["received"] = [
+                "originalName": "original.opus",
+                "sha256": digest,
+                "importedAtMs": Int64(Date().timeIntervalSince1970 * 1000),
+            ] as [String: Any]
+            metadata["notes"] = importedNotes
+            if trusted, let route = Self.importedOthersRoute(file.manifest?.raw["x"]?["codemyriad.io"]) {
+                metadata["recordingDetails"] = ["othersRoute": route]
+            }
+            if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
+            if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
+        }
+        staged = true
+        return .staged(ProvisionalImport(id: id, folderName: folderName, digest: digest))
+    }
+
+    /// Atomically publishes staged provisional archive meetings into `root` once all archive members pass validation.
+    internal static func publishArchiveMembers(
+        _ provisionals: [ProvisionalImport],
+        from provisionalRoot: URL,
+        into root: URL,
+        session: BatchSession,
+        shouldCancel: () -> Bool
+    ) throws -> [(meeting: LibraryMeeting, isDuplicate: Bool)] {
+        guard !provisionals.isEmpty else { return [] }
+        if shouldCancel() { throw CancellationError() }
+        let rootFD = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard rootFD >= 0 else { throw POSIXError(.ENOENT) }
+        defer { close(rootFD) }
+        while flock(rootFD, LOCK_EX | LOCK_NB) != 0 {
+            guard errno == EWOULDBLOCK || errno == EINTR else { throw POSIXError(.EIO) }
+            if shouldCancel() { throw CancellationError() }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        defer { flock(rootFD, LOCK_UN) }
+
+        let stageFD = open(provisionalRoot.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard stageFD >= 0 else { throw POSIXError(.ENOENT) }
+        defer { close(stageFD) }
+
+        var published: [(meeting: LibraryMeeting, isDuplicate: Bool)] = []
+        published.reserveCapacity(provisionals.count)
+        for prov in provisionals {
+            if shouldCancel() { throw CancellationError() }
+            if let existing = try session.duplicate(for: prov.digest) {
+                published.append((existing, true))
+                continue
+            }
+            guard renameatx_np(stageFD, prov.folderName, rootFD, prov.folderName, UInt32(RENAME_EXCL)) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            let finalFolder = root.appendingPathComponent(prov.folderName)
+            let meeting = try session.recordImported(folder: finalFolder, id: prov.id, digest: prov.digest)
+            published.append((meeting, false))
+        }
+        _ = fsync(rootFD)
+        return published
     }
 
     public static func copy(_ source: URL, into root: URL, additionalRoots: [URL] = [], shouldCancel: () -> Bool = { false }) throws -> LibraryMeeting {
@@ -314,14 +445,6 @@ public enum LibraryImport {
         }
         committed = true
         return .imported(meeting)
-    }
-
-    internal static func rollbackImported(folder: URL, digest: String?, session: BatchSession?) {
-        if let session {
-            session.removeRolledBack(folder: folder, digest: digest)
-        } else {
-            try? FileManager.default.removeItem(at: folder)
-        }
     }
 
     /// D74 immutable routing provenance travels with the recording, including future

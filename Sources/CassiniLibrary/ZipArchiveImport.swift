@@ -102,7 +102,25 @@ public enum ZipArchiveImport {
         let stagedFile = stagingDir.appendingPathComponent("entry.opus")
 
         let initialSummary = summary
-        var createdImports: [(folder: URL, digest: String?)] = []
+        var provisionalRoot: URL?
+        defer {
+            if let provisionalRoot {
+                try? FileManager.default.removeItem(at: provisionalRoot)
+            }
+        }
+
+        enum StagedStep {
+            case unsupported
+            case failed
+            case existingDuplicate(LibraryMeeting)
+            case provisionalDuplicate(Int)
+            case publish(Int)
+        }
+
+        var provisionals: [LibraryImport.ProvisionalImport] = []
+        var provisionalIndexByDigest: [String: Int] = [:]
+        var stagedSteps: [StagedStep] = []
+        stagedSteps.reserveCapacity(entries.count)
         var cumulativeActualUncompressed: UInt64 = 0
         var supportedDone = 0
 
@@ -112,17 +130,21 @@ public enum ZipArchiveImport {
 
                 switch entry.kind {
                 case .directory:
-                    continue
-
-                case .unsupported:
-                    try verifyUnsupportedRuntimeBytes(
+                    try verifyNonAudioRuntimeBytes(
                         fd: fd,
                         entry: entry,
                         cumulativeActualUncompressed: &cumulativeActualUncompressed,
                         shouldCancel: shouldCancel
                     )
-                    summary.unsupported += 1
-                    onPartialSummary(summary)
+
+                case .unsupported:
+                    try verifyNonAudioRuntimeBytes(
+                        fd: fd,
+                        entry: entry,
+                        cumulativeActualUncompressed: &cumulativeActualUncompressed,
+                        shouldCancel: shouldCancel
+                    )
+                    stagedSteps.append(.unsupported)
 
                 case .supported(_, let titleFallback):
                     supportedDone += 1
@@ -132,8 +154,7 @@ public enum ZipArchiveImport {
 
                     guard entry.method == 0 || entry.method == 8 else {
                         try addRuntimeBytes(max(entry.compressedSize, entry.uncompressedSize), to: &cumulativeActualUncompressed)
-                        summary.failed += 1
-                        onPartialSummary(summary)
+                        stagedSteps.append(.failed)
                         continue
                     }
 
@@ -144,8 +165,7 @@ public enum ZipArchiveImport {
                             cumulativeActualUncompressed: &cumulativeActualUncompressed,
                             shouldCancel: shouldCancel
                         )
-                        summary.failed += 1
-                        onPartialSummary(summary)
+                        stagedSteps.append(.failed)
                         continue
                     }
 
@@ -157,46 +177,85 @@ public enum ZipArchiveImport {
                         shouldCancel: shouldCancel
                     )
                     guard extractedOK else {
-                        summary.failed += 1
-                        onPartialSummary(summary)
+                        stagedSteps.append(.failed)
                         continue
                     }
 
                     if shouldCancel() { throw CancellationError() }
 
                     do {
-                        let outcome = try LibraryImport.copyWithOutcome(
+                        let outcome = try LibraryImport.stageArchiveMember(
                             stagedFile,
                             into: root,
-                            additionalRoots: additionalRoots,
+                            provisionalRoot: &provisionalRoot,
                             titleFallback: titleFallback,
-                            includeParentFolder: false,
                             session: batchSession,
+                            provisionalIndexByDigest: provisionalIndexByDigest,
                             shouldCancel: shouldCancel
                         )
                         switch outcome {
-                        case .imported(let meeting):
-                            createdImports.append((meeting.folder, meeting.received?.sha256))
-                            summary.imported += 1
-                            summary.lastSelected = meeting
-                        case .duplicate(let meeting):
-                            summary.duplicates += 1
-                            if summary.lastSelected == nil { summary.lastSelected = meeting }
+                        case .staged(let provisional):
+                            let index = provisionals.count
+                            provisionals.append(provisional)
+                            provisionalIndexByDigest[provisional.digest] = index
+                            stagedSteps.append(.publish(index))
+                        case .existingDuplicate(let meeting):
+                            stagedSteps.append(.existingDuplicate(meeting))
+                        case .provisionalDuplicate(let earlierIndex):
+                            stagedSteps.append(.provisionalDuplicate(earlierIndex))
                         }
-                        onPartialSummary(summary)
                     } catch let cancel as CancellationError {
                         throw cancel
                     } catch {
-                        summary.failed += 1
-                        onPartialSummary(summary)
+                        stagedSteps.append(.failed)
                     }
                 }
             }
+
+            // Every member in the archive (including directory and unsupported entries) has passed runtime limits.
+            // Publish staged meetings atomically into the Library root.
+            let published: [(meeting: LibraryMeeting, isDuplicate: Bool)]
+            if let provisionalRoot, !provisionals.isEmpty {
+                published = try LibraryImport.publishArchiveMembers(
+                    provisionals,
+                    from: provisionalRoot,
+                    into: root,
+                    session: batchSession,
+                    shouldCancel: shouldCancel
+                )
+            } else {
+                published = []
+            }
+
+            for step in stagedSteps {
+                switch step {
+                case .unsupported:
+                    summary.unsupported += 1
+                case .failed:
+                    summary.failed += 1
+                case .existingDuplicate(let meeting):
+                    summary.duplicates += 1
+                    if summary.lastSelected == nil { summary.lastSelected = meeting }
+                case .provisionalDuplicate(let earlierIndex):
+                    summary.duplicates += 1
+                    if summary.lastSelected == nil, earlierIndex < published.count {
+                        summary.lastSelected = published[earlierIndex].meeting
+                    }
+                case .publish(let index):
+                    guard index < published.count else { continue }
+                    let outcome = published[index]
+                    if outcome.isDuplicate {
+                        summary.duplicates += 1
+                        if summary.lastSelected == nil { summary.lastSelected = outcome.meeting }
+                    } else {
+                        summary.imported += 1
+                        summary.lastSelected = outcome.meeting
+                    }
+                }
+            }
+            onPartialSummary(summary)
             return summary
         } catch let archiveFailure as ZipArchiveFailure {
-            for created in createdImports {
-                LibraryImport.rollbackImported(folder: created.folder, digest: created.digest, session: batchSession)
-            }
             summary = initialSummary
             onPartialSummary(summary)
             throw archiveFailure
@@ -311,26 +370,13 @@ public enum ZipArchiveImport {
 
             let kind = classifyEntry(name: name, uncompressedSize: uncompressedSize, externalAttributes: externalAttrs)
             if case .directory = kind {
-                guard localHeaderOffset <= directoryLocation.offset,
-                      directoryLocation.offset - localHeaderOffset >= 30 else {
-                    throw ZipArchiveFailure.damaged
+                // Directories are exempt only from the 2,000-entry item limit;
+                // any payload still counts against total byte, ratio, and offset bounds.
+            } else {
+                nonDirectoryCount += 1
+                if nonDirectoryCount > maxEntries {
+                    throw ZipArchiveFailure.tooLarge
                 }
-                entries.append(ArchiveEntry(
-                    flags: flags,
-                    method: method,
-                    crc32: crc,
-                    compressedSize: compressedSize,
-                    uncompressedSize: uncompressedSize,
-                    localHeaderOffset: localHeaderOffset,
-                    kind: kind
-                ))
-                index += 1
-                continue
-            }
-
-            nonDirectoryCount += 1
-            if nonDirectoryCount > maxEntries {
-                throw ZipArchiveFailure.tooLarge
             }
             let (nextTotal, overflow) = totalDeclaredUncompressed.addingReportingOverflow(uncompressedSize)
             if overflow || nextTotal > maxTotalUncompressedBytes {
@@ -602,7 +648,7 @@ public enum ZipArchiveImport {
         total = next
     }
 
-    private static func verifyUnsupportedRuntimeBytes(
+    private static func verifyNonAudioRuntimeBytes(
         fd: Int32,
         entry: ArchiveEntry,
         cumulativeActualUncompressed: inout UInt64,

@@ -788,6 +788,65 @@ import CassiniRecording
         #expect(exported2 == 2)
         #expect(try parseStoredZip(zipOut2).count == 2)
     }
+
+    @Test func timeoutCancellationDoesNotCloseBannerObservationStreamAcrossSubsequentTransitions() async throws {
+        let (stream, continuation) = AsyncStream<[TransferBannerPresentation.Card]>.makeStream()
+        defer { continuation.finish() }
+        var iterator = stream.makeAsyncIterator()
+
+        func waitForCards(
+            matching predicate: ([TransferBannerPresentation.Card]) -> Bool
+        ) async throws -> [TransferBannerPresentation.Card] {
+            let timeoutTask = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                continuation.finish()
+            }
+            defer { timeoutTask.cancel() }
+            while let cards = await iterator.next() {
+                if predicate(cards) { return cards }
+            }
+            throw POSIXError(.ETIMEDOUT)
+        }
+
+        func drainMainActor() async {
+            await Task { @MainActor in
+                for _ in 0..<6 { await Task.yield() }
+            }.value
+        }
+
+        // 1. Emit initial concurrent state and consume via timeout-guarded wait.
+        continuation.yield(TransferBannerPresentation(
+            importProgress: .init(done: 1, total: 2),
+            bulkExportProgress: .init(done: 1, total: 2)
+        ).cards)
+        let first = try await waitForCards { cards in
+            cards.map(\.primaryAccessibilityID) == ["import-progress", "export-zip-progress"]
+        }
+        #expect(first.map(\.actionAccessibilityID) == ["import-cancel", "export-zip-cancel"])
+
+        // Let the cancelled timeout task run to completion on @MainActor BEFORE yielding the next state.
+        await drainMainActor()
+
+        // 2. Stream must remain open and deliver export-cancel transition + subsequent receipt cards!
+        continuation.yield(TransferBannerPresentation(
+            importProgress: .init(done: 1, total: 2)
+        ).cards)
+        let second = try await waitForCards { cards in
+            cards.map(\.primaryAccessibilityID) == ["import-progress"]
+        }
+        #expect(second.map(\.actionAccessibilityID) == ["import-cancel"])
+
+        await drainMainActor()
+
+        let receiptID = UUID()
+        continuation.yield(TransferBannerPresentation(
+            bulkExportReceipt: .init(id: receiptID, count: 3)
+        ).cards)
+        let third = try await waitForCards { cards in
+            cards.map(\.primaryAccessibilityID) == ["export-zip-success"]
+        }
+        #expect(third.map(\.actionAccessibilityID) == ["export-zip-show"])
+    }
 }
 
 private extension Data {

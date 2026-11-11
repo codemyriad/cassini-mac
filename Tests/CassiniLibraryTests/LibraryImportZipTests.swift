@@ -43,6 +43,8 @@ import Testing
             self.centralMethod = method
             if isDirectory {
                 self.externalAttributes = (UInt32(S_IFDIR | 0o755) << 16) | 0x10
+            }
+            if isDirectory && uncompressedData.isEmpty {
                 self.compressedPayload = Data()
                 self.centralCRC = 0
                 self.centralCompressedSize = 0
@@ -331,7 +333,7 @@ import Testing
         }
     }
 
-    @Test(arguments: ["bomb.opus", "bomb.txt"])
+    @Test(arguments: ["bomb.opus", "bomb.txt", "payload/", "winpayload\\", "__MACOSX/._bomb"])
     func ratioLimitForgedSizesAndZeroPaddedDeflateBombsRefuseAndRollbackEarlierEntries(bombName: String) throws {
         // Exact arithmetic checks at boundary and UInt64.max.
         #expect(!ZipArchiveImport.exceedsCompressionRatio(uncompressed: 0, compressed: 0))
@@ -344,6 +346,7 @@ import Testing
         let library = f.root.appendingPathComponent("Library")
         let staging = f.root.appendingPathComponent("Temp")
         let validOpus = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let safeLabel = bombName.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "\\", with: "_")
 
         // 1. Declared ratio > 100:1 in Central Directory -> refused immediately.
         let declaredBomb = RawZipEntry(name: bombName, method: 8, uncompressedData: Data(repeating: 0, count: 50_000))
@@ -351,7 +354,7 @@ import Testing
             uncompressed: declaredBomb.centralUncompressedSize!,
             compressed: declaredBomb.centralCompressedSize!
         ))
-        let declaredURL = f.root.appendingPathComponent("declared-\(bombName).zip")
+        let declaredURL = f.root.appendingPathComponent("declared-\(safeLabel).zip")
         try Self.buildZip(entries: [RawZipEntry(name: "Good.opus", method: 0, uncompressedData: validOpus), declaredBomb]).write(to: declaredURL)
         var s1 = LibraryImportSummary()
         #expect(throws: ZipArchiveFailure.tooLarge) {
@@ -364,7 +367,7 @@ import Testing
         forgedBomb.centralUncompressedSize = 16
         forgedBomb.localUncompressedSize32 = 16
         forgedBomb.localCompressedSize32 = UInt32(forgedBomb.compressedPayload.count)
-        let forgedURL = f.root.appendingPathComponent("forged-\(bombName).zip")
+        let forgedURL = f.root.appendingPathComponent("forged-\(safeLabel).zip")
         try Self.buildZip(entries: [RawZipEntry(name: "Good.opus", method: 0, uncompressedData: validOpus), forgedBomb]).write(to: forgedURL)
 
         var s2 = LibraryImportSummary()
@@ -372,7 +375,7 @@ import Testing
             try ZipArchiveImport.importArchive(forgedURL, into: library, temporaryRoot: staging, summary: &s2)
         }
         #expect(s2.imported == 0)
-        // Earlier "Good.opus" created during the same archive run MUST be rolled back!
+        // Earlier "Good.opus" staged during the same archive run MUST never be published!
         let remaining = (try? FileManager.default.contentsOfDirectory(atPath: library.path)) ?? []
         #expect(remaining.isEmpty)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? []).isEmpty)
@@ -388,7 +391,7 @@ import Testing
             uncompressed: paddedBomb.centralUncompressedSize!,
             compressed: paddedBomb.centralCompressedSize!
         ))
-        let paddedURL = f.root.appendingPathComponent("padded-\(bombName).zip")
+        let paddedURL = f.root.appendingPathComponent("padded-\(safeLabel).zip")
         try Self.buildZip(entries: [RawZipEntry(name: "Good.opus", method: 0, uncompressedData: validOpus), paddedBomb]).write(to: paddedURL)
 
         var s3 = LibraryImportSummary()
@@ -812,20 +815,41 @@ import Testing
         let renderedEnglish = batchSummary.rendered(language: .en, locale: Locale(identifier: "en_US"))
         #expect(renderedEnglish == "Imported 1 · Skipped 1 duplicate · Ignored 1 unsupported file · 1 file could not be imported")
 
-        // Deterministic mid-import cancellation: cancel as soon as item 2 starts after item 1 completes!
-        let cancelLib = f.root.appendingPathComponent("CancelLibrary")
+        // Deterministic mid-archive cancellation: because archive members stay provisional until
+        // every member in the .zip passes validation, cancelling at member 2 publishes 0 items and leaves no remnants!
+        let zipCancelLib = f.root.appendingPathComponent("ZipCancelLibrary")
         let zipForCancel = f.root.appendingPathComponent("two-items.zip")
         try Self.buildZip(entries: [
             RawZipEntry(name: "First item.opus", method: 8, uncompressedData: Data(contentsOf: doc1Source)),
             RawZipEntry(name: "Second item.opus", method: 8, uncompressedData: Data(contentsOf: doc2Source)),
         ]).write(to: zipForCancel)
 
+        var zipCancelSummary = LibraryImportSummary()
+        var zipCancelFlag = false
+        #expect(throws: CancellationError.self) {
+            try LibraryBatchImport.importURLs(
+                [zipForCancel],
+                into: zipCancelLib,
+                temporaryRoot: staging,
+                summary: &zipCancelSummary,
+                onProgress: { done, _ in
+                    if done == 2 { zipCancelFlag = true }
+                },
+                shouldCancel: { zipCancelFlag }
+            )
+        }
+        #expect(zipCancelSummary.imported == 0 && zipCancelSummary.failed == 0)
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: zipCancelLib.path)) ?? []).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: staging.path).isEmpty)
+
+        // Deterministic mid-batch multi-file cancellation: cancel at file 2 after file 1 has committed!
+        let cancelLib = f.root.appendingPathComponent("CancelLibrary")
         var cancelSummary = LibraryImportSummary()
         var streamedPartial = LibraryImportSummary()
         var cancelFlag = false
         #expect(throws: CancellationError.self) {
             try LibraryBatchImport.importURLs(
-                [zipForCancel],
+                [doc1Source, doc2Source],
                 into: cancelLib,
                 temporaryRoot: staging,
                 summary: &cancelSummary,
@@ -877,13 +901,14 @@ import Testing
 
     // MARK: - 7. Regression Tests: Method Mismatch Preflight, Mixed-Compressibility Ratio, Linear CPU Scaling & Info.plist
 
-    @Test(arguments: ["bomb.opus", "bomb.txt"])
+    @Test(arguments: ["bomb.opus", "bomb.txt", "payload/", "__MACOSX/._bomb"])
     func centralVsLocalMethodMismatchRefusesWholeArchiveBeforeImportingEarlierMembers(memberName: String) throws {
         let f = try Fixture()
         let library = f.root.appendingPathComponent("Library")
         let staging = f.root.appendingPathComponent("Temp")
         let validOpus = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
         let goodMember = RawZipEntry(name: "Good.opus", method: 0, uncompressedData: validOpus)
+        let safeLabel = memberName.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "\\", with: "_")
 
         // 1. Central method 8 (Deflate), Local method 0 (Stored), understated sizes after a valid .opus member ->
         // must be rejected during preflight so the whole archive is refused and Good.opus is NEVER imported!
@@ -892,7 +917,7 @@ import Testing
         method8Local0.centralUncompressedSize = 16
         method8Local0.localUncompressedSize32 = 16
         method8Local0.localCompressedSize32 = UInt32(method8Local0.compressedPayload.count)
-        let mismatch1URL = f.root.appendingPathComponent("mismatch-c8-l0-\(memberName).zip")
+        let mismatch1URL = f.root.appendingPathComponent("mismatch-c8-l0-\(safeLabel).zip")
         try Self.buildZip(entries: [goodMember, method8Local0]).write(to: mismatch1URL)
 
         var s1 = LibraryImportSummary()
@@ -905,7 +930,7 @@ import Testing
         // 2. Central method 0 (Stored), Local method 8 (Deflate) after a valid .opus member -> refused in preflight!
         var method0Local8 = RawZipEntry(name: memberName, method: 0, uncompressedData: Data("stored-payload".utf8))
         method0Local8.localMethod = 8
-        let mismatch2URL = f.root.appendingPathComponent("mismatch-c0-l8-\(memberName).zip")
+        let mismatch2URL = f.root.appendingPathComponent("mismatch-c0-l8-\(safeLabel).zip")
         try Self.buildZip(entries: [goodMember, method0Local8]).write(to: mismatch2URL)
 
         var s2 = LibraryImportSummary()
@@ -920,7 +945,7 @@ import Testing
         storedSizeMismatch.centralUncompressedSize = 16
         storedSizeMismatch.localUncompressedSize32 = 16
         storedSizeMismatch.localCompressedSize32 = 128
-        let mismatch3URL = f.root.appendingPathComponent("mismatch-stored-size-\(memberName).zip")
+        let mismatch3URL = f.root.appendingPathComponent("mismatch-stored-size-\(safeLabel).zip")
         try Self.buildZip(entries: [goodMember, storedSizeMismatch]).write(to: mismatch3URL)
 
         var s3 = LibraryImportSummary()
@@ -1083,6 +1108,151 @@ import Testing
 
         let projectYML = try String(contentsOf: f.repository.appendingPathComponent("project.yml"), encoding: .utf8)
         #expect(projectYML.contains("public.zip-archive"))
+    }
+
+    @Test func provisionalImportsRemainUnpublishedUntilEveryMemberPassesRuntimeLimitsAndDirectoryPayloadsAreEnforced() throws {
+        let f = try Fixture()
+        let library = f.root.appendingPathComponent("Library")
+        let staging = f.root.appendingPathComponent("Temp")
+        let rawPlain = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus"))
+
+        func makeTaggedOpus(name: String, title: String) throws -> Data {
+            let url = f.root.appendingPathComponent("\(name).opus")
+            defer { try? FileManager.default.removeItem(at: url) }
+            _ = try OpusStreamFile.rewrite(rawPlain, tags: PortableMeetingTags.packet(comments: [Comment(name: "TITLE", value: title)]), to: url)
+            return try Data(contentsOf: url)
+        }
+
+        // Pre-populate Library with an edited meeting that MUST remain untouched across all scans and refusals.
+        let seedURL = f.root.appendingPathComponent("Seed.opus")
+        try makeTaggedOpus(name: "seed-build", title: "Seed").write(to: seedURL)
+        let preExisting = try LibraryImport.copy(seedURL, into: library)
+        try MeetingMetadataWriter(directory: preExisting.folder, id: preExisting.id).transaction {
+            $0["title"] = "User kept title"
+            $0["titleSource"] = "user"
+            $0["notes"] = [["atMs": 250, "text": "User kept note"]]
+        }
+
+        // 1. Valid archive with duplicate + directory payload + Finder sidecar:
+        // Scanning during onProgress at EVERY member must ONLY see the pre-existing meeting (0 provisional imports visible!).
+        let new1Bytes = try makeTaggedOpus(name: "new1", title: "New meeting 1")
+        let new2Bytes = try makeTaggedOpus(name: "new2", title: "New meeting 2")
+        let validArchiveURL = f.root.appendingPathComponent("unpublished-until-end.zip")
+        try Self.buildZip(entries: [
+            RawZipEntry(name: "New1.opus", method: 8, uncompressedData: new1Bytes),
+            RawZipEntry(name: "CopyOfNew1.opus", method: 8, uncompressedData: new1Bytes),
+            RawZipEntry(name: "New2.opus", method: 8, uncompressedData: new2Bytes),
+            RawZipEntry(name: "subdir/", method: 8, uncompressedData: Data("benign-directory-payload".utf8), isDirectory: true),
+            RawZipEntry(name: "__MACOSX/._New1.opus", method: 0, uncompressedData: Data([0x00, 0x05, 0x16, 0x07])),
+            RawZipEntry(name: "subdir/notes.txt", method: 0, uncompressedData: Data("agenda".utf8)),
+        ]).write(to: validArchiveURL)
+
+        var progressChecks = 0
+        var validSummary = LibraryImportSummary()
+        _ = try ZipArchiveImport.importArchive(
+            validArchiveURL,
+            into: library,
+            temporaryRoot: staging,
+            summary: &validSummary,
+            onProgress: { _, _ in
+                progressChecks += 1
+                let midScan = (try? LibraryScanner(root: library).scan())
+                #expect(midScan?.meetings.count == 1)
+                #expect(midScan?.meetings.first?.title == "User kept title")
+                #expect(midScan?.issues.isEmpty == true)
+            }
+        )
+        #expect(progressChecks == 3)
+        #expect(validSummary.imported == 2)
+        #expect(validSummary.duplicates == 1)
+        #expect(validSummary.unsupported == 2) // subdir/ is exempt from unsupported item counts!
+        #expect(validSummary.failed == 0)
+        #expect(validSummary.lastSelected?.title == "New meeting 2")
+
+        let afterValidScan = try LibraryScanner(root: library).scan()
+        #expect(afterValidScan.meetings.count == 3 && afterValidScan.issues.isEmpty)
+        let hiddenRemnants1 = try FileManager.default.contentsOfDirectory(atPath: library.path).filter { $0.hasPrefix(".cassini-zip-import-") }
+        #expect(hiddenRemnants1.isEmpty)
+
+        // 2. Valid meeting followed by a padded deflate bomb named "payload/" (and "__MACOSX/._bomb"):
+        // Transient meeting must NEVER become discoverable during onProgress, whole archive throws .tooLarge,
+        // and all 3 committed meetings + user edits remain completely intact!
+        let transientBytes = try makeTaggedOpus(name: "transient", title: "Transient unpublished meeting")
+        for trailingBombName in ["payload/", "winpayload\\", "__MACOSX/._bomb"] {
+            var paddedBomb = RawZipEntry(name: trailingBombName, method: 8, uncompressedData: Data(repeating: 0, count: 50_000))
+            paddedBomb.compressedPayload.append(Data(repeating: 0, count: 1_000))
+            paddedBomb.centralCompressedSize = UInt64(paddedBomb.compressedPayload.count)
+            paddedBomb.localCompressedSize32 = UInt32(paddedBomb.compressedPayload.count)
+            paddedBomb.localUncompressedSize32 = 50_000
+
+            let safe = trailingBombName.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "\\", with: "_")
+            let bombArchiveURL = f.root.appendingPathComponent("trailing-padded-\(safe).zip")
+            try Self.buildZip(entries: [
+                RawZipEntry(name: "Transient.opus", method: 0, uncompressedData: transientBytes),
+                paddedBomb,
+            ]).write(to: bombArchiveURL)
+
+            var sawProgress = false
+            var refusedSummary = LibraryImportSummary()
+            #expect(throws: ZipArchiveFailure.tooLarge) {
+                try ZipArchiveImport.importArchive(
+                    bombArchiveURL,
+                    into: library,
+                    temporaryRoot: staging,
+                    summary: &refusedSummary,
+                    onProgress: { _, _ in
+                        sawProgress = true
+                        let midScan = try? LibraryScanner(root: library).scan()
+                        #expect(midScan?.meetings.count == 3)
+                        #expect(midScan?.meetings.contains(where: { $0.title == "Transient unpublished meeting" }) == false)
+                    }
+                )
+            }
+            #expect(sawProgress)
+            #expect(refusedSummary.imported == 0)
+
+            let postRefusalScan = try LibraryScanner(root: library).scan()
+            #expect(postRefusalScan.meetings.count == 3 && postRefusalScan.issues.isEmpty)
+            let preserved = try #require(LibraryScanner(root: library).meeting(at: preExisting.folder))
+            #expect(preserved.title == "User kept title")
+            #expect(preserved.notes.map(\.text) == ["User kept note"])
+            let hiddenRemnants = try FileManager.default.contentsOfDirectory(atPath: library.path).filter { $0.hasPrefix(".cassini-zip-import-") }
+            #expect(hiddenRemnants.isEmpty)
+        }
+
+        // 3. Directory entry declaring > 20 GB cumulative uncompressed size refuses in preflight before any member runs.
+        var over20GBDir = RawZipEntry(name: "payload/", method: 8, uncompressedData: Data("x".utf8), isDirectory: true)
+        over20GBDir.forceZip64Extra = true
+        over20GBDir.centralCompressedSize = 400_000_000
+        over20GBDir.centralUncompressedSize = 20_000_000_001
+        let over20GBDirZip = f.root.appendingPathComponent("over20gb-dir.zip")
+        try Self.buildZip(entries: [
+            RawZipEntry(name: "Transient.opus", method: 0, uncompressedData: transientBytes),
+            over20GBDir,
+        ]).write(to: over20GBDirZip)
+
+        var preflightProgress = false
+        var preflightSummary = LibraryImportSummary()
+        #expect(throws: ZipArchiveFailure.tooLarge) {
+            try ZipArchiveImport.importArchive(
+                over20GBDirZip,
+                into: library,
+                temporaryRoot: staging,
+                summary: &preflightSummary,
+                onProgress: { _, _ in preflightProgress = true }
+            )
+        }
+        #expect(!preflightProgress)
+
+        // 4. Directories remain exempt from maxEntries (2,005 empty directories + 1 audio file succeeds with 0 unsupported).
+        let manyDirsLib = f.root.appendingPathComponent("ManyDirsLib")
+        var manyDirsEntries: [RawZipEntry] = (0..<2_005).map { RawZipEntry(name: "folder-\($0)/", isDirectory: true) }
+        manyDirsEntries.append(RawZipEntry(name: "folder-0/Kept.opus", method: 8, uncompressedData: transientBytes))
+        let manyDirsZip = f.root.appendingPathComponent("many-dirs.zip")
+        try Self.buildZip(entries: manyDirsEntries).write(to: manyDirsZip)
+        var manyDirsSummary = LibraryImportSummary()
+        _ = try ZipArchiveImport.importArchive(manyDirsZip, into: manyDirsLib, temporaryRoot: staging, summary: &manyDirsSummary)
+        #expect(manyDirsSummary.imported == 1 && manyDirsSummary.unsupported == 0 && manyDirsSummary.failed == 0)
     }
 
     private static func pwriteData(_ data: Data, fd: Int32, offset: UInt64) {
