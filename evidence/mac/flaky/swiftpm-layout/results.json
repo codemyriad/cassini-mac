@@ -1,0 +1,31 @@
+{
+  "base": "fc2ad769445f92c0b484eb760a3556dc60f746ac",
+  "compiler": "Xcode 16.4 / Swift 6.1",
+  "ciContracts": 57,
+  "cases": {
+    "before": {
+      "crossSourceCacheRestored": true,
+      "nativeClientExit": -10,
+      "expectedTracks": 8
+    },
+    "after": {
+      "crossSourceCacheRestored": false,
+      "nativeClientExit": 0,
+      "expectedTracks": 8
+    },
+    "mutation-fallback": {
+      "crossSourceCacheRestored": true,
+      "nativeClientExit": -10,
+      "expectedTracks": 8
+    },
+    "restored": {
+      "crossSourceCacheRestored": false,
+      "nativeClientExit": 0,
+      "expectedTracks": 8
+    }
+  },
+  "sourceSHA256": {
+    ".github/workflows/ci-build.yml": "263121bbdfe8ac30cf72b6a2dd798577bdc1fcc16e493d634fe56c677a24cc53",
+    "scripts/test-ci-contract.py": "26058f01f1aca32a47c48542bb61a5bb86b5e2d24989416ef0f1726a0d4d4f90"
+  }
+}
