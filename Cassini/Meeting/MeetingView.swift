@@ -131,6 +131,10 @@ struct MeetingView: View {
                     }
                 }
             }
+            Button(UXText.text("meeting.nameSpeakers")) {
+                MeetingRenameCoordinator.shared.showSpeaker(meeting,id:model.listen.speaker ?? model.namingSpeakerID)
+            }.buttonStyle(.borderless).disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(meeting) || meeting.speakers.isEmpty)
+                .accessibilityIdentifier("name-the-speakers")
             Spacer(minLength: 0)
         }.padding(.horizontal, 19).padding(.top, 14)
             .frame(width: 260).frame(maxHeight: .infinity)
@@ -207,30 +211,31 @@ struct MeetingView: View {
         let listening = model.listen.speaker.map { meeting.mergedInto[$0] ?? $0 } == speaker.id
         return HStack(alignment:.top,spacing:10) {
             Circle().fill(colour(speaker.colourIndex)).frame(width:10,height:10).padding(.top,5).accessibilityHidden(true)
-            VStack(alignment:.leading,spacing:3) {
-                HStack(spacing:6) {
-                    Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
-                    Spacer(minLength:2)
-                    Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
-                    Button { model.toggleSpeakerListening(speaker.id) } label: {
-                        Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
-                    }.buttonStyle(.borderless)
-                        .disabled(!model.canPlay || (!listening && turns.isEmpty))
-                        .help(UXText.text(listening ? "common.stop" : "speakers.listen"))
-                        .accessibilityLabel(listening ? UXText.text("common.stop") : row.playAccessibilityLabel)
-                        .accessibilityIdentifier("speaker-listen-" + speaker.id)
-                }
-                if let caption = row.caption {
-                    HStack(spacing:0) {
-                        if let provenance = row.provenance, let suffix = row.captionSuffix {
-                            Text(provenance).truncationMode(.tail)
-                            Text(suffix).truncationMode(.head).layoutPriority(1)
-                        } else { Text(caption).truncationMode(.head) }
-                    }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                        .help(caption)
-                        .accessibilityLabel(caption)
-                }
-            }
+            Button {MeetingRenameCoordinator.shared.showSpeaker(meeting,id:speaker.id)} label: {
+                VStack(alignment:.leading,spacing:3) {
+                    HStack(spacing:6) {
+                        Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
+                        Spacer(minLength:2)
+                        Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                    }
+                    if let caption=row.caption {
+                        HStack(spacing:0) {
+                            if let provenance=row.provenance,let suffix=row.captionSuffix {
+                                Text(provenance).truncationMode(.tail)
+                                Text(suffix).truncationMode(.head).layoutPriority(1)
+                            } else {Text(caption).truncationMode(.head)}
+                        }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                            .help(caption)
+                    }
+                }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(meeting))
+                .accessibilityLabel(row.accessibilityLabel).accessibilityIdentifier("speaker-name-"+speaker.id)
+            Button {model.toggleSpeakerListening(speaker.id)} label: {
+                Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
+            }.buttonStyle(.borderless).disabled(!model.canPlay || (!listening && turns.isEmpty))
+                .help(UXText.text(listening ? "common.stop" : "speakers.listen"))
+                .accessibilityLabel(listening ? UXText.text("common.stop") : row.playAccessibilityLabel)
+                .accessibilityIdentifier("speaker-listen-"+speaker.id)
         }.padding(.vertical,4).padding(.horizontal,5)
             .background(listening ? Color.accentColor.opacity(0.08) : .clear)
             .overlay(alignment:.leading) {

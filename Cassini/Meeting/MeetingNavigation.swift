@@ -70,8 +70,10 @@ import Observation
 }
 
 @MainActor @Observable final class MeetingDetailModel {
+    var namingSpeakerID:String?
     var meeting: LibraryMeeting {
         didSet {
+            if let id=namingSpeakerID {namingSpeakerID=meeting.speaker(for:id)?.id}
             if MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
                 prepareTurns()
                 shares = MeetingPresentation.shares(meeting)
@@ -101,6 +103,7 @@ import Observation
     @ObservationIgnored private var preparation: TurnPreparation?
     private(set) var shares: [String: Int] = [:]
     let fileURL: URL?
+    let speakerSample:SpeakerSample
     let audio: SessionPlayback
     let listen: ListenController
     private let fileAccessLease: AnyObject?
@@ -109,7 +112,7 @@ import Observation
     private var fixturePlaying = true
     init(meeting: LibraryMeeting, fileURL: URL? = nil, lease: AnyObject? = nil, frozen: Bool = false) {
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
-        let audio = SessionPlayback(); self.audio = audio; listen = ListenController(playback:audio)
+        let audio = SessionPlayback(); self.audio = audio; listen = ListenController(playback:audio); speakerSample=SpeakerSample(playback:audio)
         fileAccessLease = lease
         shares = MeetingPresentation.shares(meeting)
         audio.onFailure = { NSApp.presentError($0) }
@@ -151,6 +154,7 @@ import Observation
     }
     @discardableResult func listenTo(_ speaker: String, turnIndex: Int? = nil) -> Bool {
         guard !frozen else { return false }
+        speakerSample.cancel()
         PlayerController.pauseActive()
         let accepted = listen.start(speaker,in:playbackMeeting,turnIndex:turnIndex)
         if accepted { resumeTranscriptFollow() }; return accepted
@@ -268,19 +272,27 @@ import Observation
     var canPlay: Bool { frozen || playbackMeeting.canPlaySession }
     var rate: Double { Double(audio.rate) }
     func toggle() {
+        speakerSample.cancel()
         if frozen { fixturePlaying.toggle(); return }
         PlayerController.pauseActive(); audio.toggle(playbackMeeting)
     }
     func seek(_ ms: Int) {
+        speakerSample.cancel()
         let ms = max(0, min(durationMs, ms))
         if frozen { fixturePosition = ms; return }
         audio.seek(playbackMeeting,toMs:Double(ms))
     }
     func playFrom(_ ms: Int) {
+        speakerSample.cancel()
         let ms = max(0,min(durationMs,ms))
         if frozen { fixturePosition = ms; fixturePlaying = true; return }
         PlayerController.pauseActive()
         audio.play(playbackMeeting,fromMs:Double(ms))
+    }
+    func playSpeakerSample(_ range:Range<Int64>) {
+        guard !frozen,MeetingNavigation.shared.detail === self else {return}
+        stopListening();PlayerController.pauseActive()
+        speakerSample.play(playbackMeeting,range:range)
     }
     func skip(_ seconds: Int) { seek(positionMs + seconds * 1000) }
     func cycleRate() {
@@ -289,6 +301,6 @@ import Observation
     }
     func reconcile(offline: Bool) { audio.reconcile(playbackMeeting,offline:offline) }
     /// A Library outage: playback stops and any preparation pauses, to resume on recovery.
-    func suspend() { resetListeningAnnouncement(); preparation?.cancel(); listen.pageChanged() }
-    func close() { resetListeningAnnouncement(); preparation?.cancel(); preparation = nil; listen.pageChanged() }
+    func suspend() { speakerSample.cancel(); resetListeningAnnouncement(); preparation?.cancel(); listen.pageChanged() }
+    func close() { speakerSample.cancel(); resetListeningAnnouncement(); preparation?.cancel(); preparation = nil; listen.pageChanged() }
 }

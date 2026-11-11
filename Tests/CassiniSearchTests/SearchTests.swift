@@ -82,6 +82,20 @@ struct SearchTests {
         let spaced = try await index.search("cafe budget").map(\.id)
         #expect(pasted == spaced)
     }
+    @Test func realSpeakerEditsRefreshNamesFiltersAndMergedHits() async throws {
+        let fixture=try SearchFixture(),m=try #require(fixture.meetings().first {$0.title=="Budget review"})
+        let index=try SearchIndex(cache:fixture.cache);try await index.replace([m])
+        try SpeakerEdits.apply(.name(speaker:"marta",value:"Ada"),to:m,roots:[fixture.root])
+        let renamed=try #require(LibraryScanner(root:fixture.root).meeting(at:m.folder))
+        try await index.replace([renamed])
+        #expect(try await index.search("budget",filter:.init(speaker:"Ada")).count==2)
+        #expect(try await index.search("budget",filter:.init(speaker:"Marta")).isEmpty)
+        try SpeakerEdits.apply(.merge(from:"marta",into:"dario"),to:m,roots:[fixture.root])
+        let merged=try #require(LibraryScanner(root:fixture.root).meeting(at:m.folder))
+        try await index.replace([merged])
+        #expect(try await index.search("budget",filter:.init(speaker:"Dario")).count==2)
+        #expect(!SearchIndex.names([merged]).contains("Ada"))
+    }
     @Test func changedRemovedAndRenamedMeetingsDoNotLeaveStaleHits() async throws {
         let fixture = try SearchFixture(); let all = try fixture.meetings()
         var meeting = try #require(all.first(where:{ $0.title == "Budget review" }))

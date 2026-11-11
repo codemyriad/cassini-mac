@@ -1,0 +1,5 @@
+--- a/Sources/CassiniLibrary/SpeakerEdits.swift
++++ b/Sources/CassiniLibrary/SpeakerEdits.swift
+@@ -50 +50 @@
+-                guard from != into,visible.contains(from),visible.contains(into) else {throw POSIXError(.EINVAL)}
++                guard from != into else {throw POSIXError(.EINVAL)}
