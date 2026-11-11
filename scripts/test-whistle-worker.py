@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Offline worker/constructor-privacy test. Build-time assets must exist already."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -66,6 +67,78 @@ child.wait()
             except ProcessLookupError: pass
         owner.stdout.close()
     return dict(parkedFixtureCancellation=True,parkedFixtureIgnoresEOF=True,parkedFixtureOwnerDeath=True)
+
+
+
+# The same outer hang guard as normal real inference. Completion requires a
+# response or process exit; model startup is acknowledged before fatal probes.
+WORKER_HANG_GUARD = 60
+
+@contextmanager
+def worker_session(command):
+    # Drain model diagnostics to a file, so stderr cannot fill a pipe while the
+    # test waits for a particular JSON response on stdout.
+    with tempfile.TemporaryFile() as diagnostics:
+        child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=diagnostics, env=worker_env(), bufsize=0)
+        try:
+            yield child
+        except BaseException:
+            if child.poll() is None: child.kill(); child.wait(timeout=10)
+            diagnostics.seek(0)
+            output = diagnostics.read()
+            if output: print(output.decode(errors='replace'), file=sys.stderr)
+            raise
+        finally:
+            if child.poll() is None: child.kill(); child.wait(timeout=10)
+            child.stdin.close(); child.stdout.close()
+
+def worker_request(child, request):
+    child.stdin.write((json.dumps(request)+'\n').encode()); child.stdin.flush()
+    response = json_line(child.stdout, timeout=WORKER_HANG_GUARD)
+    assert response.get('id') == request['id'], response
+    return response
+
+def acknowledge_startup(child):
+    # The real worker initializes its verified engine before reading any request.
+    # An existing invalid request acknowledges that point without another decode
+    # or any new worker protocol message.
+    response = worker_request(child, dict(id='startup-barrier'))
+    assert 'error' in response and 'transcript' not in response, response
+
+def exercise_requests(command, fixture):
+    requests = [dict(id=str(i), wav=str(fixture/'jfk.wav')) for i in range(2)]
+    with worker_session(command) as child:
+        responses = [worker_request(child, request) for request in requests]
+        assert all('error' not in response for response in responses), responses
+        text = responses[0]['transcript']['text']
+        assert responses[1]['transcript'] == responses[0]['transcript'], 'Repeated worker request changed transcript'
+        # Reuse that initialized child for invalid inputs and the good recovery
+        # request. FIFO/link/oversize rejection and recovery assertions are intact.
+        with tempfile.TemporaryDirectory(prefix='cassini-whistle-input-') as temporary:
+            temporary = Path(temporary)
+            fifo = temporary/'fifo'; os.mkfifo(fifo)
+            link = temporary/'link'; link.symlink_to(fixture/'jfk.wav')
+            huge = temporary/'huge.wav'
+            with huge.open('wb') as stream: stream.truncate(4_000_000)
+            paths = [fifo, link, huge, fixture/'jfk.wav']
+            replies = [worker_request(child, dict(id=f'input-{i}', wav=str(path))) for i,path in enumerate(paths)]
+            assert all('error' in reply for reply in replies[:3]) and replies[-1].get('transcript',{}).get('text') == text, replies
+        with ProcessExit(child.pid) as exited:
+            child.stdin.close(); exited.wait(timeout=WORKER_HANG_GUARD)
+        assert child.wait(timeout=10) == 0 and child.stdout.read() == b'', 'Worker must finish cleanly at EOF without extra responses'
+    with worker_session(command) as child:
+        acknowledge_startup(child)
+        output, _ = child.communicate(input=b'x'*1_000_000+b'\n', timeout=WORKER_HANG_GUARD)
+        assert child.returncode == 78 and b'tooLarge' in output, (child.returncode,output)
+    with worker_session(command) as child:
+        acknowledge_startup(child)
+        with ProcessExit(child.pid) as exited:
+            child.stdout.close()
+            child.stdin.write((json.dumps(requests[0])+'\n').encode()); child.stdin.close()
+            exited.wait(timeout=WORKER_HANG_GUARD)
+        assert child.wait(timeout=10) == 78, child.returncode
+    return text
 
 
 def main():
@@ -150,37 +223,8 @@ child.wait()
             except ProcessLookupError:pass
         os.close(tick_read)
 
-    # The same child loads once and serves two requests, not one model per clip.
     command = [str(args.worker.resolve()), '--assets', str(args.bundle.resolve())]
-    requests = [dict(id=str(i), wav=str(fixture / 'jfk.wav')) for i in range(2)]
-    result = subprocess.run(command, input=''.join(json.dumps(r) + '\n' for r in requests), capture_output=True, text=True, env=worker_env(), timeout=60)
-    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
-    responses = [json.loads(line) for line in result.stdout.splitlines()]
-    assert len(responses) == 2 and [r['id'] for r in responses] == ['0', '1'], responses
-    assert all('error' not in r for r in responses), responses
-    text = responses[0]['transcript']['text']
-    assert responses[1]['transcript'] == responses[0]['transcript'], 'Repeated worker request changed transcript'
-    # Invalid files are rejected without following links, reading FIFO input or
-    # allocating an oversized WAV; a subsequent good request still succeeds.
-    with tempfile.TemporaryDirectory(prefix='cassini-whistle-input-') as temporary:
-        temporary = Path(temporary)
-        fifo = temporary/'fifo'; os.mkfifo(fifo)
-        link = temporary/'link'; link.symlink_to(fixture/'jfk.wav')
-        huge = temporary/'huge.wav'
-        with huge.open('wb') as stream: stream.truncate(4_000_000)
-        paths = [fifo, link, huge, fixture/'jfk.wav']
-        bad = subprocess.run(command, input=''.join(json.dumps(dict(id=str(i),wav=str(p)))+'\n' for i,p in enumerate(paths)),
-            capture_output=True,text=True,env=worker_env(),timeout=10)
-        replies = [json.loads(line) for line in bad.stdout.splitlines()]
-        assert bad.returncode==0 and len(replies)==4,(bad.returncode,bad.stdout,bad.stderr)
-        assert all('error' in r for r in replies[:3]) and replies[-1]['transcript']['text']==text,replies
-    too_long = subprocess.run(command,input='x'*1_000_000+'\n',capture_output=True,text=True,env=worker_env(),timeout=10)
-    assert too_long.returncode==78 and 'tooLarge' in too_long.stdout,(too_long.returncode,too_long.stdout)
-    read_fd, write_fd = os.pipe(); os.close(read_fd)
-    try:
-        closed = subprocess.run(command,input=json.dumps(requests[0])+'\n',stdout=write_fd,stderr=subprocess.PIPE,text=True,env=worker_env(),timeout=10)
-        assert closed.returncode==78,closed.returncode
-    finally: os.close(write_fd)
+    text = exercise_requests(command, fixture)
     reference = (fixture / 'jfk.txt').read_text().strip()
     words = lambda s: re.findall(r'\w+', s.casefold())
     assert words(text) == words(reference), (text, reference)
