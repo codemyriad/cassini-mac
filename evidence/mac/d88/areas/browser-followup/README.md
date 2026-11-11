@@ -17,3 +17,5 @@ These seven remaining assertions replace elapsed-silence success with ordered pi
 The legacy peer retains its original capability set. After virtual heartbeat advances, observed inventory and recording status lead to an explicit Stop. The first outgoing frame must be that Stop, fencing earlier unwanted pings. Four heartbeat-capable peers instead acknowledge a pong after reconciliation; advancing the injected clock produces the next expected ping through the same ordered writer. Every receive/expectation timeout fails.
 
 Validation: 25 XCTest cases pass before, after and restored; all seven independent mutations fail. See `validation.md` and the individual patches. Full logs and replay script: `~/coordination/evidence/big-mac-d88/next-ipc/`.
+
+Replay from this checkout with Xcode 16.4 selected, `SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"` exported, and an external output directory: `D88_EVIDENCE_DIR=/tmp/d88-ipc-replay ~/bin/heavy-run python3 evidence/mac/d88/areas/browser-followup/replay.py`. The script archives the pinned baseline, applies these three tests, checks each mutant independently, and restores production source between cases.
