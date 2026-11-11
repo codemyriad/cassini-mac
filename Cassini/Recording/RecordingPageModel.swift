@@ -21,14 +21,15 @@ private actor RecordingEdits {
 }
 @MainActor @Observable final class RecordingPageModel {
     private static var editors: [String:RecordingPageModel] = [:]
-    static func editor(for meeting: LibraryMeeting) -> RecordingPageModel {
+    static func editor(for meeting: LibraryMeeting,
+                       uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) -> RecordingPageModel {
         // View initializers look this up during rendering; lookup must not
         // publish observed changes back into the same render pass.
         if let model = editors[meeting.folder.path] { return model }
         // Keep the current editor across Back/Open, even before the watcher has
         // observed its last write. Retain older editors only while writes settle.
         editors = editors.filter { $0.value.titleTask != nil }
-        let model = RecordingPageModel(meeting)
+        let model = RecordingPageModel(meeting,uptime:uptime)
         editors[meeting.folder.path] = model; return model
     }
     static func discard(for folder: URL) async {
@@ -59,9 +60,11 @@ private actor RecordingEdits {
     @ObservationIgnored private var titleDirty = false
     @ObservationIgnored private var voiceTask: Task<Void,Never>?
     @ObservationIgnored private var sourceGeneration = 0
-    @ObservationIgnored private var liveAnchor = ProcessInfo.processInfo.systemUptime
+    @ObservationIgnored private let uptime: () -> TimeInterval
+    @ObservationIgnored private var liveAnchor: TimeInterval
     @ObservationIgnored private var liveElapsed: Int64 = 0
-    private init(_ meeting: LibraryMeeting) {
+    private init(_ meeting: LibraryMeeting, uptime: @escaping () -> TimeInterval) {
+        self.uptime = uptime; liveAnchor = uptime()
         self.meeting = meeting; title = meeting.title ?? UXText.text("library.untitled")
         edits = RecordingEdits(directory: meeting.folder, id: meeting.id)
         liveElapsed = meeting.state.liveMs ?? meeting.durationMs ?? 0
@@ -78,7 +81,7 @@ private actor RecordingEdits {
         let elapsed = meeting.state.lifecycle == .recording ? elapsedMs : (meeting.state.liveMs ?? meeting.durationMs ?? liveElapsed)
         self.meeting = meeting
         liveElapsed = meeting.state.lifecycle == .recording ? max(elapsed,meeting.state.liveMs ?? 0) : elapsed
-        liveAnchor = ProcessInfo.processInfo.systemUptime
+        liveAnchor = uptime()
         if !frozen { refreshVoices() }
     }
     private func refreshVoices() {
@@ -131,7 +134,7 @@ private actor RecordingEdits {
         if let owned { return owned.elapsedMs }
         if native { return RecordingController.shared.elapsedMs }
         if frozen || meeting.state.lifecycle != .recording { return meeting.state.liveMs ?? liveElapsed }
-        return liveElapsed + Int64(max(0,ProcessInfo.processInfo.systemUptime - liveAnchor) * 1000)
+        return liveElapsed + Int64(max(0,uptime() - liveAnchor) * 1000)
     }
     var microphone: Float { owned?.levels[.me] ?? (native ? RecordingController.shared.levels["microphone",default:0] : 0) }
     var output: Float { owned?.levels[.others] ?? (native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0)) }
