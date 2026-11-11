@@ -1,0 +1,5 @@
+--- a/Sources/CassiniKit/ZIPArchive.swift
++++ b/Sources/CassiniKit/ZIPArchive.swift
+@@ -207 +207 @@
+-        guard bytes == entry.expandedBytes, checksum == entry.checksum else { throw ZIPFailure.entry }
++        guard bytes == entry.expandedBytes, true else { throw ZIPFailure.entry }

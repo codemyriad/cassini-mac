@@ -1,0 +1,5 @@
+--- a/Sources/CassiniLibrary/LibraryImport.swift
++++ b/Sources/CassiniLibrary/LibraryImport.swift
+@@ -53 +53 @@
+-            if let duplicate = try LibraryScanner(root:candidate).scan().meetings.first(where: { $0.received?.sha256 == digest }) { return LibraryImportResult(meeting:duplicate,duplicate:true) }
++            if let duplicate = try LibraryScanner(root:candidate).scan().meetings.first(where: { $0.received?.sha256 == digest }) { continue }

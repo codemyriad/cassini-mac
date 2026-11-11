@@ -28,31 +28,52 @@ Quit and Library moves cancel/join work; incoming files during the move pause
 wait for the new root. Cancelled save-panel callbacks cannot start a stale
 export. ZIP output uses the existing sandbox-safe atomic SavePanel destination.
 
-## Validation at reboot checkpoint
+## Validation
 
-- 354 affected Kit/Library/Export headless tests pass. The existing security-
-  scoped bookmark test remains assigned to login-session CI.
-- Native app build and final incremental build pass on arm64/Xcode 16.4.
-- Shared catalog hash/used-copy checks and diff whitespace checks pass.
-- Tests cover independent stdlib deflate fixtures, Python reading stored ZIP64,
-  exact decimal 20 GB boundary without allocating huge audio, 2,000/2,001
-  entries, late unsafe/encrypted/Unicode aliases before any import, forged and
-  padded deflate sizes, CRC, runtime budgets, corrupt/oversized members beside
-  good ones, duplicate hashes, nested/symlink skipping, cancellation cleanup,
-  all/selected exports, original bytes, complete words/notes and long names.
-- The actual sandboxed coordinator proof is compiled but NOT YET EXECUTED.
-- Eight production mutations are prepared but NOT YET RUN.
+- 355 affected Kit/Library/Export headless tests pass after ordinary merge of
+  main `5d32593` (#210 included). The existing security-scoped bookmark case
+  remains assigned to login-session CI.
+- The arm64 native app builds with Xcode 16.4. The actual sandboxed coordinator
+  proof passes in the dedicated console user's Aqua session: multiple/ZIP
+  import, dedup, all/selected stored export, original audio bytes, queued cancel,
+  stale save choice rejection and all locale summaries. No devices are opened.
+- 56 CI contracts, shared catalog hash/used-copy checks and whitespace checks
+  pass. An additional own-capture test encodes real PCM into a complete Cassini
+  archive entry with its UTC start and saved annotation.
+- Eight real production mutants fail behavioral assertions, without expectation
+  timeouts. Restored core tests pass; source hashes are in `checkpoint.json`.
 
-Resume: run `scripts/test-bulk-transfer-app.py APP --output OUTPUT` with
-`CASSINI_LOCAL_WORKFLOW_TESTS=1` under `~/bin/heavy-run`. It uses only the
-existing private RAM fixture and tests all/selected, dedup, original bytes,
-queued cancellation and stale SavePanel rejection. The CI boards job now runs
-it too. Run `D96_EVIDENCE_DIR=EXTERNAL ~/bin/heavy-run python3
- evidence/mac/d96/replay-mutations.py` with Xcode 16.4/SDKROOT selected, and copy
-its successful portable mutation receipts here. That runner temporarily
-mutates this checkout and restores every source in finally; run it while no
-other build reads this worktree. Validate source restoration before continuing.
+| Production mutation | Assertion |
+| --- | --- |
+| [unsafe-paths.patch](unsafe-paths.patch) | Parent paths must throw; late unsafe entries publish no member |
+| [entry-count.patch](entry-count.patch) | 2,001 entries refuse the archive |
+| [ratio.patch](ratio.patch) | Declared, padded and forged deflate ratios refuse the archive |
+| [crc.patch](crc.patch) | Corrupt member fails while the good member imports |
+| [runtime-budget.patch](runtime-budget.patch) | Actual expanded bytes cannot exceed the archive budget |
+| [dedup.patch](dedup.patch) | Repeated content is a duplicate, not another imported note |
+| [selected-completeness.patch](selected-completeness.patch) | Missing selected member fails the whole output |
+| [chunk-cancellation.patch](chunk-cancellation.patch) | Cancellation after the first chunk stops further reads |
 
-Full local logs/reference snapshots: `~/coordination/evidence/big-mac-d96/`.
-No PR until #248 is ready; then ONE draft PR with D87, current main included
-normally, under the four-PR cap. No self-merge. No dependency on the #248 branch.
+The independent stdlib fixtures and Python reader also cover ZIP64 stored
+output, the exact decimal 20 GB boundary without huge allocation, 2,000/2,001
+entries, encrypted central/local flags, unsafe Unicode aliases, symlink/nested
+skipping, runtime lengths, complete words/notes, original byte retention,
+long Unicode names and collision suffixes.
+
+Run `scripts/test-bulk-transfer-app.py APP --output OUTPUT` under heavy-run with
+`CASSINI_LOCAL_WORKFLOW_TESTS=1`, in the actual console user's Aqua session.
+It fails early in the wrong local user session; hosted CI uses its real GUI
+session. The first post-reboot Background-session attempt timed out without
+reaching the app proof; the proper Aqua run found a fixture subdirectory typo,
+which was fixed. Successful source/build/GUI logs and discarded attempts stay
+under `~/coordination/evidence/big-mac-d96/`. Verification assets are privately
+cached and checked by the existing source-pin/unsigned-digest validator.
+
+Run `D96_EVIDENCE_DIR=EXTERNAL ~/bin/heavy-run python3
+ evidence/mac/d96/replay-mutations.py` with Xcode 16.4/SDKROOT selected and no
+concurrent build reading this checkout. It restores each source in finally,
+then reruns the core slice. Generated portable patches/receipts go under the
+external `public-mutations` directory. No user files or permissions are changed.
+
+The D96 branch remains independent of #248. Publish ONE draft after #248 is
+ready, include current main by ordinary merge, complete D87, and do not self-merge.

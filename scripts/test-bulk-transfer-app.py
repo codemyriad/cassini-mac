@@ -5,10 +5,20 @@ from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('app',type=Path);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
 hosted=os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted'
 assert hosted or os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS')=='1','Explicit workflow opt-in required'
+if not hosted:
+    assert os.stat('/dev/console').st_uid == os.getuid(), 'Run this app proof in the console user’s Aqua session'
+
 key=str(uuid.uuid4())
-run=subprocess.run([str(a.app.resolve()/'Contents/MacOS/Cassini'),'--bulk-transfer-self-test','--fixture-library-recording',
+a.output.parent.mkdir(parents=True,exist_ok=True)
+try:
+    run=subprocess.run([str(a.app.resolve()/'Contents/MacOS/Cassini'),'--bulk-transfer-self-test','--fixture-library-recording',
  '-CassiniCaptureID',key,'-CassiniSettingsID',key,'-AppleLanguages','(en)','-ApplePersistenceIgnoreState','YES'],
  env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),capture_output=True,text=True,timeout=90)
+except subprocess.TimeoutExpired as error:
+    stderr=error.stderr or b''
+    if isinstance(stderr,bytes): stderr=stderr.decode(errors='replace')
+    a.output.with_suffix('.stderr.txt').write_text(stderr)
+    raise
 a.output.parent.mkdir(parents=True,exist_ok=True);a.output.with_suffix('.stderr.txt').write_text(run.stderr)
 assert run.returncode==0,(run.returncode,run.stdout,run.stderr)
 report=json.loads(run.stdout)

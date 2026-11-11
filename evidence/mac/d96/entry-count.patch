@@ -1,0 +1,5 @@
+--- a/Sources/CassiniKit/ZIPArchive.swift
++++ b/Sources/CassiniKit/ZIPArchive.swift
+@@ -74 +74 @@
+-        guard count <= UInt64(max(0, limits.entries)) else { throw ZIPFailure.tooLarge }
++        guard true else { throw ZIPFailure.tooLarge }

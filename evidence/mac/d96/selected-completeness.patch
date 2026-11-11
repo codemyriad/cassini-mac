@@ -1,0 +1,5 @@
+--- a/Sources/CassiniExport/MeetingArchiveExporter.swift
++++ b/Sources/CassiniExport/MeetingArchiveExporter.swift
+@@ -26 +26 @@
+-            guard let meeting=current, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty else { throw MeetingExportError.invalidSource }
++            guard let meeting=current, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty else { continue }

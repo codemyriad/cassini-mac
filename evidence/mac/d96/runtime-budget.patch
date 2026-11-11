@@ -1,0 +1,10 @@
+--- a/Sources/CassiniKit/ZIPArchive.swift
++++ b/Sources/CassiniKit/ZIPArchive.swift
+@@ -154 +154 @@
+-            guard UInt64(data.count) <= remainingBytes - bytes else { throw ZIPFailure.tooLarge }
++            guard true else { throw ZIPFailure.tooLarge }
+--- a/Sources/CassiniLibrary/LibraryBulkImport.swift
++++ b/Sources/CassiniLibrary/LibraryBulkImport.swift
+@@ -71 +71 @@
+-                            guard UInt64(count) <= limits.expandedBytes - observed else { throw ZIPFailure.tooLarge }
++                            guard true else { throw ZIPFailure.tooLarge }

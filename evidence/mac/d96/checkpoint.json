@@ -1,11 +1,11 @@
 {
-  "baseMain": "9fb263c",
+  "baseMain": "5d32593",
   "stringsPin": "4d577376f6360ed352fa75307f4dc47890ed9858",
-  "affectedTests": 354,
-  "nativeAppBuild": "passed (arm64, Xcode 16.4, ad-hoc sandboxed product)",
+  "affectedTests": 355,
+  "nativeAppBuild": "passed after ordinary main merge; private assets validated against pins/unsigned hashes",
   "sharedCopyCheck": "passed",
-  "sandboxCoordinatorExecution": "pending at coordinator reboot checkpoint",
-  "productionMutations": "prepared, not run",
+  "sandboxCoordinatorExecution": "passed in dedicated console Aqua session",
+  "productionMutations": "8 production guards fail behavioral assertions; restored core 13 passed, additional own-capture test passed",
   "sourceSHA256": {
     "Sources/CassiniKit/ZIPArchive.swift": "5b9febe995a2d1ee942c32af9d6c781a87bf241b478d900ec59d11a0979de93c",
     "Sources/CassiniKit/TransferFile.swift": "208bb285b4cb1246f833a4d1e8006a1d654c383087e554af1c623652468c7b3b",
@@ -15,10 +15,12 @@
     "Sources/CassiniExport/MeetingArchiveExporter.swift": "f375702dfdbe11be3c4068ae48dd785d13073f712c06caa936492c9f7c9dc2df",
     "Cassini/Library/LegacyOpening.swift": "2fa6bae2376dc8d89ec20103f58eb014c36fa1951f38e4076a61deafb4adcc6b",
     "Cassini/Library/LibraryStore.swift": "30488cf35008d8ab427ee0824ad1bcad0ce7602a254a19b60eb8880da2acd7f5",
-    "Cassini/Library/BulkTransferSelfTest.swift": "870ead3c01ddcf1a0879f4bb7b342b57b0c158f3230b2ae25e3d1e3bed13971f",
+    "Cassini/Library/BulkTransferSelfTest.swift": "612ccba209f9ac71ed5c26452a9a50b80bdf101f4b879d7feadaabb9d0cbdf47",
     "Cassini/Library/LibraryView.swift": "7aa13a3af60bb56d882c2b9807664b6213006c5561e733ed84d45f3ecc064206",
     "Cassini/Library/LibraryBulkTransfer.swift": "8c437ff94240b25afea92ce4d9661088061a1ebad597f0d097f79327eb02d367",
     "Cassini/Library/LibraryImportCoordinator.swift": "1cb4a2681546f93d1acda73fc6ff986e8b9cbcdccccf0aabfc27118903f49e52",
-    "Cassini/Export/MeetingExportCoordinator.swift": "d652b5f474e9d5f2ce8ff8b624b1ccc469e2792cd3f1d40cdec26b705579cf07"
-  }
+    "Cassini/Export/MeetingExportCoordinator.swift": "d652b5f474e9d5f2ce8ff8b624b1ccc469e2792cd3f1d40cdec26b705579cf07",
+    "Tests/CassiniExportTests/BulkExportTests.swift": "862c0efbb91433e1625e03040cdfd2f19c0f71e4cff51654ef279709c9463e12"
+  },
+  "ciContracts": 56
 }

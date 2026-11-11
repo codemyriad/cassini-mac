@@ -1,0 +1,11 @@
+--- a/Sources/CassiniKit/ZIPArchive.swift
++++ b/Sources/CassiniKit/ZIPArchive.swift
+@@ -153 +153 @@
+-            try check()
++            
+@@ -164 +164 @@
+-                try check()
++                
+@@ -176 +176 @@
+-                try check()
++                

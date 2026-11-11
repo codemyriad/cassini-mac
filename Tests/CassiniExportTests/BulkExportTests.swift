@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import CassiniKit
 import CassiniLibrary
+import CassiniRecording
 @testable import CassiniExport
 
 struct BulkExportTests {
@@ -20,6 +21,28 @@ struct BulkExportTests {
             try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { $0["title"] = index==0 ? "Budget/Review" : "budget/review" }
         }
         return [first,second]
+    }
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func ownCaptureBecomesACompletePortableArchiveEntry() throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let session=try RecordingSession(parent:root.appendingPathComponent("Library"),title:"English capture",source:"macos")
+        try session.addTrack(id:"mic",label:"Microphone",kind:"microphone",sampleRate:16000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0);try session.finish()
+        try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction {$0["notes"] = [["atMs":0,"text":"Saved annotation"]]}
+        let meeting=try #require(LibraryScanner(root:session.directory.deletingLastPathComponent()).scan().meetings.first)
+        let assetsRoot=URL(fileURLWithPath:try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"]))
+        let hashes=try JSONDecoder().decode([String:String].self,from:Data(contentsOf:assetsRoot.appendingPathComponent("unsigned-sha256.json")))
+        let expected=try #require(hashes["libopus.0.dylib"])
+        let assets=try OpusAssets.builtForTests(directory:assetsRoot,expectedBinarySHA256:expected)
+        let artifact=try MeetingArchiveExporter.make([meeting],assets:assets,temporaryRoot:root)
+        let archive=try ZIPArchive(url:artifact.url);var bytes=Data()
+        #expect(archive.entries.count==1 && archive.entries[0].method==0)
+        try archive.read(archive.entries[0],remainingBytes:20_000_000_000) {bytes.append($0)}
+        let file=try CassiniReader.read(bytes)
+        #expect(file.state == .ok && file.manifest?.meeting.title == "English capture")
+        #expect(file.manifest?.raw["meeting"]?["recordedAtUtc"]?.string?.hasSuffix("Z")==true)
+        #expect(file.manifest?.raw["x"]?["gocassini.com"]?["notes"]?.array?.first?["text"]?.string == "Saved annotation")
+        #expect(try file.audioDigest?.get().channels==1)
     }
     @Test func allAndSelectedKeepOriginalAudioAndUseCollisionSafeNames() throws {
         let root=try root();defer {try? FileManager.default.removeItem(at:root)}

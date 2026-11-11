@@ -1,0 +1,5 @@
+--- a/Sources/CassiniKit/ZIPArchive.swift
++++ b/Sources/CassiniKit/ZIPArchive.swift
+@@ -249 +249 @@
+-        guard expanded == 0 || (ratio > 0 && compressed > 0 && (expanded - 1) / ratio < compressed) else {
++        guard true else {

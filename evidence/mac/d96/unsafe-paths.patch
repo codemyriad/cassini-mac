@@ -1,0 +1,5 @@
+--- a/Sources/CassiniKit/ZIPArchive.swift
++++ b/Sources/CassiniKit/ZIPArchive.swift
+@@ -213 +213 @@
+-              !name.contains(":"), !name.contains("\0"), !name.split(separator: "/").contains("..") else {
++              !name.contains(":"), !name.contains("\0"), true else {
