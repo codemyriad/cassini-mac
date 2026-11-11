@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import Darwin
 
 final class WindowScreenshots: XCTestCase {
     override func setUpWithError() throws {
@@ -27,6 +28,7 @@ final class WindowScreenshots: XCTestCase {
     @MainActor
     private func capture(_ name: String, attachment: String?, withSheet: Bool,
                          dismissUsing key: XCUIKeyboardKey = .return) throws {
+        try dismissDedicatedRunnerNotifications()
         let app = XCUIApplication()
         let fixture = try fixtureDirectory()
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
@@ -70,6 +72,51 @@ final class WindowScreenshots: XCTestCase {
             let resultID = key == .escape ? "cassini-screenshot-kept" : "cassini-screenshot-stopped"
             XCTAssertTrue(app.windows[resultID].waitForExistence(timeout: 5), app.debugDescription)
         }
+    }
+
+    @MainActor private func dismissDedicatedRunnerNotifications() throws {
+        guard ProcessInfo.processInfo.environment["CASSINI_GUI_SCREENSHOTS"] == "1" else { return }
+        let console = try FileManager.default.attributesOfItem(atPath:"/dev/console")[.ownerAccountID] as? NSNumber
+        guard getuid() == 503, console?.uint32Value == 503 else {
+            throw NSError(domain:"CassiniScreenshots",code:2,
+                          userInfo:[NSLocalizedDescriptionKey:"Notification cleanup requires the dedicated CI console"])
+        }
+        let center = XCUIApplication(bundleIdentifier:"com.apple.notificationcenterui")
+        guard center.state != .notRunning else { return }
+        let tree = XCTAttachment(string:center.debugDescription)
+        tree.name = "dedicated-runner-notifications-before"; tree.lifetime = .keepAlways; add(tree)
+        // Notification Center's windows include desktop widgets. Hovering them
+        // activates its panel and invokes Xcode's unrelated interruption handler.
+        // Target only this account's Login Items notices through Finder's real
+        // menu-bar coordinates, preserving the currently foreground application.
+        let finder = XCUIApplication(bundleIdentifier:"com.apple.finder")
+        finder.activate()
+        let anchor = finder.menuBars.firstMatch
+        XCTAssertTrue(anchor.exists)
+        let screen = try XCTUnwrap(NSScreen.screens.first)
+        let display = CGRect(origin:.zero,size:screen.frame.size)
+        let notices = center.descendants(matching:.any)
+            .matching(NSPredicate(format:"label BEGINSWITH %@","Login Items,"))
+        for _ in 0..<10 {
+            guard let notice = notices.allElementsBoundByIndex.first(where:{
+                let visible = $0.frame.intersection(display)
+                return !visible.isNull && visible.width > 0 && visible.height > 0
+            }) else { break }
+            let identifier = notice.identifier
+            let visible = notice.frame.intersection(display), origin = anchor.frame.origin
+            let point = anchor.coordinate(withNormalizedOffset:.zero)
+                .withOffset(CGVector(dx:visible.midX-origin.x,dy:visible.midY-origin.y))
+            point.hover()
+            let close = center.buttons.matching(NSPredicate(format:"label == %@","Close")).firstMatch
+            let available = NSPredicate { _,_ in close.exists && close.isHittable }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:available,object:nil)],timeout:5),.completed,center.debugDescription)
+            let frame = close.frame
+            anchor.coordinate(withNormalizedOffset:.zero)
+                .withOffset(CGVector(dx:frame.midX-origin.x,dy:frame.midY-origin.y)).click()
+            let gone = NSPredicate { _,_ in !notices.matching(identifier:identifier).firstMatch.exists }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:gone,object:nil)],timeout:5),.completed)
+        }
+
     }
 
     private func fixtureDirectory() throws -> URL {

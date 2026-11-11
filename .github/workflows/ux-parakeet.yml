@@ -29,7 +29,7 @@ jobs:
           arch: arm64
         - runner: macos-15-intel
           arch: x86_64
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || matrix.runner }}
     # The hosted Intel row compiles the SwiftPM products itself when they were built in another
     # workspace (a rented Mac): about 3.5 minutes on top of a job that has taken up to 10.
     timeout-minutes: 25

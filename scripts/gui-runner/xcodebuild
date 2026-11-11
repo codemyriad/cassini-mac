@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+# Every heavyweight GUI build/test uses the existing three-slot host allocator.
+# Its explicit root option avoids creating a second per-user pool.
+if [[ ${CASSINI_HEAVY_LOCK_HELD:-0} == 1 || ${1:-} == -version || ${1:-} == -showsdks ]]; then
+  exec /usr/bin/xcodebuild "$@"
+fi
+exec env CASSINI_HEAVY_LOCK_ROOT=/Users/m1 /Users/m1/bin/heavy-run /usr/bin/xcodebuild "$@"
