@@ -31,26 +31,27 @@ def stacks(pid, folder):
             except (OSError,subprocess.SubprocessError) as error: log.write(str(error))
 
 
-def run(command, folder, idle_seconds=120, diagnose=stacks, forward=True):
+def run(command, folder, idle_seconds=120, diagnose=stacks, forward=True,
+        *, clock=time.monotonic, wait_for_output=None):
     folder.mkdir(parents=True,exist_ok=True)
     process = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,start_new_session=True)
-    last = time.monotonic()
     try:
+        last = clock()
         with selectors.DefaultSelector() as events, (folder/'tests.log').open('wb') as log:
             events.register(process.stdout,selectors.EVENT_READ)
             while True:
-                remaining = idle_seconds-(time.monotonic()-last)
+                remaining = idle_seconds-(clock()-last)
                 if remaining <= 0:
                     print(f'No test output for {idle_seconds}s; collecting owned-process stacks before termination',flush=True)
                     try: diagnose(process.pid,folder)
                     except Exception as error: (folder/'diagnostic-error.txt').write_text(str(error))
                     return 124
-                ready = events.select(min(1,remaining))
+                ready = events.select(remaining) if wait_for_output is None else wait_for_output(events,remaining)
                 if not ready: continue
                 chunk = os.read(process.stdout.fileno(),65536)
                 if not chunk: return process.wait(timeout=10)
-                last = time.monotonic();log.write(chunk);log.flush()
+                last = clock();log.write(chunk);log.flush()
                 if forward: sys.stdout.buffer.write(chunk);sys.stdout.buffer.flush()
     finally:
         # Only the process group created here, including stuck fixture children.
