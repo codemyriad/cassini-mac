@@ -15,6 +15,10 @@
 - (void)setSerialNumber:(unsigned int)value;
 - (void)setVendorID:(unsigned int)value;
 - (void)setProductID:(unsigned int)value;
+- (void)setWhitePoint:(CGPoint)value;
+- (void)setRedPrimary:(CGPoint)value;
+- (void)setGreenPrimary:(CGPoint)value;
+- (void)setBluePrimary:(CGPoint)value;
 @end
 @protocol Mode
 - (id)initWithWidth:(unsigned int)width height:(unsigned int)height refreshRate:(double)rate;
@@ -57,6 +61,10 @@ int main(int argc, char **argv) {
         [descriptor setQueue:dispatch_get_main_queue()];
         [descriptor setMaxPixelsWide:1920]; [descriptor setMaxPixelsHigh:1200];
         [descriptor setSizeInMillimeters:CGSizeMake(508, 317.5)];
+        [descriptor setWhitePoint:CGPointMake(0.3127, 0.3290)];
+        [descriptor setRedPrimary:CGPointMake(0.64, 0.33)];
+        [descriptor setGreenPrimary:CGPointMake(0.30, 0.60)];
+        [descriptor setBluePrimary:CGPointMake(0.15, 0.06)];
         [descriptor setSerialNum:50301]; [descriptor setSerialNumber:50301];
         [descriptor setVendorID:505]; [descriptor setProductID:503];
         display = [(id<Display>)[NSClassFromString(@"CGVirtualDisplay") alloc] initWithDescriptor:descriptor];
@@ -67,7 +75,7 @@ int main(int argc, char **argv) {
         id large = [(id<Mode>)[NSClassFromString(@"CGVirtualDisplayMode") alloc] initWithWidth:1920 height:1200 refreshRate:60];
         if (!small || !large) return 69;
         [settings setModes:@[small, large]];
-        CGDisplayRegisterReconfigurationCallback(publish, NULL);
+        if (CGDisplayRegisterReconfigurationCallback(publish, NULL) != kCGErrorSuccess) return 69;
         if (![display applySettings:settings]) return 71;
         publish(0, 0, NULL);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{

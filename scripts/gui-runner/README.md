@@ -4,7 +4,7 @@ These infrastructure helpers belong to the dedicated standard account (UID503),
 not to the app bundle. The operator's replay record and LaunchAgent snapshots are
 in `~/coordination/MACHOST-GUI-RUNNER.md` and `~/coordination/gui-runner/` on the host.
 
-The display helper keeps a1280x960/1920x1200 unscaled virtual display alive in Aqua.
+The display helper keeps a 1280x960/1920x1200 unscaled virtual display alive in Aqua.
 The runner startup script requires the real console account and waits on display
 readiness events. The job hook checks the session and mutes output. Only one
 runner carries `cm-mac-gui`, preserving the full Actions queue while serializing
