@@ -29,6 +29,21 @@ import Foundation
         }
         precondition(!gates("B",0).filter {$0.key != "logicalViewPayload"}.values.contains(true))
         precondition(gates(samples:0)["frameWork"] == false)
+        // Before: 0.48 CPU seconds / 60 host seconds passes at 0.8%, while
+        // the identical work delayed to 120 host seconds appears to cost 0.4%.
+        // After: delivered media work is the only denominator, for both hosts.
+        let work = SpectrogramMediaWork(frames:48_000*60)
+        precondition(work.seconds == 60 && work.corePercent(cpuSeconds:0.48) == 0.8)
+        precondition(work.corePercent(cpuSeconds:0.480001) > 0.8)
+        let half = SpectrogramMediaWork(frames:48_000*30)
+        precondition(half.corePercent(cpuSeconds:0.24) == work.corePercent(cpuSeconds:0.48))
+        precondition(!SpectrogramMediaWork(frames:0).corePercent(cpuSeconds:0).isFinite)
+        precondition(!work.corePercent(cpuSeconds:.nan).isFinite)
+        precondition(!work.corePercent(cpuSeconds:-1).isFinite)
+        for seconds in [60.0,120.0] {
+            precondition(0.48/seconds*100 <= work.corePercent(cpuSeconds:0.48))
+            precondition(!gates(analysis:work.corePercent(cpuSeconds:0.480001))["analysis"]!)
+        }
         // A delayed host callback can have a 121.580 ms wall interval while
         // doing only 1 ms of main-thread work. Wall timestamps are deliberately
         // absent from the input. A real 101 ms CPU interval must still fail.

@@ -138,7 +138,9 @@ jobs:
         BrowserExtension/tests/node_modules/.bin/playwright install chromium
     - name: Extension native-messaging diagnostics survive their worker (D66 mac-P0-1)
       timeout-minutes: 3
-      run: node scripts/test-extension-native-log.mjs
+      run: |
+        node --test scripts/test-native-log-events.mjs
+        node scripts/test-extension-native-log.mjs
     - name: Browser capture scenarios
       timeout-minutes: 8
       run: |

@@ -178,10 +178,27 @@ def record_motion(app: Path, output: Path):
             raise RuntimeError('Real System Settings motion driver failed; see motion-xctest.log')
 
 
-def measure(app: Path, output: Path):
+def check_scheduling(checker: Path, output: Path):
+    output.mkdir(parents=True,exist_ok=True)
+    result = subprocess.run([str(checker.resolve())],capture_output=True,text=True,timeout=60)
+    (output/'controlled-scheduling.stdout.txt').write_text(result.stdout)
+    (output/'controlled-scheduling.stderr.txt').write_text(result.stderr)
+    if result.returncode:
+        raise RuntimeError('Controlled scheduling failed; see controlled-scheduling.stderr.txt')
+    report=json.loads(result.stdout)
+    expected={'nativeSteadyLateZero','browserSteadyLateZero','lateBudgetRejectsEarlyRelease','hiddenZeroWork','noDrops','realAnalysis'}
+    gates=report.get('gates') if isinstance(report,dict) else None
+    if not isinstance(gates,dict) or report.get('audioDevicesOpened') is not False or report.get('virtualClockOnly') is not True or set(gates) != expected or any(value is not True for value in gates.values()):
+        raise RuntimeError('Controlled scheduling proof incomplete or failed')
+    (output/'controlled-scheduling.json').write_text(json.dumps(report,indent=2)+'\n')
+    return report
+
+
+def measure(app: Path, output: Path, scheduling_checker: Path):
     if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
     output.mkdir(parents=True, exist_ok=True)
+    scheduling = check_scheduling(scheduling_checker,output)
     reports = []
     problems = []
     for case in 'ABCDE':
@@ -254,7 +271,7 @@ def measure(app: Path, output: Path):
     baseline = next((r['cpuCorePercent'] for r in reports if r['case'] == 'E'), None)
     for report in reports:
         report['cpuDeltaFromE'] = None if baseline is None else report['cpuCorePercent']-baseline
-    summary = {'measurements': reports, 'problems': problems,
+    summary = {'measurements': reports, 'problems': problems, 'controlledScheduling':scheduling,
                'scope': 'Uninstrumented A–E production analyser/native renderer and sink/owner with generated RAM input. Motion/Settings, Time Profiler and Allocations each use separate diagnostic processes after every timing interval. '
                         'View payload includes actual IOSurface allocation and bounded raw rings, excludes framework/object overhead. '
                         'Actual device capture, WindowServer CPU, Allocations and visual review remain separate QA evidence.'}
@@ -263,7 +280,7 @@ def measure(app: Path, output: Path):
         raise SystemExit('\n'.join(problems))
 
 
-def run(app: Path, output: Path):
+def run(app: Path, output: Path, scheduling_checker: Path):
     if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise SystemExit('Requires a disposable GitHub-hosted Mac; no local desktop test')
     # Hosted images enable Reduce Motion. Measure continuous display-link pacing
@@ -272,7 +289,7 @@ def run(app: Path, output: Path):
     old = subprocess.run(['defaults', 'read', *setting], capture_output=True, text=True)
     try:
         subprocess.run(['defaults', 'write', *setting, '-bool', 'false'], check=True)
-        measure(app, output)
+        measure(app, output, scheduling_checker)
     finally:
         command = ['defaults', 'write', *setting, '-bool', 'true' if old.stdout.strip() == '1' else 'false'] if old.returncode == 0 else ['defaults', 'delete', *setting]
         subprocess.run(command, check=False, capture_output=True)
@@ -282,5 +299,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('app', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--scheduling-checker',type=Path,required=True)
     args = parser.parse_args()
-    run(args.app, args.output)
+    run(args.app, args.output, args.scheduling_checker)
