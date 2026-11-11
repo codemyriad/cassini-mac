@@ -46,7 +46,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Selection-clock-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Selection clock",microphone:true,browser:false)
-        let origin = AVAudioTime.hostTime(forSeconds:100)
+        let origin = mach_absolute_time()
         let now = origin + AVAudioTime.hostTime(forSeconds:2.49075)
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
@@ -56,7 +56,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let event = try XCTUnwrap(owner.snapshot.manifest.events?.last(where:{ $0.type == "selection" }))
         let expected = AVAudioTime.seconds(forHostTime:now-origin)*1000
         XCTAssertEqual(event.atMs,expected,accuracy:0.000001)
-        XCTAssertGreaterThan(event.atMs,2490.663,"the 2490.663ms request must not be backdated to the display's2490ms")
+        XCTAssertGreaterThan(event.atMs,2490.663,"the 2490.663ms request must not be backdated to the display's 2490ms")
         XCTAssertEqual(event.me,false); XCTAssertEqual(event.others,true)
         try await inputs.stop(); try await owner.finish()
     }
