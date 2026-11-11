@@ -19,12 +19,15 @@ daily=load('daily','daily-test-release.py')
 resources=load('resources','release-resources.py')
 
 class DailyPolicy(unittest.TestCase):
-    def test_berlin_slots_follow_dst_and_catch_missed_wake_without_repeating(self):
-        for instant,slot in [('2026-11-11T08:00:00+00:00','2026-11-11T09:00:00+01:00'),
-                             ('2026-07-11T07:00:00+00:00','2026-07-11T09:00:00+02:00'),
-                             ('2026-11-11T12:59:00+00:00','2026-11-11T09:00:00+01:00'),
-                             ('2026-11-11T13:00:00+00:00','2026-11-11T14:00:00+01:00'),
-                             ('2026-11-11T19:00:00+00:00','2026-11-11T20:00:00+01:00')]:
+    def test_utc_slots_are_year_round_and_catch_missed_wake(self):
+        for instant,slot in [('2026-11-11T04:59:59+00:00','2026-11-10T20:00:00+00:00'),
+                             ('2026-11-11T05:00:00+00:00','2026-11-11T05:00:00+00:00'),
+                             ('2026-07-11T05:00:00+00:00','2026-07-11T05:00:00+00:00'),
+                             ('2026-11-11T10:59:59+00:00','2026-11-11T05:00:00+00:00'),
+                             ('2026-11-11T11:00:00+00:00','2026-11-11T11:00:00+00:00'),
+                             ('2026-11-11T19:59:59+00:00','2026-11-11T11:00:00+00:00'),
+                             ('2026-11-11T20:00:00+00:00','2026-11-11T20:00:00+00:00'),
+                             ('2026-07-11T07:00:00+02:00','2026-07-11T05:00:00+00:00')]:
             self.assertEqual(daily.due_slot(datetime.fromisoformat(instant)),slot)
 
     def test_only_latest_successful_ci_for_exact_main_is_admitted(self):

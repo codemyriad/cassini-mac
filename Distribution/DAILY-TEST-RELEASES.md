@@ -5,7 +5,7 @@ drmeyers. It installs only main into a private dedicated checkout and starts a
 local LaunchAgent. It does not install a GitHub self-hosted signing runner or move
 credentials. A loaded agent must finish and be unloaded before reinstalling.
 
-The agent checks for due09:00/14:00/20:00 Europe/Berlin slots, including DST and
+The agent checks for due05:00/11:00/20:00 UTC slots year-round, including
 missed wakes, and for successful `Request Mac test release` workflow_dispatch
 requests on main. Minute pulses discover requests; each slot/request is consumed
 once, without sleep or retry loops. Manual workflow status records a request,

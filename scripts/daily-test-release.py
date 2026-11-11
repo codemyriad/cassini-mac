@@ -14,7 +14,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-from zoneinfo import ZoneInfo
 
 REPO='codemyriad/cassini-mac'
 ORIGIN='https://github.com/'+REPO
@@ -22,7 +21,6 @@ HOME=Path.home()
 BASE=HOME/'.local/share/cassini-mac-test-releases'
 SOURCE=BASE/'source'
 INBOX=HOME/'dev/cassini-coordination/NOTIFICATIONS-MAC-TEST-RELEASES.log'
-BERLIN=ZoneInfo('Europe/Berlin')
 REQUEST='request-mac-test-release.yml'
 
 
@@ -46,9 +44,9 @@ def atomic(path,value):
 
 
 def due_slot(now):
-    local=now.astimezone(BERLIN)
+    local=now.astimezone(timezone.utc)
     candidates=[local.replace(hour=hour,minute=0,second=0,microsecond=0)-timedelta(days=day)
-                for day in (0,1) for hour in (9,14,20)]
+                for day in (0,1) for hour in (5,11,20)]
     return max(slot for slot in candidates if slot<=local).isoformat()
 
 
