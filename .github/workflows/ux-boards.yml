@@ -126,20 +126,23 @@ jobs:
     name: Library boards
   # D66: 52 UI tests took 14.9 min, then native A–E/profiling took another
   # ~9 min. Together they exhausted the 25 min job during cleanup despite every
-  # assertion passing (42395485443). Measure on a separate hosted display, with
+  # assertion passing (42395485443). Measure on a separate qualified display, with
   # the same products, inputs and budgets; leave each job time to upload evidence.
   spectrogram:
     name: Native spectrogram and profiling
     needs: [build, release]
     if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
-    runs-on: macos-15
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 15
     steps:
+    - name: Clean interrupted profiling DerivedData
+      run: rm -rf -- "$RUNNER_TEMP/cassini-native-profiling-derived-data"
     - uses: actions/checkout@v5
     # D66: the cold-host diagnostic42584372604 records mds_stores at182% CPU
     # after restoring the SDKs. Apply the same disposable-runner precondition
     # as browser audio CI before extraction queues more indexing work.
     - name: Disable Spotlight indexing on the disposable native runner
+      if: runner.environment == 'github-hosted'
       run: |
         test "$RUNNER_ENVIRONMENT" = github-hosted
         sudo mdutil -a -i off
@@ -148,12 +151,14 @@ jobs:
       with:
         debug: 'true'
         release: 'true'
-    - run: test "$RUNNER_ENVIRONMENT" = github-hosted
-    - run: brew install displayplacer
+    - name: Require qualified GUI session
+      run: python3 scripts/gui_session.py
+    - run: command -v displayplacer >/dev/null || brew install displayplacer
     - uses: actions/setup-python@v5
+      if: runner.environment == 'github-hosted'
       with:
         python-version: '3.12'
-    - name: Prepare hosted display
+    - name: Prepare qualified display
       run: python3 scripts/hosted-display.py
     - name: Pure hosted budget policy boundaries (D36.2)
       run: |
@@ -161,8 +166,12 @@ jobs:
         "$RUNNER_TEMP/spectrogram-budget"
     - name: Production spectrogram A–E, native views and Time Profiler without devices
       timeout-minutes: 12
+      env:
+        CASSINI_SPECTRO_DERIVED_DATA: ${{ runner.temp }}/cassini-native-profiling-derived-data
       run: |
         python3 scripts/test-spectrogram-harness.py
+        swiftc Spikes/Spectrogram/Host.swift Spikes/Spectrogram/CheckHost.swift -o build/check-spectrogram-host
+        build/check-spectrogram-host
         xcrun swiftc -O -parse-as-library Spikes/Spectrogram/PixelOracle.swift Spikes/Spectrogram/CheckPixelOracle.swift -o build/check-spectrogram-pixels
         build/check-spectrogram-pixels
         xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
@@ -176,3 +185,6 @@ jobs:
         retention-days: 14
         name: ux-spectrogram
         path: build/ux-boards/spectrogram
+    - name: Clean profiling DerivedData after artifact upload
+      if: always()
+      run: rm -rf -- "$RUNNER_TEMP/cassini-native-profiling-derived-data"

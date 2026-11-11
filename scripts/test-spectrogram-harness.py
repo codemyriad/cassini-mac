@@ -18,6 +18,15 @@ spec = importlib.util.spec_from_file_location('spectro_harness',Path(__file__).w
 harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harness)
 
+class HostAdmission(unittest.TestCase):
+    def test_rejected_host_cannot_mutate_settings_or_start_measurement(self):
+        for entry in [harness.measure,harness.run]:
+            with self.subTest(entry=entry.__name__), patch.object(harness,'check',side_effect=ValueError('unqualified')), patch.object(harness.subprocess,'run') as run:
+                with self.assertRaisesRegex(ValueError,'unqualified'):
+                    entry(Path('/private/probe.app'),Path('/private/output'),Path('/private/checker'))
+                run.assert_not_called()
+
+
 class MotionCompletion(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

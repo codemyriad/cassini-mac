@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Hosted-only production native-view A–E spectrogram measurements, no devices."""
+"""Qualified-GUI production native-view A–E spectrogram measurements, no devices."""
 import argparse
 from contextlib import contextmanager
 import ctypes
@@ -13,6 +13,7 @@ import threading
 import signal
 from pathlib import Path
 import subprocess
+from gui_session import check
 
 
 def relay_motion_ack(line: str, request: Path) -> bool:
@@ -138,6 +139,7 @@ def record_motion(app: Path, output: Path):
     motion_log = (output/'motion-xctest.log').open('w')
     motion_driver = subprocess.Popen(['xcodebuild', 'test-without-building', '-xctestrun', str(spec),
         '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
+                '-derivedDataPath', os.environ.get('CASSINI_SPECTRO_DERIVED_DATA',str(output/'DerivedData')),
         '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
         '-resultBundlePath', str(output/'Motion.xcresult')],
         env=motion_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -195,8 +197,7 @@ def check_scheduling(checker: Path, output: Path):
 
 
 def measure(app: Path, output: Path, scheduling_checker: Path):
-    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
-        raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
+    check()
     output.mkdir(parents=True, exist_ok=True)
     scheduling = check_scheduling(scheduling_checker,output)
     reports = []
@@ -235,6 +236,9 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
         reports.append(report)
         if report['reducedMotion']:
             problems.append(f'{case}: system remained in Reduced Motion during normal-motion pacing measurement')
+        print(f"{case}: frame CPU samples={report['frameCPUSamples']}, "
+              f"p95={report['p95FrameCPUMs']:.3f} ms (B/D limit 17.5), "
+              f"max={report['maxFrameCPUMs']:.3f} ms (B/D limit 100)",flush=True)
         for name, passed in report['gates'].items():
             if not passed:
                 problems.append(f'{case}: {name} budget failed')
@@ -281,8 +285,7 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
 
 
 def run(app: Path, output: Path, scheduling_checker: Path):
-    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
-        raise SystemExit('Requires a disposable GitHub-hosted Mac; no local desktop test')
+    check()
     # Hosted images enable Reduce Motion. Measure continuous display-link pacing
     # using the real system preference, never an injected renderer override.
     setting = ['com.apple.universalaccess', 'reduceMotion']

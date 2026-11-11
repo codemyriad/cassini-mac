@@ -84,7 +84,7 @@ class Selection(unittest.TestCase):
 
 class NativeSpectrogramScheduling(unittest.TestCase):
     """The measured 15 min boards + 9 min native probe must not share a 25 min job."""
-    def test_native_measurements_have_their_own_bounded_hosted_job(self):
+    def test_native_measurements_have_their_own_bounded_gui_job(self):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
         boards, native = jobs['boards'], jobs['spectrogram']
@@ -92,7 +92,7 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         self.assertNotIn('test-spectrogram-app.py',boards)
         self.assertNotIn("release: 'true'",boards)
         self.assertNotIn('needs: [boards]',native)
-        for requirement in ['runs-on: macos-15','needs: [build, release]',
+        for requirement in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-15' }}",'needs: [build, release]',
                             'inputs.products_ready','!cancelled()',
                             "debug: 'true'","release: 'true'",'github-hosted',
                             'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
@@ -253,7 +253,7 @@ class RentedRunnerRouting(unittest.TestCase):
             for route in re.findall(r'^    runs-on: (.+)$',path.read_text(),re.M):
                 if 'vars.CM_MAC' in route:
                     routes.append((path.name,route))
-        self.assertEqual(len(routes),8)
+        self.assertEqual(len(routes),9)
         events=['push','schedule','workflow_dispatch','pull_request',
                 'pull_request_target','workflow_run','issue_comment','workflow_call',
                 'release','repository_dispatch','deployment_status','check_run','unknown']
@@ -341,8 +341,17 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('CM_MAC_RUNNER',gui,name)
 
         boards=(ROOT/'.github/workflows/ux-boards.yml').read_text()
-        self.assertNotIn('CM_MAC_GUI_RUNNER',boards)
-        self.assertIn('runs-on: macos-15',boards)
+        board_job=boards.split('  boards:',1)[1].split('  spectrogram:',1)[0]
+        self.assertNotIn('CM_MAC_GUI_RUNNER',board_job)
+        self.assertIn('runs-on: macos-15',board_job)
+        native=boards.split('  spectrogram:',1)[1]
+        self.assertIn('vars.CM_MAC_GUI_RUNNER',native)
+        self.assertIn('python3 scripts/gui_session.py',native)
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- uses: actions/setup-python'))
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- name: Disable Spotlight'))
+        self.assertIn('command -v displayplacer',native)
+        self.assertIn('Clean interrupted profiling DerivedData',native)
+        self.assertIn('Clean profiling DerivedData after artifact upload',native)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
