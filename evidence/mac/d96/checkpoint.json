@@ -33,5 +33,18 @@
       "result": "actual sandbox publication assertion fails without a timeout"
     }
   ],
-  "manualProofGuard": "console ownership and idle GUI runner required"
+  "manualProofGuard": "console ownership and idle GUI runner required",
+  "sandboxCoordinatorSourceHead": "b83493b95bb0067bc26f90154750d2f4bf9178ef",
+  "sandboxCoordinatorReport": {
+    "audioDevicesOpened": false,
+    "localizedSummary": true,
+    "multipleImport": true,
+    "ordinaryDedup": true,
+    "originalAudioBytes": true,
+    "queuedCancellation": true,
+    "selectedExport": true,
+    "staleSaveChoiceRejected": true,
+    "storedAllExport": true,
+    "zipImport": true
+  }
 }
