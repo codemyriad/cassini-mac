@@ -12,7 +12,7 @@
   {
     "case": "ratio",
     "test": "refusedArchivesPublishNoMember",
-    "failure": "\u2718 Test refusedArchivesPublishNoMember(mode:failure:) recorded an issue with 2 arguments mode \u2192 \"forged-deflate\", failure \u2192 .tooLarge at BulkImportTests.swift:19:9: Expectation failed: (result.archives \u2192 []) == ([failure] \u2192 [CassiniKit.ZIPFailure.tooLarge])"
+    "failure": "\u2718 Test refusedArchivesPublishNoMember(mode:failure:) recorded an issue with 2 arguments mode \u2192 \"ratio\", failure \u2192 .tooLarge at BulkImportTests.swift:19:9: Expectation failed: (result.archives \u2192 []) == ([failure] \u2192 [CassiniKit.ZIPFailure.tooLarge])"
   },
   {
     "case": "crc",
@@ -27,16 +27,21 @@
   {
     "case": "dedup",
     "test": "supportedMembersUseOrdinaryDedupAndPreserveNames",
-    "failure": "\u2718 Test supportedMembersUseOrdinaryDedupAndPreserveNames(_:) recorded an issue with 1 argument mode \u2192 \"symlink\" at BulkImportTests.swift:32:9: Expectation failed: (repeated.imported==0 \u2192 false) && (repeated.duplicates >= 1 \u2192 <not evaluated>)"
+    "failure": "\u2718 Test supportedMembersUseOrdinaryDedupAndPreserveNames(_:) recorded an issue with 1 argument mode \u2192 \"deflated\" at BulkImportTests.swift:32:9: Expectation failed: (repeated.imported==0 \u2192 false) && (repeated.duplicates >= 1 \u2192 <not evaluated>)"
   },
   {
     "case": "selected-completeness",
     "test": "cancellationAndMissingSelectionMemberRemovePartialArchive",
-    "failure": "\u2718 Test cancellationAndMissingSelectionMemberRemovePartialArchive() recorded an issue at BulkExportTests.swift:71:9: Expectation failed: an error was expected but none was thrown and \"CassiniExport.ExportArtifact\" was returned"
+    "failure": "\u2718 Test cancellationAndMissingSelectionMemberRemovePartialArchive() recorded an issue at BulkExportTests.swift:111:9: Expectation failed: an error was expected but none was thrown and \"CassiniExport.ExportArtifact\" was returned"
   },
   {
     "case": "chunk-cancellation",
     "test": "limitsAndCancellationAreCheckedDuringStreaming",
     "failure": "\u2718 Test limitsAndCancellationAreCheckedDuringStreaming() recorded an issue at ZIPArchiveTests.swift:39:9: Expectation failed: an error was expected but none was thrown and \"200000\" was returned"
+  },
+  {
+    "case": "local-title",
+    "test": "renamedPlainAudioKeepsItsTitleAndAudioOnAnotherImport|completeDocumentsKeepWordsAndNewNotesWhileOpaqueFilesKeepEveryByte",
+    "failure": "\u2718 Test renamedPlainAudioKeepsItsTitleAndAudioOnAnotherImport() recorded an issue at BulkExportTests.swift:96:9: Expectation failed: (file.state == .ok \u2192 false) && (file.manifest?.meeting.title == \"Renamed locally\" \u2192 <not evaluated>)"
   }
 ]

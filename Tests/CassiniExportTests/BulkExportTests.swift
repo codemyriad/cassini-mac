@@ -13,13 +13,12 @@ struct BulkExportTests {
     }
     private func pair(_ root:URL) throws -> [LibraryMeeting] {
         let source=try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
-        let first=try LibraryImport.copy(source,into:root.appendingPathComponent("Library"))
+        let firstSource=root.appendingPathComponent("First.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:source),tags:PortableMeetingTags.packet(comments:[.init(name:"TITLE",value:"Budget/Review")]),to:firstSource)
+        let first=try LibraryImport.copy(firstSource,into:root.appendingPathComponent("Library"))
         let other=root.appendingPathComponent("Other.opus")
-        _ = try OpusStreamFile.rewrite(Data(contentsOf:source),tags:PortableMeetingTags.packet(comments:[.init(name:"TITLE",value:"Second original")]),to:other)
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:source),tags:PortableMeetingTags.packet(comments:[.init(name:"TITLE",value:"budget/review")]),to:other)
         let second=try LibraryImport.copy(other,into:root.appendingPathComponent("Library"))
-        for (index,meeting) in [first,second].enumerated() {
-            try MeetingMetadataWriter(directory:meeting.folder,id:meeting.id).transaction { $0["title"] = index==0 ? "Budget/Review" : "budget/review" }
-        }
         return [first,second]
     }
     @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
@@ -82,6 +81,24 @@ struct BulkExportTests {
         let rawArchive=try ZIPArchive(url:raw.url);var carried=Data()
         try rawArchive.read(rawArchive.entries[0],remainingBytes:20_000_000_000) {carried.append($0)}
         #expect(carried == (try Data(contentsOf:opaque)))
+        try MeetingRename.apply("Opaque local rename",to:imported)
+        #expect(throws:MeetingExportError.invalidSource) {try MeetingArchiveExporter.make([imported],assets:nil,temporaryRoot:root)}
+    }
+    @Test func renamedPlainAudioKeepsItsTitleAndAudioOnAnotherImport() throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let meeting=try #require(pair(root).first)
+        let before=try Data(contentsOf:meeting.audioFiles[0])
+        try MeetingRename.apply("Renamed locally",to:meeting)
+        let artifact=try MeetingArchiveExporter.make([meeting],assets:nil,temporaryRoot:root)
+        let archive=try ZIPArchive(url:artifact.url);var bytes=Data()
+        try archive.read(archive.entries[0],remainingBytes:20_000_000_000) {bytes.append($0)}
+        let file=try CassiniReader.read(bytes)
+        #expect(file.state == .ok && file.manifest?.meeting.title == "Renamed locally")
+        #expect(try file.audioDigest?.get() == CassiniReader.read(before).audioDigest?.get())
+        let portable=root.appendingPathComponent("Transfer.opus");try bytes.write(to:portable)
+        let received=try LibraryImport.copy(portable,into:root.appendingPathComponent("Another Library"))
+        #expect(received.title == "Renamed locally")
+        #expect(try Data(contentsOf:meeting.audioFiles[0]) == before)
     }
     @Test func cancellationAndMissingSelectionMemberRemovePartialArchive() throws {
         let root=try root();defer {try? FileManager.default.removeItem(at:root)}

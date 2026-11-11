@@ -19,6 +19,7 @@ cases=[
  ('dedup','supportedMembersUseOrdinaryDedupAndPreserveNames',[('Sources/CassiniLibrary/LibraryImport.swift','return LibraryImportResult(meeting:duplicate,duplicate:true)','continue')]),
  ('selected-completeness','cancellationAndMissingSelectionMemberRemovePartialArchive',[('Sources/CassiniExport/MeetingArchiveExporter.swift','guard let meeting=current, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty else { throw MeetingExportError.invalidSource }','guard let meeting=current, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty else { continue }')]),
  ('chunk-cancellation','limitsAndCancellationAreCheckedDuringStreaming',[]),
+ ('local-title','renamedPlainAudioKeepsItsTitleAndAudioOnAnotherImport|completeDocumentsKeepWordsAndNewNotesWhileOpaqueFilesKeepEveryByte',[('Sources/CassiniExport/MeetingArchiveExporter.swift','let titleEdited = stored?["titleSource"]?.string == "user"','let titleEdited = false')]),
 ]
 results=[]
 for name,test,edits in cases:

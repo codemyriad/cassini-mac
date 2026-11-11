@@ -15,7 +15,7 @@ Bulk imports call the ordinary lock/digest importer and keep completed notes
 on cancellation. Private ZIP/member staging is removed on every exit.
 The Library picker/drop route accepts several files and ZIP; native Library
 selection supports all/selected stored ZIP export with collision suffixes.
-Audio-only Opus bytes remain original; known Cassini documents use the existing
+Unedited audio-only Opus bytes remain original; known Cassini documents use the existing
 complete-document export including current notes. Opaque documents retain all
 original bytes. Opaque documents with local-only edits fail the whole export
 rather than silently discard those edits. Missing/unexportable selected notes
@@ -30,7 +30,7 @@ export. ZIP output uses the existing sandbox-safe atomic SavePanel destination.
 
 ## Validation
 
-- 355 affected Kit/Library/Export headless tests pass after ordinary merge of
+- 356 affected Kit/Library/Export headless tests pass after ordinary merge of
   main `5d32593` (#210 included). The existing security-scoped bookmark case
   remains assigned to login-session CI.
 - The arm64 native app builds with Xcode 16.4. The actual sandboxed coordinator
@@ -40,7 +40,7 @@ export. ZIP output uses the existing sandbox-safe atomic SavePanel destination.
 - 56 CI contracts, shared catalog hash/used-copy checks and whitespace checks
   pass. An additional own-capture test encodes real PCM into a complete Cassini
   archive entry with its UTC start and saved annotation.
-- Eight real production mutants fail behavioral assertions, without expectation
+- Nine real production mutants fail behavioral assertions, without expectation
   timeouts. Restored core tests pass; source hashes are in `checkpoint.json`.
 
 | Production mutation | Assertion |
@@ -52,6 +52,7 @@ export. ZIP output uses the existing sandbox-safe atomic SavePanel destination.
 | [runtime-budget.patch](runtime-budget.patch) | Actual expanded bytes cannot exceed the archive budget |
 | [dedup.patch](dedup.patch) | Repeated content is a duplicate, not another imported note |
 | [selected-completeness.patch](selected-completeness.patch) | Missing selected member fails the whole output |
+| [local-title.patch](local-title.patch) | User renames survive import elsewhere; opaque local edits refuse export |
 | [chunk-cancellation.patch](chunk-cancellation.patch) | Cancellation after the first chunk stops further reads |
 
 The independent stdlib fixtures and Python reader also cover ZIP64 stored

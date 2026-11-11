@@ -32,13 +32,15 @@ public enum MeetingArchiveExporter {
                 guard meeting.audioFiles.count == 1, let original=meeting.audioFiles.first else { throw MeetingExportError.invalidSource }
                 try TransferFile.copy(original,to:raw,limit:UInt64(UInt32.max),check:check)
                 let file = try CassiniReader.read(Data(contentsOf:raw,options:.mappedIfSafe))
+                let stored = try CodemyriadNamespace.current(meeting)
+                let titleEdited = stored?["titleSource"]?.string == "user"
                 // An audio-only import keeps its original bytes/container. Opaque documents
                 // also keep every unknown payload instead of being rebuilt from partial metadata.
                 let opaque = [.invalidCassiniMetadata,.unknownCassiniFormat,.staleAudio,.unverified].contains(file.state)
                 if opaque {
-                    guard meeting.notes.isEmpty, meeting.writtenTranscriptItems.isEmpty else { throw MeetingExportError.invalidSource }
+                    guard !titleEdited, meeting.notes.isEmpty, meeting.writtenTranscriptItems.isEmpty else { throw MeetingExportError.invalidSource }
                     source=raw
-                } else if file.state == .plainAudio && meeting.notes.isEmpty && meeting.writtenTranscriptItems.isEmpty {
+                } else if file.state == .plainAudio && !titleEdited && meeting.notes.isEmpty && meeting.writtenTranscriptItems.isEmpty {
                     source=raw
                 }
             }

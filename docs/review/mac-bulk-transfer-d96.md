@@ -47,7 +47,7 @@ Partial archives remain private and are removed on failure/cancel.
 | Own PCM capture | Complete Cassini Opus through the existing encoder/exporter |
 | Known Cassini document | Complete document including current notes/transcripts and preserved foreign payloads |
 | Plain Opus without local content edits | Original Opus bytes/container |
-| Plain Opus with notes/transcript | Existing complete-document exporter preserves those edits without changing the audio |
+| Plain Opus with a local title, notes or transcript | Existing complete-document exporter preserves those edits without changing the audio |
 | Opaque/newer/damaged/stale document without local-only edits | Original document bytes |
 | Opaque document with local-only edits | Whole export fails; unsupported metadata is not rebuilt and edits are not silently dropped |
 
@@ -73,8 +73,8 @@ ZIP-specific implementation.
 
 ## Evidence
 
-355 affected headless tests, the arm64 app build, 56 CI contract tests and
-shared-copy validation pass. Eight core production mutations fail behavioral
+356 affected headless tests, the arm64 app build, 56 CI contract tests and
+shared-copy validation pass. Nine core production mutations fail behavioral
 assertions. Two native mutations respectively disable actual task cancellation
 or the save-choice generation guard; the genuine sandboxed publication proof
 fails and passes again after restoration. Its queued-cancel input is fresh and

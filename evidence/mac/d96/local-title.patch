@@ -1,0 +1,5 @@
+--- a/Sources/CassiniExport/MeetingArchiveExporter.swift
++++ b/Sources/CassiniExport/MeetingArchiveExporter.swift
+@@ -36 +36 @@
+-                let titleEdited = stored?["titleSource"]?.string == "user"
++                let titleEdited = false
