@@ -109,6 +109,12 @@ struct MeetingPositionSlider: View {
         report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && slider.doubleValue == initialPosition
         report["nativePointerKeepsTranscriptFocus"] = window.firstResponder === editor
         report["nativeMouseUpDoesNotRepeatSeek"] = values.count == 1
+        pointer(center+5,center+25,center+25)
+        let expected = initialPosition + 20/slider.track.width*slider.maxValue
+        report["nativeMouseDragUsesWindowCoordinates"] = values.count == 2 && abs(slider.doubleValue-expected) < 0.001
+        if report["nativeMouseDragUsesWindowCoordinates"] == false {
+            NSLog("Native drag proof: values=%@ expected=%f width=%f center=%f",String(describing:values),expected,slider.track.width,Double(center))
+        }
         var exactGrabs = true
         for width in [CGFloat(171),240,691] {
             slider.frame.size.width = width
@@ -121,9 +127,6 @@ struct MeetingPositionSlider: View {
         }
         report["nativeThumbGrabPreservesExactValues"] = exactGrabs
         slider.frame.size.width = 240; slider.doubleValue = initialPosition
-        pointer(center+5,center+25,center+25)
-        let expected = initialPosition + 20/slider.track.width*slider.maxValue
-        report["nativeMouseDragUsesWindowCoordinates"] = values.count == 2 && abs(slider.doubleValue-expected) < 0.001
         pointer(-100,nil,-100)
         let atStart = slider.doubleValue == 0
         pointer(1000,nil,1000)
