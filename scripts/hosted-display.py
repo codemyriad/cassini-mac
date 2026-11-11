@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import re
 import subprocess
-import time
 
 if os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted" or os.environ.get("GITHUB_ACTIONS") != "true":
     raise SystemExit("Display mode changes are restricted to GitHub-hosted Actions")
@@ -51,13 +50,10 @@ selection = {"displayId": display_id, "mode": mode, "width": width, "height": he
 (root / "display-selection.json").write_text(json.dumps(selection, indent=2) + "\n")
 print("Selecting", selection, flush=True)
 subprocess.run(["displayplacer", f"id:{display_id} mode:{mode}"], check=True, timeout=20)
-# The command can silently fall back to a different mode; verify readback.
-for attempt in range(10):
-    after = main_display(listing("display-after.txt"))
-    actual = re.search(r"^Resolution: (\d+)x(\d+)$", after, re.MULTILINE)
-    if actual and tuple(map(int, actual.groups())) == (width, height) and "Scaling: off" in after:
-        print(f"Verified unscaled hosted display: {width}×{height}", flush=True)
-        break
-    time.sleep(0.3)
-else:
+# displayplacer completes the Quartz configuration transaction before exiting.
+# Verify the applied mode and reject a silent fallback.
+after = main_display(listing("display-after.txt"))
+actual = re.search(r"^Resolution: (\d+)x(\d+)$", after, re.MULTILINE)
+if not actual or tuple(map(int, actual.groups())) != (width, height) or "Scaling: off" not in after:
     raise SystemExit("Selected display mode did not take effect")
+print(f"Verified unscaled hosted display: {width}×{height}", flush=True)
