@@ -102,14 +102,15 @@ struct MeetingPositionSlider: View {
             slider.mouseDown(with:event(.leftMouseDown,down))
             drain()
         }
-        slider.doubleValue = 10000
+        let initialPosition = 10001.25
+        slider.doubleValue = initialPosition
         let center = cell.knobRect(flipped:slider.isFlipped).midX
         pointer(center+5,nil,center+5)
-        report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && abs(slider.doubleValue-10000) < 0.001
+        report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && abs(slider.doubleValue-initialPosition) < 0.001
         report["nativePointerKeepsTranscriptFocus"] = window.firstResponder === editor
         report["nativeMouseUpDoesNotRepeatSeek"] = values.count == 1
         pointer(center+5,center+25,center+25)
-        let expected = 10000 + 20/slider.track.width*slider.maxValue
+        let expected = initialPosition + 20/slider.track.width*slider.maxValue
         report["nativeMouseDragUsesWindowCoordinates"] = values.count == 2 && abs(slider.doubleValue-expected) < 0.001
         pointer(-100,nil,-100)
         let atStart = slider.doubleValue == 0
@@ -239,7 +240,10 @@ private struct NativeMeetingSlider: NSViewRepresentable {
             guard let window, let cell = cell as? NSSliderCell else { return }
             let knob = cell.knobRect(flipped:isFlipped)
             let point = convert(event.locationInWindow,from:nil)
-            let offset = NSMouseInRect(point,knob,isFlipped) ? point.x-knob.midX : 0
+            // Native knob geometry is pixel-rounded. Preserve the numeric value
+            // under a thumb grab instead of inverse-mapping its rounded center.
+            let offset = NSMouseInRect(point,knob,isFlipped)
+                ? point.x-CGFloat(track.x(at:doubleValue,duration:maxValue)) : 0
             // macOS27's click animation can restore its unsnapped destination
             // after the action has snapped the value. Track pointer events with
             // public APIs; keyboard and accessibility still use NSSlider.
