@@ -830,7 +830,8 @@ final class LibraryBoards: XCTestCase {
         app.menuBars.menuBarItems["File"].click()
         XCTAssertFalse(app.menuItems["Rename…"].isEnabled,"Use the Recording page field while live")
         app.typeKey(.escape,modifierFlags:[])
-        let openLabel = window.buttons["recording-open-current"].label
+        let openRecording = window.buttons["recording-open-current"]
+        let openLabel = openRecording.label
         XCTAssertTrue(openLabel.hasPrefix("Open recording, "))
         XCTAssertEqual(window.buttons["recording-stop"].label,"Stop recording")
         for key in ["w","q"] {
@@ -840,7 +841,9 @@ final class LibraryBoards: XCTestCase {
             let stayed = NSPredicate { _,_ in window.exists && !window.sheets.firstMatch.exists && window.buttons["recording-page-stop"].exists }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stayed,object:nil)],timeout:5),.completed,app.debugDescription)
         }
-        XCTAssertNotEqual(window.buttons["recording-open-current"].label,openLabel,"Elapsed accessible time advances while the recording runs")
+        let labelUpdated = NSPredicate(format:"exists == true AND label BEGINSWITH %@ AND label != %@", "Open recording, ", openLabel)
+        let update = XCTNSPredicateExpectation(predicate:labelUpdated,object:openRecording)
+        XCTAssertEqual(XCTWaiter.wait(for:[update],timeout:5),.completed,"Elapsed accessible time advances while the recording runs")
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
