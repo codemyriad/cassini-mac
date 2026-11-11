@@ -23,86 +23,122 @@ struct PlayerBar: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 14) {
-            HStack(spacing: 4) {
-                Button {
-                    session.seek(toMs: player.currentMs - PlayerController.skipMs)
-                } label: {
-                    Image(systemName: "gobackward.10")
-                        .font(.system(size: 20))
-                        .frame(width: 36, height: 36)
-                }
-                .help(UXText.text("player.back10"))
-                .accessibilityLabel(UXText.text("player.back10"))
-
-                Button {
-                    player.toggle()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.accentColor, in: Circle())
-                        .contentShape(Circle())
-                }
-                .help(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
-                .accessibilityLabel(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
-
-                Button {
-                    session.seek(toMs: player.currentMs + PlayerController.skipMs)
-                } label: {
-                    Image(systemName: "goforward.10")
-                        .font(.system(size: 20))
-                        .frame(width: 36, height: 36)
-                }
-                .help(UXText.text("player.forward10"))
-                .accessibilityLabel(UXText.text("player.forward10"))
+        ViewThatFits(in:.horizontal) {
+            HStack(spacing:14) {
+                transport
+                elapsed
+                seek
+                remaining
+                speed
+                follow
             }
-            .buttonStyle(.borderless)
+            VStack(spacing:6) {
+                HStack(spacing:10) {
+                    transport
+                    elapsed
+                    seek
+                    remaining
+                }
+                HStack(spacing:14) {
+                    Spacer(minLength:0)
+                    speed
+                    follow
+                }
+            }
+        }
+        .padding(.horizontal,16)
+        .padding(.vertical,10)
+        .disabled(player.playbackError != nil)
+        .onChange(of:session.follow) { _,on in
+            if on { session.jumpToCurrent() }
+        }
+    }
 
-            Text(formatClock(player.currentMs))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 34, alignment: .trailing)
-
-            Slider(
-                value: Binding(
-                    get: { Double(player.currentMs) },
-                    set: { session.seek(toMs: Int($0)) }
-                ),
-                in: 0...Double(max(player.durationMs, 1))
-            )
-            .controlSize(.small)
-            .accessibilityLabel(UXText.text("player.position"))
-
-            Text("-" + formatClock(max(0, player.durationMs - player.currentMs)))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 42, alignment: .leading)
+    private var transport: some View {
+        HStack(spacing: 4) {
+            Button {
+                session.seek(toMs: player.currentMs - PlayerController.skipMs)
+            } label: {
+                Image(systemName: "gobackward.10")
+                    .font(.system(size: 20))
+                    .frame(width: 36, height: 36)
+            }
+            .help(UXText.text("player.back10"))
+            .accessibilityLabel(UXText.text("player.back10"))
 
             Button {
-                player.cycleSpeed()
+                player.toggle()
             } label: {
-                Text(speedLabel)
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .frame(minWidth: 36)
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor, in: Circle())
+                    .contentShape(Circle())
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help(UXText.text("player.speed.a11y",["rate":speedLabel]))
-            .accessibilityLabel(UXText.text("player.speed.a11y",["rate":speedLabel]))
+            .help(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
+            .accessibilityLabel(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
 
-            Toggle(UXText.text("mac.legacy.followAlong"), isOn: $session.follow)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(session.timeline == nil)
-                .onChange(of: session.follow) { _, on in
-                    if on { session.jumpToCurrent() }
-                }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .disabled(player.playbackError != nil)
+            Button {
+                session.seek(toMs: player.currentMs + PlayerController.skipMs)
+            } label: {
+                Image(systemName: "goforward.10")
+                    .font(.system(size: 20))
+                    .frame(width: 36, height: 36)
+            }
+            .help(UXText.text("player.forward10"))
+            .accessibilityLabel(UXText.text("player.forward10"))
+    }
+    .buttonStyle(.borderless)
+    }
+
+    private var elapsed: some View {
+        Text(formatClock(player.currentMs))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 34, alignment: .trailing)
+    }
+
+    private var seek: some View {
+        Slider(
+            value: Binding(
+                get: { Double(player.currentMs) },
+                set: { session.seek(toMs: Int($0)) }
+            ),
+            in: 0...Double(max(player.durationMs, 1))
+        )
+        .controlSize(.small)
+        .accessibilityLabel(UXText.text("player.position"))
+    }
+
+    private var remaining: some View {
+        Text("-" + formatClock(max(0, player.durationMs - player.currentMs)))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 42, alignment: .leading)
+    }
+
+    private var speed: some View {
+        Button {
+            player.cycleSpeed()
+        } label: {
+            Text(speedLabel)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .frame(minWidth: 36)
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .help(UXText.text("player.speed.a11y",["rate":speedLabel]))
+    .accessibilityLabel(UXText.text("player.speed.a11y",["rate":speedLabel]))
+    }
+
+    private var follow: some View {
+        Toggle(UXText.text("mac.legacy.followAlong"), isOn: $session.follow)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .disabled(session.timeline == nil)
+            // Measure the full caption before choosing the compact layout.
+            .fixedSize(horizontal:true,vertical:false)
     }
 
     /// format.playbackRate with the rate written for the region (D50.3), as on the meeting page.
