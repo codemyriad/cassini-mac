@@ -369,22 +369,14 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
         // NSSlider has no XCTest normalized-adjustment AX parameter on macOS.
         // Exercise pointer seeking, the same path whose snapping this test proves.
-        // Read the current AppKit control's thumb geometry. The regular thumb is
-        // 24 points on macOS 15 and 20 on macOS 27; a hardcoded 12-point inset
-        // turns the intended five-point near miss into a miss outside six points.
-        let native = NSSlider(frame:NSRect(origin:.zero,size:slider.frame.size))
-        let cell = try XCTUnwrap(native.cell as? NSSliderCell)
-        let knob = cell.knobRect(flipped:native.isFlipped).width
-        XCTAssertGreaterThan(knob,0)
-        let inset = knob/2, travel = slider.frame.width-knob
-        let far = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:inset+travel*0.8,dy:slider.frame.height/2))
+        let far = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*0.8,dy:slider.frame.height/2))
         far.click()
         let moved = NSPredicate { _,_ in slider.value as? String != "00:03:08" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:moved,object:nil)],timeout:5),.completed)
         let farValue = slider.value as? String
         // This fixture has 22,600,000 frames at 8 kHz (2825 seconds).
-        // Marks share the native thumb's center travel.
-        let point = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:inset+travel*188000/2825000+5,dy:slider.frame.height/2))
+        // Native regular NSSlider uses a 24-point knob; marks share its center travel.
+        let point = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*188000/2825000+5,dy:slider.frame.height/2))
         point.click()
         let snapped = NSPredicate { _,_ in slider.value as? String == "00:03:08" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:snapped,object:nil)],timeout:5),.completed,"A five-point near miss selects the exact turn")
