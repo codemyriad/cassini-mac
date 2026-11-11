@@ -1,6 +1,6 @@
 # STATUS aws-claude: final handoff
 
-Written: 2026-11-10 21:45 UTC on the rented AWS Mac (terminated 2026-11-11 09:30 UTC, disk deleted).
+Written: 2026-11-10 21:45 UTC, updated 2026-11-11 01:05 UTC at handover, on the rented AWS Mac (terminated 2026-11-11 09:30 UTC, disk deleted).
 This file is also pushed: branch `ci/rented-mac-intel-handoff` of codemyriad/cassini-mac,
 `evidence/mac/rented-runner-intel/aws-handoff-2026-11-11/STATUS-AWS-CLAUDE.md`.
 
@@ -18,18 +18,24 @@ test jobs pass under Rosetta 2, with seconds of queue when a rented runner is fr
 - **Handoff branch** `ci/rented-mac-intel-handoff`: this file and a copy of the PR body. No pull request; nothing to merge.
 - Nothing of value exists only on this Mac. Local clone: ~/agents/claude-mac (clean, equal to origin).
 
-## State of CI on the head 512e842 (run 42898914490)
-- Green on self-hosted `cm-mac-m4` runners: Build products x86_64 (51 s) and arm64 (6m07), Package tests (macos-15-intel) (1m01), Whistle worker (macos-15-intel) (3m10), Whistle worker (macos-15) (6m05).
-- Still queued for GitHub-hosted runners at 21:42 UTC (since 20:56): kit, Release build, window screenshots, Browser setup (macos-15 and macos-15-intel), Whistle app bundle. Boards and Parakeet start after the Release build.
-- **The head is not fully green and the PR is draft.**
-- On earlier heads of the same change these hosted jobs passed: kit, window screenshots, both browser-setup rows, Release build, Whistle app bundle. **Boards and Parakeet have never run on this branch.**
+## Handover (2026-11-11 01:05 UTC)
+The coordinator handed #217 to the drmeyers Mac agent. aws-claude has stopped. The PR description of #217
+carries the same "Handover" section (done / left).
 
-## What remains (for whoever continues; no Mac needed)
+## State of CI on the head 512e842 (run 42898914490) at 01:05 UTC
+- 12 jobs green, none failed.
+  - Self-hosted `cm-mac-m4`: Build products x86_64 (51 s) and arm64 (6m07), Package tests (macos-15-intel) (1m01), Whistle worker (macos-15-intel) (3m10), Whistle worker (macos-15) (6m05).
+  - Hosted: kit, Release build, window screenshots, Browser setup macos-15 and macos-15-intel (Intel row 13 min, limit 25), Whistle app bundle. Hosted queue waits were 1.5 to 3.5 hours.
+- Not finished: Parakeet (macos-15) running since 01:04; Parakeet (macos-15-intel), Library boards, Native spectrogram and profiling queued for hosted runners.
+- **The head is not fully green and the PR is draft.** Parakeet and boards have never finished on this branch.
+
+## What remains (for the drmeyers Mac agent; no AWS Mac needed)
 1. Watch run 42898914490: `gh run view 42898914490 -R codemyriad/cassini-mac`.
-2. When every job is green on 512e842: `gh pr ready 217 -R codemyriad/cassini-mac`. Update the "Validation" and "#19" lines of the PR body first (they say "run in progress / not yet").
-3. If the hosted **Parakeet Intel** row fails or times out: it is the job behind the major review item. It now compiles SwiftPM itself (about 3.5 min, workspace fence) and has a 25 min limit. Look at the duration of its `ci-products` step.
-4. If main moves and conflicts: merge main in (no force-push). Conflict-prone files: `scripts/ci-products.py`, `scripts/test-ci-contract.py`, `.github/workflows/ux-whistle.yml`, `.github/actions/ci-products/action.yml`.
+2. If the hosted **Parakeet Intel** row fails or times out: it is the job behind the major review item. It now compiles SwiftPM itself (about 3.5 min, workspace fence) and has a 25 min limit. Look at the duration of its `ci-products` step.
+3. main moved by four merges (#212, #219, #221, #224; now 65bf9be) since my last merge of main. GitHub reports MERGEABLE; the only workflow file main touched is `ux-boards.yml`. Merge main in before ready (no force-push); that starts a new run. I did not merge it, so as not to discard the hosted jobs still in the queue.
+4. When a run is fully green: update the "Validation" and "#19" lines of the PR body, then `gh pr ready 217 -R codemyriad/cassini-mac`.
 5. One open point for the reviewer: the Mach-O check requires a test bundle of the named architecture but not an executable (review asked for both), because the two-path fixture of `scripts/test-ci-product-paths.py` has a library and tests only. Present executables are still checked.
+6. After 2026-11-11 09:30 UTC only the two Scaleway runners carry `cm-mac-m4`; timings in the table are mostly from the AWS runners.
 
 ## Measurements (details in evidence/mac/rented-runner-intel/README.md)
 | Job | Rented M4 | Rented queue (runner free) | Hosted Intel 2026-11-10, run median / queue median |

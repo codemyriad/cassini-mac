@@ -1,5 +1,23 @@
 Follow-up to #208, which is merged. Based on main (b1b031b merged in). Head 512e842 adds the review fixes listed below.
 
+## Handover (2026-11-11 01:05 UTC)
+
+The aws-claude agent stops here; the drmeyers Mac agent continues this pull request.
+
+**Done**
+- Routing, measurements, evidence and the fixes for the agy review (one major, three minors) are pushed. Head is 512e842; nothing is unpushed.
+- Run 42898914490 on that head: 12 jobs green, none failed.
+
+**Left**
+1. Wait for the last four jobs of run 42898914490: `Parakeet (macos-15)` (running), `Parakeet (macos-15-intel)`, `Library boards`, `Native spectrogram and profiling` (queued for hosted runners).
+2. If `Parakeet (macos-15-intel)` fails or times out, look at its `ci-products` step first. It now compiles SwiftPM itself on the hosted runner and its limit was raised from 15 to 25 minutes for that; this is the major review item and it has not yet been observed.
+3. main has moved by four merges (#212, #219, #221, #224) since the last merge of main. GitHub reports no conflict. The only workflow file main touched is `ux-boards.yml`. Merge main in before ready (no force-push); that starts a new run.
+4. When a run is fully green: update "Validation" and "#19" below, then mark ready.
+5. Open point for the reviewer: the architecture check requires an x86_64/arm64 test bundle but not an executable (the review asked for both), because the two-path fixture of `scripts/test-ci-product-paths.py` has a library and tests only. Executables that are present are still checked.
+6. The AWS Mac (runners aws-m4-mac-1/2) is terminated 2026-11-11 09:30 UTC. After that only the two Scaleway runners carry `cm-mac-m4`, and new Scaleway-only timings may differ from the table below.
+
+Longer notes: branch `ci/rented-mac-intel-handoff`, `evidence/mac/rented-runner-intel/aws-handoff-2026-11-11/STATUS-AWS-CLAUDE.md`.
+
 ## Why
 
 Today the hosted `macos-15-intel` jobs waited a long time for a runner: the x86_64 build queued 2 to 82 minutes (median 19), `Package tests` 7 to 100 minutes (median 30), the Intel Whistle worker 3 to 130 minutes (median 13). #208 moves the ARM jobs to the rented M4 Macs. This does the same for the Intel jobs that can run headless.
@@ -58,7 +76,7 @@ The Intel Whistle report from CI records `architecture: x86_64`, and its JFK tra
 ## Validation
 
 - Run 42886796075 on 16adaac (before the review fixes): every self-hosted job green, and on hosted runners kit, window screenshots, `Browser setup (macos-15-intel)` and the Whistle app bundle green; the Release build and `Browser setup (macos-15)` were still queued after 55 minutes when the fix commit replaced the run.
-- Head 512e842: run in progress. **Not yet green.** Boards and Parakeet have not run on any head of this branch.
+- Head 512e842, run 42898914490, state at 2026-11-11 01:05 UTC: 12 jobs green. Self-hosted: both builds, `Package tests (macos-15-intel)`, both Whistle workers. Hosted: kit, Release build, window screenshots, both browser-setup rows (the Intel row took 13 minutes under its 25-minute limit), Whistle app bundle. `Parakeet (macos-15)` is running; `Parakeet (macos-15-intel)` and the two boards jobs are queued for hosted runners. **Not yet fully green.** Parakeet and boards have never finished on any head of this branch.
 - Earlier runs of the routing commit (42881438155, 42883023952) were also green on every self-hosted job.
 - After #208 merged, about a dozen pull-request runs restarted and filled all four `cm-mac-m4` runners; the three routed test jobs of this run waited 22 to 25 minutes for a rented runner. With the Intel jobs routed as well, four runners is the capacity to watch.
 - #208's two-path product test (`scripts/test-ci-product-paths.py`) passes locally with this branch's `ci-products.py`.
@@ -76,7 +94,8 @@ Against `~/coordination/BUG-CLASSES.md` (D87).
 - **#16 Platform:** checked. No global machine state is changed by a job except installing Rosetta 2. Python is linked inside `RUNNER_TEMP`, per job. A rented Mac never extracts products of another workspace (#208) and rebuilds for the job's architecture (`test_relocated_swiftpm_is_not_extracted_and_builds_in_the_consumer`).
 - **#17 Wall clock:** checked. No elapsed-time assertions added. The new concurrent-install test is gated on events (it reads the waiting runner's message before letting the fake installer finish). Two job timeouts were raised for the measured extra compile, see above. Note: `scripts/test-whistle-worker.py` has existing fixed timeouts (10 s per subprocess, 3 s orphan deadline); one local run failed while this shared Mac had a load average above 500, and six repeats passed.
 - **#18 Stacking:** checked. #208 is merged; this is based on main with main merged in.
-- **#19 Ready means green:** not yet. Draft again after review; the run on 512e842 is in progress.
+- **#19 Ready means green:** not yet. Still draft: four hosted jobs of run 42898914490 have not finished (see Handover).
 - **#1, #2, #4 to #13:** not applicable. No app, rendering, ordering, search, chip, preview, format or localized-copy change.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
