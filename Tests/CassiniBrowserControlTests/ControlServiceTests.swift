@@ -316,8 +316,9 @@ final class ControlServiceTests: XCTestCase {
         return url
     }
     func send(_ value: [String:Any], _ client: PipeEndpoint) throws { try client.send(JSONSerialization.data(withJSONObject:value)) }
-    func hello(_ client: PipeEndpoint) throws {
-        try send(["type":"hello","version":1,"capabilities":["independent-sessions-v1"]],client)
+    func hello(_ client: PipeEndpoint, heartbeat: Bool = false) throws {
+        let capabilities = ["independent-sessions-v1"] + (heartbeat ? ["heartbeat-v1"] : [])
+        try send(["type":"hello","version":1,"capabilities":capabilities],client)
         try send(["type":"meetings","meetings":[["tabId":2,"title":"Call","url":"https://meet.example/call","sourceCount":2]]],client)
     }
     func status(_ recording: Bool) -> [String:Any] {
@@ -331,13 +332,14 @@ final class ControlServiceTests: XCTestCase {
     func testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let announced = expectation(description:"auto start acknowledged"), notifications = NotificationCount()
+        let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let service = BrowserControlService(changed:{ _ in },completed:{ result,automatic in
             if result.ok && result.action == .start && automatic { notifications.increment(); announced.fulfill() }
-        })
+        },clock:{ clock.now() },received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:false)
         let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
-        try hello(client); try send(status(false),client)
+        try hello(client,heartbeat:true); try send(status(false),client)
         let start = try receive(client)
         XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["captureLocal"]?.bool,false)
         XCTAssertEqual(start["microphone"]?.bool,false); XCTAssertEqual(notifications.value,0)
@@ -346,23 +348,56 @@ final class ControlServiceTests: XCTestCase {
         service.stopRecordings()
         let stop = try receive(client); XCTAssertEqual(stop["action"]?.string,"stop"); XCTAssertEqual(stop["tabId"]?.int,2)
         try send(["type":"result","requestId":try XCTUnwrap(stop["requestId"]?.string),"ok":true,"status":status(false)],client)
+        let stopped = expectation(description:"Stopped status applied")
+        frames.expect("status",stopped)
         try send(status(false),client)
-        XCTAssertThrowsError(try receive(client,seconds:0.2))
+        wait(for:[stopped],timeout:3)
+        clock.advance(); service.tickHeartbeats()
+        XCTAssertTrue(try framesThroughHeartbeat(client).isEmpty,"A stopped call must not restart")
         XCTAssertEqual(notifications.value,1)
     }
     func testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
-        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in })
+        let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
+        let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },clock:{ clock.now() },received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:true)
         let existing = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
-        try hello(existing); try send(status(true),existing)
+        let bound = expectation(description:"Existing profile's first status applied")
+        frames.expect("status",bound)
+        try hello(existing,heartbeat:true); try send(status(true),existing)
+        wait(for:[bound],timeout:3)
         let fresh = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
-        try hello(fresh)
-        XCTAssertThrowsError(try receive(fresh,seconds:0.2))
+        let inventory = expectation(description:"Fresh profile inventory applied without status")
+        frames.expect("meetings",inventory)
+        try hello(fresh,heartbeat:true)
+        wait(for:[inventory],timeout:3)
+        // Before its first status the fresh peer cannot heartbeat. Its first Start
+        // is the output barrier: any premature Start carries the old mic choice.
+        service.setAutoRecord(true,microphone:false)
+        let reconciled = expectation(description:"Fresh profile's own first status applied")
+        frames.expect("status",reconciled)
         try send(status(false),fresh)
-        XCTAssertEqual(try receive(fresh)["action"]?.string,"start")
-        XCTAssertThrowsError(try receive(existing,seconds:0.2))
+        let start = try receive(fresh)
+        XCTAssertEqual(start["action"]?.string,"start")
+        XCTAssertEqual(start["tabId"]?.int,2)
+        XCTAssertEqual(start["microphone"]?.bool,false,"Start must wait for this profile's own first status")
+        wait(for:[reconciled],timeout:3)
+        clock.advance(); service.tickHeartbeats()
+        XCTAssertTrue(try framesThroughHeartbeat(fresh).isEmpty,"Only one fresh-profile Start")
+        XCTAssertTrue(try framesThroughHeartbeat(existing).isEmpty,"The recording profile must stay separate")
+    }
+    /// Every frame before the ordered heartbeat is inspected. EOF and timeout throw;
+    /// neither can prove that a command was absent.
+    private func framesThroughHeartbeat(_ client: PipeEndpoint) throws -> [JSON] {
+        var frames: [JSON] = []
+        for _ in 0..<64 {
+            let frame = try receive(client)
+            if frame["type"]?.string == "ping" { return frames }
+            frames.append(frame)
+        }
+        XCTFail("Missing heartbeat output barrier")
+        throw BrowserIPCError.timeout
     }
     func testMalformedPeerDisconnectDoesNotDisableAHealthyProfile() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -406,4 +441,11 @@ private final class SignalFrameWaiter: @unchecked Sendable {
         }
         event?.fulfill()
     }
+}
+
+private final class IPCBarrierClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: UInt64 = 1_000_000
+    func now() -> UInt64 { lock.withLock { value } }
+    func advance() { lock.withLock { value += ControlHeartbeat.interval } }
 }

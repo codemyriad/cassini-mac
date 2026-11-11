@@ -21,6 +21,7 @@ final class NativeFixtureInputs: @unchecked Sendable {
         buffer.frameLength = 8000
         for index in 0..<8000 { buffer.floatChannelData![0][index] = 0.125 }
         sink.receive(buffer,hostTime:origin,id:"mic",label:"Generated microphone",kind:"microphone")
+        sink.flush()
     }
     func stop(_ capture: OwnedBrowserCapture, reply: @escaping @Sendable (String?) -> Void) {
         let sink = lock.withLock { sinks.removeValue(forKey:capture.snapshot.manifest.id) }
@@ -72,6 +73,7 @@ final class TransportClosures: @unchecked Sendable {
 }
 final class AudioFixture {
     let root: URL, ipc: URL, broker: BrowserAudioBroker, service: BrowserControlService
+    let microphones = FixtureMicrophones()
     let closures = TransportClosures()
     var clients: [NativeAudioClient] = []
     init(stop: BrowserNativeStop? = nil, beforeCreate: (@Sendable () -> Void)? = nil,
@@ -83,8 +85,9 @@ final class AudioFixture {
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         ipc = root.appendingPathComponent("ipc")
         let library = root.appendingPathComponent("Library"), inputs = NativeFixtureInputs()
+        let microphones = microphones
         let closures = closures
-        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in created(owner,info); inputs.started(owner,info:info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
+        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in created(owner,info); inputs.started(owner,info:info); if info.microphone { microphones.recorded(owner.snapshot.directory.path) } },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
                                     transportClosed:{ closures.fire() },ownership:ownership)
         service = BrowserControlService(changed:changed,completed:{ _,_ in },audio:broker,canStart:canStart,clock:controlClock,ownership:ownership)
         try service.start(root:ipc)
@@ -121,14 +124,18 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
     }
     func testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory() async throws {
         let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0), finished = StopCount()
-        let fixture = try AudioFixture(beforeCreate:{ entered.signal(); _ = release.wait(timeout:.now() + 5) })
+        let fixture = try AudioFixture(beforeCreate:{ entered.signal(); release.wait() })
         do {
             let client = try fixture.client(), broker = fixture.broker
             let starting = Task.detached { try client.request(self.start("pending-folder")) }
             XCTAssertEqual(entered.wait(timeout:.now() + 3),.success)
             broker.closeAdmission()
+            let waiting = expectation(description:"Shutdown registered its folder-creation wait")
+            broker.observeShutdownWait { waiting.fulfill() }
+            defer { broker.observeShutdownWait(nil) }
             let closing = Task { await broker.finishAll(); finished.increment() }
-            try await Task.sleep(for:.milliseconds(50))
+            await fulfillment(of:[waiting],timeout:3)
+            broker.observeShutdownWait(nil)
             XCTAssertEqual(finished.value,0,"Quit must wait for the owned folder factory")
             release.signal()
             let response = try await starting.value
@@ -138,23 +145,27 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertNotEqual(saved.state,"recording")
             let rejected = try fixture.client()
             XCTAssertEqual(try rejected.request(start("after-shutdown"))["code"]?.string,"state")
-        } catch { release.signal(); await fixture.finish(); throw error }
+        } catch { fixture.broker.observeShutdownWait(nil); release.signal(); await fixture.finish(); throw error }
         await fixture.finish()
     }
     func testConcurrentAppStopsAndQuitShareOneNativeDrain() async throws {
-        let calls = StopCount()
-        let fixture = try AudioFixture(stop:{ _,reply in
-            calls.increment()
-            DispatchQueue.global().asyncAfter(deadline:.now() + 0.05) { reply(nil); reply("Late duplicate reply") }
-        })
+        let calls = StopCount(), pending = PendingNativeStop(duplicate:true)
+        defer { pending.release() }
+        let fixture = try AudioFixture(stop:{ _,reply in calls.increment(); pending.hold(reply) })
         do {
             let client = try fixture.client(); _ = try client.request(start("stopping"))
             _ = try client.request(track()); _ = try client.request(audio())
             let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
             let broker = fixture.broker
+            let entered = expectation(description:"Every concurrent finalization joined the owned drain")
+            entered.expectedFulfillmentCount = 21
+            await broker.observeFinalization { entered.fulfill() }
             try await withThrowingTaskGroup(of:Void.self) { group in
                 for _ in 0..<20 { group.addTask { try await broker.finish(owner) } }
                 group.addTask { await broker.finishAll() }
+                await fulfillment(of:[pending.entered,entered],timeout:3)
+                await broker.observeFinalization(nil)
+                pending.release()
                 try await group.waitForAll()
             }
             try await fixture.broker.finish(owner)
@@ -162,7 +173,7 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(owner.snapshot.phase,.saved)
             XCTAssertNil(owner.snapshot.manifest.problem)
             XCTAssertTrue(fixture.broker.activeCaptures.isEmpty)
-        } catch { await fixture.finish(); throw error }
+        } catch { await fixture.broker.observeFinalization(nil); pending.release(); await fixture.finish(); throw error }
         await fixture.finish()
     }
     func start(_ id: String, mic: Bool = false) -> [String:Any] {
@@ -177,8 +188,13 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             let a = try first.request(start("one",mic:true)), b = try second.request(start("two"))
             XCTAssertEqual(a["type"]?.string,"started"); XCTAssertNotEqual(a["path"]?.string,b["path"]?.string)
             for client in [first,second] { XCTAssertEqual(try client.request(track())["type"]?.string,"ack"); XCTAssertEqual(try client.request(audio())["type"]?.string,"ack") }
-            let deadline = Date().addingTimeInterval(3)
-            while !fixture.broker.activeCaptures.contains(where:{ $0.snapshot.me && $0.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } }) && Date() < deadline { try await Task.sleep(nanoseconds:10_000_000) }
+            let path = try XCTUnwrap(a["path"]?.string)
+            let owned = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == path })
+            XCTAssertTrue(owned.snapshot.me,"The requested microphone must be part of the owned capture")
+            if owned.snapshot.me {
+                let microphone = fixture.microphones.expect(path:path)
+                await fulfillment(of:[microphone],timeout:3)
+            }
             XCTAssertEqual(try first.request(["type":"stop"])["type"]?.string,"stopped")
             XCTAssertEqual(try second.request(audio(1,offset:1000))["type"]?.string,"ack")
             XCTAssertEqual(try second.request(["type":"stop"])["type"]?.string,"stopped")
@@ -366,22 +382,49 @@ private final class PendingNativeStop: @unchecked Sendable {
     let entered = XCTestExpectation(description:"native Stop is pending")
     private let lock = NSLock()
     private var released = false
-    private var reply: (@Sendable (String?) -> Void)?
+    private let duplicate: Bool
+    init(duplicate: Bool = false) { self.duplicate = duplicate; entered.assertForOverFulfill = false }
+    private var replies: [@Sendable (String?) -> Void] = []
     func hold(_ callback: @escaping @Sendable (String?) -> Void) {
         let immediate = lock.withLock {
             if released { return true }
-            reply = callback
+            replies.append(callback)
             return false
         }
         entered.fulfill()
-        if immediate { callback(nil) }
+        if immediate { callback(nil); if duplicate { callback("Late duplicate reply") } }
     }
     func release() {
-        let callback = lock.withLock {
+        let callbacks = lock.withLock {
             released = true
-            defer { reply = nil }
-            return reply
+            defer { replies.removeAll() }
+            return replies
         }
-        callback?(nil)
+        for callback in callbacks {
+            callback(nil)
+            if duplicate { callback("Late duplicate reply") }
+        }
+    }
+}
+
+/// The fixture flushes generated PCM before publishing this per-capture event.
+final class FixtureMicrophones: @unchecked Sendable {
+    private let lock = NSLock()
+    private var completed: Set<String> = []
+    private var waiting: [String:[XCTestExpectation]] = [:]
+    func expect(path: String) -> XCTestExpectation {
+        let event = XCTestExpectation(description:"Generated microphone PCM flushed: \(path)")
+        let ready = lock.withLock { () -> Bool in
+            if completed.contains(path) { return true }
+            waiting[path,default:[]].append(event); return false
+        }
+        if ready { event.fulfill() }
+        return event
+    }
+    func recorded(_ path: String) {
+        let events = lock.withLock { () -> [XCTestExpectation] in
+            completed.insert(path); return waiting.removeValue(forKey:path) ?? []
+        }
+        for event in events { event.fulfill() }
     }
 }
