@@ -53,6 +53,7 @@ import Darwin
     #if DEBUG
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
     @ObservationIgnored private var failedFixtureOnce = false
+    @ObservationIgnored var fixtureAcceptance: ((URL,String) async -> Void)?
     @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
     #endif
     // Persist accepted queue intent before any inactive folder can move.
@@ -124,6 +125,9 @@ import Darwin
                 var arguments: [String] = model.map { ["--model",$0.lease.directory.path] } ?? []
                 activeModel = model == nil ? "whistle" : "parakeet"
                 #if DEBUG
+                if SettingsFixture.id != nil, let acceptance = fixtureAcceptance {
+                    await acceptance(meeting.folder,activeModel ?? "")
+                }
                 if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniFailTranscriptionOnce") == "YES", !failedFixtureOnce {
                     failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
                 }

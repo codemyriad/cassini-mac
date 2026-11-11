@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -709 +709 @@
+-            peer.meetings = meetings
++            peer.meetings = meetings; peer.reconciled = true

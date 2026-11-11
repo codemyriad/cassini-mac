@@ -1,0 +1,24 @@
+Building for debugging...
+[0/25] Write sources
+[1/25] Write swift-version--79AA4F9932D1E87A.txt
+[3/5] Emitting module CassiniPlayback
+[4/5] Compiling CassiniPlayback SessionPlayback.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking CassiniKitPackageTests
+Build complete! (3.08s)
+Test Suite 'Selected tests' started at 2026-11-10 14:38:13.923.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 14:38:13.924.
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 14:38:13.924.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 14:38:13.924.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite SessionPlaybackTests started.
+◇ Test abandonedPreparationIsCancelledWithItsOwner() started.
+✘ Test abandonedPreparationIsCancelledWithItsOwner() recorded an issue at SessionPlaybackTests.swift:178:9: Expectation failed: (weakState == nil → true) && (task.isCancelled → false)
+✘ Test abandonedPreparationIsCancelledWithItsOwner() recorded an issue at SessionPlaybackTests.swift:180:9: Expectation failed: (cancelled → XCTWaiterResult(rawValue: 2)) == (.completed → XCTWaiterResult(rawValue: 1))
+✘ Test abandonedPreparationIsCancelledWithItsOwner() failed after 5.331 seconds with 2 issues.
+✘ Suite SessionPlaybackTests failed after 5.331 seconds with 2 issues.
+✘ Test run with 1 test failed after 5.331 seconds with 2 issues.

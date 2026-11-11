@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
++++ b/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
+@@ -314 +314 @@
+-            shutdownWaitRegistered?()
++            // Mutation drops the registration event.

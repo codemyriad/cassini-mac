@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Testing
+import XCTest
 @testable import CassiniLibrary
 @testable import CassiniPlayback
 
@@ -162,16 +163,22 @@ import Testing
         #expect(fake.plays == 2 && !state.isPlaying && fake.closes == 1)
     }
     @Test func abandonedPreparationIsCancelledWithItsOwner() async {
-        let fake = FakeTransport()
+        let fake = FakeTransport(), gate = PreparationGate()
         var state: SessionPlayback? = SessionPlayback(build: { _ in
-            try await Task.sleep(for: .seconds(60))
+            await gate.wait()
+            try Task.checkCancellation()
             return SessionTimeline(asset: AVMutableComposition(), storage: PlaybackStorage())
         }, makeTransport: { _ in fake })
         weak var weakState = state
         state!.toggle(meeting())
         let task = state!.preparation!
+        let entered = await XCTWaiter.fulfillment(of:[gate.entered],timeout:5)
+        #expect(entered == .completed)
         state = nil
         #expect(weakState == nil && task.isCancelled)
+        let cancelled = await XCTWaiter.fulfillment(of:[gate.cancelled],timeout:5)
+        #expect(cancelled == .completed)
+        await gate.release()
         await task.value
         #expect(fake.plays == 0)
     }
@@ -186,5 +193,25 @@ import Testing
             title: "Test", start: nil, durationMs: 1000, speakers: [], quote: nil, notes: [], audioFiles: [], issues: [])
         meeting.audioTracks = [.init(url: URL(fileURLWithPath: "/tmp/track-test.wav"), startOffsetMs: 0, frameCount: 8000)]
         return meeting
+    }
+}
+
+private actor PreparationGate {
+    nonisolated let entered = XCTestExpectation(description:"Playback preparation entered")
+    nonisolated let cancelled = XCTestExpectation(description:"Playback preparation cancellation delivered")
+    private var continuation: CheckedContinuation<Void,Never>?
+    private var released = false
+    func wait() async {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if released { continuation.resume() }
+                else { self.continuation = continuation }
+                entered.fulfill()
+            }
+        } onCancel: { cancelled.fulfill() }
+    }
+    func release() {
+        released = true
+        continuation?.resume(); continuation = nil
     }
 }
