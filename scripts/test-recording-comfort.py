@@ -15,8 +15,9 @@ args = parser.parse_args()
 hosted = os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
 assert hosted or os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit hosted/local workflow opt-in required'
 environment = dict(os.environ, CASSINI_HOSTED_SCREENSHOTS='1')
+key = str(uuid.uuid4())
 command = [str(args.app.resolve()/'Contents/MacOS/Cassini'), '--recording-comfort-self-test',
-           '--fixture-library-recording', '-CassiniCaptureID', str(uuid.uuid4()), '-CassiniSilentMicrophone', 'YES',
+           '--fixture-library-recording', '-CassiniCaptureID', key, '-CassiniSettingsID', key, '-CassiniSilentMicrophone', 'YES',
            '-CassiniDiskFree', str(20 << 30), '-CassiniDiskTotal', str(100 << 30)]
 args.output.mkdir(parents=True, exist_ok=True)
 try:

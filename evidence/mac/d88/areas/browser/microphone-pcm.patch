@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
++++ b/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
+@@ -245 +245 @@
+-        do { capture = try make(title,info.microphone) }
++        do { capture = try make(title,false) }

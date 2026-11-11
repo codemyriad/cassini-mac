@@ -274,7 +274,7 @@ import Observation
     func seek(_ ms: Int) {
         let ms = max(0, min(durationMs, ms))
         if frozen { fixturePosition = ms; return }
-        audio.prepare(playbackMeeting); audio.seek(toMs: Double(ms))
+        audio.seek(playbackMeeting,toMs:Double(ms))
     }
     func playFrom(_ ms: Int) {
         let ms = max(0,min(durationMs,ms))
