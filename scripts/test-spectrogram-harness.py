@@ -27,6 +27,13 @@ class HostAdmission(unittest.TestCase):
                 run.assert_not_called()
 
 
+    def test_dedicated_runner_does_not_write_protected_preferences(self):
+        with patch.object(harness,'check',return_value='gui'), patch.object(harness,'measure') as measure, patch.object(harness.subprocess,'run') as run:
+            harness.run(Path('/private/probe.app'),Path('/private/output'),Path('/private/checker'))
+            measure.assert_called_once()
+            run.assert_not_called()
+
+
 class MotionCompletion(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

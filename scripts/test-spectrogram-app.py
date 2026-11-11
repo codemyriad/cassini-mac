@@ -197,13 +197,14 @@ def check_scheduling(checker: Path, output: Path):
 
 
 def measure(app: Path, output: Path, scheduling_checker: Path):
-    check()
+    host = check()
     output.mkdir(parents=True, exist_ok=True)
     scheduling = check_scheduling(scheduling_checker,output)
     reports = []
     problems = []
     for case in 'ABCDE':
-        subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
+        if host == 'hosted':
+            subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
         command = probe_command(app, case, output)
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
@@ -285,7 +286,13 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
 
 
 def run(app: Path, output: Path, scheduling_checker: Path):
-    check()
+    if check() == 'gui':
+        # macOS27 protects universalaccess writes on the persistent account.
+        # Require the real normal-motion state in every probe; the mandatory
+        # System Settings diagnostic performs and verifies actual transitions.
+        print('Dedicated Aqua: every probe requires normal motion; no direct preference writes',flush=True)
+        measure(app, output, scheduling_checker)
+        return
     # Hosted images enable Reduce Motion. Measure continuous display-link pacing
     # using the real system preference, never an injected renderer override.
     setting = ['com.apple.universalaccess', 'reduceMotion']
