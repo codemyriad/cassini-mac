@@ -213,7 +213,8 @@ public enum ZipArchiveImport {
             }
 
             // Every member in the archive (including directory and unsupported entries) has passed runtime limits.
-            // Publish staged meetings atomically into the Library root.
+            // Publish staged meetings atomically into the Library root, updating both summaries after each
+            // committed publication so mid-publication cancellation accurately reports completed imports.
             let published: [(meeting: LibraryMeeting, isDuplicate: Bool)]
             if let provisionalRoot, !provisionals.isEmpty {
                 published = try LibraryImport.publishArchiveMembers(
@@ -221,12 +222,24 @@ public enum ZipArchiveImport {
                     from: provisionalRoot,
                     into: root,
                     session: batchSession,
+                    onPublished: { meeting, isDuplicate in
+                        if isDuplicate {
+                            summary.duplicates += 1
+                            if summary.lastSelected == nil { summary.lastSelected = meeting }
+                        } else {
+                            summary.imported += 1
+                            summary.lastSelected = meeting
+                        }
+                        onPartialSummary(summary)
+                    },
                     shouldCancel: shouldCancel
                 )
             } else {
+                if shouldCancel() { throw CancellationError() }
                 published = []
             }
 
+            summary = initialSummary
             for step in stagedSteps {
                 switch step {
                 case .unsupported:
