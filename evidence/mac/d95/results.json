@@ -1,9 +1,9 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
   "mainMerged": "3faf774",
-  "headlessTests": 413,
+  "headlessTests": 416,
   "ciContracts": 56,
-  "restoredFocusedTests": 23,
+  "restoredFocusedTests": 26,
   "fullConformance": {
     "pass": 29,
     "warn": 0,
@@ -17,10 +17,13 @@
     "skip": 2
   },
   "sourceSHA256": {
-    "Sources/CassiniKit/MeetingTime.swift": "ebfacf91bcd3a904d80e230d98a5756040edb270b9db207f8a13df8229e3d44d",
+    "Sources/CassiniKit/MeetingTime.swift": "5eb91931954ba3065e4512bc60bd02ffd908df0c8d40c70fc8171c46ffad3806",
     "Sources/CassiniKit/PortableMeetingTags.swift": "a12d108c19bc67d62b79e0fc9ed4a9e7153ab5eb40bfec714ac69977f27ef494",
     "Sources/CassiniExport/MeetingFileExporter.swift": "04ba766d4dab01c4da7bbc8448592846ea1a0d72969ffc856422488d7bf1f632",
-    "Tests/CassiniExportTests/MeetingExportTests.swift": "0670a4b088b7fd60bc93652433094a80831788e03921989218411d1161e0b167"
+    "Tests/CassiniExportTests/MeetingExportTests.swift": "b3197508e18594351ebe0a4dfa6ea373ced1f092ae256e5051825b5b5eec885c",
+    "Sources/CassiniSearch/SearchIndex.swift": "098cf8538440e70013e839a289285199875374d27856bb75a57ceee7d45bc89e",
+    "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "024d21e10b3f7c697c525692bcb23233009434db38a78db0a78ac5535236eac3",
+    "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b"
   },
   "mutations": {
     "utc-priority": {
@@ -34,6 +37,24 @@
     "utc-sanitization": {
       "result": "behavioral assertion failure",
       "example": "\u2718 Test receivedExportsDropMalformedUTC(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"not UTC\") at MeetingExportTests.swift:246:13: Expectation failed: (result.manifest?.raw[\"meeting\"]?[\"recordedAtUtc\"] \u2192 .string(\"not UTC\")) == nil"
+    },
+    "manifest-trust": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test unreadableCassiniDoesNotBorrowDATE(_:) recorded an issue with 1 argument kind \u2192 \"unknown-major\" at MeetingTimeTests.swift:41:9: Expectation failed: (file.meetingTime \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.date, value: \"2001-02-03T04:05:06+01:00\", instant: Optional(2001-02-03 03:05:06 +0000), orderingKey: \"2001-02-03T03:05:06.000\")) == nil"
+    },
+    "midnight-day-end": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test midnightDSTUsesCalendarDayBounds(zoneID:nowText:firstText:endText:weekText:) recorded an issue with 5 arguments zoneID \u2192 \"America/Sao_Paulo\", nowText \u2192 \"2018-11-04T15:00:00Z\", firstText \u2192 \"2018-11-04T03:00:00Z\", endText \u2192 \"2018-11-05T02:00:00Z\", weekText \u2192 \"2018-10-29T03:00:00Z\" at MeetingTimeTests.swift:18:13: Expectation failed: (SearchDate.today.contains(meetingTime:MeetingTime(instant:instant),now:now,timeZone:zone) \u2192 true) == (expected \u2192 false)"
     }
-  }
+  },
+  "referenceWhen": {
+    "pin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
+    "matchingCases": 31,
+    "vectors": 29,
+    "generatedUnreadableManifests": 2
+  },
+  "processTimeZones": [
+    "EST5EDT",
+    "<+0545>-5:45"
+  ]
 }

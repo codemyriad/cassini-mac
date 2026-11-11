@@ -53,5 +53,9 @@ public struct MeetingTime: Sendable, Equatable {
 }
 
 extension CassiniFile {
-    public var meetingTime: MeetingTime? { MeetingTime.resolve(meeting:manifest?.meeting,dateTag:tags?["DATE"]) }
+    public var meetingTime: MeetingTime? {
+        // An unreadable Cassini manifest cannot authenticate any fallback tag.
+        guard state != .invalidCassiniMetadata, state != .unknownCassiniFormat else { return nil }
+        return MeetingTime.resolve(meeting:manifest?.meeting,dateTag:tags?["DATE"])
+    }
 }

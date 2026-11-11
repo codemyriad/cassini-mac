@@ -20,10 +20,11 @@ public enum SearchDate: Sendable, CaseIterable { case any, today, week, month
     public func contains(_ date: Date?, now: Date, timeZone: TimeZone) -> Bool {
         guard self != .any else { return true }; guard let date else { return false }
         var calendar = Calendar(identifier:.gregorian); calendar.timeZone = timeZone
-        let midnight = calendar.startOfDay(for:now)
-        let first = calendar.date(byAdding:.day,value:self == .month ? -29 : self == .week ? -6 : 0,to:midnight)!
-        let last = calendar.date(byAdding:.day,value:1,to:midnight)!
-        return date >= first && date < last
+        guard let day = calendar.dateInterval(of:.day,for:now),
+              let firstDay = calendar.date(byAdding:.day,value:self == .month ? -29 : self == .week ? -6 : 0,to:now) else { return false }
+        // A day may begin at 01:00. Adding days to that boundary leaks an hour
+        // into tomorrow and drops an hour from an earlier day's range.
+        return date >= calendar.startOfDay(for:firstDay) && date < day.end
     }
 }
 public struct SearchFilter: Sendable {

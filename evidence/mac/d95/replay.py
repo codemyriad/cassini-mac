@@ -48,6 +48,11 @@ with tempfile.TemporaryDirectory(prefix='cassini-d95-') as temp:
          'receivedExportsPreserveOnlyTheKnownRecordingTime'),
         ('utc-sanitization', 'Sources/CassiniExport/MeetingFileExporter.swift',
          'value.hasSuffix("Z") && MeetingTime.parseInstant(value) != nil', 'true', 'receivedExportsDropMalformedUTC'),
+        ('manifest-trust', 'Sources/CassiniKit/MeetingTime.swift',
+         'guard state != .invalidCassiniMetadata, state != .unknownCassiniFormat else { return nil }',
+         'guard true else { return nil }', 'unreadableCassiniDoesNotBorrowDATE'),
+        ('midnight-day-end', 'Sources/CassiniSearch/SearchIndex.swift',
+         'date < day.end', 'date < calendar.date(byAdding:.day,value:1,to:day.start)!', 'midnightDSTUsesCalendarDayBounds'),
     ]
     for name, file, old, new, test in mutations:
         path = work / file

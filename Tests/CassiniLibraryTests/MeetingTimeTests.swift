@@ -24,6 +24,33 @@ struct MeetingTimeTests {
             #expect(!text.contains("19:47"),"The pack stamp is never the meeting time")
         }
     }
+    @Test(arguments:["unknown-major","damaged-manifest"])
+    func unreadableCassiniDoesNotBorrowDATE(_ kind: String) throws {
+        let fixture = try Fixture()
+        let base = try Data(contentsOf:fixture.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/027-recorded-at-utc.opus"))
+        let original = try #require(CassiniReader.read(base).tags)
+        var comments = original.comments.filter { $0.name != "DATE" }
+        comments.append(.init(name:"DATE",value:"2001-02-03T04:05:06+01:00"))
+        let tag = kind == "unknown-major" ? "CASSINI_FORMAT" : "CASSINI_PAYLOAD_SHA256"
+        comments.removeAll { $0.name == tag }
+        comments.append(.init(name:tag,value:kind == "unknown-major" ? "org.cassini.portable-meeting/999" : String(repeating:"0",count:64)))
+        let source = fixture.root.appendingPathComponent(kind + ".opus")
+        _ = try OpusStreamFile.rewrite(base,tags:PortableMeetingTags.packet(comments:comments),to:source)
+        let file = try CassiniReader.read(contentsOf:source)
+        #expect(file.state == (kind == "unknown-major" ? .unknownCassiniFormat : .invalidCassiniMetadata))
+        #expect(file.meetingTime == nil)
+        let opened = MeetingPresentation.external(file,url:source)
+        #expect(opened.meetingTime == nil)
+        let imported = try LibraryImport.copy(source,into:fixture.root.appendingPathComponent("Imported"))
+        #expect(imported.meetingTime == nil)
+        let rebuilt = try #require(LibraryScanner(root:imported.folder.deletingLastPathComponent()).scan().meetings.first)
+        #expect(rebuilt.meetingTime == nil)
+        #expect(!MeetingMarkdown.render(rebuilt,timeZone:TimeZone(secondsFromGMT:0)!,language:.en).contains("03:05"))
+        if let output = ProcessInfo.processInfo.environment["CASSINI_D95_REVIEW_CASES"] {
+            let directory = URL(fileURLWithPath:output); try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+            try Data(contentsOf:source).write(to:directory.appendingPathComponent(kind + ".opus"))
+        }
+    }
     @Test func creationOnlyNeverBecomesTheMeetingTime() throws {
         let fixture = try Fixture()
         let base = try Data(contentsOf:fixture.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))

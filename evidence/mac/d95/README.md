@@ -28,7 +28,7 @@ Run `replay.py` under `~/bin/heavy-run` with Xcode 16.4 selected, SDKROOT set,
 `CASSINI_OPUS_ASSETS` pointing at verified test Opus assets, and
 `D95_EVIDENCE_DIR` pointing outside the checkout. It archives the current
 commit into private scratch and runs the affected headless partition, both
-conformance profiles, three separate production mutations, then restoration.
+conformance profiles, five separate production mutations, then restoration.
 Each mutation must compile and fail an executed behavioral assertion.
 The existing security-scoped bookmark case requires the login-session CI job;
 this headless partition uses the same exclusion as CI. Integrated app builds
@@ -38,9 +38,38 @@ Full local logs and asset provenance are retained in
 `~/coordination/evidence/big-mac-d95/` on the coordinator Mac. No real user data,
 user-file migration, signing keys or device permission changes are involved.
 
-Final local result after merging main `3faf774`: 413 affected headless tests and
+Final local result after merging main `3faf774`: 416 affected headless tests and
 56 CI contracts pass. Full conformance: 29 pass; metadata: 27 pass and two
-expected profile skips. Three production mutations fail behavioral assertions;
-all 23 focused tests pass after restoration. See `results.json` for source
+expected profile skips. Five production mutations fail behavioral assertions;
+all 26 focused tests pass after restoration. See `results.json` for source
 hashes and representative failures. App source parsing passes; integrated app
 compilation, UI checks and login-session tests are delegated to draft CI.
+
+## Coordinator review follow-up
+
+The GNOME review classes exposed two further Mac gaps. Unreadable Cassini
+manifests and unknown major versions now produce no meeting time, including
+through direct opening, import, catalogue rebuild and Markdown. Search uses
+the calendar day's actual end, and the start of each earlier calendar day,
+instead of adding 24 calendar hours to a possibly 01:00 boundary. Sao Paulo
+and Havana midnight-DST cases assert exact inclusive/exclusive day and week
+bounds. Together these tests failed 14 assertions before the fixes.
+
+The own-capture round-trip test now also puts an older export with no UTC and
+a conflicting local label beside the capture. The saved capture's trustworthy
+UTC start still displays and is written on re-export with matching mirrors,
+ID and audio hash. Stale/unverified export fixtures now carry a *valid* local
+label, ensuring trust checks rather than shape validation discard it.
+
+Date/clock pairs are checked against calendar components for `Etc/GMT-14`,
+`GMT+0530`, `EST5EDT`, `America/St_Johns` and the current zone. The search/time
+suite is also run in separate processes under `TZ=EST5EDT` and
+`TZ=<+0545>-5:45`; no test changes the process timezone while others run.
+
+`check-reference-when.py REFERENCE INSPECTOR --extra-cases DIRECTORY` compares
+the Mac inspector to `cassini-read-pure.py` at the asserted format pin. All 29
+vectors and both generated unreadable-manifest cases match its `when` result.
+Generate the extra cases by running `unreadableCassiniDoesNotBorrowDATE` with
+`CASSINI_D95_REVIEW_CASES` pointing outside the checkout. Two additional
+production mutations remove the manifest trust guard and reintroduce the
+midnight day-end bug; they must fail behavioral assertions.
