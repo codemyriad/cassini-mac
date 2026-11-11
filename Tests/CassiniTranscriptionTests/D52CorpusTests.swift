@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import XCTest
+import NativeCrashTrace
 import Foundation
 import CryptoKit
 import CassiniKit
@@ -11,6 +12,7 @@ import CassiniLibrary
 /// against a pinned digest (D52.3e), then read through the Mac scanner, speaker
 /// lanes and others-ownership placement.
 final class D52CorpusTests: XCTestCase {
+    override class func setUp() { super.setUp(); install_native_test_crash_trace() }
     /// SHA-256 of the sorted "./relative/path <sha256>\n" listing of every generated file.
     static let pinnedDigest = "c4e8fbcd1c2682ecef3b7350b74ab47e03d319fe8908abf65dd0dd288007e66d"
     static func materialize() throws -> URL {
@@ -105,7 +107,19 @@ final class D52CorpusTests: XCTestCase {
         let root = try Self.materialize(); Self.shared = root; return root
     }
     private func call(_ root: URL) throws -> LibraryMeeting {
-        try XCTUnwrap(try LibraryScanner(root:root).scan().meetings.first { $0.audioTracks.count == 8 })
+        let rows=try LibraryScanner(root:root).scan().meetings
+        if !rows.contains(where:{$0.audioTracks.count==8}) {
+            let details=rows.map { "\($0.id) tracks=\($0.audioTracks.map { $0.url.lastPathComponent }) issues=\($0.issues)" }.joined(separator:"\n")
+            FileHandle.standardError.write(Data(("CORPUS_SCAN_DIAGNOSTIC\n"+details+"\n").utf8))
+            for folder in try FileManager.default.contentsOfDirectory(at:root,includingPropertiesForKeys:nil) {
+                for file in (try? FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil)) ?? [] where file.pathExtension=="wav" {
+                    let handle=try FileHandle(forReadingFrom:file);defer {try? handle.close()}
+                    let head=try handle.read(upToCount:44) ?? Data()
+                    FileHandle.standardError.write(Data((file.path+" header="+head.map {String(format:"%02x",$0)}.joined()+"\n").utf8))
+                }
+            }
+        }
+        return try XCTUnwrap(rows.first { $0.audioTracks.count == 8 })
     }
     private static func ms(_ windows: [(Double,Double)]?) -> [[Double]] { (windows ?? []).map { [$0.0,$0.1] } }
     private static func rms(_ samples: ArraySlice<Float>) -> Double {
