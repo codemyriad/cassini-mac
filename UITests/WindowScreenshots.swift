@@ -55,6 +55,13 @@ final class WindowScreenshots: XCTestCase {
         } else {
             XCTAssertFalse(window.sheets.firstMatch.exists)
         }
+        let seek=window.sliders["Position"]
+        XCTAssertTrue(seek.exists,window.debugDescription)
+        XCTAssertGreaterThanOrEqual(seek.frame.width,99,"Seek keeps usable travel at both window sizes")
+        let caption=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Follow along","Follow along")).firstMatch
+        XCTAssertTrue(caption.exists,window.debugDescription)
+        XCTAssertLessThanOrEqual(caption.frame.height,20,"Full caption remains a single readable line")
+        XCTAssertTrue(window.frame.contains(caption.frame),"Caption stays inside the window")
         // Capturing the AX window includes its titlebar/toolbar AND attached sheet.
         // A content-hosting view snapshot would omit those native surfaces.
         let screenshot = window.screenshot()
