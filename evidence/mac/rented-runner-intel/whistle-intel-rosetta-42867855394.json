@@ -1,0 +1,19 @@
+{
+  "architecture": "x86_64",
+  "engineVersion": "3.3.0",
+  "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+  "reference": "And so, my fellow Americans, ask not what your country can do for you. Ask what you can do for your country.",
+  "exactReferenceMatch": false,
+  "wordReferenceMatch": true,
+  "twoRequestsIdentical": true,
+  "constructorPrivacyGuard": true,
+  "orphanStopsWithoutEOF": true,
+  "boundedInputGuards": true,
+  "closedStdoutHandled": true,
+  "pinnedAssets": true,
+  "telemetry": {
+    "NEEDLE_TELEMETRY": "0",
+    "DO_NOT_TRACK": "1",
+    "ORT_DISABLE_TELEMETRY": "1"
+  }
+}

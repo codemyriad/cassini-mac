@@ -26,7 +26,9 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    # The hosted Intel row compiles the SwiftPM products itself when they were built in another
+    # workspace (a rented Mac): about 3.5 minutes on top of a job that has taken up to 10.
+    timeout-minutes: 25
     env:
       NEEDLE_TELEMETRY: '0'
       DO_NOT_TRACK: '1'

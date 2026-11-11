@@ -1,0 +1,127 @@
+{
+ "machos": {
+  "CassiniKitPackageTests.xctest/Contents/MacOS/CassiniKitPackageTests": {
+   "archs": "x86_64",
+   "flags": null,
+   "identifier": null,
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": null
+  },
+  "cassini-browser-connect-probe": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-browser-connect-probe-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-browser-host": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-browser-host-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-browser-setup-probe-client": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-browser-setup-probe-client-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-browser-setup-probe-service": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-browser-setup-probe-service-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-browser-setup-service": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-browser-setup-service-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-control-host": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-control-host-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-inspect": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-inspect-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-model-fetch": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-model-fetch-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-parakeet-worker": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-parakeet-worker-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-session-transition-probe": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-session-transition-probe-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  },
+  "cassini-whistle-worker": {
+   "archs": "x86_64",
+   "flags": "0x2(adhoc)",
+   "identifier": "cassini-whistle-worker-<cdhash>",
+   "minos": "15.0",
+   "platform": "MACOS",
+   "sdk": "15.5",
+   "signature": "adhoc"
+  }
+ },
+ "resource_bundles": [
+  "CassiniKit_CassiniBrowserControlTests.bundle",
+  "CassiniKit_CassiniBrowserSetupTests.bundle",
+  "CassiniKit_CassiniExportTests.bundle",
+  "CassiniKit_CassiniKitTests.bundle",
+  "CassiniKit_CassiniLibrary.bundle",
+  "CassiniKit_CassiniLibraryTests.bundle",
+  "CassiniKit_CassiniModelsTests.bundle",
+  "CassiniKit_CassiniParakeetTests.bundle",
+  "CassiniKit_CassiniRecordingTests.bundle",
+  "CassiniKit_CassiniSpectrogramTests.bundle",
+  "CassiniKit_CassiniTranscription.bundle",
+  "CassiniKit_CassiniTranscriptionTests.bundle",
+  "CassiniKit_CassiniWhistleTests.bundle"
+ ]
+}
