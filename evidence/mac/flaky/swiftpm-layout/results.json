@@ -25,13 +25,14 @@
     }
   },
   "sourceSHA256": {
-    ".github/workflows/ci-build.yml": "2301b2bf77194e2d88ff96de6286b1fa63a948ba0e80c3747281b5c192654dc8",
-    "scripts/test-ci-contract.py": "ce1562f6d0eb6855faf64e5804f93963d0eea0d5dcdbe1e544dba473ccb729b0"
+    ".github/workflows/ci-build.yml": "ddda793c21c3c7c90d8d963235dd075e111078e2da387f63fc0a66182556ab7a",
+    "scripts/test-ci-contract.py": "a33d5c3a15a5afdf6424ed57092a46e42289b93242b3095eb2aa194c0103f611"
   },
   "mergedMain": "eb60a0b",
   "afterMain": {
     "crossSourceCacheRestored": false,
     "nativeClientExit": 0,
     "expectedTracks": 8
-  }
+  },
+  "reviewFix": "Cache inputs include every Package.swift custom target path root; removing BrowserSetup or Spikes is rejected."
 }

@@ -419,7 +419,10 @@ class CompiledCacheCoherence(unittest.TestCase):
         self.assertIn('steps.xcode.outputs.workspace',key)
         self.assertNotIn('key: swiftpm-${{ matrix.arch }}',cache,"Invalidate already-saved incoherent objects")
         inputs=body.split('- id: swiftpm_key',1)[1].split('- uses:',1)[0]
-        for pattern in ('Package.swift','Package.resolved','Sources/**','Tests/**'):
+        package=(ROOT/'Package.swift').read_text()
+        custom_roots={p.split('/',1)[0]+'/**' for p in re.findall(r'path:\s*"([^"]+)"',package)}
+        self.assertTrue(custom_roots,"Exercise the package's custom target roots")
+        for pattern in ('Package.swift','Package.resolved','Sources/**','Tests/**',*sorted(custom_roots)):
             self.assertIn(pattern,inputs)
 
 
