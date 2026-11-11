@@ -60,8 +60,12 @@ import CassiniLibrary
     }
     func retry(root: URL? = nil) { guard !busy else { return }; run(destination:nil,selection:.failed(root?.path)) }
     #if DEBUG
-    func moveForTesting(to url: URL, allowingFailures: Bool = false) async throws {
+    @ObservationIgnored private var fixtureAfterImportPause: (() -> Void)?
+    func moveForTesting(to url: URL, allowingFailures: Bool = false, afterImportPause: @escaping () -> Void) async throws {
         guard SettingsFixture.id != nil, RecordingFixture.enabled else { throw POSIXError(.EPERM) }
+        guard !busy else { throw POSIXError(.EBUSY) }
+        fixtureAfterImportPause = afterImportPause
+        defer { fixtureAfterImportPause = nil }
         run(destination:FileAccessLease(url),selection:.pending); await task?.value
         if !allowingFailures && !failures.isEmpty { throw POSIXError(.EIO) }
     }
@@ -129,6 +133,9 @@ import CassiniLibrary
                 }
                 await RecordingPageModel.flushAll()
                 await LibraryImportCoordinator.shared.pauseForMove()
+                #if DEBUG
+                fixtureAfterImportPause?()
+                #endif
                 await TranscriptionQueue.shared.pauseForMove() // preserves the active child/path
                 if let destination {
                     try location.choose(destination.url)

@@ -28,6 +28,12 @@ import Observation
     }
     func beginShutdown() { closing = true; pending.removeAll(); requestedTranscription.removeAll(); task?.cancel() }
     func waitForShutdown() async { await task?.value }
+    #if DEBUG
+    func waitForFixtureImport() async {
+        guard RecordingFixture.enabled else { return }
+        await task?.value
+    }
+    #endif
     func pauseForMove() async { paused = true; task?.cancel(); await task?.value }
     func resumeAfterMove() { guard !closing else { return }; paused = false; startNext() }
     private func startNext() {
