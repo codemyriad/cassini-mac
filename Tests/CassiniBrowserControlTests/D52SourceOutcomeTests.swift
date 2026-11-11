@@ -35,12 +35,11 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
     }
     /// The native microphone starts asynchronously after Start; wait for its first frames.
     private func microphoneRecording(_ fixture: AudioFixture, _ started: JSON) async throws {
-        let deadline = Date().addingTimeInterval(5)
-        while !fixture.broker.activeCaptures.contains(where:{ capture in
-            capture.snapshot.directory.path == started["path"]?.string && capture.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 } }) {
-            guard Date() < deadline else { XCTFail("The microphone never recorded"); return }
-            try await Task.sleep(nanoseconds:10_000_000)
-        }
+        let event = fixture.microphones.expect(path:try XCTUnwrap(started["path"]?.string))
+        await fulfillment(of:[event],timeout:5)
+        XCTAssertTrue(fixture.broker.activeCaptures.contains { capture in
+            capture.snapshot.directory.path == started["path"]?.string && capture.snapshot.manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 }
+        })
     }
     private func saved(_ reply: JSON) throws -> RecordingManifest {
         try RecordingLoader.decode(Data(contentsOf:URL(fileURLWithPath:XCTUnwrap(reply["path"]?.string)).appendingPathComponent("session.json")))

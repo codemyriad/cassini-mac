@@ -1,0 +1,6 @@
+--- a/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
++++ b/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
+@@ -236,2 +236 @@
+-        reservations[identity] = peer; creating.enter(); lock.unlock()
+-        defer { creating.leave() }
++        reservations[identity] = peer; lock.unlock()

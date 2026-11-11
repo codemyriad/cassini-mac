@@ -3,6 +3,7 @@
 import AppKit
 import CassiniLibrary
 import CassiniRecording
+import Observation
 
 /// Real app/controller/metadata/power/registration proof with RAM inputs only.
 /// This complements XCTest; it does not claim to test Finder keystroke delivery.
@@ -10,6 +11,28 @@ import CassiniRecording
     private enum Failure: Error { case check(String) }
     private static func require(_ value: Bool, _ message: String) throws {
         guard value else { throw Failure.check(message) }
+    }
+    private static func waitForPower(_ runtime: RecordingRuntime, held expected: Bool) async throws {
+        let values = AsyncStream<Bool> { continuation in
+            let current = withObservationTracking { runtime.power.held } onChange: {
+                Task { @MainActor in continuation.yield(runtime.power.held); continuation.finish() }
+            }
+            continuation.yield(current)
+            if current == expected { continuation.finish() }
+        }
+        for await held in values where held == expected { return }
+        throw Failure.check("expected power assertion state \(expected)")
+    }
+    private static func waitForVoiceCount(_ editor: RecordingPageModel, _ expected: Int) async throws {
+        while editor.voiceCount != expected {
+            let (changes, continuation) = AsyncStream<Void>.makeStream()
+            let current = withObservationTracking { editor.voiceCount } onChange: {
+                Task { @MainActor in continuation.yield(()); continuation.finish() }
+            }
+            if current == expected { continuation.finish(); return }
+            for await _ in changes { break }
+            try Task.checkCancellation()
+        }
     }
     static func run() async {
         let environment = ProcessInfo.processInfo.environment
@@ -21,8 +44,10 @@ import CassiniRecording
         do {
             runtime.start()
             try require(runtime.shortcut.registered,"global shortcut registration")
+            try recorder.useFixtureClock()
             await recorder.start(parent:root)
-            try await Task.sleep(for:.milliseconds(500))
+            try await recorder.advanceFixtureMedia(toMilliseconds:200)
+            try await waitForPower(runtime,held:true)
             try require(recorder.isRecording && runtime.power.held,"recording and real power assertion")
             let folder = try recorder.directory.unwrap("capture directory")
             let id = try UUID(uuidString:String(folder.lastPathComponent.dropFirst("Recording-".count))).unwrap("capture identity")
@@ -44,9 +69,10 @@ import CassiniRecording
             try require(updated.title == model.title && recorder.title == model.title,"title persisted and published")
             try require(RecordingPageModel.editor(for:updated) === model,"Back/Open retains editor")
             for window in NSApp.windows { window.orderOut(nil) }
-            // Real elapsed time and real sink peaks, without a clock shortcut.
-            try await Task.sleep(for:.seconds(20))
-            try require(recorder.microphoneSilent && recorder.elapsedMs >= 20000,"20-second silent-microphone rule (phase=\(recorder.phase), elapsed=\(recorder.elapsedMs), levels=\(recorder.levels))")
+            try await recorder.advanceFixtureMedia(toMilliseconds:19_980)
+            try require(!recorder.microphoneSilent,"microphone is not silent before 20 seconds")
+            try await recorder.advanceFixtureMedia(toMilliseconds:20_000)
+            try require(recorder.microphoneSilent && recorder.elapsedMs == 20_000,"20-second silent-microphone rule (phase=\(recorder.phase), elapsed=\(recorder.elapsedMs), levels=\(recorder.levels))")
             // A moved/imported duplicate can share the basename while referring
             // to another folder. It must not control this native capture.
             let activeFolder = try recorder.directory.unwrap("active native folder")
@@ -83,11 +109,11 @@ import CassiniRecording
             FileHandle.standardError.write(Data("Private disk probe: warning lifecycle completed\n".utf8))
             try require(recorder.isSaving,"Saving visible while finalizing")
             await recorder.finishTask?.value
-            try await Task.sleep(for:.milliseconds(100))
+            try await waitForPower(runtime,held:false)
             try require(!runtime.power.held && recorder.canStart,"power released after Stop")
             try require(RecordingDiskWatch.warningTitle == nil,"no late disk sample recreates the warning")
             let saved = try LibraryScanner(root:root).scan().meetings.first.unwrap("saved meeting")
-            try require(saved.state.lifecycle == .saved && saved.canPlaySession && saved.title == model.title && saved.notes == updated.notes,"saved title, notes and playable audio")
+            try require(saved.state.lifecycle == .saved && saved.canPlaySession && saved.durationMs == 20_000 && saved.title == model.title && saved.notes == updated.notes,"saved title, notes and 20 seconds of playable audio")
             runtime.stop()
             // Independent synthetic browser source: no browser, device or live
             // desktop is involved. A quiet source must still advance its clock.
@@ -96,25 +122,27 @@ import CassiniRecording
             try browser.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let browserScanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.recording]))
             let browserMeeting = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("private browser meeting")
-            let editor = RecordingPageModel.editor(for:browserMeeting), elapsed = editor.elapsedMs
-            try await Task.sleep(for:.milliseconds(1100))
-            try require(!editor.native && editor.elapsedMs >= elapsed + 1000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
+            var browserUptime: TimeInterval = 100
+            let editor = RecordingPageModel.editor(for:browserMeeting,uptime:{ browserUptime }), elapsed = editor.elapsedMs
+            try await waitForVoiceCount(editor,1)
+            browserUptime += 2
+            try require(!editor.native && editor.elapsedMs == elapsed + 2000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
             try browser.addTrack(id:"b",label:"B",kind:"remote",sampleRate:16000,channels:1)
             try browser.appendNative(id:"b",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let newer = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("changed browser source list")
             try require(RecordingPageModel.editor(for:newer) === editor,"browser updates keep unsaved editor state")
             editor.update(newer)
-            for _ in 0..<80 { if editor.voiceCount == 2 { break }; try await Task.sleep(for:.milliseconds(25)) }
+            try await waitForVoiceCount(editor,2)
             try require(editor.voiceCount == 2,"browser source count updates")
             let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.saving]))
                 .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
             editor.update(saving)
             let savingTime = editor.elapsedMs
-            try await Task.sleep(for:.milliseconds(60))
+            browserUptime += 1000
             try require(savingTime == saving.durationMs && editor.elapsedMs == savingTime,"browser Saving uses the producer end instead of the hidden wall-clock interval")
             var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
             editor.update(noStart)
-            try await Task.sleep(for:.milliseconds(60))
+            browserUptime += 1000
             try require(editor.elapsedMs == savingTime,"lifecycle-only Saving holds the producer end with no start timestamp")
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
@@ -141,19 +169,24 @@ import CassiniRecording
             try session.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let recording = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([session.manifest.id:.recording]))
                 .scan().meetings.first.unwrap("recording fixture")
-            let editor = RecordingPageModel.editor(for:recording), initial = editor.elapsedMs
-            try await Task.sleep(for:.milliseconds(1100))
-            guard editor.elapsedMs >= initial + 1000 else { throw POSIXError(.EINVAL) }
+            var uptime: TimeInterval = 100
+            let editor = RecordingPageModel.editor(for:recording,uptime:{ uptime }), initial = editor.elapsedMs
+            uptime += 2
+            guard editor.elapsedMs == initial + 2000 else { throw POSIXError(.EINVAL) }
             // The cached editor is reopened after the source stopped. Its known
             // physical end is only 100 ms; the hidden wall clock must not win.
             let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([session.manifest.id:.saving]))
                 .scan().meetings.first.unwrap("saving fixture")
+            guard RecordingPageModel.editor(for:saving) === editor else { throw POSIXError(.EINVAL) }
             editor.update(saving)
-            guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
-            try await Task.sleep(for:.milliseconds(100))
+            guard editor.elapsedMs == 100 else {
+                throw NSError(domain:"SavingProbeProducerEnd",code:1,userInfo:[NSLocalizedDescriptionKey:"Expected 100 ms producer end; got \(editor.elapsedMs)"])
+            }
+            uptime += 1000
             guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
             var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
             editor.update(noStart)
+            uptime += 1000
             editor.title = "Title while saving"; editor.changeTitle()
             await RecordingPageModel.flushAll()
             guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }

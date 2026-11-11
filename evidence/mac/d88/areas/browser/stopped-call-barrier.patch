@@ -1,0 +1,8 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -725 +725 @@
+-            peer.captures = current.captures; peer.interrupted = current.interrupted
++            peer.captures = current.captures; peer.interrupted = current.interrupted; peer.autoAttempted = []; peer.requestedStops = []
+@@ -771 +771 @@
+-                    peer.captures = current.captures; peer.interrupted = current.interrupted
++                    peer.captures = current.captures; peer.interrupted = current.interrupted; peer.autoAttempted = []; peer.requestedStops = []

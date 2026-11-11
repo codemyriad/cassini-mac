@@ -26,22 +26,17 @@ enum ScreenshotFixture {
         if let path = value("-CassiniOpenFile", in: arguments) { LegacyOpening.openDocument(URL(fileURLWithPath: path)) }
         if name == "window" || name == "sheet" {
             Task { @MainActor in
-                for _ in 0..<100 {
-                    if let open = LegacyOpening.handler { open(fixture); return }
-                    try? await Task.sleep(for: .milliseconds(100))
-                }
-                NSApp.terminate(nil)
+                // The normal facade dispatches now or retains the request until
+                // its handler is installed. No timed startup polling is needed.
+                LegacyOpening.openDocument(fixture)
             }
         }
 
         if name.hasPrefix("settings-") {
             Task { @MainActor in
                 SettingsNavigation.shared.tab = name == "settings-recording" ? .recording : .transcription
-                for _ in 0..<100 {
-                    if let open = SettingsNavigation.shared.open { open(); return }
-                    try? await Task.sleep(for:.milliseconds(100))
-                }
-                NSApp.terminate(nil)
+                ApplicationWindows.preferences()
+                NSApp.activate(ignoringOtherApps: true)
             }
         }
         return true
