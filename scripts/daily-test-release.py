@@ -3,7 +3,6 @@
 """Local drmeyers scheduler; a hosted workflow requests work, never signs it."""
 from datetime import datetime,timedelta,timezone
 import fcntl
-import html
 import json
 import os
 from pathlib import Path
@@ -14,6 +13,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+import unicodedata
+from zoneinfo import ZoneInfo
 
 REPO='codemyriad/cassini-mac'
 ORIGIN='https://github.com/'+REPO
@@ -21,6 +22,7 @@ HOME=Path.home()
 BASE=HOME/'.local/share/cassini-mac-test-releases'
 SOURCE=BASE/'source'
 INBOX=HOME/'dev/cassini-coordination/NOTIFICATIONS-MAC-TEST-RELEASES.log'
+BERLIN=ZoneInfo('Europe/Berlin')
 REQUEST='request-mac-test-release.yml'
 
 
@@ -44,15 +46,24 @@ def atomic(path,value):
 
 
 def due_slot(now):
-    local=now.astimezone(timezone.utc)
+    local=now.astimezone(BERLIN)
     candidates=[local.replace(hour=hour,minute=0,second=0,microsecond=0)-timedelta(days=day)
-                for day in (0,1) for hour in (5,11,20)]
+                for day in (0,1) for hour in (9,14,20)]
     return max(slot for slot in candidates if slot<=local).isoformat()
 
 
 def eligible_ci(runs,sha):
-    return bool(runs and runs[0]['head_sha']==sha and runs[0]['head_branch']=='main'
-                and runs[0]['status']=='completed' and runs[0]['conclusion']=='success')
+    # API pages are newest-first. PR merge-ref results (even this repo's main)
+    # and fork runs must neither authorize nor block a main release.
+    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch')
+              and (r.get('head_repository') or {}).get('full_name')==REPO),None)
+    return bool(run and run['head_sha']==sha and run['head_branch']=='main'
+                and run['status']=='completed' and run['conclusion']=='success')
+
+
+def main_is_green(sha):
+    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={sha}&per_page=100'])
+    return eligible_ci([run for page in pages for run in page['workflow_runs']],sha)
 
 
 def next_build(version,project_build,releases,state):
@@ -81,6 +92,13 @@ def report(text):
     with INBOX.open('a') as stream:stream.write(text+'\n')
 
 
+def release_title(value):
+    # A single literal code span cannot create HTML, links, images or mentions.
+    text=''.join(c for c in ' '.join(value.split()) if not unicodedata.category(c).startswith('C'))
+    fence='`'*(1+max((len(m.group()) for m in re.finditer(r'`+',text)),default=0))
+    return fence+' '+(text or 'Untitled pull request')+' '+fence
+
+
 def notes(base,head):
     commits=command(['git','-C',SOURCE,'log','--reverse','--first-parent','--format=%H',
                      (base+'..'+head) if base else head]).splitlines()
@@ -89,7 +107,7 @@ def notes(base,head):
         for pr in gh([f'repos/{REPO}/commits/{sha}/pulls']):
             if pr.get('merged_at') and pr['base']['ref']=='main' and pr['merge_commit_sha']==sha and pr['number'] not in seen:
                 seen.add(pr['number'])
-                title=html.escape(pr['title']).replace('@','&#64;')
+                title=release_title(pr['title'])
                 entries.append(f'- {title} ([#{pr["number"]}](https://github.com/{REPO}/pull/{pr["number"]}))')
     return '\n'.join([f'Source: `{head}`','',*(entries or ['No merged PR titles in this main update.'])])+'\n'
 
@@ -163,8 +181,7 @@ def tick(now):
         if Path(__file__).read_bytes()!=before:
             state.pop('slot',None);state['request']=0;atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
-        ci=gh([f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={head}&per_page=1'])['workflow_runs']
-        if not eligible_ci(ci,head):
+        if not main_is_green(head):
             report('[Mac] daily test release skipped: latest main CI is not green');return
         releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
         previous=latest_nightly(releases)

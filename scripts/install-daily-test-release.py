@@ -37,7 +37,7 @@ agent.write_bytes(plistlib.dumps(dict(Label=label,ProgramArguments=[str(python),
     RunAtLoad=True,StartInterval=60,
     EnvironmentVariables={'PATH':'/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
     StandardOutPath=str(base/'scheduler.log'),StandardErrorPath=str(base/'scheduler-error.log'))))
-# Minute pulses discover manual requests and catch up a missed UTC slot;
-# state deduplicates each05:00/11:00/20:00 UTC attempt. No sleep/retry loop.
+# Minute pulses discover manual requests and catch up a missed Berlin slot;
+# state deduplicates each09:00/14:00/20:00 attempt. No sleep/retry loop.
 subprocess.run(['launchctl','bootstrap',domain,str(agent)],check=True)
-print('Installed UTC scheduler and manual-request bridge; signing keys remain unchanged')
+print('Installed Berlin scheduler and manual-request bridge; signing keys remain unchanged')

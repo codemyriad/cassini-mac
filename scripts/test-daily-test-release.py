@@ -19,23 +19,53 @@ daily=load('daily','daily-test-release.py')
 resources=load('resources','release-resources.py')
 
 class DailyPolicy(unittest.TestCase):
-    def test_utc_slots_are_year_round_and_catch_missed_wake(self):
-        for instant,slot in [('2026-11-11T04:59:59+00:00','2026-11-10T20:00:00+00:00'),
-                             ('2026-11-11T05:00:00+00:00','2026-11-11T05:00:00+00:00'),
-                             ('2026-07-11T05:00:00+00:00','2026-07-11T05:00:00+00:00'),
-                             ('2026-11-11T10:59:59+00:00','2026-11-11T05:00:00+00:00'),
-                             ('2026-11-11T11:00:00+00:00','2026-11-11T11:00:00+00:00'),
-                             ('2026-11-11T19:59:59+00:00','2026-11-11T11:00:00+00:00'),
-                             ('2026-11-11T20:00:00+00:00','2026-11-11T20:00:00+00:00'),
-                             ('2026-07-11T07:00:00+02:00','2026-07-11T05:00:00+00:00')]:
+    def test_berlin_slots_follow_dst_and_catch_missed_wake(self):
+        for instant,slot in [('2026-11-11T07:59:59+00:00','2026-11-10T20:00:00+01:00'),
+                             ('2026-11-11T08:00:00+00:00','2026-11-11T09:00:00+01:00'),
+                             ('2026-07-11T07:00:00+00:00','2026-07-11T09:00:00+02:00'),
+                             ('2026-11-11T12:59:59+00:00','2026-11-11T09:00:00+01:00'),
+                             ('2026-11-11T13:00:00+00:00','2026-11-11T14:00:00+01:00'),
+                             ('2026-11-11T18:59:59+00:00','2026-11-11T14:00:00+01:00'),
+                             ('2026-11-11T19:00:00+00:00','2026-11-11T20:00:00+01:00'),
+                             ('2026-07-11T18:00:00+00:00','2026-07-11T20:00:00+02:00')]:
             self.assertEqual(daily.due_slot(datetime.fromisoformat(instant)),slot)
 
     def test_only_latest_successful_ci_for_exact_main_is_admitted(self):
-        good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success')
+        good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
         self.assertTrue(daily.eligible_ci([good],'a'*40))
         for field,value in [('head_sha','b'*40),('head_branch','feature'),('status','in_progress'),('conclusion','failure')]:
             self.assertFalse(daily.eligible_ci([{**good,field:value},good],'a'*40))
         self.assertFalse(daily.eligible_ci([],'a'*40))
+
+    def test_pr_and_fork_runs_cannot_authorize_or_block_main(self):
+        good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
+        untrusted=[{**good,'event':event} for event in ['pull_request','pull_request_target','workflow_run','schedule']]
+        untrusted += [{**good,'head_repository':repo} for repo in [None,{}, {'full_name':'fork/cassini-mac'}]]
+        for run in untrusted:
+            self.assertFalse(daily.eligible_ci([run],'a'*40))
+            self.assertTrue(daily.eligible_ci([{**run,'status':'action_required'},good],'a'*40))
+            self.assertFalse(daily.eligible_ci([run,{**good,'conclusion':'failure'},good],'a'*40))
+        self.assertTrue(daily.eligible_ci([{**good,'event':'workflow_dispatch'}],'a'*40))
+        self.assertFalse(daily.eligible_ci([{**good,'event':'workflow_dispatch','status':'in_progress'},good],'a'*40))
+
+    def test_main_ci_searches_past_an_entire_page_of_pr_runs(self):
+        good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
+        pages=[{'workflow_runs':[{**good,'event':'pull_request'}]*100},{'workflow_runs':[good]}]
+        with patch.object(daily,'gh',return_value=pages) as api:
+            self.assertTrue(daily.main_is_green('a'*40))
+            self.assertIn('--paginate',api.call_args.args[0]);self.assertIn('--slurp',api.call_args.args[0])
+        with patch.object(daily,'gh',return_value=pages[:1]):
+            self.assertFalse(daily.main_is_green('a'*40))
+
+    def test_release_notes_render_untrusted_titles_as_one_literal_span(self):
+        title='Fix StateFlow<Settings> & [link](https://invalid.example) @someone **bold** `one` ```three```\n> heading\x1b\u202e 😀'
+        literal='```` Fix StateFlow<Settings> & [link](https://invalid.example) @someone **bold** `one` ```three``` > heading 😀 ````'
+        self.assertEqual(daily.release_title(title),literal)
+        pr=dict(merged_at='now',base={'ref':'main'},merge_commit_sha='a'*40,number=7,title=title)
+        with patch.object(daily,'command',return_value='a'*40+'\n'),patch.object(daily,'gh',return_value=[pr,pr]):
+            body=daily.notes(None,'a'*40)
+        self.assertEqual(body,'Source: `'+('a'*40)+'`\n\n- '+literal+' ([#7](https://github.com/'+daily.REPO+'/pull/7))\n')
+        self.assertEqual(daily.release_title(' \n\u202e\x1b'),'` Untitled pull request `')
 
     def test_number_reserves_failed_builds_and_existing_immutable_beta_tags(self):
         releases=[{'tag_name':'v0.1.0-beta.9'},{'tag_name':'v1.0.0-beta.100'}]
@@ -82,7 +112,7 @@ class DailyExecution(unittest.TestCase):
         previous=dict(tag_name='v0.1.0-beta.2',prerelease=True,draft=False,name='nightly',published_at='2026-11-10',target_commitish=sha)
         def api(args):
             if 'request-mac' in args[-1]:return {'workflow_runs':[]}
-            if '/actions/workflows/ci.yml' in args[-1]:return {'workflow_runs':[dict(head_sha=sha,head_branch='main',status='completed',conclusion='success' if green else 'failure')]}
+            if '/actions/workflows/ci.yml' in args[-1]:return [{'workflow_runs':[dict(head_sha=sha,head_branch='main',status='completed',conclusion='success' if green else 'failure',event='push',head_repository={'full_name':daily.REPO})]}]
             if '/releases?' in args[-1]:return [[previous]] if unchanged else [[]]
             raise AssertionError('Unexpected API')
         stack.enter_context(patch.object(daily,'gh',side_effect=api))
