@@ -87,6 +87,43 @@ def check_swiftpm_arch(expected):
         raise ValueError('No %s test bundle among the SwiftPM products' % expected)
 
 
+RELEASE_SDK_OBJECTS = ('CassiniSpectrogram', 'CassiniRecording', 'CassiniBrowserControl', 'CassiniLibrary', 'CassiniKit')
+
+
+def check_release_arch():
+    """Verify both runnable slices, including the SDK objects consumed by the native probe.
+
+    A fat header alone is insufficient: it can contain just one architecture. Ask lipo for
+    the actual slices of every Mach-O (frameworks and dSYMs included) and static library.
+    """
+    folder = ROOT/'build/Build/Products/Release'
+    required = {folder/'Cassini.app/Contents/MacOS/Cassini'} | {folder/(name+'.o') for name in RELEASE_SDK_OBJECTS}
+    for path in sorted(required):
+        if not path.is_file():
+            raise ValueError('Missing Release binary: ' + str(path.relative_to(ROOT)))
+    magic = {bytes.fromhex(value) for value in (
+        'feedface', 'cefaedfe', 'feedfacf', 'cffaedfe',
+        'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca')}
+    inspected = set()
+    for path in sorted(folder.rglob('*')):
+        if not path.is_file() or path.is_symlink():
+            continue
+        with path.open('rb') as stream:
+            header = stream.read(8)
+        binary = header[:4] in magic or header == b'!<arch>\n'
+        if not binary and path.suffix not in ('.o', '.dylib', '.a', '.so'):
+            continue
+        slices = set(subprocess.check_output(['xcrun', 'lipo', '-archs', str(path)], text=True).split())
+        missing = {'arm64', 'x86_64'} - slices
+        if missing:
+            raise ValueError('Release binary %s missing required slices: %s (found %s)' % (
+                path.relative_to(ROOT), ', '.join(sorted(missing)), ', '.join(sorted(slices))))
+        inspected.add(path)
+    if required - inspected:
+        raise ValueError('Required Release executable/SDK object was not inspected: ' +
+                         ', '.join(str(path.relative_to(ROOT)) for path in sorted(required - inspected)))
+
+
 # Release tooling that once lived in SwiftPM's .build (release.py now keeps it in build/). A
 # restored .build cache can still hold it, so the swiftpm product never ships it: a venv's
 # interpreter link is absolute, which unpack rightly refuses. Named directories only; every
@@ -110,6 +147,8 @@ def pack(kind, destination):
             raise ValueError('Missing build-for-testing test specification')
     if kind == 'swiftpm':
         check_swiftpm_arch(product_arch())
+    elif kind == 'release':
+        check_release_arch()
     with tarfile.open(archive, 'w:gz', compresslevel=1, dereference=False) as target:
         for name in paths:
             if not (ROOT/name).exists():
@@ -166,6 +205,8 @@ def unpack(kind, source):
         packed.extractall(ROOT, members=members)
     if kind == 'swiftpm':
         check_swiftpm_arch(expected['arch'])
+    elif kind == 'release':
+        check_release_arch()
     print('Restored verified', kind, 'products for', expected['commit'])
 
 

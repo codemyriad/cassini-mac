@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/PipeTransport.swift
++++ b/Sources/CassiniBrowserControl/PipeTransport.swift
+@@ -248 +248 @@
+-                retired.notify(queue:.global()) { Darwin.close(fd); completed() }
++                retired.notify(queue:.global()) { Darwin.close(fd); _ = completed }

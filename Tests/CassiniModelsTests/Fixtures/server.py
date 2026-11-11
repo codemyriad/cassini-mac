@@ -19,6 +19,7 @@ if a.forbid_dns:
  def forbidden_lookup(*args,**kwargs):raise AssertionError('loopback fixture must not perform name lookups')
  socket.getfqdn=socket.gethostbyaddr=forbidden_lookup
 if a.scenario=='no-ready':
+ print('startup-held',flush=True)
  sys.stdin.buffer.read()
  raise SystemExit(0)
 if a.scenario=='invalid-ready':
