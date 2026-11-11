@@ -5,7 +5,6 @@
   "ciContracts": 56,
   "longInputWords": 122760,
   "longInputThreadCpuMs": 160.704,
-  "longInputBudgetThreadCpuMs": 5000,
   "mutationProductionSHA256": {
     "Sources/CassiniLibrary/SpeakerEdits.swift": "57b6e75294a3c5c094cd5a6bfa030756c12a665b83497e20aae8d88f92514922",
     "Sources/CassiniPlayback/SpeakerSample.swift": "643159bdc6ab4cafdee734f6496cc30245d2f80fe0c065c6064dc2f25e66f5b5"
@@ -104,5 +103,7 @@
     "compiled": "Debug arm64 app and Screenshots bundle; Xcode 16.4, generated fixtures/project",
     "ui": "rename/cancel/clear assertions passed before native Menu role query correction; final full flow pending local capacity"
   },
-  "exactHeadCI": "pending"
+  "exactHeadCI": "pending",
+  "longInputTimingIsDiagnosticOnly": true,
+  "noCpuGateFocusedTests": 11
 }

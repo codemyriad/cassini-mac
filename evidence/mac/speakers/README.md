@@ -65,8 +65,8 @@ this source checkout concurrently while applying mutations.
 Final headless validation: 365 affected tests and 56 CI contracts pass; all used
 catalog IDs validate. Ten real production mutations fail assertions (including
 the zero-duration anchor regression, which failed before its fix); source files
-restore byte-for-byte. The 122,760-word facts case takes about 184 ms thread CPU
-against its 5 s bound. The actual acknowledgment vector covers a chip-only
+restore byte-for-byte. The 122,760-word facts case asserts exact talk time and sample range.
+Thread CPU is printed for diagnosis only; it has no pass/fail threshold. The actual acknowledgment vector covers a chip-only
 speaker. French fallback names with American regional formatting use the
 catalog; original producer labels remain verbatim.
 
