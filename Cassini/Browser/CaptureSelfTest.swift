@@ -12,6 +12,7 @@ import Darwin
 final class CaptureProbeProcess: @unchecked Sendable {
     private let process = Process(), input = Pipe(), output = Pipe(), errors = Pipe()
     private let queue = DispatchQueue(label:"io.codemyriad.cassini.capture-probe." + UUID().uuidString)
+    private let exited = DispatchGroup()
     private let lifecycle = NSLock()
     private var ending = false
     init(_ name: String, root: URL) throws {
@@ -20,7 +21,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
         let fd = output.fileHandleForReading.fileDescriptor, flags = fcntl(output.fileHandleForReading.fileDescriptor,F_GETFL)
         guard flags >= 0,fcntl(fd,F_SETFL,flags | O_NONBLOCK) == 0 else { throw POSIXError(.EIO) }
-        try process.run()
+        let exited = self.exited
+        exited.enter()
+        process.terminationHandler = { _ in exited.leave() }
+        do {
+            try process.run()
+        } catch {
+            exited.leave()
+            throw error
+        }
     }
     func send(_ json: [String:Any]) async throws {
         let data = try JSONSerialization.data(withJSONObject:json)
@@ -67,10 +76,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             queue.async {
                 try? self.input.fileHandleForWriting.close()
-                let deadline = Date().addingTimeInterval(2)
-                while self.process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval:0.01) }
-                if self.process.isRunning { self.process.terminate() }
-                self.process.waitUntilExit()
+                if self.exited.wait(timeout:.now()+2) == .timedOut {
+                    if self.process.isRunning { self.process.terminate() }
+                    self.exited.wait()
+                }
                 continuation.resume()
             }
         }
@@ -230,11 +239,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
         }
         private func check() {
             guard continuation != nil else { return }
-            let ready = withObservationTracking {
-                _ = CaptureCollection.shared.captures
-                _ = CaptureCollection.shared.peers
-                return condition?() == true
-            } onChange: { [self] in
+            let ready = withObservationTracking { condition?() == true } onChange: { [self] in
                 // Observation fires before mutation. Check the committed value
                 // on the next actor turn, never a guessed settling interval.
                 Task { @MainActor in check() }
@@ -249,7 +254,15 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     static func wait(timeout: Double = 8, file: StaticString = #fileID, line: UInt = #line,
                      _ condition: @escaping @MainActor () -> Bool) async throws {
-        try await StateWait().run(timeout:timeout,message:"Private capture state did not settle at \(file):\(line)",condition:condition)
+        try await waitForState(timeout:timeout,file:file,line:line) {
+            _ = CaptureCollection.shared.captures
+            _ = CaptureCollection.shared.peers
+            return condition()
+        }
+    }
+    static func waitForState(timeout: Double, file: StaticString = #fileID, line: UInt = #line,
+                             _ condition: @escaping @MainActor () -> Bool) async throws {
+        try await StateWait().run(timeout:timeout,message:"Private fixture state did not settle at \(file):\(line)",condition:condition)
     }
     static func run() async {
         guard CaptureFixture.enabled, let root = RecordingFixture.root else { NSApp.terminate(nil); return }
@@ -329,7 +342,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let suggestionMeeting = try LibraryStore.shared.meetings.first { $0.id == first.snapshot.manifest.id }.unwrap()
             let suggestionView = MeetingView(model:MeetingDetailModel(meeting:suggestionMeeting,frozen:true),format:LibraryStore.shared.format)
             try require(!suggestionView.showsCompanionSuggestion,"A connected companion does not show Set up again")
-            stage = "owned recording surfaces and real silent-mic interval"
+            stage = "owned recording surfaces and silent-mic boundary"
             try require(RecordingOverview.active && RecordingOverview.recordCommandTitle == UXText.text("common.stop"),"File Record command reflects an owned recording")
             try require(LibraryMoveCoordinator.shared.requiresRecordingConfirmation,"Move requires confirmation during an owned capture")
             try await wait { LibraryStore.shared.selected.map { collection.captures[$0.id] != nil } == true }
@@ -344,11 +357,30 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(originalEditor.owned != nil && RecordingPageModel.editor(for:otherMeeting).owned == nil,"Recording controls match the folder as well as UUID")
             report["ownedEditorUsesFolderIdentity"] = true
             MeetingNavigation.shared.open(originalMeeting)
-            try await wait(timeout:30) { RecordingOverview.microphoneSilent && originalEditor.microphoneSilent }
-            try require(RecordingOverview.microphoneSilent && originalEditor.microphoneSilent,"Owned silent microphone is shown after twenty real seconds")
+            // Both inputs have admitted generated DC frames. Advance only the
+            // silence clock so these browser recordings keep their media offsets.
+            let ownedIDs = [first.snapshot.manifest.id, second.snapshot.manifest.id]
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:0)
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:19.98)
+            try require(!RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent,"Owned silent microphone is hidden before twenty seconds")
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:20)
+            // The fixture microphones run at 8 kHz. Consume a complete fresh
+            // 100 ms AC window at uptime 20 before checking the DC rejection.
+            let micFramesAt20 = Dictionary(uniqueKeysWithValues:ownedIDs.compactMap { id in
+                collection.captures[id].map { (id,$0.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }) }
+            })
+            try await wait {
+                ownedIDs.allSatisfy { id in
+                    guard let baseline = micFramesAt20[id], let owner = collection.captures[id]?.owner else { return false }
+                    return owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } >= baseline + 800
+                }
+            }
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:20)
+            try require(RecordingOverview.microphoneSilent && originalEditor.microphoneSilent,"Owned silent microphone is shown at twenty seconds")
             try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
             CaptureFixture.silentMicrophone = false
             try await wait { !RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent }
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:nil)
             CaptureFixture.microphoneDC = 0
             report["micDCDoesNotMaskSilence"] = true
             report["ownedSilenceMatchesMenuAndPage"] = true

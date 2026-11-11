@@ -78,12 +78,8 @@ import CassiniRecording
             collection.stop(try live(collection).snapshot.manifest.id)
             return NSNull()
         case "saved":
-            // App-owned files after Stop: the capture has finished saving, within 60 s.
-            let deadline = ProcessInfo.processInfo.systemUptime + 60
-            while !collection.captures.isEmpty {
-                guard ProcessInfo.processInfo.systemUptime < deadline else { throw Failure(description:"still saving after 60 s") }
-                try await Task.sleep(for:.milliseconds(50))
-            }
+            // The collection removes the capture when its owned save settles.
+            try await CaptureSelfTest.wait(timeout:60) { collection.captures.isEmpty }
             return NSNull()
         case "quit":
             return NSNull()
