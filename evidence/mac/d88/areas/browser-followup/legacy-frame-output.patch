@@ -1,0 +1,4 @@
+--- a/Sources/CassiniBrowserControl/ControlService.swift
++++ b/Sources/CassiniBrowserControl/ControlService.swift
+@@ -217,0 +218 @@
++            if message["type"]?.string == "meetings" && clock() > 1_000_000 { try connection.send(Data("{\"type\":\"ping\",\"seq\":999}".utf8)) }

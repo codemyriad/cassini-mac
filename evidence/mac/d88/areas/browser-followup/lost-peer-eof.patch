@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/FrameIO.swift
++++ b/Sources/CassiniBrowserControl/FrameIO.swift
+@@ -70 +70 @@
+-        guard let header = try exact(fd,count:4,cancel:cancel,allowEOF:true,deadline:deadline,alive:alive) else { return nil }
++        guard let header = try exact(fd,count:4,cancel:cancel,allowEOF:true,deadline:deadline,alive:alive) else { throw BrowserIPCError.timeout }

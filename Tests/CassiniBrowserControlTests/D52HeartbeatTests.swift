@@ -109,7 +109,7 @@ final class D52HeartbeatTests: XCTestCase {
         XCTAssertEqual(try receive(client)["seq"]?.int,2,"pings are unconditional, not idle-only")
         clock.advance(1); service.tickHeartbeats()
         wait(for:[gone],timeout:3)
-        XCTAssertThrowsError(try receive(client,seconds:1),"the app closed the lost control connection")
+        XCTAssertNil(try client.receive(deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000),"The lost connection must close; a receive timeout fails")
     }
 
     /// D57: every status confirms each session's document to the audio side as it arrives.
@@ -133,17 +133,29 @@ final class D52HeartbeatTests: XCTestCase {
 
     func testALegacyHelloIsNeverPingedOrTimedOut() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
-        let clock = TestClock(), connected = expectation(description:"status received")
+        let clock = TestClock(), frames = SignalFrameWaiter(), connected = expectation(description:"status received")
         connected.assertForOverFulfill = false
         let service = BrowserControlService(changed:{ peers in if peers.contains(where:{ $0.reconciled }) { connected.fulfill() } },
-                                            completed:{ _,_ in },clock:clock.now)
+                                            completed:{ _,_ in },clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         let client = try connect(root,capabilities:["multi-stream-v1","resume-capture-v1"])
         wait(for:[connected],timeout:3)
         for _ in 0..<30 { clock.advance(10_000); service.tickHeartbeats() }
-        XCTAssertThrowsError(try receive(client,seconds:0.3),"no ping to a legacy hello")
-        // Still connected: an ordinary frame is accepted and nothing was closed.
+        // An ordinary inventory must still be accepted after 300 virtual seconds.
+        // The requested legacy Stop then fences all earlier output on this peer.
+        let inventory = expectation(description:"Legacy inventory accepted after heartbeat advances")
+        frames.expect("meetings",inventory)
         try send(["type":"meetings","meetings":[]],client)
-        XCTAssertThrowsError(try receive(client,seconds:0.3))
+        wait(for:[inventory],timeout:3)
+        let recording = expectation(description:"Legacy recording status applied")
+        frames.expect("status",recording)
+        try send(["type":"status","recording":true,"tabId":2,"path":NSNull(),"message":"Recording",
+                  "sessions":[["tabId":2,"captureId":"legacy","recording":true,"path":NSNull(),"message":"Recording"]]],client)
+        wait(for:[recording],timeout:3)
+        service.stopRecordings()
+        let command = try receive(client)
+        XCTAssertEqual(command["type"]?.string,"command","A legacy peer must receive no heartbeat before the requested command")
+        XCTAssertEqual(command["action"]?.string,"stop")
+        XCTAssertEqual(command["tabId"]?.int,2)
     }
 }
