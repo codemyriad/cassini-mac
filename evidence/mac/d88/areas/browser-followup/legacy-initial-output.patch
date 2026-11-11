@@ -1,4 +1,5 @@
---- a/Sources/CassiniBrowserControl/ControlService.swift
-+++ b/Sources/CassiniBrowserControl/ControlService.swift
-@@ -217,0 +218 @@
-+            if message["type"]?.string == "meetings" && clock() == 1_000_000 { try connection.send(Data("{\"type\":\"ping\",\"seq\":999}".utf8)) }
+--- a/Sources/CassiniBrowserControl/ControlHeartbeat.swift
++++ b/Sources/CassiniBrowserControl/ControlHeartbeat.swift
+@@ -18 +18 @@
+-        self = .init(); negotiated = capabilities.contains("heartbeat-v1"); lastInbound = now
++        self = .init(); negotiated = true; lastInbound = now

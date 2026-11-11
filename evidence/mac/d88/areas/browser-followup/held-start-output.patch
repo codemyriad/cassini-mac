@@ -1,4 +1,7 @@
---- a/Sources/CassiniBrowserControl/ControlService.swift
-+++ b/Sources/CassiniBrowserControl/ControlService.swift
-@@ -217,0 +218 @@
-+            if message["type"]?.string == "pong" { try connection.send(Data("{\"type\":\"command\",\"action\":\"start\",\"tabId\":2}".utf8)) }
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -727 +726,0 @@
+-            peer.autoAttempted.formUnion(peer.captures.map { $0.key.tabID })
+@@ -858 +857 @@
+-        guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
++        guard !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }

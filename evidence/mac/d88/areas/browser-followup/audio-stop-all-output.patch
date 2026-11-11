@@ -1,4 +1,4 @@
---- a/Sources/CassiniBrowserControl/ControlService.swift
-+++ b/Sources/CassiniBrowserControl/ControlService.swift
-@@ -217,0 +218 @@
-+            if message["type"]?.string == "pong" { try connection.send(Data("{\"type\":\"command\",\"action\":\"start\",\"tabId\":2}".utf8)) }
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -932 +931,0 @@
+-            for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }

@@ -141,17 +141,22 @@ final class D52HeartbeatTests: XCTestCase {
         let client = try connect(root,capabilities:["multi-stream-v1","resume-capture-v1"])
         wait(for:[connected],timeout:3)
         for _ in 0..<30 { clock.advance(10_000); service.tickHeartbeats() }
+        let inbound = service.lastHeartbeatInbound()
+        XCTAssertNotNil(inbound,"A legacy hello must not time out")
+        guard inbound != nil else { return } // A removed peer must fail before waiting on an impossible reply.
         // An ordinary inventory must still be accepted after 300 virtual seconds.
         // The requested legacy Stop then fences all earlier output on this peer.
         let inventory = expectation(description:"Legacy inventory accepted after heartbeat advances")
         frames.expect("meetings",inventory)
         try send(["type":"meetings","meetings":[]],client)
         wait(for:[inventory],timeout:3)
+        clock.advance(ControlHeartbeat.interval); service.tickHeartbeats()
         let recording = expectation(description:"Legacy recording status applied")
         frames.expect("status",recording)
         try send(["type":"status","recording":true,"tabId":2,"path":NSNull(),"message":"Recording",
                   "sessions":[["tabId":2,"captureId":"legacy","recording":true,"path":NSNull(),"message":"Recording"]]],client)
         wait(for:[recording],timeout:3)
+        clock.advance(ControlHeartbeat.interval); service.tickHeartbeats()
         service.stopRecordings()
         let command = try receive(client)
         XCTAssertEqual(command["type"]?.string,"command","A legacy peer must receive no heartbeat before the requested command")
