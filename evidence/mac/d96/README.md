@@ -92,3 +92,12 @@ native product are rebuilt/restored; the normal proof passes afterward.
 while the dedicated GUI runner has an active worker; queued CI runs its own
 proof in its assigned session. Full native build/mutant/restored logs are in
 the external evidence directory.
+
+`replay-native-mutations.py` repeats those two actual-app mutants. Supply
+`D96_NATIVE_APP`, `D96_BUILD_COMMAND_JSON` (the xcodebuild argument array),
+`D96_EVIDENCE_DIR` outside the checkout and any verified build-asset environment.
+The caller normally runs in Aqua; `D96_GUI_PREFIX_JSON` can wrap only the proof
+command when a dedicated console account is used, with `D96_PROOF_OUTPUT` in
+that account's writable private directory. Run the whole script under heavy-run,
+with no concurrent build of this source. On interruption it restores source
+without starting another heavy build; the private app must then be rebuilt.
