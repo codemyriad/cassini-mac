@@ -364,6 +364,18 @@ final class CaptureProbeProcess: @unchecked Sendable {
             collection.setMicrophoneUptimeForTesting(ownedIDs, at:19.98)
             try require(!RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent,"Owned silent microphone is hidden before twenty seconds")
             collection.setMicrophoneUptimeForTesting(ownedIDs, at:20)
+            // The fixture microphones run at 8 kHz. Consume a complete fresh
+            // 100 ms AC window at uptime 20 before checking the DC rejection.
+            let micFramesAt20 = Dictionary(uniqueKeysWithValues:ownedIDs.compactMap { id in
+                collection.captures[id].map { (id,$0.owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames }) }
+            })
+            try await wait {
+                ownedIDs.allSatisfy { id in
+                    guard let baseline = micFramesAt20[id], let owner = collection.captures[id]?.owner else { return false }
+                    return owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }.reduce(UInt64(0)) { $0 + $1.frames } >= baseline + 800
+                }
+            }
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:20)
             try require(RecordingOverview.microphoneSilent && originalEditor.microphoneSilent,"Owned silent microphone is shown at twenty seconds")
             try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
             CaptureFixture.silentMicrophone = false
