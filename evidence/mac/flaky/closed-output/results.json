@@ -1,0 +1,17 @@
+{
+  "baselineIssues": [
+    "\u2718 Test brokenPipeBecomesAnErrorWithoutASignal() recorded an issue at IOTests.swift:109:25: Issue recorded"
+  ],
+  "mutationIssues": [
+    "\u2718 Test shutDownOutputBecomesAnErrorWithoutASignal(_:) recorded an issue with 1 argument inheritedReader \u2192 false at IOTests.swift:115:25: Issue recorded",
+    "\u2718 Test shutDownOutputBecomesAnErrorWithoutASignal(_:) recorded an issue with 1 argument inheritedReader \u2192 true at IOTests.swift:115:25: Issue recorded"
+  ],
+  "restored": "passed",
+  "base": "fc2ad769445f92c0b484eb760a3556dc60f746ac",
+  "affectedTests": 49,
+  "productionSourceUnchanged": true,
+  "sourceSHA256": {
+    "Tests/CassiniWhistleTests/IOTests.swift": "068363e87659ebe16be87b0bab113c528e5cc8aab5159057287d5d0fc7e0cf17",
+    "Sources/CassiniWhistle/WhistleIO.swift": "d9b7d12ca178ee09a29bc8c169bb507a99fd11192f44f7cceec6b46ad11c75eb"
+  }
+}
