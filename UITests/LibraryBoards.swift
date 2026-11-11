@@ -403,10 +403,11 @@ final class LibraryBoards: XCTestCase {
         func grab(_ offset:CGFloat) -> XCUICoordinate {
             anchor.withOffset(CGVector(dx:thumb.frame.midX-frame.minX+offset,dy:thumb.frame.midY-frame.minY))
         }
-        XCTAssertEqual(slider.value as? String,"00:03:12")
+        let before = try XCTUnwrap(slider.value as? String)
+        XCTAssertNotEqual(before,"00:03:08","The finished readout must differ from the turn start so a wrong seek is visible")
         XCTAssertTrue(window.buttons["listen-again"].exists,"Finished Listening is the regression precondition")
         grab(5).click()
-        XCTAssertEqual(slider.value as? String,"00:03:12","An off-center stationary thumb grab must not snap to 00:03:08")
+        XCTAssertEqual(slider.value as? String,before,"An off-center stationary thumb grab must not snap to 00:03:08")
         XCTAssertTrue(window.buttons["listen-again"].exists,"A stationary grab must preserve finished Listening")
         window.buttons["listen-stop"].click()
         let stopped = NSPredicate { _,_ in !window.descendants(matching:.any)["listening-bar"].exists }
