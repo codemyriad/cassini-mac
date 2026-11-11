@@ -170,14 +170,19 @@ private struct NativeMeetingSlider: NSViewRepresentable {
         func beginTracking() { mouseTracking = true; trackingChanged?(doubleValue) }
         func endTracking() { mouseTracking = false; trackingChanged?(nil) }
         override func mouseDown(with event: NSEvent) {
-            guard isEnabled, let window, let cell = cell as? NSSliderCell else { return }
+            guard isEnabled else { return }
+            beginTracking()
+            defer { endTracking() }
+            if #unavailable(macOS 27.0) {
+                super.mouseDown(with:event)
+                return
+            }
+            guard let window, let cell = cell as? NSSliderCell else { return }
             window.makeFirstResponder(self)
             let knob = cell.knobRect(flipped:isFlipped)
             let point = convert(event.locationInWindow,from:nil)
             let offset = NSMouseInRect(point,knob,isFlipped) ? point.x-knob.midX : 0
-            beginTracking()
-            defer { endTracking() }
-            // AppKit's click animation can restore its unsnapped destination
+            // macOS27's click animation can restore its unsnapped destination
             // after the action has snapped the value. Track pointer events with
             // public APIs; keyboard and accessibility still use NSSlider.
             var next: NSEvent? = event
