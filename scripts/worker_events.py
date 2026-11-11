@@ -6,6 +6,7 @@ import select
 import time
 
 OWNER_TICK_FD = 'CASSINI_TEST_OWNER_TICK_FD'
+ENGINE_READY_FD = 'CASSINI_TEST_ENGINE_READY_FD'
 
 
 def _read(fd, count, deadline):
@@ -25,6 +26,11 @@ def json_line(stream, timeout=60, maximum=1 << 20):
             raise ValueError('Worker response exceeded its limit')
         data.extend(_read(stream.fileno(), 1, deadline))
     return json.loads(data)
+
+
+def engine_ready(fd, timeout=60):
+    if _read(fd, 1, time.monotonic()+timeout) != bytes([1]):
+        raise ValueError('Invalid engine-ready acknowledgement')
 
 
 def discard_ticks(fd):
