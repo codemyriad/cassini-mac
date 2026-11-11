@@ -7,13 +7,18 @@ D74 mixed routes retain native Me. Browser local PCM follows Me's selection,
 ledger expectations, trimmed span boundaries and observer lane; loss ends its
 span and clears the meter, leaving a privacy gap until browser audio returns.
 
+Me-only browser restoration keeps Others off and requests neither native input;
+source selection and live transport restoration have a direct regression test.
+The real app fixture also exercises this reload path. Main66f0ddd is integrated
+with an ordinary merge.
+
 Browser Me reuses the native sink's independently centred 100 ms AC windows.
 The stereo DC test admits 800 frames per channel and requires a completed-window
 timestamp before asserting zero; silence cannot pass with an empty meter.
 Muted browser PCM remains silence. Per-source local meters never feed Others.
 
-Validation: 394 browser-control XCTest cases and five Swift Testing cases pass;
-35 restored focused XCTest cases pass. An additional recording/broker slice
+Validation: 395 browser-control XCTest cases and five Swift Testing cases pass;
+36 restored focused XCTest cases pass. An additional recording/broker slice
 passes44 XCTest and51 Swift Testing cases;57 CI contracts and snapshot integrity
 pass. The final native app/Quick Look build passes; native self-test runtime
 remains pending CI. Seven committed production mutations

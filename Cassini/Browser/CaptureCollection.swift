@@ -835,7 +835,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // That deferred loss began when the policy first saw the page missing.
                 let lossStamp = !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
-                let returned = action == .restore
+                let returned = action == .restore || (!value.owner.nativeMe && source.me && !source.others && ready && source.transportAlive && observedPage == .present)
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
                 let atMs = max(0,now-value.originUptime)*1000

@@ -293,7 +293,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         try await enqueue {
             try token.check()
             guard !self.closed, self.capture.snapshot.phase == .recording,
-                  self.capture.snapshot.others, self.capture.snapshot.restoreReady,
+                  (self.capture.snapshot.others || (!self.capture.nativeMe && self.capture.snapshot.me)), self.capture.snapshot.restoreReady,
                   self.capture.snapshot.browserReturnPCMAt.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
             let input = self.inputs[.others]
             do {

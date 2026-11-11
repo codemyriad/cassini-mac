@@ -554,7 +554,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard allowed() else { throw CancellationError() }
             guard atMs.isFinite, atMs >= 0, self.phase == .recording,
-                  self.others, !self.browserAlive, self.readyForBrowser,
+                  (self.others || (!self.nativeMe && self.me)), !self.browserAlive, self.readyForBrowser,
                   self.freshestReturn.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
             let time = self.eventTime(atMs)
             var spans: [Data:String] = [:], starts: [RecordingSource] = []
@@ -570,7 +570,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let reason = last?.source == "system" ? (last?.reason == "missing" ? "callConnected" : last?.reason == "lost" ? "restored" : "user")
                 : last?.source == "none" && last?.reason == "lost" ? "restored" : "user"
             let bound = spans.compactMap { id,span in self.browserSources[id].map { (span,$0.key,true) } }
-            try self.commitBound(bound,starting:starts,ending:ending,events:[.init(atMs:time,type:"othersSource",source:"browser",reason:reason)])
+            try self.commitBound(bound,starting:starts,ending:ending,events:self.others ? [.init(atMs:time,type:"othersSource",source:"browser",reason:reason)] : [])
             for id in Array(self.browserSources.keys) {
                 self.browserSources[id]?.span = spans[id]; self.browserSources[id]?.returning = false
                 self.browserSources[id]?.current = spans[id] != nil

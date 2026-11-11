@@ -434,6 +434,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(selected.isEmpty && first.owner.snapshot.me && !first.owner.snapshot.others,"Browser Me stays selectable when hardware input is unavailable")
             try require((first.owner.snapshot.manifest.refusals?.count ?? 0) == refusalsBefore && CaptureFixture.microphoneStarts == 0,"No hardware attempt or Me refusal on browser selection")
             try await one.emit()
+            stage = "browser Me-only reload never enables Others or hardware"
+            try await one.page("navigating",active:false)
+            try await wait { !first.owner.snapshot.browserAlive }
+            try await one.returnedSource(atMs:Int((ProcessInfo.processInfo.systemUptime-first.originUptime)*1000)+1000)
+            try await one.page("present",active:true)
+            try await wait { first.owner.snapshot.browserAlive }
+            try require(!first.owner.snapshot.others && CaptureFixture.microphoneStarts == 0,"Reload restores Me while Others and hardware stay off")
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
             try await one.emit()
             report["browserSelectionIgnoresHardwareFailure"] = true
@@ -723,7 +730,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(CaptureFixture.systemPermission != nil,"Return cannot require a reply to the OS prompt")
             try await wait { permissionCapture.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" }).map { $0.source == "browser" && $0.reason == "restored" } == true }
             try require(CaptureFixture.systemStarts == previousSystemStarts,"Cancelled permission cannot start system input")
-            try require(CaptureFixture.microphoneStarts == previousMicStarts,"Return leaves the original microphone running")
+            try require(CaptureFixture.microphoneStarts == previousMicStarts,"Return never opens hardware Me")
             let permissionCompletions = CaptureFixture.systemAuthorizationCompletions
             CaptureFixture.holdSystemPermission = false
             CaptureFixture.systemPermission?.resume(); CaptureFixture.systemPermission = nil

@@ -583,7 +583,8 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
         try await inputs.select(me:true,others:false,atMs:3000)
         try offerReturn(owner,atMs:4000)
-        do { try await inputs.restoreBrowser(atMs:4000); XCTFail("The others must remain off") } catch {}
+        try await inputs.restoreBrowser(atMs:4000)
+        XCTAssertFalse(owner.snapshot.others,"Restoring browser Me must leave Others off")
         XCTAssertFalse(owner.snapshot.others)
         XCTAssertEqual(owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source,"none")
         try await inputs.select(me:true,others:true,atMs:5000)
