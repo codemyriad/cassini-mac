@@ -118,3 +118,10 @@ and the real Sparkle deferral self-test. All pass in a genuine Aqua session.
 Three source mutations disable detachment, hiding or the mounted guard; each
 fails a native transition assertion immediately, without waiting for a timeout.
 Full logs: `~/coordination/evidence/big-mac-d95/footer/native-*.log`.
+
+The standalone Settings host now explicitly lays out after the observed idle
+transaction, just as it does for its initial presentation. This drives the real
+SwiftUI subtree even if the test window is occluded; it does not synthesize a
+visibility callback or remove the footer itself. Native callbacks and the
+required disappearance assertion remain authoritative. The complete portable
+probe, including actual Sparkle deferral, passes with this host layout step.

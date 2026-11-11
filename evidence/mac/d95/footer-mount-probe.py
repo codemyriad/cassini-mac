@@ -56,6 +56,7 @@ Task { @MainActor in
    footer.layoutSubtreeIfNeeded()
    try await signal.wait(true)
    updates.readyWhenIdle=false
+   footer.needsLayout=true;footer.layoutSubtreeIfNeeded()
    try await signal.wait(false)
    assert(!updates.readyWhenIdle)
    window.close()

@@ -25,7 +25,8 @@
     "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "024d21e10b3f7c697c525692bcb23233009434db38a78db0a78ac5535236eac3",
     "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
     "Cassini/Library/LibraryView.swift": "4fa2c673976dc024e72e1056fbc012b9371a63736b692b6e5a7eec026879553c",
-    "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f"
+    "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
+    "Cassini/Settings/UpdateDeferralSelfTest.swift": "61a1584f9770a8746cbd14dc35bf2adc7bc321c0307818dc562ed571c491917f"
   },
   "mutations": {
     "utc-priority": {
@@ -90,6 +91,7 @@
         "result": "native transition assertion fails without a timeout"
       }
     ],
-    "actualSparkleSelfTest": "pass in console Aqua session"
+    "actualSparkleSelfTest": "pass in console Aqua session",
+    "standaloneHostPostTransactionLayout": "actual layout before waiting for native removal; probe passed"
   }
 }
