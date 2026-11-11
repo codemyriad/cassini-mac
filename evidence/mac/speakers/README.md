@@ -76,3 +76,18 @@ Its Merge query was corrected to use the native menu's accessibility role;
 the final full UI flow is pending local build capacity at draft publication.
 Earlier local test-plan/fixture setup failures and the corrected fixture
 selection are retained in external logs and are not counted as passes.
+
+## Native control follow-up
+
+The exact-head CI run at 2c72b3a passed
+`testSpeakerNamesClearMergeUndoAndReopen`, including persistence across relaunch.
+Its three other board failures exposed old assumptions: Name/Merge controls
+were absent, and speaker names/shares were static text. Those checks now use
+real named controls; the speaker button exposes its share as accessibilityValue.
+A native arm64 rebuild passes. In a genuine Aqua session the listening-bar test
+and complete rename/clear/merge/undo/reopen flow pass, as do all new share-value
+assertions. The four-test run as a whole remains red: the existing Meeting title
+geometry is 250 rather than expected 280 (tracked separately by #251), and the
+record/retry test never leaves its failure state on this local fixture. No
+assertion bound or timeout was loosened, and neither failure is counted as a pass.
+Logs and xcresult receipt: `~/coordination/evidence/mac-speakers/review-ui*`.

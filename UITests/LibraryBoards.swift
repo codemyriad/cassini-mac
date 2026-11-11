@@ -377,8 +377,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:last,object:nil)],timeout:5),.completed)
         app.typeKey(.downArrow,modifierFlags:[.option,.shift,.command])
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in self.text("Turn 1 of 2 · 00:02:55",in:window) },object:nil)],timeout:5),.completed)
-        XCTAssertFalse(bar.buttons["Name…"].exists)
-        XCTAssertFalse(bar.buttons["Merge into…"].exists)
+        let name=bar.buttons["listen-name"]
+        let merge=bar.descendants(matching:.any).matching(identifier:"listen-merge").firstMatch
+        XCTAssertTrue(name.exists && merge.exists)
+        XCTAssertFalse(name.isEnabled,"The screenshot's read-only fixture cannot be renamed")
+        XCTAssertFalse(merge.isEnabled,"The screenshot's read-only fixture cannot be merged")
         window.buttons["meeting-export"].click()
         XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:10))
         app.typeKey(.escape,modifierFlags:[])
@@ -1047,7 +1050,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: readable, object: nil)], timeout: 40), .completed, app.debugDescription)
         window.buttons["preview-read-transcript"].click()
         XCTAssertTrue(waitForPresent(window.buttons["meeting-back"],timeout: 10))
-        XCTAssertTrue(text("Me", in: window), app.debugDescription)
+        let me=window.buttons["speaker-name-me"]
+        XCTAssertTrue(me.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(me.label.hasPrefix("Me,"),me.label)
         XCTAssertFalse(window.buttons["meeting-write-down"].exists)
     }
     @MainActor func testQuitPausesWritingDownAndResumesOnRelaunch() throws {
@@ -1086,7 +1091,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
         XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
-        for value in ["43%", "36%", "21%", "00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }
+        for value in ["00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }
+        for (speaker,share) in [("marta","43%"),("giulia","36%"),("guest","21%")] {
+            let name=window.buttons["speaker-name-"+speaker]
+            XCTAssertTrue(name.exists,speaker)
+            XCTAssertEqual(name.value as? String,share,"The visible share remains accessible on the naming control")
+        }
         // D70 combines provenance and turn timing, and the narrow visual text
         // may truncate. Check each real speaker row's complete accessible label.
         for (speaker,provenance) in [("marta","Named by you"),("giulia","Recognised from saved voices"),("guest","Not named yet")] {

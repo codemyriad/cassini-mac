@@ -229,7 +229,7 @@ struct MeetingView: View {
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(meeting))
-                .accessibilityLabel(row.accessibilityLabel).accessibilityIdentifier("speaker-name-"+speaker.id)
+                .accessibilityLabel(row.accessibilityLabel).accessibilityValue(row.share).accessibilityIdentifier("speaker-name-"+speaker.id)
             Button {model.toggleSpeakerListening(speaker.id)} label: {
                 Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
             }.buttonStyle(.borderless).disabled(!model.canPlay || (!listening && turns.isEmpty))
