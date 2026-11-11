@@ -400,7 +400,7 @@ private final class CaptureFiles: @unchecked Sendable {
     func select(_ id: UUID, me: Bool, others: Bool) async throws -> [CaptureSide:String] {
         guard let value = captures[id] else { return [:] }
         let resumingMe = me && (!value.snapshot.me || value.input.failedSides.contains(.me))
-        let refused = try await value.input.select(me:me,others:others,atMs:Double(value.elapsedMs))
+        let refused = try await value.input.select(me:me,others:others)
         let selectedMe = refused[.me] == nil ? me : value.snapshot.me
         if let key = value.key { microphones[key] = selectedMe }
         if resumingMe, refused[.me] == nil { captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime }
