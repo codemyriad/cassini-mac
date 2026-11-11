@@ -1,0 +1,39 @@
+{
+  "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
+  "mainMerged": "3faf774",
+  "headlessTests": 413,
+  "ciContracts": 56,
+  "restoredFocusedTests": 23,
+  "fullConformance": {
+    "pass": 29,
+    "warn": 0,
+    "fail": 0,
+    "skip": 0
+  },
+  "metadataConformance": {
+    "pass": 27,
+    "warn": 0,
+    "fail": 0,
+    "skip": 2
+  },
+  "sourceSHA256": {
+    "Sources/CassiniKit/MeetingTime.swift": "ebfacf91bcd3a904d80e230d98a5756040edb270b9db207f8a13df8229e3d44d",
+    "Sources/CassiniKit/PortableMeetingTags.swift": "a12d108c19bc67d62b79e0fc9ed4a9e7153ab5eb40bfec714ac69977f27ef494",
+    "Sources/CassiniExport/MeetingFileExporter.swift": "04ba766d4dab01c4da7bbc8448592846ea1a0d72969ffc856422488d7bf1f632",
+    "Tests/CassiniExportTests/MeetingExportTests.swift": "0670a4b088b7fd60bc93652433094a80831788e03921989218411d1161e0b167"
+  },
+  "mutations": {
+    "utc-priority": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test normativeVectors(vector:source:value:) recorded an issue with 3 arguments vector \u2192 \"027-recorded-at-utc\", source \u2192 \"recordedAtUtc\", value \u2192 \"2026-11-09T09:31:48.250Z\" at MeetingTimeTests.swift:17:9: Expectation failed: (file.meetingTime?.source.rawValue \u2192 \"DATE\") == (source \u2192 \"recordedAtUtc\")"
+    },
+    "utc-mirror": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test receivedExportsPreserveOnlyTheKnownRecordingTime(recorded:) recorded an issue with 1 argument recorded \u2192 nil at MeetingExportTests.swift:205:9: Expectation failed: (result.tags?[\"CASSINI_RECORDED_AT_UTC\"] \u2192 nil) == \"2001-02-02T19:05:06.125Z\""
+    },
+    "utc-sanitization": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test receivedExportsDropMalformedUTC(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"not UTC\") at MeetingExportTests.swift:246:13: Expectation failed: (result.manifest?.raw[\"meeting\"]?[\"recordedAtUtc\"] \u2192 .string(\"not UTC\")) == nil"
+    }
+  }
+}
