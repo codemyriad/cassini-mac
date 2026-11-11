@@ -16,11 +16,12 @@
     "Cassini/Library/LegacyOpening.swift": "2fa6bae2376dc8d89ec20103f58eb014c36fa1951f38e4076a61deafb4adcc6b",
     "Cassini/Library/LibraryStore.swift": "30488cf35008d8ab427ee0824ad1bcad0ce7602a254a19b60eb8880da2acd7f5",
     "Cassini/Library/BulkTransferSelfTest.swift": "f20599e6064b656718e41e55a07d0007d0895936184d9e24da5fcddad4ce206d",
-    "Cassini/Library/LibraryView.swift": "77a5f1380b896fb21fb110c4335327f6e000dc2bc8825529c5a002be26229392",
+    "Cassini/Library/LibraryView.swift": "3b91b48f5a4627642b14f695e3b1bbfa165e00f2b57e15c5176d54e4f2557c7e",
     "Cassini/Library/LibraryBulkTransfer.swift": "f07663af05a27bd5870695726f42f54916bfe12d368ae47d26d740f5868f4cb1",
     "Cassini/Library/LibraryImportCoordinator.swift": "d42aadebe940b134bd2a78c3227ae2ef3d576a062f57013fe339a130cc3bd231",
     "Cassini/Export/MeetingExportCoordinator.swift": "d652b5f474e9d5f2ce8ff8b624b1ccc469e2792cd3f1d40cdec26b705579cf07",
-    "Tests/CassiniExportTests/BulkExportTests.swift": "6be45875070899193dc400e01c7fb22e8bfd87a6d06103d60d650a70441cb336"
+    "Tests/CassiniExportTests/BulkExportTests.swift": "6be45875070899193dc400e01c7fb22e8bfd87a6d06103d60d650a70441cb336",
+    "Cassini/Settings/UpdateDeferralSelfTest.swift": "61a1584f9770a8746cbd14dc35bf2adc7bc321c0307818dc562ed571c491917f"
   },
   "ciContracts": 56,
   "nativeGuardMutations": [
@@ -46,5 +47,7 @@
     "staleSaveChoiceRejected": true,
     "storedAllExport": true,
     "zipImport": true
-  }
+  },
+  "settingsMoveAndResume": "passed actual sandboxed Settings/import intent/move/relaunch proof with CI-generated private Library fixtures",
+  "debugFooterIntegration": "same native mount/removal observer and real-host layout as #248 at 698dad9; actual Settings proof passes"
 }

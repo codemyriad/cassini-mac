@@ -85,6 +85,11 @@ import Sparkle
             activity=[]
             try await signals.wait("resume")
             await waiter?.value
+            // This standalone test host can be occluded in CI. Drive its real
+            // layout after the observed model transaction; callbacks still come
+            // only from the actual footer subtree, never from the model alone.
+            footer.needsLayout = true
+            footer.layoutSubtreeIfNeeded()
             try await signals.wait("footer disappear")
             try check(resumes==1 && !updates.readyWhenIdle && updates.fixtureWaitingTask==nil,"Idle consumes the continuation exactly once")
             updates.cancelTermination()

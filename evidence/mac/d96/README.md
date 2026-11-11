@@ -102,3 +102,12 @@ command when a dedicated console account is used, with `D96_PROOF_OUTPUT` in
 that account's writable private directory. Run the whole script under heavy-run,
 with no concurrent build of this source. On interruption it restores source
 without starting another heavy build; the private app must then be rebuilt.
+
+The actual sandboxed Settings/move/relaunch proof also passes, including import
+intent resuming at the new root, deferred work and retained selection. The local
+Debug app bundles the same generated Library fixtures as CI. Its first attempt
+without those fixtures failed during initial import and is retained externally;
+it did not reach the move checks. The independently included DEBUG native footer
+observer and real-host layout are identical to #248 at `698dad9` (its native
+transition assertions/mutations are linked from that PR). Release behavior is
+unchanged; this avoids depending on the D95 feature branch for a reliable proof.

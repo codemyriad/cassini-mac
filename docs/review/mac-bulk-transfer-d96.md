@@ -81,6 +81,11 @@ fails and passes again after restoration. Its queued-cancel input is fresh and
 must leave the exact Library ID set unchanged. No success depends on a fixed
 sleep; deadlines only fail hung harnesses.
 
+The existing full Settings/import-intent/move/relaunch proof also passes with
+CI-generated private fixtures, checking intake pause/resume at the new root.
+The DEBUG footer observer/layout correction from #248 is included independently
+so that proof remains runnable before the D95 feature merge.
+
 Native proof runs in a real console Aqua session using private generated
 fixtures. Manual invocation refuses the wrong user session or an active GUI
 runner worker. Existing login-session bookmark/UI checks remain part of draft
