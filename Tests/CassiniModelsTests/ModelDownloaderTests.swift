@@ -56,23 +56,30 @@ private final class Server: @unchecked Sendable {
     let log: URL
     /// Pipe readiness and process teardown must never occupy a cooperative executor.
     static func start(_ scenario: String, startupTimeout: TimeInterval = 10, diagnostics: URL? = nil,
+                      startupClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+                      startupHeld: (@Sendable () -> Void)? = nil,
                       isolation: isolated (any Actor)? = #isolation,
                       onLaunched: @escaping @Sendable (FileHandle) -> Void = { _ in }) async throws -> Server {
         try await withCheckedThrowingContinuation { continuation in
             Thread.detachNewThread {
                 Self.bootstrapAdmission?.wait()
                 defer { Self.bootstrapAdmission?.signal() }
-                do { continuation.resume(returning:try Server(scenario,startupTimeout:startupTimeout,diagnostics:diagnostics,onLaunched:onLaunched)) }
+                do { continuation.resume(returning:try Server(scenario,startupTimeout:startupTimeout,diagnostics:diagnostics,startupClock:startupClock,startupHeld:startupHeld,onLaunched:onLaunched)) }
                 catch { continuation.resume(throwing:error) }
             }
         }
     }
     struct BootstrapFailure: Error, CustomStringConvertible {
+        enum Reason {
+            case startupDeadline, hangBound, pipeClosed, invalidReadiness
+        }
         let description: String
         let pid: Int32
         let folder: URL
+        let reason: Reason
     }
     private init(_ scenario: String, startupTimeout: TimeInterval, diagnostics: URL?,
+                 startupClock: @Sendable () -> UInt64, startupHeld: (@Sendable () -> Void)?,
                  onLaunched: @Sendable (FileHandle) -> Void) throws {
         let exitEvent = DispatchSemaphore(value:0); exited = exitEvent
         guard fcntl(control.fileHandleForWriting.fileDescriptor,F_SETNOSIGPIPE,1) == 0 else {
@@ -103,25 +110,44 @@ private final class Server: @unchecked Sendable {
         let launchedAt = DispatchTime.now().uptimeNanoseconds
         try process.run()
         onLaunched(control.fileHandleForWriting)
-        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
+        let deadline = startupClock() + UInt64(startupTimeout*1_000_000_000)
+        let hangDeadline = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout*1_000_000_000)
         let fd = pipe.fileHandleForReading.fileDescriptor
         var line = Data(), published = false
-        while DispatchTime.now().uptimeNanoseconds < deadline {
+        var failureReason = BootstrapFailure.Reason.invalidReadiness
+        while true {
+            let now = startupClock(), realNow = DispatchTime.now().uptimeNanoseconds
+            if realNow >= hangDeadline {
+                failureReason = .hangBound
+                break
+            }
+            if now >= deadline {
+                failureReason = .startupDeadline
+                break
+            }
+            let remaining = min(deadline-now,hangDeadline-realNow)
             var ready = pollfd(fd:fd,events:Int16(POLLIN | POLLHUP),revents:0)
-            let now = DispatchTime.now().uptimeNanoseconds
-            guard now < deadline else { break }
-            let remaining = deadline-now
             let count = poll(&ready,1,Int32(min(100,remaining/1_000_000)))
             if count < 0 { if errno == EINTR { continue }; throw ModelDownloadError.response }
             if count == 0 { continue }
-            guard let byte = try pipe.fileHandleForReading.read(upToCount:1), !byte.isEmpty else { break }
-            if byte == Data([10]) { published = true; break }
+            guard let byte = try pipe.fileHandleForReading.read(upToCount:1), !byte.isEmpty else {
+                failureReason = .pipeClosed
+                break
+            }
+            if byte == Data([10]) {
+                // The child has entered its intentional pre-readiness stall. This
+                // is a control event, never a URL or a readiness publication.
+                if line == Data("startup-held".utf8), let startupHeld {
+                    startupHeld(); line.removeAll(); continue
+                }
+                published = true; break
+            }
             line.append(byte)
         }
         guard published, let value = String(data:line,encoding:.utf8), let url = URL(string:value), url.host == "127.0.0.1" else {
             Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:false,diagnostics:diagnostics,exited:exitEvent)
             let diagnostic = (try? String(contentsOf:errors,encoding:.utf8)) ?? ""
-            throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root)
+            throw BootstrapFailure(description:"Fixture \(scenario) failed readiness (reason=\(failureReason), newline=\(published), running=\(process.isRunning), stdout=\(String(decoding:line,as:UTF8.self)), stderr=\(diagnostic.prefix(4096)))",pid:process.processIdentifier,folder:root,reason:failureReason)
         }
         origin = url; admitted = true
         Self.captureBootstrap(process,scenario:scenario,errors:errors,launchedAt:launchedAt,ready:true,diagnostics:diagnostics,exited:exitEvent)
@@ -275,9 +301,12 @@ private final class RemovalLockEvent: @unchecked Sendable {
         #expect(kill(pid,0) == -1 && errno == ESRCH)
     }
     @Test func fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() async throws {
+        let clock = StartupClock()
         let failure = try #require(await fails {
-            _ = try await Server.start("no-ready",startupTimeout:0.1)
+            _ = try await Server.start("no-ready",startupClock:{ clock.now() },startupHeld:{ clock.expire() })
         } as? Server.BootstrapFailure)
+        #expect(clock.expirations == 1)
+        #expect(failure.reason == .startupDeadline,"The manual deadline must end startup after the child stalls")
         #expect(kill(failure.pid,0) == -1 && errno == ESRCH)
         #expect(!FileManager.default.fileExists(atPath:failure.folder.path))
     }
@@ -285,6 +314,7 @@ private final class RemovalLockEvent: @unchecked Sendable {
         let failure = try #require(await fails {
             _ = try await Server.start("invalid-ready")
         } as? Server.BootstrapFailure)
+        #expect(failure.reason == .invalidReadiness)
         #expect(failure.description.contains("deliberate fixture startup failure"))
         #expect(failure.description.contains("stdout=invalid readiness"))
         #expect(kill(failure.pid,0) == -1 && errno == ESRCH)
@@ -612,4 +642,13 @@ private final class RemovalLockEvent: @unchecked Sendable {
         let duplicate = Data("{\"schema_version\":2,\"schema_version\":2}".utf8)
         #expect(throws:(any Error).self) { try ModelManifest.plan(duplicate,pin:pin) }
     }
+}
+
+private final class StartupClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: UInt64 = 1_000_000
+    private var count = 0
+    func now() -> UInt64 { lock.withLock { value } }
+    func expire() { lock.withLock { value += 10_000_000_000; count += 1 } }
+    var expirations: Int { lock.withLock { count } }
 }
