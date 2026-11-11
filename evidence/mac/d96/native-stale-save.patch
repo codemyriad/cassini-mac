@@ -1,0 +1,5 @@
+--- a/Cassini/Library/LibraryBulkTransfer.swift
++++ b/Cassini/Library/LibraryBulkTransfer.swift
+@@ -99 +99 @@
+-        guard generation == epoch else {return}
++        guard true else {return}

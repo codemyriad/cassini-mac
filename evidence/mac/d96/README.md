@@ -35,7 +35,7 @@ export. ZIP output uses the existing sandbox-safe atomic SavePanel destination.
   remains assigned to login-session CI.
 - The arm64 native app builds with Xcode 16.4. The actual sandboxed coordinator
   proof passes in the dedicated console user's Aqua session: multiple/ZIP
-  import, dedup, all/selected stored export, original audio bytes, queued cancel,
+  import, dedup, all/selected stored export, original audio bytes, queued cancel of fresh content with no new publication,
   stale save choice rejection and all locale summaries. No devices are opened.
 - 56 CI contracts, shared catalog hash/used-copy checks and whitespace checks
   pass. An additional own-capture test encodes real PCM into a complete Cassini
@@ -77,3 +77,18 @@ external `public-mutations` directory. No user files or permissions are changed.
 
 The D96 branch remains independent of #248. Publish ONE draft after #248 is
 ready, include current main by ordinary merge, complete D87, and do not self-merge.
+
+## Native cancellation and stale choices
+
+Queued cancellation now checks parent cancellation before worker I/O. Its
+fixture contains fresh content, not a pre-existing duplicate, and requires zero
+imports/duplicates plus identical Library IDs. Native guard mutations
+[native-queued-cancel.patch](native-queued-cancel.patch) and
+[native-stale-save.patch](native-stale-save.patch) respectively remove actual
+task cancellation or the production save-choice generation guard. Each fails
+the real sandboxed publication assertion without a timeout. The source and
+native product are rebuilt/restored; the normal proof passes afterward.
+`native-mutations.json` records the outcomes. A manual proof refuses to run
+while the dedicated GUI runner has an active worker; queued CI runs its own
+proof in its assigned session. Full native build/mutant/restored logs are in
+the external evidence directory.

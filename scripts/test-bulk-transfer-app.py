@@ -7,6 +7,9 @@ hosted=os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('RUNNER_ENVIR
 assert hosted or os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS')=='1','Explicit workflow opt-in required'
 if not hosted:
     assert os.stat('/dev/console').st_uid == os.getuid(), 'Run this app proof in the console user’s Aqua session'
+    if os.environ.get('GITHUB_ACTIONS') != 'true':
+        worker=subprocess.run(['pgrep','-u',str(os.getuid()),'-x','Runner[.]Worker'],capture_output=True)
+        assert worker.returncode==1, 'The GUI runner is busy; wait for its queued job to finish before a manual proof'
 
 key=str(uuid.uuid4())
 a.output.parent.mkdir(parents=True,exist_ok=True)

@@ -46,9 +46,15 @@ import Darwin
             NSLog("Bulk transfer phase: stale choice")
             await transfer.staleExportChoiceForTesting([first],to:cancelledSave)
             guard !transfer.busy,!FileManager.default.fileExists(atPath:cancelledSave.path) else {throw CocoaError(.userCancelled)}
+            let fresh=root.appendingPathComponent("Never imported.opus")
+            _ = try OpusStreamFile.rewrite(Data(contentsOf:source),tags:PortableMeetingTags.packet(comments:[.init(name:"TITLE",value:"Never imported")]),to:fresh)
+            let cancelZip=root.appendingPathComponent("Cancel.zip"),cancelWriter=try StoredZIPWriter(url:root.appendingPathComponent("Cancel.zip"))
+            try cancelWriter.add(file:fresh,name:"Never imported.opus");try cancelWriter.finish()
+            let beforeIDs=Set(meetings.map(\.id))
             NSLog("Bulk transfer phase: cancellation")
-            transfer.importFiles([archive]);transfer.cancel();await transfer.wait()
-            guard transfer.lastImportReport?.cancelled==true,!transfer.busy else {throw CocoaError(.userCancelled)}
+            transfer.importFiles([cancelZip]);transfer.cancel();await transfer.wait()
+            guard let cancelled=transfer.lastImportReport,cancelled.cancelled,cancelled.imported==0,cancelled.duplicates==0,!transfer.busy,
+                  Set(try LibraryScanner(root:root).scan().meetings.map(\.id))==beforeIDs else {throw CocoaError(.userCancelled)}
             for language in CassiniLanguage.allCases {
                 let copy=LibraryLocalization.shared.text("import.summary.imported",["n":"2"],language:language)
                 guard !copy.contains("{n}") else {throw CocoaError(.fileReadCorruptFile)}

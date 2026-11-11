@@ -1,0 +1,5 @@
+--- a/Cassini/Library/LibraryBulkTransfer.swift
++++ b/Cassini/Library/LibraryBulkTransfer.swift
+@@ -26 +26 @@
+-    func cancel() { pending.removeAll(); generation += 1; chooser?.cancel(nil); chooser=nil; task?.cancel(); if task == nil {operation=nil} }
++    func cancel() { pending.removeAll(); generation += 1; chooser?.cancel(nil); chooser=nil; if task == nil {operation=nil} }

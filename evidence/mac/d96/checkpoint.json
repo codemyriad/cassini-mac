@@ -4,7 +4,7 @@
   "affectedTests": 355,
   "nativeAppBuild": "passed after ordinary main merge; private assets validated against pins/unsigned hashes",
   "sharedCopyCheck": "passed",
-  "sandboxCoordinatorExecution": "passed in dedicated console Aqua session",
+  "sandboxCoordinatorExecution": "passed in genuine console Aqua session with fresh queued-cancel content and unchanged Library IDs",
   "productionMutations": "8 production guards fail behavioral assertions; restored core 13 passed, additional own-capture test passed",
   "sourceSHA256": {
     "Sources/CassiniKit/ZIPArchive.swift": "5b9febe995a2d1ee942c32af9d6c781a87bf241b478d900ec59d11a0979de93c",
@@ -15,12 +15,23 @@
     "Sources/CassiniExport/MeetingArchiveExporter.swift": "f375702dfdbe11be3c4068ae48dd785d13073f712c06caa936492c9f7c9dc2df",
     "Cassini/Library/LegacyOpening.swift": "2fa6bae2376dc8d89ec20103f58eb014c36fa1951f38e4076a61deafb4adcc6b",
     "Cassini/Library/LibraryStore.swift": "30488cf35008d8ab427ee0824ad1bcad0ce7602a254a19b60eb8880da2acd7f5",
-    "Cassini/Library/BulkTransferSelfTest.swift": "612ccba209f9ac71ed5c26452a9a50b80bdf101f4b879d7feadaabb9d0cbdf47",
+    "Cassini/Library/BulkTransferSelfTest.swift": "f20599e6064b656718e41e55a07d0007d0895936184d9e24da5fcddad4ce206d",
     "Cassini/Library/LibraryView.swift": "7aa13a3af60bb56d882c2b9807664b6213006c5561e733ed84d45f3ecc064206",
-    "Cassini/Library/LibraryBulkTransfer.swift": "8c437ff94240b25afea92ce4d9661088061a1ebad597f0d097f79327eb02d367",
+    "Cassini/Library/LibraryBulkTransfer.swift": "f07663af05a27bd5870695726f42f54916bfe12d368ae47d26d740f5868f4cb1",
     "Cassini/Library/LibraryImportCoordinator.swift": "1cb4a2681546f93d1acda73fc6ff986e8b9cbcdccccf0aabfc27118903f49e52",
     "Cassini/Export/MeetingExportCoordinator.swift": "d652b5f474e9d5f2ce8ff8b624b1ccc469e2792cd3f1d40cdec26b705579cf07",
     "Tests/CassiniExportTests/BulkExportTests.swift": "862c0efbb91433e1625e03040cdfd2f19c0f71e4cff51654ef279709c9463e12"
   },
-  "ciContracts": 56
+  "ciContracts": 56,
+  "nativeGuardMutations": [
+    {
+      "case": "queued-cancel",
+      "result": "actual sandbox publication assertion fails without a timeout"
+    },
+    {
+      "case": "stale-save",
+      "result": "actual sandbox publication assertion fails without a timeout"
+    }
+  ],
+  "manualProofGuard": "console ownership and idle GUI runner required"
 }

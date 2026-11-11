@@ -45,8 +45,12 @@ import UniformTypeIdentifiers
         message=nil; operation = .importing; progress = .init(done:0,total:leases.count)
         MeetingNavigation.shared.openLibrary?()
         task=Task {
+            let cancelledBeforeStart=Task.isCancelled
             let work=Task.detached(priority:.userInitiated) { [leases] in
                 defer { withExtendedLifetime(leases) {} }
+                if cancelledBeforeStart {
+                    var report=BulkImportReport();report.cancelled=true;return report
+                }
                 return LibraryBulkImport.run(leases.map(\.url),into:root,additionalRoots:Array(roots.dropFirst()),shouldCancel:{Task.isCancelled},progress:{ update in
                     Task { @MainActor in
                         guard self.generation==epoch, self.task != nil else {return}
@@ -117,6 +121,7 @@ import UniformTypeIdentifiers
         progress = .init(done:0,total:meetings.count)
         task=Task {
             do {
+                try Task.checkCancellation()
                 let work=Task.detached(priority:.userInitiated) { [destination] in
                     defer {withExtendedLifetime(destination) {}}
                     let assets=meetings.contains(where:{$0.state.origin == .own}) ? try OpusAssets.bundled(app:Bundle.main.bundleURL) : nil

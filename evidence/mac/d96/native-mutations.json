@@ -1,0 +1,10 @@
+[
+  {
+    "case": "queued-cancel",
+    "result": "actual sandbox publication assertion fails without a timeout"
+  },
+  {
+    "case": "stale-save",
+    "result": "actual sandbox publication assertion fails without a timeout"
+  }
+]
