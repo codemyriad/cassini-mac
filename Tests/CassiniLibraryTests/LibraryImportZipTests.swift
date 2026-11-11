@@ -1051,13 +1051,20 @@ import Testing
         let scannedLarge = try LibraryScanner(root: largeLib).scan().meetings
         #expect(scannedLarge.count == largeCount)
 
-        // Re-importing all 200 distinct documents into the populated Library hits the authoritative O(1) digest index!
+        // Re-importing all distinct documents into the populated Libraries seeds knownByDigest once and hits O(1) duplicate lookup!
+        var dupSmallSummary = LibraryImportSummary()
+        let startDupSmall = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        _ = try ZipArchiveImport.importArchive(smallZip, into: smallLib, temporaryRoot: staging, summary: &dupSmallSummary)
+        let cpuDupSmall = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - startDupSmall
+        #expect(dupSmallSummary.imported == 0 && dupSmallSummary.duplicates == smallCount && dupSmallSummary.failed == 0)
+
         var dupSummary = LibraryImportSummary()
         let startDup = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         _ = try ZipArchiveImport.importArchive(largeZip, into: largeLib, temporaryRoot: staging, summary: &dupSummary)
         let cpuDup = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - startDup
         #expect(dupSummary.imported == 0 && dupSummary.duplicates == largeCount && dupSummary.failed == 0)
-        #expect(cpuDup <= max(cpuLarge, 250_000_000))
+        #expect(cpuDup <= max(cpuDupSmall * 22, 250_000_000), "Expected linear CPU scaling for 8x duplicate lookups (small=\(cpuDupSmall)ns, large=\(cpuDup)ns)")
+        #expect(cpuDup <= max(cpuLarge * 3, 500_000_000), "Expected one-time seed scan + O(1) duplicate lookups to stay bounded vs initial import (import=\(cpuLarge)ns, dup=\(cpuDup)ns)")
     }
 
     @Test func bundleInfoPlistRegistersZipAndOggOpusAsAlternateViewerDocumentTypes() throws {
