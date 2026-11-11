@@ -3,6 +3,7 @@ import AppKit
 import CassiniKit
 import CassiniLibrary
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Scene identity contains no transport request, including in restoration data.
 struct LegacyRoute: Codable, Hashable {
@@ -33,7 +34,11 @@ enum LegacyOpening {
         #else
         let legacyFixture = false
         #endif
-        if !legacyFixture { LibraryImportCoordinator.shared.open(requestedURL); return }
+        if !legacyFixture {
+            if requestedURL.pathExtension.lowercased() == "zip" { LibraryBulkTransfer.shared.importFiles([requestedURL]) }
+            else { LibraryImportCoordinator.shared.open(requestedURL) }
+            return
+        }
         let url = requestedURL.standardizedFileURL
         if let model = documents[url]?.model {
             if autoplay { model.requestPlay() }
@@ -59,13 +64,19 @@ enum LegacyOpening {
     static func chooseDocuments() {
         if let openPanel { openPanel.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = CassiniDocument.readableContentTypes
+        panel.allowedContentTypes = CassiniDocument.readableContentTypes + [.zip]
+        panel.message = UXText.text("import.filter.cassiniAndZip")
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
         openPanel = panel
         panel.begin { response in
             MainActor.assumeIsolated {
                 openPanel = nil
-                if response == .OK { panel.urls.forEach { openDocument($0) } }
+                if response == .OK {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" { panel.urls.forEach { openDocument($0) }; return }
+                    #endif
+                    LibraryBulkTransfer.shared.importFiles(panel.urls)
+                }
             }
         }
     }

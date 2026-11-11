@@ -91,6 +91,8 @@ jobs:
       run: python3 scripts/test-recording-comfort.py build/Build/Products/Debug/Cassini.app --output build/ux-boards
     - name: Private stopped recording clock without devices or windows
       run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/saving-clock.json
+    - name: Private bulk ZIP transfer without devices
+      run: python3 scripts/test-bulk-transfer-app.py build/Build/Products/Debug/Cassini.app --output build/bulk-transfer.json
     - name: Private import and queue lifecycle without devices
       if: always()
       run: python3 scripts/test-import-lifecycle.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/import-lifecycle.json

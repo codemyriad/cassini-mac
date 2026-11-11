@@ -6,8 +6,15 @@ import CassiniKit
 
 /// R1.4: original bytes are private and complete before meeting.json commits the
 /// import. A full-file hash identifies repeats, regardless of source filename.
+public struct LibraryImportResult: Sendable {
+    public let meeting: LibraryMeeting
+    public let duplicate: Bool
+}
 public enum LibraryImport {
     public static func copy(_ source: URL, into root: URL, additionalRoots: [URL] = [], shouldCancel: () -> Bool = { false }) throws -> LibraryMeeting {
+        try copyResult(source,into:root,additionalRoots:additionalRoots,shouldCancel:shouldCancel).meeting
+    }
+    public static func copyResult(_ source: URL, into root: URL, additionalRoots: [URL] = [], displayName: String? = nil, shouldCancel: () -> Bool = { false }) throws -> LibraryImportResult {
         let (input, identity) = try openRegular(source); defer { close(input) }
         guard identity.size > 0, identity.size <= Int64(UInt32.max) else { throw POSIXError(.EFBIG) }
         let read = FileHandle(fileDescriptor:input,closeOnDealloc:false)
@@ -43,18 +50,18 @@ public enum LibraryImport {
         guard case .success? = file.audioDigest else { throw MetadataError.invalid }
         let scanner = LibraryScanner(root:root)
         for candidate in [root] + additionalRoots where FileManager.default.fileExists(atPath:candidate.path) {
-            if let duplicate = try LibraryScanner(root:candidate).scan().meetings.first(where: { $0.received?.sha256 == digest }) { return duplicate }
+            if let duplicate = try LibraryScanner(root:candidate).scan().meetings.first(where: { $0.received?.sha256 == digest }) { return LibraryImportResult(meeting:duplicate,duplicate:true) }
         }
         if shouldCancel() { throw CancellationError() }
         let trusted = [.ok,.plainAudio].contains(file.state)
         let importedNotes = Self.importedNotes(trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"] : nil)
-        let title = [trusted ? file.manifest?.meeting.title : nil,trusted ? file.tags?["TITLE"] : nil,source.deletingPathExtension().lastPathComponent]
+        let title = [trusted ? file.manifest?.meeting.title : nil,trusted ? file.tags?["TITLE"] : nil,(displayName.map { ($0 as NSString).deletingPathExtension } ?? source.deletingPathExtension().lastPathComponent)]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
         if shouldCancel() { throw CancellationError() }
         try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
             var received: [String:Any] = ["originalName":"original.opus","sha256":digest,"importedAtMs":Int64(Date().timeIntervalSince1970 * 1000)]
             let parent = String(String.UnicodeScalarView(source.deletingLastPathComponent().lastPathComponent.unicodeScalars.prefix(255)))
-            if safeBasename(parent) { received["originalFolderName"] = parent }
+            if displayName == nil, safeBasename(parent) { received["originalFolderName"] = parent }
             metadata["received"] = received
             metadata["notes"] = importedNotes
             if trusted, let route = Self.importedOthersRoute(file.manifest?.raw["x"]?["codemyriad.io"]) {
@@ -64,7 +71,7 @@ public enum LibraryImport {
             if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
         }
         guard let meeting = try scanner.scan().meetings.first(where: { $0.id == id }) else { throw POSIXError(.EINVAL) }
-        committed = true; return meeting
+        committed = true; return LibraryImportResult(meeting:meeting,duplicate:false)
     }
     /// D74 immutable routing provenance travels with the recording, including future
     /// source/reason/site strings. The original namespace remains authoritative for

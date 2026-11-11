@@ -1,6 +1,6 @@
 {
-  "repository": "cassini-coordination",
-  "path": "ux-draft/strings.json",
-  "commit": "039823f18705250d9e808888e1b56bd97f5eecbf",
-  "sha256": "e5e1a87132e439db26333aa9050edd9fc513adcc491bb12fa56a7700f94ec3ec"
+  "repository": "codemyriad/cassini-ux",
+  "path": "strings/strings.json",
+  "commit": "4d577376f6360ed352fa75307f4dc47890ed9858",
+  "sha256": "7b059577a6e4a5d692ccb5c745916bc790e9e0fe7c77c5572fb64fda80f0f7b3"
 }

@@ -41,7 +41,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     @ObservationIgnored private var savePanel: NSSavePanel?
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var chooserGeneration: UInt64 = 0
-    var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil }
+    var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil || LibraryBulkTransfer.shared.busy }
     static func canExport(_ meeting: LibraryMeeting?) -> Bool {
         guard !LibraryMoveCoordinator.shared.busy, let meeting, meeting.state.lifecycle == .saved else { return false }
         return !meeting.audioFiles.isEmpty || !meeting.transcriptItems.isEmpty || !meeting.notes.isEmpty
@@ -66,6 +66,7 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         else { presentSavePanel(meeting,kind:kind) }
     }
     func cancel() {
+        LibraryBulkTransfer.shared.cancel()
         chooserGeneration &+= 1
         selectedFile = nil
         showing = false; estimateTask?.cancel(); presentationTask?.cancel()
@@ -76,8 +77,8 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
         cancel(); await waitForShutdown()
         meeting = nil; estimatedBytes = nil
     }
-    func beginShutdown() { closing = true; cancel() }
-    func waitForShutdown() async { await presentationTask?.value; await task?.value }
+    func beginShutdown() { LibraryBulkTransfer.shared.beginShutdown(); closing = true; cancel() }
+    func waitForShutdown() async { await presentationTask?.value; await task?.value; await LibraryBulkTransfer.shared.wait() }
     func dismissForQuit() async {
         let parent = NSApp.keyWindow?.sheetParent ?? NSApp.mainWindow
         cancel()

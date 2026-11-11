@@ -13,7 +13,7 @@ struct CassiniApp: App {
     var body: some Scene {
         let captureActive = recorder.isRecording || captures.isRecording
         #if DEBUG
-        let suppressWindow = CommandLine.arguments.contains("--browser-return-self-test") || CommandLine.arguments.contains("--live-folder-self-test") || CommandLine.arguments.contains("--browser-background-self-test") || CommandLine.arguments.contains("--recording-saving-self-test") ||
+        let suppressWindow = CommandLine.arguments.contains("--bulk-transfer-self-test") || CommandLine.arguments.contains("--browser-return-self-test") || CommandLine.arguments.contains("--live-folder-self-test") || CommandLine.arguments.contains("--browser-background-self-test") || CommandLine.arguments.contains("--recording-saving-self-test") ||
             CommandLine.arguments.contains("--browser-capture-self-test") ||
             CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test") ||
             (RecordingFixture.enabled && CommandLine.arguments.contains("--fixture-windowless-launch"))

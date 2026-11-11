@@ -18,6 +18,8 @@ struct LibraryView: View {
     @State private var trash = MeetingTrashCoordinator.shared
     @Environment(\.undoManager) private var undoManager
     @State private var exporter = MeetingExportCoordinator.shared
+    @State private var bulk = LibraryBulkTransfer.shared
+    @State private var selectedKeys = Set<String>()
     @State private var recordingDetails = RecordingDetailsCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
@@ -33,6 +35,130 @@ struct LibraryView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     var body: some View {
+        presentationContent
+        .onAppear {
+            search.update(store.meetings)
+            sessionPlayback.onFailure = { NSApp.presentError($0) }
+            store.start()
+        }
+        .onDisappear { sessionPlayback.stop(); navigation.back(); search.close() }
+        .onChange(of: recorder.isSaving) { _,saving in
+            if saving, let folder = recorder.directory { navigation.captureBeganSaving(at:folder) }
+        }
+        .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
+        .onChange(of: store.revision) { _, _ in
+            search.update(store.meetings)
+            sessionPlayback.reconcile(store.selected, offline: store.offline)
+            navigation.update(store.meetings, offline: store.offline)
+            if recordCoordinator.openRecordingWhenReady, RecordingOverview.active,
+               let current = store.meetings.first(where: { $0.libraryKey == RecordingOverview.directory?.lastPathComponent }) {
+                recordCoordinator.openRecordingWhenReady = false; navigation.open(current)
+            }
+            #if DEBUG
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "recording", navigation.detail == nil,
+               let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) { navigation.open(meeting, frozen:true) }
+            #endif
+            #if DEBUG
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !search.visible {
+                search.query = "budget"; search.speaker = "Marta"; search.open()
+            }
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
+                recordCoordinator.showingFirst = true
+            }
+            if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
+               let meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+                navigation.open(meeting,frozen:true)
+                if LibraryLaunchContext.argument("-CassiniScreenshot") == "export" {
+                    Task { @MainActor in
+                        try? await Task.sleep(for:.milliseconds(300)); exporter.show(meeting)
+                    }
+                }
+            }
+            #endif
+        }
+        .onOpenURL { LegacyOpening.openDocument($0) }
+        .dropDestination(for:URL.self) { urls,_ in
+            let audio = urls.filter { $0.isFileURL && ["opus","ogg","zip"].contains($0.pathExtension.lowercased()) }
+            LibraryBulkTransfer.shared.importFiles(audio); return !audio.isEmpty
+        }
+        .preferredColorScheme(store.context.screenshot ? .light : nil)
+    }
+    private var interactiveContent: some View {
+        sceneContent
+        .onChange(of:store.revision) { _,_ in
+            selectedKeys.formIntersection(Set(store.meetings.map(\.libraryKey)))
+        }
+        .onChange(of:selectedKeys) { old,keys in
+            store.selectedKey = keys.subtracting(old).first ?? keys.first
+        }
+        .onChange(of:store.selectedKey,initial:true) { _,key in
+            if let key, !selectedKeys.contains(key) {selectedKeys=[key]}
+            else if key == nil {selectedKeys=[]}
+        }
+        .safeAreaInset(edge:.bottom,spacing:0) { bulkStatus }
+        .toolbar {
+            if !search.visible && navigation.detail == nil && !store.meetings.isEmpty {
+                ToolbarItem(placement:.primaryAction) {
+                    bulkExportMenu
+                    LibrarySearchField(text:$search.query,onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
+                }
+            }
+        }
+    }
+    private var presentationContent: some View {
+        interactiveContent
+        .background(WindowAccessor { window in
+            guard let window else { return }
+            window.setAccessibilityIdentifier("cassini-library-window")
+            window.toolbarStyle = .unified
+            window.titleVisibility = .hidden
+            RecordingConfirmation.attach(to: window)
+            #if DEBUG
+            if store.loaded { ScreenshotFixture.prepareLibrary(window) }
+            #endif
+        })
+        .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
+        .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
+        .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
+        .overlay(alignment:.bottom) { MeetingExportNotice() }
+        #if DEBUG
+        .overlay(alignment:.topLeading) {
+            if RecordingFixture.enabled {
+                Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))
+                    .frame(width:1,height:1).opacity(0.01).accessibilityIdentifier("recording-notification-fixture")
+            }
+        }
+        #endif
+        .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
+        .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
+    }
+    @ViewBuilder private var bulkStatus: some View {
+            if bulk.busy || bulk.message != nil {
+                HStack {
+                    if bulk.busy {ProgressView().controlSize(.small)}
+                    Text(bulk.busy ? bulk.progressText : (bulk.message ?? "")).font(.system(size:12)).textSelection(.enabled)
+                    Spacer()
+                    if bulk.busy {Button(UXText.text("common.cancel")) {bulk.cancel()}.accessibilityIdentifier("bulk-transfer-cancel")}
+                    else {Button(UXText.text("common.close")) {bulk.dismissMessage()}}
+                }.padding(12).accessibilityIdentifier("bulk-transfer-status")
+            }
+    }
+    private var selectedMeetings: [LibraryMeeting] { store.meetings.filter {selectedKeys.contains($0.libraryKey)} }
+    private var bulkExportMenu: some View {
+                    Menu(UXText.text("common.exportEllipsis")) {
+                        Button(UXText.text("export.zip.all")) { bulk.export(store.meetings) }
+                            .disabled(bulk.busy || store.meetings.contains { $0.state.lifecycle != .saved })
+                            .accessibilityIdentifier("export-zip-all")
+                        Button(UXText.text("export.zip.selected")) {
+                            let chosen=selectedMeetings
+                            guard chosen.count == selectedKeys.count else {NSApp.presentError(CocoaError(.fileNoSuchFile));return}
+                            bulk.export(chosen)
+                        }
+                            .disabled(bulk.busy || selectedKeys.isEmpty || selectedMeetings.contains(where: {$0.state.lifecycle != .saved}))
+                            .accessibilityIdentifier("export-zip-selected")
+                    }.accessibilityIdentifier("library-bulk-export")
+    }
+    private var sceneContent: some View {
         GeometryReader { geometry in
             Group {
                 if let detail = navigation.detail {
@@ -147,83 +273,6 @@ struct LibraryView: View {
             }
             }
         }
-        .toolbar {
-            if !search.visible && navigation.detail == nil && !store.meetings.isEmpty {
-                ToolbarItem(placement:.primaryAction) {
-                    LibrarySearchField(text:$search.query,onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
-                }
-            }
-        }
-        .background(WindowAccessor { window in
-            guard let window else { return }
-            window.setAccessibilityIdentifier("cassini-library-window")
-            window.toolbarStyle = .unified
-            window.titleVisibility = .hidden
-            RecordingConfirmation.attach(to: window)
-            #if DEBUG
-            if store.loaded { ScreenshotFixture.prepareLibrary(window) }
-            #endif
-        })
-        .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-        .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
-        .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
-        .overlay(alignment:.bottom) { MeetingExportNotice() }
-        #if DEBUG
-        .overlay(alignment:.topLeading) {
-            if RecordingFixture.enabled {
-                Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))
-                    .frame(width:1,height:1).opacity(0.01).accessibilityIdentifier("recording-notification-fixture")
-            }
-        }
-        #endif
-        .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
-        .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
-        .onAppear {
-            search.update(store.meetings)
-            sessionPlayback.onFailure = { NSApp.presentError($0) }
-            store.start()
-        }
-        .onDisappear { sessionPlayback.stop(); navigation.back(); search.close() }
-        .onChange(of: recorder.isSaving) { _,saving in
-            if saving, let folder = recorder.directory { navigation.captureBeganSaving(at:folder) }
-        }
-        .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
-        .onChange(of: store.revision) { _, _ in
-            search.update(store.meetings)
-            sessionPlayback.reconcile(store.selected, offline: store.offline)
-            navigation.update(store.meetings, offline: store.offline)
-            if recordCoordinator.openRecordingWhenReady, RecordingOverview.active,
-               let current = store.meetings.first(where: { $0.libraryKey == RecordingOverview.directory?.lastPathComponent }) {
-                recordCoordinator.openRecordingWhenReady = false; navigation.open(current)
-            }
-            #if DEBUG
-            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "recording", navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) { navigation.open(meeting, frozen:true) }
-            #endif
-            #if DEBUG
-            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !search.visible {
-                search.query = "budget"; search.speaker = "Marta"; search.open()
-            }
-            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
-                recordCoordinator.showingFirst = true
-            }
-            if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
-                navigation.open(meeting,frozen:true)
-                if LibraryLaunchContext.argument("-CassiniScreenshot") == "export" {
-                    Task { @MainActor in
-                        try? await Task.sleep(for:.milliseconds(300)); exporter.show(meeting)
-                    }
-                }
-            }
-            #endif
-        }
-        .onOpenURL { LegacyOpening.openDocument($0) }
-        .dropDestination(for:URL.self) { urls,_ in
-            let audio = urls.filter { $0.isFileURL && ["opus","ogg"].contains($0.pathExtension.lowercased()) }
-            audio.forEach { LibraryImportCoordinator.shared.open($0) }; return !audio.isEmpty
-        }
-        .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
     private func trashButton(_ meeting: LibraryMeeting) -> some View {
         Button(UXText.text("common.moveToTrash")) {
@@ -251,7 +300,7 @@ struct LibraryView: View {
     }
     private var split: some View {
         HStack(spacing: 0) {
-            List(selection: $store.selectedKey) {
+            List(selection: $selectedKeys) {
                 ForEach(store.groups, id: \.title) { group in
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
@@ -263,7 +312,7 @@ struct LibraryView: View {
                                     }.accessibilityHidden(true)
                                     if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() }
                                 }
-                                .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
+
                                 .contextMenu {
                                     Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
                                         .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
@@ -274,7 +323,7 @@ struct LibraryView: View {
                                 }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)
-                                    .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
+                                    .fill(selectedKeys.contains(meeting.libraryKey) ? Color.accentColor : Color.clear)
                                     .padding(.horizontal, 8))
                                 .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
                                 .accessibilityIdentifier("meeting-" + meeting.libraryKey)
@@ -321,7 +370,7 @@ struct LibraryView: View {
         }
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
-        let selected = store.selectedKey == meeting.libraryKey
+        let selected = selectedKeys.contains(meeting.libraryKey)
         let dim = selected ? Color.white.opacity(0.86) : LibraryTheme.dim
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {

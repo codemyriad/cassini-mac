@@ -46,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if CommandLine.arguments.contains("--bulk-transfer-self-test") {
+            Task { @MainActor in await BulkTransferSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--browser-return-self-test") {
             guard CaptureFixture.enabled else { exit(77) }
             LibraryStore.shared.start()
