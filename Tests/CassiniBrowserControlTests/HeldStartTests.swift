@@ -234,16 +234,17 @@ final class HeldStartTests: XCTestCase {
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         defer { try? FileManager.default.removeItem(at:root) }
         let completions = Completions(), goneAfterStart = Armed()
+        let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let gone = expectation(description:"first link gone"), settled = expectation(description:"held Start settled")
         gone.assertForOverFulfill = false; settled.assertForOverFulfill = false
         let service = BrowserControlService(changed:{ peers in if peers.isEmpty { goneAfterStart.fulfill() } },
-                                            completed:{ outcome,automatic in completions.append(outcome,automatic); settled.fulfill() })
+                                            completed:{ outcome,automatic in completions.append(outcome,automatic); settled.fulfill() },clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:false)
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
         func open() throws -> PipeEndpoint {
             let link = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
-            try link.send(JSONSerialization.data(withJSONObject:["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"]]))
+            try link.send(JSONSerialization.data(withJSONObject:["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1","heartbeat-v1"]]))
             try link.send(JSONSerialization.data(withJSONObject:meetings("call-A")))
             return link
         }
@@ -267,6 +268,6 @@ final class HeldStartTests: XCTestCase {
         XCTAssertEqual(outcome.0.requestID,start["requestId"]?.string)
         XCTAssertTrue(outcome.0.ok); XCTAssertTrue(outcome.1,"it keeps its automatic origin")
         XCTAssertEqual(outcome.0.settledKey?.tabID,2); XCTAssertNotEqual(outcome.0.settledKey,outcome.0.key)
-        XCTAssertThrowsError(try receive(second,seconds:0.3),"no second Start for the recording call")
+        try assertNoCommandBeforeHeartbeat(service,second,clock:clock,frames:frames)
     }
 }

@@ -58,6 +58,7 @@ jobs:
       run: |
         swift test --skip-build --filter Whistle
         python3 scripts/test-worker-events.py
+        python3 scripts/test-whistle-worker-events.py
     - name: Recover corrupt or truncated artifact caches
       run: python3 scripts/test-whistle-fetch.py
     - name: Verified model memory and process ownership

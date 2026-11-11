@@ -1,0 +1,4 @@
+--- a/Sources/CassiniBrowserControl/ControlHeartbeat.swift
++++ b/Sources/CassiniBrowserControl/ControlHeartbeat.swift
+@@ -24,0 +25 @@
++        if type == "status" { negotiated = true }
