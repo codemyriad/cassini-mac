@@ -24,7 +24,9 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    # The hosted Intel row compiles the SwiftPM products itself when they were built in another
+    # workspace (a rented Mac): about 3.5 minutes on top of a job that has taken up to 10.6.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       # D66 run 42559654278: Spotlight workers saturated the disposable VM
