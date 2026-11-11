@@ -59,6 +59,13 @@ public enum MeetingFileExporter {
             audio = try Data(contentsOf:url,options:.mappedIfSafe)
             try budget(bytes:Double(audio.count) * 2 + Double(256 << 20),directory:directory)
             let file = try CassiniReader.read(audio)
+            // A non-OK Cassini document is an opaque original. Never replace its
+            // identity, claims or transcripts with a fresh authenticated manifest.
+            if file.state != .ok && file.state != .plainAudio {
+                if shouldCancel() {throw CancellationError()}
+                guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else {throw MeetingExportError.invalidSource}
+                return artifact
+            }
             guard case .success(let actual)? = file.audioDigest else { throw MeetingExportError.invalidSource }
             digest = actual; original = file.state == .ok ? file : nil; choice = nil
             tagSource = [.ok,.plainAudio].contains(file.state) ? file : nil
@@ -198,7 +205,7 @@ public enum MeetingFileExporter {
         try emit(limiter.finish())
     }
     private static func validUTCRecordingInstant(_ value: String) -> Bool {
-        value.hasSuffix("Z") && MeetingTime.parseInstant(value) != nil
+        MeetingTime.normalizedUTC(value) != nil
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
@@ -210,7 +217,7 @@ public enum MeetingFileExporter {
         let recordedUtc: String?
         if meeting.state.origin == .own { recordedUtc = meeting.start.map(MeetingTime.utcString) }
         else if let original = file?.manifest {
-            recordedUtc = original.meeting.recordedAtUtc.flatMap { validUTCRecordingInstant($0) ? $0 : nil }
+            recordedUtc = original.meeting.recordedAtUtc.flatMap(MeetingTime.normalizedUTC)
         }
         else { recordedUtc = dateTag.flatMap(MeetingTime.parseInstant).map(MeetingTime.utcString) }
         let mirrorDate = MeetingTime.dateTag(recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)

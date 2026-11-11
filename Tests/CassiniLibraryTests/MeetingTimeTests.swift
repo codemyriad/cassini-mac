@@ -76,4 +76,33 @@ struct MeetingTimeTests {
         #expect(LibraryScanner.ordered(imported,known),"Creation is a last sorting fallback, not a displayed time")
         #expect(LibraryScan(meetings:[imported],issues:[]).groups(format:format).first?.title == "Date unknown")
     }
+    @Test func mixedRecordingAndCreationTimesFormUniqueLocalizedSections() throws {
+        let fixture=try Fixture()
+        let path=fixture.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/027-recorded-at-utc.opus")
+        let file=try CassiniReader.read(contentsOf:path)
+        let now=try #require(MeetingTime.parseInstant("2026-11-09T12:00:00Z"))
+        func item(_ title:String,_ at:String?) -> LibraryMeeting {
+            var value=MeetingPresentation.external(file,url:path)
+            value.title=title;value.recordedTime=nil
+            value.start=at.flatMap(MeetingTime.parseInstant)
+            return value
+        }
+        let a=item("First today","2026-11-09T11:00:00Z"),b=item("Second today","2026-11-09T09:00:00Z")
+        let u=item("Unknown one",nil),v=item("Unknown two",nil)
+        let y=item("Yesterday","2026-11-08T23:00:00Z")
+        let format=LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,now:now,locale:Locale(identifier:"en_GB"),language:.en)
+        let groups=LibraryScan(meetings:[a,u,b,y,v],issues:[]).groups(format:format)
+        #expect(groups.count==3)
+        #expect(Set(groups.map(\.id)).count==groups.count)
+        #expect(groups.first?.meetings.map(\.title)==["First today","Second today"])
+        #expect(groups.last?.meetings.map(\.title)==["Unknown one","Unknown two"])
+        #expect(Set(groups.map(\.title)).count==groups.count)
+        let french=LibraryFormat(timeZone:format.timeZone,now:now,locale:Locale(identifier:"en_US"),language:.fr)
+        let localized=LibraryScan(meetings:[u,v],issues:[]).groups(format:french)
+        #expect(localized.first?.title==LibraryLocalization.shared.text("library.group.unknownDate",language:.fr,locale:french.locale))
+        #expect(localized.first?.title != "Date unknown")
+        #expect(localized.first?.id==groups.last?.id)
+        #expect(LibraryNames.dateTagInstant("2026-11-09t12:00:00z")==now)
+    }
+
 }

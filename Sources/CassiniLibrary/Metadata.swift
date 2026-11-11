@@ -76,8 +76,4 @@ extension AppMetadata {
         return try JSONDecoder().decode(Self.self, from: data)
     }
 }
-func recordingDate(_ value: String) -> Date? {
-    let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = formatter.date(from: value) { return date }
-    formatter.formatOptions = [.withInternetDateTime]; return formatter.date(from: value)
-}
+func recordingDate(_ value: String) -> Date? { MeetingTime.parseInstant(value) }

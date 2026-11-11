@@ -68,21 +68,22 @@ import Testing
         }
     }
     /// Explicit D95 deltas to the frozen S-3a oracle, not output-derived expectations.
-    /// Preserve row order (creation remains a sorting fallback) and every non-time field.
+    /// Preserve order within each day and every non-time field; unknown dates form one trailing group.
     private static func d95Expectation(_ original: Any, creationOnly: Set<String>) -> Any {
         guard !creationOnly.isEmpty else { return original }
-        var expected = original as! [String:Any], groups: [[String:Any]] = []
+        var expected = original as! [String:Any], groups: [[String:Any]] = [], unknownRows: [[String:Any]] = []
         for group in expected["groups"] as! [[String:Any]] {
             for var row in group["meetings"] as! [[String:Any]] {
                 let unknown = row["origin"] as? String == "received" && creationOnly.contains(row["id"] as! String)
                 let title = unknown ? "Date unknown" : group["title"] as! String
-                if unknown { row["startMs"] = NSNull() }
+                if unknown { row["startMs"] = NSNull(); unknownRows.append(row); continue }
                 if groups.last?["title"] as? String == title {
                     var rows = groups[groups.count-1]["meetings"] as! [[String:Any]]; rows.append(row)
                     groups[groups.count-1]["meetings"] = rows
                 } else { groups.append(["title":title,"meetings":[row]]) }
             }
         }
+        if !unknownRows.isEmpty { groups.append(["title":"Date unknown","meetings":unknownRows]) }
         expected["groups"] = groups; return expected
     }
     private static func nullable<T>(_ value: T?) -> Any { value.map { $0 as Any } ?? NSNull() }

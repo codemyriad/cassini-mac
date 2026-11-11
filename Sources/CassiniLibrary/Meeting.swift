@@ -251,7 +251,8 @@ public struct LibraryTranscriptTurn: Equatable, Sendable {
 }
 /// Diagnostic codes only. No raw errors or undrawn UI copy is produced by the core.
 public enum LibraryReadIssue: String, Sendable { case unsafePath, invalidMetadata, invalidCapture, missingAudio, invalidAudio, invalidTranscript, unsupportedVersion, unknownStartOffset }
-public struct LibraryDayGroup: Sendable {
+public struct LibraryDayGroup: Sendable, Identifiable {
+    public let id:String
     public var title: String
     public var meetings: [LibraryMeeting]
 }
@@ -273,15 +274,23 @@ public struct LibraryScan: Sendable {
         } }
         return .init(meetings:meetings.sorted(by:LibraryScanner.ordered),issues:snapshots.flatMap(\.issues))
     }
-    /// R6 order is established by the scanner before grouping by calendar day.
+    /// Preserve scanner order within each calendar day. Creation-only meetings
+    /// form one trailing unknown-date section, even when sorting interleaves them.
     public func groups(format: LibraryFormat) -> [LibraryDayGroup] {
-        var groups: [LibraryDayGroup] = []
+        let unknown="unknown-date"
+        var groups:[String:LibraryDayGroup]=[:]
         for meeting in meetings {
-            let title = meeting.meetingTime.map(format.dayGroup) ?? "Date unknown"
-            if groups.last?.title == title { groups[groups.count - 1].meetings.append(meeting) }
-            else { groups.append(.init(title: title, meetings: [meeting])) }
+            let time=meeting.meetingTime
+            let key=time.flatMap(format.dayKey).map {"day:"+$0} ?? unknown
+            if groups[key] != nil {groups[key]!.meetings.append(meeting)}
+            else {
+                let title=key == unknown ? LibraryLocalization.shared.text("library.group.unknownDate",language:format.language,locale:format.locale) : format.dayGroup(time!)
+                groups[key] = .init(id:key,title:title,meetings:[meeting])
+            }
         }
-        return groups
+        var keys=groups.keys.filter {$0 != unknown}.sorted(by:>)
+        if groups[unknown] != nil {keys.append(unknown)}
+        return keys.compactMap {groups[$0]}
     }
 }
 public protocol LibraryWatching: AnyObject, Sendable {

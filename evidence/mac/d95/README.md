@@ -20,7 +20,8 @@ The frozen S-3a shared input files and original expected-file hashes stay intact
 `MeetingTimeExpectations.json` explicitly lists the six creation-only received
 rows in four cases whose old displayed dates conflict with D95. The adapter
 changes only their start/group fields; creation remains a sorting fallback,
-so row order and every non-time expectation remain checked. These deltas were
+so order within a calendar day and every non-time expectation remain checked.
+Unknown dates collect into one trailing section rather than splitting known days. These deltas were
 independently checked with the pinned pure format reader before running the
 production scanner.
 
@@ -58,8 +59,9 @@ bounds. Together these tests failed 14 assertions before the fixes.
 The own-capture round-trip test now also puts an older export with no UTC and
 a conflicting local label beside the capture. The saved capture's trustworthy
 UTC start still displays and is written on re-export with matching mirrors,
-ID and audio hash. Stale/unverified export fixtures now carry a *valid* local
-label, ensuring trust checks rather than shape validation discard it.
+ID and audio hash. Non-OK Cassini exports preserve the complete original byte stream, including
+local labels and untrusted claims; display trust checks remain separate from
+export preservation.
 
 Date/clock pairs are checked against calendar components for `Etc/GMT-14`,
 `GMT+0530`, `EST5EDT`, `America/St_Johns` and the current zone. The search/time
@@ -124,3 +126,32 @@ in finally; do not build concurrently while mutating. Full logs remain under
 The original four-argument RecordingSession initializer remains a forwarding
 convenience overload for compiled test clients. The explicit-zone initializer
 handles capture-site recording. Both symbols and 26 focused cases passed.
+
+## Codex review corrections
+
+Lowercase RFC3339 `t`/`z` now use one normalization path for recording UTC,
+DATE/creation comparisons, import naming and rebuilt exports. Tests round-trip
+all three lowercase combinations through direct opening, Library export and
+re-import; equivalent creation stamps never become the meeting time.
+
+Non-OK Cassini documents return before repair or replacement manifest creation.
+Both direct-open and Library exports are byte-identical for stale audio,
+unverified integrity, damaged metadata and unknown major versions. Tests retain
+state, identity, metadata, time claims, original tags and transcripts (including
+a 900-word stale transcript), even after a local title edit. Plain audio still
+receives a new Cassini manifest; valid Cassini documents retain their existing
+metadata-edit behavior.
+
+Library sections collect by stable Gregorian calendar-day identity in the viewer
+zone (civil labels retain their own day). Unknown dates collect once at the end;
+section IDs are independent of translated headings. The unknown heading uses
+`library.group.unknownDate` with the supplied language and locale. A mixed
+known/unknown sequence checks membership, unique IDs and French translation.
+The explicit D95 frozen-vector adapter collects only its six already-declared
+creation-only rows into that trailing group; upstream bytes/hashes are untouched.
+
+The initial new regression slice failed 68 assertions against the reviewed code.
+The corrected affected partition passes 421 tests; 56 CI contracts pass.
+`replay.py` also disables RFC3339 normalization, non-OK byte copying, day grouping
+and unknown-date localization independently. Each production mutation must fail
+an executed behavioral assertion, alongside the previous five D95 mutants.

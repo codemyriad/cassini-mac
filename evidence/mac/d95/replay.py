@@ -41,18 +41,27 @@ with tempfile.TemporaryDirectory(prefix='cassini-d95-') as temp:
             cwd=work / 'Tests/CassiniKitTests/Conformance')
     mutations = [
         ('utc-priority', 'Sources/CassiniKit/MeetingTime.swift',
-         'if let utc = meeting?.recordedAtUtc', 'if false, let utc = meeting?.recordedAtUtc', 'RecordingTimeReaderTests'),
+         'if let value = meeting?.recordedAtUtc', 'if false, let value = meeting?.recordedAtUtc', 'RecordingTimeReaderTests'),
         ('utc-mirror', 'Sources/CassiniKit/PortableMeetingTags.swift',
          'if let utc = model.meeting.recordedAtUtc { scalarTags.append(("CASSINI_RECORDED_AT_UTC",utc)) }',
          'if false, let utc = model.meeting.recordedAtUtc { scalarTags.append(("CASSINI_RECORDED_AT_UTC",utc)) }',
          'receivedExportsPreserveOnlyTheKnownRecordingTime'),
         ('utc-sanitization', 'Sources/CassiniExport/MeetingFileExporter.swift',
-         'value.hasSuffix("Z") && MeetingTime.parseInstant(value) != nil', 'true', 'receivedExportsDropMalformedUTC'),
+         'MeetingTime.normalizedUTC(value) != nil', 'true', 'receivedExportsDropMalformedUTC'),
         ('manifest-trust', 'Sources/CassiniKit/MeetingTime.swift',
          'guard state != .invalidCassiniMetadata, state != .unknownCassiniFormat else { return nil }',
          'guard true else { return nil }', 'unreadableCassiniDoesNotBorrowDATE'),
         ('midnight-day-end', 'Sources/CassiniSearch/SearchIndex.swift',
          'date < day.end', 'date < calendar.date(byAdding:.day,value:1,to:day.start)!', 'midnightDSTUsesCalendarDayBounds'),
+        ('rfc3339-case', 'Sources/CassiniKit/MeetingTime.swift',
+         'return value.uppercased()', 'return value', 'lowercaseRFC3339RecordingTimesAreInstants|lowercaseCreationTimesNeverLeakThroughDATE|lowercaseRecordingUTCReexportsAndReimports'),
+        ('non-ok-copy', 'Sources/CassiniExport/MeetingFileExporter.swift',
+         'if file.state != .ok && file.state != .plainAudio {', 'if false {', 'nonOKDocumentsArePreservedByteForByte|nonOKConformanceFilesExportUnchanged'),
+        ('day-partition', 'Sources/CassiniLibrary/Meeting.swift',
+         'time.flatMap(format.dayKey).map {"day:"+$0} ?? unknown', 'time.flatMap(format.dayKey).map {"day:"+$0+String(groups.count)} ?? unknown', 'mixedRecordingAndCreationTimesFormUniqueLocalizedSections'),
+        ('unknown-date-catalog', 'Sources/CassiniLibrary/Meeting.swift',
+         'LibraryLocalization.shared.text("library.group.unknownDate",language:format.language,locale:format.locale)',
+         '"Date unknown"', 'mixedRecordingAndCreationTimesFormUniqueLocalizedSections'),
     ]
     for name, file, old, new, test in mutations:
         path = work / file

@@ -39,4 +39,21 @@ struct RecordingTimeReaderTests {
         CassiniReader.compareCopies(try #require(file.manifest),TagSet(vendor:tags.vendor,comments:tags.comments),&warnings)
         #expect(warnings.contains { $0.code == "tag-manifest-disagreement" && $0.tag == "CASSINI_RECORDED_AT_UTC" })
     }
+    @Test(arguments:["2026-11-09t09:31:48.250Z","2026-11-09T09:31:48.250z","2026-11-09t09:31:48.250z"])
+    func lowercaseRFC3339RecordingTimesAreInstants(_ value:String) throws {
+        var meeting=try #require(file("027-recorded-at-utc").manifest?.meeting)
+        meeting.recordedAtUtc=value
+        let expected=try #require(MeetingTime.parseInstant("2026-11-09T09:31:48.250Z"))
+        #expect(MeetingTime.parseInstant(value)==expected)
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:nil)?.instant==expected)
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:nil)?.source == .recordedAtUtc)
+    }
+    @Test(arguments:["2026-11-09T10:47:02Z","2026-11-09t11:47:02+01:00","2026-11-09t10:47:02.000z"])
+    func lowercaseCreationTimesNeverLeakThroughDATE(_ tag:String) throws {
+        var meeting=try #require(file("028-date-is-created-at").manifest?.meeting)
+        meeting.createdAtUtc="2026-11-09t10:47:02z";meeting.recordedAtLocal=nil
+        #expect(MeetingTime.resolve(meeting:meeting,dateTag:tag)==nil)
+        #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:tag)==meeting.createdAtUtc)
+    }
+
 }

@@ -252,7 +252,7 @@ struct LibraryView: View {
     private var split: some View {
         HStack(spacing: 0) {
             List(selection: $store.selectedKey) {
-                ForEach(store.groups, id: \.title) { group in
+                ForEach(store.groups, id: \.id) { group in
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)

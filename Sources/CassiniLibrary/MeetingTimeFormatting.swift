@@ -13,6 +13,14 @@ extension LibraryFormat {
         let today = civil.date(from:viewer.dateComponents([.year,.month,.day,.hour,.minute,.second],from:now))!
         return render(.init(timeZone:civil.timeZone,now:today,locale:locale,language:language),civilDate)
     }
+    /// Calendar-day identity is independent of localized headings. Instants use
+    /// the viewer's zone; an unzoned label keeps its written year/month/day.
+    public func dayKey(_ time:MeetingTime) -> String? {
+        var calendar=Calendar(identifier:.gregorian);calendar.timeZone=timeZone
+        let components=time.instant.map {calendar.dateComponents([.era,.year,.month,.day],from:$0)} ?? time.localComponents
+        guard let components,let year=components.year,let month=components.month,let day=components.day else {return nil}
+        return String(format:"%d:%04d-%02d-%02d",components.era ?? 1,year,month,day)
+    }
     public func dayGroup(_ time: MeetingTime) -> String { meetingLabel(time) { $0.dayGroup($1) } }
     public func rowTime(_ time: MeetingTime) -> String { meetingLabel(time) { $0.rowTime($1) } }
     public func absoluteDate(_ time: MeetingTime) -> String { meetingLabel(time) { $0.absoluteDate($1) } }
