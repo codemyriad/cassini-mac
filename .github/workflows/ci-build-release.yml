@@ -10,7 +10,8 @@ permissions:
 jobs:
   release:
     name: Build Release app and package (universal, Xcode 16.4)
-    runs-on: macos-15
+    # Ad-hoc CI packaging only; no production signing credentials are used here.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

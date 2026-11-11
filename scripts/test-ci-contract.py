@@ -171,9 +171,9 @@ class FoldedJobs(unittest.TestCase):
                 self.assertNotIn('--filter ModelDownloaderTests', model_text)
                 self.assertNotIn("--filter 'ExportGoldenTests|", text)
 
-    def test_arm64_full_suite_has_one_model_partition_and_its_exact_complement(self):
+    def test_full_suite_partitions_keep_models_native_and_real_bookmark_coverage(self):
         kit = ci_job('kit')
-        self.assertIn('runs-on: macos-15\n', kit)
+        self.assertIn('vars.CM_MAC_RUNNER', kit)
         start = kit.index('    - name: Test\n')
         end = kit.index('\n    - ', start + 1)
         step = kit[start:end]
@@ -183,11 +183,26 @@ class FoldedJobs(unittest.TestCase):
             step, re.M)
         self.assertEqual(commands, [
             ('build/unit-tests/models', "swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'"),
-            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'"),
+            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'"),
         ])
         model_filter = 'ModelDownloaderTests|ModelSupersessionTests'
         self.assertEqual(kit.count("--filter '" + model_filter + "'"), 1)
-        self.assertEqual(kit.count("--skip '" + model_filter + "'"), 1)
+        bookmark = 'recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
+        native_skip = model_filter + '|' + bookmark
+        self.assertEqual(kit.count("--skip '" + native_skip + "'"), 1)
+        sink = ci_job('native_sink')
+        self.assertIn('runs-on: macos-15\n', sink)
+        self.assertIn("swiftpm: 'true'", sink)
+        self.assertIn(' -- swift test --skip-build --filter ' + bookmark + '\n', sink)
+        self.assertIn('name: scoped-bookmark-${{ github.sha }}', sink)
+        self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 1)
+        self.assertIn("--filter 'Library|SearchTests' --skip " + bookmark, kit)
+        for suite in ['ModelDownloaderTests', 'ModelSupersessionTests', bookmark,
+                      'ModelManifestTests', 'D52WorstCaseRecordTests']:
+            # Exactly one full-suite partition admits each example, including the real OS test.
+            admitted = [bool(re.search(model_filter, suite)), not bool(re.search(native_skip, suite)),
+                        suite == bookmark]
+            self.assertEqual(sum(admitted), 1, suite)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests']:
             self.assertRegex(suite, model_filter)
         for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests']:
@@ -231,7 +246,11 @@ class RentedRunnerRouting(unittest.TestCase):
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
         # Both architectures of the producer and the Whistle worker, and the Intel package tests.
         for job,runners in [(producer,['macos-15','macos-15-intel']),(self.worker(),['macos-15','macos-15-intel']),
-                            (ci_job('package_tests'),['macos-15-intel'])]:
+                            (ci_job('package_tests'),['macos-15-intel']),
+                            (ci_job('kit'),['macos-15']),
+                            ((ROOT/'.github/workflows/ci-build-release.yml').read_text(),['macos-15']),
+                            ((ROOT/'.github/workflows/ux-parakeet.yml').read_text().split('  runtime:',1)[1].split('\n  parakeet:\n',1)[0],['macos-15','macos-15-intel']),
+                            ((ROOT/'.github/workflows/ux-browser-setup.yml').read_text().split('  control:',1)[1].split('  setup:',1)[0],['macos-15','macos-15-intel'])]:
             route=re.search(r'^    runs-on: (.+)$',job,re.M).group(1)
             for runner in runners:
                 for event,head,label,enabled in [('pull_request','codemyriad/cassini-mac','cm-mac-m4',True),
@@ -282,18 +301,18 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertIn('name: whistle-${{ matrix.runner }}\n',worker)
         for name in ['name: downloader-macos-15-intel\n','name: exports-macos-15-intel\n']:self.assertIn(name,package)
 
-    def test_constrained_jobs_and_all_original_artifact_names_remain_hosted(self):
-        self.assertIn('runs-on: macos-15\n',ci_job('kit'))
+    def test_gui_jobs_and_original_artifact_names_remain_hosted(self):
+        self.assertIn('runs-on: macos-15\n',ci_job('native_sink'))
         # App, XPC and GUI jobs need a login session; both their architectures stay hosted.
         for name in ['ux-parakeet.yml','ux-browser-setup.yml']:
-            body=(ROOT/'.github/workflows'/name).read_text()
+            body=(ROOT/'.github/workflows'/name).read_text().split('\n  parakeet:\n' if name == 'ux-parakeet.yml' else '  setup:',1)[1]
             self.assertIn('runner: [macos-15, macos-15-intel]\n',body)
             self.assertIn('runs-on: ${{ matrix.runner }}\n',body)
             self.assertNotIn('CASSINI_CI_ARCH',body)
             # Their hosted Intel row compiles SwiftPM itself after a rented Mac built the products.
             job=body[body.index('runner: [macos-15, macos-15-intel]'):]
             self.assertEqual(re.search(r'(?m)^    timeout-minutes: (\d+)$',job).group(1),'25',name)
-        for name in ['ux-shot.yml','ux-boards.yml','ux-parakeet.yml','ux-browser-setup.yml','ci-build-release.yml']:
+        for name in ['ux-shot.yml','ux-boards.yml']:
             self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
@@ -306,6 +325,42 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertIn('name: '+name+'\n',action)
         self.assertIn('name: ci-release\n',action)
         self.assertNotIn('-headless',producer+action)
+
+    def test_split_jobs_preserve_each_native_and_app_proof_once(self):
+        parakeet=(ROOT/'.github/workflows/ux-parakeet.yml').read_text()
+        runtime,app=parakeet.split('  runtime:',1)[1].split('\n  parakeet:\n',1)
+        self.assertIn('needs: [build]\n',runtime)
+        self.assertNotIn("release: 'true'",runtime)
+        for marker in ["--filter 'Parakeet|ProgressTests'",'scripts/test-parakeet-worker.py']:
+            self.assertEqual(parakeet.count(marker),1)
+            self.assertIn(marker,runtime)
+        for marker in ['scripts/test-model-network-app.py','scripts/test-parakeet-app.py']:
+            self.assertEqual(parakeet.count(marker),1)
+            self.assertIn(marker,app)
+        self.assertIn('name: parakeet-runtime-${{ matrix.runner }}',runtime)
+        self.assertIn('name: parakeet-${{ matrix.runner }}',app)
+        self.assertIn("if: runner.environment == 'github-hosted'",runtime)
+        self.assertIn('test "$(python3 -c',runtime)
+        self.assertIn('ln -sf "$(xcrun -f python3)"',runtime)
+        browser=(ROOT/'.github/workflows/ux-browser-setup.yml').read_text()
+        control,setup=browser.split('  control:',1)[1].split('  setup:',1)
+        for marker in ["--filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests'",
+                       'conformance/check-call-lifecycle.py','conformance/control/run.py']:
+            self.assertEqual(browser.count(marker),1)
+            self.assertIn(marker,control)
+        self.assertIn('scripts/test-browser-connect.py',setup)
+        self.assertIn('python3 -m venv "$RUNNER_TEMP/control-python"',control)
+        kit,sink=ci_job('kit'),ci_job('native_sink')
+        self.assertNotIn('scripts/run-native-ci.py',kit)
+        self.assertEqual(sink.count('scripts/run-native-ci.py --mode sink-only'),1)
+        self.assertIn('name: native-recording-${{ github.sha }}',sink)
+        self.assertIn('python3 -m venv "$RUNNER_TEMP/conformance-python"',kit)
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(kit,'- uses: actions/setup-python'))
+        for job in [runtime,control]:
+            self.assertIn('CASSINI_CI_ARCH: ${{ matrix.arch }}',job)
+            self.assertIn('shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}',job)
+            self.assertEqual(re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',job),
+                             [('macos-15','arm64'),('macos-15-intel','x86_64')])
 
     def test_producers_and_restorers_select_the_same_xcode_and_fingerprint_caches(self):
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
