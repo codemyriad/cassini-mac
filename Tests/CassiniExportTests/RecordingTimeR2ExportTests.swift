@@ -60,4 +60,50 @@ struct RecordingTimeR2ExportTests {
         #expect(result.meetingTime?.value==(equivalent ? nil : date.trimmingCharacters(in:.whitespacesAndNewlines)))
         try save(artifact.url,name:"space-\(equivalent)-export")
     }
+    @Test func plainDATEPromotionRetainsAllFractionalDigits() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer {try? FileManager.default.removeItem(at:root)}
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let original=repo.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus")
+        let date="2026-11-09 10:31:48.000900000001+01:00",utc="2026-11-09T09:31:48.000900000001Z"
+        let input=root.appendingPathComponent("plain.opus")
+        _=try OpusStreamFile.rewrite(Data(contentsOf:original),tags:PortableMeetingTags.packet(comments:[.init(name:"DATE",value:date)]),to:input)
+        let file=try CassiniReader.read(contentsOf:input)
+        #expect(file.state == .plainAudio && file.meetingTime?.value==date)
+        let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        for (i,meeting) in [MeetingPresentation.external(file,url:input),imported].enumerated() {
+            let artifact=try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let result=try CassiniReader.read(contentsOf:artifact.url)
+            #expect(result.manifest?.meeting.recordedAtUtc==utc)
+            #expect(result.manifest?.meeting.createdAtUtc==utc)
+            #expect(result.tags?["DATE"]==utc && result.tags?["CASSINI_RECORDED_AT_UTC"]==utc)
+            let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Again-"+String(i)))
+            #expect(again.meetingTime?.value==utc)
+            try save(artifact.url,name:"plain-fraction-export-"+String(i))
+        }
+    }
+    @Test(arguments:["not-a-date","2026-02-30T10:47:02Z"])
+    func invalidCreationRepairKeepsTheKnownDATE(_ created:String) throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer {try? FileManager.default.removeItem(at:root)}
+        let date="2026-11-09T10:31:48.250+01:00",utc="2026-11-09T09:31:48.250Z"
+        let input=try document(root:root,utc:nil,created:created,date:date),before=try Data(contentsOf:input)
+        let file=try CassiniReader.read(before),kind=created=="not-a-date" ? "bad" : "impossible"
+        #expect(file.state == .ok && file.meetingTime?.value==date)
+        try save(input,name:"creation-"+kind+"-input")
+        let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        for (i,meeting) in [MeetingPresentation.external(file,url:input),imported].enumerated() {
+            let artifact=try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let result=try CassiniReader.read(contentsOf:artifact.url)
+            #expect(result.manifest?.meeting.recordedAtUtc==utc)
+            #expect(result.manifest?.meeting.createdAtUtc==utc)
+            #expect(result.tags?["DATE"]==utc && result.tags?["CASSINI_RECORDED_AT_UTC"]==utc)
+            let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Again-"+String(i)))
+            #expect(again.meetingTime?.value==utc)
+            #expect(result.manifest?.meeting.id==file.manifest?.meeting.id && result.audioDigest==file.audioDigest)
+            try save(artifact.url,name:"creation-"+kind+"-export-"+String(i))
+        }
+        #expect(try Data(contentsOf:input)==before)
+    }
+
 }

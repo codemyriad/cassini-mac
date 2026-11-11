@@ -29,7 +29,7 @@ Run `replay.py` under `~/bin/heavy-run` with Xcode 16.4 selected, SDKROOT set,
 `CASSINI_OPUS_ASSETS` pointing at verified test Opus assets, and
 `D95_EVIDENCE_DIR` pointing outside the checkout. It archives the current
 commit into private scratch and runs the affected headless partition, both
-conformance profiles, twenty separate production mutations, then restoration.
+conformance profiles, 23 separate production mutations, then restoration.
 Each mutation must compile and fail an executed behavioral assertion.
 The existing security-scoped bookmark case requires the login-session CI job;
 this headless partition uses the same exclusion as CI. Integrated app builds
@@ -235,3 +235,29 @@ canonical outputs are compared to the independent reader.
 
 After this coverage addition, all 434 affected tests, 44 restored focused tests,
 and 56 CI contracts pass. Production source is unchanged from 44e0294.
+
+## DATE producer precision and invalid creation repair
+
+Plain Opus DATE promotion preserves all supplied fractional digits in recordedAtUtc,
+DATE, the UTC mirror, and creation UTC. Its existing minimum three-digit producer
+form is preserved for timestamps that supply fewer digits. Repairing an invalid
+creation field first retains a meaningful DATE as explicit recording UTC, so
+changing creation cannot make that recording time disappear. Non-OK byte copying
+still precedes these paths.
+
+New actual-file read/export/re-import tests failed 20 assertions before the fix;
+they now pass through direct and Library exports, retaining identity and audio.
+All 436 affected tests and 46 restored focused tests pass. All 23 production
+mutants fail executed behavioral assertions. The pinned pure reader matches 67
+actual cases (29 normative, 38 generated), and 32 exported files pass the pinned
+timestamp schema patterns/calendar checks. The plain input's DATE uses the app's
+legacy import policy; the pure format reader supplies no `when` for non-Cassini
+plain audio. That app policy is tested directly, and its resulting Cassini
+exports are compared to the independent reference reader.
+
+The original reviewed source passes a clean diagnostic CI job43083181757 and
+557 local XCTest cases (36 expected device/model-profile skips). Its failed
+warm-cache CI reused incompatible transitive clients: the separate #260 proof
+reproduces Swift6.1 SIGBUS on a nested-layout change and fixes compiled cache
+coherence. The separate #256 fixes the remaining Whistle EPIPE fixture. These
+are readiness dependencies; neither failed job was accepted as green.

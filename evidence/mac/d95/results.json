@@ -1,9 +1,9 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
   "mainMerged": "fc2ad76",
-  "headlessTests": 434,
+  "headlessTests": 436,
   "ciContracts": 56,
-  "restoredFocusedTests": 44,
+  "restoredFocusedTests": 46,
   "fullConformance": {
     "pass": 29,
     "warn": 0,
@@ -20,7 +20,7 @@
     "Cassini/Library/LibraryView.swift": "d7dbd8ea0f890b9edee67e13b3f06e3e6c2170c98c9819a72efaf4edb5fdeacf",
     "Cassini/Settings/UpdateDeferralSelfTest.swift": "10d8a679ac3dc3fcb6ab4296c86491057d8f5ec13c09d2031ce9dbb16f7189b8",
     "QuickLook/PreviewViewController.swift": "60d854754e9a09665b8f13a7d071d3a7fdcdbb0829bd2fe217e64b77d92b8df0",
-    "Sources/CassiniExport/MeetingFileExporter.swift": "4bc5bdad209056457e519bedc9fe5384f0c50f4fedbc4d1ba589347fca452bd9",
+    "Sources/CassiniExport/MeetingFileExporter.swift": "36ed0bc68c92329d97cb4ae27d7558810179a8c8a1e192916369812a9fd343fa",
     "Sources/CassiniKit/MeetingTime.swift": "bbabade4de38e1b37e1e728158e04ba96bafa442795d00ee9d0c4fb4a958d685",
     "Sources/CassiniKit/PortableMeetingTags.swift": "a12d108c19bc67d62b79e0fc9ed4a9e7153ab5eb40bfec714ac69977f27ef494",
     "Sources/CassiniLibrary/LibraryFormat.swift": "ac8a33ae81bf806357594b0302f9415a50a2282db08bc5f389401d2a4fcb2f75",
@@ -32,7 +32,7 @@
     "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
     "Sources/CassiniSearch/SearchIndex.swift": "496a853f8e35fe1136f300db48d89ae0c4949176ae06602ccc9bbbd80ff1431a",
     "Tests/CassiniExportTests/MeetingExportTests.swift": "fd17b45c8359e6199ce785a22e3cff33ab003721005eb09f096c8ac3b8ba6056",
-    "Tests/CassiniExportTests/RecordingTimeR2ExportTests.swift": "0008d0b463c1f7877aa1521466a36f58b7eb179a1eeffab5706be8e8bd2d4514",
+    "Tests/CassiniExportTests/RecordingTimeR2ExportTests.swift": "6f8bf0ea956c4ee8fd10395e2a9c360c325ee83f0b812266e967749333c0983c",
     "Tests/CassiniKitTests/MeetingTimeTests.swift": "46c556906d5e0149b2185143f50bb945151ca45aea5903872b2695ea3dd9b16e",
     "Tests/CassiniLibraryTests/MeetingTimeR2LibraryTests.swift": "4cc02907358b06093b7ca874946ab579ea4ece0aeda5493c88c8e148d23ac261",
     "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "059c1a0479b62097ce769df8b9cf15e87b834d019512d0a96469d57bec84b185",
@@ -48,11 +48,11 @@
     },
     "utc-mirror": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test receivedExportsPreserveOnlyTheKnownRecordingTime(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"2001-02-03T04:05:06+09:00\") at MeetingExportTests.swift:317:9: Expectation failed: (result.tags?[\"CASSINI_RECORDED_AT_UTC\"] \u2192 nil) == \"2001-02-02T19:05:06.125Z\""
+      "example": "\u2718 Test receivedExportsPreserveOnlyTheKnownRecordingTime(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"2001-02-03T04:05:06.125+09:00\") at MeetingExportTests.swift:322:9: Expectation failed: (result.tags?[\"CASSINI_RECORDED_AT_UTC\"] \u2192 nil) == \"2001-02-02T19:05:06.125Z\""
     },
     "utc-sanitization": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test receivedExportsDropMalformedUTC(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"not UTC\") at MeetingExportTests.swift:358:13: Expectation failed: (result.manifest?.raw[\"meeting\"]?[\"recordedAtUtc\"] \u2192 .string(\"not UTC\")) == nil"
+      "example": "\u2718 Test receivedExportsDropMalformedUTC(recorded:) recorded an issue with 1 argument recorded \u2192 .string(\"2026-02-30T09:00:00Z\") at MeetingExportTests.swift:363:13: Expectation failed: (result.manifest?.raw[\"meeting\"]?[\"recordedAtUtc\"] \u2192 .string(\"2026-02-30T09:00:00Z\")) == nil"
     },
     "manifest-trust": {
       "result": "behavioral assertion failure",
@@ -64,11 +64,11 @@
     },
     "rfc3339-case": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test lowercaseRFC3339RecordingTimesAreInstants(_:) recorded an issue with 1 argument value \u2192 \"2026-11-09t09:31:48.250z\" at MeetingTimeTests.swift:47:9: Expectation failed: (MeetingTime.parseInstant(value) \u2192 nil) == (expected \u2192 2026-11-09 09:31:48 +0000)"
+      "example": "\u2718 Test lowercaseCreationTimesNeverLeakThroughDATE(_:) recorded an issue with 1 argument tag \u2192 \"2026-11-09T10:47:02Z\" at MeetingTimeTests.swift:56:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:tag) \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.date, value: \"2026-11-09T10:47:02Z\", instant: Optional(2026-11-09 10:47:02 +0000), orderingKey: \"002026-11-09T10:47:02.0\")) == nil"
     },
     "non-ok-copy": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test nonOKConformanceFilesExportUnchanged(_:) recorded an issue with 1 argument vector \u2192 \"015-unknown-major-version\" at MeetingExportTests.swift:215:13: Expectation failed: try Data(contentsOf:artifact.url)==bytes"
+      "example": "\u2718 Test nonOKConformanceFilesExportUnchanged(_:) recorded an issue with 1 argument vector \u2192 \"011-tag-manifest-disagreement\" at MeetingExportTests.swift:215:13: Expectation failed: try Data(contentsOf:artifact.url)==bytes"
     },
     "day-partition": {
       "result": "behavioral assertion failure",
@@ -80,11 +80,11 @@
     },
     "calendar-day": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test impossibleInstantsCannotOverrideAValidDATE(_:) recorded an issue with 1 argument value \u2192 \"2026-02-29T09:00:00Z\" at MeetingTimeTests.swift:67:9: Expectation failed: (MeetingTime.parseInstant(value) \u2192 2026-03-01 09:00:00 +0000) == nil"
+      "example": "\u2718 Test invalidUTCDoesNotReplaceDistinctDATEOnReadExportOrReimport(_:) recorded an issue with 1 argument invalid \u2192 \"2026-02-30T09:00:00Z\" at RecordingTimeR2ExportTests.swift:35:9: Expectation failed: (file.meetingTime?.source == .date \u2192 false) && (file.meetingTime?.value==date \u2192 <not evaluated>)"
     },
     "clock-hour": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test invalidUTCDoesNotReplaceDistinctDATEOnReadExportOrReimport(_:) recorded an issue with 1 argument invalid \u2192 \"2026-11-09T24:00:00Z\" at RecordingTimeR2ExportTests.swift:35:9: Expectation failed: (file.meetingTime?.source == .date \u2192 false) && (file.meetingTime?.value==date \u2192 <not evaluated>)"
+      "example": "\u2718 Test impossibleInstantsCannotOverrideAValidDATE(_:) recorded an issue with 1 argument value \u2192 \"2026-11-09T24:00:00Z\" at MeetingTimeTests.swift:67:9: Expectation failed: (MeetingTime.parseInstant(value) \u2192 2026-11-10 00:00:00 +0000) == nil"
     },
     "fraction-equality": {
       "result": "behavioral assertion failure",
@@ -96,15 +96,15 @@
     },
     "canonical-copy": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test lowercaseRecordingUTCReexportsAndReimports(_:lowercaseCreation:) recorded an issue with 2 arguments recorded \u2192 \"2001-02-02t19:05:06.125Z\", lowercaseCreation \u2192 false at MeetingExportTests.swift:249:13: Expectation failed: (file.manifest?.meeting.recordedAtUtc \u2192 \"2001-02-02t19:05:06.125Z\") == \"2001-02-02T19:05:06.125Z\""
+      "example": "\u2718 Test lowercaseRecordingUTCReexportsAndReimports(_:lowercaseCreation:) recorded an issue with 2 arguments recorded \u2192 \"2001-02-02T19:05:06.125z\", lowercaseCreation \u2192 false at MeetingExportTests.swift:249:13: Expectation failed: (file.manifest?.meeting.recordedAtUtc \u2192 \"2001-02-02T19:05:06.125z\") == \"2001-02-02T19:05:06.125Z\""
     },
     "canonical-creation": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test lowercaseRecordingUTCReexportsAndReimports(_:lowercaseCreation:) recorded an issue with 2 arguments recorded \u2192 \"2001-02-02T19:05:06.125Z\", lowercaseCreation \u2192 true at MeetingExportTests.swift:252:13: Expectation failed: (file.manifest?.meeting.createdAtUtc \u2192 \"2026-11-09t10:47:02z\") == \"2026-11-09T10:47:02Z\""
+      "example": "\u2718 Test lowercaseRecordingUTCReexportsAndReimports(_:lowercaseCreation:) recorded an issue with 2 arguments recorded \u2192 \"2001-02-02t19:05:06.125z\", lowercaseCreation \u2192 true at MeetingExportTests.swift:252:13: Expectation failed: (file.manifest?.meeting.createdAtUtc \u2192 \"2026-11-09t10:47:02z\") == \"2026-11-09T10:47:02Z\""
     },
     "civil-validation": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test malformedCivilLabelsNeverBecomeMeetingTime(_:) recorded an issue with 1 argument value \u2192 \"2026-11-09T09:00:00Z\" at MeetingTimeTests.swift:99:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc) \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.recordedAtLocal, value: \"2026-11-09T09:00:00Z\", instant: nil, orderingKey: \"\")) == nil"
+      "example": "\u2718 Test malformedCivilLabelsNeverBecomeMeetingTime(_:) recorded an issue with 1 argument value \u2192 \"2026-02-30T10:00:00\" at MeetingTimeTests.swift:99:9: Expectation failed: (MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc) \u2192 MeetingTime(source: CassiniKit.MeetingTime.Source.recordedAtLocal, value: \"2026-02-30T10:00:00\", instant: nil, orderingKey: \"\")) == nil"
     },
     "library-date-branch": {
       "result": "behavioral assertion failure",
@@ -116,19 +116,31 @@
     },
     "quicklook-created": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test quickLookDateAssemblyUsesTheSharedRecordingTime() recorded an issue at MeetingTimeR2LibraryTests.swift:66:9: Expectation failed: (format.quickLookRecordingDate(local) \u2192 [\"Sunday 8 November 2026\"]) == ([civilFormat.absoluteDate(known)] \u2192 [\"Monday 9 November 2026\"])"
+      "example": "\u2718 Test quickLookDateAssemblyUsesTheSharedRecordingTime() recorded an issue at MeetingTimeR2LibraryTests.swift:92:9: Expectation failed: (format.quickLookRecordingDate(local) \u2192 [\"Sunday 8 November 2026\"]) == ([civilFormat.absoluteDate(known)] \u2192 [\"Monday 9 November 2026\"])"
     },
     "unknown-subtitle-duration": {
       "result": "behavioral assertion failure",
-      "example": "\u2718 Test unknownDateKeepsDurationProvenanceAndHitPosition(_:) recorded an issue with 1 argument language \u2192 .fr at MeetingTimeR2LibraryTests.swift:50:9: Expectation failed: (preview.contains(unknown) && preview.contains(duration) \u2192 false) && (preview.contains(received) \u2192 <not evaluated>)"
+      "example": "\u2718 Test unknownDateKeepsDurationProvenanceAndHitPosition(_:) recorded an issue with 1 argument language \u2192 .en at MeetingTimeR2LibraryTests.swift:50:9: Expectation failed: (preview.contains(unknown) && preview.contains(duration) \u2192 false) && (preview.contains(received) \u2192 <not evaluated>)"
+    },
+    "plain-date-fraction": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test plainDATEPromotionRetainsAllFractionalDigits() recorded an issue at RecordingTimeR2ExportTests.swift:77:13: Expectation failed: (result.manifest?.meeting.recordedAtUtc \u2192 \"2026-11-09T09:31:48.001Z\") == (utc \u2192 \"2026-11-09T09:31:48.000900000001Z\")"
+    },
+    "invalid-created-known-date": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test invalidCreationRepairKeepsTheKnownDATE(_:) recorded an issue with 1 argument created \u2192 \"not-a-date\" at RecordingTimeR2ExportTests.swift:98:13: Expectation failed: (result.manifest?.meeting.recordedAtUtc \u2192 nil) == (utc \u2192 \"2026-11-09T09:31:48.250Z\")"
+    },
+    "date-creation-fraction": {
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test plainDATEPromotionRetainsAllFractionalDigits() recorded an issue at RecordingTimeR2ExportTests.swift:78:13: Expectation failed: (result.manifest?.meeting.createdAtUtc \u2192 \"2026-11-09T09:31:48.001Z\") == (utc \u2192 \"2026-11-09T09:31:48.000900000001Z\")"
     }
   },
   "referenceWhen": {
     "pin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
-    "matchingCases": 59,
+    "matchingCases": 67,
     "vectors": 29,
-    "generatedRoundtripFiles": 30,
-    "timestampSchemaCheckedExports": 26
+    "generatedRoundtripFiles": 38,
+    "timestampSchemaCheckedExports": 32
   },
   "processTimeZones": [
     "EST5EDT",
@@ -213,5 +225,18 @@
     "exactHeadCI": "pending",
     "affectedTests": 434,
     "ciContracts": 56
+  },
+  "exportPrecisionFollowup": {
+    "baselineRegressionIssues": 20,
+    "affectedTests": 436,
+    "restoredFocusedTests": 46,
+    "productionMutations": 23,
+    "plainDATE": "retains every fractional digit, with existing minimum millisecond producer form",
+    "invalidCreation": "known DATE promoted to explicit UTC before creation repair can suppress it",
+    "referenceMatchingFiles": 67,
+    "schemaCheckedExports": 32,
+    "plainInputPolicy": "app legacy import policy tested separately; pure format reader supplies no when for non-Cassini plain audio",
+    "nativeBuild": "pending at this source",
+    "exactHeadCI": "pending; known EPIPE and stale-layout fixes are #256/#260"
   }
 }

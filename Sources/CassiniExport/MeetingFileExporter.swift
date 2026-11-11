@@ -218,9 +218,16 @@ public enum MeetingFileExporter {
         let recordedUtc: String?
         if meeting.state.origin == .own { recordedUtc = meeting.start.map(MeetingTime.utcString) }
         else if let original = file?.manifest {
-            recordedUtc = original.meeting.recordedAtUtc.flatMap(MeetingTime.normalizedUTC)
+            var utc = original.meeting.recordedAtUtc.flatMap(MeetingTime.normalizedUTC)
+            // Repairing an invalid creation stamp must not make a known DATE
+            // equal the replacement creation stamp and erase the recording time.
+            if utc == nil, MeetingTime.canonicalUTC(original.meeting.createdAtUtc) == nil,
+               let known=file?.meetingTime,known.source == .date {
+                utc=MeetingTime.canonicalUTC(known.value)
+            }
+            recordedUtc = utc
         }
-        else { recordedUtc = dateTag.flatMap(MeetingTime.parseInstant).map(MeetingTime.utcString) }
+        else { recordedUtc = dateTag.flatMap(utcForLegacyDATE) }
         let mirrorDate = MeetingTime.dateTag(recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)
         let revisionDate = created.exportTime ? "" : mirrorDate
         let dated = (created.exportTime ? "" : created.value) + "\u{0}" + revisionDate
@@ -398,10 +405,20 @@ public enum MeetingFileExporter {
         if meeting.state.origin == .received {
             if let kept = original.flatMap({MeetingTime.canonicalUTC($0.meeting.createdAtUtc)}) { return (kept,false) }
             // The shared DATE rules (LibraryNames): an unknown or out-of-range offset names no instant.
-            if let tag = dateTag, let date = LibraryNames.dateTagInstant(tag) { return (iso.string(from:date),false) }
+            if let tag = dateTag, LibraryNames.dateTagInstant(tag) != nil,
+               let utc=utcForLegacyDATE(tag) { return (utc,false) }
             if let imported = meeting.received?.importedAtMs { return (iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)),false) }
         } else if let start = meeting.start { return (iso.string(from:start),false) }
         return (iso.string(from:exportTime()),true)
+    }
+    /// Keep the legacy producer's minimum millisecond form without rounding
+    /// away any additional precision supplied by DATE.
+    private static func utcForLegacyDATE(_ value:String) -> String? {
+        guard let utc=MeetingTime.canonicalUTC(value) else {return nil}
+        let length=utc.utf8.count
+        if length==20 {return String(utc.dropLast())+".000Z"}
+        let digits=length-21
+        return digits<3 ? String(utc.dropLast())+String(repeating:"0",count:3-digits)+"Z" : utc
     }
     private static func validLocalRecordingLabel(_ label: String) -> Bool {
         // Exact v1 schema shape. The length check also rejects a terminal newline,

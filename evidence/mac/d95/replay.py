@@ -84,6 +84,15 @@ with tempfile.TemporaryDirectory(prefix='cassini-d95-') as temp:
          'file.meetingTime.map { [absoluteDate($0)] } ?? []','file.manifest.flatMap {MeetingTime.parseInstant($0.meeting.createdAtUtc)}.map {[absoluteDate($0)]} ?? []','quickLookDateAssemblyUsesTheSharedRecordingTime'),
         ('unknown-subtitle-duration', 'Sources/CassiniLibrary/MeetingTimeFormatting.swift',
          '["day":unknownDate,"duration":durationMs.map {Self.meetingDuration($0,locale:locale,language:language)} ?? ""]','["day":unknownDate,"duration":""]','unknownDateKeepsDurationProvenanceAndHitPosition'),
+        ('plain-date-fraction', 'Sources/CassiniExport/MeetingFileExporter.swift',
+         'else { recordedUtc = dateTag.flatMap(utcForLegacyDATE) }',
+         'else { recordedUtc = dateTag.flatMap(MeetingTime.parseInstant).map(MeetingTime.utcString) }','plainDATEPromotionRetainsAllFractionalDigits'),
+        ('invalid-created-known-date', 'Sources/CassiniExport/MeetingFileExporter.swift',
+         'if utc == nil, MeetingTime.canonicalUTC(original.meeting.createdAtUtc) == nil,',
+         'if false, utc == nil, MeetingTime.canonicalUTC(original.meeting.createdAtUtc) == nil,','invalidCreationRepairKeepsTheKnownDATE'),
+        ('date-creation-fraction', 'Sources/CassiniExport/MeetingFileExporter.swift',
+         'let utc=utcForLegacyDATE(tag) { return (utc,false) }',
+         'let utc=utcForLegacyDATE(tag) { return (iso.string(from:MeetingTime.parseInstant(utc)!),false) }','plainDATEPromotionRetainsAllFractionalDigits'),
     ]
     for name, file, old, new, test in mutations:
         path = work / file
