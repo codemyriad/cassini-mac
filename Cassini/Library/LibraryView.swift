@@ -23,6 +23,7 @@ struct LibraryView: View {
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
     @State private var toolbarWidth: CGFloat = 1120
+    @State private var meetingTitleInset: CGFloat = 44
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
@@ -113,7 +114,8 @@ struct LibraryView: View {
                             Text(store.format.previewSubtitle(start,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
                                 .font(.system(size:11.5)).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
                         }
-                    }.padding(.leading,44)
+                    }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
+                        .padding(.leading,meetingTitleInset)
                         .frame(width:max(200,toolbarWidth - (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450)),alignment:.leading)
                         .accessibilityElement(children:.contain)
                 }
