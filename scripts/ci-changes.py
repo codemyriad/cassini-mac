@@ -11,9 +11,29 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def select(event, base, paths, changed=None):
+def parse_labels(raw):
+    if not raw:
+        return ()
+    loaded = json.loads(raw)
+    if loaded is None:
+        return ()
+    if not isinstance(loaded, list) or not all(isinstance(item, str) for item in loaded):
+        raise ValueError(f'Expected JSON string list of labels, got {loaded!r}')
+    return tuple(loaded)
+
+
+def execution_tier(event, labels=()):
+    if event == 'pull_request':
+        full_ci = 'full-ci' in set(labels)
+        return {'full_ci': full_ci, 'release_build': full_ci}
+    if event == 'push':
+        return {'full_ci': False, 'release_build': True}
+    return {'full_ci': True, 'release_build': True}
+
+
+def select(event, base, paths, changed=None, labels=()):
     everything = dict.fromkeys(paths, True)
-    if event != 'pull_request' or not base:
+    if event != 'pull_request' or not base or 'full-ci' in set(labels):
         return everything
     try:
         if changed is None:
@@ -34,8 +54,17 @@ def select(event, base, paths, changed=None):
 
 def main():
     paths = json.loads((ROOT/'.github/ci/paths.json').read_text())
-    result = select(os.environ.get('EVENT_NAME'), os.environ.get('PR_BASE'), paths)
-    output = '\n'.join(f'{key}={str(value).lower()}' for key,value in result.items())+'\n'
+    event = os.environ.get('EVENT_NAME')
+    try:
+        labels = parse_labels(os.environ.get('PR_LABELS'))
+        result = {
+            **select(event, os.environ.get('PR_BASE'), paths, labels=labels),
+            **execution_tier(event, labels),
+        }
+    except ValueError as error:
+        print('Label parsing failed; running full CI:', error, file=sys.stderr)
+        result = {**dict.fromkeys(paths, True), 'full_ci': True, 'release_build': True}
+    output = '\n'.join(f'{key}={str(value).lower()}' for key, value in result.items())+'\n'
     print(output, end='')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
         stream.write(output)

@@ -1,6 +1,11 @@
 name: CI
 'on':
-  pull_request: null
+  pull_request:
+    types:
+    - opened
+    - synchronize
+    - reopened
+    - labeled
   push:
     branches:
     - main
@@ -25,6 +30,8 @@ jobs:
       model_download: ${{ steps.paths.outputs.model_download }}
       parakeet: ${{ steps.paths.outputs.parakeet }}
       browser_setup: ${{ steps.paths.outputs.browser_setup }}
+      full_ci: ${{ steps.paths.outputs.full_ci }}
+      release_build: ${{ steps.paths.outputs.release_build }}
     steps:
     - uses: actions/checkout@v5
       with:
@@ -33,6 +40,7 @@ jobs:
       env:
         PR_BASE: ${{ github.event.pull_request.base.sha }}
         EVENT_NAME: ${{ github.event_name }}
+        PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
       run: |
         python3 scripts/test-ci-contract.py
         python3 scripts/test-gui-session.py
@@ -42,15 +50,16 @@ jobs:
         python3 scripts/ci-changes.py
   build:
     needs: [changes]
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && needs.changes.result == 'success' }}
     uses: ./.github/workflows/ci-build.yml
     with:
       parakeet_models: ${{ needs.changes.outputs.parakeet != 'false' }}
+      include_intel: ${{ needs.changes.outputs.full_ci == 'true' }}
   # D66 mac-P2-2: the Release app and its packaging (Cassini-<sha>), off the Debug consumers'
-  # critical path; packaging, Parakeet and the optimized spectrogram probe wait for it.
+  # critical path; runs on main pushes, nightly, workflow_dispatch, and full-ci labeled PRs.
   build_release:
-    needs: [build]
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' }}
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.release_build == 'true' }}
     uses: ./.github/workflows/ci-build-release.yml
   kit:
     name: CassiniKit tests and conformance
@@ -193,12 +202,294 @@ jobs:
           ux-library-vector-results
     needs:
     - build
+  # Normal PRs and main pushes consolidate the three headless arm64 worker/control suites plus
+  # headless board/spectrogram oracle checks into one self-hosted M4-first job, and the four
+  # disposable-hosted login-session smoke checks into one hosted macos-15 job (<= 4 macOS jobs
+  # per PR push; 5 on main push with build_release). Nightly, workflow_dispatch, and full-ci
+  # labeled PRs run the full standalone/Intel/GUI workflows below instead.
+  ux_workers:
+    name: UX workers and conformance
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci != 'true' && (needs.changes.outputs.whistle != 'false' || needs.changes.outputs.parakeet != 'false' || needs.changes.outputs.browser_setup != 'false' || needs.changes.outputs.boards != 'false') }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}
+    env:
+      CASSINI_CI_ARCH: arm64
+      BOARDS: ${{ needs.changes.outputs.boards != 'false' }}
+      WHISTLE: ${{ needs.changes.outputs.whistle != 'false' }}
+      PARAKEET: ${{ needs.changes.outputs.parakeet != 'false' }}
+      BROWSER_SETUP: ${{ needs.changes.outputs.browser_setup != 'false' }}
+      NEEDLE_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+      ORT_DISABLE_TELEMETRY: '1'
+      CASSINI_PARAKEET_RUNTIME: ${{ github.workspace }}/build/Parakeet
+      CASSINI_PARAKEET_MODEL: ${{ github.workspace }}/build/ParakeetModel/models/parakeet-ultra-0.6b-int8-v2/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+    steps:
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        swiftpm: 'true'
+        assets: ${{ (needs.changes.outputs.whistle != 'false' || needs.changes.outputs.parakeet != 'false') && 'true' || 'false' }}
+        parakeet: ${{ needs.changes.outputs.parakeet != 'false' && 'true' || 'false' }}
+    - run: test "$GITHUB_ACTIONS" = true && { test "$RUNNER_ENVIRONMENT" = github-hosted || test "$RUNNER_ENVIRONMENT" = self-hosted; }
+    - uses: actions/setup-python@v5
+      if: runner.environment == 'github-hosted'
+      with:
+        python-version: '3.12'
+    - run: test "$(python3 -c 'import platform; print(platform.machine())')" = "$CASSINI_CI_ARCH"
+    - name: Copy policy and headless spectrogram oracle checks
+      if: env.BOARDS == 'true'
+      run: |
+        mkdir -p build
+        python3 scripts/check-ux-copy.py
+        swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
+        "$RUNNER_TEMP/spectrogram-budget"
+        python3 scripts/test-spectrogram-harness.py
+        swiftc Spikes/Spectrogram/Host.swift Spikes/Spectrogram/CheckHost.swift -o build/check-spectrogram-host
+        build/check-spectrogram-host
+        xcrun swiftc -O -parse-as-library Spikes/Spectrogram/PixelOracle.swift Spikes/Spectrogram/CheckPixelOracle.swift -o build/check-spectrogram-pixels
+        build/check-spectrogram-pixels
+        xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
+        build/check-spectrogram-clock
+    - name: Build worker and Whistle regressions
+      if: env.WHISTLE == 'true'
+      run: |
+        swift test --skip-build --filter Whistle
+        python3 scripts/test-worker-events.py
+        python3 scripts/test-whistle-worker-events.py
+        python3 scripts/test-whistle-fetch.py
+    - name: Verified model memory and process ownership
+      if: env.WHISTLE == 'true'
+      env:
+        CASSINI_WHISTLE_TEST_ASSETS: ${{ github.workspace }}/build/Whistle
+      run: swift test --skip-build --filter WhistleAssetIntegrationTests
+    - name: Shared FIR, segmentation and strict Whistle goldens
+      if: env.WHISTLE == 'true'
+      env:
+        CASSINI_PIPELINE_REPORT_DIR: ${{ github.workspace }}/build/pipeline
+      run: swift test --skip-build --filter 'PipelineTests|TranscriptionMeetingTests'
+    - name: Constructor privacy guard and persistent worker JFK golden
+      if: env.WHISTLE == 'true'
+      run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle --report build/whistle-macos-15.json
+    - name: Preserve worker crash diagnostics
+      if: failure() && env.WHISTLE == 'true'
+      run: |
+        python3 - <<'PY'
+        from pathlib import Path
+        import shutil
+        output = Path('build/whistle-crashes'); output.mkdir(parents=True, exist_ok=True)
+        for report in (Path.home()/'Library/Logs/DiagnosticReports').glob('cassini-whistle-worker*'):
+            if report.is_file(): shutil.copy2(report, output/report.name)
+        PY
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.WHISTLE == 'true'
+      with:
+        retention-days: 14
+        name: whistle-macos-15
+        path: |
+          build/pipeline
+          build/whistle-*
+          build/Whistle/unsigned-sha256.json
+    - name: Both strict D16 input goldens, token conversion and accepted model leases
+      if: env.PARAKEET == 'true'
+      run: |
+        set -o pipefail
+        mkdir -p build/parakeet-reports
+        swift test --skip-build --filter 'Parakeet|ProgressTests' 2>&1 | tee build/parakeet-reports/goldens.log
+    - name: Native Parakeet runtime privacy, integrity and parent lifetime
+      if: env.PARAKEET == 'true'
+      run: |
+        python3 scripts/test-parakeet-worker.py --worker .build/debug/cassini-parakeet-worker \
+          --runtime "$CASSINI_PARAKEET_RUNTIME" --model "$CASSINI_PARAKEET_MODEL" --vad "$CASSINI_PIPELINE_ASSETS" \
+          --report build/parakeet-reports/worker.json
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.PARAKEET == 'true'
+      with:
+        retention-days: 14
+        name: parakeet-runtime-macos-15
+        path: build/parakeet-reports
+    - name: Browser control lifecycle, spectrogram goldens and shared control-host vectors
+      if: env.BROWSER_SETUP == 'true'
+      run: |
+        python3 -m venv "$RUNNER_TEMP/control-python"
+        "$RUNNER_TEMP/control-python/bin/python3" -m pip install -r browser-protocol/requirements-test.txt
+        swift test --skip-build --filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests'
+        "$RUNNER_TEMP/control-python/bin/python3" browser-protocol/conformance/check-call-lifecycle.py
+        "$RUNNER_TEMP/control-python/bin/python3" browser-protocol/conformance/control/run.py .build/debug/cassini-control-host
+  ux_app:
+    name: Mac app login-session smoke
+    # NSApplication, ScopedBookmarksAgent, App Sandbox inheritance and XPC browser setup require a
+    # disposable hosted macOS login session (scripts/gui-runner/README.md). Combining all four
+    # arm64 checks here caps hosted macOS demand at <= 1 slot per PR/main push.
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci != 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      WHISTLE: ${{ needs.changes.outputs.whistle != 'false' }}
+      PARAKEET: ${{ needs.changes.outputs.parakeet != 'false' }}
+      BROWSER_SETUP: ${{ needs.changes.outputs.browser_setup != 'false' }}
+      NEEDLE_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+      ORT_DISABLE_TELEMETRY: '1'
+      CASSINI_PARAKEET_RUNTIME: ${{ github.workspace }}/build/Parakeet
+      CASSINI_PARAKEET_MODEL: ${{ github.workspace }}/build/ParakeetModel/models/parakeet-ultra-0.6b-int8-v2/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      CASSINI_PIPELINE_ASSETS: ${{ github.workspace }}/build/Whistle
+    steps:
+    - name: Disable Spotlight indexing on the disposable runner
+      run: |
+        sudo mdutil -a -i off
+        mdutil -a -s
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        debug: 'true'
+        swiftpm: 'true'
+        assets: ${{ (needs.changes.outputs.whistle != 'false' || needs.changes.outputs.parakeet != 'false') && 'true' || 'false' }}
+        parakeet: ${{ needs.changes.outputs.parakeet != 'false' && 'true' || 'false' }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+    - name: Snapshot clean Debug app bundle for isolated smoke phases
+      run: ditto build/Build/Products/Debug/Cassini.app "$RUNNER_TEMP/clean-Debug-Cassini.app"
+    - name: Real scoped bookmark follows a renamed Library root
+      run: |
+        python3 scripts/run-swift-tests.py --output build/unit-tests/scoped-bookmark -- swift test --skip-build --filter recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication
+    - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
+      with:
+        name: scoped-bookmark-${{ github.sha }}
+        path: build/unit-tests/scoped-bookmark
+        retention-days: 14
+    - name: Native recording sink (generated 440/880 Hz stereo through the production sink and WAV writer)
+      timeout-minutes: 5
+      run: |
+        python3 scripts/run-native-ci.py --mode sink-only --app build/Build/Products/Debug/Cassini.app \
+          --artifacts "$RUNNER_TEMP/native-artifacts"
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        retention-days: 14
+        name: native-recording-${{ github.sha }}
+        path: ${{ runner.temp }}/native-artifacts
+    - name: Verify universal app with signed Whistle engine, Opus export and sandbox-inheriting worker
+      if: env.WHISTLE == 'true'
+      env:
+        CASSINI_HOSTED_WHISTLE: '1'
+      run: |
+        rm -rf build/Build/Products/Debug/Cassini.app
+        ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app
+        codesign --force --sign - --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
+        codesign --verify --deep --strict build/Build/Products/Debug/Cassini.app
+        python3 scripts/test-export-sandbox.py build/Build/Products/Debug/Cassini.app --output build/export-sandbox.json
+        python3 scripts/check-whistle-bundle.py build/Build/Products/Debug/Cassini.app
+        python3 - <<'PY'
+        import os, subprocess
+        from pathlib import Path
+        result = subprocess.run(['build/Build/Products/Debug/Cassini.app/Contents/MacOS/Cassini', '--whistle-self-test'], env=os.environ, capture_output=True, text=True, timeout=60)
+        Path('build/whistle-sandbox.json').write_text(result.stdout)
+        Path('build/whistle-sandbox-stderr.txt').write_text(result.stderr)
+        print(result.stdout); print(result.stderr)
+        assert result.returncode == 0, result.returncode
+        PY
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.WHISTLE == 'true'
+      with:
+        retention-days: 14
+        name: whistle-universal-bundle
+        path: |
+          build/whistle-*
+          build/export-sandbox*
+    - name: Signed Parakeet Debug runtime, OS network denial, active Remove and invalid-model fallback
+      if: env.PARAKEET == 'true'
+      run: |
+        rm -rf build/Build/Products/Debug/Cassini.app
+        ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app
+        mkdir -p build/parakeet-app-reports
+        codesign --force --sign - --options 0 --timestamp=none --entitlements Cassini/Cassini.entitlements build/Build/Products/Debug/Cassini.app
+        python3 scripts/check-parakeet-bundle.py build/Build/Products/Debug/Cassini.app
+        python3 scripts/test-model-network-app.py build/Build/Products/Debug/Cassini.app --output build/parakeet-app-reports/network.json
+        python3 scripts/test-parakeet-app.py build/Build/Products/Debug/Cassini.app --model "$CASSINI_PARAKEET_MODEL" --report build/parakeet-app-reports/app.json
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.PARAKEET == 'true'
+      with:
+        retention-days: 14
+        name: parakeet-macos-15
+        path: build/parakeet-app-reports
+    - name: Scoped XPC registration and production setup service
+      if: env.BROWSER_SETUP == 'true'
+      run: |
+        rm -rf build/Build/Products/Debug/Cassini.app
+        ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app
+        python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
+        python3 scripts/test-browser-connect.py --skip-build --app build/Build/Products/Debug/Cassini.app --output build/browser-connect-report.json
+    - uses: actions/setup-node@v4
+      if: env.BROWSER_SETUP == 'true'
+      with:
+        node-version: '22'
+    - name: Install pinned Chromium and follow the real Add from Cassini guide
+      if: env.BROWSER_SETUP == 'true'
+      run: |
+        npm ci --prefix BrowserExtension/tests
+        BrowserExtension/tests/node_modules/.bin/playwright install chromium
+        command -v displayplacer >/dev/null || brew install displayplacer
+        python3 scripts/hosted-display.py
+        python3 scripts/test-local-companion.py build/Build/Products/Debug/Cassini.app --output build/local-companion
+    - name: Installed app connects to fresh browser without a click
+      id: browser_background
+      if: env.BROWSER_SETUP == 'true'
+      run: node scripts/test-browser-background.mjs build/Build/Products/Debug/Cassini.app build/browser-background-report.json
+    - name: Product app capture ownership without devices
+      if: ${{ !cancelled() && env.BROWSER_SETUP == 'true' && steps.browser_background.outcome == 'success' }}
+      run: python3 scripts/test-browser-capture-app.py build/Build/Products/Debug/Cassini.app --output build/browser-capture-app.json
+    - name: Real Chromium navigation and app-owned source restoration
+      if: ${{ !cancelled() && env.BROWSER_SETUP == 'true' && steps.browser_background.outcome == 'success' }}
+      run: |
+        node --test scripts/test-wait-for-change.mjs
+        node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
+    - name: Shared test 2, live folder (protocol driver and oracle on the real app)
+      if: ${{ !cancelled() && env.BROWSER_SETUP == 'true' && steps.browser_background.outcome == 'success' }}
+      timeout-minutes: 8
+      run: node scripts/test-live-folder.mjs build/Build/Products/Debug/Cassini.app build/live-folder
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always() && env.BROWSER_SETUP == 'true'
+      with:
+        retention-days: 14
+        name: browser-setup-macos-15
+        path: |
+          build/browser-setup-report.json
+          build/browser-setup-report.stderr.txt
+          build/browser-connect-report.json
+          build/browser-connect-report.stderr.txt
+          build/browser-background-report.json
+          build/browser-background-report.json.stderr.txt
+          build/browser-return-report.json
+          build/browser-return-report.json.stderr.txt
+          build/browser-return-report.json.stdout.txt
+          build/browser-return-report.json.extension.json
+          build/browser-capture-app.json
+          build/browser-capture-app.stderr.txt
+          build/local-companion
+          build/live-folder
   native_sink:
     name: Native recording sink app
     # NSApplication and ScopedBookmarksAgent require a macOS login session.
     runs-on: macos-15
     timeout-minutes: 10
-    needs: [build]
+    needs: [changes, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci == 'true' }}
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -232,7 +523,7 @@ jobs:
     needs:
     - changes
     - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.shot != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.shot != 'false' }}
     uses: ./.github/workflows/ux-shot.yml
     with:
       products_ready: true
@@ -242,7 +533,7 @@ jobs:
     - changes
     - build
     - build_release
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.boards != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.boards != 'false' }}
     uses: ./.github/workflows/ux-boards.yml
     with:
       products_ready: true
@@ -251,16 +542,16 @@ jobs:
     needs:
     - changes
     - build
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.whistle != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.whistle != 'false' }}
     uses: ./.github/workflows/ux-whistle.yml
     with:
       products_ready: true
-  # D66 mac-P2-1: the Intel exports and Intel downloader jobs, as one job. Each area's steps run
-  # only when its paths changed (push, nightly and manual runs select every area).
+  # D66 mac-P2-1: the Intel exports and Intel downloader jobs, as one job. Deferred to nightly,
+  # workflow_dispatch, and full-ci labeled PRs so PR/main pushes run <= 4-5 macOS jobs.
   package_tests:
     name: Package tests (macos-15-intel)
     needs: [changes, build]
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && (needs.changes.outputs.exports != 'false' || needs.changes.outputs.model_download != 'false') }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci == 'true' && (needs.changes.outputs.exports != 'false' || needs.changes.outputs.model_download != 'false') }}
     # Trusted runs use the rented Apple Silicon Macs and execute the x86_64 products through
     # Rosetta 2; fork pull requests and an unset CM_MAC_RUNNER keep the hosted Intel runner,
     # where `arch -x86_64` changes nothing.
@@ -339,7 +630,7 @@ jobs:
   parakeet:
     name: UX Parakeet Ultra
     needs: [changes, build, build_release]
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.parakeet != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.parakeet != 'false' }}
     uses: ./.github/workflows/ux-parakeet.yml
     with:
       products_ready: true
@@ -347,7 +638,7 @@ jobs:
   browser_setup:
     name: UX browser setup
     needs: [changes, build]
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.browser_setup != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.browser_setup != 'false' }}
     uses: ./.github/workflows/ux-browser-setup.yml
     with:
       products_ready: true
