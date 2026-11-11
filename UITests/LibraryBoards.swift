@@ -367,21 +367,24 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"], slider = window.sliders["meeting-seek"]
         XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
-        // NSSlider has no XCTest normalized-adjustment AX parameter on macOS.
-        // Exercise pointer seeking, the same path whose snapping this test proves.
-        let far = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*0.8,dy:slider.frame.height/2))
+        let thumb = slider.valueIndicators.firstMatch
+        XCTAssertTrue(thumb.waitForExistence(timeout:5),slider.debugDescription)
+        let frame = slider.frame
+        let point = slider.coordinate(withNormalizedOffset:.zero).withOffset(
+            CGVector(dx:thumb.frame.midX-frame.minX+5,dy:thumb.frame.midY-frame.minY))
+        let far = slider.coordinate(withNormalizedOffset:CGVector(dx:0.8,dy:0.5))
         far.click()
         let moved = NSPredicate { _,_ in slider.value as? String != "00:03:08" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:moved,object:nil)],timeout:5),.completed)
         let farValue = slider.value as? String
-        // This fixture has 22,600,000 frames at 8 kHz (2825 seconds).
-        // Native regular NSSlider uses a 24-point knob; marks share its center travel.
-        let point = slider.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:12+(slider.frame.width-24)*188000/2825000+5,dy:slider.frame.height/2))
         point.click()
         let snapped = NSPredicate { _,_ in slider.value as? String == "00:03:08" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:snapped,object:nil)],timeout:5),.completed,"A five-point near miss selects the exact turn")
         XCTAssertTrue(window.descendants(matching:.any)["listening-bar"].exists)
         window.buttons["listen-stop"].click()
+        let stopped = NSPredicate { _,_ in !window.descendants(matching:.any)["listening-bar"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stopped,object:nil)],timeout:5),.completed)
+        XCTAssertEqual(slider.value as? String,"00:03:08","The snap survives completion of the Stop event")
         far.click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in slider.value as? String == farValue },object:nil)],timeout:5),.completed)
         point.click()
@@ -391,18 +394,26 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testScrubberDragClampsAtBothEndsWithAnOffCenterThumbGrab() throws {
         let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","playing","-CassiniListeningSpeaker","guest"])
         defer { app.terminate() }
-        let slider = app.windows["cassini-library-window"].sliders["meeting-seek"]
+        let window = app.windows["cassini-library-window"], slider = window.sliders["meeting-seek"]
         XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
+        window.buttons["listen-stop"].click()
+        let stopped = NSPredicate { _,_ in !window.descendants(matching:.any)["listening-bar"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:stopped,object:nil)],timeout:5),.completed)
+        let thumb = slider.valueIndicators.firstMatch
+        XCTAssertTrue(thumb.waitForExistence(timeout:5),slider.debugDescription)
         let frame = slider.frame
         let anchor = slider.coordinate(withNormalizedOffset:.zero)
-        // The fixture initially selects the turn at188s of2825s. Grab five
-        // points off the thumb center and drag beyond each end of its track.
-        let initialX = 12 + (frame.width-24)*188/2825 + 5
-        anchor.withOffset(CGVector(dx:initialX,dy:frame.height/2)).press(forDuration:0,
+        func grab(_ offset:CGFloat) -> XCUICoordinate {
+            anchor.withOffset(CGVector(dx:thumb.frame.midX-frame.minX+offset,dy:thumb.frame.midY-frame.minY))
+        }
+        let before = slider.value as? String
+        grab(5).click()
+        XCTAssertEqual(slider.value as? String,before,"An off-center stationary thumb grab must not seek")
+        grab(5).press(forDuration:0,
             thenDragTo:anchor.withOffset(CGVector(dx:frame.width+40,dy:frame.height/2)))
         let atEnd = NSPredicate { _,_ in slider.value as? String == "00:47:05" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:atEnd,object:nil)],timeout:5),.completed)
-        anchor.withOffset(CGVector(dx:frame.width-12+5,dy:frame.height/2)).press(forDuration:0,
+        grab(-5).press(forDuration:0,
             thenDragTo:anchor.withOffset(CGVector(dx:-40,dy:frame.height/2)))
         let atStart = NSPredicate { _,_ in slider.value as? String == "00:00:00" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:atStart,object:nil)],timeout:5),.completed)

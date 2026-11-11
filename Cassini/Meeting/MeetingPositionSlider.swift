@@ -74,6 +74,65 @@ struct MeetingPositionSlider: View {
         slider.beginTracking(); slider.doubleValue = 9900
         slider.sendAction(slider.action,to:slider.target); slider.endTracking()
         report["nativeStopClearsSnap"] = sought == 9900
+        let window = NSWindow(contentRect:NSRect(x:0,y:0,width:360,height:120),
+                              styleMask:.borderless,backing:.buffered,defer:false)
+        defer { window.close() }
+        let host = NSView(frame:NSRect(x:0,y:0,width:360,height:120))
+        window.contentView = host
+        slider.frame.origin = NSPoint(x:37,y:19)
+        host.addSubview(slider)
+        let editor = NSTextView(frame:NSRect(x:0,y:60,width:100,height:30))
+        host.addSubview(editor); window.makeFirstResponder(editor)
+        slider.testingAcceptsFirstResponder = true
+        var values: [Double] = []
+        coordinator.seek = { values.append($0) }
+        func event(_ type:NSEvent.EventType,_ x:CGFloat) -> NSEvent {
+            NSEvent.mouseEvent(with:type,location:slider.convert(NSPoint(x:x,y:slider.bounds.midY),to:nil),
+                modifierFlags:[],timestamp:0,windowNumber:window.windowNumber,context:nil,
+                eventNumber:0,clickCount:1,pressure:1)!
+        }
+        func drain() {
+            while window.nextEvent(matching:[.leftMouseDragged,.leftMouseUp],until:.distantPast,
+                                   inMode:.eventTracking,dequeue:true) != nil {}
+        }
+        func pointer(_ down:CGFloat,_ drag:CGFloat? = nil,_ up:CGFloat) {
+            values = []
+            if let drag { window.postEvent(event(.leftMouseDragged,drag),atStart:false) }
+            window.postEvent(event(.leftMouseUp,up),atStart:false)
+            slider.mouseDown(with:event(.leftMouseDown,down))
+            drain()
+        }
+        slider.doubleValue = 10000
+        let center = cell.knobRect(flipped:slider.isFlipped).midX
+        pointer(center+5,nil,center+5)
+        report["nativeMouseDownPreservesOffCenterGrab"] = values.count == 1 && abs(slider.doubleValue-10000) < 0.001
+        report["nativePointerKeepsTranscriptFocus"] = window.firstResponder === editor
+        report["nativeMouseUpDoesNotRepeatSeek"] = values.count == 1
+        pointer(center+5,center+25,center+25)
+        let expected = 10000 + 20/slider.track.width*slider.maxValue
+        report["nativeMouseDragUsesWindowCoordinates"] = values.count == 2 && abs(slider.doubleValue-expected) < 0.001
+        pointer(-100,nil,-100)
+        let atStart = slider.doubleValue == 0
+        pointer(1000,nil,1000)
+        report["nativeMouseDownClampsBothEnds"] = atStart && slider.doubleValue == 40000
+        coordinator.timeline = timeline
+        let near = CGFloat(slider.track.x(at:10000,duration:40000)) + 5
+        pointer(near,nil,near)
+        report["nativeMouseDownSnapsNearTurn"] = values.count == 1 && slider.doubleValue == 10000
+        coordinator.timeline = ListeningTimeline()
+        slider.isEnabled = false
+        pointer(center+5,nil,center+5)
+        report["nativeDisabledPointerIsIgnored"] = values.isEmpty && !slider.mouseTracking && dragged == nil
+        slider.isEnabled = true
+        slider.doubleValue = 10000
+        coordinator.seek = { values.append($0); slider.isEnabled = false }
+        pointer(center+5,center+25,center+25)
+        report["nativeMouseDragStopsWhenDisabled"] = values.count == 1 && !slider.mouseTracking && dragged == nil
+        slider.isEnabled = true; slider.doubleValue = 10000
+        coordinator.seek = { values.append($0); slider.removeFromSuperview() }
+        pointer(center+5,center+25,center+25)
+        report["nativeMouseDragStopsWhenDetached"] = values.count == 1 && slider.window == nil && !slider.mouseTracking
+        coordinator.seek = { _ in }
         return report
     }
     #endif
@@ -151,6 +210,10 @@ private struct NativeMeetingSlider: NSViewRepresentable {
         var geometryChanged: ((ListeningTimeline.Track) -> Void)?
         var trackingChanged: ((Double?) -> Void)?
         private(set) var mouseTracking = false
+        #if DEBUG
+        var testingAcceptsFirstResponder: Bool?
+        override var acceptsFirstResponder: Bool { testingAcceptsFirstResponder ?? super.acceptsFirstResponder }
+        #endif
         private var lastTrack: ListeningTimeline.Track?
         var track: ListeningTimeline.Track {
             let inset = (cell as? NSSliderCell)?.knobRect(flipped:isFlipped).width ?? 24
@@ -173,12 +236,7 @@ private struct NativeMeetingSlider: NSViewRepresentable {
             guard isEnabled else { return }
             beginTracking()
             defer { endTracking() }
-            if #unavailable(macOS 27.0) {
-                super.mouseDown(with:event)
-                return
-            }
             guard let window, let cell = cell as? NSSliderCell else { return }
-            window.makeFirstResponder(self)
             let knob = cell.knobRect(flipped:isFlipped)
             let point = convert(event.locationInWindow,from:nil)
             let offset = NSMouseInRect(point,knob,isFlipped) ? point.x-knob.midX : 0
@@ -186,11 +244,16 @@ private struct NativeMeetingSlider: NSViewRepresentable {
             // after the action has snapped the value. Track pointer events with
             // public APIs; keyboard and accessibility still use NSSlider.
             var next: NSEvent? = event
+            var lastX: CGFloat?
             while let current = next {
+                guard isEnabled, self.window === window else { break }
                 let x = convert(current.locationInWindow,from:nil).x
-                doubleValue = pointerPosition(at:x,knobOffset:offset)
-                sendAction(action,to:target)
-                if current.type == .leftMouseUp { break }
+                if current.type != .leftMouseUp || x != lastX {
+                    lastX = x
+                    doubleValue = pointerPosition(at:x,knobOffset:offset)
+                    sendAction(action,to:target)
+                }
+                if current.type == .leftMouseUp || !isEnabled || self.window !== window { break }
                 next = window.nextEvent(matching:[.leftMouseDragged,.leftMouseUp],
                                         until:.distantFuture,inMode:.eventTracking,dequeue:true)
             }

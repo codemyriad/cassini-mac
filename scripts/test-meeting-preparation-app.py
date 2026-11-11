@@ -31,6 +31,9 @@ assert result.returncode == 0,(result.returncode,result.stdout,stderr)
 report = json.loads(result.stdout)
 assert all(report[name] is True for name in ('preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
     'nativeTrackMatchesThumbTravel','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
+    'nativeMouseDownSnapsNearTurn','nativeDisabledPointerIsIgnored',
+    'nativeMouseDownPreservesOffCenterGrab','nativePointerKeepsTranscriptFocus','nativeMouseUpDoesNotRepeatSeek',
+    'nativeMouseDragUsesWindowCoordinates','nativeMouseDownClampsBothEnds','nativeMouseDragStopsWhenDisabled','nativeMouseDragStopsWhenDetached',
     'nativeAccessibilitySeekDoesNotSnap','nativeAccessibilityTenSecondStep','nativeStopClearsSnap',
     'mergeWhilePreparedResolvesReadoutAndHeaders','mergeWhilePreparedResolvesBar','mergedSpeakerRowStopsCachedListening',
     'suspendedMergeResolvesReadoutAndHeaders','unlistedSpeechIsNotSilence','mergedPreparationRecovers',
