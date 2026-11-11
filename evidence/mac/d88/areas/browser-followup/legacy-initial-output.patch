@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/ControlHeartbeat.swift
++++ b/Sources/CassiniBrowserControl/ControlHeartbeat.swift
+@@ -18 +18 @@
+-        self = .init(); negotiated = capabilities.contains("heartbeat-v1"); lastInbound = now
++        self = .init(); negotiated = true; lastInbound = now

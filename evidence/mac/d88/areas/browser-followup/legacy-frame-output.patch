@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/ControlHeartbeat.swift
++++ b/Sources/CassiniBrowserControl/ControlHeartbeat.swift
+@@ -24 +24 @@
+-        if type == "status", negotiated, !active { active = true; lastPing = now }
++        if type == "status", !active { active = true; lastPing = now }
