@@ -1,0 +1,29 @@
+factory-drain
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:139: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : XCTAssertEqual failed: ("1") is not equal to ("0") - Quit must wait for the owned folder factory
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:143: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : XCTAssertTrue failed
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:145: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : XCTAssertNotEqual failed: ("recording") is equal to ("recording")
+
+shared-finalization
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:172: error: -[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain] : XCTAssertEqual failed: ("21") is not equal to ("1")
+
+microphone-pcm
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:193: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : XCTAssertTrue failed - The requested microphone must be part of the owned capture
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:203: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : XCTAssertEqual failed: ("1") is not equal to ("2")
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:203: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : XCTAssertEqual failed: ("0") is not equal to ("1")
+
+permission-registration
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:205: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : XCTAssertEqual failed: ("2") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:205: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : XCTAssertEqual failed: ("3") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:205: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : XCTAssertEqual failed: ("4") is not equal to ("1")
+
+profile-first-status
+<scratch>/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:384: error: -[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus] : XCTAssertEqual failed: ("Optional(true)") is not equal to ("Optional(false)") - Start must wait for this profile's own first status
+<scratch>/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:388: error: -[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus] : XCTAssertTrue failed - The recording profile must stay separate
+
+stopped-call-barrier
+<scratch>/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:356: error: -[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart] : XCTAssertTrue failed - A stopped call must not restart
+
+stale-failure
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:767: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertFalse failed
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:767: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("2") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:771: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("interrupted") is not equal to ("completed")
