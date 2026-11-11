@@ -329,6 +329,7 @@ public enum LibraryImport {
         from provisionalRoot: URL,
         into root: URL,
         session: BatchSession,
+        onPublished: (LibraryMeeting, _ isDuplicate: Bool) -> Void = { _, _ in },
         shouldCancel: () -> Bool
     ) throws -> [(meeting: LibraryMeeting, isDuplicate: Bool)] {
         guard !provisionals.isEmpty else { return [] }
@@ -347,22 +348,31 @@ public enum LibraryImport {
         guard stageFD >= 0 else { throw POSIXError(.ENOENT) }
         defer { close(stageFD) }
 
+        var anyRenamed = false
+        defer {
+            if anyRenamed {
+                _ = fsync(rootFD)
+            }
+        }
+
         var published: [(meeting: LibraryMeeting, isDuplicate: Bool)] = []
         published.reserveCapacity(provisionals.count)
         for prov in provisionals {
             if shouldCancel() { throw CancellationError() }
             if let existing = try session.duplicate(for: prov.digest) {
                 published.append((existing, true))
+                onPublished(existing, true)
                 continue
             }
             guard renameatx_np(stageFD, prov.folderName, rootFD, prov.folderName, UInt32(RENAME_EXCL)) == 0 else {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
+            anyRenamed = true
             let finalFolder = root.appendingPathComponent(prov.folderName)
             let meeting = try session.recordImported(folder: finalFolder, id: prov.id, digest: prov.digest)
             published.append((meeting, false))
+            onPublished(meeting, false)
         }
-        _ = fsync(rootFD)
         return published
     }
 
