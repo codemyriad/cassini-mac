@@ -5,6 +5,7 @@ import Carbon
 import CassiniLibrary
 import CassiniRecording
 import Darwin
+import Observation
 import CryptoKit
 import CassiniKit
 import Sparkle
@@ -30,7 +31,7 @@ import Sparkle
             try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)
             try check(!FileManager.default.fileExists(atPath:original.path),"first capture starts without an existing Library")
             await recorder.start(parent:LibraryLocationModel.shared.roots[0])
-            try await wait { recorder.isRecording && !recorder.waitingForAudio }
+            try await waitForState { recorder.isRecording && !recorder.waitingForAudio }
             let initialCapture = try require(recorder.directory)
             await recorder.stopAndWait()
             try check(FileManager.default.fileExists(atPath:initialCapture.appendingPathComponent("session.json").path),"first capture creates the Library")
@@ -54,7 +55,7 @@ import Sparkle
             blockedFolder = received.folder
             let receivedBytes = try Data(contentsOf:received.folder.appendingPathComponent("original.opus"))
             LibraryStore.shared.reloadLocation()
-            try await wait { LibraryStore.shared.loaded && queue.active != nil }
+            try await waitForState { LibraryStore.shared.loaded && queue.active != nil }
             phase = "shortcut"
             let flags = UInt32(controlKey | optionKey | shiftKey | cmdKey)
             let privateKey = RecordingHotKey(code:UInt32(kVK_F18),flags:flags,character:"\u{F715}",name:"F18")
@@ -75,7 +76,7 @@ import Sparkle
             runtime.start()
             let search = LibrarySearchModel.shared
             search.query = "relocation"; search.open()
-            try await wait { !search.searching && search.hits.count == 1 }; search.close()
+            try await waitForState { !search.searching && search.hits.count == 1 }; search.close()
             phase = "RAM capture"
             let activeBeforeMove = try require(queue.active)
             let source = LibraryLocationModel.shared.roots[0]
@@ -87,11 +88,11 @@ import Sparkle
                 }
             })
             await recorder.start(parent:source)
-            try await wait { recorder.isRecording && !recorder.waitingForAudio }
+            try await waitForState { recorder.isRecording && !recorder.waitingForAudio }
             let live = try require(recorder.directory)
             let sessionBytes = try Data(contentsOf:earlier.directory.appendingPathComponent("session.json"))
-            // Hold metadata and import publication briefly so Move must pause
-            // both in-flight preparations, preserving their accepted intent.
+            // Hold both writers until Move pauses the import and reaches the
+            // queue preparation barrier.
             phase = "pending queue"
             await queue.pauseForMove()
             let waiting = try RecordingSession(parent:source,title:"Pending metadata",source:"macos")
@@ -99,19 +100,25 @@ import Sparkle
             try waiting.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try waiting.finish()
             try MeetingMetadataWriter(directory:waiting.directory,id:waiting.manifest.id).createIfNeeded()
             let waitingMeeting = try require(LibraryScanner(root:source).scan().meetings.first(where:{ $0.id == waiting.manifest.id }))
-            let heldMetadata = open(waiting.directory.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard heldMetadata >= 0, flock(heldMetadata,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
-            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(heldMetadata,LOCK_UN); close(heldMetadata) }
+            let heldMetadata = try HeldFolder(waiting.directory)
+            let (preparations, preparationStarted) = AsyncStream<URL>.makeStream()
+            queue.fixturePreparationStarted = { preparationStarted.yield($0) }
+            defer { queue.fixturePreparationStarted = nil; preparationStarted.finish() }
             queue.resumeAfterMove(); queue.enqueue(waitingMeeting)
+            // Scanner URLs omit the directory slash; the session URL includes it.
+            // Join the event by its filesystem path, not URL representation.
+            for await folder in preparations where folder.path == waiting.directory.path { break }
+            try check(queue.preparingFixtureFolder?.path == waiting.directory.path,"metadata writer reached the held folder")
+            queue.fixturePreparationStarted = nil
+            preparationStarted.finish()
             phase = "pending import"
             let pendingSource = source.appendingPathComponent(".pending-import.opus")
             _ = try OpusStreamFile.rewrite(receivedBytes,tags:PortableMeetingTags.packet(),to:pendingSource)
             let pendingHash = SHA256.hash(data:try Data(contentsOf:pendingSource)).map { String(format:"%02x",$0) }.joined()
-            let heldImport = open(source.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard heldImport >= 0, flock(heldImport,LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(.EIO) }
-            Thread.detachNewThread { Thread.sleep(forTimeInterval:1); flock(heldImport,LOCK_UN); close(heldImport) }
-            LibraryImportCoordinator.shared.open(pendingSource,writingDown:true)
-            await Task.yield()
+            let heldImport = try HeldFolder(source)
+            let importer = LibraryImportCoordinator.shared
+            importer.open(pendingSource,writingDown:true)
+            try check(importer.isBusy,"import accepted before Move")
             // Distinct destination data with the same prefixed UUID must not
             // steal selection from the retained original after a failed move.
             phase = "destination collision"
@@ -128,35 +135,42 @@ import Sparkle
             phase = "relocation"
             LibraryStore.shared.selectedKey = received.libraryKey
             try check(chmod(received.folder.path,0) == 0,"private move-failure fixture")
-            try await LibraryMoveCoordinator.shared.moveForTesting(to:destination,allowingFailures:true)
+            var preparationsPaused = false
+            try await LibraryMoveCoordinator.shared.moveForTesting(to:destination,allowingFailures:true) {
+                preparationsPaused = importer.isBusy && queue.preparingFixtureFolder?.path == waiting.directory.path
+                heldImport.release()
+                heldMetadata.release()
+            }
+            try check(preparationsPaused,"Move cancelled and requeued the held import before flushing metadata")
             try check(FileManager.default.fileExists(atPath:received.folder.path),"failed original retained")
             // Revoking read permission may let a watcher replace the title
             // with its unknown-title fallback before Move starts. Anchor the
             // failure to the actual folder, not that transient readable title.
             try check(LibraryLocationModel.shared.location.pendingMoves.contains { $0.id == LibraryLocation.canonical(received.folder).path && $0.phase == .failed },"failure line identifies the original folder")
-            try await wait { !LibraryImportCoordinator.shared.isBusy }
+            await importer.waitForFixtureImport()
+            try check(!importer.isBusy,"resumed import completed")
             let movedWaiting = LibraryLocationModel.shared.roots[0].appendingPathComponent(waiting.directory.lastPathComponent)
             try check(try LibraryScanner(root:LibraryLocationModel.shared.roots[0]).scan().meetings.first(where:{ $0.folder.path == movedWaiting.path })?.state.transcript == .queued,"queued metadata persisted before its folder moved")
-            try await wait { LibraryStore.shared.meetings.contains { $0.received?.sha256 == pendingHash && $0.folder.path != collision.path } }
+            try await waitForState { LibraryStore.shared.meetings.contains { $0.received?.sha256 == pendingHash && $0.folder.path != collision.path } }
             let importedAfterMove = try require(LibraryStore.shared.meetings.first(where:{ $0.received?.sha256 == pendingHash && $0.folder.path != collision.path }))
-            try await wait {
-                (try? LibraryScanner(root:LibraryLocationModel.shared.roots[0]).scan().meetings.first(where:{ $0.folder == importedAfterMove.folder })?.state.transcript) == .queued
-            }
+            await queue.waitForFixturePreparation()
+            try check(try LibraryScanner(root:LibraryLocationModel.shared.roots[0]).scan().meetings.first(where:{ $0.folder == importedAfterMove.folder })?.state.transcript == .queued,
+                      "resumed Write it down persists queued metadata")
             try check(importedAfterMove.folder.deletingLastPathComponent().path == LibraryLocationModel.shared.roots[0].path,"paused Write it down import resumes at new destination")
             phase = "retry selection"
             try check(chmod(received.folder.path,0o700) == 0,"restore fixture permissions")
             let freshReceived = try require(LibraryScanner(root:source).scan().meetings.first(where:{ $0.folder.path == received.folder.path }))
             let displayed = LibraryStore.shared.selectImported(freshReceived)
             try check(displayed.folder.path == received.folder.path && displayed.libraryKey.hasPrefix("retained:") && displayed.state.audioAvailable == true,"imported duplicate keeps fresh metadata and retained collection identity")
-            try await wait { !LibraryMoveCoordinator.shared.busy }
+            try await waitForState { !LibraryMoveCoordinator.shared.busy }
             LibraryMoveCoordinator.shared.retry()
-            try await wait { !LibraryMoveCoordinator.shared.busy }
+            try await waitForState { !LibraryMoveCoordinator.shared.busy }
             try check(LibraryStore.shared.selected?.folder.path == received.folder.path,"failed retry keeps selection on the retained folder")
             try FileManager.default.removeItem(at:collision)
             try check(try Data(contentsOf:received.folder.appendingPathComponent("original.opus")) == receivedBytes,"failed meeting audio remains unchanged")
-            try await wait { !LibraryMoveCoordinator.shared.busy }
+            try await waitForState { !LibraryMoveCoordinator.shared.busy }
             LibraryMoveCoordinator.shared.retry()
-            try await wait { !LibraryMoveCoordinator.shared.busy }
+            try await waitForState { !LibraryMoveCoordinator.shared.busy }
             try check(LibraryMoveCoordinator.shared.failures.isEmpty,"failed meeting can be retried")
             let relocatedReceived = LibraryLocationModel.shared.roots[0].appendingPathComponent(received.folder.lastPathComponent)
             try check(LibraryStore.shared.selected?.folder.path == relocatedReceived.path,"selection follows the retained meeting after a successful retry")
@@ -168,7 +182,7 @@ import Sparkle
             try check(queue.active == activeBeforeMove && FileManager.default.fileExists(atPath:activeBeforeMove.path),"in-flight inference keeps its original path and is not cancelled")
             try check(LibraryLocationModel.shared.location.pendingMoves.filter { $0.phase == .pending }.count == 2,"capture and inference remain pending while busy")
             search.query = "relocation"; search.open()
-            try await wait { !search.searching && search.hits.count == 1 }
+            try await waitForState { !search.searching && search.hits.count == 1 }
             try check(search.selected.flatMap { search.meeting($0) }?.folder.deletingLastPathComponent().path == target.path,"search reindexed to destination")
             search.close()
             func send(_ fields: [String:Any]) throws -> [String:String] { try host.receive(JSONSerialization.data(withJSONObject:fields)) }
@@ -193,7 +207,7 @@ import Sparkle
             updates.automaticChecks = !previousAutomaticChecks
             try check(updaterController.updater.automaticallyChecksForUpdates == !previousAutomaticChecks,"Settings writes Sparkle's own automatic-check preference")
             updaterController.updater.automaticallyChecksForUpdates = previousAutomaticChecks
-            try await wait { updates.automaticChecks == previousAutomaticChecks }
+            try await waitForState { updates.automaticChecks == previousAutomaticChecks }
             let bundledCredits = ModelNotices.credits(appData:noticesRoot).string
             try check([UXText.text("app.name"),"Whistle","Silero VAD","ONNX Runtime","sherpa-onnx","Zstandard","Sparkle"].allSatisfy { bundledCredits.contains($0) },"About credits name the app and bundled projects")
             try check(!bundledCredits.contains(".txt") && !bundledCredits.contains("/"),"About credits display project names rather than packaging paths")
@@ -240,7 +254,7 @@ import Sparkle
             let names = location.pendingMoves.map(\.folderName)
             try check(names.count == 2,"saved pending work is present on a fresh process")
             LibraryStore.shared.reloadLocation(); LibraryMoveCoordinator.shared.start()
-            try await wait { !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.location.pendingMoves.isEmpty }
+            try await waitForState { !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.location.pendingMoves.isEmpty }
             for name in names { try check(FileManager.default.fileExists(atPath:destination.appendingPathComponent(name + "/session.json").path),"idle folder moved after relaunch") }
             try check(LibraryLocationModel.shared.location.previousPaths.isEmpty,"old readers retired after all moves finish")
             // D66 mac-P0-3: shut the move coordinator down first; if the proof still fails,
@@ -255,9 +269,40 @@ import Sparkle
         } catch { FileHandle.standardError.write(Data("Move resume proof failed: \(error)\n".utf8)); exit(1) }
     }
     private static func require<T>(_ value: T?) throws -> T { guard let value else { throw Failure.check("missing value") }; return value }
-    private static func wait(_ condition: () -> Bool) async throws {
-        for _ in 0..<600 { if condition() { return }; try await Task.sleep(for:.milliseconds(25)) }
-        throw Failure.check("state timed out")
+    private static func waitForState(_ condition: () -> Bool) async throws {
+        while !condition() {
+            let (changes, continuation) = AsyncStream<Void>.makeStream()
+            // Observation fires before the write. Read again on the main actor
+            // after the setter has completed, then register for the next change.
+            withObservationTracking { _ = condition() } onChange: {
+                continuation.yield(())
+                continuation.finish()
+            }
+            var iterator = changes.makeAsyncIterator()
+            _ = await iterator.next()
+            try Task.checkCancellation()
+        }
+    }
+
+    private final class HeldFolder {
+        private var descriptor: Int32
+
+        init(_ folder: URL) throws {
+            descriptor = open(folder.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard descriptor >= 0 else { throw POSIXError(.EIO) }
+            guard flock(descriptor,LOCK_EX | LOCK_NB) == 0 else {
+                release()
+                throw POSIXError(.EIO)
+            }
+        }
+
+        func release() {
+            guard descriptor >= 0 else { return }
+            close(descriptor)
+            descriptor = -1
+        }
+
+        deinit { release() }
     }
 }
 #endif

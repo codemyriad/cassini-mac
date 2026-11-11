@@ -82,6 +82,16 @@ import CassiniSearch
             }
         }
     }
+    #if DEBUG
+    func waitForFixtureSearch() async {
+        while searching, let task {
+            let revision = generation
+            await task.value
+            // A Library refresh can supersede the query while it is running.
+            if generation == revision { return }
+        }
+    }
+    #endif
     func openSelected(play: Bool) {
         guard !searching, let hit = selected, let meeting = meeting(hit) else { return }
         let context = LibraryStore.shared.context

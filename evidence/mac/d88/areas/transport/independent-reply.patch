@@ -1,0 +1,12 @@
+--- a/Tests/CassiniBrowserControlTests/PipeTransportTests.swift
++++ b/Tests/CassiniBrowserControlTests/PipeTransportTests.swift
+@@ -72 +72,8 @@
+-        let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in try peer.send(data) },disconnected:{ _ in })
++        let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in
++            let independent = Data("{\"type\":\"future\",\"body\":\"independent\"}".utf8)
++            if data == (try FrameIO.normalized(independent)) {
++                print("Mutation suppressed the second peer reply and left the connection open")
++                return
++            }
++            try peer.send(data)
++        },disconnected:{ _ in })

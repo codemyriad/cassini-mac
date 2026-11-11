@@ -306,12 +306,14 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
     // Internal event fences for tests; observers never control completion.
-    var shutdownWaitRegistered: (@Sendable () -> Void)?
+    private var shutdownWaitObserver: (@Sendable () -> Void)?
+    func observeShutdownWait(_ observer: (@Sendable () -> Void)?) { lock.withLock { shutdownWaitObserver = observer } }
     func observeFinalization(_ observer: (@Sendable () -> Void)?) async { await finalization.observe(observer) }
     @discardableResult public func finishAll(problem: String? = nil, reason: CaptureEndReason? = nil) async -> [OwnedCaptureSnapshot] {
         await withCheckedContinuation { continuation in
             creating.notify(queue:.global()) { continuation.resume() }
-            shutdownWaitRegistered?()
+            let observe = lock.withLock { shutdownWaitObserver }
+            observe?()
         }
         let values = activeCaptures
         await withTaskGroup(of:Void.self) { group in

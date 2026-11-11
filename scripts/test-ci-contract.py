@@ -38,9 +38,12 @@ class Selection(unittest.TestCase):
     def test_direct_workflow_scripts_and_app_privacy_changes_run_their_consumers(self):
         for area, workflow in [('boards','ux-boards'),('whistle','ux-whistle'),('browser_setup','ux-browser-setup')]:
             body = (ROOT/'.github/workflows'/f'{workflow}.yml').read_text()
-            for script in re.findall(r'python3\s+(scripts/[\w.-]+\.py)',body):
+            for script in re.findall(r'(?:python3|node(?: --test)?)\s+(scripts/[\w.-]+\.(?:py|mjs))',body):
                 with self.subTest(area=area,script=script):
                     self.assertTrue(changes.select('pull_request','base',PATHS,[script])[area])
+        # Imported helpers must also select the real browser consumer on their
+        # own, without relying on a workflow edit to select every area.
+        self.assertTrue(changes.select('pull_request','base',PATHS,['scripts/wait-for-change.mjs'])['browser_setup'])
         for source in ['Cassini/Transcription/TranscriptionQueue.swift','Cassini/Cassini.entitlements','Cassini/Info.plist']:
             self.assertTrue(changes.select('pull_request','base',PATHS,[source])['whistle'])
 
@@ -171,9 +174,9 @@ class FoldedJobs(unittest.TestCase):
                 self.assertNotIn('--filter ModelDownloaderTests', model_text)
                 self.assertNotIn("--filter 'ExportGoldenTests|", text)
 
-    def test_arm64_full_suite_has_one_model_partition_and_its_exact_complement(self):
+    def test_full_suite_partitions_keep_models_native_and_real_bookmark_coverage(self):
         kit = ci_job('kit')
-        self.assertIn('runs-on: macos-15\n', kit)
+        self.assertIn('vars.CM_MAC_RUNNER', kit)
         start = kit.index('    - name: Test\n')
         end = kit.index('\n    - ', start + 1)
         step = kit[start:end]
@@ -183,11 +186,26 @@ class FoldedJobs(unittest.TestCase):
             step, re.M)
         self.assertEqual(commands, [
             ('build/unit-tests/models', "swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'"),
-            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'"),
+            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'"),
         ])
         model_filter = 'ModelDownloaderTests|ModelSupersessionTests'
         self.assertEqual(kit.count("--filter '" + model_filter + "'"), 1)
-        self.assertEqual(kit.count("--skip '" + model_filter + "'"), 1)
+        bookmark = 'recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
+        native_skip = model_filter + '|' + bookmark
+        self.assertEqual(kit.count("--skip '" + native_skip + "'"), 1)
+        sink = ci_job('native_sink')
+        self.assertIn('runs-on: macos-15\n', sink)
+        self.assertIn("swiftpm: 'true'", sink)
+        self.assertIn(' -- swift test --skip-build --filter ' + bookmark + '\n', sink)
+        self.assertIn('name: scoped-bookmark-${{ github.sha }}', sink)
+        self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 1)
+        self.assertIn("--filter 'Library|SearchTests' --skip " + bookmark, kit)
+        for suite in ['ModelDownloaderTests', 'ModelSupersessionTests', bookmark,
+                      'ModelManifestTests', 'D52WorstCaseRecordTests']:
+            # Exactly one full-suite partition admits each example, including the real OS test.
+            admitted = [bool(re.search(model_filter, suite)), not bool(re.search(native_skip, suite)),
+                        suite == bookmark]
+            self.assertEqual(sum(admitted), 1, suite)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests']:
             self.assertRegex(suite, model_filter)
         for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests']:
@@ -231,7 +249,11 @@ class RentedRunnerRouting(unittest.TestCase):
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
         # Both architectures of the producer and the Whistle worker, and the Intel package tests.
         for job,runners in [(producer,['macos-15','macos-15-intel']),(self.worker(),['macos-15','macos-15-intel']),
-                            (ci_job('package_tests'),['macos-15-intel'])]:
+                            (ci_job('package_tests'),['macos-15-intel']),
+                            (ci_job('kit'),['macos-15']),
+                            ((ROOT/'.github/workflows/ci-build-release.yml').read_text(),['macos-15']),
+                            ((ROOT/'.github/workflows/ux-parakeet.yml').read_text().split('  runtime:',1)[1].split('\n  parakeet:\n',1)[0],['macos-15','macos-15-intel']),
+                            ((ROOT/'.github/workflows/ux-browser-setup.yml').read_text().split('  control:',1)[1].split('  setup:',1)[0],['macos-15','macos-15-intel'])]:
             route=re.search(r'^    runs-on: (.+)$',job,re.M).group(1)
             for runner in runners:
                 for event,head,label,enabled in [('pull_request','codemyriad/cassini-mac','cm-mac-m4',True),
@@ -282,18 +304,18 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertIn('name: whistle-${{ matrix.runner }}\n',worker)
         for name in ['name: downloader-macos-15-intel\n','name: exports-macos-15-intel\n']:self.assertIn(name,package)
 
-    def test_constrained_jobs_and_all_original_artifact_names_remain_hosted(self):
-        self.assertIn('runs-on: macos-15\n',ci_job('kit'))
+    def test_gui_jobs_and_original_artifact_names_remain_hosted(self):
+        self.assertIn('runs-on: macos-15\n',ci_job('native_sink'))
         # App, XPC and GUI jobs need a login session; both their architectures stay hosted.
         for name in ['ux-parakeet.yml','ux-browser-setup.yml']:
-            body=(ROOT/'.github/workflows'/name).read_text()
+            body=(ROOT/'.github/workflows'/name).read_text().split('\n  parakeet:\n' if name == 'ux-parakeet.yml' else '  setup:',1)[1]
             self.assertIn('runner: [macos-15, macos-15-intel]\n',body)
             self.assertIn('runs-on: ${{ matrix.runner }}\n',body)
             self.assertNotIn('CASSINI_CI_ARCH',body)
             # Their hosted Intel row compiles SwiftPM itself after a rented Mac built the products.
             job=body[body.index('runner: [macos-15, macos-15-intel]'):]
             self.assertEqual(re.search(r'(?m)^    timeout-minutes: (\d+)$',job).group(1),'25',name)
-        for name in ['ux-shot.yml','ux-boards.yml','ux-parakeet.yml','ux-browser-setup.yml','ci-build-release.yml']:
+        for name in ['ux-shot.yml','ux-boards.yml']:
             self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
@@ -306,6 +328,42 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertIn('name: '+name+'\n',action)
         self.assertIn('name: ci-release\n',action)
         self.assertNotIn('-headless',producer+action)
+
+    def test_split_jobs_preserve_each_native_and_app_proof_once(self):
+        parakeet=(ROOT/'.github/workflows/ux-parakeet.yml').read_text()
+        runtime,app=parakeet.split('  runtime:',1)[1].split('\n  parakeet:\n',1)
+        self.assertIn('needs: [build]\n',runtime)
+        self.assertNotIn("release: 'true'",runtime)
+        for marker in ["--filter 'Parakeet|ProgressTests'",'scripts/test-parakeet-worker.py']:
+            self.assertEqual(parakeet.count(marker),1)
+            self.assertIn(marker,runtime)
+        for marker in ['scripts/test-model-network-app.py','scripts/test-parakeet-app.py']:
+            self.assertEqual(parakeet.count(marker),1)
+            self.assertIn(marker,app)
+        self.assertIn('name: parakeet-runtime-${{ matrix.runner }}',runtime)
+        self.assertIn('name: parakeet-${{ matrix.runner }}',app)
+        self.assertIn("if: runner.environment == 'github-hosted'",runtime)
+        self.assertIn('test "$(python3 -c',runtime)
+        self.assertIn('ln -sf "$(xcrun -f python3)"',runtime)
+        browser=(ROOT/'.github/workflows/ux-browser-setup.yml').read_text()
+        control,setup=browser.split('  control:',1)[1].split('  setup:',1)
+        for marker in ["--filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests'",
+                       'conformance/check-call-lifecycle.py','conformance/control/run.py']:
+            self.assertEqual(browser.count(marker),1)
+            self.assertIn(marker,control)
+        self.assertIn('scripts/test-browser-connect.py',setup)
+        self.assertIn('python3 -m venv "$RUNNER_TEMP/control-python"',control)
+        kit,sink=ci_job('kit'),ci_job('native_sink')
+        self.assertNotIn('scripts/run-native-ci.py',kit)
+        self.assertEqual(sink.count('scripts/run-native-ci.py --mode sink-only'),1)
+        self.assertIn('name: native-recording-${{ github.sha }}',sink)
+        self.assertIn('python3 -m venv "$RUNNER_TEMP/conformance-python"',kit)
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(kit,'- uses: actions/setup-python'))
+        for job in [runtime,control]:
+            self.assertIn('CASSINI_CI_ARCH: ${{ matrix.arch }}',job)
+            self.assertIn('shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}',job)
+            self.assertEqual(re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',job),
+                             [('macos-15','arm64'),('macos-15-intel','x86_64')])
 
     def test_producers_and_restorers_select_the_same_xcode_and_fingerprint_caches(self):
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
@@ -636,6 +694,103 @@ class Transport(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Unsafe'): products.unpack('swiftpm',self.output)
 
 
+class ReleaseArchitecture(unittest.TestCase):
+    """Transport rejects incomplete slices even when metadata and archive digest agree.
+
+    The lipo boundary is stubbed so these fast cases also run on the Linux changes job;
+    the real lipo is separately exercised against the actual CI Release artifact.
+    """
+    BOTH = b'\xca\xfe\xba\xbe' + b'two slices'
+    ARM_FAT = b'\xca\xfe\xba\xbe' + b'one arm slice'
+    ARM = Transport.thin(0x0100000c)
+    INTEL = Transport.thin(0x01000007)
+
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name).resolve()
+        self.folder=self.root/'build/Build/Products/Release'
+        self.output=self.root/'upload'
+        self.paths=[self.folder/'Cassini.app/Contents/MacOS/Cassini',
+                    *[self.folder/(name+'.o') for name in products.RELEASE_SDK_OBJECTS],
+                    self.folder/'Cassini.app/Contents/Frameworks/Engine.framework/Versions/A/Engine',
+                    self.folder/'Cassini.app/Contents/Resources/libengine.dylib',
+                    self.folder/'libstatic.a']
+        self.identity={'kind':'release','commit':'a'*40,'arch':'universal','xcode':'Xcode 16.4','pins':{}}
+        for target,attribute,value in [(products,'ROOT',self.root),(products,'identity',None)]:
+            replacement=patch.object(target,attribute,side_effect=lambda kind: dict(self.identity)) if attribute=='identity' else patch.object(target,attribute,value)
+            replacement.start();self.addCleanup(replacement.stop)
+        lipo=patch.object(products.subprocess,'check_output',side_effect=self.slices)
+        self.lipo=lipo.start();self.addCleanup(lipo.stop)
+        self.reset_products()
+
+    def reset_products(self):
+        for path in self.paths:
+            path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(self.BOTH)
+        script=self.folder/'Cassini.app/Contents/Resources/script'
+        script.write_text('#!/bin/sh\nexit 0\n');script.chmod(0o755)
+        alias=self.folder/'engine-link'
+        if not alias.exists():alias.symlink_to('Cassini.app/Contents/Resources/libengine.dylib')
+
+    def slices(self,command,text):
+        self.assertEqual(command[:3],['xcrun','lipo','-archs']);self.assertTrue(text)
+        data=Path(command[3]).read_bytes()
+        return {self.BOTH:'x86_64 arm64\n',self.ARM:'arm64\n',self.INTEL:'x86_64\n',self.ARM_FAT:'arm64\n'}[data]
+
+    def test_pack_and_restore_inspect_app_framework_library_and_every_consumed_object(self):
+        products.pack('release',self.output)
+        self.assertEqual({Path(call.args[0][3]) for call in self.lipo.call_args_list},set(self.paths))
+        self.assertEqual(json.loads((self.output/'release.json').read_text())['arch'],'universal')
+        self.lipo.reset_mock();shutil.rmtree(self.folder)
+        products.unpack('release',self.output)
+        self.assertEqual({Path(call.args[0][3]) for call in self.lipo.call_args_list},set(self.paths))
+        self.assertTrue((self.folder/'engine-link').is_symlink())
+
+    def test_pack_rejects_each_missing_slice_in_every_binary_role_including_fat_header(self):
+        for path in self.paths:
+            for data in [self.ARM,self.INTEL,self.ARM_FAT]:
+                with self.subTest(path=path.relative_to(self.folder),data=data):
+                    path.write_bytes(data)
+                    with self.assertRaisesRegex(ValueError,'missing required slices'):
+                        products.pack('release',self.output)
+                    path.write_bytes(self.BOTH)
+
+    def test_restore_rejects_incomplete_slices_even_with_a_matching_digest(self):
+        products.pack('release',self.output)
+        archive=self.output/'release.tar.gz';original=archive.read_bytes()
+        for path in self.paths:
+            for data in [self.ARM,self.INTEL,self.ARM_FAT]:
+                with self.subTest(path=path.relative_to(self.folder),data=data):
+                    with tarfile.open(fileobj=io.BytesIO(original)) as source,tarfile.open(archive,'w:gz') as target:
+                        for item in source.getmembers():
+                            if item.isfile():
+                                contents=data if item.name==str(path.relative_to(self.root)) else source.extractfile(item).read()
+                                item.size=len(contents);target.addfile(item,io.BytesIO(contents))
+                            else:target.addfile(item)
+                    metadata={**self.identity,'sha256':products.digest(archive)}
+                    (self.output/'release.json').write_text(json.dumps(metadata))
+                    shutil.rmtree(self.folder,ignore_errors=True)
+                    with self.assertRaisesRegex(ValueError,'missing required slices') as caught:
+                        products.restore('release',self.output)
+                    self.assertNotIsInstance(caught.exception,products.TransferError)
+
+    def test_missing_required_executable_or_sdk_object_does_not_pass_empty_inspection(self):
+        for path in self.paths[:6]:
+            with self.subTest(path=path.name):
+                path.unlink()
+                with self.assertRaisesRegex(ValueError,'Missing Release binary'):
+                    products.pack('release',self.output)
+                path.write_bytes(self.BOTH)
+        self.paths[0].write_text('not a native executable')
+        with self.assertRaisesRegex(ValueError,'was not inspected'):
+            products.pack('release',self.output)
+
+    def test_lipo_failure_is_not_an_incomplete_download_retry(self):
+        products.pack('release',self.output)
+        self.lipo.side_effect=subprocess.CalledProcessError(1,['xcrun','lipo'])
+        with self.assertRaises(subprocess.CalledProcessError):products.pack('release',self.output)
+        with self.assertRaises(subprocess.CalledProcessError):products.restore('release',self.output)
+
+
 class Concurrency(unittest.TestCase):
     """D66 mac-P1-1: only a pull request's own newer run cancels it; every other run (push,
     nightly, manual) has a group of its own, so GitHub never cancels or replaces it while pending."""
@@ -720,6 +875,7 @@ class ReleaseOffTheCriticalPath(unittest.TestCase):
         release = (self.WORKFLOWS/'ci-build-release.yml').read_text()
         self.assertIn('-configuration Release', release)
         self.assertIn('pack release', release)
+        self.assertIn('command -v xcodegen >/dev/null 2>&1 || brew install xcodegen', release)
         self.assertIn('scripts/package-release.py', release)
         self.assertIn('name: Cassini-${{ github.sha }}', release)
         self.assertIn("assets: 'true'", release); self.assertIn("runtime: 'true'", release)

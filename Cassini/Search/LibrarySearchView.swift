@@ -141,6 +141,7 @@ struct LibrarySearchField: NSViewRepresentable {
     @Binding var text: String
     var large = false
     var focusRequest = 0
+    var onClick: (() -> Void)?
     var onBegin: () -> Void = {}
     var onChange: () -> Void
     var onCancel: () -> Void
@@ -148,6 +149,7 @@ struct LibrarySearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> FocusableSearchField {
         let field = FocusableSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
         field.font = NSFont.systemFont(ofSize:13)
+        field.onClick = onClick
         field.placeholderString = UXText.text("search.field.placeholder"); field.setAccessibilityLabel(UXText.text("search.field.a11y"))
         field.setAccessibilityIdentifier("library-search-field")
         if let cell = field.cell as? NSSearchFieldCell { cell.cancelButtonCell?.target = context.coordinator; cell.cancelButtonCell?.action = #selector(Coordinator.cancel) }
@@ -155,6 +157,7 @@ struct LibrarySearchField: NSViewRepresentable {
     }
     func updateNSView(_ view: FocusableSearchField, context: Context) {
         context.coordinator.parent = self
+        view.onClick = onClick
         if view.stringValue != text { view.stringValue = text }
         if focusRequest != context.coordinator.focused {
             context.coordinator.focused = focusRequest
@@ -164,6 +167,13 @@ struct LibrarySearchField: NSViewRepresentable {
     // SwiftUI may update the field before attaching it to a window. Retain the
     // request until attachment rather than losing Cmd-F's keyboard focus.
     final class FocusableSearchField: NSSearchField {
+        var onClick: (() -> Void)?
+        override func mouseDown(with event: NSEvent) {
+            // Open the sidebar before AppKit installs a field editor for the toolbar.
+            // Replacing an active field editor can drop keys from a single typing burst.
+            if let onClick { onClick() }
+            else { super.mouseDown(with:event) }
+        }
         private var needsFocus = false
         func requestFocus() { needsFocus = true; applyFocus() }
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyFocus() }
@@ -172,10 +182,8 @@ struct LibrarySearchField: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.needsFocus, let window = self.window else { return }
                 if window.makeFirstResponder(self) {
-                    // The toolbar field is replaced after the first typed
-                    // character opens Search. AppKit selects the new field's
-                    // entire value by default; the next character would then
-                    // replace that first character. Continue at the caret.
+                    // A keyboard edit can bring a query from the toolbar. Keep
+                    // its caret at the end when the sidebar gets the field editor.
                     if let editor = self.currentEditor() {
                         editor.selectedRange = NSRange(location:(self.stringValue as NSString).length,length:0)
                     }

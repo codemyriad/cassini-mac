@@ -334,6 +334,14 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
     /// at 120 s. It used to be taken as present (control connected, or the historical page)
     /// with unknown inventory, and recorded on until stopped by hand.
     func testALostRecordingStopsWhenItsMeetingRowDisappears() async throws {
+        try await lostRecordingStopsWhenItsMeetingRowDisappears(lossAtMs:nil)
+    }
+    func testALateLossStillCommitsFallbackBeforeTheMeetingRowDisappears() async throws {
+        // A media-time loss beyond the old 1000–1100 ms fixture packet reproduces
+        // slow-host trimming without delaying execution on the wall clock.
+        try await lostRecordingStopsWhenItsMeetingRowDisappears(lossAtMs:2000)
+    }
+    private func lostRecordingStopsWhenItsMeetingRowDisappears(lossAtMs: Double?) async throws {
         let ownership = CallOwnershipStore(), log = PeerLog()
         let fixture = try AudioFixture(ownership:ownership,changed:{ log.changed($0) })
         do {
@@ -345,13 +353,19 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
             let id = owner.snapshot.manifest.id
             ownership.update { $0.bind(id,.init(key:.init(peer:peer,tabID:2),callGeneration:"call-A",follows:true,recording:true)) }
             let closed = fixture.closures.next("the transport closed")
+            if let lossAtMs { try owner.browserLost(atMs:lossAtMs,transportAlive:true) }
             audio.end()
             await fulfillment(of:[closed],timeout:5)
             try await owner.requestSystemFallback()
             let stage = StagedNativeWriter()
             try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
-            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            let loss = try XCTUnwrap(owner.snapshot.manifest.events?.last {
+                $0.type == "othersSource" && $0.source == "none" && $0.reason == "lost"
+            }?.atMs)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:loss+1)
             try await owner.activateNative(stage,side:.others,allowed:{ true })
+            let committed = CaptureSourceState(events:owner.snapshot.manifest.events ?? [],atMs:.infinity)
+            XCTAssertEqual(committed.source,"system"); XCTAssertEqual(committed.reason,"lost")
             var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
             var asked = 0
             // As the app builds its observation (no page reports here).
@@ -437,8 +451,12 @@ final class D52CallOwnershipTests: XCTestCase, @unchecked Sendable {
             try await owner.requestSystemFallback()
             let stage = StagedNativeWriter()
             try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
-            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            // The real pipe close publishes its timeline boundary. Do not assume
+            // it happens within one second on a loaded runner: earlier PCM is trimmed.
+            let nativeOffset = try XCTUnwrap(owner.snapshot.manifest.events?.last?.atMs)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:nativeOffset)
             try await owner.activateNative(stage,side:.others,allowed:{ true })
+            XCTAssertTrue(owner.snapshot.isSystemFallback,"first PCM really commits the fallback before resume")
             var policy = BrowserCallPolicy(resumeCapture:true,callGeneration:"call-A",heard:true)
             var asks = 0
             let armed = expectation(description:"the resume is armed with the call's generation")

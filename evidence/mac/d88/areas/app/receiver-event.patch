@@ -1,0 +1,5 @@
+--- a/scripts/test-browser-return.mjs
++++ b/scripts/test-browser-return.mjs
+@@ -47 +47 @@
+-  receiver.addEventListener('connectionstatechange',changed);
++  // Mutation omits receiver event subscription.

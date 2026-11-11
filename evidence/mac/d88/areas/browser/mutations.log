@@ -1,23 +1,29 @@
-profile-first-status
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:384: error: -[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus] : XCTAssertEqual failed: ("Optional(true)") is not equal to ("Optional(false)") - Start must wait for this profile's own first status
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:388: error: -[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus] : XCTAssertTrue failed - The recording profile must stay separate
-
-stopped-call-barrier
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:356: error: -[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart] : XCTAssertTrue failed - A stopped call must not restart
-
 factory-drain
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:136: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Shutdown registered its folder-creation wait".
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:139: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : XCTAssertEqual failed: ("1") is not equal to ("0") - Quit must wait for the owned folder factory
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:143: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : XCTAssertTrue failed
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:145: error: -[CassiniBrowserControlTests.AudioBrokerTests testShutdownClosesAdmissionAndWaitsForAnInFlightFolderFactory] : XCTAssertNotEqual failed: ("recording") is equal to ("recording")
 
 shared-finalization
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:165: error: -[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Every concurrent finalization joined the owned drain".
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:172: error: -[CassiniBrowserControlTests.AudioBrokerTests testConcurrentAppStopsAndQuitShareOneNativeDrain] : XCTAssertEqual failed: ("21") is not equal to ("1")
 
 microphone-pcm
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:191: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Generated microphone PCM flushed: /var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/CassiniBrokerTests-5992CFE2-300C-443B-BAA7-05864434CFD3/Library/Recording-30ae7e87-a645-4471-a4bd-eb448ecd096d".
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:193: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : XCTAssertTrue failed - The requested microphone must be part of the owned capture
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:203: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : XCTAssertEqual failed: ("1") is not equal to ("2")
+<scratch>/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift:203: error: -[CassiniBrowserControlTests.AudioBrokerTests testRealNativeProcessesRecordIndependentFilesAndStopOnlyTheirOwnCapture] : XCTAssertEqual failed: ("0") is not equal to ("1")
 
 permission-registration
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:185: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Fallback authorization waiter registered".
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:185: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Fallback authorization waiter registered".
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:205: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : XCTAssertEqual failed: ("2") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:205: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : XCTAssertEqual failed: ("3") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:205: error: -[CassiniBrowserControlTests.InputLifecycleTests testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest] : XCTAssertEqual failed: ("4") is not equal to ("1")
+
+profile-first-status
+<scratch>/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:384: error: -[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus] : XCTAssertEqual failed: ("Optional(true)") is not equal to ("Optional(false)") - Start must wait for this profile's own first status
+<scratch>/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:388: error: -[CassiniBrowserControlTests.ControlServiceTests testProfilesWithSameTabStaySeparateAndWaitForTheirOwnFirstStatus] : XCTAssertTrue failed - The recording profile must stay separate
+
+stopped-call-barrier
+<scratch>/Tests/CassiniBrowserControlTests/ControlServiceTests.swift:356: error: -[CassiniBrowserControlTests.ControlServiceTests testAutomaticStartIsNotAnnouncedUntilItsAcknowledgementAndStopDoesNotRestart] : XCTAssertTrue failed - A stopped call must not restart
 
 stale-failure
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:756: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertFalse failed
-/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-browser-p7mm06dz/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:756: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("2") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:767: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertFalse failed
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:767: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("2") is not equal to ("1")
+<scratch>/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:771: error: -[CassiniBrowserControlTests.InputLifecycleTests testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic] : XCTAssertEqual failed: ("interrupted") is not equal to ("completed")

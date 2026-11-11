@@ -15,6 +15,45 @@ jobs:
     uses: ./.github/workflows/ci-build.yml
     with:
       parakeet_models: false
+  control:
+    name: Browser control and conformance (${{ matrix.runner }})
+    needs: [build]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: macos-15
+          arch: arm64
+        - runner: macos-15-intel
+          arch: x86_64
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
+    timeout-minutes: 20
+    env:
+      CASSINI_CI_ARCH: ${{ matrix.arch }}
+    defaults:
+      run:
+        shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-products
+        with:
+          swiftpm: 'true'
+      - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: '3.12'
+      - name: Install conformance dependencies in a job-private environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/control-python"
+          "$RUNNER_TEMP/control-python/bin/python3" -m pip install -r browser-protocol/requirements-test.txt
+          echo "$RUNNER_TEMP/control-python/bin" >> "$GITHUB_PATH"
+      - name: Native control lifecycle and shared spectrogram goldens
+        run: swift test --skip-build --filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests'
+      - name: Shared control-host vectors
+        run: |
+          python3 browser-protocol/conformance/check-call-lifecycle.py
+          python3 browser-protocol/conformance/control/run.py .build/debug/cassini-control-host
   setup:
     name: Browser setup (${{ matrix.runner }})
     needs: [build]
@@ -45,13 +84,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Native control lifecycle and shared spectrogram goldens
-        run: swift test --skip-build --filter 'CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests'
-      - name: Shared control-host vectors
-        run: |
-          python3 -m pip install -r browser-protocol/requirements-test.txt
-          python3 browser-protocol/conformance/check-call-lifecycle.py
-          python3 browser-protocol/conformance/control/run.py .build/debug/cassini-control-host
       - name: Scoped XPC registration without touching browser profiles
         run: python3 scripts/test-browser-setup-spike.py --skip-build --output build/browser-setup-report.json
       - name: Production setup service with exact bundled host grants
@@ -77,7 +109,9 @@ jobs:
         run: python3 scripts/test-browser-capture-app.py build/Build/Products/Debug/Cassini.app --output build/browser-capture-app.json
       - name: Real Chromium navigation and app-owned source restoration
         if: ${{ !cancelled() && steps.browser_background.outcome == 'success' }}
-        run: node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
+        run: |
+          node --test scripts/test-wait-for-change.mjs
+          node scripts/test-browser-return.mjs build/Build/Products/Debug/Cassini.app build/browser-return-report.json
       # D68 item 7: shared test 2 runs once on browser-path PRs (this job's area) and nightly
       # (ci.yml's schedule selects every area). One runner: the scenario is ~2 minutes of real call.
       - name: Shared test 2, live folder (protocol driver and oracle on the real app)

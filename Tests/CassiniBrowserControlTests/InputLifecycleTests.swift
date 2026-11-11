@@ -9,7 +9,8 @@ import CassiniKit
 @MainActor private final class GeneratedInput: CaptureInput {
     let kind: String
     var authorized = 0, starts = 0, stops = 0
-    var permission: CheckedContinuation<Void,Error>?
+    private(set) var permissions: [CheckedContinuation<Void,Error>] = []
+    private var permissionGranted = false
     var holdPermission = false, denied = false
     var sink: RecordingSink?
     var failure: (@Sendable (String) -> Void)?
@@ -24,8 +25,13 @@ import CassiniKit
     func authorize() async throws {
         authorized += 1
         if denied { throw CaptureOpenRefusal.denied }   // As MeetingNativeInputs does.
-        if holdPermission { try await withCheckedThrowingContinuation { permission = $0; onAuthorize?() } }
+        if holdPermission && !permissionGranted { try await withCheckedThrowingContinuation { permissions.append($0); onAuthorize?() } }
         onAuthorized?()
+    }
+    func releasePermissions() {
+        permissionGranted = true
+        let waiting = permissions; permissions.removeAll()
+        for permission in waiting { permission.resume() }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if failingStart { throw CocoaError(.fileReadNoPermission) }
@@ -66,7 +72,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
             let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
             let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
             let waiting = expectation(description:"Actual system permission held")
-            system.holdPermission = true; system.onAuthorize = { waiting.fulfill() }
+            system.holdPermission = true; system.onAuthorize = { system.onAuthorize = nil; waiting.fulfill() }
             let gate = SignalInputGate()
             let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in },admission:{ gate.allowed })
             let start = Task { try? await inputs.start() }
@@ -74,7 +80,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
             // Control policy has withdrawn the pending reservation. The actual OS
             // authorization still succeeds; it cannot open a device or write PCM.
             gate.allowed = false
-            system.permission?.resume(); system.permission = nil
+            system.releasePermissions()
             await start.value
             XCTAssertEqual(system.starts,0,transition); XCTAssertEqual(mic.starts,0,transition)
             XCTAssertFalse(inputs.hasRunningInputs); XCTAssertTrue(owner.snapshot.manifest.tracks.isEmpty)
@@ -90,7 +96,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
             let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
             let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
             let waiting = expectation(description:"System permission pending"), late = expectation(description:"Late OS permission completed")
-            system.holdPermission = true; system.onAuthorize = { waiting.fulfill() }; system.onAuthorized = { late.fulfill() }
+            system.holdPermission = true; system.onAuthorize = { system.onAuthorize = nil; waiting.fulfill() }; system.onAuthorized = { late.fulfill() }
             let gate = SignalInputGate()
             let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in },admission:{ gate.allowed })
             let start = Task { () -> Bool in
@@ -99,7 +105,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
             await fulfillment(of:[waiting],timeout:3)
             gate.allowed = false
             if stopping { try await inputs.stop() }
-            system.permission?.resume(); system.permission = nil
+            system.releasePermissions()
             let cancelled = await start.value
             XCTAssertTrue(cancelled,"Admission cancellation must reach the owner")
             await fulfillment(of:[late],timeout:3)
@@ -130,12 +136,12 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
     }
     @MainActor func testBrowserReturnCancelsPendingFallbackWithoutAnOSReplyOrALateSystemStart() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
-        defer { system.permission?.resume(); system.permission = nil; try? FileManager.default.removeItem(at:root) }
+        defer { inputs.authorizationWaiting = nil; inputs.authorizationHandled = nil; system.onAuthorize = nil; system.releasePermissions(); try? FileManager.default.removeItem(at:root) }
         try owner.browserLost(atMs:1000,transportAlive:true)
         system.holdPermission = true
         let fallbackDone = expectation(description:"Cancelled fallback completed")
         let permission = expectation(description:"System permission requested")
-        system.onAuthorize = { permission.fulfill() }
+        system.onAuthorize = { system.onAuthorize = nil; permission.fulfill() }
         let pending = Task { () -> Bool in
             defer { fallbackDone.fulfill() }
             do { try await inputs.fallback(); return false } catch { return error is CancellationError }
@@ -154,9 +160,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await returning.value
         inputs.authorizationWaiting = nil
         let authorized = expectation(description:"Late permission result handled")
-        inputs.authorizationHandled = { authorized.fulfill() }
-        system.permission?.resume(); system.permission = nil
+        inputs.authorizationHandled = { inputs.authorizationHandled = nil; authorized.fulfill() }
+        system.releasePermissions()
         await fulfillment(of:[authorized],timeout:3)
+        inputs.authorizationHandled = nil
         try await inputs.update()
         XCTAssertEqual(system.starts,0,"A late grant belongs to the cancelled request")
         XCTAssertFalse(owner.snapshot.manifest.tracks.contains { $0.kind == "system" })
@@ -171,7 +178,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
     }
     @MainActor func testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
-        defer { system.permission?.resume(); system.permission = nil; try? FileManager.default.removeItem(at:root) }
+        defer { inputs.authorizationWaiting = nil; inputs.authorizationHandled = nil; system.onAuthorize = nil; system.releasePermissions(); try? FileManager.default.removeItem(at:root) }
         try owner.browserLost(atMs:1000,transportAlive:true)
         system.holdPermission = true
         for _ in 0..<4 {
@@ -183,11 +190,13 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
                 do { try await inputs.fallback(); return false } catch { return error is CancellationError }
             }
             await fulfillment(of:[registered],timeout:3)
+            inputs.authorizationWaiting = nil
             // The first OS task must also enter before the waiter is cancelled.
-            if system.permission == nil {
+            if system.permissions.isEmpty {
                 let requested = expectation(description:"Shared OS permission requested")
-                system.onAuthorize = { requested.fulfill() }
+                system.onAuthorize = { system.onAuthorize = nil; requested.fulfill() }
                 await fulfillment(of:[requested],timeout:3)
+                system.onAuthorize = nil
             }
             inputs.cancelSourceChange()
             await fulfillment(of:[done],timeout:3)
@@ -197,9 +206,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         }
         inputs.authorizationWaiting = nil
         let authorized = expectation(description:"Late permission result handled")
-        inputs.authorizationHandled = { authorized.fulfill() }
-        system.permission?.resume(); system.permission = nil
+        inputs.authorizationHandled = { inputs.authorizationHandled = nil; authorized.fulfill() }
+        system.releasePermissions()
         await fulfillment(of:[authorized],timeout:3)
+        inputs.authorizationHandled = nil
         try await inputs.update()
         XCTAssertEqual(system.starts,0); XCTAssertEqual(mic.stops,0)
         XCTAssertFalse(owner.snapshot.fallbackRequested)
@@ -211,7 +221,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let owner = try OwnedBrowserCapture(parent:root,title:"Shared authorization",microphone:false,managedBrowser:true)
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let mic = GeneratedInput("microphone",origin:origin), oldSystem = GeneratedInput("system",origin:origin)
-        defer { oldSystem.permission?.resume(); oldSystem.permission = nil; try? FileManager.default.removeItem(at:root) }
+        defer { oldSystem.releasePermissions(); try? FileManager.default.removeItem(at:root) }
         // Only the first candidate's OS request stays alive; its late reply
         // must start the currently selected candidate, never the cancelled one.
         let newSystem = GeneratedInput("system",origin:origin); newSystem.firstAt = 2.1
@@ -221,7 +231,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try owner.browserLost(atMs:1000,transportAlive:true)
         let cancelled = expectation(description:"Old fallback cancelled")
         let permission = expectation(description:"Original OS request entered")
-        oldSystem.onAuthorize = { permission.fulfill() }
+        oldSystem.onAuthorize = { oldSystem.onAuthorize = nil; permission.fulfill() }
         let first = Task {
             defer { cancelled.fulfill() }
             do { try await inputs.fallback(); XCTFail("Expected cancelled fallback") } catch { XCTAssertTrue(error is CancellationError) }
@@ -238,7 +248,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         inputs.authorizationWaiting = nil
         XCTAssertTrue(candidates.isEmpty)
         XCTAssertEqual(newSystem.authorized,0)
-        oldSystem.permission?.resume(); oldSystem.permission = nil
+        oldSystem.releasePermissions()
         await fulfillment(of:[ready],timeout:3)
         try await second.value
         XCTAssertEqual(oldSystem.starts,0); XCTAssertEqual(newSystem.starts,1)
@@ -750,9 +760,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         mic.firstAt = 0.3
         try await inputs.select(me:true,others:true,atMs:200)
         let handled = expectation(description:"Stale microphone callback handled")
-        inputs.failureHandled = { handled.fulfill() }
+        inputs.failureHandled = { inputs.failureHandled = nil; handled.fulfill() }
         previousFailure?("Late callback from the stopped microphone")
         await fulfillment(of:[handled],timeout:3)
+        inputs.failureHandled = nil
         XCTAssertFalse(inputs.failedSides.contains(.me)); XCTAssertEqual(mic.stops,1)
         system.emit(at:0.1)
         try await inputs.stop(); try await owner.finish()
@@ -768,9 +779,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
         try await inputs.start()
         let handled = expectation(description:"Current microphone failure handled")
-        inputs.failureHandled = { handled.fulfill() }
+        inputs.failureHandled = { inputs.failureHandled = nil; handled.fulfill() }
         mic.failure?("Generated microphone failure")
         await fulfillment(of:[handled],timeout:3)
+        inputs.failureHandled = nil
         XCTAssertTrue(inputs.failedSides.contains(.me)); XCTAssertEqual(mic.stops,1)
         XCTAssertEqual(system.stops,0)
         system.emit(at:0.1)
@@ -885,16 +897,21 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
         mic.holdPermission = true
         let permission = expectation(description:"Microphone OS permission requested")
-        mic.onAuthorize = { permission.fulfill() }
+        mic.onAuthorize = { mic.onAuthorize = nil; permission.fulfill() }
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        defer { inputs.authorizationHandled = nil; mic.onAuthorize = nil; mic.releasePermissions() }
         let starting = Task { try await inputs.start() }
         await fulfillment(of:[permission],timeout:3)
-        XCTAssertNotNil(mic.permission)
+        XCTAssertFalse(mic.permissions.isEmpty)
         let systemStartedBeforeReply = system.starts
         let stopped = expectation(description:"Stop completed without permission reply")
         let stopping = Task { try await inputs.stop(); stopped.fulfill() }
         await fulfillment(of:[stopped],timeout:3)
-        mic.permission?.resume(); mic.permission = nil
+        let authorized = expectation(description:"Late microphone permission handled after Stop")
+        inputs.authorizationHandled = { inputs.authorizationHandled = nil; authorized.fulfill() }
+        mic.releasePermissions()
+        await fulfillment(of:[authorized],timeout:3)
+        inputs.authorizationHandled = nil
         try await starting.value; try await stopping.value; try await owner.finish()
         XCTAssertEqual(systemStartedBeforeReply,1,"Available Others must not wait for microphone permission")
         XCTAssertEqual(mic.starts,0); XCTAssertEqual(system.stops,1)

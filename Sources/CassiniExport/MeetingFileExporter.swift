@@ -45,7 +45,8 @@ public enum MeetingFileExporter {
     /// `afterRead` (tests): runs after each attempt has read the meeting, before its
     /// metadata is checked, with the attempt number.
     static func cassini(_ meeting: LibraryMeeting, assets: OpusAssets?, temporaryRoot: URL, timeZone: TimeZone,
-                        shouldCancel: () -> Bool, afterRead: ((Int) throws -> Void)?) throws -> ExportArtifact {
+                        shouldCancel: () -> Bool, exportTime: () -> Date = Date.init,
+                        afterRead: ((Int) throws -> Void)?) throws -> ExportArtifact {
         guard meeting.state.lifecycle == .saved else { throw MeetingExportError.invalidSource }
         let artifact = try stage(in:temporaryRoot,filename:"meeting.opus")
         let directory = artifact.url.deletingLastPathComponent()
@@ -136,7 +137,7 @@ public enum MeetingFileExporter {
                 let fileDate = current.state.origin == .own ? Self.dateTag(current.start,zone:timeZone) : tagSource?.tags?["DATE"]
                 let manifest = try self.manifest(current,digest:digest,original:original,choice:choice,dateTag:dateTag,originalTitle:originalTitle,
                                                  timeZone:timeZone,importedTranscript:importedTranscript,transcripts:set,carriedOnly:!mine,
-                                                 damaged:(original == nil || writtenOnMac) && current.state.transcript == .damaged,stored:stored,words:words,date:fileDate)
+                                                 damaged:(original == nil || writtenOnMac) && current.state.transcript == .damaged,stored:stored,words:words,date:fileDate,exportTime:exportTime)
                 // D65: a received file keeps its own DATE (carried); a Mac recording's is its start.
                 // Both count in the revision (#133 review).
                 let date = current.state.origin == .own ? fileDate.map { [Comment(name:"DATE",value:$0)] } ?? [] : []
@@ -198,10 +199,10 @@ public enum MeetingFileExporter {
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
                                  importedTranscript: [String:Any]?, transcripts: PortableTranscripts, carriedOnly: Bool,
-                                 damaged: Bool, stored: JSON?, words: [LibraryTranscriptItem], date: String?) throws -> JSON {
+                                 damaged: Bool, stored: JSON?, words: [LibraryTranscriptItem], date: String?, exportTime: () -> Date) throws -> JSON {
         // D65: the file's creation time and DATE, decided before any revision is (#133 review): a
         // revision always covers them. Only an export-time fallback stays out of the comparison.
-        let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag)
+        let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag,exportTime:exportTime)
         let dated = (created.exportTime ? "" : created.value) + "\u{0}" + (date ?? "")
         // `damaged`: Mac's own words (a recording's, or a received file's Write down) were read as
         // damaged; a received file's originals go out as they came, whatever Mac read of them.
@@ -372,7 +373,8 @@ public enum MeetingFileExporter {
     /// DATE tag, else its import time; a Mac recording takes its recording start. Only a
     /// recording whose start is lost (no session.json) falls back to the export time.
     /// `exportTime`: the fallback for a recording whose start is lost (the only time known).
-    private static func createdAtUtc(_ meeting: LibraryMeeting, original: Manifest?, dateTag: String?) -> (value: String, exportTime: Bool) {
+    private static func createdAtUtc(_ meeting: LibraryMeeting, original: Manifest?, dateTag: String?,
+                                     exportTime: () -> Date) -> (value: String, exportTime: Bool) {
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         if meeting.state.origin == .received {
             if let kept = original?.meeting.createdAtUtc { return (kept,false) }
@@ -380,7 +382,7 @@ public enum MeetingFileExporter {
             if let tag = dateTag, let date = LibraryNames.dateTagInstant(tag) { return (iso.string(from:date),false) }
             if let imported = meeting.received?.importedAtMs { return (iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)),false) }
         } else if let start = meeting.start { return (iso.string(from:start),false) }
-        return (iso.string(from:Date()),true)
+        return (iso.string(from:exportTime()),true)
     }
     private static func validLocalRecordingLabel(_ label: String) -> Bool {
         // Exact v1 schema shape. The length check also rejects a terminal newline,

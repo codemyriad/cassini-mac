@@ -409,8 +409,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         let id = UUID()
         try await withCheckedThrowingContinuation { continuation in
             authorizations[id] = .init(side:side,source:source,continuation:continuation)
-            authorizationWaiting?()
-            guard permissionTasks[side] == nil else { return }
+            guard permissionTasks[side] == nil else { authorizationWaiting?(); return }
             let taskID = UUID(); permissionTasks[side] = taskID
             Task { @MainActor [weak self] in
                 guard self?.permissionTasks[side] == taskID,
@@ -419,6 +418,9 @@ private final class SourceChangeToken: @unchecked Sendable {
                     return
                 }
                 defer { self?.authorizationHandled?() }
+                // The waiter has joined an existing request or the OS task has
+                // entered. Observing before this point can cancel an unstarted task.
+                self?.authorizationWaiting?()
                 let result: Result<Void,Error>
                 do { try await driver.authorize(); result = .success(()) }
                 catch { result = .failure(error) }

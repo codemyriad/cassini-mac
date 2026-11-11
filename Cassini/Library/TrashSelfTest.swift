@@ -11,9 +11,9 @@ import Darwin
 @MainActor enum TrashSelfTest {
     private enum Failure: Error { case check(String) }
     private static func check(_ value: Bool, _ message: String) throws { if !value { throw Failure.check(message) } }
-    private static func wait(_ condition: () -> Bool) async throws {
-        for _ in 0..<400 { if condition() { return }; try await Task.sleep(for:.milliseconds(25)) }
-        throw Failure.check("timeout")
+    private static func wait(file: StaticString = #fileID, line: UInt = #line,
+                             _ condition: @escaping @MainActor () -> Bool) async throws {
+        try await CaptureSelfTest.waitForState(timeout:10,file:file,line:line,condition)
     }
     private static func generate(_ root: URL, title: String) throws -> LibraryMeeting {
         let session = try RecordingSession(parent:root,title:title,source:"macos")
@@ -58,7 +58,9 @@ import Darwin
             store.refresh(); try await wait { queue.active == active.folder }
             let waiting = try generate(primary,title:"Queued transcription")
             queue.enqueue(waiting)
-            try await wait { (try? LibraryScanner(root:primary).scan().meetings.first { $0.id == waiting.id }?.state.transcript) == .queued }
+            try await wait { store.meetings.first { $0.id == waiting.id }?.state.transcript == .queued }
+            let persisted = try LibraryScanner(root:primary).scan().meetings.first { $0.id == waiting.id }
+            try check(persisted?.state.transcript == .queued,"queued status persisted before Trash")
             phase = "queued trash with unrelated metadata blocked"
             let blocked = try generate(primary,title:"Unrelated metadata preparation")
             let held = open(blocked.folder.path,O_RDONLY | O_DIRECTORY | O_CLOEXEC)
@@ -66,18 +68,14 @@ import Darwin
             defer { flock(held,LOCK_UN); close(held) }
             queue.enqueue(blocked)
             try await wait { queue.preparingFixtureFolder == blocked.folder }
-            var released = false
-            let fallbackRelease = Task {
-                try? await Task.sleep(for:.seconds(2))
-                if !Task.isCancelled { flock(held,LOCK_UN); released = true }
-            }
             let stillActive = queue.active
+            // Keep the unrelated metadata lock held until the actual Trash task
+            // returns. The harness timeout only fails a hang; host descheduling
+            // cannot release the lock and change the independence assertion.
             trash.move(waiting,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && !FileManager.default.fileExists(atPath:waiting.folder.path),"queued meeting trashed")
             try check(queue.active == stillActive,"unrelated transcription still runs")
-            let returnedWithoutOtherMetadata = !released
-            fallbackRelease.cancel(); flock(held,LOCK_UN)
-            try check(returnedWithoutOtherMetadata,"Trash does not wait for another meeting’s metadata lock")
+            try check(flock(held,LOCK_UN) == 0,"release unrelated metadata only after Trash finishes")
             report["unrelatedMetadataDoesNotDelayTrash"] = true
             report["queuedCancelIsPerMeeting"] = true
             phase = "active trash"
