@@ -83,6 +83,38 @@ class ProbeLaunch(unittest.TestCase):
                 self.assertEqual('-SpectrogramProfileOnly' in arguments, profile)
                 self.assertEqual(arguments[arguments.index('-SpectrogramOutput')+1], str((root/'output').resolve()))
 
+class ControlledScheduling(unittest.TestCase):
+    def report(self):
+        return dict(audioDevicesOpened=False,virtualClockOnly=True,gates={key:True for key in
+            ['nativeSteadyLateZero','browserSteadyLateZero','lateBudgetRejectsEarlyRelease','hiddenZeroWork','noDrops','realAnalysis']})
+
+    def invoke(self,report,exit_code=0):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);program=root/'private checker';output=root/'output'
+            program.write_text('#!'+sys.executable+'\nimport sys\nprint('+repr(json.dumps(report))+')\nsys.exit('+str(exit_code)+')\n')
+            program.chmod(0o700)
+            return harness.check_scheduling(program,output)
+
+    def test_actual_successful_process_and_all_named_gates_are_required(self):
+        self.assertEqual(self.invoke(self.report()),self.report())
+
+    def test_process_failure_cannot_pass_with_successful_json(self):
+        with self.assertRaises(RuntimeError): self.invoke(self.report(),exit_code=1)
+
+    def test_missing_false_and_non_boolean_gates_fail(self):
+        for value in [False,1,None]:
+            report=self.report();report['gates']['lateBudgetRejectsEarlyRelease']=value
+            with self.subTest(value=value),self.assertRaises(RuntimeError):self.invoke(report)
+        report=self.report();report['gates'].pop('realAnalysis')
+        with self.assertRaises(RuntimeError):self.invoke(report)
+        report=self.report();report['gates']={}
+        with self.assertRaises(RuntimeError):self.invoke(report)
+
+    def test_non_object_or_device_opening_reports_fail(self):
+        with self.assertRaises(RuntimeError):self.invoke([])
+        report=self.report();report['audioDevicesOpened']=True
+        with self.assertRaises(RuntimeError):self.invoke(report)
+
 class InstrumentationIsolation(unittest.TestCase):
     def test_measurement_waits_for_explicit_post_setup_driver_readiness(self):
         self.assertTrue(harness.motion_driver_ready('CASSINI_SPECTRO_MOTION_READY\n'))
