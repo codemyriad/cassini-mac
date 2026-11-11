@@ -1,0 +1,52 @@
+{
+  "baseMain": "89c568bca3528417a74888720f0379103273138d",
+  "testsBefore": 25,
+  "testsAfter": 25,
+  "testsRestored": 25,
+  "oldEOFToTimeoutMutation": "passes old assertion",
+  "sourceSHA256": {
+    "Tests/CassiniBrowserControlTests/ControlServiceTests.swift": "b4d2e0b7632c68d911e16b7638102326bd862ab1136cc8f9f5dcff0e02f225c0",
+    "Tests/CassiniBrowserControlTests/D52HeartbeatTests.swift": "c438abef49634a77062b40de164fa2133c077707b845ff3eab4ddcfc77f61092",
+    "Tests/CassiniBrowserControlTests/HeldStartTests.swift": "2ffc53f85fdfae6f1f9ba1dee9f39cf6c8efe2ae96503383ceb72cf7c14ea7b7",
+    "Sources/CassiniBrowserControl/ControlService.swift": "94ce9338604028d0f42d5088a2fe4e99c8cf7d1bc39bba77e04c57ea3afffee4",
+    "Sources/CassiniBrowserControl/FrameIO.swift": "0da07bd1cabf010321e0d13d7194e2ec283110978b702a49abcde9bcc9e55172"
+  },
+  "mutations": [
+    {
+      "case": "stale-peer-output",
+      "test": "testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection",
+      "assertion": "CassiniBrowserControlTests/ControlServiceTests.swift:232: error: -[CassiniBrowserControlTests.ControlServiceTests testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection] : XCTAssertEqual failed: (\"Optional(\"command\")\") is not equal to (\"Optional(\"ping\")\") - A command preceded the output barrier"
+    },
+    {
+      "case": "reconnect-stop-output",
+      "test": "testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart",
+      "assertion": "CassiniBrowserControlTests/ControlServiceTests.swift:255: error: -[CassiniBrowserControlTests.ControlServiceTests testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart] : XCTAssertEqual failed: (\"Optional(\"command\")\") is not equal to (\"Optional(\"ping\")\") - A command preceded the output barrier"
+    },
+    {
+      "case": "audio-stop-all-output",
+      "test": "testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart",
+      "assertion": "CassiniBrowserControlTests/ControlServiceTests.swift:285: error: -[CassiniBrowserControlTests.ControlServiceTests testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart] : XCTAssertEqual failed: (\"Optional(\"command\")\") is not equal to (\"Optional(\"ping\")\") - A command preceded the output barrier"
+    },
+    {
+      "case": "held-start-output",
+      "test": "testTheServiceCompletesALostStartOnceWhenTheRestartedLinkReportsTheCapture",
+      "assertion": "CassiniBrowserControlTests/HeldStartTests.swift:271: error: -[CassiniBrowserControlTests.HeldStartTests testTheServiceCompletesALostStartOnceWhenTheRestartedLinkReportsTheCapture] : XCTAssertEqual failed: (\"Optional(\"command\")\") is not equal to (\"Optional(\"ping\")\") - A command preceded the output barrier"
+    },
+    {
+      "case": "legacy-initial-output",
+      "test": "testALegacyHelloIsNeverPingedOrTimedOut",
+      "assertion": "CassiniBrowserControlTests/D52HeartbeatTests.swift:157: error: -[CassiniBrowserControlTests.D52HeartbeatTests testALegacyHelloIsNeverPingedOrTimedOut] : XCTAssertEqual failed: (\"Optional(\"ping\")\") is not equal to (\"Optional(\"command\")\") - A legacy peer must receive no heartbeat before the requested command"
+    },
+    {
+      "case": "legacy-frame-output",
+      "test": "testALegacyHelloIsNeverPingedOrTimedOut",
+      "assertion": "CassiniBrowserControlTests/D52HeartbeatTests.swift:157: error: -[CassiniBrowserControlTests.D52HeartbeatTests testALegacyHelloIsNeverPingedOrTimedOut] : XCTAssertEqual failed: (\"Optional(\"ping\")\") is not equal to (\"Optional(\"command\")\") - A legacy peer must receive no heartbeat before the requested command"
+    },
+    {
+      "case": "lost-peer-eof",
+      "test": "testPingsOverTheRealPipeAndSilenceLosesControl",
+      "assertion": "CassiniBrowserControlTests/D52HeartbeatTests.swift:112: error: -[CassiniBrowserControlTests.D52HeartbeatTests testPingsOverTheRealPipeAndSilenceLosesControl] : XCTAssertNil failed: threw error \"timeout\" - The lost connection must close; a receive timeout fails"
+    }
+  ],
+  "discardedAttempt": "Combined compilation/test guard expired before seventh test started; not counted. Separate 180s build / 45s execution failure bounds completed all cases."
+}

@@ -1,6 +1,6 @@
 # Validation receipt
 
-Base: `555759db49f2800e6e70605b6176a0fb6c452d52`
+Base: `89c568bca3528417a74888720f0379103273138d` (#210 merged; ordinary merge of current main)
 
 Xcode 16.4; explicit macOS 15.5 SDK; arm64; heavy-run.
 
@@ -22,5 +22,11 @@ All seven revised mutants compiled, ran their selected test, and failed:
 Apply one mutant at a time with `git apply --unidiff-zero <name>.patch`.
 Run the named test with `swift test --jobs 4 --filter <test>`, then reverse the patch before the next case.
 
-A discarded legacy Start fixture failed because the original legacy capabilities do not support Start. The final fixture observes a recording status and requests Stop.
-One replay hit a Swift Foundation deserialization crash after changing the scratch path alias. Reusing the baseline path completed the entire after/mutation/restored run. Both discarded logs remain with the full external evidence.
+`current-main-receipt.json` records source hashes matching the restored private
+scratch and the intended assertion from each of seven fresh mutation logs.
+The baseline EOF-to-timeout mutant still passes the old assertion on this base.
+One combined compilation/test guard expired before the seventh test started;
+that attempt was not counted. Replay now builds with a separate 180-second
+failure guard and runs tests with a 45-second failure guard. All seven cases
+then compiled, failed their intended assertions and restored 25 tests passed.
+No success depends on those bounds.

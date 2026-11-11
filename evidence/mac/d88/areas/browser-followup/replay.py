@@ -7,7 +7,8 @@ import subprocess
 import tempfile
 
 root=Path(__file__).resolve().parents[5]
-BASE='555759db49f2800e6e70605b6176a0fb6c452d52'
+BASE='89c568bca3528417a74888720f0379103273138d'
+BASE=subprocess.check_output(['git','rev-parse',BASE],cwd=root,text=True).strip()
 evidence=Path(os.environ['D88_EVIDENCE_DIR']).resolve(); evidence.mkdir(parents=True,exist_ok=True)
 resume=os.environ.get('CASSINI_NEXT_IPC_SCRATCH')
 scratch=Path(resume) if resume else Path(tempfile.mkdtemp(prefix='d88-next-ipc-'))
@@ -20,16 +21,22 @@ suite='ControlServiceTests|D52HeartbeatTests|HeldStartTests'
 def run(name,test,expected):
     path=evidence/f'{name}.log'
     with path.open('w') as stream:
-        child=subprocess.Popen(['swift','test','--scratch-path',str(scratch/'build'),'--jobs','4','--filter',test],cwd=scratch,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
-        try: code=child.wait(timeout=180 if name in ('before','after') else 45)
-        except subprocess.TimeoutExpired:
-            os.killpg(child.pid,signal.SIGKILL); child.wait()
-            raise RuntimeError(f'{name} exceeded the command hang bound')
+        # Compilation and test execution have separate failure-only hang bounds.
+        # A slow compiler cannot count as the intended mutation assertion.
+        for command,bound in [(['swift','build','--build-tests','--scratch-path',str(scratch/'build'),'--jobs','4'],180),
+                              (['swift','test','--skip-build','--scratch-path',str(scratch/'build'),'--filter',test],45)]:
+            child=subprocess.Popen(command,cwd=scratch,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
+            try: code=child.wait(timeout=bound)
+            except subprocess.TimeoutExpired:
+                os.killpg(child.pid,signal.SIGKILL); child.wait()
+                raise RuntimeError(f'{name} exceeded its build/test hang bound')
+            if command[1]=='build': assert code==0,(name,'compilation',path)
     text=path.read_text()
     if expected:
         assert code==0,(name,path)
     else:
-        assert code!=0 and (' failed (' in text or ' recorded an issue ' in text),(name,path)
+        assertion='XCTAssertNil failed' if name=='lost-peer-eof' else 'XCTAssertEqual failed'
+        assert code!=0 and assertion in text and 'Asynchronous wait failed' not in text,(name,path)
     print(name,code,flush=True)
 
 frame='Sources/CassiniBrowserControl/FrameIO.swift'
