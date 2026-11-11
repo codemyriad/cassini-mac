@@ -312,7 +312,7 @@ class RentedRunnerRouting(unittest.TestCase):
             # Their hosted Intel row compiles SwiftPM itself after a rented Mac built the products.
             job=body[body.index('runner: [macos-15, macos-15-intel]'):]
             self.assertEqual(re.search(r'(?m)^    timeout-minutes: (\d+)$',job).group(1),'25',name)
-        for name in ['ux-shot.yml','ux-boards.yml']:
+        for name in ['ux-shot.yml']:
             gui=(ROOT/'.github/workflows'/name).read_text()
             expected="runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}"
             self.assertIn(expected,gui,name)
@@ -321,6 +321,9 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('concurrency:',gui,name) # One runner queues all GUI jobs without dropping pending work.
             self.assertNotIn('CM_MAC_RUNNER',gui,name)
 
+        boards=(ROOT/'.github/workflows/ux-boards.yml').read_text()
+        self.assertNotIn('CM_MAC_GUI_RUNNER',boards)
+        self.assertIn('runs-on: macos-15',boards)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()

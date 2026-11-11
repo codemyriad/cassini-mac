@@ -40,10 +40,7 @@
     "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
     "Sources/CassiniBrowserControl/StagedNativeWriter.swift",
     "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
-    "Tests/CassiniRecordingTests/SpectrogramFixtureClock*",
-    "scripts/gui_session.py",
-    "scripts/test-gui-session.py",
-    "scripts/gui-runner/**"
+    "Tests/CassiniRecordingTests/SpectrogramFixtureClock*"
   ],
   "exports": [
     "Sources/**",

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Admit hosted GUI CI or the dedicated console account; never spoof hosted."""
 import os
-from pathlib import Path
 import subprocess
 
 def admission(environment, uid, console_uid, aqua):
@@ -23,9 +22,6 @@ def main():
     mode=check()
     if mode=='gui':
         subprocess.run(['/usr/bin/osascript','-e','set volume output muted true'],check=True)
-        path=Path(os.environ['GITHUB_ENV'])
-        with path.open('a') as output:
-            output.write('CASSINI_LOCAL_WORKFLOW_TESTS=1\n')
     print('GUI fixture host:',mode)
 
 if __name__=='__main__':main()

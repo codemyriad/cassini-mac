@@ -18,17 +18,16 @@ jobs:
   boards:
     needs: [build, release]
     if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
+    runs-on: macos-15
     timeout-minutes: 25
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
-    - run: python3 scripts/gui_session.py
-    - run: command -v displayplacer >/dev/null || brew install displayplacer
+    - run: test "$RUNNER_ENVIRONMENT" = github-hosted
+    - run: brew install displayplacer
     - uses: actions/setup-python@v5
-      if: runner.environment == 'github-hosted'
       with:
         python-version: '3.12'
     - run: python3 scripts/check-ux-copy.py
@@ -150,7 +149,7 @@ jobs:
         debug: 'true'
         release: 'true'
     - run: test "$RUNNER_ENVIRONMENT" = github-hosted
-    - run: command -v displayplacer >/dev/null || brew install displayplacer
+    - run: brew install displayplacer
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'

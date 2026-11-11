@@ -7,8 +7,7 @@ from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('app',type=Path);p.add_argument('--output',type=Path,required=True)
 a=p.parse_args()
-from gui_session import check
-check()
+assert os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted','Hosted disposable runner only'
 root=Path(__file__).resolve().parent.parent
 entitlements=subprocess.run(['codesign','-d','--entitlements',':-',str(a.app.resolve())],capture_output=True,check=True)
 assert plistlib.loads(entitlements.stdout)==plistlib.loads((root/'Cassini/Cassini.entitlements').read_bytes()),'Production sandbox required'

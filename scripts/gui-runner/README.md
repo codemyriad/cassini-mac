@@ -17,11 +17,11 @@ Cocoa -framework CoreGraphics display.m -o cassini-gui-display`. Its private
 CoreGraphics API must be qualified after OS upgrades; a missing active display
 fails startup instead of accepting a headless session.
 
-The new `CM_MAC_GUI_RUNNER` variable is opt-in. Without it, screenshots and
-Library boards use hosted macOS. Fork pull requests always use hosted fallback.
-Do not enable it until a coordinator-controlled reboot establishes the actual
-Aqua account, both LaunchAgents start, mute is confirmed, and the unchanged
-screenshots/boards checks pass. Never spoof RUNNER_ENVIRONMENT.
+The new `CM_MAC_GUI_RUNNER` variable is opt-in. Without it, screenshots use hosted macOS. Fork pull requests always use hosted fallback.
+Enable it for qualification only after a coordinator-controlled reboot establishes
+the actual Aqua account, both LaunchAgents start and mute is confirmed. Require
+the unchanged screenshot checks before marking the routing PR ready. Library
+boards stays hosted until its macOS27 compatibility fixes are qualified. Never spoof RUNNER_ENVIRONMENT.
 
 Browser setup retains its disposable-host TCC provisioning and stays hosted.
 Native profiling retains its disposable-host global indexing/profiler setup.
