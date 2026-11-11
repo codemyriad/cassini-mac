@@ -1,10 +1,20 @@
 {
   "contract": "D95; cassini-format 32f37a6, SPEC.md: When the meeting happened",
-  "note": "Only these received rows change from the pinned S-3a expectations. Their input has neither a recording instant nor a local label: DATE equals createdAtUtc or DATE is absent. Creation/import time remains the sorting fallback. All other fields and the shared input hashes stay unchanged.",
+  "note": "Only these received rows change from the pinned S-3a expectations. Their input has neither a recording instant nor a local label: DATE equals createdAtUtc or DATE is absent. Creation/import time remains the sorting fallback. All other fields and the shared input hashes stay unchanged. Unknown dates collect into one trailing section; known calendar-day groups remain together, preserving scan order within each day.",
   "creationOnlyReceived": {
-    "main": ["a0000000-0000-4000-8000-000000000006"],
-    "r3-transcript-precedence": ["a0000000-0000-4000-8000-000000000005", "a0000000-0000-4000-8000-000000000006"],
-    "r9-received-once": ["a0000000-0000-4000-8000-000000000001", "a0000000-0000-4000-8000-000000000002"],
-    "received-only": ["a0000000-0000-4000-8000-000000000006"]
+    "main": [
+      "a0000000-0000-4000-8000-000000000006"
+    ],
+    "r3-transcript-precedence": [
+      "a0000000-0000-4000-8000-000000000005",
+      "a0000000-0000-4000-8000-000000000006"
+    ],
+    "r9-received-once": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002"
+    ],
+    "received-only": [
+      "a0000000-0000-4000-8000-000000000006"
+    ]
   }
 }

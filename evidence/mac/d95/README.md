@@ -39,7 +39,7 @@ Full local logs and asset provenance are retained in
 `~/coordination/evidence/big-mac-d95/` on the coordinator Mac. No real user data,
 user-file migration, signing keys or device permission changes are involved.
 
-Final local result after merging main `3faf774`: 416 affected headless tests and
+Earlier local result after merging main `3faf774`: 416 affected headless tests and
 56 CI contracts pass. Full conformance: 29 pass; metadata: 27 pass and two
 expected profile skips. Five production mutations fail behavioral assertions;
 all 26 focused tests pass after restoration. See `results.json` for source
@@ -155,3 +155,11 @@ The corrected affected partition passes 421 tests; 56 CI contracts pass.
 `replay.py` also disables RFC3339 normalization, non-OK byte copying, day grouping
 and unknown-date localization independently. Each production mutation must fail
 an executed behavioral assertion, alongside the previous five D95 mutants.
+
+After ordinary merge of current main `89c568b`, the 421-test affected partition
+and 56 CI contracts pass again. The Debug arm64 app builds and links with
+Xcode 16.4 and ad-hoc signing after generating the project as CI does. The
+initial build using the stale checked-in generated project failed Quick Look
+linkage; that invocation is retained in evidence and is not counted as a pass.
+Generated project/workspace changes are excluded from the PR. Exact-head CI
+(including the login-session and Intel checks) remains the readiness gate.
