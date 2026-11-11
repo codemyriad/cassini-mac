@@ -30,7 +30,7 @@ args.output.with_suffix('.stderr.txt').write_text(stderr)
 assert result.returncode == 0,(result.returncode,result.stdout,stderr)
 report = json.loads(result.stdout)
 assert all(report[name] is True for name in ('preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
-    'nativeTrackMatchesThumbTravel','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
+    'nativeTrackMatchesThumbTravel','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
     'nativeAccessibilitySeekDoesNotSnap','nativeAccessibilityTenSecondStep','nativeStopClearsSnap',
     'mergeWhilePreparedResolvesReadoutAndHeaders','mergeWhilePreparedResolvesBar','mergedSpeakerRowStopsCachedListening',
     'suspendedMergeResolvesReadoutAndHeaders','unlistedSpeechIsNotSilence','mergedPreparationRecovers',

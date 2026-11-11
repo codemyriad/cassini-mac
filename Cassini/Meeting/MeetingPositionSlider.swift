@@ -57,8 +57,11 @@ struct MeetingPositionSlider: View {
         slider.doubleValue = 40000
         let right = cell.knobRect(flipped:slider.isFlipped).midX
         var report = ["nativeTrackMatchesThumbTravel": abs(slider.track.minX-left) < 0.001 && abs(slider.track.minX+slider.track.width-right) < 0.001]
+        report["nativePointerClampsToTrack"] = slider.pointerPosition(at:-100,knobOffset:0) == 0 && slider.pointerPosition(at:1000,knobOffset:0) == 40000
+        let grabbedX = CGFloat(slider.track.x(at:10000,duration:40000)) + 5
+        report["nativePointerPreservesThumbGrabOffset"] = abs(slider.pointerPosition(at:grabbedX,knobOffset:5)-10000) < 0.001
         slider.beginTracking()
-        slider.doubleValue = slider.track.position(at:slider.track.x(at:10000,duration:40000)+5,duration:40000)
+        slider.doubleValue = slider.pointerPosition(at:grabbedX,knobOffset:0)
         slider.sendAction(slider.action,to:slider.target)
         report["nativePointerSnapAndDragReadout"] = sought == 10000 && dragged == 10000 && slider.doubleValue == 10000
         slider.endTracking()
@@ -167,10 +170,28 @@ private struct NativeMeetingSlider: NSViewRepresentable {
         func beginTracking() { mouseTracking = true; trackingChanged?(doubleValue) }
         func endTracking() { mouseTracking = false; trackingChanged?(nil) }
         override func mouseDown(with event: NSEvent) {
-            guard isEnabled else { return }
+            guard isEnabled, let window, let cell = cell as? NSSliderCell else { return }
+            window.makeFirstResponder(self)
+            let knob = cell.knobRect(flipped:isFlipped)
+            let point = convert(event.locationInWindow,from:nil)
+            let offset = NSMouseInRect(point,knob,isFlipped) ? point.x-knob.midX : 0
             beginTracking()
-            super.mouseDown(with:event)
-            endTracking()
+            defer { endTracking() }
+            // AppKit's click animation can restore its unsnapped destination
+            // after the action has snapped the value. Track pointer events with
+            // public APIs; keyboard and accessibility still use NSSlider.
+            var next: NSEvent? = event
+            while let current = next {
+                let x = convert(current.locationInWindow,from:nil).x
+                doubleValue = pointerPosition(at:x,knobOffset:offset)
+                sendAction(action,to:target)
+                if current.type == .leftMouseUp { break }
+                next = window.nextEvent(matching:[.leftMouseDragged,.leftMouseUp],
+                                        until:.distantFuture,inMode:.eventTracking,dequeue:true)
+            }
+        }
+        func pointerPosition(at x: CGFloat, knobOffset: CGFloat) -> Double {
+            track.position(at:Double(x-knobOffset),duration:maxValue)
         }
         override func accessibilityValue() -> Any? { LibraryFormat.position(Int64(doubleValue)) }
         override func accessibilityValueDescription() -> String? { LibraryFormat.position(Int64(doubleValue)) }
