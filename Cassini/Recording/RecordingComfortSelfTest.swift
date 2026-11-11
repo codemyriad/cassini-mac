@@ -23,6 +23,17 @@ import Observation
         for await held in values where held == expected { return }
         throw Failure.check("expected power assertion state \(expected)")
     }
+    private static func waitForVoiceCount(_ editor: RecordingPageModel, _ expected: Int) async throws {
+        while editor.voiceCount != expected {
+            let (changes, continuation) = AsyncStream<Void>.makeStream()
+            let current = withObservationTracking { editor.voiceCount } onChange: {
+                Task { @MainActor in continuation.yield(()); continuation.finish() }
+            }
+            if current == expected { continuation.finish(); return }
+            for await _ in changes { break }
+            try Task.checkCancellation()
+        }
+    }
     static func run() async {
         let environment = ProcessInfo.processInfo.environment
         let hosted = environment["GITHUB_ACTIONS"] == "true" && environment["RUNNER_ENVIRONMENT"] == "github-hosted"
@@ -111,25 +122,27 @@ import Observation
             try browser.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let browserScanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.recording]))
             let browserMeeting = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("private browser meeting")
-            let editor = RecordingPageModel.editor(for:browserMeeting), elapsed = editor.elapsedMs
-            try await Task.sleep(for:.milliseconds(1100))
-            try require(!editor.native && editor.elapsedMs >= elapsed + 1000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
+            var browserUptime: TimeInterval = 100
+            let editor = RecordingPageModel.editor(for:browserMeeting,uptime:{ browserUptime }), elapsed = editor.elapsedMs
+            try await waitForVoiceCount(editor,1)
+            browserUptime += 2
+            try require(!editor.native && editor.elapsedMs == elapsed + 2000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
             try browser.addTrack(id:"b",label:"B",kind:"remote",sampleRate:16000,channels:1)
             try browser.appendNative(id:"b",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let newer = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("changed browser source list")
             try require(RecordingPageModel.editor(for:newer) === editor,"browser updates keep unsaved editor state")
             editor.update(newer)
-            for _ in 0..<80 { if editor.voiceCount == 2 { break }; try await Task.sleep(for:.milliseconds(25)) }
+            try await waitForVoiceCount(editor,2)
             try require(editor.voiceCount == 2,"browser source count updates")
             let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.saving]))
                 .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
             editor.update(saving)
             let savingTime = editor.elapsedMs
-            try await Task.sleep(for:.milliseconds(60))
+            browserUptime += 1000
             try require(savingTime == saving.durationMs && editor.elapsedMs == savingTime,"browser Saving uses the producer end instead of the hidden wall-clock interval")
             var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
             editor.update(noStart)
-            try await Task.sleep(for:.milliseconds(60))
+            browserUptime += 1000
             try require(editor.elapsedMs == savingTime,"lifecycle-only Saving holds the producer end with no start timestamp")
             try browser.finish()
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
