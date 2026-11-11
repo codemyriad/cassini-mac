@@ -388,6 +388,26 @@ final class LibraryBoards: XCTestCase {
         let free = NSPredicate { _,_ in slider.value as? String != "00:03:08" && slider.value as? String != farValue }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:free,object:nil)],timeout:5),.completed,"Stopping listening clears pointer snapping")
     }
+    @MainActor func testScrubberDragClampsAtBothEndsWithAnOffCenterThumbGrab() throws {
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniListeningPreview","playing","-CassiniListeningSpeaker","guest"])
+        defer { app.terminate() }
+        let slider = app.windows["cassini-library-window"].sliders["meeting-seek"]
+        XCTAssertTrue(slider.waitForExistence(timeout:20),app.debugDescription)
+        let frame = slider.frame
+        let anchor = slider.coordinate(withNormalizedOffset:.zero)
+        // The fixture initially selects the turn at188s of2825s. Grab five
+        // points off the thumb center and drag beyond each end of its track.
+        let initialX = 12 + (frame.width-24)*188/2825 + 5
+        anchor.withOffset(CGVector(dx:initialX,dy:frame.height/2)).press(forDuration:0,
+            thenDragTo:anchor.withOffset(CGVector(dx:frame.width+40,dy:frame.height/2)))
+        let atEnd = NSPredicate { _,_ in slider.value as? String == "00:47:05" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:atEnd,object:nil)],timeout:5),.completed)
+        anchor.withOffset(CGVector(dx:frame.width-12+5,dy:frame.height/2)).press(forDuration:0,
+            thenDragTo:anchor.withOffset(CGVector(dx:-40,dy:frame.height/2)))
+        let atStart = NSPredicate { _,_ in slider.value as? String == "00:00:00" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:atStart,object:nil)],timeout:5),.completed)
+    }
+
     @MainActor func testTranscriptTimePlaysAndSpeakerNameStartsListening() throws {
         let app = try launch("meeting",fixture:"main")
         defer { app.terminate() }
