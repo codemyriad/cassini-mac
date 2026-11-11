@@ -1,0 +1,21 @@
+retry-registration
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:84: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testFakeClockRetryAndSuccessStopsTimer] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Retry clock registered 1 delays, 1 pending".
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:87: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testFakeClockRetryAndSuccessStopsTimer] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Retry clock registered 2 delays, 1 pending".
+
+activation-coalescing
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:123: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Installer entered 2 attempts".
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:126: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testEventsDuringAttemptCoalesceWithoutBlockingUIActor] : XCTAssertEqual failed: ("1") is not equal to ("2")
+
+retry-cancellation
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:130: error: -[CassiniBrowserSetupTests.BackgroundSetupTests testStopCancelsScheduledRetry] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Retry clock registered 1 delays, 0 pending".
+
+installed-publication
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:154: error: -[CassiniBrowserSetupTests.InstallationTests testLaunchTriggerInstallsMissingManifestsWithoutConnectAction] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Setup state published: waiting".
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-model-3klobiy6/Tests/CassiniBrowserSetupTests/BackgroundSetupTests.swift:156: error: -[CassiniBrowserSetupTests.InstallationTests testLaunchTriggerInstallsMissingManifestsWithoutConnectAction] : XCTAssertEqual failed: ("settingUp") is not equal to ("waiting")
+
+manual-startup
+✘ Test fixtureBootstrapWithoutAReadinessEventFailsAndReapsItsChild() recorded an issue at ModelDownloaderTests.swift:304:9: Expectation failed: (failure.reason → .hangBound) == .startupDeadline
+
+invalid-readiness
+✘ Test fixtureBootstrapReportsTheChildsErrorAndInvalidReadinessLine() recorded an issue at ModelDownloaderTests.swift:245:104: Issue recorded
+✘ Test fixtureBootstrapReportsTheChildsErrorAndInvalidReadinessLine() recorded an issue at ModelDownloaderTests.swift:314:27: Expectation failed: await fails {

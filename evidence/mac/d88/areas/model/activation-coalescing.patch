@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserSetup/BackgroundSetup.swift
++++ b/Sources/CassiniBrowserSetup/BackgroundSetup.swift
+@@ -67 +67 @@
+-        if attempt != nil { again = true; return }
++        if attempt != nil { return }

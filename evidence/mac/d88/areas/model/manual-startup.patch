@@ -1,0 +1,14 @@
+--- a/Tests/CassiniModelsTests/ModelDownloaderTests.swift
++++ b/Tests/CassiniModelsTests/ModelDownloaderTests.swift
+@@ -113 +112,0 @@
+-        let deadline = startupClock() + UInt64(startupTimeout*1_000_000_000)
+@@ -119 +118 @@
+-            let now = startupClock(), realNow = DispatchTime.now().uptimeNanoseconds
++            let realNow = DispatchTime.now().uptimeNanoseconds
+@@ -124,5 +123 @@
+-            if now >= deadline {
+-                failureReason = .startupDeadline
+-                break
+-            }
+-            let remaining = min(deadline-now,hangDeadline-realNow)
++            let remaining = hangDeadline-realNow

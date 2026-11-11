@@ -1,0 +1,5 @@
+--- a/Tests/CassiniModelsTests/Fixtures/server.py
++++ b/Tests/CassiniModelsTests/Fixtures/server.py
+@@ -27 +27 @@
+- print('invalid readiness',flush=True)
++ print('http://127.0.0.1:1',flush=True)
