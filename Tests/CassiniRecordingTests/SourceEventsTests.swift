@@ -101,18 +101,13 @@ final class SourceEventsTests: XCTestCase {
             process.executableURL = Bundle(for:Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("cassini-session-transition-probe")
             process.arguments = [root.path,phase]; process.standardOutput = output; process.standardError = errors
             try process.run()
+            try? output.fileHandleForWriting.close()
             defer { if process.isRunning { kill(process.processIdentifier,SIGKILL); process.waitUntilExit() } }
-            let fd = output.fileHandleForReading.fileDescriptor
-            XCTAssertEqual(fcntl(fd,F_SETFL,fcntl(fd,F_GETFL) | O_NONBLOCK),0)
-            var ready = Data(), bytes = [UInt8](repeating:0,count:4096)
-            let deadline = Date().addingTimeInterval(7)
-            while !ready.contains(10), process.isRunning, Date() < deadline {
-                let count = Darwin.read(fd,&bytes,bytes.count)
-                if count > 0 { ready.append(contentsOf:bytes.prefix(count)); continue }
-                var item = pollfd(fd:fd,events:Int16(POLLIN),revents:0); _ = poll(&item,1,50)
-            }
-            guard ready.contains(10) else { XCTFail("Persistence probe did not reach \(phase)"); continue }
+            let ready: Data
+            do { ready = try waitForCheckpoint(output.fileHandleForReading.fileDescriptor) }
+            catch { XCTFail("Persistence probe did not reach \(phase): \(error)"); continue }
             let message = try JSONParser.parse(ready)
+            XCTAssertEqual(message["phase"]?.string,phase)
             let folder = URL(fileURLWithPath:try XCTUnwrap(message["path"]?.string))
             XCTAssertTrue(folder.standardizedFileURL.path.hasPrefix(root.path + "/"))
             // This PID was just created by this test with a generated-only root.
@@ -128,6 +123,31 @@ final class SourceEventsTests: XCTestCase {
             XCTAssertEqual(manifest.tracks.first?.frames,8000)
         }
     }
+    private func waitForCheckpoint(_ fd: Int32) throws -> Data {
+        let deadline = (DispatchTime.now() + .seconds(7)).uptimeNanoseconds
+        var line = Data(), bytes = [UInt8](repeating:0,count:4096)
+        while true {
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now < deadline else { throw POSIXError(.ETIMEDOUT) }
+            let remainingMs = Int32((deadline - now + 999_999) / 1_000_000)
+            var event = pollfd(fd:fd,events:Int16(POLLIN),revents:0)
+            let result = poll(&event,1,remainingMs)
+            if result == 0 { throw POSIXError(.ETIMEDOUT) }
+            if result < 0 {
+                if errno == EINTR { continue }
+                throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
+            }
+            let count = Darwin.read(fd,&bytes,bytes.count)
+            if count == 0 { throw POSIXError(.EPIPE) }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
+            }
+            line.append(contentsOf:bytes.prefix(count))
+            if let end = line.firstIndex(of:10) { return Data(line[..<end]) }
+        }
+    }
+
     func testBadOptionalProvenanceDoesNotDamageOtherwisePlayableMetadata() throws {
         let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:parent) }

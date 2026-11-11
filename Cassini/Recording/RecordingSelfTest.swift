@@ -89,20 +89,60 @@ enum RecordingSelfTest {
                                                  UInt32(MemoryLayout<pid_t>.size), &pid, &size, &process), "Locating synthetic audio process")
         guard process != 0 else { throw RecordingError.invalid("Synthetic audio process was not registered.") }
         let session = try RecordingSession(parent: parent, title: "Synthetic process tap", source: "macos")
-        let sink = RecordingSink(session: session) { message in log(message) }
+        let completion = CapturedToneCompletion()
+        session.pcmObservers.set(completion)
+        let sink = RecordingSink(session: session) { message in completion.fail(message) }
         let tap = AudioProcessTap()
         defer { tap.stop() }
         log("Starting synthetic process tap; macOS may request Cassini system-audio permission.")
-        _ = try tap.start(processes: [process], onFormatChange: {}) { buffer, hostTime in
+        _ = try tap.start(processes: [process], onFormatChange: {
+            completion.fail("The synthetic process tap changed format.")
+        }) { buffer, hostTime in
             sink.receive(buffer, hostTime: hostTime, id: "tone", label: "Synthetic 440/880", kind: "application")
         }
         player.scheduleBuffer(tone(format: format, seconds: 1), at: nil, options: .loops, completionHandler: nil)
         player.play()
-        try await Task.sleep(for: .seconds(3))
+        try await completion.wait()
         tap.stop()
         player.stop()
         try sink.finish(problem: nil)
         try verifyTone(session)
+    }
+
+    /// The tap can deliver silent startup packets before the player reaches it.
+    /// Count admitted tone PCM rather than timing how long the player ran.
+    private final class CapturedToneCompletion: RecordedPCMObserver, @unchecked Sendable {
+        private let lock = NSLock()
+        private let stream: AsyncThrowingStream<Void, Error>
+        private let completion: AsyncThrowingStream<Void, Error>.Continuation
+        private var frames = 0
+
+        init() { (stream, completion) = AsyncThrowingStream<Void, Error>.makeStream() }
+
+        func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
+            guard source.id == "tone" else { return }
+            guard source.channels == 2 else {
+                fail("The synthetic process tap did not capture stereo audio.")
+                return
+            }
+            let complete = lock.withLock {
+                let required = source.sampleRate * 3
+                guard frames < required, pcm.contains(where: { $0 != 0 }) else { return false }
+                frames += pcm.count / (source.channels * MemoryLayout<Int16>.size)
+                return frames >= required
+            }
+            if complete {
+                completion.yield(())
+                completion.finish()
+            }
+        }
+
+        func fail(_ message: String) { completion.finish(throwing: RecordingError.invalid(message)) }
+
+        func wait() async throws {
+            var iterator = stream.makeAsyncIterator()
+            guard try await iterator.next() != nil else { throw CancellationError() }
+        }
     }
 
     private static func verifyTone(_ session: RecordingSession) throws {
