@@ -622,13 +622,22 @@ private struct UpdateFooterVisibility: NSViewRepresentable {
     static func dismantleNSView(_ view: Mount, coordinator: ()) { view.removed() }
     final class Mount: NSView {
         private var changed: ((Bool) -> Void)?
+        private var mounted = false
         init(changed: @escaping (Bool) -> Void) { self.changed = changed; super.init(frame:.zero) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if window != nil { changed?(true) }
+            if window != nil { mounted = true; changed?(true) }
+            else if mounted { removed() }
         }
-        func removed() { changed?(false); changed = nil }
+        override func viewDidHide() {
+            super.viewDidHide()
+            if mounted { removed() }
+        }
+        func removed() {
+            guard mounted else { return }
+            mounted = false; changed?(false); changed = nil
+        }
     }
 }
 #endif

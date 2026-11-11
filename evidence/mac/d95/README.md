@@ -103,3 +103,18 @@ as a forwarding convenience overload; the explicit-zone initializer handles the
 new capture-site recording. Both compiled symbols are verified in the rebuilt
 object, and all 26 D95-focused tests pass after this compatibility change. This
 preserves the existing public API while allowing explicit site-zone tests.
+
+## Native hiding and detachment
+
+Run `43009832544` was interrupted on two rented runners (GitHub annotations:
+runner lost communication), and its hosted Settings job independently exposed
+`recording: missing footer disappear signal`. No retry was started. NSView
+representables may hide/detach before dismantling. The DEBUG observer now
+reports those native transitions after a confirmed mount, once only; an
+initial nil window cannot pre-seed successful removal. Release UI is unchanged.
+The portable probe checks detachment, direct/ancestor hiding, initial-state
+rejection and one-shot delivery, then 40 actual footer render/removal cycles
+and the real Sparkle deferral self-test. All pass in a genuine Aqua session.
+Three source mutations disable detachment, hiding or the mounted guard; each
+fails a native transition assertion immediately, without waiting for a timeout.
+Full logs: `~/coordination/evidence/big-mac-d95/footer/native-*.log`.

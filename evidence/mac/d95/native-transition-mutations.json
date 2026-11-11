@@ -1,0 +1,14 @@
+[
+  {
+    "case": "detach",
+    "result": "native transition assertion fails without a timeout"
+  },
+  {
+    "case": "hide",
+    "result": "native transition assertion fails without a timeout"
+  },
+  {
+    "case": "initial-guard",
+    "result": "native transition assertion fails without a timeout"
+  }
+]

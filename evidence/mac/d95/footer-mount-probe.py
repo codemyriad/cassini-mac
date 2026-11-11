@@ -32,6 +32,22 @@ let app=NSApplication.shared
 app.setActivationPolicy(.accessory)
 Task { @MainActor in
  do {
+  for mode in ["detach","hide","ancestor-hide"] {
+   var events:[Bool]=[]
+   let mount=UpdateFooterVisibility.Mount(changed:{events.append($0)})
+   mount.viewDidMoveToWindow()
+   mount.removed()
+   assert(events.isEmpty,"An initial nil window must not prove removal")
+   let window=NSWindow(contentRect:NSRect(x:0,y:0,width:600,height:70),styleMask:[.titled],backing:.buffered,defer:false)
+   let container=NSView(frame:NSRect(x:0,y:0,width:600,height:70));container.addSubview(mount)
+   window.isReleasedWhenClosed=false;window.contentView=container;window.orderFront(nil)
+   assert(events==[true],"Native mount precedes removal")
+   if mode=="hide" {mount.isHidden=true} else if mode=="ancestor-hide" {container.isHidden=true} else {mount.removeFromSuperview()}
+   assert(events==[true,false],"Native hiding or detachment must signal removal")
+   mount.removed()
+   assert(events==[true,false],"Removal is one-shot")
+   window.close()
+  }
   for i in 0..<40 {
    let updates=ApplicationUpdates(),signal=Signal()
    let footer=NSHostingView(rootView:UpdateReadyFooter(updates:updates,fixtureVisibility:{signal.send($0)}))
