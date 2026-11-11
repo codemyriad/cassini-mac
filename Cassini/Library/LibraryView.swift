@@ -602,10 +602,33 @@ struct UpdateReadyFooter: View {
     var body: some View {
         if updates.readyWhenIdle {
             #if DEBUG
-            line.onAppear { fixtureVisibility?(true) }.onDisappear { fixtureVisibility?(false) }
+            line.background {
+                if let fixtureVisibility { UpdateFooterVisibility(changed:fixtureVisibility) }
+            }
             #else
             line
             #endif
         }
     }
 }
+
+#if DEBUG
+/// Native mount/removal signals for the real footer subtree. SwiftUI's
+/// onDisappear is not reliably delivered by a standalone NSHostingView.
+private struct UpdateFooterVisibility: NSViewRepresentable {
+    let changed: (Bool) -> Void
+    func makeNSView(context: Context) -> Mount { Mount(changed:changed) }
+    func updateNSView(_ view: Mount, context: Context) {}
+    static func dismantleNSView(_ view: Mount, coordinator: ()) { view.removed() }
+    final class Mount: NSView {
+        private var changed: ((Bool) -> Void)?
+        init(changed: @escaping (Bool) -> Void) { self.changed = changed; super.init(frame:.zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil { changed?(true) }
+        }
+        func removed() { changed?(false); changed = nil }
+    }
+}
+#endif

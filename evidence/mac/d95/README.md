@@ -73,3 +73,26 @@ Generate the extra cases by running `unreadableCassiniDoesNotBorrowDATE` with
 `CASSINI_D95_REVIEW_CASES` pointing outside the checkout. Two additional
 production mutations remove the manifest trust guard and reintroduce the
 midnight day-end bug; they must fail behavioral assertions.
+
+## Exact-head CI Settings footer follow-up
+
+CI run `42999320756` passed builds, conformance, package tests and board renders,
+but its final Settings proof failed with `scanning: missing footer disappear
+signal`. The updater had resumed; the standalone NSHostingView did not deliver
+SwiftUI's `onDisappear` callback. After a normal merge of main `9fb263c`,
+the DEBUG-only observer now follows native mount/removal of the actual footer
+subtree via NSViewRepresentable. Release UI and updater behavior are unchanged.
+No timeout was increased and the disappearance assertion remains required.
+
+`footer-mount-probe.py` compiles the exact footer source and verifies 40 real
+mount/removal cycles. With `D95_SPARKLE_FRAMEWORKS` set to the directory
+containing the reviewed Sparkle 2.10.1 framework (including its SDK headers),
+it also compiles the actual ApplicationUpdates and UpdateDeferralSelfTest
+sources. Only unrelated live-work globals and catalog/theme adapters are
+stubbed; the actual updater's fixture supplies each protected activity. The
+real Sparkle ready window and mounted footer pass for recording, saving,
+scanning, transcription and the Quit path. Both probes pass; 56 current CI
+contracts pass. Run under heavy-run/Xcode 16.4, with
+`D95_FOOTER_EVIDENCE_DIR` outside the checkout. Full local logs are in
+`~/coordination/evidence/big-mac-d95/footer/`. Integrated Settings CI is still
+required on the new head.

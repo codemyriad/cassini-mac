@@ -1,6 +1,6 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
-  "mainMerged": "3faf774",
+  "mainMerged": "9fb263c",
   "headlessTests": 416,
   "ciContracts": 56,
   "restoredFocusedTests": 26,
@@ -23,7 +23,8 @@
     "Tests/CassiniExportTests/MeetingExportTests.swift": "b3197508e18594351ebe0a4dfa6ea373ced1f092ae256e5051825b5b5eec885c",
     "Sources/CassiniSearch/SearchIndex.swift": "098cf8538440e70013e839a289285199875374d27856bb75a57ceee7d45bc89e",
     "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "024d21e10b3f7c697c525692bcb23233009434db38a78db0a78ac5535236eac3",
-    "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b"
+    "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
+    "Cassini/Library/LibraryView.swift": "30528fdfc3ecea4363f1bb0fb8960ae91d619dacf4aba2c178105edfdd104bdd"
   },
   "mutations": {
     "utc-priority": {
@@ -56,5 +57,12 @@
   "processTimeZones": [
     "EST5EDT",
     "<+0545>-5:45"
-  ]
+  ],
+  "footerCI": {
+    "failedRun": 42999320756,
+    "failure": "scanning: missing footer disappear signal",
+    "mountRemovalCycles": 40,
+    "actualSparkleDeferralSelfTest": "passed for all protected activities and Quit",
+    "ciContracts": 56
+  }
 }
