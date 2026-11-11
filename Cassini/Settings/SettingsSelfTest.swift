@@ -105,8 +105,10 @@ import Sparkle
             queue.fixturePreparationStarted = { preparationStarted.yield($0) }
             defer { queue.fixturePreparationStarted = nil; preparationStarted.finish() }
             queue.resumeAfterMove(); queue.enqueue(waitingMeeting)
-            for await folder in preparations where folder == waiting.directory { break }
-            try check(queue.preparingFixtureFolder == waiting.directory,"metadata writer reached the held folder")
+            // Scanner URLs omit the directory slash; the session URL includes it.
+            // Join the event by its filesystem path, not URL representation.
+            for await folder in preparations where folder.path == waiting.directory.path { break }
+            try check(queue.preparingFixtureFolder?.path == waiting.directory.path,"metadata writer reached the held folder")
             queue.fixturePreparationStarted = nil
             preparationStarted.finish()
             phase = "pending import"
@@ -135,7 +137,7 @@ import Sparkle
             try check(chmod(received.folder.path,0) == 0,"private move-failure fixture")
             var preparationsPaused = false
             try await LibraryMoveCoordinator.shared.moveForTesting(to:destination,allowingFailures:true) {
-                preparationsPaused = importer.isBusy && queue.preparingFixtureFolder == waiting.directory
+                preparationsPaused = importer.isBusy && queue.preparingFixtureFolder?.path == waiting.directory.path
                 heldImport.release()
                 heldMetadata.release()
             }
