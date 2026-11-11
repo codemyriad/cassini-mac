@@ -24,9 +24,9 @@
     "Sources/CassiniSearch/SearchIndex.swift": "098cf8538440e70013e839a289285199875374d27856bb75a57ceee7d45bc89e",
     "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "024d21e10b3f7c697c525692bcb23233009434db38a78db0a78ac5535236eac3",
     "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
-    "Cassini/Library/LibraryView.swift": "4fa2c673976dc024e72e1056fbc012b9371a63736b692b6e5a7eec026879553c",
+    "Cassini/Library/LibraryView.swift": "112a04600f6f23e9534769da323c2d089a8ac00cbf233deff9df8d84569fa6c5",
     "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
-    "Cassini/Settings/UpdateDeferralSelfTest.swift": "61a1584f9770a8746cbd14dc35bf2adc7bc321c0307818dc562ed571c491917f"
+    "Cassini/Settings/UpdateDeferralSelfTest.swift": "bce5278fc423fef12dc5d031b0bc7a757a1d7692a342b6ddaf553fe20eb72e6b"
   },
   "mutations": {
     "utc-priority": {
