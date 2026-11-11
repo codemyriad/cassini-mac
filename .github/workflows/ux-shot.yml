@@ -31,6 +31,7 @@ jobs:
     - name: Capture actual windows with XCUITest
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_GUI_SCREENSHOTS: ${{ runner.environment == 'self-hosted' && '1' || '0' }}
       run: |
         set -o pipefail
         mkdir -p build
@@ -80,6 +81,7 @@ jobs:
       if: ${{ !cancelled() && steps.hosted.outcome == 'success' }}
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_GUI_SCREENSHOTS: ${{ runner.environment == 'self-hosted' && '1' || '0' }}
         TEST_RUNNER_CASSINI_SCREENSHOT_SIZE: 1120x720
       run: |
         set -o pipefail

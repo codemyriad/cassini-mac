@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import Darwin
 
 final class WindowScreenshots: XCTestCase {
     override func setUpWithError() throws {
@@ -27,6 +28,7 @@ final class WindowScreenshots: XCTestCase {
     @MainActor
     private func capture(_ name: String, attachment: String?, withSheet: Bool,
                          dismissUsing key: XCUIKeyboardKey = .return) throws {
+        try dismissDedicatedRunnerNotifications()
         let app = XCUIApplication()
         let fixture = try fixtureDirectory()
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
@@ -70,6 +72,31 @@ final class WindowScreenshots: XCTestCase {
             let resultID = key == .escape ? "cassini-screenshot-kept" : "cassini-screenshot-stopped"
             XCTAssertTrue(app.windows[resultID].waitForExistence(timeout: 5), app.debugDescription)
         }
+    }
+
+    @MainActor private func dismissDedicatedRunnerNotifications() throws {
+        guard ProcessInfo.processInfo.environment["CASSINI_GUI_SCREENSHOTS"] == "1" else { return }
+        let console = try FileManager.default.attributesOfItem(atPath:"/dev/console")[.ownerAccountID] as? NSNumber
+        guard getuid() == 503, console?.uint32Value == 503 else {
+            throw NSError(domain:"CassiniScreenshots",code:2,
+                          userInfo:[NSLocalizedDescriptionKey:"Notification cleanup requires the dedicated CI console"])
+        }
+        let center = XCUIApplication(bundleIdentifier:"com.apple.notificationcenterui")
+        guard center.state != .notRunning else { return }
+        // First-login macOS notices persist across Notification Center restarts.
+        // Use ordinary Close actions in this isolated account, without TCC edits
+        // or an Accessibility grant to a shell helper.
+        for window in center.windows.allElementsBoundByIndex where window.isHittable {
+            window.hover()
+        }
+        for _ in 0..<10 {
+            let close = center.buttons.matching(NSPredicate(format:"label == %@", "Close"))
+                .allElementsBoundByIndex.first(where:{ $0.isHittable })
+            guard let close else { break }
+            close.click()
+        }
+        let tree = XCTAttachment(string:center.debugDescription)
+        tree.name = "dedicated-runner-notifications"; tree.lifetime = .keepAlways; add(tree)
     }
 
     private func fixtureDirectory() throws -> URL {
