@@ -67,13 +67,18 @@ public final class BrowserPipeConnection: @unchecked Sendable {
     private var stopped = false
     private let received: @Sendable (BrowserPipeConnection,Data) throws -> Void
     private let ended: @Sendable (BrowserPeer) -> Void
+    private let readClock: @Sendable () -> UInt64
+    private let readProgress: @Sendable (Int) -> Void
 
     init(peer: BrowserPeer, input: Int32, output: Int32, lease: Int32, dummy: Int32? = nil,
          ownsLease: Bool, folder: URL? = nil,
+         readClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+         readProgress: @escaping @Sendable (Int) -> Void = { _ in },
          received: @escaping @Sendable (BrowserPipeConnection,Data) throws -> Void,
          ended: @escaping @Sendable (BrowserPeer) -> Void) {
         self.peer = peer; self.input = input; self.output = output; self.lease = lease
         requestDummy = dummy; self.ownsLease = ownsLease; self.folder = folder
+        self.readClock = readClock; self.readProgress = readProgress
         self.received = received; self.ended = ended
         writer = DispatchQueue(label:"io.codemyriad.cassini.pipe-write." + peer.id.uuidString)
         readerDone.enter()
@@ -101,7 +106,7 @@ public final class BrowserPipeConnection: @unchecked Sendable {
             do {
                 while !cancellation.isCancelled {
                     // Poll the lease without abandoning a partially read frame.
-                    let packet = try FrameIO.read(input,cancel:cancellation,alive:{ [self] in ownsLease || PipeFiles.held(lease) })
+                    let packet = try FrameIO.read(input,cancel:cancellation,alive:{ [self] in ownsLease || PipeFiles.held(lease) },clock:readClock,progress:readProgress)
                     guard let packet else { break }
                     if let held = dummy { Darwin.close(held); dummy = nil }
                     try received(self,FrameIO.normalized(packet))
@@ -146,6 +151,11 @@ public final class BrowserPipeServer: @unchecked Sendable {
         self.root = root; self.connected = connected; self.received = received; self.disconnected = disconnected
         queue.setSpecific(key:queueKey,value:1)
     }
+    // Internal test dependencies; install before start. Defaults preserve real I/O.
+    var readClock: @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+    var readProgress: @Sendable (Int) -> Void = { _ in }
+    var stopCompleted: @Sendable () -> Void = {}
+    func discoverNow() { queue.sync { discover(root.appendingPathComponent("clients",isDirectory:true)) } }
     public func start() throws {
         guard lease == -1, !cancellation.isCancelled else { throw BrowserIPCError.unavailable }
         signal(SIGPIPE,SIG_IGN)
@@ -217,7 +227,7 @@ public final class BrowserPipeServer: @unchecked Sendable {
                 let ready = try JSONEncoder().encode(["ready":id.uuidString.lowercased()])
                 try FrameIO.writeFrame(output,data:ready,cancel:cancellation)
                 let retired = self.retired
-                let connection = BrowserPipeConnection(peer:peer,input:input,output:output,lease:leaseFD,dummy:dummy,ownsLease:false,folder:folder,
+                let connection = BrowserPipeConnection(peer:peer,input:input,output:output,lease:leaseFD,dummy:dummy,ownsLease:false,folder:folder,readClock:readClock,readProgress:readProgress,
                     received:received,ended:{ [weak self] peer in
                         self?.queue.async { [weak self] in self?.peers.removeValue(forKey:peer.id) }
                         self?.disconnected(peer)
@@ -234,7 +244,8 @@ public final class BrowserPipeServer: @unchecked Sendable {
             for peer in peers.values { peer.close() }; peers.removeAll()
             if lease >= 0 {
                 let fd = lease; lease = -1
-                retired.notify(queue:.global()) { Darwin.close(fd) }
+                let completed = stopCompleted
+                retired.notify(queue:.global()) { Darwin.close(fd); completed() }
             }
         }
         if DispatchQueue.getSpecific(key:queueKey) != nil { finish() } else { queue.sync(execute:finish) }

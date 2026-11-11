@@ -1,0 +1,17 @@
+completed-discovery
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-transport-x6577lh_/Tests/CassiniBrowserControlTests/PipeTransportTests.swift:32: error: -[CassiniBrowserControlTests.PipeTransportTests testPublishedDirectoryWhoseLeaseWasRemovedIsRetired] : XCTAssertFalse failed
+
+partial-frame-clock
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-transport-x6577lh_/Sources/CassiniBrowserControl/PipeTransport.swift:28: error: -[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame] : failed: caught error: "unsafePath"
+
+independent-reply
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-transport-x6577lh_/Sources/CassiniBrowserControl/FrameIO.swift:48: error: -[CassiniBrowserControlTests.PipeTransportTests testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame] : failed: caught error: "timeout"
+
+idle-reader
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-transport-x6577lh_/Tests/CassiniBrowserControlTests/PipeTransportTests.swift:123: error: -[CassiniBrowserControlTests.PipeTransportTests testStoppedServerClosesAnIdlePeerWithoutACommand] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Idle server reader entered its wait".
+
+lease-release
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-transport-x6577lh_/Tests/CassiniBrowserControlTests/PipeTransportTests.swift:159: error: -[CassiniBrowserControlTests.PipeTransportTests testBrokerLeasePreventsASecondServerUntilOldPeersRetire] : Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: "Old server released its lease after peer retirement".
+
+native-process-exit
+/private/var/folders/ft/146cmsz97zl14xrzyfbx60zh0000gn/T/d88-area-transport-x6577lh_/Tests/CassiniBrowserControlTests/ControlHostTests.swift:61: error: -[CassiniBrowserControlTests.ControlHostTests testMalformedNativeLengthFailsInsteadOfBeingRelayed] : XCTAssertEqual failed: ("timedOut") is not equal to ("success")

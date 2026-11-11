@@ -1,0 +1,5 @@
+--- a/Tests/CassiniBrowserControlTests/ControlHostTests.swift
++++ b/Tests/CassiniBrowserControlTests/ControlHostTests.swift
+@@ -22 +22 @@
+-        process.terminationHandler = { _ in finished.fulfill(); exit.signal() }
++        process.terminationHandler = { _ in finished.fulfill() }

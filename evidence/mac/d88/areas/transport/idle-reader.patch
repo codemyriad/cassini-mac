@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/FrameIO.swift
++++ b/Sources/CassiniBrowserControl/FrameIO.swift
+@@ -60 +60 @@
+-                progress(output.count)
++                // Mutation hides reader entry.

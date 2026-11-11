@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserSetup/BackgroundSetup.swift
++++ b/Sources/CassiniBrowserSetup/BackgroundSetup.swift
+@@ -84 +84 @@
+-            case .success: self.state = .waiting; self.backoff.reset()
++            case .success: self.state = .settingUp; self.backoff.reset()
