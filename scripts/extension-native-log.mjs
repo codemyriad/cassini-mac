@@ -12,7 +12,21 @@
 const PREFIX = 'cassini-native ';
 export function attachNativeLog(context, {limit = 20000} = {}) {
   const events = [];
-  const note = entry => { if (events.length < limit) events.push({at:Date.now(),...entry}); };
+  const listeners = new Set();
+  const note = entry => {
+    if (events.length >= limit) return;
+    const recorded = {at:Date.now(),...entry}; events.push(recorded);
+    for (const listener of listeners) listener(recorded);
+  };
+  const waitForEvent = (event, {signal} = {}) => new Promise((resolve,reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const recorded = events.find(entry => entry.event === event);
+    if (recorded) { resolve(recorded); return; }
+    const cleanup = () => { listeners.delete(receive); signal?.removeEventListener('abort',abort); };
+    const receive = entry => { if (entry.event === event) { cleanup(); resolve(entry); } };
+    const abort = () => { cleanup(); reject(signal.reason); };
+    listeners.add(receive); signal?.addEventListener('abort',abort,{once:true});
+  });
   const instrument = async worker => {
     const url = worker.url();
     note({event:'worker',url});
@@ -49,5 +63,5 @@ export function attachNativeLog(context, {limit = 20000} = {}) {
   };
   const ready = Promise.all(context.serviceWorkers().map(instrument));
   context.on('serviceworker',worker => { void instrument(worker); });
-  return {events,ready};
+  return {events,ready,waitForEvent};
 }

@@ -26,12 +26,8 @@ try {
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const log = attachNativeLog(context);
   await log.ready;
-  const disconnected = new Promise(resolve => {
-    const check = () => log.events.some(e => e.event === 'disconnect') ? resolve() : setTimeout(check,10);
-    check();
-  });
-  await worker.evaluate(() => self.connectMissing());
-  await Promise.race([disconnected,new Promise((_,reject) => setTimeout(() => reject(new Error('no disconnect')),10000))]);
+  const disconnected = log.waitForEvent('disconnect',{signal:AbortSignal.timeout(10000)});
+  await Promise.all([disconnected,worker.evaluate(() => self.connectMissing())]);
   // The browser goes away, and every worker with it: nothing is read back from a worker, so the
   // events recorded while they happened are all still here.
   await context.close(); context = undefined;
