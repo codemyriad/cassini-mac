@@ -154,6 +154,17 @@ class DailyExecution(unittest.TestCase):
             self.assertEqual(len((base/'inbox').read_text().splitlines()),2)
             self.assertTrue(all('--test-release' in call.args[0] for call in build.call_args_list))
 
+    def test_post_publish_cleanup_failure_does_not_rebuild_the_same_head(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,_,build=self.context(directory);build.return_value=0
+            with patch.object(daily,'notes',return_value='notes'),patch.object(daily,'publish') as publish,patch.object(daily.shutil,'copy2',side_effect=OSError):
+                with self.assertRaises(SystemExit):daily.tick(datetime.fromisoformat('2026-11-11T08:00:00+00:00'))
+                daily.tick(datetime.fromisoformat('2026-11-11T13:00:00+00:00'))
+            self.assertEqual(build.call_count,1);publish.assert_called_once()
+            self.assertEqual(json.loads((base/'state.json').read_text())['last_success'],'a'*40)
+            self.assertIn('published output cleanup',(base/'inbox').read_text())
+            self.assertIn('main unchanged',(base/'inbox').read_text())
+
     def test_incomplete_assets_never_publish_and_complete_upload_is_always_prerelease(self):
         import hashlib
         for complete in [False,True]:

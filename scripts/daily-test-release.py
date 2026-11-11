@@ -210,6 +210,7 @@ def tick(now):
         if code:raise RuntimeError('Signed test build failed; retained private job diagnostics')
         stage='GitHub nightly publication'
         publish(f'v{version}-beta.{build}',version,build,head,output,body)
+        stage='published output cleanup'
         state.update(phase='released',last_success=head,tag=f'v{version}-beta.{build}')
         atomic(state_file,state)
         history=BASE/'history';history.mkdir(exist_ok=True)
