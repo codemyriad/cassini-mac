@@ -79,6 +79,10 @@ private final class SourceChangeToken: @unchecked Sendable {
     /// Called on every change of the side sets below, and after each refusal is delivered
     /// (tests wait on it instead of polling, E1).
     var observer: (@MainActor () -> Void)?
+    // Internal event fences after registration and after a failure callback settles.
+    var authorizationWaiting: (@MainActor () -> Void)?
+    var failureHandled: (@MainActor () -> Void)?
+    var authorizationHandled: (@MainActor () -> Void)?
     public var hasRunningInputs: Bool { inputs.keys.contains { !failedSides.contains($0) } }
     /// D58: sides that admitted a first buffer at least once in this recording.
     public private(set) var openedSides: Set<CaptureSide> = [] { didSet { observer?() } }
@@ -364,7 +368,10 @@ private final class SourceChangeToken: @unchecked Sendable {
     private func report(_ side: CaptureSide, generation: UUID, stage: StagedNativeWriter? = nil) -> @Sendable (String) -> Void {
         { [weak self] message in
             stage?.fail(message)
-            Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
+            Task { @MainActor in
+                await self?.failed(side,generation:generation,message:message)
+                self?.failureHandled?()
+            }
         }
     }
     public func stop() async throws {
@@ -402,6 +409,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         let id = UUID()
         try await withCheckedThrowingContinuation { continuation in
             authorizations[id] = .init(side:side,source:source,continuation:continuation)
+            authorizationWaiting?()
             guard permissionTasks[side] == nil else { return }
             let taskID = UUID(); permissionTasks[side] = taskID
             Task { @MainActor [weak self] in
@@ -410,6 +418,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                     if self?.permissionTasks[side] == taskID { self?.permissionTasks.removeValue(forKey:side) }
                     return
                 }
+                defer { self?.authorizationHandled?() }
                 let result: Result<Void,Error>
                 do { try await driver.authorize(); result = .success(()) }
                 catch { result = .failure(error) }
@@ -497,7 +506,10 @@ private final class SourceChangeToken: @unchecked Sendable {
         guard admission(), capture.snapshot.phase == .recording else { throw CancellationError() }
         let generation = UUID()
         let report: @Sendable (String) -> Void = { [weak self] message in
-            Task { @MainActor in await self?.failed(side,generation:generation,message:message) }
+            Task { @MainActor in
+                await self?.failed(side,generation:generation,message:message)
+                self?.failureHandled?()
+            }
         }
         let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,onFailure:report,admit:{ signal.admit() })
         do { try startDriver(driver,sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }

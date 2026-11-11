@@ -305,8 +305,14 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     func observeRetryScan(_ observer: (@Sendable (OwnedBrowserCapture) -> Void)?) { lock.withLock { retryScanObserver = observer } }
     /// App Quit/Stop handles native input shutdown before closing the IPC server.
     /// Browser Stop commands should be sent first so the page can flush its tail.
+    // Internal event fences for tests; observers never control completion.
+    var shutdownWaitRegistered: (@Sendable () -> Void)?
+    func observeFinalization(_ observer: (@Sendable () -> Void)?) async { await finalization.observe(observer) }
     @discardableResult public func finishAll(problem: String? = nil, reason: CaptureEndReason? = nil) async -> [OwnedCaptureSnapshot] {
-        await withCheckedContinuation { continuation in creating.notify(queue:.global()) { continuation.resume() } }
+        await withCheckedContinuation { continuation in
+            creating.notify(queue:.global()) { continuation.resume() }
+            shutdownWaitRegistered?()
+        }
         let values = activeCaptures
         await withTaskGroup(of:Void.self) { group in
             for capture in values { group.addTask { try? await self.finish(capture,problem:problem,reason:reason) } }
@@ -318,12 +324,15 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
 /// drain and final checkpoint; a completed owner's snapshot rejects later work.
 private actor CaptureFinalization {
     private var tasks: [UUID:Task<Void,Error>] = [:]
+    private var entered: (@Sendable () -> Void)?
+    func observe(_ observer: (@Sendable () -> Void)?) { entered = observer }
     func run(_ capture: OwnedBrowserCapture, operation: @escaping @Sendable () async throws -> Void) async throws {
         let id = capture.snapshot.manifest.id
-        if let task = tasks[id] { return try await task.value }
+        if let task = tasks[id] { entered?(); return try await task.value }
         guard capture.snapshot.phase != .saved else { return }
         let task = Task { try await operation() }
         tasks[id] = task
+        entered?()
         defer { tasks.removeValue(forKey:id) }
         try await task.value
     }

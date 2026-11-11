@@ -1,0 +1,5 @@
+--- a/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift
++++ b/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift
+@@ -418 +418 @@
+-            completed.insert(path); return waiting.removeValue(forKey:path) ?? []
++            return []

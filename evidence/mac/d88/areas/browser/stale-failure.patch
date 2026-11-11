@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
++++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
+@@ -559 +559 @@
+-            guard !self.closed, let input = self.inputs[side], input.generation == generation else { return }
++            guard !self.closed, let input = self.inputs[side] else { return }
