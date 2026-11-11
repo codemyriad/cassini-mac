@@ -53,8 +53,8 @@ jobs:
     uses: ./.github/workflows/ci-build-release.yml
   kit:
     name: CassiniKit tests and conformance
-    runs-on: macos-15
-    # About 2.5x its p95 (9.2 min) with the folded Library, native-sink and packaging steps; a
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || 'macos-15' }}
+    # About 2.5x its historical p95 (9.2 min); a
     # hang can't hold a shared macOS slot for 6 hours (D66 mac-P0-5, #130 review).
     timeout-minutes: 30
     steps:
@@ -63,7 +63,6 @@ jobs:
       with:
         swiftpm: 'true'
         assets: 'true'
-        debug: 'true'
     - name: Swift version
       run: swift --version
     # D66 mac-P2-1: with the pinned Opus assets and an export report folder, this one run also
@@ -76,9 +75,10 @@ jobs:
       run: |
         python3 scripts/test-swift-test-runner.py
         # Keep transfer and supersession-lock deadlines independent of native writer/decoder load.
-        # The complementary filter/skip invocations still run every test exactly once.
+        # The model, remaining and hosted bookmark partitions retain every test.
+        # Security-scoped bookmark creation requires the login session in native_sink.
         python3 scripts/run-swift-tests.py --output build/unit-tests/models -- swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'
-        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests'
+        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
@@ -105,6 +105,7 @@ jobs:
     - name: Shared native-session fixture
       run: python3 browser-protocol/conformance/check-native-fixture.py
     - uses: actions/setup-python@v5
+      if: runner.environment == 'github-hosted'
       with:
         python-version: '3.12'
     - uses: actions/checkout@v5
@@ -126,8 +127,11 @@ jobs:
           build/placement
           build/Opus/pins.json
           build/Opus/unsigned-sha256.json
-    - name: Install strict conformance dependencies
-      run: python3 -m pip install -r browser-protocol/requirements-test.txt
+    - name: Install strict conformance dependencies in a job-private environment
+      run: |
+        python3 -m venv "$RUNNER_TEMP/conformance-python"
+        "$RUNNER_TEMP/conformance-python/bin/python3" -m pip install -r browser-protocol/requirements-test.txt
+        echo "$RUNNER_TEMP/conformance-python/bin" >> "$GITHUB_PATH"
     - name: Browser host conformance
       run: python3 browser-protocol/conformance/run.py .build/debug/cassini-browser-host
     - uses: actions/setup-node@v4
@@ -167,8 +171,7 @@ jobs:
         grep -q " 0 fail" full.txt
         python3 run-conformance.py --adapter "$GITHUB_WORKSPACE/.build/debug/cassini-inspect --metadata" --profile metadata | tee metadata.txt
         grep -q " 0 fail" metadata.txt
-    # D66 mac-P1-4: three single-purpose macOS jobs (UX Library model, Native recording sink,
-    # Build Cassini.app) folded into this one, with their exact environments and products.
+    # Library and Search remain part of the complete headless suite.
     - name: Golden vectors and read-only Library tests (UTC, C locale)
       timeout-minutes: 5
       env:
@@ -177,7 +180,7 @@ jobs:
         CASSINI_LIBRARY_RESULTS: ux-library-vector-results
       run: |
         set -o pipefail
-        swift test --skip-build --filter 'Library|SearchTests' 2>&1 | tee ux-library-tests.log
+        swift test --skip-build --filter 'Library|SearchTests' --skip recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication 2>&1 | tee ux-library-tests.log
     - uses: actions/upload-artifact@v5
       if: always()
       continue-on-error: true
@@ -187,6 +190,30 @@ jobs:
         path: |
           ux-library-tests.log
           ux-library-vector-results
+    needs:
+    - build
+  native_sink:
+    name: Native recording sink app
+    # NSApplication and ScopedBookmarksAgent require a macOS login session.
+    runs-on: macos-15
+    timeout-minutes: 10
+    needs: [build]
+    steps:
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        debug: 'true'
+        swiftpm: 'true'
+    - name: Real scoped bookmark follows a renamed Library root
+      run: |
+        python3 scripts/run-swift-tests.py --output build/unit-tests/scoped-bookmark -- swift test --skip-build --filter recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication
+    - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
+      with:
+        name: scoped-bookmark-${{ github.sha }}
+        path: build/unit-tests/scoped-bookmark
+        retention-days: 14
     - name: Native recording sink (generated 440/880 Hz stereo through the production sink and WAV writer)
       timeout-minutes: 5
       run: |
@@ -199,8 +226,6 @@ jobs:
         retention-days: 14
         name: native-recording-${{ github.sha }}
         path: ${{ runner.temp }}/native-artifacts
-    needs:
-    - build
   shot:
     name: UX window screenshots
     needs:
