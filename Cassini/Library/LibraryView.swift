@@ -18,6 +18,7 @@ struct LibraryView: View {
     @State private var trash = MeetingTrashCoordinator.shared
     @Environment(\.undoManager) private var undoManager
     @State private var exporter = MeetingExportCoordinator.shared
+    @State private var bulkExporter = BulkZipExportCoordinator.shared
     @State private var recordingDetails = RecordingDetailsCoordinator.shared
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
@@ -187,7 +188,7 @@ struct LibraryView: View {
         .onChange(of: recorder.isSaving) { _,saving in
             if saving, let folder = recorder.directory { navigation.captureBeganSaving(at:folder) }
         }
-        .onChange(of: store.selectedKey) { _, _ in sessionPlayback.stop() }
+        .onChange(of: store.selectedKeys) { _, _ in sessionPlayback.stop() }
         .onChange(of: store.revision) { _, _ in
             search.update(store.meetings)
             sessionPlayback.reconcile(store.selected, offline: store.offline)
@@ -220,8 +221,15 @@ struct LibraryView: View {
         }
         .onOpenURL { LegacyOpening.openDocument($0) }
         .dropDestination(for:URL.self) { urls,_ in
-            let audio = urls.filter { $0.isFileURL && ["opus","ogg"].contains($0.pathExtension.lowercased()) }
-            audio.forEach { LibraryImportCoordinator.shared.open($0) }; return !audio.isEmpty
+            let files = urls.filter { $0.isFileURL && !$0.hasDirectoryPath }
+            guard !files.isEmpty else { return false }
+            let supported = files.filter {
+                let ext = $0.pathExtension.lowercased()
+                return LibraryImport.supportedAudioExtensions.contains(ext) || ext == "zip"
+            }
+            guard !supported.isEmpty || files.count > 1 else { return false }
+            LegacyOpening.openDocuments(files)
+            return true
         }
         .preferredColorScheme(store.context.screenshot ? .light : nil)
     }
@@ -251,7 +259,7 @@ struct LibraryView: View {
     }
     private var split: some View {
         HStack(spacing: 0) {
-            List(selection: $store.selectedKey) {
+            List(selection: $store.selectedKeys) {
                 ForEach(store.groups, id: \.title) { group in
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
@@ -261,20 +269,36 @@ struct LibraryView: View {
                                         guard !LibraryMoveCoordinator.shared.busy else { return }
                                         readTranscript(meeting)
                                     }.accessibilityHidden(true)
-                                    if store.selectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+                                    if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
                                 }
-                                .simultaneousGesture(TapGesture().onEnded { store.selectedKey = meeting.libraryKey })
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
+                                        store.selectedKey = meeting.libraryKey
+                                    }
+                                })
                                 .contextMenu {
                                     Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
-                                        .disabled(!rename.canRename(meeting)).accessibilityIdentifier("library-rename")
+                                        .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
                                     Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
-                                        .disabled(!MeetingExportCoordinator.canExport(meeting))
-                                        .onAppear { store.selectedKey = meeting.libraryKey }
-                                    if trash.canTrash(meeting) { Divider(); trashButton(meeting) }
+                                        .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
+                                        .onAppear {
+                                            if !store.selectedKeys.contains(meeting.libraryKey) {
+                                                store.selectedKey = meeting.libraryKey
+                                            }
+                                        }
+                                    if !store.selectedKeys.isEmpty {
+                                        Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
+                                            .disabled(!bulkExporter.canExportSelected)
+                                            .accessibilityIdentifier("library-export-selected-zip")
+                                    }
+                                    Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
+                                        .disabled(!bulkExporter.canExportAll)
+                                        .accessibilityIdentifier("library-export-all-zip")
+                                    if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
                                 }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(RoundedRectangle(cornerRadius: 7)
-                                    .fill(store.selectedKey == meeting.libraryKey ? Color.accentColor : Color.clear)
+                                    .fill(store.selectedKeys.contains(meeting.libraryKey) ? Color.accentColor : Color.clear)
                                     .padding(.horizontal, 8))
                                 .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
                                 .accessibilityIdentifier("meeting-" + meeting.libraryKey)
@@ -296,6 +320,19 @@ struct LibraryView: View {
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
             Divider()
             if let meeting = store.selected { preview(meeting) }
+            else if store.selectedKeys.count > 1 {
+                VStack {
+                    Spacer()
+                    Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(!bulkExporter.canExportSelected)
+                        .accessibilityIdentifier("preview-export-selected-zip")
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            }
             else { Color(nsColor: .textBackgroundColor) }
         }
     }
@@ -321,7 +358,7 @@ struct LibraryView: View {
         }
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
-        let selected = store.selectedKey == meeting.libraryKey
+        let selected = store.selectedKeys.contains(meeting.libraryKey)
         let dim = selected ? Color.white.opacity(0.86) : LibraryTheme.dim
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
