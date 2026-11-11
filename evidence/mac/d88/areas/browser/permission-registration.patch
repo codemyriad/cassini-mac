@@ -1,5 +1,4 @@
 --- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
 +++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
-@@ -412 +412 @@
--            authorizationWaiting?()
-+            // Mutation drops waiter registration.
+@@ -412 +411,0 @@
+-            guard permissionTasks[side] == nil else { authorizationWaiting?(); return }

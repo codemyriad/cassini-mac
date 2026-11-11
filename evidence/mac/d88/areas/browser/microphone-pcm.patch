@@ -1,5 +1,5 @@
---- a/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift
-+++ b/Tests/CassiniBrowserControlTests/AudioBrokerTests.swift
-@@ -418 +418 @@
--            completed.insert(path); return waiting.removeValue(forKey:path) ?? []
-+            return []
+--- a/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
++++ b/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
+@@ -245 +245 @@
+-        do { capture = try make(title,info.microphone) }
++        do { capture = try make(title,false) }

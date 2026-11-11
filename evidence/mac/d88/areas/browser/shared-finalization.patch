@@ -1,8 +1,4 @@
 --- a/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
 +++ b/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
-@@ -331 +331 @@
+@@ -333 +332,0 @@
 -        if let task = tasks[id] { entered?(); return try await task.value }
-+        if let task = tasks[id] { return try await task.value }
-@@ -335 +335 @@
--        entered?()
-+        // Mutation drops finalization entry.

@@ -12,8 +12,10 @@ The area starts from main `5562b8b`. Current-main shared model fixture fixes are
 | Permission cancellation waits for registered callbacks | `testRepeatedPageChangesCancelWaitersButKeepOnlyOnePendingOSRequest` | [permission-registration.patch](permission-registration.patch) |
 | Old microphone callbacks cannot fail a replacement | `testRetryMePreservesSystemAndIgnoresFailureFromPreviousMic` | [stale-failure.patch](stale-failure.patch) |
 
-Mutation failure excerpts are in [mutations.log](mutations.log). Apply a patch with `git apply --unidiff-zero` to reproduce it. Full local logs and the replay configuration are in `~/coordination/evidence/big-mac-d88/areas/browser`.
+All seven current mutations change production decisions, never observers or fixtures. Their tests fail behavioral assertions without expectation timeouts or leaked continuations; see [mutations.log](mutations.log). The earlier four seam-only mutants are superseded.
 
-before — Executed 73 tests, with 0 failures (0 unexpected) in 21.868 (21.873) seconds; ✔ Test run with 0 tests passed after 0.001 seconds.
-after — Executed 73 tests, with 0 failures (0 unexpected) in 21.360 (21.366) seconds; ✔ Test run with 0 tests passed after 0.001 seconds.
-restored — Executed 73 tests, with 0 failures (0 unexpected) in 20.743 (20.749) seconds; ✔ Test run with 0 tests passed after 0.001 seconds.
+Review fix: the shutdown observer is private under the broker lock and is snapshotted before invocation outside that lock. Its test clears it after registration and in cleanup. Stop callbacks and OS permission continuations are arrays drained on release, including late Stop callbacks. Permission registration is observed after reusing a request or entering the new OS task, so cancellation cannot hide a duplicate request before its driver starts. Completion/failure observers are cleared after fulfillment; late microphone permission handling is explicitly awaited.
+
+The current 73-case slice passes before, after and restored. The four reviewed mutants remove real folder-drain membership, finalization deduplication, the requested microphone plan, or OS-request sharing. Their failures respectively check saved/active state, native Stop count, microphone selection/tracks, and authorization count. None of the seven logs contains an expectation timeout or continuation misuse.
+
+Apply one patch at a time with `git apply --unidiff-zero`. A full private replay is [replay.py](replay.py): select Xcode 16.4, export its SDKROOT, then run `D88_EVIDENCE_DIR=/tmp/d88-browser-review ~/bin/heavy-run python3 evidence/mac/d88/areas/browser/replay.py`. Full logs, source snapshots and results are in `~/coordination/evidence/big-mac-d88/review-210/`.

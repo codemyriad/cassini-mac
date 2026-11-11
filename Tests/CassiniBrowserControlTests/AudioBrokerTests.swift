@@ -131,20 +131,21 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(entered.wait(timeout:.now() + 3),.success)
             broker.closeAdmission()
             let waiting = expectation(description:"Shutdown registered its folder-creation wait")
-            broker.shutdownWaitRegistered = { waiting.fulfill() }
+            broker.observeShutdownWait { waiting.fulfill() }
+            defer { broker.observeShutdownWait(nil) }
             let closing = Task { await broker.finishAll(); finished.increment() }
             await fulfillment(of:[waiting],timeout:3)
+            broker.observeShutdownWait(nil)
             XCTAssertEqual(finished.value,0,"Quit must wait for the owned folder factory")
             release.signal()
             let response = try await starting.value
             await closing.value
-            broker.shutdownWaitRegistered = nil
             XCTAssertEqual(finished.value,1); XCTAssertTrue(broker.activeCaptures.isEmpty)
             let saved = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(response["path"]?.string)))
             XCTAssertNotEqual(saved.state,"recording")
             let rejected = try fixture.client()
             XCTAssertEqual(try rejected.request(start("after-shutdown"))["code"]?.string,"state")
-        } catch { release.signal(); await fixture.finish(); throw error }
+        } catch { fixture.broker.observeShutdownWait(nil); release.signal(); await fixture.finish(); throw error }
         await fixture.finish()
     }
     func testConcurrentAppStopsAndQuitShareOneNativeDrain() async throws {
@@ -172,7 +173,7 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(owner.snapshot.phase,.saved)
             XCTAssertNil(owner.snapshot.manifest.problem)
             XCTAssertTrue(fixture.broker.activeCaptures.isEmpty)
-        } catch { pending.release(); await fixture.finish(); throw error }
+        } catch { await fixture.broker.observeFinalization(nil); pending.release(); await fixture.finish(); throw error }
         await fixture.finish()
     }
     func start(_ id: String, mic: Bool = false) -> [String:Any] {
@@ -187,8 +188,13 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             let a = try first.request(start("one",mic:true)), b = try second.request(start("two"))
             XCTAssertEqual(a["type"]?.string,"started"); XCTAssertNotEqual(a["path"]?.string,b["path"]?.string)
             for client in [first,second] { XCTAssertEqual(try client.request(track())["type"]?.string,"ack"); XCTAssertEqual(try client.request(audio())["type"]?.string,"ack") }
-            let microphone = fixture.microphones.expect(path:try XCTUnwrap(a["path"]?.string))
-            await fulfillment(of:[microphone],timeout:3)
+            let path = try XCTUnwrap(a["path"]?.string)
+            let owned = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == path })
+            XCTAssertTrue(owned.snapshot.me,"The requested microphone must be part of the owned capture")
+            if owned.snapshot.me {
+                let microphone = fixture.microphones.expect(path:path)
+                await fulfillment(of:[microphone],timeout:3)
+            }
             XCTAssertEqual(try first.request(["type":"stop"])["type"]?.string,"stopped")
             XCTAssertEqual(try second.request(audio(1,offset:1000))["type"]?.string,"ack")
             XCTAssertEqual(try second.request(["type":"stop"])["type"]?.string,"stopped")
@@ -377,25 +383,27 @@ private final class PendingNativeStop: @unchecked Sendable {
     private let lock = NSLock()
     private var released = false
     private let duplicate: Bool
-    init(duplicate: Bool = false) { self.duplicate = duplicate }
-    private var reply: (@Sendable (String?) -> Void)?
+    init(duplicate: Bool = false) { self.duplicate = duplicate; entered.assertForOverFulfill = false }
+    private var replies: [@Sendable (String?) -> Void] = []
     func hold(_ callback: @escaping @Sendable (String?) -> Void) {
         let immediate = lock.withLock {
             if released { return true }
-            reply = callback
+            replies.append(callback)
             return false
         }
         entered.fulfill()
-        if immediate { callback(nil) }
+        if immediate { callback(nil); if duplicate { callback("Late duplicate reply") } }
     }
     func release() {
-        let callback = lock.withLock {
+        let callbacks = lock.withLock {
             released = true
-            defer { reply = nil }
-            return reply
+            defer { replies.removeAll() }
+            return replies
         }
-        callback?(nil)
-        if duplicate { callback?("Late duplicate reply") }
+        for callback in callbacks {
+            callback(nil)
+            if duplicate { callback("Late duplicate reply") }
+        }
     }
 }
 
