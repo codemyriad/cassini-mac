@@ -135,11 +135,19 @@ private final class PreparationLifetime: @unchecked Sendable {
         spanSerial += 1; span = request; spanEnded = false
         transport?.clearBoundary()
     }
-    public func prepare(_ meeting: LibraryMeeting, autoplay: Bool = false) {
-        guard meeting.canPlaySession, key != meeting.libraryKey else { return }
+    private func select(_ meeting: LibraryMeeting) {
         stop(); Self.active?.stop(); Self.active = self
-        key = meeting.libraryKey; sources = meeting.audioTracks; isPreparing = true
+        key = meeting.libraryKey; sources = meeting.audioTracks
         pendingDuration = meeting.durationMs.map { max(0,Double($0)) }
+    }
+    public func prepare(_ meeting: LibraryMeeting, autoplay: Bool = false) {
+        guard meeting.canPlaySession else { return }
+        if key != meeting.libraryKey { select(meeting) }
+        guard !isPreparing, transport == nil else { return }
+        if autoplay, let duration = pendingDuration, duration > 0, positionMs >= duration {
+            requestedPosition = nil; positionMs = 0
+        }
+        isPreparing = true
         userPaused = !autoplay; wantsPlay = autoplay
         let current = generation, builder = build
         lifetime.task = Task { [weak self] in
@@ -167,6 +175,12 @@ private final class PreparationLifetime: @unchecked Sendable {
             }
             catch { self?.failed(error, generation: current) }
         }
+    }
+    /// A transcript click before Play moves the playhead without opening media.
+    public func seek(_ meeting: LibraryMeeting, toMs: Double) {
+        guard meeting.canPlaySession, toMs.isFinite else { return }
+        if key != meeting.libraryKey { select(meeting) }
+        seek(toMs:toMs)
     }
     public func seek(toMs: Double) {
         seek(toMs:toMs,following:true)
