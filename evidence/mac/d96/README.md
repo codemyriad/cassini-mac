@@ -31,7 +31,7 @@ export. ZIP output uses the existing sandbox-safe atomic SavePanel destination.
 ## Validation
 
 - 356 affected Kit/Library/Export headless tests pass after ordinary merge of
-  main `5d32593` (#210 included). The existing security-scoped bookmark case
+  main `d776181` (#210 and #244 included). The existing security-scoped bookmark case
   remains assigned to login-session CI.
 - The arm64 native app builds with Xcode 16.4. The actual sandboxed coordinator
   proof passes in the dedicated console user's Aqua session: multiple/ZIP
