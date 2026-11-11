@@ -40,13 +40,23 @@ final class OwnedCaptureTests: XCTestCase, @unchecked Sendable {
     func testLossStampIsOwnedByTheProducerAndDoesNotRestartOnRepeatedObservation() async throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Loss stamp",microphone:false)
-        let before = ProcessInfo.processInfo.systemUptime
-        try owner.browserLost(atMs:0)
-        let lost = try XCTUnwrap(owner.snapshot.browserLostUptime)
-        XCTAssertGreaterThanOrEqual(lost,before)
-        XCTAssertLessThanOrEqual(lost,ProcessInfo.processInfo.systemUptime)
-        try owner.browserLost(atMs:1000)
-        XCTAssertEqual(owner.snapshot.browserLostUptime,lost)
+        try owner.browserLost(atMs:0,observedAtUptime:20,transportAlive:false)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,20)
+        try owner.browserLost(atMs:1000,observedAtUptime:30,transportAlive:false)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,20)
+        try await owner.finish()
+    }
+    func testTransportFailureAdvancesTheEarlierPageLossStampOnce() async throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Page and transport loss",microphone:false)
+        try owner.browserLost(atMs:0,observedAtUptime:20,transportAlive:true)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,20)
+        try owner.browserLost(atMs:1000,observedAtUptime:30,transportAlive:true)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,20)
+        try owner.browserLost(atMs:2000,observedAtUptime:40,transportAlive:false)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,40)
+        try owner.browserLost(atMs:3000,observedAtUptime:50,transportAlive:false)
+        XCTAssertEqual(owner.snapshot.browserLostUptime,40)
         try await owner.finish()
     }
     func testFirstBrowserPacketPublishesWithoutMicrophoneAndSnapshotTracksEveryAck() async throws {
