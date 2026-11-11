@@ -38,8 +38,53 @@ def identity(kind):
     return dict(kind=kind, commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 xcode=subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
                 pins={name: digest(ROOT / name) for name in PINS},
-                arch=os.uname().machine if kind == 'swiftpm' else 'universal',
+                arch=product_arch() if kind == 'swiftpm' else 'universal',
                 **({'workspace': str(ROOT.resolve())} if kind == 'swiftpm' else {}))
+
+
+CPU_TYPES = {0x01000007: 'x86_64', 0x0100000c: 'arm64'}
+
+
+def product_arch():
+    """The architecture of this job's SwiftPM products. A rented Apple Silicon Mac builds and
+    runs the x86_64 products too, so the job names it (CASSINI_CI_ARCH), not the machine."""
+    name = os.environ.get('CASSINI_CI_ARCH') or os.uname().machine
+    if name not in CPU_TYPES.values():
+        raise ValueError('Unsupported product architecture: ' + name)
+    return name
+
+
+def macho_arch(path):
+    """The architecture of a thin little-endian 64-bit Mach-O file, 'universal' for a fat one,
+    'unknown' for any other Mach-O (32-bit, big-endian, another CPU), None for other files."""
+    with Path(path).open('rb') as stream:
+        header = stream.read(8)
+    if len(header) < 8:
+        return None
+    if header[:4] in (b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf'):
+        return 'universal'
+    if header[:4] in (b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf'):
+        return 'unknown'
+    if header[:4] != b'\xcf\xfa\xed\xfe':
+        return None
+    return CPU_TYPES.get(int.from_bytes(header[4:8], 'little'), 'unknown')
+
+
+def check_swiftpm_arch(expected):
+    """Every executable and test bundle the consumers run has exactly the named architecture,
+    and the test bundle `swift test --skip-build` loads is really there: a layout this check
+    does not know must fail, not pass with nothing inspected."""
+    folder = ROOT/'.build/debug'
+    if not folder.is_dir():
+        raise ValueError('No SwiftPM products at .build/debug')
+    files = [path for path in folder.iterdir() if path.is_file() and not path.is_symlink()]
+    bundles = [path for path in folder.glob('*.xctest/Contents/MacOS/*') if path.is_file()]
+    for path in sorted(files + bundles):
+        found = macho_arch(path)
+        if found is not None and found != expected:
+            raise ValueError('Product %s is %s, not %s' % (path.relative_to(ROOT), found, expected))
+    if not any(macho_arch(path) == expected for path in bundles):
+        raise ValueError('No %s test bundle among the SwiftPM products' % expected)
 
 
 # Release tooling that once lived in SwiftPM's .build (release.py now keeps it in build/). A
@@ -63,6 +108,8 @@ def pack(kind, destination):
         paths = ['build/Build/Products/Debug'] + [str(p.relative_to(ROOT)) for p in (ROOT/'build/Build/Products').glob('*.xctestrun')]
         if len(paths) < 2:
             raise ValueError('Missing build-for-testing test specification')
+    if kind == 'swiftpm':
+        check_swiftpm_arch(product_arch())
     with tarfile.open(archive, 'w:gz', compresslevel=1, dereference=False) as target:
         for name in paths:
             if not (ROOT/name).exists():
@@ -117,6 +164,8 @@ def unpack(kind, source):
             if workspace != expected['workspace']:
                 raise WorkspaceMismatch('SwiftPM workspace differs: ' + workspace + ' -> ' + expected['workspace'])
         packed.extractall(ROOT, members=members)
+    if kind == 'swiftpm':
+        check_swiftpm_arch(expected['arch'])
     print('Restored verified', kind, 'products for', expected['commit'])
 
 
@@ -132,7 +181,9 @@ def restore(kind, source):
         unpack(kind, source)
     except WorkspaceMismatch as error:
         print(str(error) + '; building test products in this checkout', flush=True)
-        subprocess.run(['swift', 'build', '--build-tests'], cwd=ROOT, check=True)
+        # The job's architecture, not the machine's: a rented Mac cross-compiles x86_64 products.
+        subprocess.run(['swift', 'build', '--build-tests', '--arch', product_arch()], cwd=ROOT, check=True)
+        check_swiftpm_arch(product_arch())
 
 
 def stage_assets(kind, destination):
