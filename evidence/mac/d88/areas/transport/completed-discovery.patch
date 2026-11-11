@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/PipeTransport.swift
++++ b/Sources/CassiniBrowserControl/PipeTransport.swift
+@@ -209 +209 @@
+-                    if lstat(leaseURL.path,&info) != 0 && errno == ENOENT { PipeFiles.retire(folder) }
++                    if lstat(leaseURL.path,&info) != 0 && errno == ENOENT { /* Mutation keeps stale publication. */ }

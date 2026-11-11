@@ -7,11 +7,8 @@ import Darwin
 private final class Peers: @unchecked Sendable {
     private let lock = NSLock()
     private var values: [UUID] = []
-    private var releaseSucceeded = false
     func add(_ id: UUID) { lock.lock(); values.append(id); lock.unlock() }
     func all() -> [UUID] { lock.lock(); defer { lock.unlock() }; return values }
-    func released(_ value: Bool) { lock.lock(); releaseSucceeded = value; lock.unlock() }
-    func wasReleased() -> Bool { lock.lock(); defer { lock.unlock() }; return releaseSucceeded }
 }
 
 final class PipeTransportTests: XCTestCase {
@@ -31,8 +28,7 @@ final class PipeTransportTests: XCTestCase {
         XCTAssertEqual(mkfifo(orphan.appendingPathComponent("request").path,0o600),0)
         let server = BrowserPipeServer(root:root,connected:{ _ in XCTFail("No lease means no peer") },received:{ _,_ in },disconnected:{ _ in })
         try server.start(); defer { server.stop() }
-        let deadline = Date().addingTimeInterval(2)
-        while FileManager.default.fileExists(atPath:orphan.path) && Date() < deadline { Thread.sleep(forTimeInterval:0.01) }
+        server.discoverNow()
         XCTAssertFalse(FileManager.default.fileExists(atPath:orphan.path))
     }
     func testServerClosedPeerIsRetiredAndNotReadoptedWhileClientOwnsItsLease() throws {
@@ -46,7 +42,7 @@ final class PipeTransportTests: XCTestCase {
         try client.send(Data("{\"close\":true}".utf8))
         wait(for:[gone],timeout:3)
         XCTAssertFalse(FileManager.default.fileExists(atPath:folder.path))
-        Thread.sleep(forTimeInterval:0.35) // Three discovery passes with the client still retained.
+        for _ in 0..<3 { server.discoverNow() } // Actual discovery passes, with the lease retained.
         XCTAssertEqual(peers.all().count,1)
         withExtendedLifetime(client) {}
     }
@@ -72,8 +68,17 @@ final class PipeTransportTests: XCTestCase {
     }
     func testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = TransportReadClock(), entered = expectation(description:"Reader consumed partial header"), release = DispatchSemaphore(value:0)
         let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in try peer.send(data) },disconnected:{ _ in })
-        try server.start(); defer { server.stop() }
+        server.readClock = { clock.now() }
+        server.readProgress = { count in
+            guard count == 2, clock.claimPartial() else { return }
+            entered.fulfill()
+            if release.wait(timeout:.now() + 10) == .timedOut {
+                XCTFail("Timed out waiting to release the partial reader")
+            }
+        }
+        try server.start(); defer { release.signal(); server.stop() }
         let first = try PipeEndpoint(root:root,role:.control,browser:nil)
         let folder = try XCTUnwrap(FileManager.default.contentsOfDirectory(at:root.appendingPathComponent("clients"),includingPropertiesForKeys:nil).first { UUID(uuidString:$0.lastPathComponent) != nil })
         let second = try PipeEndpoint(root:root,role:.control,browser:nil)
@@ -84,19 +89,19 @@ final class PipeTransportTests: XCTestCase {
         var size = UInt32(payload.count).littleEndian
         let header = withUnsafeBytes(of:&size) { Data($0) }
         try FrameIO.write(fd,bytes:header.prefix(2),cancel:Cancellation())
-        let release = DispatchSemaphore(value:0), done = expectation(description:"fragmented frame complete"), result = Peers()
-        DispatchQueue.global().async {
-            defer { done.fulfill() }
-            result.released(release.wait(timeout:.now() + 5) == .success)
-            Thread.sleep(forTimeInterval:0.35) // Exceeds the former 250ms retry boundary.
-            try? FrameIO.write(fd,bytes:header.suffix(2) + payload,cancel:Cancellation())
+        guard XCTWaiter.wait(for:[entered],timeout:3) == .completed else {
+            XCTFail("Reader did not consume the partial header")
+            return
         }
         let other = Data("{\"type\":\"future\",\"body\":\"independent\"}".utf8)
         try second.send(other)
-        XCTAssertEqual(try second.receive(),try FrameIO.normalized(other))
+        let secondReply = try second.receive(deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000)
+        XCTAssertEqual(secondReply,try FrameIO.normalized(other))
+        clock.advance(350_000_000) // Cross the former 250 ms retry boundary virtually.
         release.signal()
-        XCTAssertEqual(try first.receive(),try FrameIO.normalized(payload))
-        wait(for:[done],timeout:6); XCTAssertTrue(result.wasReleased())
+        try FrameIO.write(fd,bytes:header.suffix(2) + payload,cancel:Cancellation())
+        let firstReply = try first.receive(deadline:DispatchTime.now().uptimeNanoseconds + 6_000_000_000)
+        XCTAssertEqual(firstReply,try FrameIO.normalized(payload))
     }
     func testPeerDeathBeforeItsFirstMessageReleasesTheServerSide() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -109,13 +114,15 @@ final class PipeTransportTests: XCTestCase {
     }
     func testStoppedServerClosesAnIdlePeerWithoutACommand() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let waiting = expectation(description:"Idle server reader entered its wait")
+        waiting.assertForOverFulfill = false
         let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ _,_ in },disconnected:{ _ in })
+        server.readProgress = { if $0 == 0 { waiting.fulfill() } }
         try server.start(); defer { server.stop() }
         let client = try PipeEndpoint(root:root,role:.control,browser:nil)
-        let stopped = expectation(description:"stop after peer begins waiting")
-        DispatchQueue.global().asyncAfter(deadline:.now() + .milliseconds(50)) { server.stop(); stopped.fulfill() }
+        wait(for:[waiting],timeout:3)
+        server.stop()
         XCTAssertNil(try client.receive())
-        wait(for:[stopped],timeout:3)
     }
     func testBackpressureDisconnectsOnlyTheSlowPeer() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -145,13 +152,12 @@ final class PipeTransportTests: XCTestCase {
         try first.start(); defer { first.stop(); second.stop() }
         let client = try PipeEndpoint(root:root,role:.control,browser:nil)
         XCTAssertThrowsError(try second.start())
+        let retired = expectation(description:"Old server released its lease after peer retirement")
+        first.stopCompleted = { retired.fulfill() }
         first.stop()
         XCTAssertNil(try client.receive())
-        let deadline = Date().addingTimeInterval(2)
-        while true {
-            do { try second.start(); break }
-            catch { if Date() >= deadline { throw error }; Thread.sleep(forTimeInterval:0.01) }
-        }
+        wait(for:[retired],timeout:3)
+        try second.start()
     }
     func testAbandonedStagingIsRemovedButLiveStagingIsPreserved() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
@@ -168,8 +174,7 @@ final class PipeTransportTests: XCTestCase {
         }
         let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ _,_ in },disconnected:{ _ in })
         try server.start(); defer { server.stop() }
-        let deadline = Date().addingTimeInterval(2)
-        while FileManager.default.fileExists(atPath:stale.path) && Date() < deadline { Thread.sleep(forTimeInterval:0.01) }
+        server.discoverNow()
         XCTAssertFalse(FileManager.default.fileExists(atPath:stale.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath:live.appendingPathComponent("lease").path))
     }
@@ -186,4 +191,13 @@ final class PipeTransportTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at:alias,withDestinationURL:root)
         XCTAssertThrowsError(try PipeEndpoint(root:alias,role:.control,browser:nil))
     }
+}
+
+private final class TransportReadClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: UInt64 = 1_000_000
+    private var partial = false
+    func claimPartial() -> Bool { lock.withLock { if partial { return false }; partial = true; return true } }
+    func now() -> UInt64 { lock.withLock { value } }
+    func advance(_ ns: UInt64) { lock.withLock { value += ns } }
 }
