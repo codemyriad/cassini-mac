@@ -54,6 +54,32 @@ struct MeetingTimeR2LibraryTests {
         #expect(format.searchDate(nil as MeetingTime?)==unknown)
         #expect(format.previewSubtitle(nil as MeetingTime?,durationMs:nil,received:true).contains(received))
     }
+    @Test(arguments:["not-a-date","2026-02-30T10:00:00","2001-02-03T04:05:06Z","2001-02-03T04:05:06+09:00"])
+    func malformedCivilFilesShowUnknownAndSortByFallback(_ label:String) throws {
+        let (url,base)=try vector("028-date-is-created-at")
+        var manifest=try #require(base.manifest?.raw),info=try #require(manifest["meeting"])
+        info=try info.setting("recordedAtUtc",to:nil).setting("recordedAtLocal",to:.string(label))
+        manifest=try manifest.setting("meeting",to:info)
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer {try? FileManager.default.removeItem(at:root)}
+        let target=root.appendingPathComponent("invalid-local.opus")
+        _=try OpusStreamFile.rewrite(Data(contentsOf:url),tags:PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)),to:target)
+        let file=try CassiniReader.read(contentsOf:target)
+        let opened=MeetingPresentation.external(file,url:target)
+        let imported=try LibraryImport.copy(target,into:root.appendingPathComponent("Library"))
+        let rebuilt=try #require(LibraryScanner(root:imported.folder.deletingLastPathComponent()).scan().meetings.first)
+        let format=LibraryFormat(timeZone:TimeZone(secondsFromGMT:0)!,locale:Locale(identifier:"en_GB"),language:.en)
+        for meeting in [opened,imported,rebuilt] {
+            #expect(meeting.meetingTime==nil && meeting.start==nil)
+            let fallback=try #require(meeting.sortingFallback)
+            #expect(meeting.timeSortKey==MeetingTime.sortKey(for:fallback))
+            var known=meeting;known.start=fallback.addingTimeInterval(-60)
+            #expect(LibraryScanner.ordered(meeting,known) && !LibraryScanner.ordered(known,meeting))
+            #expect(LibraryScan(meetings:[meeting],issues:[]).groups(format:format).first?.title=="Date unknown")
+            let subtitle=format.previewSubtitle(meeting.meetingTime,durationMs:meeting.durationMs,received:true)
+            #expect(subtitle.contains("Date unknown") && subtitle.contains("Received") && !subtitle.contains(label))
+        }
+    }
     @Test func quickLookDateAssemblyUsesTheSharedRecordingTime() throws {
         let format=LibraryFormat(timeZone:TimeZone(secondsFromGMT:-12*3600)!,locale:Locale(identifier:"en_GB"),language:.en)
         let known=try #require(MeetingTime.parseInstant("2026-11-09T09:31:48.250Z"))

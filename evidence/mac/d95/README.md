@@ -192,3 +192,46 @@ results are recorded separately; readiness requires complete exact-head CI.
 
 The Debug arm64 app and Quick Look build and all 56 CI contracts pass with
 Xcode 16.4. Generated project/workspace files are restored after the build.
+
+## Agy review coverage
+
+All six findings in `cassini-mac-248-agy.md` are addressed in the source at
+44e0294. This follow-up adds independent export receipts and an explicit
+malformed-local Library regression:
+
+1. `PreviewText` calls `quickLookRecordingDate`; `SessionDate` is removed.
+   `quickLookDateAssemblyUsesTheSharedRecordingTime` covers 027/028/029 and
+   creation-only metadata, including a viewer zone on the previous day.
+2. Direct-copy eligibility requires canonical recording and creation UTC;
+   rebuilt manifests normalize both fields. The lowercase test checks exact
+   strings, mirrors and re-import for all four casing forms, both creation
+   forms, and direct/Library export. Both canonical production mutations fail
+   executed assertions again after adding the independent receipts.
+3. Legacy DATE accepts spaces/padding and compares normalized instants.
+   Actual input/export files are compared against the pinned reader.
+4. Civil labels require valid fields. `malformedCivilFilesShowUnknownAndSortByFallback`
+   opens, imports and rebuilds four invalid labels; verifies unknown grouping,
+   retained Received subtitles and ordering by the known fallback.
+5. Library/Search compare one precision-preserving key. Tests cover every
+   mixed-time permutation and fractions below Foundation Date precision.
+6. Optional-time subtitle helpers render unconditionally. All six languages
+   retain duration, provenance and Search hit position.
+
+To reproduce the independent check, set `CASSINI_D95_R2_CASES` to an external
+empty directory while running the focused export tests, then run:
+
+```
+python3 evidence/mac/d95/check-reference-when.py FORMAT_CHECKOUT CASSINI_INSPECT \
+  --extra-cases GENERATED_CASES --validate-exports
+```
+
+The checker verifies the reference reader and timestamp schema are unchanged at
+32f37a6, compares the actual `when` result, and validates generated timestamp
+fields against that schema's patterns and calendar/clock validity. The current
+receipt has 59 matching files (29 vectors, 30 generated) and 26 schema-checked
+exports. Malformed input files are intentionally excluded from writer-schema
+checks. Lowercase inputs follow the explicitly requested Mac read behavior;
+canonical outputs are compared to the independent reader.
+
+After this coverage addition, all 434 affected tests, 44 restored focused tests,
+and 56 CI contracts pass. Production source is unchanged from 44e0294.

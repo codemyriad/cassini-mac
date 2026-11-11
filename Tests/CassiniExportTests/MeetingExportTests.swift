@@ -241,7 +241,7 @@ struct MeetingExportTests {
         let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
         try MeetingRename.apply("Edited title",to:imported)
         let opened=MeetingPresentation.external(parsed,url:input)
-        for meeting in [opened,imported] {
+        for (index,meeting) in [opened,imported].enumerated() {
             let artifact=try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
             let file=try CassiniReader.read(contentsOf:artifact.url)
             #expect(file.state == .ok)
@@ -252,6 +252,11 @@ struct MeetingExportTests {
             #expect(file.manifest?.meeting.createdAtUtc=="2026-11-09T10:47:02Z")
             let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent(UUID().uuidString))
             #expect(again.meetingTime?.instant==expected)
+            if let output=ProcessInfo.processInfo.environment["CASSINI_D95_R2_CASES"] {
+                let folder=URL(fileURLWithPath:output);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+                let name="canonical-\(recorded.contains("t"))-\(recorded.hasSuffix("z"))-\(lowercaseCreation)-\(index)-export.opus"
+                try Data(contentsOf:artifact.url).write(to:folder.appendingPathComponent(name))
+            }
         }
     }
     @Test(arguments:[false,true])

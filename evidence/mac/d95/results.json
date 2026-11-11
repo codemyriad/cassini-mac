@@ -1,9 +1,9 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
-  "mainMerged": "89c568b",
-  "headlessTests": 433,
+  "mainMerged": "fc2ad76",
+  "headlessTests": 434,
   "ciContracts": 56,
-  "restoredFocusedTests": 43,
+  "restoredFocusedTests": 44,
   "fullConformance": {
     "pass": 29,
     "warn": 0,
@@ -31,14 +31,15 @@
     "Sources/CassiniLibrary/Metadata.swift": "cf6e380ed7090604a192e2712e783dbde21415bbcf9ecba9071ffdd09492efa7",
     "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f",
     "Sources/CassiniSearch/SearchIndex.swift": "496a853f8e35fe1136f300db48d89ae0c4949176ae06602ccc9bbbd80ff1431a",
-    "Tests/CassiniExportTests/MeetingExportTests.swift": "92f8653c4e55874639c6a873354efcdea922817f082c31e513a29d5cb7a5bc2d",
+    "Tests/CassiniExportTests/MeetingExportTests.swift": "fd17b45c8359e6199ce785a22e3cff33ab003721005eb09f096c8ac3b8ba6056",
     "Tests/CassiniExportTests/RecordingTimeR2ExportTests.swift": "0008d0b463c1f7877aa1521466a36f58b7eb179a1eeffab5706be8e8bd2d4514",
     "Tests/CassiniKitTests/MeetingTimeTests.swift": "46c556906d5e0149b2185143f50bb945151ca45aea5903872b2695ea3dd9b16e",
-    "Tests/CassiniLibraryTests/MeetingTimeR2LibraryTests.swift": "1a1e716dd3450dc3889f749a15a2c8d22d9b6cb9c0f2b476fc949eadcf119a75",
+    "Tests/CassiniLibraryTests/MeetingTimeR2LibraryTests.swift": "4cc02907358b06093b7ca874946ab579ea4ece0aeda5493c88c8e148d23ac261",
     "Tests/CassiniLibraryTests/MeetingTimeTests.swift": "059c1a0479b62097ce769df8b9cf15e87b834d019512d0a96469d57bec84b185",
     "Tests/CassiniLibraryTests/SharedLibraryVectorsTests.swift": "dfdf82102663cebf91a02a47200b4738cc582fd435840d57e49404e16c2159a7",
     "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
-    "Tests/CassiniSearchTests/SearchTests.swift": "9deba70b2d46bded06f7ba38fd48df2764809d272b2decfdc5499064111f841a"
+    "Tests/CassiniSearchTests/SearchTests.swift": "9deba70b2d46bded06f7ba38fd48df2764809d272b2decfdc5499064111f841a",
+    "evidence/mac/d95/check-reference-when.py": "1464687d224ccf21b2f18ea99ac3339414693e7789c5251aac4e2358b6c70198"
   },
   "mutations": {
     "utc-priority": {
@@ -124,9 +125,10 @@
   },
   "referenceWhen": {
     "pin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
-    "matchingCases": 43,
+    "matchingCases": 59,
     "vectors": 29,
-    "generatedRoundtripFiles": 14
+    "generatedRoundtripFiles": 30,
+    "timestampSchemaCheckedExports": 26
   },
   "processTimeZones": [
     "EST5EDT",
@@ -180,7 +182,7 @@
     "lowercaseRFC3339": "read, compare, import naming and export/reimport",
     "nativeAppBuild": "Debug arm64 app and Quick Look, Xcode 16.4; generated project; ad-hoc signing: passed",
     "exactHeadCI": "pending",
-    "headlessTestsAfterMain": 433,
+    "headlessTestsAfterMain": 434,
     "ciContractsAfterMain": 56
   },
   "priorValidatedRevision": "60e30942d169ab29ab8188128fbed58ef71a349d",
@@ -196,5 +198,20 @@
     "nativeBuild": "passed",
     "ciContracts": 56,
     "validationScope": "source hashes above; exact-head CI pending"
+  },
+  "agyReview": {
+    "sourceFixesAt": "44e0294dc65abe987004089362ff83bc672b8b23",
+    "allSixFindingsCovered": true,
+    "explicitMalformedCivilLibraryTests": "direct-open, import, rebuild; unknown subtitle/group; sorting fallback",
+    "canonicalProductionMutationsRechecked": [
+      "canonical-copy",
+      "canonical-creation"
+    ],
+    "referenceMatchingFiles": 59,
+    "timestampSchemaCheckedExports": 26,
+    "restoredFocusedTests": 44,
+    "exactHeadCI": "pending",
+    "affectedTests": 434,
+    "ciContracts": 56
   }
 }
