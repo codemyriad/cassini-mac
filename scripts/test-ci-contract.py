@@ -399,12 +399,31 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('sudo xcode-select',body)
         keys=[line for line in producer.splitlines() if any(marker in line for marker in
             ['key: swiftpm-','restore-keys: swiftpm-','key: pinned-fetches-','restore-keys: pinned-fetches-'])]
-        self.assertEqual(len(keys),4)
+        self.assertEqual(len(keys),3)
         for line in keys:self.assertIn('steps.xcode.outputs.fingerprint',line)
         for line in keys:
             if 'swiftpm-' in line:self.assertIn('steps.xcode.outputs.workspace',line)
             else:self.assertNotIn('steps.xcode.outputs.workspace',line)
         self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
+
+
+class CompiledCacheCoherence(unittest.TestCase):
+    def test_changed_inputs_cannot_restore_partial_compiled_objects(self):
+        body=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        cache=body.split('path: .build\n',1)[1].split('      - name:',1)[0]
+        self.assertNotIn('restore-keys:',cache,"Cross-input restoration can retain an incompatible native client")
+        key=re.search(r'(?m)^\s+key: (.+)$',cache).group(1)
+        self.assertIn('steps.swiftpm_key.outputs.hash',key)
+        self.assertIn('matrix.arch',key)
+        self.assertIn('steps.xcode.outputs.fingerprint',key)
+        self.assertIn('steps.xcode.outputs.workspace',key)
+        self.assertNotIn('key: swiftpm-${{ matrix.arch }}',cache,"Invalidate already-saved incoherent objects")
+        inputs=body.split('- id: swiftpm_key',1)[1].split('- uses:',1)[0]
+        package=(ROOT/'Package.swift').read_text()
+        custom_roots={p.split('/',1)[0]+'/**' for p in re.findall(r'path:\s*"([^"]+)"',package)}
+        self.assertTrue(custom_roots,"Exercise the package's custom target roots")
+        for pattern in ('Package.swift','Package.resolved','Sources/**','Tests/**',*sorted(custom_roots)):
+            self.assertIn(pattern,inputs)
 
 
 class ProductArchitecture(unittest.TestCase):
