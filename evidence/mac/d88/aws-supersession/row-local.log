@@ -1,0 +1,143 @@
+Building for debugging...
+[0/28] Write sources
+[4/28] Write swift-version--79AA4F9932D1E87A.txt
+[6/17] Compiling CassiniModelsTests ModelSupersessionTests.swift
+[7/17] Emitting module CassiniModelsTests
+[8/17] Emitting module CassiniPlaybackTests
+[9/17] Compiling CassiniPlaybackTests SessionPlaybackTests.swift
+[10/18] Compiling CassiniBrowserControl CaptureInputLifecycle.swift
+[11/18] Emitting module CassiniBrowserControl
+[12/18] Compiling CassiniBrowserControl BrowserAudioBroker.swift
+[12/21] Write Objects.LinkFileList
+[15/37] Emitting module CassiniBrowserControlTests
+[15/42] Linking cassini-browser-host
+[16/42] Linking cassini-control-host
+[17/42] Applying cassini-browser-host
+[18/42] Applying cassini-control-host
+[20/42] Compiling CassiniBrowserControlTests OwnedTerminalEventTests.swift
+[21/42] Compiling CassiniBrowserControlTests PassiveWebRTCStartTests.swift
+[22/42] Compiling CassiniBrowserControlTests R94CommittedResumeTests.swift
+[23/42] Compiling CassiniBrowserControlTests RealProducerStartTests.swift
+[24/42] Compiling CassiniBrowserControlTests VerifiedAdmissionTests.swift
+[25/42] Compiling CassiniPlaybackTests ListenControllerTests.swift
+[26/42] Compiling CassiniBrowserControlTests AudioBrokerTests.swift
+[27/42] Compiling CassiniBrowserControlTests ControlServiceTests.swift
+[28/42] Compiling CassiniBrowserControlTests D52CallOwnershipTests.swift
+[29/42] Compiling CassiniBrowserControlTests D52CaptureRecordTests.swift
+[30/42] Compiling CassiniBrowserControlTests D52ResumeTests.swift
+[31/42] Compiling CassiniBrowserControlTests D69WriterLossTests.swift
+[32/42] Compiling CassiniBrowserControlTests DOMProvenanceTests.swift
+[33/42] Compiling CassiniBrowserControlTests InputLifecycleTests.swift
+[34/42] Compiling CassiniBrowserControlTests OwnedCallProofLossTests.swift
+[35/42] Compiling CassiniBrowserControlTests OwnedCaptureTests.swift
+[36/42] Compiling CassiniBrowserControlTests D52SourceOutcomeTests.swift
+[37/42] Compiling CassiniBrowserControlTests D52TransportLivenessTests.swift
+[38/42] Compiling CassiniBrowserControlTests D58RefusalWriterTests.swift
+[39/42] Compiling CassiniBrowserControlTests D58ResumeRefusalTests.swift
+[40/42] Compiling CassiniBrowserControlTests D61ClockFactsBrokerTests.swift
+[40/42] Write Objects.LinkFileList
+[41/42] Linking CassiniKitPackageTests
+Build complete! (4.39s)
+Test Suite 'Selected tests' started at 2026-11-10 17:05:25.429.
+Test Suite 'CassiniKitPackageTests.xctest' started at 2026-11-10 17:05:25.430.
+Test Suite 'CassiniKitPackageTests.xctest' passed at 2026-11-10 17:05:25.430.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-11-10 17:05:25.430.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ModelSupersessionTests started.
+◇ Suite SessionPlaybackTests started.
+◇ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() started.
+◇ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) started.
+◇ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() started.
+◇ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) started.
+◇ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() started.
+◇ Test symlinkedModelNamespaceCannotRedirectCleanup() started.
+◇ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) started.
+◇ Passing 1 argument failure → "missing" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "missing-notice" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument cancel → false to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument failure → "same-size-corrupt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument cancel → true to replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:)
+◇ Passing 1 argument failure → "bad-receipt" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument failure → "partial" to obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:)
+◇ Passing 1 argument idOnly → false to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Passing 1 argument idOnly → true to symlinkedCacheAncestorsCannotRedirectCleanup(_:)
+◇ Test timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() started.
+✔ Test oppositeConcurrentRetirementsLeaveOneFullyVerifiedCopy() passed after 0.014 seconds.
+✔ Test timelineTracksTargetMergeAndStopAndSnappedSeeksKeepListening() passed after 0.003 seconds.
+◇ Test queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() started.
+✔ Test queuedEOFWithinOneAudioFrameCompletesTheOwnedSpan() passed after 0.001 seconds.
+◇ Test frozenListeningPreviewCreatesNoTransportOrPlayback() started.
+✔ Test frozenListeningPreviewCreatesNoTransportOrPlayback() passed after 0.001 seconds.
+◇ Test eofDistinguishesAnExplicitPauseFromANaturalBackendPause() started.
+✔ Test symlinkedModelNamespaceCannotRedirectCleanup() passed after 0.017 seconds.
+✔ Test eofDistinguishesAnExplicitPauseFromANaturalBackendPause() passed after 0.001 seconds.
+✔ Test symlinkedReplacementCannotAuthorizeOldIdDeletion() passed after 0.017 seconds.
+◇ Test rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() started.
+✔ Test rowStopPausesInPlaceAndFencesQueuedEndWhilePreparingOrPlaying() passed after 0.001 seconds.
+◇ Test overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() started.
+✔ Test overlappingChainKeepsItsLongestEndAndFinishedPreviousTarget() passed after 0.001 seconds.
+◇ Test resumingAfterAClearedSpanReturnsToNormalEOFBehaviour() started.
+✔ Test resumingAfterAClearedSpanReturnsToNormalEOFBehaviour() passed after 0.001 seconds.
+◇ Test spanIsUncappedClampedAndKeepsItsEndWithoutRewinding() started.
+✔ Test spanIsUncappedClampedAndKeepsItsEndWithoutRewinding() passed after 0.001 seconds.
+◇ Test replacedSeeksAndBoundariesCannotFinishOrResumeTheNextSpan() started.
+✔ Test obsoleteCopyStaysUntilTheReplacementFullyVerifies(_:) passed after 0.018 seconds.
+✔ Test replacedSeeksAndBoundariesCannotFinishOrResumeTheNextSpan() passed after 0.001 seconds.
+◇ Test pauseSeekRateAndClearRespectTheCurrentSpan() started.
+✔ Test pauseSeekRateAndClearRespectTheCurrentSpan() passed after 0.001 seconds.
+◇ Test invalidBoundsDoNotStartOrPrepareAudio() started.
+✔ Test invalidBoundsDoNotStartOrPrepareAudio() passed after 0.001 seconds.
+◇ Test pauseAtABoundaryInvalidatesQueuedAdvanceUntilResume() started.
+✔ Test pauseAtABoundaryInvalidatesQueuedAdvanceUntilResume() passed after 0.001 seconds.
+◇ Test exactlyTwoSecondsDoesNotChain() started.
+✔ Test exactlyTwoSecondsDoesNotChain() passed after 0.001 seconds.
+◇ Test autoAdvanceUsesBoundaryEventsAndNearbyTurnsAreOneContinuousSpan() started.
+✔ Test autoAdvanceUsesBoundaryEventsAndNearbyTurnsAreOneContinuousSpan() passed after 0.001 seconds.
+◇ Test steppingInsideAChainSkipsLeadInAndShortFirstTurnClampsAtZero() started.
+✔ Test steppingInsideAChainSkipsLeadInAndShortFirstTurnClampsAtZero() passed after 0.001 seconds.
+◇ Test nextDoesNotSkipATurnAfterManualSeekIntoItsLeadIn() started.
+✔ Test nextDoesNotSkipATurnAfterManualSeekIntoItsLeadIn() passed after 0.001 seconds.
+◇ Test seeksFollowTheTargetAndStartingMidMeetingUsesTheFirstTurnNotOver() started.
+✔ Test seeksFollowTheTargetAndStartingMidMeetingUsesTheFirstTurnNotOver() passed after 0.001 seconds.
+◇ Test staleCompletionCannotFinishPlayAgainOfTheSameTurn() started.
+✔ Test staleCompletionCannotFinishPlayAgainOfTheSameTurn() passed after 0.001 seconds.
+◇ Test mergeRecomputationKeepsPlayAgainAndAReplacedTargetInvalidatesCallbacks() started.
+✔ Test mergeRecomputationKeepsPlayAgainAndAReplacedTargetInvalidatesCallbacks() passed after 0.001 seconds.
+◇ Test speakerStepsUsePaneOrderAndStopDoesNotPauseOrSeek() started.
+✔ Test speakerStepsUsePaneOrderAndStopDoesNotPauseOrSeek() passed after 0.001 seconds.
+◇ Test pageSwitchGlobalStopAndFailureEndListeningAndFenceLateEvents() started.
+✔ Test pageSwitchGlobalStopAndFailureEndListeningAndFenceLateEvents() passed after 0.001 seconds.
+◇ Test explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() started.
+✔ Test explicitPlayFromHereResumesAndNeverTogglesQueuedPlayOff() passed after 0.001 seconds.
+◇ Test playFromASearchHitSurvivesAsynchronousPreparation() started.
+✔ Test playFromASearchHitSurvivesAsynchronousPreparation() passed after 0.001 seconds.
+◇ Test aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() started.
+✔ Test aQueuedSearchPlayCanBeCancelledBeforePreparationFinishes() passed after 0.001 seconds.
+◇ Test pendingAndPreparedSeeksClampToTheActualAudioDuration() started.
+✔ Test pendingAndPreparedSeeksClampToTheActualAudioDuration() passed after 0.001 seconds.
+◇ Test pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() started.
+✔ Test pausedPreparationSeeksWithoutStartingAndSupersededSeeksCannotResume() passed after 0.001 seconds.
+◇ Test finalSeekFailureReturnsToPlayAndReportsOnce() started.
+✔ Test finalSeekFailureReturnsToPlayAndReportsOnce() passed after 0.001 seconds.
+◇ Test pauseRemainsPossibleAfterEligibilityChanges() started.
+✔ Test pauseRemainsPossibleAfterEligibilityChanges() passed after 0.001 seconds.
+◇ Test refreshStopsInvalidChangedAndOfflineSources() started.
+✔ Test refreshStopsInvalidChangedAndOfflineSources() passed after 0.001 seconds.
+◇ Test backendPauseAndMidstreamFailureUpdateUIOnce() started.
+✔ Test backendPauseAndMidstreamFailureUpdateUIOnce() passed after 0.001 seconds.
+◇ Test endWaitsForRewindAndAQueuedPlayCanBeCancelled() started.
+✔ Test endWaitsForRewindAndAQueuedPlayCanBeCancelled() passed after 0.001 seconds.
+◇ Test replayStartsOnlyAfterRewindAndStopInvalidatesCompletion() started.
+✔ Test replayStartsOnlyAfterRewindAndStopInvalidatesCompletion() passed after 0.001 seconds.
+◇ Test abandonedPreparationIsCancelledWithItsOwner() started.
+✔ Test abandonedPreparationIsCancelledWithItsOwner() passed after 0.001 seconds.
+✔ Suite SessionPlaybackTests passed after 0.021 seconds.
+✔ Test verifiedReplacementRetiresOnlyTheOldIdAndKeepsAcceptedJobFiles() passed after 0.021 seconds.
+✔ Test symlinkedCacheAncestorsCannotRedirectCleanup(_:) passed after 0.021 seconds.
+✔ Test replacementIsRecheckedAfterItsLockAndCancellationKeepsOld(_:) passed after 0.070 seconds.
+✔ Suite ModelSupersessionTests passed after 0.070 seconds.
+✔ Test run with 40 tests passed after 0.070 seconds.

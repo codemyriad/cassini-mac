@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('products', type=Path)
 parser.add_argument('output', type=Path)
+parser.add_argument('--scheduling-output',type=Path,required=True)
 args = parser.parse_args()
 products = args.products.resolve()
 objects = [products/(name+'.o') for name in ['CassiniSpectrogram','CassiniRecording','CassiniBrowserControl','CassiniLibrary','CassiniKit']]
@@ -44,3 +45,10 @@ subprocess.run(command,check=True)
 subprocess.run(['codesign','--force','--sign','-','--timestamp=none',str(args.output)],check=True)
 subprocess.run(['codesign','--verify','--strict',str(args.output)],check=True)
 print('Compiled optimised production native renderer with same-build Release SDK objects; no execution')
+
+args.scheduling_output.parent.mkdir(parents=True,exist_ok=True)
+subprocess.run(['xcrun','--sdk','macosx','swiftc','-sdk',sdk,'-O','-parse-as-library','-swift-version','5',
+    '-target',platform.machine()+'-apple-macos15.0','-I',str(products),
+    str(ROOT/'Spikes/Spectrogram/Budget.swift'),str(ROOT/'Spikes/Spectrogram/CheckScheduling.swift'),
+    *map(str,objects),'-o',str(args.scheduling_output)],check=True)
+print('Compiled SDK-only scheduling checker; no execution')

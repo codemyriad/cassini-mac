@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Hermetic download recovery regressions; no network or engine loading."""
 import hashlib
+import http.client
 import importlib.util
 import io
 from pathlib import Path
@@ -47,6 +48,22 @@ class FetchRecovery(unittest.TestCase):
         self.assertEqual(list(self.cache.iterdir()),[])
         with patch.object(fetcher.urllib.request,'urlopen',return_value=io.BytesIO(self.good)):
             self.assertEqual(fetcher.fetch(self.pin,self.cache).read_bytes(),self.good)
+
+    def test_disconnected_redirector_uses_verified_mirror_without_more_attempts(self):
+        mirrors=('https://mirror-one.invalid/archive','https://mirror-two.invalid/archive')
+        errors=[http.client.RemoteDisconnected('no response'),OSError('mirror unavailable'),io.BytesIO(self.good)]
+        with patch.object(fetcher.urllib.request,'urlopen',side_effect=errors) as request,patch.object(fetcher.time,'sleep'):
+            self.assertEqual(fetcher.fetch(self.pin,self.cache,fallback_urls=mirrors).read_bytes(),self.good)
+            self.assertEqual([call.args[0] for call in request.call_args_list],[self.pin['url'],*mirrors])
+            self.assertTrue(all(call.kwargs['timeout']==60 for call in request.call_args_list))
+        self.assertEqual(list(self.cache.glob('*.part')),[])
+
+    def test_bad_mirrors_still_fail_and_never_publish_a_cache(self):
+        mirrors=('https://mirror-one.invalid/archive','https://mirror-two.invalid/archive')
+        with patch.object(fetcher.urllib.request,'urlopen',side_effect=lambda *a,**k:io.BytesIO(b'bad')) as request,patch.object(fetcher.time,'sleep'):
+            with self.assertRaises(ValueError):fetcher.fetch(self.pin,self.cache,fallback_urls=mirrors)
+            self.assertEqual(request.call_count,3)
+        self.assertEqual(list(self.cache.iterdir()),[])
 
 
 if __name__ == '__main__':

@@ -197,6 +197,9 @@ import CassiniTranscription
         }
     }
     func cancelDownload() { operation?.cancel() }
+    #if DEBUG
+    @ObservationIgnored var fixtureRemovalLockWaiting: (@Sendable () -> Void)?
+    #endif
     func remove() {
         guard !busy else { return }
         invalidateInventory()
@@ -205,7 +208,15 @@ import CassiniTranscription
         operation = Task {
             defer { busy = false; operation = nil }
             do {
-                try await ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app()).remove(.parakeetUltra)
+                let downloader: ModelDownloader
+                #if DEBUG
+                if SettingsFixture.id != nil, let waiting = fixtureRemovalLockWaiting {
+                    downloader = ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app(),fixtureRemovalLockWaiting:waiting)
+                } else { downloader = ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app()) }
+                #else
+                downloader = ModelDownloader(appData:Self.appData,userAgent:ModelUserAgent.app())
+                #endif
+                try await downloader.remove(.parakeetUltra)
                 downloaded = false; refreshed = true; failedDownload = false
                 message = UXText.text("models.parakeetUltra.removedFallback")
             } catch {

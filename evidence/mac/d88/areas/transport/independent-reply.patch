@@ -1,9 +1,6 @@
 --- a/Tests/CassiniBrowserControlTests/PipeTransportTests.swift
 +++ b/Tests/CassiniBrowserControlTests/PipeTransportTests.swift
-@@ -69,7 +69,14 @@
-     func testSlowFragmentedPeerDoesNotBlockAnotherOrLoseItsPartialFrame() throws {
-         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
-         let clock = TransportReadClock(), entered = expectation(description:"Reader consumed partial header"), release = DispatchSemaphore(value:0)
+@@ -72 +72,8 @@
 -        let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in try peer.send(data) },disconnected:{ _ in })
 +        let server = BrowserPipeServer(root:root,connected:{ _ in },received:{ peer,data in
 +            let independent = Data("{\"type\":\"future\",\"body\":\"independent\"}".utf8)
@@ -13,6 +10,3 @@
 +            }
 +            try peer.send(data)
 +        },disconnected:{ _ in })
-         server.readClock = { clock.now() }
-         server.readProgress = { count in
-             guard count == 2, clock.claimPartial() else { return }

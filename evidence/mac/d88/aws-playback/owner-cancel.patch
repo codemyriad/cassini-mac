@@ -1,0 +1,11 @@
+--- a/Sources/CassiniPlayback/SessionPlayback.swift
++++ b/Sources/CassiniPlayback/SessionPlayback.swift
+@@ -24,7 +24,7 @@
+ }
+ private final class PreparationLifetime: @unchecked Sendable {
+     var task: Task<Void, Never>?
+-    deinit { task?.cancel() }
++    deinit {}
+ }
+ /// Owns requested transport state separately from the player's asynchronous
+ /// callbacks. Eligibility never prevents pausing an already requested playback.

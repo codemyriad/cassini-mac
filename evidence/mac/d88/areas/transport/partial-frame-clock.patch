@@ -1,11 +1,5 @@
 --- a/Sources/CassiniBrowserControl/PipeTransport.swift
 +++ b/Sources/CassiniBrowserControl/PipeTransport.swift
-@@ -106,7 +106,7 @@
-             do {
-                 while !cancellation.isCancelled {
-                     // Poll the lease without abandoning a partially read frame.
+@@ -109 +109 @@
 -                    let packet = try FrameIO.read(input,cancel:cancellation,alive:{ [self] in ownsLease || PipeFiles.held(lease) },clock:readClock,progress:readProgress)
 +                    let packet = try FrameIO.read(input,cancel:cancellation,deadline:readClock()+250_000_000,alive:{ [self] in ownsLease || PipeFiles.held(lease) },clock:readClock,progress:readProgress)
-                     guard let packet else { break }
-                     if let held = dummy { Darwin.close(held); dummy = nil }
-                     try received(self,FrameIO.normalized(packet))

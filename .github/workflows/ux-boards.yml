@@ -167,8 +167,8 @@ jobs:
         build/check-spectrogram-pixels
         xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
         build/check-spectrogram-clock
-        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app
-        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --output build/ux-boards/spectrogram
+        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app --scheduling-output build/check-spectrogram-scheduling
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --scheduling-checker build/check-spectrogram-scheduling --output build/ux-boards/spectrogram
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
