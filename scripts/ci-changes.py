@@ -27,7 +27,7 @@ def execution_tier(event, labels=()):
         label_set = set(labels)
         full_ci = 'full-ci' in label_set
         ui_shots = 'ui-shots' in label_set
-        return {'full_ci': full_ci, 'ui_shots': ui_shots, 'release_build': full_ci or ui_shots}
+        return {'full_ci': full_ci, 'ui_shots': ui_shots, 'release_build': full_ci}
     if event == 'push':
         return {'full_ci': False, 'ui_shots': False, 'release_build': True}
     return {'full_ci': True, 'ui_shots': False, 'release_build': True}
