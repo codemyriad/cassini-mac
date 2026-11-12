@@ -166,12 +166,15 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
         try await inputs.select(me:true,others:true,atMs:400)
         XCTAssertFalse(owner.snapshot.browserAlive)
         XCTAssertTrue(owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.isEmpty,"A pending return must not allocate a Me span")
-        try await inputs.restoreBrowser(atMs:500)
-        try owner.browserAudio(id:"local",sequence:1,offsetMs:600,pcm:tone)
-        try owner.browserAudio(id:"remote",sequence:1,offsetMs:600,pcm:tone)
+        let selectedAt = try XCTUnwrap(owner.snapshot.manifest.events?.last { $0.type == "selection" }?.atMs)
+        try await inputs.restoreBrowser(atMs:selectedAt+100)
+        let restoredAt = try XCTUnwrap(owner.snapshot.manifest.events?.last { $0.type == "othersSource" }?.atMs)
+        let packetAt = restoredAt+100
+        try owner.browserAudio(id:"local",sequence:1,offsetMs:packetAt,pcm:tone)
+        try owner.browserAudio(id:"remote",sequence:1,offsetMs:packetAt,pcm:tone)
         var local = owner.snapshot.manifest.tracks.filter { $0.kind == "local" }
         XCTAssertEqual(local.count,1); XCTAssertEqual(local.first?.frames,800)
-        try await inputs.select(me:false,others:true,atMs:700)
+        try await inputs.select(me:false,others:true,atMs:packetAt+100)
         local = owner.snapshot.manifest.tracks.filter { $0.kind == "local" }
         XCTAssertEqual(local.count,1); XCTAssertTrue(local.allSatisfy { $0.ended == true })
         XCTAssertEqual(owner.snapshot.manifest.captureOutcome?.sources.first { $0.sourceTrackId == "sender" }?.trackIds.count,1)
