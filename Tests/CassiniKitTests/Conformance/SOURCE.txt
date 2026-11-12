@@ -1,1 +1,1 @@
-Vendored from https://github.com/codemyriad/cassini-format/tree/867f68c56292ada9464b8516dc2797003d5af9eb/spec/conformance (CC0-1.0).
+Vendored from https://github.com/codemyriad/cassini-format/tree/32f37a6200c88bdd4d23c1f44497f1761f3401da/spec/conformance (CC0-1.0).

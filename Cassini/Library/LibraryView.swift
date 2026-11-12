@@ -100,10 +100,8 @@ struct LibraryView: View {
                             .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
                             .help(UXText.text("meeting.renameEllipsis"))
                             .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-                        if let start = detail.meeting.start {
-                            Text(store.format.previewSubtitle(start,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
-                                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
-                        }
+                        Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
+                            .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
                     }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
                         .padding(.leading,meetingTitleInset)
                         .frame(width:max(200,toolbarWidth - (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450)),alignment:.leading)
@@ -258,7 +256,7 @@ struct LibraryView: View {
     private var split: some View {
         HStack(spacing: 0) {
             List(selection: $store.selectedKeys) {
-                ForEach(store.groups, id: \.title) { group in
+                ForEach(store.groups, id: \.id) { group in
                     Section {
                         ForEach(group.meetings, id: \.libraryKey) { meeting in
                             row(meeting).tag(meeting.libraryKey)
@@ -362,7 +360,7 @@ struct LibraryView: View {
             HStack(spacing: 8) {
                 Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
                 Spacer(minLength: 2)
-                if let start = meeting.start { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
+                if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
             }
             HStack(spacing: 6) {
                 if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
@@ -404,7 +402,7 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
-                    if let start = meeting.start { Text(store.format.previewSubtitle(start, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle") }
+                    Text(store.format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
                 }
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
                 if meeting.state.transcript == .queued || meeting.state.transcript == .running {
@@ -641,21 +639,11 @@ private final class LibraryToolbarActionView: NSView {
 
 struct UpdateReadyFooter: View {
     let updates: ApplicationUpdates
-    #if DEBUG
-    var fixtureVisibility: ((Bool) -> Void)? = nil
-    #endif
-    private var line: some View {
-        Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-            .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
-            .accessibilityIdentifier("library-update-ready")
-    }
     var body: some View {
         if updates.readyWhenIdle {
-            #if DEBUG
-            line.onAppear { fixtureVisibility?(true) }.onDisappear { fixtureVisibility?(false) }
-            #else
-            line
-            #endif
+            Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
+                .accessibilityIdentifier("library-update-ready")
         }
     }
 }

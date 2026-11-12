@@ -20,7 +20,7 @@ public struct LibraryFormat: Sendable {
         if language == .en && template == "EEEEdMMMMyyyy" {formatter.dateFormat="EEEE d MMMM yyyy"}
         return formatter.string(from:value)
     }
-    private static func text(_ id:String,_ values:[String:String]=[:],locale:Locale,language:CassiniLanguage,omitting:Set<String>=[])->String {
+    static func text(_ id:String,_ values:[String:String]=[:],locale:Locale,language:CassiniLanguage,omitting:Set<String>=[])->String {
         LibraryLocalization.shared.text(id,values,language:language,locale:locale,omitting:omitting)
     }
     private static func number(_ value:Int64,locale:Locale,padding:Int=1)->String {

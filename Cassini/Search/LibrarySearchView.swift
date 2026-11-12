@@ -50,7 +50,7 @@ struct LibrarySearchView: View {
                 HStack {
                     Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
                     Spacer(minLength:4)
-                    if let date = meeting.start { Text(format.searchDate(date)).foregroundStyle(dim).lineLimit(1) }
+                    Text(format.searchDate(meeting.meetingTime)).foregroundStyle(dim).lineLimit(1)
                 }.font(.system(size:11.5))
                 (Text("“") + marked(excerpt.text,spans:excerpt.spans,selected:selected) + Text("”"))
                     .lineSpacing(4).fixedSize(horizontal:false,vertical:true)
@@ -69,9 +69,7 @@ struct LibrarySearchView: View {
             VStack(alignment:.leading,spacing:22) {
                 VStack(alignment:.leading,spacing:6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size:22,weight:.bold))
-                    if let date = meeting.start {
-                        Text(format.searchContext(date,durationMs:meeting.durationMs,positionMs:hit.positionMs)).foregroundStyle(CassiniTheme.ink2)
-                    }
+                    Text(format.searchContext(meeting.meetingTime,durationMs:meeting.durationMs,positionMs:hit.positionMs)).foregroundStyle(CassiniTheme.ink2)
                 }
                 VStack(alignment:.leading,spacing:18) {
                     ForEach(hit.context,id:\.index) { index,turn in

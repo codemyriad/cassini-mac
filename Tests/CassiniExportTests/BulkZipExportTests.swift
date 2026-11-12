@@ -595,7 +595,10 @@ import CassiniRecording
         let rebuiltPlain = try CassiniReader.read(#require(rebuiltByName["Rebuilt plain with transcript.opus"]))
         #expect(rebuiltPlain.state == .ok)
         #expect(rebuiltPlain.tags?["ARTIST"] == "Original Producer")
-        #expect(rebuiltPlain.tags?["DATE"] == "2025-05-06T07:08:09+02:00")
+        // D95: promoting a plain DATE keeps the exact instant and mirrors UTC.
+        #expect(rebuiltPlain.manifest?.meeting.recordedAtUtc == "2025-05-06T05:08:09.000Z")
+        #expect(rebuiltPlain.tags?["DATE"] == rebuiltPlain.manifest?.meeting.recordedAtUtc)
+        #expect(rebuiltPlain.tags?["CASSINI_RECORDED_AT_UTC"] == rebuiltPlain.manifest?.meeting.recordedAtUtc)
         #expect(rebuiltPlain.defaultTranscript?.load.transcript?.items.map(\.text) == ["Plain transcribed words"])
     }
 
