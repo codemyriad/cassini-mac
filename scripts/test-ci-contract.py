@@ -144,7 +144,7 @@ class FoldedJobs(unittest.TestCase):
 
     def test_every_area_is_an_output_that_some_job_reads(self):
         outputs = set(re.findall(r'^      (\w+): \$\{\{ steps\.paths\.outputs\.(\w+) \}\}$', self.CI, re.M))
-        expected_outputs = set(PATHS) | {'full_ci', 'release_build'}
+        expected_outputs = set(PATHS) | {'full_ci', 'ui_shots', 'release_build'}
         self.assertEqual({key for key, value in outputs if key == value}, expected_outputs)
         for area in PATHS:
             with self.subTest(area=area):
@@ -1006,9 +1006,10 @@ class Measurements(unittest.TestCase):
 
 class PullRequestFourJobBudget(unittest.TestCase):
     """Retrospective 2026-11-11 §1: normal PR pushes execute <= 4 macOS jobs (3 M4-first + 1
-    hosted login-session smoke), main pushes add only build_release (5 macOS jobs), and nightly,
-    workflow_dispatch and full-ci labeled PRs execute the full Intel/screenshot/boards suite
-    without duplicating the consolidated PR jobs."""
+    hosted login-session smoke), ui-shots labeled PRs add UX Library boards + build_release for
+    UI board screenshots without Intel/ux-shot fan-out, main pushes add only build_release (5
+    macOS jobs), and nightly, workflow_dispatch and full-ci labeled PRs execute the full
+    Intel/screenshot/boards suite without duplicating the consolidated PR jobs."""
 
     @staticmethod
     def eval_job_if(expr, outputs, build_ok=True, release_ok=True, changes_ok=True):
@@ -1059,34 +1060,57 @@ class PullRequestFourJobBudget(unittest.TestCase):
     def test_execution_tier_and_label_parsing_fail_open_on_malformed_input(self):
         self.assertEqual(changes.parse_labels(''), ())
         self.assertEqual(changes.parse_labels('null'), ())
-        self.assertEqual(changes.parse_labels('["bug", "full-ci"]'), ('bug', 'full-ci'))
+        self.assertEqual(changes.parse_labels('["bug", "ui-shots", "full-ci"]'), ('bug', 'ui-shots', 'full-ci'))
         for bad in ['not-json', '{}', '[123]']:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 changes.parse_labels(bad)
-        self.assertEqual(changes.execution_tier('pull_request'), {'full_ci': False, 'release_build': False})
-        self.assertEqual(changes.execution_tier('pull_request', ('bug',)), {'full_ci': False, 'release_build': False})
-        self.assertEqual(changes.execution_tier('pull_request', ('full-ci',)), {'full_ci': True, 'release_build': True})
-        self.assertEqual(changes.execution_tier('push'), {'full_ci': False, 'release_build': True})
+        self.assertEqual(changes.execution_tier('pull_request'), {'full_ci': False, 'ui_shots': False, 'release_build': False})
+        self.assertEqual(changes.execution_tier('pull_request', ('bug',)), {'full_ci': False, 'ui_shots': False, 'release_build': False})
+        self.assertEqual(changes.execution_tier('pull_request', ('ui-shots',)), {'full_ci': False, 'ui_shots': True, 'release_build': True})
+        self.assertEqual(changes.execution_tier('pull_request', ('full-ci',)), {'full_ci': True, 'ui_shots': False, 'release_build': True})
+        self.assertEqual(changes.execution_tier('pull_request', ('ui-shots', 'full-ci')), {'full_ci': True, 'ui_shots': True, 'release_build': True})
+        self.assertEqual(changes.execution_tier('push'), {'full_ci': False, 'ui_shots': False, 'release_build': True})
         for full_event in ['schedule', 'workflow_dispatch', None, 'unknown']:
-            self.assertEqual(changes.execution_tier(full_event), {'full_ci': True, 'release_build': True})
-        # Adding full-ci to a documentation-only PR still selects every area.
+            self.assertEqual(changes.execution_tier(full_event), {'full_ci': True, 'ui_shots': False, 'release_build': True})
+        # Adding full-ci to a documentation-only PR still selects every area; ui-shots selects boards only.
         self.assertTrue(all(changes.select('pull_request', 'base', PATHS, ['README.md'], labels=('full-ci',)).values()))
+        self.assertEqual(
+            changes.select('pull_request', 'base', PATHS, ['README.md'], labels=('ui-shots',)),
+            {**dict.fromkeys(PATHS, False), 'boards': True},
+        )
+        # Adding ui-shots or full-ci to an already-open PR must trigger CI via pull_request.types.
+        ci_header = (ROOT/'.github/workflows/ci.yml').read_text().split('\njobs:\n', 1)[0]
+        self.assertIn('- labeled\n', ci_header)
 
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder)/'github_output'
-            for env_vars, expected_full, expected_release in [
-                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '[]'}, 'false', 'false'),
-                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["full-ci"]'}, 'true', 'true'),
-                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': 'corrupt-json'}, 'true', 'true'),
-                ({'EVENT_NAME': 'push', 'PR_BASE': '', 'PR_LABELS': 'null'}, 'false', 'true'),
-                ({'EVENT_NAME': 'schedule', 'PR_BASE': '', 'PR_LABELS': ''}, 'true', 'true'),
+            for env_vars, expected_full, expected_ui_shots, expected_release in [
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '[]'}, 'false', 'false', 'false'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["ui-shots"]'}, 'false', 'true', 'true'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["full-ci"]'}, 'true', 'false', 'true'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': 'corrupt-json'}, 'true', 'false', 'true'),
+                ({'EVENT_NAME': 'push', 'PR_BASE': '', 'PR_LABELS': 'null'}, 'false', 'false', 'true'),
+                ({'EVENT_NAME': 'schedule', 'PR_BASE': '', 'PR_LABELS': ''}, 'true', 'false', 'true'),
             ]:
                 out.write_text('')
                 with patch.dict(os.environ, {**env_vars, 'GITHUB_OUTPUT': str(out)}), patch('sys.stdout', io.StringIO()), patch('sys.stderr', io.StringIO()):
                     changes.main()
                 parsed = dict(line.split('=', 1) for line in out.read_text().strip().splitlines())
                 self.assertEqual(parsed['full_ci'], expected_full, env_vars)
+                self.assertEqual(parsed['ui_shots'], expected_ui_shots, env_vars)
                 self.assertEqual(parsed['release_build'], expected_release, env_vars)
+
+            out.write_text('')
+            with patch.dict(os.environ, {'EVENT_NAME': 'pull_request', 'PR_BASE': 'base', 'PR_LABELS': '["ui-shots"]', 'GITHUB_OUTPUT': str(out)}), \
+                 patch.object(changes.subprocess, 'check_output', return_value=b'README.md\0'), \
+                 patch('sys.stdout', io.StringIO()), patch('sys.stderr', io.StringIO()):
+                changes.main()
+            parsed_ui = dict(line.split('=', 1) for line in out.read_text().strip().splitlines())
+            self.assertEqual(parsed_ui['boards'], 'true')
+            self.assertEqual(parsed_ui['shot'], 'false')
+            self.assertEqual(parsed_ui['ui_shots'], 'true')
+            self.assertEqual(parsed_ui['full_ci'], 'false')
+            self.assertEqual(parsed_ui['release_build'], 'true')
 
     def test_pr_push_runs_at_most_four_macos_jobs_and_main_push_adds_only_release(self):
         pr_all = self.active_ci_jobs('pull_request', ['Sources/CassiniKit/Reader.swift'])
@@ -1097,6 +1121,11 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertEqual(pr_docs, ['build:arm64', 'kit', 'ux_app'])
         self.assertLessEqual(len(pr_docs), 4)
 
+        for changed in [['Sources/CassiniKit/Reader.swift'], ['README.md']]:
+            with self.subTest(ui_shots_changed=changed):
+                pr_ui_shots = self.active_ci_jobs('pull_request', changed, labels=('ui-shots',))
+                self.assertEqual(pr_ui_shots, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app', 'boards'])
+
         main_push = self.active_ci_jobs('push', ['README.md'])
         self.assertEqual(main_push, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app'])
 
@@ -1104,7 +1133,12 @@ class PullRequestFourJobBudget(unittest.TestCase):
             'build:arm64', 'build:x86_64', 'build_release', 'kit',
             'native_sink', 'shot', 'boards', 'whistle', 'package_tests', 'parakeet', 'browser_setup',
         ]
-        for event, labels in [('schedule', ()), ('workflow_dispatch', ()), ('pull_request', ('full-ci',))]:
+        for event, labels in [
+            ('schedule', ()),
+            ('workflow_dispatch', ()),
+            ('pull_request', ('full-ci',)),
+            ('pull_request', ('ui-shots', 'full-ci')),
+        ]:
             with self.subTest(event=event, labels=labels):
                 self.assertEqual(self.active_ci_jobs(event, ['README.md'], labels=labels), expected_full)
 

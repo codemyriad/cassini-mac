@@ -24,16 +24,19 @@ def parse_labels(raw):
 
 def execution_tier(event, labels=()):
     if event == 'pull_request':
-        full_ci = 'full-ci' in set(labels)
-        return {'full_ci': full_ci, 'release_build': full_ci}
+        label_set = set(labels)
+        full_ci = 'full-ci' in label_set
+        ui_shots = 'ui-shots' in label_set
+        return {'full_ci': full_ci, 'ui_shots': ui_shots, 'release_build': full_ci or ui_shots}
     if event == 'push':
-        return {'full_ci': False, 'release_build': True}
-    return {'full_ci': True, 'release_build': True}
+        return {'full_ci': False, 'ui_shots': False, 'release_build': True}
+    return {'full_ci': True, 'ui_shots': False, 'release_build': True}
 
 
 def select(event, base, paths, changed=None, labels=()):
     everything = dict.fromkeys(paths, True)
-    if event != 'pull_request' or not base or 'full-ci' in set(labels):
+    label_set = set(labels)
+    if event != 'pull_request' or not base or 'full-ci' in label_set:
         return everything
     try:
         if changed is None:
@@ -46,6 +49,8 @@ def select(event, base, paths, changed=None, labels=()):
         # Swift package dependencies feed the app as well as the unit tests.
         if any(p.startswith(('Sources/', 'Tests/', 'QuickLook/', 'Whistle/', 'Opus/', 'Parakeet/', 'ModelDownloads/')) or p in ('Package.swift', 'Package.resolved') for p in changed):
             return everything
+        if 'ui-shots' in label_set and 'boards' in selected:
+            selected['boards'] = True
         return selected
     except (OSError, UnicodeError, subprocess.SubprocessError, ValueError) as error:
         print('Path detection failed; running all UX checks:', error, file=sys.stderr)
@@ -63,7 +68,7 @@ def main():
         }
     except ValueError as error:
         print('Label parsing failed; running full CI:', error, file=sys.stderr)
-        result = {**dict.fromkeys(paths, True), 'full_ci': True, 'release_build': True}
+        result = {**dict.fromkeys(paths, True), 'full_ci': True, 'ui_shots': False, 'release_build': True}
     output = '\n'.join(f'{key}={str(value).lower()}' for key, value in result.items())+'\n'
     print(output, end='')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:

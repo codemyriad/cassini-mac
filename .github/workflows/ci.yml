@@ -31,6 +31,7 @@ jobs:
       parakeet: ${{ steps.paths.outputs.parakeet }}
       browser_setup: ${{ steps.paths.outputs.browser_setup }}
       full_ci: ${{ steps.paths.outputs.full_ci }}
+      ui_shots: ${{ steps.paths.outputs.ui_shots }}
       release_build: ${{ steps.paths.outputs.release_build }}
     steps:
     - uses: actions/checkout@v5
@@ -533,7 +534,7 @@ jobs:
     - changes
     - build
     - build_release
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.boards != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && (needs.changes.outputs.full_ci == 'true' || needs.changes.outputs.ui_shots == 'true') && needs.changes.outputs.boards != 'false' }}
     uses: ./.github/workflows/ux-boards.yml
     with:
       products_ready: true
