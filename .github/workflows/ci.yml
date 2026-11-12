@@ -13,14 +13,18 @@ name: CI
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
-# D66 mac-P1-1: a newer push to a pull request cancels that PR's older run. Every push, nightly
-# and manual run has a group of its own (its run id), so none is ever cancelled or replaced while
-# pending, and every main commit keeps its own push run (D20).
+# D66 mac-P1-1: a newer push to a pull request cancels that PR's older code-push run, while
+# labeled runs use their own non-cancelling group so synchronize/opened + labeled on the same head
+# never leave CANCELLED check runs (UNSTABLE rollup). Every push, nightly and manual run has a
+# group of its own (its run id), so none is ever cancelled or replaced while pending (D20).
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' && format('pr-{0}-label-{1}', github.event.pull_request.number, github.run_id) || format('pr-{0}', github.event.pull_request.number)) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+env:
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 jobs:
   changes:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(fromJSON('["ui-shots","full-ci"]'), github.event.label.name) }}
     runs-on: ubuntu-latest
     outputs:
       shot: ${{ steps.paths.outputs.shot }}
