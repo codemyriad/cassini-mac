@@ -11,7 +11,9 @@ enum CassiniTheme {
     /// Decided roles from `brand/tokens.json` not yet applied to visible surfaces in PR A.
     /// PR B (`W1 look preview`) applies every decided role and leaves this set empty.
     static let unappliedDecidedTokens: Set<String> = [
-        "ground", "surface", "sunken", "raised", "line", "line-soft",
+        "ground", "surface", "sunken", "raised",
+        "sidebar", "sidebar-mac", "field", "field-line",
+        "line", "line-soft",
         "ink", "ink-2", "ink-3",
         "accent", "accent-strong", "on-accent", "accent-ink", "accent-tint",
         "record", "record-ink", "record-tint", "on-record",
