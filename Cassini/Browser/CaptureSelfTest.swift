@@ -437,13 +437,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(selected.isEmpty && first.owner.snapshot.me && !first.owner.snapshot.others,"Browser Me stays selectable when hardware input is unavailable")
             try require((first.owner.snapshot.manifest.refusals?.count ?? 0) == refusalsBefore && CaptureFixture.microphoneStarts == 0,"No hardware attempt or Me refusal on browser selection")
             try await one.emit()
-            stage = "browser Me-only reload never enables Others or hardware"
-            try await one.page("navigating",active:false)
-            try await wait { !first.owner.snapshot.browserAlive }
-            try await one.returnedSource(atMs:Int((ProcessInfo.processInfo.systemUptime-first.originUptime)*1000)+1000)
-            try await one.page("present",active:true)
-            try await wait { first.owner.snapshot.browserAlive }
-            try require(!first.owner.snapshot.others && CaptureFixture.microphoneStarts == 0,"Reload restores Me while Others and hardware stay off")
+            // Me-only selection is valid while the page is present. Browser
+            // loss is terminal for this mode (proved separately below); the
+            // Me+Others reload path is exercised by the modern profile.
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
             try await one.emit()
             report["browserSelectionIgnoresHardwareFailure"] = true
@@ -544,7 +540,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let pendingFolder = pendingCapture.snapshot.directory
             let systemBeforeLoss = CaptureFixture.systemStarts
             try await collection.select(pendingID,me:true,others:false)
-            try await browserPending.page("navigating",active:false)
+            // Keep the verified call active: this scenario loses its page,
+            // rather than independently reporting that the meeting ended.
+            try await browserPending.page("navigating",active:true)
             let lostMeStop = try await browserPending.performNext()
             try require(lostMeStop["action"]?.string == "stop","Me-only browser loss automatically saves")
             try await wait { collection.captures.isEmpty && !collection.isSaving }
