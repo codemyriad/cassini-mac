@@ -24,6 +24,7 @@
     ".github/workflows/ux-boards.yml",
     "scripts/check-ux-copy.py",
     "scripts/hosted-display.py",
+    "scripts/gui_session.py",
     "scripts/test-search-app.py",
     "scripts/test-meeting-preparation-app.py",
     "scripts/test-listening-app.py",

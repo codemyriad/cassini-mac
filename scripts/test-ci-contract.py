@@ -84,25 +84,38 @@ class Selection(unittest.TestCase):
 
 class NativeSpectrogramScheduling(unittest.TestCase):
     """The measured 15 min boards + 9 min native probe must not share a 25 min job."""
-    def test_native_measurements_have_their_own_bounded_hosted_job(self):
+    def test_native_measurements_have_their_own_bounded_gui_job(self):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
-        boards, native = jobs['boards'], jobs['spectrogram']
+        boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
         self.assertIn('timeout-minutes: 25',boards)
         self.assertNotIn('test-spectrogram-app.py',boards)
         self.assertNotIn("release: 'true'",boards)
         self.assertNotIn('needs: [boards]',native)
-        for requirement in ['runs-on: macos-15','needs: [build, release]',
+        for requirement in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-15' }}",'needs: [build, release]',
                             'inputs.products_ready','!cancelled()',
-                            "debug: 'true'","release: 'true'",'github-hosted',
+                            "release: 'true'",'github-hosted',
                             'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
                             'if: always()','name: ux-spectrogram']:
             self.assertIn(requirement,native)
+        self.assertNotIn("debug: 'true'",native)
+        self.assertIn('--phase budgets',native)
+        self.assertNotIn('--phase diagnostics',native)
+        for requirement in ['runs-on: macos-15','needs: [build, release]',"debug: 'true'","release: 'true'",'--phase diagnostics','name: ux-spectrogram-diagnostics','if: always()']:
+            self.assertIn(requirement,diagnostics)
+        self.assertNotIn('CM_MAC_GUI_RUNNER',diagnostics)
+        self.assertNotIn('--phase budgets',diagnostics)
+        self.assertNotIn('needs: [spectrogram]',diagnostics)
+        # Routing is useless if the entry point or CPU instrumentation still
+        # rejects the newly qualified host. Normal app measurement stays unchanged.
+        for source in ['Spikes/Spectrogram/main.swift','Spikes/Spectrogram/Probe.swift','Cassini/Recording/RecordingSpectrogram.swift']:
+            self.assertIn('SpectrogramFixtureHost.current',(ROOT/source).read_text(),source)
+        self.assertIn("Spikes/Spectrogram/Host.swift",(ROOT/'scripts/build-spectrogram-probe.py').read_text())
         # Keep every production proof exactly once, including the motion XCTest
         # driver supplied by Debug products and the same-build optimized objects.
         for script in ['CheckBudget.swift','test-spectrogram-harness.py',
                        'CheckSampleClock.swift','build-spectrogram-probe.py','test-spectrogram-app.py']:
-            self.assertEqual(body.count(script),1)
+            self.assertEqual(body.count(script),2 if script in ['build-spectrogram-probe.py','test-spectrogram-app.py'] else 1)
             self.assertIn(script,native)
 
 
@@ -131,11 +144,12 @@ class FoldedJobs(unittest.TestCase):
 
     def test_every_area_is_an_output_that_some_job_reads(self):
         outputs = set(re.findall(r'^      (\w+): \$\{\{ steps\.paths\.outputs\.(\w+) \}\}$', self.CI, re.M))
-        self.assertEqual({key for key, value in outputs if key == value}, set(PATHS))
+        expected_outputs = set(PATHS) | {'full_ci', 'ui_shots', 'release_build'}
+        self.assertEqual({key for key, value in outputs if key == value}, expected_outputs)
         for area in PATHS:
             with self.subTest(area=area):
                 self.assertTrue(f"needs.changes.outputs.{area} != 'false'" in self.CI, f'no job reads the {area} area')
-        self.assertEqual(set(re.findall(r'needs\.changes\.outputs\.(\w+)', self.CI)), set(PATHS))
+        self.assertEqual(set(re.findall(r'needs\.changes\.outputs\.(\w+)', self.CI)), expected_outputs)
 
     def test_scripts_of_the_merged_jobs_trigger_their_area(self):
         for area, body in [('shot', (ROOT/'.github/workflows/ux-shot.yml').read_text()),
@@ -193,12 +207,15 @@ class FoldedJobs(unittest.TestCase):
         bookmark = 'recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
         native_skip = model_filter + '|' + bookmark
         self.assertEqual(kit.count("--skip '" + native_skip + "'"), 1)
-        sink = ci_job('native_sink')
-        self.assertIn('runs-on: macos-15\n', sink)
-        self.assertIn("swiftpm: 'true'", sink)
-        self.assertIn(' -- swift test --skip-build --filter ' + bookmark + '\n', sink)
-        self.assertIn('name: scoped-bookmark-${{ github.sha }}', sink)
-        self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 1)
+        sink, smoke = ci_job('native_sink'), ci_job('ux_app')
+        for job_body in [sink, smoke]:
+            self.assertIn('runs-on: macos-15\n', job_body)
+            self.assertIn("swiftpm: 'true'", job_body)
+            self.assertIn(' -- swift test --skip-build --filter ' + bookmark + '\n', job_body)
+            self.assertIn('name: scoped-bookmark-${{ github.sha }}', job_body)
+        self.assertIn("needs.changes.outputs.full_ci == 'true'", sink)
+        self.assertIn("needs.changes.outputs.full_ci != 'true'", smoke)
+        self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 2)
         self.assertIn("--filter 'Library|SearchTests' --skip " + bookmark, kit)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests', bookmark,
                       'ModelManifestTests', 'D52WorstCaseRecordTests']:
@@ -253,7 +270,7 @@ class RentedRunnerRouting(unittest.TestCase):
             for route in re.findall(r'^    runs-on: (.+)$',path.read_text(),re.M):
                 if 'vars.CM_MAC' in route:
                     routes.append((path.name,route))
-        self.assertEqual(len(routes),8)
+        self.assertEqual(len(routes),10)
         events=['push','schedule','workflow_dispatch','pull_request',
                 'pull_request_target','workflow_run','issue_comment','workflow_call',
                 'release','repository_dispatch','deployment_status','check_run','unknown']
@@ -270,9 +287,16 @@ class RentedRunnerRouting(unittest.TestCase):
                             expected=label if trusted and label else fallback
                             with self.subTest(workflow=name,route=route,runner=runner,event=event,head=head,label=label):
                                 self.assertEqual(self.evaluate(route,event,head,label,runner),expected)
-        for job in [producer,self.worker()]:
-            rows=re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',job)
-            self.assertEqual(rows,[('macos-15','arm64'),('macos-15-intel','x86_64')])
+        rows=re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',self.worker())
+        self.assertEqual(rows,[('macos-15','arm64'),('macos-15-intel','x86_64')])
+        matrix_expr=re.search(r'^      matrix: \$\{\{ (.+) \}\}$',producer,re.M).group(1)
+        matrix_py=matrix_expr.replace('&&',' and ').replace('||',' or ')
+        for include_intel,expected_rows in [
+            (True,[{'runner':'macos-15','arch':'arm64'},{'runner':'macos-15-intel','arch':'x86_64'}]),
+            (False,[{'runner':'macos-15','arch':'arm64'}]),
+        ]:
+            evaluated=eval(matrix_py,{'__builtins__':{},'fromJSON':json.loads},{'inputs':SimpleNamespace(include_intel=include_intel)})
+            self.assertEqual(evaluated,{'include':expected_rows})
 
     def test_screenshot_derived_data_is_job_owned_and_cleaned_around_artifacts(self):
         shot=(ROOT/'.github/workflows/ux-shot.yml').read_text()
@@ -341,8 +365,17 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('CM_MAC_RUNNER',gui,name)
 
         boards=(ROOT/'.github/workflows/ux-boards.yml').read_text()
-        self.assertNotIn('CM_MAC_GUI_RUNNER',boards)
-        self.assertIn('runs-on: macos-15',boards)
+        board_job=boards.split('  boards:',1)[1].split('  spectrogram:',1)[0]
+        self.assertNotIn('CM_MAC_GUI_RUNNER',board_job)
+        self.assertIn('runs-on: macos-15',board_job)
+        native,diagnostics=boards.split('  spectrogram:',1)[1].split('  spectrogram_diagnostics:',1)
+        self.assertIn('vars.CM_MAC_GUI_RUNNER',native)
+        self.assertIn('python3 scripts/gui_session.py',native)
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- uses: actions/setup-python'))
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- name: Disable Spotlight'))
+        self.assertIn('command -v displayplacer',native)
+        self.assertIn('Clean interrupted profiling DerivedData',diagnostics)
+        self.assertIn('Clean profiling DerivedData after artifact upload',diagnostics)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
@@ -928,8 +961,11 @@ class ReleaseOffTheCriticalPath(unittest.TestCase):
     def test_release_consumers_wait_for_the_release_build(self):
         ci = (self.WORKFLOWS/'ci.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n',1)[1], re.M | re.S))
-        self.assertIn('needs: [build]', jobs['build_release'])
+        self.assertIn('needs: [changes, build]', jobs['build_release'])
+        self.assertIn("needs.changes.outputs.release_build == 'true'", jobs['build_release'])
         self.assertIn('uses: ./.github/workflows/ci-build-release.yml', jobs['build_release'])
+        self.assertIn('scripts/check-parakeet-bundle.py build/Build/Products/Release/Cassini.app',
+                      (self.WORKFLOWS/'ci-build-release.yml').read_text())
         waiting = {name for name, body in jobs.items() if 'build_release' in body and name != 'build_release'}
         self.assertEqual(waiting, {'parakeet','boards'})
         self.assertIn("needs.build_release.result == 'success'", jobs['boards'])
@@ -966,6 +1002,194 @@ class Measurements(unittest.TestCase):
         self.assertEqual(report['macos_minutes_estimated'],3)
         self.assertEqual(report['median_macos_queue_seconds'],60)
         self.assertEqual(report['wall_minutes'],3)
+
+
+class PullRequestFourJobBudget(unittest.TestCase):
+    """Retrospective 2026-11-11 §1: normal PR pushes execute <= 4 macOS jobs (3 M4-first + 1
+    hosted login-session smoke), ui-shots labeled PRs add UX Library boards + build_release for
+    UI board screenshots without Intel/ux-shot fan-out, main pushes add only build_release (5
+    macOS jobs), and nightly, workflow_dispatch and full-ci labeled PRs execute the full
+    Intel/screenshot/boards suite without duplicating the consolidated PR jobs."""
+
+    @staticmethod
+    def eval_job_if(expr, outputs, build_ok=True, release_ok=True, changes_ok=True):
+        if expr is None:
+            return build_ok
+        py = expr.strip().removeprefix('${{').removesuffix('}}').strip()
+        py = py.replace('!cancelled()', 'True').replace('always()', 'True')
+        py = py.replace('&&', ' and ').replace('||', ' or ').replace('!=', ' != ')
+        needs = SimpleNamespace(
+            changes=SimpleNamespace(
+                result='success' if changes_ok else 'failure',
+                outputs=SimpleNamespace(**{k: str(v).lower() for k, v in outputs.items()}),
+            ),
+            build=SimpleNamespace(result='success' if build_ok else 'failure'),
+            build_release=SimpleNamespace(result='success' if release_ok else 'skipped'),
+        )
+        return bool(eval(py, {'__builtins__': {}}, {'needs': needs}))
+
+    def active_ci_jobs(self, event, changed, labels=()):
+        selected = {
+            **changes.select(event, 'base', PATHS, changed, labels=labels),
+            **changes.execution_tier(event, labels),
+        }
+        ci = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n', 1)[1], re.M | re.S))
+        release_runs = False
+        active = []
+        for name, body in jobs.items():
+            if name == 'changes':
+                continue
+            cond_match = re.search(r'^    if: (.+)$', body, re.M)
+            cond = cond_match.group(1) if cond_match else None
+            if name == 'build':
+                if self.eval_job_if(cond, selected):
+                    active.append('build:arm64')
+                    if selected['full_ci']:
+                        active.append('build:x86_64')
+                continue
+            if name == 'build_release':
+                release_runs = self.eval_job_if(cond, selected)
+                if release_runs:
+                    active.append('build_release')
+                continue
+            if self.eval_job_if(cond, selected, release_ok=release_runs):
+                active.append(name)
+        return active
+
+    def test_execution_tier_and_label_parsing_fail_open_on_malformed_input(self):
+        self.assertEqual(changes.parse_labels(''), ())
+        self.assertEqual(changes.parse_labels('null'), ())
+        self.assertEqual(changes.parse_labels('["bug", "ui-shots", "full-ci"]'), ('bug', 'ui-shots', 'full-ci'))
+        for bad in ['not-json', '{}', '[123]']:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                changes.parse_labels(bad)
+        self.assertEqual(changes.execution_tier('pull_request'), {'full_ci': False, 'ui_shots': False, 'release_build': False})
+        self.assertEqual(changes.execution_tier('pull_request', ('bug',)), {'full_ci': False, 'ui_shots': False, 'release_build': False})
+        self.assertEqual(changes.execution_tier('pull_request', ('ui-shots',)), {'full_ci': False, 'ui_shots': True, 'release_build': True})
+        self.assertEqual(changes.execution_tier('pull_request', ('full-ci',)), {'full_ci': True, 'ui_shots': False, 'release_build': True})
+        self.assertEqual(changes.execution_tier('pull_request', ('ui-shots', 'full-ci')), {'full_ci': True, 'ui_shots': True, 'release_build': True})
+        self.assertEqual(changes.execution_tier('push'), {'full_ci': False, 'ui_shots': False, 'release_build': True})
+        for full_event in ['schedule', 'workflow_dispatch', None, 'unknown']:
+            self.assertEqual(changes.execution_tier(full_event), {'full_ci': True, 'ui_shots': False, 'release_build': True})
+        # Adding full-ci to a documentation-only PR still selects every area; ui-shots selects boards only.
+        self.assertTrue(all(changes.select('pull_request', 'base', PATHS, ['README.md'], labels=('full-ci',)).values()))
+        self.assertEqual(
+            changes.select('pull_request', 'base', PATHS, ['README.md'], labels=('ui-shots',)),
+            {**dict.fromkeys(PATHS, False), 'boards': True},
+        )
+        # Adding ui-shots or full-ci to an already-open PR must trigger CI via pull_request.types.
+        ci_header = (ROOT/'.github/workflows/ci.yml').read_text().split('\njobs:\n', 1)[0]
+        self.assertIn('- labeled\n', ci_header)
+
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)/'github_output'
+            for env_vars, expected_full, expected_ui_shots, expected_release in [
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '[]'}, 'false', 'false', 'false'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["ui-shots"]'}, 'false', 'true', 'true'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["full-ci"]'}, 'true', 'false', 'true'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': 'corrupt-json'}, 'true', 'false', 'true'),
+                ({'EVENT_NAME': 'push', 'PR_BASE': '', 'PR_LABELS': 'null'}, 'false', 'false', 'true'),
+                ({'EVENT_NAME': 'schedule', 'PR_BASE': '', 'PR_LABELS': ''}, 'true', 'false', 'true'),
+            ]:
+                out.write_text('')
+                with patch.dict(os.environ, {**env_vars, 'GITHUB_OUTPUT': str(out)}), patch('sys.stdout', io.StringIO()), patch('sys.stderr', io.StringIO()):
+                    changes.main()
+                parsed = dict(line.split('=', 1) for line in out.read_text().strip().splitlines())
+                self.assertEqual(parsed['full_ci'], expected_full, env_vars)
+                self.assertEqual(parsed['ui_shots'], expected_ui_shots, env_vars)
+                self.assertEqual(parsed['release_build'], expected_release, env_vars)
+
+            out.write_text('')
+            with patch.dict(os.environ, {'EVENT_NAME': 'pull_request', 'PR_BASE': 'base', 'PR_LABELS': '["ui-shots"]', 'GITHUB_OUTPUT': str(out)}), \
+                 patch.object(changes.subprocess, 'check_output', return_value=b'README.md\0'), \
+                 patch('sys.stdout', io.StringIO()), patch('sys.stderr', io.StringIO()):
+                changes.main()
+            parsed_ui = dict(line.split('=', 1) for line in out.read_text().strip().splitlines())
+            self.assertEqual(parsed_ui['boards'], 'true')
+            self.assertEqual(parsed_ui['shot'], 'false')
+            self.assertEqual(parsed_ui['ui_shots'], 'true')
+            self.assertEqual(parsed_ui['full_ci'], 'false')
+            self.assertEqual(parsed_ui['release_build'], 'true')
+
+    def test_pr_push_runs_at_most_four_macos_jobs_and_main_push_adds_only_release(self):
+        pr_all = self.active_ci_jobs('pull_request', ['Sources/CassiniKit/Reader.swift'])
+        self.assertEqual(pr_all, ['build:arm64', 'kit', 'ux_workers', 'ux_app'])
+        self.assertLessEqual(len(pr_all), 4)
+
+        pr_docs = self.active_ci_jobs('pull_request', ['README.md'])
+        self.assertEqual(pr_docs, ['build:arm64', 'kit', 'ux_app'])
+        self.assertLessEqual(len(pr_docs), 4)
+
+        for changed in [['Sources/CassiniKit/Reader.swift'], ['README.md']]:
+            with self.subTest(ui_shots_changed=changed):
+                pr_ui_shots = self.active_ci_jobs('pull_request', changed, labels=('ui-shots',))
+                self.assertEqual(pr_ui_shots, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app', 'boards'])
+
+        main_push = self.active_ci_jobs('push', ['README.md'])
+        self.assertEqual(main_push, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app'])
+
+        expected_full = [
+            'build:arm64', 'build:x86_64', 'build_release', 'kit',
+            'native_sink', 'shot', 'boards', 'whistle', 'package_tests', 'parakeet', 'browser_setup',
+        ]
+        for event, labels in [
+            ('schedule', ()),
+            ('workflow_dispatch', ()),
+            ('pull_request', ('full-ci',)),
+            ('pull_request', ('ui-shots', 'full-ci')),
+        ]:
+            with self.subTest(event=event, labels=labels):
+                self.assertEqual(self.active_ci_jobs(event, ['README.md'], labels=labels), expected_full)
+
+    def test_consolidated_pr_jobs_preserve_every_arm64_proof_and_bundle_isolation(self):
+        workers = ci_job('ux_workers')
+        smoke = ci_job('ux_app')
+        self.assertIn('vars.CM_MAC_RUNNER', workers)
+        self.assertIn("|| 'macos-15' }}", workers)
+        self.assertIn('CASSINI_CI_ARCH: arm64', workers)
+        self.assertIn('shell: arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}', workers)
+        for marker in [
+            'scripts/check-ux-copy.py',
+            'Spikes/Spectrogram/CheckBudget.swift',
+            'scripts/test-spectrogram-harness.py',
+            'Spikes/Spectrogram/CheckHost.swift',
+            'Spikes/Spectrogram/CheckPixelOracle.swift',
+            'Spikes/Spectrogram/CheckSampleClock.swift',
+            'WhistleAssetIntegrationTests',
+            "PipelineTests|TranscriptionMeetingTests",
+            'scripts/test-whistle-worker.py',
+            "Parakeet|ProgressTests",
+            'scripts/test-parakeet-worker.py',
+            "CassiniBrowserControlTests|CassiniBrowserSetupTests|CassiniSpectrogramTests",
+            'browser-protocol/conformance/check-call-lifecycle.py',
+            'browser-protocol/conformance/control/run.py .build/debug/cassini-control-host',
+        ]:
+            with self.subTest(worker_marker=marker):
+                self.assertIn(marker, workers)
+
+        self.assertIn('runs-on: macos-15\n', smoke)
+        self.assertNotIn('vars.CM_MAC', smoke)
+        self.assertIn('ditto build/Build/Products/Debug/Cassini.app "$RUNNER_TEMP/clean-Debug-Cassini.app"', smoke)
+        self.assertEqual(smoke.count('ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app'), 3)
+        for marker in [
+            'scripts/run-native-ci.py --mode sink-only',
+            'scripts/test-export-sandbox.py',
+            'scripts/check-whistle-bundle.py',
+            '--whistle-self-test',
+            'scripts/check-parakeet-bundle.py',
+            'scripts/test-model-network-app.py',
+            'scripts/test-parakeet-app.py',
+            'scripts/test-browser-setup-spike.py',
+            'scripts/test-browser-connect.py',
+            'scripts/test-local-companion.py',
+            'scripts/test-browser-background.mjs',
+            'scripts/test-browser-capture-app.py',
+            'scripts/test-browser-return.mjs',
+            'scripts/test-live-folder.mjs',
+        ]:
+            with self.subTest(smoke_marker=marker):
+                self.assertIn(marker, smoke)
 
 
 if __name__ == '__main__': unittest.main()
