@@ -4,7 +4,6 @@ import CryptoKit
 import Testing
 import CassiniKit
 import CassiniLibrary
-import CassiniKit
 @testable import CassiniSearch
 
 private final class SearchFixture {
@@ -120,6 +119,20 @@ struct SearchTests {
         let a=try item(1,"2026-11-09T10:00:00.0000000001Z"),b=try item(3,"2026-11-09T10:00:00.0000000009Z")
         let index=try SearchIndex(cache:fixture.cache);try await index.replace([a,b])
         #expect(try await index.search("needle").map(\.meetingKey)==[b.libraryKey,a.libraryKey])
+    }
+    @Test func realSpeakerEditsRefreshNamesFiltersAndMergedHits() async throws {
+        let fixture=try SearchFixture(),m=try #require(fixture.meetings().first {$0.title=="Budget review"})
+        let index=try SearchIndex(cache:fixture.cache);try await index.replace([m])
+        try SpeakerEdits.apply(.name(speaker:"marta",value:"Ada"),to:m,roots:[fixture.root])
+        let renamed=try #require(LibraryScanner(root:fixture.root).meeting(at:m.folder))
+        try await index.replace([renamed])
+        #expect(try await index.search("budget",filter:.init(speaker:"Ada")).count==2)
+        #expect(try await index.search("budget",filter:.init(speaker:"Marta")).isEmpty)
+        try SpeakerEdits.apply(.merge(from:"marta",into:"dario"),to:m,roots:[fixture.root])
+        let merged=try #require(LibraryScanner(root:fixture.root).meeting(at:m.folder))
+        try await index.replace([merged])
+        #expect(try await index.search("budget",filter:.init(speaker:"Dario")).count==2)
+        #expect(!SearchIndex.names([merged]).contains("Ada"))
     }
     @Test func changedRemovedAndRenamedMeetingsDoNotLeaveStaleHits() async throws {
         let fixture = try SearchFixture(); let all = try fixture.meetings()

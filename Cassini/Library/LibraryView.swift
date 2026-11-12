@@ -128,12 +128,16 @@ struct LibraryView: View {
                 }
                 ToolbarItem(placement:.primaryAction) {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
-                        LibraryToolbarAction.menu([
-                            .init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(detail.meeting) },
-                            .init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
-                                store.selectedKey = detail.meeting.libraryKey
-                                trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
-                            }])
+                        var entries:[LibraryToolbarAction.MenuEntry]=[
+                            .init(title:UXText.text("details.menu"),identifier:"recording-details") {recordingDetails.show(detail.meeting)}]
+                        if detail.meeting.speakerMergeCount>0 {
+                            entries.append(.init(title:UXText.text("meeting.undoMerge"),identifier:"undo-speaker-merge",enabled:rename.canEditSpeakers(detail.meeting)) {rename.undoSpeakerMerge(detail.meeting)})
+                        }
+                        entries.append(.init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
+                            store.selectedKey=detail.meeting.libraryKey
+                            trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
+                        })
+                        return LibraryToolbarAction.menu(entries)
                     }) { }
                 }
             } else {
@@ -165,10 +169,13 @@ struct LibraryView: View {
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
-        .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
+         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet || rename.presentation == .speakers },set:{ if !$0 { rename.cancel() } })) {
+            if rename.presentation == .speakers { SpeakerEditorView() } else { MeetingRenameView() }
+        }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
+        .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
         #if DEBUG
         .overlay(alignment:.topLeading) {
             if RecordingFixture.enabled {
