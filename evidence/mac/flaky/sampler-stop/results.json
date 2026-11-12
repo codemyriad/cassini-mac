@@ -1,0 +1,6 @@
+{
+  "tests": 3,
+  "mutation": "actual child exit0 instead of SIGKILL(-9), assertion failure",
+  "restored": true,
+  "sourceSHA256": "04472e8feafdc2e240f33ba44d22cba9a821fae68a1b1def9f65e6506ab0fdef"
+}

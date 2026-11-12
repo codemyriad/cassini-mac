@@ -1,0 +1,12 @@
+[
+  {
+    "case": "always-visible",
+    "failure": "Idle removes the real footer from layout",
+    "timeout": false
+  },
+  {
+    "case": "always-absent",
+    "failure": "Busy activity renders the real footer",
+    "timeout": false
+  }
+]

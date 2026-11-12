@@ -93,17 +93,10 @@ final class SessionModel {
         return parts.joined(separator: " · ")
     }
 
-    /// The recording date for display. `recordedAtLocal` is a label and is never shifted to a zone.
+    /// D95: one reader order for the direct-open header and Inspector too.
     var recordingDateText: String? {
-        guard let m = manifest else { return nil }
-        // D50.3: date words in the UI language; the local label is never shifted to a zone.
-        if let local = m.meeting.recordedAtLocal, let date = SessionModel.localLabelDate(local) {
-            return LibraryFormat(timeZone:TimeZone(identifier:"UTC")!,locale:UXText.locale,language:UXText.language).absoluteDate(date)
-        }
-        if let date = SessionModel.parseRFC3339(m.meeting.createdAtUtc) {
-            return LibraryFormat(locale:UXText.locale,language:UXText.language).absoluteDate(date)
-        }
-        return nil
+        guard let time = file?.meetingTime else { return nil }
+        return LibraryFormat(locale:UXText.locale,language:UXText.language).absoluteDate(time)
     }
 
     static let dateStyle = Date.FormatStyle(date: .abbreviated, time: .omitted)

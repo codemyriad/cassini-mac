@@ -88,7 +88,7 @@ public enum PortableMeetingTags {
     /// The tags this app writes itself; any other tag of an original file is carried (`carriedTags`).
     static let written: Set<String> = ["CASSINI_FORMAT","CASSINI_PROFILE","CASSINI_PAYLOAD_SCHEMA","CASSINI_TRANSCRIPT_IDS","CASSINI_TRANSCRIPT_DEFAULT",
         "CASSINI_AUDIO_SAMPLE_RATE","CASSINI_AUDIO_CHANNELS","CASSINI_AUDIO_SAMPLE_COUNT","CASSINI_AUDIO_DURATION_MS","CASSINI_AUDIO_MATCH_POLICY",
-        "CASSINI_AUDIO_OPUS_SHA256","CASSINI_MEETING_ID","CASSINI_CREATED_AT","CASSINI_SPEAKER_COUNT","TITLE"]
+        "CASSINI_AUDIO_OPUS_SHA256","CASSINI_MEETING_ID","CASSINI_CREATED_AT","CASSINI_RECORDED_AT_UTC","CASSINI_RECORDED_AT_LOCAL","CASSINI_SPEAKER_COUNT","TITLE"]
     /// An original file's tags this app neither writes nor rebuilds (DATE, DESCRIPTION, ENCODER,
     /// ARTIST, unknown CASSINI_ facts), in file order. The manifest's chunk set is rewritten, the
     /// transcripts' are carried with them (`transcripts`), and a withdrawn transcript's leftover
@@ -107,7 +107,7 @@ public enum PortableMeetingTags {
         comments += try chunkSet(root.encoded(),prefix:"CASSINI_PAYLOAD_",mime:"application/vnd.cassini.portable-meeting+json",shouldCancel:shouldCancel).1
         // SPEC: the tag lists the ids sorted (the manifest keeps producer order).
         let ids = model.transcripts.map(\.id).sorted().joined(separator:",")
-        let scalarTags: [(String,String)] = [
+        var scalarTags: [(String,String)] = [
             ("CASSINI_FORMAT","org.cassini.portable-meeting/1"),("CASSINI_PROFILE","ogg-opus"),
             ("CASSINI_PAYLOAD_SCHEMA","https://format.gocassini.com/schema/cassini-portable-meeting-manifest-v1.schema.json"),
             ("CASSINI_TRANSCRIPT_IDS",ids),("CASSINI_TRANSCRIPT_DEFAULT",model.defaultTranscript?.id ?? model.transcripts.first?.id ?? ""),
@@ -117,8 +117,12 @@ public enum PortableMeetingTags {
             ("CASSINI_MEETING_ID",model.meeting.id),("CASSINI_CREATED_AT",model.meeting.createdAtUtc),
             ("CASSINI_SPEAKER_COUNT",String(model.speakers.count)),("TITLE",model.meeting.title)
         ]
+        if let utc = model.meeting.recordedAtUtc { scalarTags.append(("CASSINI_RECORDED_AT_UTC",utc)) }
+        if let local = model.meeting.recordedAtLocal { scalarTags.append(("CASSINI_RECORDED_AT_LOCAL",local)) }
+        let legacyDate = carriedTags.first { $0.name.uppercased() == "DATE" }?.value
+        scalarTags.append(("DATE",MeetingTime.dateTag(recordedAtUtc:model.meeting.recordedAtUtc,createdAtUtc:model.meeting.createdAtUtc,legacy:legacyDate)))
         for (name,value) in scalarTags { comments.append(.init(name:name,value:value)) }
-        comments += carriedTags
+        comments += carriedTags.filter { !["DATE","CASSINI_RECORDED_AT_UTC","CASSINI_RECORDED_AT_LOCAL"].contains($0.name.uppercased()) }
         return try packet(comments:comments)
     }
     public static func packet(comments: [Comment] = []) throws -> Data {
