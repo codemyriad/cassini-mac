@@ -157,7 +157,7 @@ struct LibrarySearchField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> FocusableSearchField {
         let field = FocusableSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
-        field.isBezeled = false; field.isBordered = false; field.drawsBackground = false
+        field.isBezeled = true; field.bezelStyle = .roundedBezel; field.drawsBackground = false
         field.isEditable = true; field.isSelectable = true
         field.focusRingType = .default
         field.font = NSFont.systemFont(ofSize:13)
@@ -182,17 +182,21 @@ struct LibrarySearchField: NSViewRepresentable {
         }
     }
     final class BrandedSearchFieldCell: NSSearchFieldCell {
-        override func searchTextRect(forBounds rect: NSRect) -> NSRect {
-            let base = super.searchTextRect(forBounds: rect)
-            let h: CGFloat = 16
-            return NSRect(x: base.minX + 4, y: floor((rect.height - h) / 2), width: max(0, base.width - 8), height: h)
-        }
         override func searchButtonRect(forBounds rect: NSRect) -> NSRect {
-            super.searchButtonRect(forBounds: rect).offsetBy(dx: 4, dy: 0)
+            let base = super.searchButtonRect(forBounds: rect)
+            return NSRect(x: 6, y: base.minY, width: base.width, height: base.height)
         }
         override func cancelButtonRect(forBounds rect: NSRect) -> NSRect {
             guard !stringValue.isEmpty else { return .zero }
-            return super.cancelButtonRect(forBounds: rect).offsetBy(dx: -4, dy: 0)
+            let base = super.cancelButtonRect(forBounds: rect)
+            return NSRect(x: rect.maxX - base.width - 6, y: base.minY, width: base.width, height: base.height)
+        }
+        override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+            let minX = searchButtonRect(forBounds: rect).maxX + 4
+            let cancel = cancelButtonRect(forBounds: rect)
+            let maxX = cancel.width > 0 ? cancel.minX - 4 : rect.maxX - 8
+            let h: CGFloat = 16
+            return NSRect(x: minX, y: floor((rect.height - h) / 2), width: max(0, maxX - minX), height: h)
         }
         override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
             let radius: CGFloat = controlSize == .large ? 7 : 6
