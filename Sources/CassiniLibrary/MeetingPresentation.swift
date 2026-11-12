@@ -182,8 +182,10 @@ public enum MeetingPresentation {
         var result = LibraryMeeting(id: id ?? UUID(),
             folder: url.deletingLastPathComponent().appendingPathComponent("External-" + url.lastPathComponent),
             state: .init(origin: .received, transcript: status, audioAvailable: duration != nil),
-            title: title, start: file.manifest.flatMap { recordingDate($0.meeting.createdAtUtc) }, durationMs: duration,
+            title: title, start: file.meetingTime?.instant, durationMs: duration,
             speakers: speakers, quote: nil, notes: [], audioFiles: [url], issues: [])
+        result.recordedTime = file.meetingTime
+        result.sortingFallback = file.manifest.flatMap { MeetingTime.parseInstant($0.meeting.createdAtUtc) }
         result.metadataReadOnly = true; result.transcriptItems = words
         result.wordEndsBoundedByAudio = trusted && file.manifest?.wordEndsBoundedByAudio == true
         result.exportTitle = trusted || file.state == .plainAudio ? title : url.deletingPathExtension().lastPathComponent

@@ -4,15 +4,27 @@ import CryptoKit
 import Darwin
 import SQLite3
 import CassiniLibrary
+import CassiniKit
 
 public enum SearchDate: Sendable, CaseIterable { case any, today, week, month
+    public func contains(meetingTime: MeetingTime?, now: Date, timeZone: TimeZone) -> Bool {
+        guard self != .any else { return true }
+        guard let meetingTime else { return false }
+        if let instant = meetingTime.instant { return contains(instant,now:now,timeZone:timeZone) }
+        guard let components = meetingTime.localComponents, let civilDate = components.date else { return false }
+        var viewer = Calendar(identifier:.gregorian); viewer.timeZone = timeZone
+        var civil = Calendar(identifier:.gregorian); civil.timeZone = TimeZone(secondsFromGMT:0)!
+        let today = civil.date(from:viewer.dateComponents([.year,.month,.day,.hour,.minute,.second],from:now))!
+        return contains(civilDate,now:today,timeZone:civil.timeZone)
+    }
     public func contains(_ date: Date?, now: Date, timeZone: TimeZone) -> Bool {
         guard self != .any else { return true }; guard let date else { return false }
         var calendar = Calendar(identifier:.gregorian); calendar.timeZone = timeZone
-        let midnight = calendar.startOfDay(for:now)
-        let first = calendar.date(byAdding:.day,value:self == .month ? -29 : self == .week ? -6 : 0,to:midnight)!
-        let last = calendar.date(byAdding:.day,value:1,to:midnight)!
-        return date >= first && date < last
+        guard let day = calendar.dateInterval(of:.day,for:now),
+              let firstDay = calendar.date(byAdding:.day,value:self == .month ? -29 : self == .week ? -6 : 0,to:now) else { return false }
+        // A day may begin at 01:00. Adding days to that boundary leaks an hour
+        // into tomorrow and drops an hour from an earlier day's range.
+        return date >= calendar.startOfDay(for:firstDay) && date < day.end
     }
 }
 public struct SearchFilter: Sendable {
@@ -141,7 +153,7 @@ public actor SearchIndex {
             guard rowIndex >= 0, let rows = spoken[key], rows.indices.contains(rowIndex) else { continue }
             let row = rows[rowIndex], index = row.visibleIndex
             guard let meeting = meetings[key], !filter.own || meeting.state.origin == .own,
-                  filter.date.contains(meeting.start,now:now,timeZone:timeZone),
+                  filter.date.contains(meetingTime:meeting.meetingTime,now:now,timeZone:timeZone),
                   let turn = turns[key]?.dropFirst(index).first else { continue }
             let highlighted = statement.text(2)
             let parsed = Self.unmark(highlighted,begin:begin,end:end)
@@ -192,7 +204,7 @@ public actor SearchIndex {
         }
         return hits.sorted {
             if $0.meetingKey != $1.meetingKey {
-                let a = meetings[$0.meetingKey]?.start ?? .distantPast, b = meetings[$1.meetingKey]?.start ?? .distantPast
+                let a = meetings[$0.meetingKey]?.timeSortKey ?? "", b = meetings[$1.meetingKey]?.timeSortKey ?? ""
                 return a == b ? $0.meetingKey < $1.meetingKey : a > b
             }
             return $0.turn == $1.turn ? $0.occurrence < $1.occurrence : $0.turn < $1.turn

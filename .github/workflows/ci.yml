@@ -56,6 +56,7 @@ jobs:
         env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/test-pr-shots.py
         python3 scripts/test-ci-contract.py
         python3 scripts/test-gui-session.py
+        python3 scripts/test-spectrogram-sampler.py
         python3 scripts/test-daily-test-release.py
         python3 scripts/test-user-release-notes.py
         python3 scripts/test-render-local-ux.py
@@ -136,7 +137,7 @@ jobs:
     - uses: actions/checkout@v5
       with:
         repository: codemyriad/cassini-format
-        ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+        ref: 32f37a6200c88bdd4d23c1f44497f1761f3401da
         path: build/format-reference
         persist-credentials: 'false'
     - name: Independent pure metadata and audio readers
@@ -693,7 +694,7 @@ jobs:
       if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
       with:
         repository: codemyriad/cassini-format
-        ref: 867f68c56292ada9464b8516dc2797003d5af9eb
+        ref: 32f37a6200c88bdd4d23c1f44497f1761f3401da
         path: build/format-reference
         persist-credentials: 'false'
     - name: Independent pure metadata and audio readers

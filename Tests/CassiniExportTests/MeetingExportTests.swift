@@ -8,6 +8,72 @@ import CassiniRecording
 @testable import CassiniExport
 
 struct MeetingExportTests {
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func recordingSurvivesSealingNineMinutesLaterAndRoundTrip() throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let started = try #require(MeetingTime.parseInstant("2026-11-09T09:31:48.250Z"))
+        let sealed = MeetingTime.utcString(started.addingTimeInterval(9 * 60))
+        let zone = try #require(TimeZone(identifier:"Europe/Rome"))
+        let session = try RecordingSession(parent:root.appendingPathComponent("Own"),title:"Recording and packing",source:"macos",timeZone:zone)
+        #expect(session.manifest.startedAtUtcOffsetMinutes == zone.secondsFromGMT(for:session.manifest.createdAt) / 60)
+        try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)
+        try session.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try session.finish()
+        let path = session.directory.appendingPathComponent("session.json")
+        var capture = try #require(JSONSerialization.jsonObject(with:Data(contentsOf:path)) as? [String:Any])
+        capture["createdAt"] = MeetingTime.utcString(started)
+        capture["startedAtUtcOffsetMinutes"] = zone.secondsFromGMT(for:started) / 60
+        try JSONSerialization.data(withJSONObject:capture).write(to:path,options:.atomic)
+        let own = try #require(LibraryScanner(root:session.directory.deletingLastPathComponent()).scan().meetings.first)
+        let first = try MeetingFileExporter.cassini(own,assets:assets(),temporaryRoot:root,timeZone:TimeZone(identifier:"Asia/Tokyo")!)
+        let original = try CassiniReader.read(contentsOf:first.url)
+        #expect(original.manifest?.meeting.recordedAtLocal == "2026-11-09T10:31:48","The site offset survives a different export zone")
+        // Older own export lacks UTC and carries the later pack stamp in DATE.
+        // The app's trustworthy capture start must win over this file's label.
+        var legacyManifest = try #require(original.manifest?.raw)
+        var legacyInfo = try #require(legacyManifest["meeting"])
+        legacyInfo = try legacyInfo.setting("recordedAtUtc",to:nil).setting("createdAtUtc",to:.string(sealed))
+        legacyInfo = try legacyInfo.setting("recordedAtLocal",to:.string("2001-02-03T04:05:06"))
+        legacyManifest = try legacyManifest.setting("meeting",to:legacyInfo)
+        let oldExport = own.folder.appendingPathComponent("legacy-export.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:first.url),tags:PortableMeetingTags.make(manifest:legacyManifest,
+            transcripts:PortableMeetingTags.transcripts(own:nil,carried:original)),to:oldExport)
+        let ownedAgain = try #require(LibraryScanner(root:own.folder.deletingLastPathComponent()).scan().meetings.first)
+        #expect(ownedAgain.meetingTime?.instant == started)
+        let refreshed = try MeetingFileExporter.cassini(ownedAgain,assets:assets(),temporaryRoot:root)
+        let refreshedFile = try CassiniReader.read(contentsOf:refreshed.url)
+        #expect(refreshedFile.manifest?.meeting.recordedAtUtc == MeetingTime.utcString(started))
+        #expect(refreshedFile.tags?["DATE"] == MeetingTime.utcString(started))
+        #expect(refreshedFile.tags?["CASSINI_RECORDED_AT_UTC"] == MeetingTime.utcString(started))
+        #expect(refreshedFile.manifest?.meeting.id == original.manifest?.meeting.id)
+        #expect(try refreshedFile.audioDigest?.get() == original.audioDigest?.get())
+        var manifest = try #require(original.manifest?.raw)
+        manifest = try manifest.setting("meeting",to:try #require(manifest["meeting"]).setting("createdAtUtc",to:.string(sealed)))
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:original))
+        let packed = root.appendingPathComponent("Packed later.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:first.url),tags:tags,to:packed)
+        let received = try LibraryImport.copy(packed,into:root.appendingPathComponent("Received"))
+        #expect(received.start == started)
+        let exported = try MeetingFileExporter.cassini(received,assets:nil,temporaryRoot:root)
+        let file = try CassiniReader.read(contentsOf:exported.url)
+        #expect(file.manifest?.meeting.createdAtUtc == sealed)
+        #expect(file.manifest?.meeting.recordedAtUtc == MeetingTime.utcString(started))
+        #expect(file.tags?["DATE"] == MeetingTime.utcString(started))
+        #expect(file.tags?["CASSINI_RECORDED_AT_UTC"] == MeetingTime.utcString(started))
+        #expect(file.manifest?.meeting.id == original.manifest?.meeting.id)
+        #expect(file.manifest?.integrity.opusAudioSha256 == original.manifest?.integrity.opusAudioSha256)
+        let importedAgain = try LibraryImport.copy(exported.url,into:root.appendingPathComponent("Again"))
+        #expect(importedAgain.start == started)
+        let markdown = MeetingMarkdown.render(importedAgain,timeZone:zone,locale:Locale(identifier:"en_GB"),language:.en)
+        #expect(markdown.contains("10:31") && !markdown.contains("10:40"))
+        // Legacy captures have a trustworthy instant but no known site zone.
+        capture.removeValue(forKey:"startedAtUtcOffsetMinutes")
+        try JSONSerialization.data(withJSONObject:capture).write(to:path,options:.atomic)
+        let legacy = try #require(LibraryScanner(root:session.directory.deletingLastPathComponent()).scan().meetings.first)
+        let legacyArtifact = try MeetingFileExporter.cassini(legacy,assets:assets(),temporaryRoot:root,timeZone:zone)
+        let legacyFile = try CassiniReader.read(contentsOf:legacyArtifact.url)
+        #expect(legacyFile.manifest?.meeting.recordedAtLocal == nil)
+        #expect(legacyFile.manifest?.meeting.recordedAtUtc == MeetingTime.utcString(started))
+    }
     @Test func markdownArtifactUsesItsExplicitLanguage() throws {
         let root=try root();defer {try? FileManager.default.removeItem(at:root)}
         let source=try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
@@ -86,11 +152,13 @@ struct MeetingExportTests {
         let file = try CassiniReader.read(contentsOf:artifact.url)
         #expect(file.state == .ok && file.manifest?.audio.sampleCount == 48000)
         #expect(file.manifest?.meeting.recordedAtLocal == nil)
+        #expect(file.manifest?.meeting.recordedAtUtc == nil)
+        #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
         #expect(file.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
         #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"]?["offsetsAssumedZero"] == .bool(true))
         #expect(file.manifest?.meeting.createdAtUtc == expected)
     }
-    @Test(arguments:[false,true]) func reexportDoesNotAuthenticateUntrustedManifestExtensions(unverified: Bool) throws {
+    @Test(arguments:[false,true]) func nonOKDocumentsArePreservedByteForByte(unverified: Bool) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         let imported = try LibraryImport.copy(source,into:root.appendingPathComponent("Original"))
@@ -102,7 +170,7 @@ struct MeetingExportTests {
         let info = try #require(manifest["meeting"])
         var untrustedInfo = try info.setting("id",to:.string("untrusted-id"))
         untrustedInfo = try untrustedInfo.setting("title",to:.string("Untrusted title"))
-        untrustedInfo = try untrustedInfo.setting("recordedAtLocal",to:.string("2001-02-03T04:05:06+09:00"))
+        untrustedInfo = try untrustedInfo.setting("recordedAtLocal",to:.string("2001-02-03T04:05:06"))
         manifest = try manifest.setting("meeting",to:untrustedInfo)
         manifest = try manifest.setting("x",to:.object([("untrusted.example",.object([("claim",.bool(true))]))]))
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:Data("{\"items\":[]}".utf8),wordCount:0)
@@ -117,17 +185,115 @@ struct MeetingExportTests {
         let external = MeetingPresentation.external(suspect,url:damaged)
         let direct = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root)
         let directFile = try CassiniReader.read(contentsOf:direct.url)
-        #expect(directFile.manifest?.meeting.title == "Untrusted")
-        #expect(directFile.manifest?.meeting.recordedAtLocal == nil)
         let result = try MeetingFileExporter.cassini(received,assets:nil,temporaryRoot:root)
         let exported = try CassiniReader.read(contentsOf:result.url)
-        #expect(exported.state == .ok && exported.manifest?.meeting.id != "untrusted-id")
-        #expect(exported.manifest?.raw["x"]?["untrusted.example"] == nil)
-        #expect(exported.manifest?.meeting.title == "original")
-        #expect(exported.manifest?.meeting.recordedAtLocal == nil)
+        for (artifact,reopened) in [(direct,directFile),(result,exported)] {
+            #expect(try Data(contentsOf:artifact.url)==Data(contentsOf:damaged))
+            #expect(reopened.state==suspect.state)
+            #expect(reopened.manifest?.raw==suspect.manifest?.raw)
+            #expect(reopened.manifest?.meeting.id=="untrusted-id")
+            #expect(reopened.manifest?.meeting.recordedAtLocal=="2001-02-03T04:05:06")
+            #expect(reopened.tags?.comments==suspect.tags?.comments)
+            #expect(reopened.defaultTranscript?.load.transcript?.items==suspect.defaultTranscript?.load.transcript?.items)
+        }
         #expect(try exported.audioDigest?.get() == suspect.audioDigest?.get())
     }
-    @Test(arguments:[nil,.string("2001-02-03T04:05:06"),.string("2001-02-03T04:05:06.125+09:00"),
+    @Test(arguments:["005-duplicate-chunk-tag","010-stale-audio","011-tag-manifest-disagreement","015-unknown-major-version"])
+    func nonOKConformanceFilesExportUnchanged(_ vector:String) throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let repository=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let input=repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/"+vector+".opus")
+        let bytes=try Data(contentsOf:input),file=try CassiniReader.read(bytes)
+        #expect(file.state != .ok && file.state != .plainAudio)
+        if vector.hasPrefix("010") {#expect(file.defaultTranscript?.load.transcript?.items.count==900)}
+        let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        try MeetingRename.apply("Local title must not repair the document",to:imported)
+        let metadata=imported.folder.appendingPathComponent("meeting.json")
+        let before=try Data(contentsOf:metadata)
+        for meeting in [MeetingPresentation.external(file,url:input),imported] {
+            let artifact=try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            #expect(try Data(contentsOf:artifact.url)==bytes)
+            let reopened=try CassiniReader.read(contentsOf:artifact.url)
+            #expect(reopened.state==file.state)
+            #expect(reopened.manifest?.raw==file.manifest?.raw)
+            #expect(reopened.defaultTranscript?.load.transcript?.items==file.defaultTranscript?.load.transcript?.items)
+            #expect(reopened.tags?.comments==file.tags?.comments)
+        }
+        #expect(try Data(contentsOf:input)==bytes)
+        #expect(try Data(contentsOf:metadata)==before)
+    }
+    @Test(arguments:["2001-02-02t19:05:06.125Z","2001-02-02T19:05:06.125z","2001-02-02t19:05:06.125z","2001-02-02T19:05:06.125Z"],[false,true])
+    func lowercaseRecordingUTCReexportsAndReimports(_ recorded:String,lowercaseCreation:Bool) throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let source=try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let plain=try LibraryImport.copy(source,into:root.appendingPathComponent("Plain"))
+        let encoded=try MeetingFileExporter.cassini(plain,assets:nil,temporaryRoot:root)
+        let base=try CassiniReader.read(contentsOf:encoded.url)
+        var manifest=try #require(base.manifest?.raw),info=try #require(base.manifest?.raw["meeting"])
+        info=try info.setting("recordedAtUtc",to:.string(recorded)).setting("createdAtUtc",to:.string(lowercaseCreation ? "2026-11-09t10:47:02z" : "2026-11-09T10:47:02Z"))
+        manifest=try manifest.setting("meeting",to:info)
+        let input=root.appendingPathComponent("Lowercase.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:encoded.url),tags:PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)),to:input)
+        let parsed=try CassiniReader.read(contentsOf:input)
+        #expect(parsed.state == .ok)
+        let expected=try #require(MeetingTime.parseInstant("2001-02-02T19:05:06.125Z"))
+        #expect(parsed.meetingTime?.instant==expected)
+        let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        try MeetingRename.apply("Edited title",to:imported)
+        let opened=MeetingPresentation.external(parsed,url:input)
+        for (index,meeting) in [opened,imported].enumerated() {
+            let artifact=try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let file=try CassiniReader.read(contentsOf:artifact.url)
+            #expect(file.state == .ok)
+            #expect(file.meetingTime?.instant==expected)
+            #expect(file.manifest?.meeting.recordedAtUtc=="2001-02-02T19:05:06.125Z")
+            #expect(file.tags?["DATE"]==file.manifest?.meeting.recordedAtUtc)
+            #expect(file.tags?["CASSINI_RECORDED_AT_UTC"]==file.manifest?.meeting.recordedAtUtc)
+            #expect(file.manifest?.meeting.createdAtUtc=="2026-11-09T10:47:02Z")
+            let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent(UUID().uuidString))
+            #expect(again.meetingTime?.instant==expected)
+            if let output=ProcessInfo.processInfo.environment["CASSINI_D95_R2_CASES"] {
+                let folder=URL(fileURLWithPath:output);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+                let name="canonical-\(recorded.contains("t"))-\(recorded.hasSuffix("z"))-\(lowercaseCreation)-\(index)-export.opus"
+                try Data(contentsOf:artifact.url).write(to:folder.appendingPathComponent(name))
+            }
+        }
+    }
+    @Test(arguments:[false,true])
+    func fractionalDATEPreservesItsMeaningThroughExportAndReimport(equivalent:Bool) throws {
+        let root=try root();defer {try? FileManager.default.removeItem(at:root)}
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source=repo.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/027-recorded-at-utc.opus")
+        let bytes=try Data(contentsOf:source),base=try CassiniReader.read(bytes)
+        var manifest=try #require(base.manifest?.raw),info=try #require(manifest["meeting"])
+        let created="2026-11-09T09:31:48.0001Z"
+        let date=equivalent ? "2026-11-09T10:31:48.000100+01:00" : "2026-11-09T09:31:48.0009Z"
+        info=try info.setting("recordedAtUtc",to:nil).setting("recordedAtLocal",to:nil).setting("createdAtUtc",to:.string(created))
+        manifest=try manifest.setting("meeting",to:info)
+        var tags=try TagSet.parse(PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)))
+        tags.comments.removeAll {$0.name.uppercased()=="DATE"};tags.comments.append(.init(name:"DATE",value:date))
+        let input=root.appendingPathComponent("fraction.opus")
+        _=try OpusStreamFile.rewrite(bytes,tags:PortableMeetingTags.packet(comments:tags.comments),to:input)
+        let file=try CassiniReader.read(contentsOf:input)
+        #expect(file.state == .ok)
+        #expect(file.meetingTime?.value==(equivalent ? nil : date))
+        let imported=try LibraryImport.copy(input,into:root.appendingPathComponent("Imported"))
+        let direct=MeetingPresentation.external(file,url:input)
+        for (index,m) in [direct,imported].enumerated() {
+            let artifact=try MeetingFileExporter.cassini(m,assets:nil,temporaryRoot:root)
+            let result=try CassiniReader.read(contentsOf:artifact.url)
+            #expect(result.tags?["DATE"]==(equivalent ? created : date))
+            #expect(result.manifest?.meeting.createdAtUtc==created)
+            #expect(result.meetingTime?.value==(equivalent ? nil : date))
+            let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Again-"+String(index)))
+            #expect(again.meetingTime?.value==(equivalent ? nil : date))
+            if let output=ProcessInfo.processInfo.environment["CASSINI_D95_R2_CASES"] {
+                let folder=URL(fileURLWithPath:output);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+                try Data(contentsOf:artifact.url).write(to:folder.appendingPathComponent("fraction-\(equivalent)-\(index).opus"))
+            }
+        }
+    }
+    @Test(arguments:[nil,.string("2026-02-30T10:00:00"),.string("2026-11-09T24:00:00"),.string("2001-02-03T04:05:06"),.string("2001-02-03T04:05:06.125+09:00"),
                      .string("2001-02-03T04:05:06+09:00"),.string("2001-02-03T04:05:06Z"),
                      .string("2001-02-03T04:05:06.125"),.string("2001-02-03T04:05:06\n"),
                      .number("123"),.bool(true),.null] as [JSON?])
@@ -135,7 +301,7 @@ struct MeetingExportTests {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         let imported = try LibraryImport.copy(source,into:root.appendingPathComponent("Plain"))
-        #expect(imported.start != nil) // Import time is useful for display only.
+        #expect(imported.start == nil) // Import time is only a sorting fallback.
         let plainExport = try MeetingFileExporter.cassini(imported,assets:nil,temporaryRoot:root)
         let plain = try CassiniReader.read(contentsOf:plainExport.url)
         #expect(plain.manifest?.meeting.recordedAtLocal == nil)
@@ -153,6 +319,8 @@ struct MeetingExportTests {
         let exported = try MeetingFileExporter.cassini(received,assets:nil,temporaryRoot:root)
         let result = try CassiniReader.read(contentsOf:exported.url)
         #expect(result.state == .ok)
+        #expect(result.tags?["CASSINI_RECORDED_AT_UTC"] == "2001-02-02T19:05:06.125Z")
+        #expect(result.tags?["DATE"] == "2001-02-02T19:05:06.125Z")
         let expected = recorded == .string("2001-02-03T04:05:06") ? recorded?.string : nil
         #expect(result.manifest?.meeting.recordedAtLocal == expected)
         #expect(result.manifest?.raw["meeting"]?["recordedAtUtc"]?.string == "2001-02-02T19:05:06.125Z")
@@ -162,8 +330,47 @@ struct MeetingExportTests {
         let directFile = try CassiniReader.read(contentsOf:direct.url)
         #expect(directFile.manifest?.meeting.recordedAtLocal == expected)
         try expectLocalRecordingSchema(directFile.manifest?.meeting.recordedAtLocal)
+        #expect(directFile.tags?["DATE"] == directFile.manifest?.meeting.recordedAtUtc)
+        #expect(directFile.tags?["CASSINI_RECORDED_AT_UTC"] == directFile.manifest?.meeting.recordedAtUtc)
         // D65 (MAPPING): a received file keeps its own creation time, never the export time.
         #expect(result.manifest?.meeting.createdAtUtc == "2020-01-02T03:04:05Z")
+    }
+    @Test(arguments:[.string("2026-02-30T09:00:00Z"),.string("2026-11-09T24:00:00Z"),.string("2001-02-03T04:05:06+01:00"),.string("not UTC"),.number("123"),.null] as [JSON])
+    func receivedExportsDropMalformedUTC(recorded: JSON) throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let source = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
+        let imported = try LibraryImport.copy(source,into:root.appendingPathComponent("Plain"))
+        let plain = try MeetingFileExporter.cassini(imported,assets:nil,temporaryRoot:root)
+        let original = try CassiniReader.read(contentsOf:plain.url)
+        var manifest = try #require(original.manifest?.raw)
+        var info = try #require(manifest["meeting"])
+        let created = "2020-01-02T03:04:05Z", local = "2001-02-03T04:05:06"
+        info = try info.setting("createdAtUtc",to:.string(created))
+        info = try info.setting("recordedAtUtc",to:recorded)
+        info = try info.setting("recordedAtLocal",to:.string(local))
+        manifest = try manifest.setting("meeting",to:info)
+        let tagged = root.appendingPathComponent("Invalid UTC.opus")
+        // The generic packer intentionally allows adversarial optional fields for reader fixtures.
+        let tags = try PortableMeetingTags.make(manifest:manifest,transcript:Data("{\"items\":[]}".utf8),wordCount:0)
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:plain.url),tags:tags,to:tagged)
+        let before = try Data(contentsOf:tagged), file = try CassiniReader.read(before)
+        let received = try LibraryImport.copy(tagged,into:root.appendingPathComponent("Received"))
+        let direct = MeetingPresentation.external(file,url:tagged)
+        for meeting in [received,direct] {
+            let exported = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let result = try CassiniReader.read(contentsOf:exported.url)
+            #expect(result.state == .ok)
+            #expect(result.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
+            #expect(result.tags?["CASSINI_RECORDED_AT_UTC"] == nil)
+            #expect(result.manifest?.meeting.recordedAtLocal == local)
+            // An offset DATE supplied by the original remains a legitimate legacy instant.
+            let expectedDate = recorded == .string("2001-02-03T04:05:06+01:00") ? recorded.string : created
+            #expect(result.tags?["DATE"] == expectedDate)
+            #expect(result.manifest?.meeting.createdAtUtc == created)
+            #expect(result.manifest?.meeting.id == file.manifest?.meeting.id)
+            #expect(try result.audioDigest?.get() == file.audioDigest?.get())
+        }
+        #expect(try Data(contentsOf:tagged) == before)
     }
     @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil),
           arguments:[("2026-11-10T08:30:00.999Z","2026-11-10T09:30:00"),
@@ -180,6 +387,8 @@ struct MeetingExportTests {
         let url = session.directory.appendingPathComponent("session.json")
         var stored = try #require(JSONSerialization.jsonObject(with:Data(contentsOf:url)) as? [String:Any])
         stored["createdAt"] = instant
+        let start = try #require(MeetingTime.parseInstant(instant))
+        stored["startedAtUtcOffsetMinutes"] = try #require(TimeZone(identifier:"Europe/Berlin")).secondsFromGMT(for:start) / 60
         try JSONSerialization.data(withJSONObject:stored).write(to:url)
         let meeting = try #require(LibraryScanner(root:session.directory.deletingLastPathComponent()).scan().meetings.first)
         let artifact = try MeetingFileExporter.cassini(meeting,assets:assets(),temporaryRoot:root,timeZone:#require(TimeZone(identifier:"Europe/Berlin")))
@@ -189,6 +398,8 @@ struct MeetingExportTests {
         try expectLocalRecordingSchema(file.manifest?.meeting.recordedAtLocal)
         let utc = try #require(file.manifest?.raw["meeting"]?["recordedAtUtc"]?.string)
         #expect(utc == instant)
+        #expect(file.tags?["CASSINI_RECORDED_AT_UTC"] == utc)
+        #expect(file.tags?["DATE"] == utc)
         #expect(utc.range(of:#"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$"#,options:.regularExpression) != nil)
     }
     private func expectLocalRecordingSchema(_ label: String?) throws {

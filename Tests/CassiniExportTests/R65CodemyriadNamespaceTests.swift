@@ -87,9 +87,9 @@ struct R65CodemyriadNamespaceTests {
         let manifest = try raw(session.directory.appendingPathComponent("session.json"))
         #expect(x["schema"] == .number("1") && x["origin"]?.string == "Recording")
         #expect(x["sessionId"] == stored["id"] && x["revision"] == stored["revision"])
-        // No recorded UTC offset on Mac: the capture start in the Library device's zone.
-        let expected = try LibraryNames.prefix(.capture(startUtc:try #require(manifest["createdAt"]?.string),utcOffsetMinutes:nil,libraryTimeZone:"Europe/Rome"))
-        #expect(x["namePrefix"]?.string == expected.namePrefix && x["namePrefixSource"]?.string == "legacy-device-tz")
+        // D95: new captures persist the site offset at playback position zero.
+        let expected = try LibraryNames.prefix(.capture(startUtc:try #require(manifest["createdAt"]?.string),utcOffsetMinutes:manifest["startedAtUtcOffsetMinutes"]?.int,libraryTimeZone:"Europe/Rome"))
+        #expect(x["namePrefix"]?.string == expected.namePrefix && x["namePrefixSource"]?.string == expected.source)
         #expect(LibraryNames.isPrefix(x["namePrefix"]?.string ?? ""))
         #expect(x["automaticTitle"]?.string == "Weekly sync")
         // Lossless: the unknown member keeps its exact integer.
@@ -696,14 +696,16 @@ struct R65CodemyriadNamespaceTests {
         }
     }
     /// A trusted plain Opus file's own tags go out with the export.
-    @Test func aPlainOpusFileKeepsItsTags() throws {
+    @Test func aPlainOpusFileKeepsNonTimeTagsAndMarksUnknownStart() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let input = try CassiniReader.read(contentsOf:vector("002-plain-audio"))
         let file = try libraryExport(vector("002-plain-audio"),root)
-        for name in ["ARTIST","DATE","DESCRIPTION","ENCODER"] where input.tags?[name] != nil {
+        for name in ["ARTIST","DESCRIPTION","ENCODER"] where input.tags?[name] != nil {
             #expect(file.tags?[name] == input.tags?[name],"\(name)")
         }
         #expect(input.tags?["ARTIST"] != nil || input.tags?["DATE"] != nil)
+        #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+        #expect(file.meetingTime == nil)
     }
     /// Speakers: carried words keep the original list (nothing appended); after a Write down the
     /// user's name for an original speaker still labels it, Mac's speakers follow, the ids tag
@@ -823,13 +825,13 @@ struct R65CodemyriadNamespaceTests {
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         if input.tags?["DATE"] == nil {
             #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
-            #expect(file.tags?["DATE"] == nil,"no DATE is made up")
+            #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+            #expect(file.meetingTime == nil,"An artifact stamp is not a meeting time")
         }
     }
-    /// #133 review: a DATE whose offset is unknown (-00:00) or out of range names no instant
-    /// under the shared rules (LibraryNames): the file is dated by its import, keeps its tag as it
-    /// was, and its name doesn't come from it.
-    @Test(arguments:["2026-03-04T09:15:00-00:00","2026-03-04T09:15:00+15:30"]) func anInvalidDateTagDoesNotDateTheFile(tag: String) throws {
+    /// D95 separates recording time from the established naming fallback. RFC 3339
+    /// permits +15:30, although S-12's filename offset range rejects it. -00:00 is unknown.
+    @Test(arguments:["2026-03-04T09:15:00-00:00","2026-03-04T09:15:00+15:30"]) func namingFallbackAndD95TimeAreIndependentForLegacyDates(tag: String) throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let fixture = try #require(Bundle.module.url(forResource:"stereo-tone",withExtension:"opus",subdirectory:"Fixtures"))
         var tags = Data("OpusTags".utf8)
@@ -843,7 +845,13 @@ struct R65CodemyriadNamespaceTests {
         let file = try reexportFile(root)
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
-        #expect(file.tags?["DATE"] == tag,"the original tag is kept")
+        if tag.hasSuffix("-00:00") {
+            #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+            #expect(file.manifest?.meeting.recordedAtUtc == nil && file.meetingTime == nil)
+        } else {
+            #expect(file.manifest?.meeting.recordedAtUtc == "2026-03-03T17:45:00.000Z")
+            #expect(file.tags?["DATE"] == "2026-03-03T17:45:00.000Z")
+        }
         #expect(file.manifest?.raw["x"]?["codemyriad.io"]?["namePrefixSource"]?.string == "import-time")
     }
     /// #133 review: an export from before D65 (its revision chosen without the creation time and
@@ -1072,9 +1080,10 @@ struct R65CodemyriadNamespaceTests {
         let x = try #require(CassiniReader.read(contentsOf:exported.url).manifest?.raw["x"]?["codemyriad.io"])
         #expect(x["namePrefix"]?.string == "2026-03-04--09.15-" && x["namePrefixSource"]?.string == "date-tag")
         #expect(x["automaticTitle"]?.string == "Board review")
-        // D65: its DATE stays, and its creation time is that DATE, not the export time.
+        // D95: the known instant is mirrored in UTC; its legacy filename prefix stays.
         let file = try CassiniReader.read(contentsOf:exported.url)
-        #expect(file.tags?["DATE"] == "2026-03-04T09:15:00+01:00")
+        #expect(file.tags?["DATE"] == "2026-03-04T08:15:00.000Z")
+        #expect(file.tags?["CASSINI_RECORDED_AT_UTC"] == "2026-03-04T08:15:00.000Z")
         #expect(file.manifest?.meeting.createdAtUtc == "2026-03-04T08:15:00.000Z")
         #expect(try raw(imported.folder.appendingPathComponent("meeting.json"))["namePrefix"]?.string == "2026-03-04--09.15-")
     }

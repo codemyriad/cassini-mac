@@ -1,0 +1,9 @@
+--- a/scripts/test-spectrogram-app.py
++++ b/scripts/test-spectrogram-app.py
+@@ -200,5 +200,5 @@
+     """Reap the owned diagnostic child without relying on top's SIGTERM handling."""
+     if sampler.poll() is None:
+-        sampler.kill()
++        sampler.terminate()
+     sampler.wait(timeout=10)
+ 
