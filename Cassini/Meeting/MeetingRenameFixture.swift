@@ -72,9 +72,9 @@ enum MeetingRenameFixture {
                     "format":"cassini.words.v1",
                     "language":"en",
                     "items":[
-                        ["speaker":"marta","startMs":4000,"endMs":7000,"text":"Let’s start with the budget,"],
-                        ["speaker":"giulia","startMs":7100,"endMs":7800,"text":"Yes, agreed."],
-                        ["speaker":"marta","startMs":7900,"endMs":11000,"text":"since travel is the one line we need to settle today."],
+                        ["speaker":"marta","startMs":4000,"endMs":4900,"text":"Let’s start with the budget,"],
+                        ["speaker":"giulia","startMs":4900,"endMs":5200,"text":"Yes, agreed."],
+                        ["speaker":"marta","startMs":5200,"endMs":6100,"text":"since travel is the one line we need to settle today."],
                         ["speaker":"dario","startMs":12000,"endMs":17000,"text":"I sent the numbers on Friday. Client visits moved the total."],
                         ["speaker":"giulia","startMs":18000,"endMs":23000,"text":"Both September workshops came in under the cap."],
                         ["speaker":"elena","startMs":24000,"endMs":29000,"text":"Engineering hardware stayed flat for the whole quarter."],
@@ -84,6 +84,10 @@ enum MeetingRenameFixture {
                     ],
                 ]
                 try JSONSerialization.data(withJSONObject:transcript,options:[.sortedKeys]).write(to:sidecar,options:.atomic)
+            }
+            if CommandLine.arguments.contains("--fixture-library-speaker-save-fails") {
+                let meeting = root.appendingPathComponent("Recording-a0000000-0000-4000-8000-000000000001")
+                try FileManager.default.setAttributes([.posixPermissions:0o500],ofItemAtPath:meeting.path)
             }
             return root
         } catch { return nil }

@@ -256,13 +256,9 @@ final class LibraryBoards: XCTestCase {
     }
 
     @MainActor func testSevenSpeakersAndSpeakerErrorBoards() throws {
-        let fixtureID = UUID().uuidString
-        let meetingDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("CassiniRenameFixture-" + fixtureID, isDirectory: true)
-            .appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000001", isDirectory: true)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: meetingDir.path) }
-        let args = ["--fixture-library-rename", "--fixture-library-seven-speakers", "-CassiniRenameID", fixtureID]
-        let app = try launch("library", fixture: "main", extra: args); defer { app.terminate() }
+        let sevenArgs = ["--fixture-library-rename", "--fixture-library-seven-speakers", "-CassiniRenameID", UUID().uuidString]
+        let app = try launch("library", fixture: "main", extra: sevenArgs)
+        defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
         app.typeKey(.escape, modifierFlags: [])
         let budget = window.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Budget review", "Budget review")).firstMatch
@@ -275,14 +271,28 @@ final class LibraryBoards: XCTestCase {
         let marta = window.buttons["speaker-name-marta"], guest = window.buttons["speaker-name-guest"]
         XCTAssertTrue(marta.waitForExistence(timeout: 10) && guest.waitForExistence(timeout: 10), app.debugDescription)
         capture(window, name: "meeting-seven-speakers")
-        marta.click()
-        let field = app.textFields["speaker-name-field"], save = app.buttons["speaker-save-name"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: meetingDir.path)
-        field.click(); app.typeKey("a", modifierFlags: .command); field.typeText("Ada"); save.click()
-        let errorLine = app.staticTexts["speaker-change-error"]
-        XCTAssertTrue(errorLine.waitForExistence(timeout: 10), app.debugDescription)
-        capture(window, name: "speaker-error")
+        app.terminate()
+
+        let failArgs = ["--fixture-library-rename", "--fixture-library-seven-speakers", "--fixture-library-speaker-save-fails", "-CassiniRenameID", UUID().uuidString]
+        let failApp = try launch("library", fixture: "main", extra: failArgs)
+        defer { if failApp.state != .notRunning { failApp.terminate() } }
+        let failWindow = failApp.windows["cassini-library-window"]
+        failApp.typeKey(.escape, modifierFlags: [])
+        let failBudget = failWindow.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Budget review", "Budget review")).firstMatch
+        XCTAssertTrue(failBudget.waitForExistence(timeout: 20), failApp.debugDescription); failBudget.click()
+        let failRead = failWindow.buttons["preview-read-transcript"]
+        let failReady = NSPredicate { _, _ in failRead.exists && failRead.isEnabled }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: failReady, object: nil)], timeout: 10), .completed, failApp.debugDescription)
+        failRead.click()
+        let failMarta = failWindow.buttons["speaker-name-marta"]
+        XCTAssertTrue(failMarta.waitForExistence(timeout: 10), failApp.debugDescription)
+        failMarta.click()
+        let field = failApp.textFields["speaker-name-field"], save = failApp.buttons["speaker-save-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), failApp.debugDescription)
+        field.click(); failApp.typeKey("a", modifierFlags: .command); field.typeText("Ada"); save.click()
+        let errorLine = failApp.staticTexts["speaker-change-error"]
+        XCTAssertTrue(errorLine.waitForExistence(timeout: 10), failApp.debugDescription)
+        capture(failWindow, name: "speaker-error")
     }
 
     @MainActor func testRenameFromFileAndWindowTitle() throws {

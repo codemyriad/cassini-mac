@@ -172,4 +172,25 @@ struct SpeakerEditsTests {
         #expect(SpeakerEdits.sample(longer,speaker:"a")==1000..<11_000)
         #expect(SpeakerEdits.sample(longer,speaker:"missing")==nil)
     }
+    @Test func readOnlyDirectoryScansEditableThenFailsSpeakerSaveAndSevenSpeakerAsideRendersInline() throws {
+        let (root,m)=try fixture()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:m.folder.path)
+            try? FileManager.default.removeItem(at:root)
+        }
+        try FileManager.default.setAttributes([.posixPermissions:0o500],ofItemAtPath:m.folder.path)
+        let scanned=try #require(LibraryScanner(root:root).meeting(at:m.folder))
+        #expect(!scanned.metadataReadOnly)
+        #expect(scanned.metadataRevision != nil)
+        #expect(throws:(any Error).self) {try SpeakerEdits.apply(.name(speaker:"a",value:"Ada"),to:scanned,roots:[root])}
+
+        let turns=MeetingPresentation.turns([
+            .init(speaker:"marta",startMs:4000,endMs:4900,text:"Let’s start with the budget,"),
+            .init(speaker:"giulia",startMs:4900,endMs:5200,text:"Yes, agreed."),
+            .init(speaker:"marta",startMs:5200,endMs:6100,text:"since travel is the one line we need to settle today."),
+        ])
+        let marta=try #require(turns.first {$0.speaker=="marta" && $0.host==nil})
+        #expect(marta.asides.count==1)
+        #expect(turns[marta.asides[0].turn].speaker=="giulia")
+    }
 }
