@@ -83,7 +83,7 @@ import CassiniLibrary
     func beginShutdown() { closing = true; observing = false; chooser?.cancel(nil); task?.cancel(); retryTask?.cancel() }
     func waitForShutdown() async { await task?.value }
     func maybeRetryDeferred() {
-        guard !closing, !busy, !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working, retryTask == nil, waitingCount > 0 else { return }
+        guard !closing, !busy, !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working && !MeetingExportCoordinator.shared.isBusy && !BulkZipExportCoordinator.shared.isBusy, retryTask == nil, waitingCount > 0 else { return }
         retryTask = Task {
             do { try await Task.sleep(for:.seconds(2)) } catch { retryTask = nil; return }
             guard !closing, !busy else { retryTask = nil; return }
@@ -129,6 +129,7 @@ import CassiniLibrary
                 if destination != nil {
                     RecordCoordinator.shared.showingFirst = false
                     MeetingExportCoordinator.shared.cancel(); await MeetingExportCoordinator.shared.waitForShutdown()
+                    BulkZipExportCoordinator.shared.cancel(); await BulkZipExportCoordinator.shared.waitForShutdown()
                     LibrarySearchModel.shared.close(); MeetingNavigation.shared.back(); SessionPlaybackController.stopAll()
                 }
                 await RecordingPageModel.flushAll()
