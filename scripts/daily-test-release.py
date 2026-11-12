@@ -243,6 +243,32 @@ def publish(tag,version,build,sha,output,release_notes):
     command(['gh','release','edit',tag,'-R',REPO,'--draft=false','--prerelease','--latest=false'])
 
 
+# With DerivedData on the external volume the internal disk holds only the job's products, logs and notary files.
+EXTERNAL_INTERNAL_RESERVE=5*1024**3
+
+
+def external_build():
+    """(runner, root) when the agent's environment sends DerivedData to an external volume, else None.
+
+    CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT names a folder inside /Volumes/<volume>, and
+    CASSINI_MAC_TEST_RELEASE_AQUA the program that runs a command in the logged-in session (on drmeyers,
+    ~/bin/guirun). A LaunchAgent cannot open a removable volume, so this process only passes the path on; the
+    helper checks the mount, the free space and symlinks where it can see them. One variable without the other,
+    or a runner that is not an installed program, fails the job before a build number is used.
+    """
+    root=os.environ.get('CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT','')
+    runner=os.environ.get('CASSINI_MAC_TEST_RELEASE_AQUA','')
+    if not root and not runner:return None
+    if not root or not runner:
+        raise ValueError('External DerivedData needs both its root and the logged-in session runner')
+    parts=Path(root).parts
+    if not Path(root).is_absolute() or len(parts)<4 or parts[1]!='Volumes' or '..' in parts:
+        raise ValueError('External build root must be a folder inside /Volumes/<volume>')
+    if not Path(runner).is_absolute() or not Path(runner).is_file() or not os.access(runner,os.X_OK):
+        raise ValueError('Logged-in session runner is not an installed program')
+    return runner,root
+
+
 def signed_build(args,env,log):
     process=subprocess.Popen(args,cwd=SOURCE,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
     try:
@@ -421,8 +447,11 @@ def tick(now):
         version=nightly_version(version,releases)
         initial=int(re.search(r'CURRENT_PROJECT_VERSION: "([0-9]+)"',project).group(1))
         stage='disk reserve'
-        if shutil.disk_usage(BASE).free < 25*1024**3:
+        external=external_build()
+        if external is None and shutil.disk_usage(BASE).free < 25*1024**3:
             raise ValueError('At least25GiB free required before a signed test build')
+        if external is not None and shutil.disk_usage(BASE).free < EXTERNAL_INTERNAL_RESERVE:
+            raise ValueError('At least5GiB free required for the products of a signed test build')
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
         stage='release notes'
@@ -435,8 +464,16 @@ def tick(now):
         env=dict(os.environ)
         state['job']=str(job);atomic(state_file,state)
         with (job/'release-driver.log').open('w') as log:
-            code=signed_build([sys.executable,str(SOURCE/'scripts/release.py'),'--test-release','--version',version,
-                '--build',str(build),'--derived-data',str(derived),'--output',str(output)],env,log)
+            release=[sys.executable,str(SOURCE/'scripts/release.py'),'--test-release','--version',version,
+                '--build',str(build),'--output',str(output)]
+            if external is None:
+                release+=['--derived-data',str(derived)]
+            else:
+                # DerivedData goes to the external volume, which only the logged-in session can reach: its runner
+                # starts the helper, and the helper makes, checks and removes the folder. Products stay in `job`.
+                runner,root=external
+                release=[runner,sys.executable,str(SOURCE/'scripts/external-derived-build.py'),root,*release]
+            code=signed_build(release,env,log)
         if code:raise RuntimeError('Signed test build failed; retained private job diagnostics')
         stage='GitHub nightly publication'
         publish(f'v{version}-beta.{build}',version,build,head,output,body)
