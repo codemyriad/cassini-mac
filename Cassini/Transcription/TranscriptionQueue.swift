@@ -18,7 +18,10 @@ import Darwin
     private(set) var active: URL?
     private(set) var activeModel: String?
     private(set) var stoppingFolders = Set<String>()
+    @ObservationIgnored private var stoppingTasks: [String:Task<Void,Never>] = [:]
     @ObservationIgnored private var pending: [LibraryMeeting] = []
+    @ObservationIgnored private var automaticPending = Set<String>()
+    @ObservationIgnored private var explicitRetries = Set<String>()
     @ObservationIgnored private var known = Set<String>()
     @ObservationIgnored private var userStoppedRevisions: [String:Int64] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -36,42 +39,62 @@ import Darwin
         guard !closing, !trashing.contains(path), !stoppingFolders.contains(path), !meeting.metadataReadOnly else { return nil }
         stoppingFolders.insert(path)
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        automaticPending.remove(path); explicitRetries.remove(path)
         let child = active?.path == path ? task : nil
         child?.cancel()
         let metadata = preparing?.folder.path == path ? preparing?.work : nil
-        return Task {
+        #if DEBUG
+        let willWrite = fixtureOnStopMetadataWillWrite
+        #endif
+        let stopTask = Task {
             _ = try? await metadata?.value
             await child?.value
             pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+            automaticPending.remove(path); explicitRetries.remove(path)
             do {
                 let revision = try await Task.detached(priority:.userInitiated) {
-                    try MeetingTranscriber.stopForUser(directory:folder,id:id)
+                    #if DEBUG
+                    willWrite?(folder)
+                    #endif
+                    return try MeetingTranscriber.stopForUser(directory:folder,id:id)
                 }.value
                 if let revision { userStoppedRevisions[path] = revision }
             } catch {
                 if !closing, !trashing.contains(path) { NSApp.presentError(error) }
             }
             known.remove(path); schedulingFailures.remove(path)
-            stoppingFolders.remove(path)
-            LibraryStore.shared.refresh(affected:folder)
+            stoppingFolders.remove(path); stoppingTasks.removeValue(forKey:path)
+            if !closing, !paused, !trashing.contains(path) {
+                LibraryStore.shared.refresh(affected:folder)
+            }
         }
+        stoppingTasks[path] = stopTask
+        return stopTask
     }
     func cancel(meeting folder: URL) async {
         let path = folder.path
         trashing.insert(path)
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        automaticPending.remove(path); explicitRetries.remove(path)
         let child = active?.path == path ? task : nil
         child?.cancel()
         let metadata = preparing?.folder.path == path ? preparing?.work : nil
+        let stopping = stoppingTasks[path]
         _ = try? await metadata?.value
         await child?.value
+        #if DEBUG
+        if stopping != nil { fixtureOnBarrierAwaitingStops?("trash") }
+        #endif
+        await stopping?.value
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        automaticPending.remove(path); explicitRetries.remove(path)
     }
     func releaseTrashed(_ folder: URL) {
         trashing.remove(folder.path); known.remove(folder.path); schedulingFailures.remove(folder.path)
+        automaticPending.remove(folder.path); explicitRetries.remove(folder.path)
         userStoppedRevisions.removeValue(forKey:folder.path)
     }
-    var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty || !stoppingFolders.isEmpty }
+    var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty || !stoppingFolders.isEmpty || !stoppingTasks.isEmpty }
     func beginShutdown() {
         guard !closing else { return }; closing = true
         task?.cancel(); preparePending()
@@ -79,10 +102,19 @@ import Darwin
     func waitForShutdown() async {
         await preparation?.value
         pending.removeAll(); prepared.removeAll()
+        automaticPending.removeAll(); explicitRetries.removeAll()
         await task?.value
+        #if DEBUG
+        if !stoppingTasks.isEmpty { fixtureOnBarrierAwaitingStops?("shutdown") }
+        #endif
+        while let next = stoppingTasks.values.first {
+            await next.value
+        }
     }
     #if DEBUG
+    nonisolated enum AttemptOutcome: Equatable, Sendable { case completed, lockContended, alreadySettled, failed, cancelled }
     var preparingFixtureFolder: URL? { RecordingFixture.enabled ? preparing?.folder : nil }
+    func containsPendingForTesting(_ folder: URL) -> Bool { pending.contains { $0.folder.path == folder.path } }
     func waitForFixturePreparation() async {
         precondition(RecordingFixture.enabled)
         await preparation?.value
@@ -91,6 +123,9 @@ import Darwin
     @ObservationIgnored var fixtureAcceptance: ((URL,String) async -> Void)?
     @ObservationIgnored var fixtureCompletion: ((URL,String,Bool) -> Void)?
     @ObservationIgnored var fixturePreparationStarted: ((URL) -> Void)?
+    @ObservationIgnored var fixtureOnAttemptOutcome: ((URL,AttemptOutcome) -> Void)?
+    @ObservationIgnored var fixtureOnStopMetadataWillWrite: (@Sendable (URL) -> Void)?
+    @ObservationIgnored var fixtureOnBarrierAwaitingStops: ((String) -> Void)?
     #endif
     // Persist accepted queue intent before any inactive folder can move.
     // The active child's paths remain protected; queued folders are rediscovered.
@@ -98,10 +133,25 @@ import Darwin
         paused = true
         await preparation?.value
         pending.removeAll(); prepared.removeAll()
+        automaticPending.removeAll(); explicitRetries.removeAll()
+        #if DEBUG
+        if !stoppingTasks.isEmpty { fixtureOnBarrierAwaitingStops?("move") }
+        #endif
+        while let next = stoppingTasks.values.first {
+            await next.value
+        }
     }
     func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic, !closing, !paused else { return }
+        let byPath = Dictionary(uniqueKeysWithValues:meetings.map { ($0.folder.path,$0) })
+        pending.removeAll { queued in
+            let path = queued.folder.path
+            guard automaticPending.contains(path), preparing?.folder.path != path,
+                  let current = byPath[path], !current.canQueueAutomatically else { return false }
+            prepared.remove(path); known.remove(path); automaticPending.remove(path); explicitRetries.remove(path)
+            return true
+        }
         let unsettled = Set(meetings.filter { [.none,.queued,.running].contains($0.state.transcript) }.map(\.folder.path))
         known.formIntersection(unsettled.union(pending.map(\.folder.path)).union(active.map { [$0.path] } ?? []))
         for meeting in meetings where userStoppedRevisions[meeting.folder.path] != nil {
@@ -118,17 +168,28 @@ import Darwin
         }
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false, automatic: Bool = false) {
-        guard !closing, !paused, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path),
+        let path = meeting.folder.path
+        guard !closing, !paused, !trashing.contains(path), !stoppingFolders.contains(path),
               !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
-              active?.path != meeting.folder.path, !pending.contains(where: { $0.folder.path == meeting.folder.path }) else { return }
-        if !automatic {
-            userStoppedRevisions.removeValue(forKey:meeting.folder.path)
-            if retry || meeting.transcriptPaused { known.remove(meeting.folder.path) }
-        } else if retry {
-            known.remove(meeting.folder.path)
+              active?.path != path else { return }
+        if let existingIndex = pending.firstIndex(where: { $0.folder.path == path }) {
+            if !automatic {
+                automaticPending.remove(path)
+                if retry { explicitRetries.insert(path) }
+                pending[existingIndex] = meeting
+            }
+            return
         }
-        guard known.insert(meeting.folder.path).inserted else { return }
-        schedulingFailures.remove(meeting.folder.path)
+        if !automatic {
+            userStoppedRevisions.removeValue(forKey:path)
+            if retry || meeting.transcriptPaused { known.remove(path) }
+        } else if retry {
+            known.remove(path)
+        }
+        guard known.insert(path).inserted else { return }
+        schedulingFailures.remove(path)
+        if automatic { automaticPending.insert(path); explicitRetries.remove(path) }
+        else { automaticPending.remove(path); if retry { explicitRetries.insert(path) } else { explicitRetries.remove(path) } }
         pending.append(meeting); preparePending()
     }
     func writeDown(_ detail: MeetingDetailModel) {
@@ -141,78 +202,128 @@ import Darwin
         preparation = Task {
             defer { preparation = nil }
             while let meeting = pending.first(where:{ !prepared.contains($0.folder.path) }) {
+                let path = meeting.folder.path
+                let isAutomatic = automaticPending.contains(path)
+                let isExplicitRetry = explicitRetries.contains(path)
                 do {
                     defer { preparing = nil }
-                    if ![.queued,.running].contains(meeting.state.transcript) {
+                    var stillEligible = true
+                    if ![.queued,.running].contains(meeting.state.transcript) || isExplicitRetry {
                         let work = Task.detached(priority:.userInitiated) {
-                            try MeetingTranscriber.setStatus(directory:meeting.folder,id:meeting.id,status:"queued")
+                            guard try MeetingTranscriber.queueIfEligible(directory:meeting.folder,id:meeting.id,automatic:isAutomatic,explicitRetry:isExplicitRetry) else {
+                                throw CancellationError()
+                            }
                         }
                         preparing = (meeting.folder,work)
                         #if DEBUG
                         if RecordingFixture.enabled { fixturePreparationStarted?(meeting.folder) }
                         #endif
-                        try await work.value
+                        do {
+                            try await work.value
+                        } catch is CancellationError {
+                            stillEligible = false
+                        }
                     }
-                    if !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path), pending.contains(where:{ $0.folder == meeting.folder }) {
-                        prepared.insert(meeting.folder.path); startNext()
+                    if !stillEligible {
+                        pending.removeAll { $0.folder.path == path }; known.remove(path)
+                        automaticPending.remove(path); explicitRetries.remove(path)
+                        startNext()
+                    } else if !trashing.contains(path), !stoppingFolders.contains(path), pending.contains(where:{ $0.folder == meeting.folder }) {
+                        prepared.insert(path); startNext()
                     }
                 } catch {
-                    pending.removeAll { $0.folder.path == meeting.folder.path }; known.remove(meeting.folder.path)
-                    schedulingFailures.insert(meeting.folder.path)
-                    if !closing, !trashing.contains(meeting.folder.path) { NSApp.presentError(error) }; startNext()
+                    pending.removeAll { $0.folder.path == path }; known.remove(path)
+                    automaticPending.remove(path); explicitRetries.remove(path)
+                    schedulingFailures.insert(path)
+                    if !closing, !trashing.contains(path) { NSApp.presentError(error) }; startNext()
                 }
             }
         }
     }
     private func startNext() {
         guard !closing, !paused, task == nil, !pending.isEmpty else { return }
-        guard prepared.contains(pending[0].folder.path) else { return }
+        let nextPath = pending[0].folder.path
+        guard prepared.contains(nextPath) else { return }
         let meeting = pending.removeFirst(); active = meeting.folder
-        prepared.remove(meeting.folder.path)
+        prepared.remove(nextPath); automaticPending.remove(nextPath); explicitRetries.remove(nextPath)
         task = Task {
             var completedSuccessfully = false
             var retryDeferred = false
+            var alreadySettled = false
+            #if DEBUG
+            var debugOutcome: AttemptOutcome = .failed
+            #endif
             do {
-                struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String; let uiLanguage: String }
-                let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"),uiLanguage:UXText.language.rawValue)) + Data([10])
-                let model = try await SpeechModelController.shared.modelForNewJob()
-                defer { withExtendedLifetime(model) {} }
-                var worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + (model == nil ? "cassini-whistle-worker" : "cassini-parakeet-worker"))
-                var arguments: [String] = model.map { ["--model",$0.lease.directory.path] } ?? []
-                activeModel = model == nil ? "whistle" : "parakeet"
-                #if DEBUG
-                if SettingsFixture.id != nil, let acceptance = fixtureAcceptance {
-                    await acceptance(meeting.folder,activeModel ?? "")
+                let precheck = try await Task.detached(priority:.userInitiated) {
+                    try MeetingTranscriber.precheckAttempt(directory:meeting.folder)
+                }.value
+                try Task.checkCancellation()
+                switch precheck {
+                case .lockContended:
+                    retryDeferred = true
+                    #if DEBUG
+                    debugOutcome = .lockContended
+                    #endif
+                case .alreadySettled:
+                    alreadySettled = true
+                    #if DEBUG
+                    debugOutcome = .alreadySettled
+                    #endif
+                case .eligible:
+                    struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String; let uiLanguage: String }
+                    let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"),uiLanguage:UXText.language.rawValue)) + Data([10])
+                    let model = try await SpeechModelController.shared.modelForNewJob()
+                    defer { withExtendedLifetime(model) {} }
+                    var worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + (model == nil ? "cassini-whistle-worker" : "cassini-parakeet-worker"))
+                    var arguments: [String] = model.map { ["--model",$0.lease.directory.path] } ?? []
+                    activeModel = model == nil ? "whistle" : "parakeet"
+                    #if DEBUG
+                    if SettingsFixture.id != nil, let acceptance = fixtureAcceptance {
+                        await acceptance(meeting.folder,activeModel ?? "")
+                    }
+                    if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniFailTranscriptionOnce") == "YES", !failedFixtureOnce {
+                        failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
+                    }
+                    if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniSlowTranscription") == "YES" {
+                        worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                        arguments = ["--fixture-wait-for-cancellation"]
+                    }
+                    #endif
+                    var result = try await WhistleSubprocess.run(executable: worker, arguments: arguments, environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
+                    struct Response: Decodable { let error: String?; let code: String? }
+                    // Startup model checks fail before the Parakeet worker can read
+                    // or edit the meeting. Inspect the structured error even on a
+                    // nonzero exit, reset the choice, then retry this job in Whistle.
+                    if let model, result.status != 0,
+                       (try? JSONDecoder().decode(Response.self,from:result.stdout).code) == "invalid-model" {
+                        await SpeechModelController.shared.invalidModel(generation:model.generation)
+                        try Task.checkCancellation(); activeModel = "whistle"
+                        worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
+                        result = try await WhistleSubprocess.run(executable:worker,arguments:[],environment:WhistleEnvironment.worker(),input:input,timeout:24 * 60 * 60)
+                    }
+                    guard result.status == 0, result.inputError == nil else { throw TranscriptionFailure.runtime("worker exited") }
+                    let response = try JSONDecoder().decode(Response.self, from: result.stdout)
+                    if let error = response.error {
+                        if error.contains("meeting is already being written down") {
+                            retryDeferred = true
+                            #if DEBUG
+                            debugOutcome = .lockContended
+                            #endif
+                        } else {
+                            throw TranscriptionFailure.runtime(error)
+                        }
+                    } else {
+                        completedSuccessfully = true
+                        #if DEBUG
+                        debugOutcome = .completed
+                        #endif
+                    }
+                    SpeechModelController.shared.transcriptionFinished(engine:activeModel ?? "",succeeded:completedSuccessfully)
                 }
-                if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniFailTranscriptionOnce") == "YES", !failedFixtureOnce {
-                    failedFixtureOnce = true; worker = URL(fileURLWithPath: "/usr/bin/false")
-                }
-                if RecordingFixture.transcribes, LibraryLaunchContext.argument("-CassiniSlowTranscription") == "YES" {
-                    worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
-                    arguments = ["--fixture-wait-for-cancellation"]
-                }
-                #endif
-                var result = try await WhistleSubprocess.run(executable: worker, arguments: arguments, environment: WhistleEnvironment.worker(), input: input, timeout: 24 * 60 * 60)
-                struct Response: Decodable { let error: String?; let code: String? }
-                // Startup model checks fail before the Parakeet worker can read
-                // or edit the meeting. Inspect the structured error even on a
-                // nonzero exit, reset the choice, then retry this job in Whistle.
-                if let model, result.status != 0,
-                   (try? JSONDecoder().decode(Response.self,from:result.stdout).code) == "invalid-model" {
-                    await SpeechModelController.shared.invalidModel(generation:model.generation)
-                    try Task.checkCancellation(); activeModel = "whistle"
-                    worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
-                    result = try await WhistleSubprocess.run(executable:worker,arguments:[],environment:WhistleEnvironment.worker(),input:input,timeout:24 * 60 * 60)
-                }
-                guard result.status == 0, result.inputError == nil else { throw TranscriptionFailure.runtime("worker exited") }
-                let response = try JSONDecoder().decode(Response.self, from: result.stdout)
-                if let error = response.error {
-                    if error.contains("meeting is already being written down") { retryDeferred = true }
-                    else { throw TranscriptionFailure.runtime(error) }
-                }
-                completedSuccessfully = response.error == nil
-                SpeechModelController.shared.transcriptionFinished(engine:activeModel ?? "",succeeded:completedSuccessfully)
             } catch is CancellationError {
+                #if DEBUG
+                debugOutcome = .cancelled
+                #endif
                 // Quit pauses work. Preserve the sidecar and its reference for
                 // next-launch recovery instead of turning cancellation into failure.
                 if !stoppingFolders.contains(meeting.folder.path), !trashing.contains(meeting.folder.path) {
@@ -222,17 +333,38 @@ import Darwin
                     if !closing { retryDeferred = true }
                 }
             } catch {
-                // Worker crashes and bundle/decoder failures take the same retry path.
-                try? await Task.detached(priority:.userInitiated) {
-                    try MeetingTranscriber.setStatus(directory:meeting.folder,id:meeting.id,status:"failed")
-                }.value
+                // Worker crashes and bundle/decoder failures take the retry path only when
+                // no other process holds `.transcription.lock` or already settled this meeting.
+                let disposition = (try? await Task.detached(priority:.userInitiated) {
+                    try MeetingTranscriber.failAttemptIfOwnedAndUnsettled(directory:meeting.folder,id:meeting.id)
+                }.value) ?? .eligible
+                switch disposition {
+                case .lockContended:
+                    retryDeferred = true
+                    #if DEBUG
+                    debugOutcome = .lockContended
+                    #endif
+                case .alreadySettled:
+                    alreadySettled = true
+                    #if DEBUG
+                    debugOutcome = .alreadySettled
+                    #endif
+                case .eligible:
+                    #if DEBUG
+                    debugOutcome = .failed
+                    #endif
+                }
             }
-            await Task.detached { SegmentedAudio.removeAbandonedScratch() }.value
+            if !alreadySettled && !retryDeferred {
+                await Task.detached { SegmentedAudio.removeAbandonedScratch() }.value
+            }
             let finishedModel = activeModel ?? ""
             active = nil; activeModel = nil; task = nil
-            if retryDeferred { known.remove(meeting.folder.path) }
+            if retryDeferred || alreadySettled { known.remove(meeting.folder.path) }
             startNext()
-            if retryDeferred, !closing, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
+            if alreadySettled, !closing, !paused, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
+                LibraryStore.shared.refresh(affected:meeting.folder)
+            } else if retryDeferred, !closing, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
                 let folder = meeting.folder
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for:.milliseconds(300))
@@ -242,7 +374,10 @@ import Darwin
                 }
             }
             #if DEBUG
-            if SettingsFixture.id != nil { fixtureCompletion?(meeting.folder,finishedModel,completedSuccessfully) }
+            fixtureOnAttemptOutcome?(meeting.folder,debugOutcome)
+            if SettingsFixture.id != nil, !alreadySettled, !retryDeferred {
+                fixtureCompletion?(meeting.folder,finishedModel,completedSuccessfully)
+            }
             #endif
         }
     }
@@ -287,7 +422,9 @@ import Darwin
             try await verifyConcurrentImportKeepsExportProgressAndCancel(root:root, source:source, exportedMeeting:received)
             try await verifyBannerRemovalPreservesSharedExportReceipts(exportedMeeting:received, scratch:root.deletingLastPathComponent())
             try await verifyActiveUserStopStaleScanFenceAndResume(root:root, activeSession:session, nextActive:received)
-            // A second accepted import is owned by the same shutdown path.
+            try await verifyLockContentionCompletionWhileRetryPending(root:root, blockerID:received.id)
+            try await verifyStopCoordinatesWithMoveAndTrashUnderMetadataLock(root:root)
+            // A second accepted import and an accepted Stop are owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
             let waiting = try RecordingSession(parent:root,title:"Queued before Quit",source:"macos")
@@ -295,20 +432,14 @@ import Darwin
             try waiting.appendNative(id:"mic",pcm:Data(repeating:0,count:3200),offsetMs:0); try waiting.finish()
             try MeetingMetadataWriter(directory:waiting.directory,id:waiting.manifest.id).createIfNeeded()
             let waitingMeeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == waiting.manifest.id }))
-            try await holdingDirectoryLock(waiting.directory) {
-                queue.enqueue(waitingMeeting)
-                importer.open(another)
-                await Task.yield()
-                importer.beginShutdown(); queue.beginShutdown()
-            }
-            await importer.waitForShutdown(); await queue.waitForShutdown()
+            try await verifyStopCommitsBeforeShutdownCompletes(root:root, waiting:waiting, waitingMeeting:waitingMeeting, anotherSource:another)
             guard !importer.isBusy, !queue.isBusy else { throw POSIXError(.EBUSY) }
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == waiting.manifest.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             for name in try FileManager.default.contentsOfDirectory(atPath:root.path) where name.hasPrefix("Received-") {
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"lockContentionRetryPreservesCompletedTranscript":true,"stopCommitsBeforeShutdownMoveAndTrash":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown()
@@ -760,6 +891,269 @@ import Darwin
         }
         await queue.stop(resumed)?.value
         guard !queue.isStopping(activeSession.directory) else { throw POSIXError(.EBUSY) }
+    }
+
+    private static func awaitWithTimeout<T: Sendable>(
+        stream: AsyncStream<T>,
+        continuation: AsyncStream<T>.Continuation,
+        label: String,
+        matching predicate: @escaping @Sendable (T) -> Bool
+    ) async throws {
+        var iterator = stream.makeAsyncIterator()
+        let (cancelledStream, cancelledCont) = AsyncStream<Void>.makeStream()
+        let timeoutTask = Task { @MainActor in
+            defer { cancelledCont.yield(()); cancelledCont.finish() }
+            do { try await Task.sleep(for:.seconds(10)) } catch { return }
+            continuation.finish()
+        }
+        while let element = await iterator.next() {
+            if predicate(element) {
+                timeoutTask.cancel()
+                await timeoutTask.value
+                var cancelledIter = cancelledStream.makeAsyncIterator()
+                _ = await cancelledIter.next()
+                return
+            }
+        }
+        timeoutTask.cancel()
+        await timeoutTask.value
+        throw NSError(domain:"ImportLifecycleSelfTest",code:12,userInfo:[NSLocalizedDescriptionKey:"Timed out waiting for event: \(label)"])
+    }
+
+    private static func verifyLockContentionCompletionWhileRetryPending(root: URL, blockerID: UUID) async throws {
+        let queue = TranscriptionQueue.shared
+        let activeBlocker = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == blockerID }))
+        await queue.stop(activeBlocker)?.value
+        guard queue.active == nil else { throw POSIXError(.EBUSY) }
+
+        let contended = try RecordingSession(parent:root,title:"Shared library contention",source:"chromium")
+        try contended.addTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:16000,channels:1)
+        try contended.appendNative(id:"remote",pcm:Data(repeating:0,count:3200),offsetMs:0); try contended.finish()
+        try MeetingMetadataWriter(directory:contended.directory,id:contended.manifest.id).transaction { meta in
+            meta["transcript"] = ["status":"running","model":"whistle","reference":NSNull()]
+        }
+        let lockPath = contended.directory.appendingPathComponent(".transcription.lock").path
+        var lockFD = open(lockPath, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard lockFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+        defer {
+            if lockFD >= 0 { flock(lockFD, LOCK_UN); close(lockFD) }
+        }
+        guard flock(lockFD, LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+
+        let (outcomeStream, outcomeCont) = AsyncStream<(URL, TranscriptionQueue.AttemptOutcome)>.makeStream()
+        queue.fixtureOnAttemptOutcome = { folder, outcome in outcomeCont.yield((folder, outcome)) }
+        defer {
+            queue.fixtureOnAttemptOutcome = nil
+            outcomeCont.finish()
+        }
+
+        let contendedRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == contended.manifest.id }))
+        let targetPath = contended.directory.path
+        queue.consider([contendedRunning], automatic:true)
+        try await awaitWithTimeout(stream:outcomeStream, continuation:outcomeCont, label:"initial lock contention") { folder, outcome in
+            folder.path == targetPath && outcome == .lockContended
+        }
+
+        // Start a blocking job so the contended meeting's retry waits in `pending`.
+        let stoppedBlocker = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == blockerID }))
+        queue.enqueue(stoppedBlocker)
+        await queue.waitForFixturePreparation()
+        guard queue.active == stoppedBlocker.folder else { throw POSIXError(.EINVAL) }
+
+        queue.consider([contendedRunning], automatic:true)
+        await queue.waitForFixturePreparation()
+        guard queue.containsPendingForTesting(contended.directory) else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:13,userInfo:[NSLocalizedDescriptionKey:"Expected contended meeting retry to wait in pending behind active job"])
+        }
+
+        // While the retry is pending, the external lock owner completes the transcript and releases the lock.
+        let completedSidecar = try JSONSerialization.data(withJSONObject:[
+            "language":"en",
+            "items":[
+                ["speaker":"remote","startMs":0,"endMs":240,"text":"Completed"],
+                ["speaker":"remote","startMs":260,"endMs":540,"text":"elsewhere"]
+            ]
+        ])
+        try completedSidecar.write(to:contended.directory.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:contended.directory,id:contended.manifest.id).transaction { meta in
+            meta["transcript"] = [
+                "status":"done",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+        }
+        flock(lockFD, LOCK_UN); close(lockFD); lockFD = -1
+
+        // Stop the blocker without rescanning first so `startNext()` pops the now-completed pending retry.
+        let runningBlocker = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == blockerID }))
+        let (settledStream, settledCont) = AsyncStream<(URL, TranscriptionQueue.AttemptOutcome)>.makeStream()
+        queue.fixtureOnAttemptOutcome = { folder, outcome in settledCont.yield((folder, outcome)) }
+        defer { settledCont.finish() }
+        await queue.stop(runningBlocker)?.value
+        try await awaitWithTimeout(stream:settledStream, continuation:settledCont, label:"pending retry revalidated as alreadySettled") { folder, outcome in
+            folder.path == targetPath && outcome == .alreadySettled
+        }
+
+        // Also prove generic failure handling never overwrites a completed attempt.
+        let failDisposition = try MeetingTranscriber.failAttemptIfOwnedAndUnsettled(directory:contended.directory,id:contended.manifest.id)
+        guard failDisposition == .alreadySettled else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:14,userInfo:[NSLocalizedDescriptionKey:"Failure handler did not treat completed meeting as alreadySettled"])
+        }
+        let verified = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == contended.manifest.id }))
+        guard verified.state.transcript == .done, verified.transcriptReferenced,
+              verified.transcriptItems.map(\.text) == ["Completed","elsewhere"],
+              verified.state.error == nil else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:15,userInfo:[NSLocalizedDescriptionKey:"Completed transcript was invalidated by pending retry or failure handler"])
+        }
+
+        // Restore the active blocker so subsequent lifecycle checks run in the same steady state.
+        let restoreBlocker = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == blockerID }))
+        queue.enqueue(restoreBlocker)
+        await queue.waitForFixturePreparation()
+        guard queue.active == restoreBlocker.folder else { throw POSIXError(.EINVAL) }
+    }
+
+    private static func verifyStopCoordinatesWithMoveAndTrashUnderMetadataLock(root: URL) async throws {
+        let queue = TranscriptionQueue.shared
+        for kind in ["move", "trash"] {
+            let session = try RecordingSession(parent:root,title:"Stop before \(kind)",source:"chromium")
+            try session.addTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:16000,channels:1)
+            try session.appendNative(id:"remote",pcm:Data(repeating:0,count:3200),offsetMs:0); try session.finish()
+            try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { meta in
+                meta["transcript"] = ["status":"queued","model":"whistle","reference":NSNull()]
+            }
+            let meeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == session.manifest.id }))
+
+            var metadataLockFD = open(session.directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+            guard metadataLockFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+            defer {
+                if metadataLockFD >= 0 { flock(metadataLockFD, LOCK_UN); close(metadataLockFD) }
+            }
+            guard flock(metadataLockFD, LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+
+            let (willWriteStream, willWriteCont) = AsyncStream<URL>.makeStream()
+            let (barrierStream, barrierCont) = AsyncStream<String>.makeStream()
+            queue.fixtureOnStopMetadataWillWrite = { folder in willWriteCont.yield(folder) }
+            queue.fixtureOnBarrierAwaitingStops = { phase in barrierCont.yield(phase) }
+            defer {
+                queue.fixtureOnStopMetadataWillWrite = nil
+                queue.fixtureOnBarrierAwaitingStops = nil
+                willWriteCont.finish()
+                barrierCont.finish()
+            }
+
+            // Discard the returned Task, matching UI callers.
+            _ = queue.stop(meeting)
+            let expectedPath = session.directory.path
+            try await awaitWithTimeout(stream:willWriteStream, continuation:willWriteCont, label:"stopForUser entered for \(kind)") { $0.path == expectedPath }
+
+            var barrierCompleted = false
+            let barrierTask = Task { @MainActor in
+                if kind == "move" {
+                    await queue.pauseForMove()
+                } else {
+                    await queue.cancel(meeting:session.directory)
+                }
+                barrierCompleted = true
+            }
+            try await awaitWithTimeout(stream:barrierStream, continuation:barrierCont, label:"\(kind) barrier awaiting stop") { $0 == kind }
+            guard !barrierCompleted else {
+                throw NSError(domain:"ImportLifecycleSelfTest",code:16,userInfo:[NSLocalizedDescriptionKey:"\(kind) finished before Stop committed under held metadata lock"])
+            }
+            flock(metadataLockFD, LOCK_UN); close(metadataLockFD); metadataLockFD = -1
+            await barrierTask.value
+            guard barrierCompleted, !queue.isStopping(session.directory) else { throw POSIXError(.EBUSY) }
+
+            let committed = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == session.manifest.id }))
+            guard committed.state.transcript == .none, committed.transcriptPaused, !committed.canQueueAutomatically else {
+                throw NSError(domain:"ImportLifecycleSelfTest",code:17,userInfo:[NSLocalizedDescriptionKey:"Accepted Stop did not commit paused state before \(kind) completed"])
+            }
+            if kind == "move" {
+                queue.resumeAfterMove()
+            } else {
+                queue.releaseTrashed(session.directory)
+            }
+        }
+    }
+
+    private static func verifyStopCommitsBeforeShutdownCompletes(
+        root: URL,
+        waiting: RecordingSession,
+        waitingMeeting: LibraryMeeting,
+        anotherSource: URL
+    ) async throws {
+        let queue = TranscriptionQueue.shared, importer = LibraryImportCoordinator.shared
+        let quitStopped = try RecordingSession(parent:root,title:"Stopped before Quit",source:"chromium")
+        try quitStopped.addTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:16000,channels:1)
+        try quitStopped.appendNative(id:"remote",pcm:Data(repeating:0,count:3200),offsetMs:0); try quitStopped.finish()
+        let quitSidecar = try JSONSerialization.data(withJSONObject:[
+            "language":"en",
+            "items":[["speaker":"remote","startMs":0,"endMs":220,"text":"BeforeQuit"]]
+        ])
+        try quitSidecar.write(to:quitStopped.directory.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:quitStopped.directory,id:quitStopped.manifest.id).transaction { meta in
+            meta["transcript"] = [
+                "status":"queued",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+        }
+        let quitStoppedMeeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quitStopped.manifest.id }))
+
+        var stopLockFD = open(quitStopped.directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard stopLockFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+        defer {
+            if stopLockFD >= 0 { flock(stopLockFD, LOCK_UN); close(stopLockFD) }
+        }
+        guard flock(stopLockFD, LOCK_EX | LOCK_NB) == 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
+
+        let (willWriteStream, willWriteCont) = AsyncStream<URL>.makeStream()
+        let (barrierStream, barrierCont) = AsyncStream<String>.makeStream()
+        queue.fixtureOnStopMetadataWillWrite = { folder in willWriteCont.yield(folder) }
+        queue.fixtureOnBarrierAwaitingStops = { phase in barrierCont.yield(phase) }
+        defer {
+            queue.fixtureOnStopMetadataWillWrite = nil
+            queue.fixtureOnBarrierAwaitingStops = nil
+            willWriteCont.finish()
+            barrierCont.finish()
+        }
+
+        // UI-identical call: discard the returned Stop task while holding the metadata lock.
+        _ = queue.stop(quitStoppedMeeting)
+        let quitTargetPath = quitStopped.directory.path
+        try await awaitWithTimeout(stream:willWriteStream, continuation:willWriteCont, label:"stopForUser entered before Quit") { $0.path == quitTargetPath }
+
+        try await holdingDirectoryLock(waiting.directory) {
+            queue.enqueue(waitingMeeting)
+            importer.open(anotherSource)
+            await Task.yield()
+            importer.beginShutdown(); queue.beginShutdown()
+        }
+        await importer.waitForShutdown()
+
+        var shutdownFinished = false
+        let shutdownTask = Task { @MainActor in
+            await queue.waitForShutdown()
+            shutdownFinished = true
+        }
+        try await awaitWithTimeout(stream:barrierStream, continuation:barrierCont, label:"shutdown barrier awaiting Stop") { $0 == "shutdown" }
+        guard !shutdownFinished, queue.isBusy else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:18,userInfo:[NSLocalizedDescriptionKey:"waitForShutdown returned before accepted Stop committed"])
+        }
+        let stillQueuedWhileLocked = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quitStopped.manifest.id }))
+        guard stillQueuedWhileLocked.state.transcript == .queued else { throw POSIXError(.EINVAL) }
+
+        flock(stopLockFD, LOCK_UN); close(stopLockFD); stopLockFD = -1
+        await shutdownTask.value
+        guard shutdownFinished, !queue.isBusy else { throw POSIXError(.EBUSY) }
+
+        let committedAfterShutdown = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quitStopped.manifest.id }))
+        guard committedAfterShutdown.state.transcript == .none,
+              committedAfterShutdown.transcriptPaused,
+              !committedAfterShutdown.canQueueAutomatically,
+              committedAfterShutdown.transcriptItems.map(\.text) == ["BeforeQuit"] else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:19,userInfo:[NSLocalizedDescriptionKey:"Accepted Stop did not persist paused state before shutdown finished"])
+        }
     }
 }
 #endif

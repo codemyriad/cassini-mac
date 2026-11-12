@@ -449,4 +449,55 @@ final class TranscriptionMeetingTests: XCTestCase {
         XCTAssertEqual(finished.state.transcript,.done)
         XCTAssertFalse(finished.transcriptPaused)
     }
+    func testCompletedOrLockedAttemptIsHarmlessNoOpAndNeverOverwrittenByFailure() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"Shared completion",source:"chromium")
+        try session.addTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:16000,channels:1)
+        try session.appendNative(id:"remote",pcm:Data(repeating:0,count:3200),offsetMs:0); try session.finish()
+        let sidecar = session.directory.appendingPathComponent("transcript.json")
+        let wordsData = try JSONSerialization.data(withJSONObject:[
+            "language":"en",
+            "items":[["speaker":"remote","startMs":0,"endMs":280,"text":"Preserved"]]
+        ])
+        try wordsData.write(to:sidecar)
+        try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { meta in
+            meta["transcript"] = [
+                "status":"done",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+        }
+
+        XCTAssertEqual(try MeetingTranscriber.precheckAttempt(directory:session.directory),.alreadySettled)
+        XCTAssertFalse(try MeetingTranscriber.queueIfEligible(directory:session.directory,id:session.manifest.id,automatic:true,explicitRetry:false))
+        XCTAssertEqual(try MeetingTranscriber.failAttemptIfOwnedAndUnsettled(directory:session.directory,id:session.manifest.id),.alreadySettled)
+
+        let afterCompletedChecks = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(afterCompletedChecks.state.transcript,.done)
+        XCTAssertTrue(afterCompletedChecks.transcriptReferenced)
+        XCTAssertEqual(afterCompletedChecks.transcriptItems.map(\.text),["Preserved"])
+        XCTAssertNil(afterCompletedChecks.state.error)
+
+        // When another process holds `.transcription.lock` on a running meeting, neither precheck nor failure overwrites it.
+        try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id).transaction { meta in
+            meta["transcript"] = [
+                "status":"running",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+        }
+        let lockFD = open(session.directory.appendingPathComponent(".transcription.lock").path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        XCTAssertGreaterThanOrEqual(lockFD,0)
+        defer { flock(lockFD,LOCK_UN); close(lockFD) }
+        XCTAssertEqual(flock(lockFD,LOCK_EX | LOCK_NB),0)
+
+        XCTAssertEqual(try MeetingTranscriber.precheckAttempt(directory:session.directory),.lockContended)
+        XCTAssertEqual(try MeetingTranscriber.failAttemptIfOwnedAndUnsettled(directory:session.directory,id:session.manifest.id),.lockContended)
+
+        let whileContended = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(whileContended.state.transcript,.running)
+        XCTAssertEqual(whileContended.transcriptItems.map(\.text),["Preserved"])
+        XCTAssertNil(whileContended.state.error)
+    }
 }
