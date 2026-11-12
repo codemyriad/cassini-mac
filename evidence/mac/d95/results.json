@@ -1,8 +1,8 @@
 {
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
   "mainMerged": "eb60a0b",
-  "headlessTests": 436,
-  "ciContracts": 57,
+  "headlessTests": 457,
+  "ciContracts": 58,
   "restoredFocusedTests": 46,
   "fullConformance": {
     "pass": 29,
@@ -17,7 +17,7 @@
     "skip": 2
   },
   "sourceSHA256": {
-    "Cassini/Library/LibraryView.swift": "d7dbd8ea0f890b9edee67e13b3f06e3e6c2170c98c9819a72efaf4edb5fdeacf",
+    "Cassini/Library/LibraryView.swift": "bae257ae2db5893da8ee15e35015bd521f5d59917608a96fcce79901bd4ec7d5",
     "Cassini/Settings/UpdateDeferralSelfTest.swift": "10d8a679ac3dc3fcb6ab4296c86491057d8f5ec13c09d2031ce9dbb16f7189b8",
     "QuickLook/PreviewViewController.swift": "60d854754e9a09665b8f13a7d071d3a7fdcdbb0829bd2fe217e64b77d92b8df0",
     "Sources/CassiniExport/MeetingFileExporter.swift": "36ed0bc68c92329d97cb4ae27d7558810179a8c8a1e192916369812a9fd343fa",
@@ -39,7 +39,8 @@
     "Tests/CassiniLibraryTests/SharedLibraryVectorsTests.swift": "dfdf82102663cebf91a02a47200b4738cc582fd435840d57e49404e16c2159a7",
     "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
     "Tests/CassiniSearchTests/SearchTests.swift": "9deba70b2d46bded06f7ba38fd48df2764809d272b2decfdc5499064111f841a",
-    "evidence/mac/d95/check-reference-when.py": "1464687d224ccf21b2f18ea99ac3339414693e7789c5251aac4e2358b6c70198"
+    "evidence/mac/d95/check-reference-when.py": "1464687d224ccf21b2f18ea99ac3339414693e7789c5251aac4e2358b6c70198",
+    "Tests/CassiniExportTests/BulkZipExportTests.swift": "9bae952feb77567494e240fbe9e86dac195576e9f21646da5ea32e5f362a4f39"
   },
   "mutations": {
     "utc-priority": {
@@ -239,11 +240,15 @@
     "exactHeadCI": "pending; known EPIPE and stale-layout fixes are #256/#260"
   },
   "mainIntegration": {
-    "main": "eb60a0b69f875df00e9c89270411c1caec3e7764",
-    "inputLifecycleXCTests": 40,
-    "ciContracts": 57,
-    "nativeAppAndQuickLook": "passed",
-    "affectedTestsBeforeMainMerge": 436,
-    "ownedExportSourceUnchangedByMerge": true
+    "main": "f506b17",
+    "merge": "c9cf31d",
+    "sourceParserAndExporterUnchanged": true,
+    "libraryViewResolution": "D96 selectedKeys binding with D95 stable group.id",
+    "xctest": 43,
+    "headlessSwiftTesting": 457,
+    "ciContracts": 58,
+    "nativeAppQuickLook": "pass",
+    "localBookmarkCase": "ScopedBookmarksAgent creation error; excluded only from the restored headless partition, as in CI; dedicated login-session CI test remains required",
+    "bulkZipDATE": "plain promotion asserts exact UTC and DATE/CASSINI_RECORDED_AT_UTC mirrors"
   }
 }

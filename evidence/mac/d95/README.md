@@ -266,3 +266,17 @@ After ordinary merge of main eb60a0b, the generated-project native app/Quick Loo
 build, all 57 CI contracts, and 40 input-lifecycle XCTest cases pass. Generated
 project/workspace files are restored; the owned export source is unchanged by
 that merge. Complete exact-head CI remains required.
+
+## Integration with current main
+
+Ordinary merge of mainf506b17 includes the coherent SwiftPM cache policy and
+D96 bulk import/export. LibraryView keeps multi-selection and stable D95 day IDs.
+The new bulk ZIP plain-audio rebuild test now checks its exact canonical UTC
+instant and both recordedAtUtc mirrors, rather than demanding the old DATE
+spelling. All parser/exporter production source hashes and23 mutation cases
+remain unchanged.43 XCTest +457 headless Swift Testing cases,58 CI contracts,
+the app/Quick Look build and independent reference/conformance checks pass.
+The unrestricted local run exposed the known ScopedBookmarksAgent creation
+error in the single bookmark case; restored headless validation uses CI's
+existing exclusion. Its dedicated login-session CI job remains enabled and
+required; no test is removed or made optional in CI.
