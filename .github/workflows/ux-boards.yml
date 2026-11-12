@@ -32,7 +32,7 @@ jobs:
     needs: [build]
     if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'boards') && (inputs.products_ready || needs.build.result == 'success') }}
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 55
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -48,9 +48,10 @@ jobs:
       run: |
         python3 scripts/hosted-display.py
     - name: Render Library boards
-      # D66 mac-P0-5: inside the job's 25 minutes, so a hang fails this step and the failure
-      # diagnostics and xcresult upload below still run.
-      timeout-minutes: 19
+      # D66: run43118098593 reached41 passing tests/18.46 min, then the old19 min
+      # guard killed a progressing suite. These are outer hang guards,
+      # not performance assertions; retain10 min for native proofs and artifacts.
+      timeout-minutes: 35
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
@@ -117,7 +118,7 @@ jobs:
           lines = [f'Library boards: {len(tests)} tests, {total/60:.1f} min of test time', '', '| s | test | result |', '|---:|---|---|']
           lines += [f'| {d:.1f} | {n} | {r} |' for d,n,r in sorted(tests,reverse=True)[:15]]
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary: summary.write(chr(10).join(lines)+chr(10))
-          if total > 16*60: print(f'::warning::Library boards tests took {total/60:.1f} min of the 19 min step bound')
+          if total > 30*60: print(f'::warning::Library boards tests took {total/60:.1f} min of the 35 min step hang guard')
         except Exception as error:
             print('no test durations:',error)
         PY

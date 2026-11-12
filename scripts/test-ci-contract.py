@@ -83,12 +83,14 @@ class Selection(unittest.TestCase):
 
 
 class NativeSpectrogramScheduling(unittest.TestCase):
-    """The measured 15 min boards + 9 min native probe must not share a 25 min job."""
+    """Boards and native measurements need independent, bounded jobs."""
     def test_native_measurements_have_their_own_bounded_gui_job(self):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
         boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
-        self.assertIn('timeout-minutes: 30',boards)
+        self.assertIn('timeout-minutes: 55',boards)
+        self.assertIn('timeout-minutes: 35',boards)
+        self.assertIn('timeout-minutes: 9',boards)
         self.assertIn('needs: [build]\n',boards)
         self.assertIn('TEST_RUNNER_CASSINI_SCREENSHOT_SCHEME: dark',boards)
         self.assertIn('--dark build/ux-attachments-dark',boards)
