@@ -25,11 +25,11 @@ struct CapturePermissionNotice: View {
         if side == .others, refusal != CaptureRefusal.permissionDenied {
             // D58.1: the system tap could not be started; no settings action applies.
             Text(UXText.text("errors.deviceUnavailable.others")).fixedSize(horizontal:false,vertical:true)
-                .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-others-unavailable")
+                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("capture-others-unavailable")
         } else if side == .me, refusal == "deviceUnavailable" {
             // The microphone could not be started at all; no settings action applies.
             Text(UXText.text("errors.deviceUnavailable.me")).fixedSize(horizontal:false,vertical:true)
-                .font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-microphone-unavailable")
+                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("capture-microphone-unavailable")
         } else { permission }
     }
     private var permission: some View {
@@ -41,7 +41,7 @@ struct CapturePermissionNotice: View {
                     NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!)
                 } else { CaptureSettings.open(side) }
             }
-        }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+        }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             .accessibilityIdentifier(side == .me ? "capture-microphone-permission" : "capture-others-permission")
     }
 }
@@ -50,7 +50,7 @@ struct CaptureFailureBanner: View {
     var body: some View {
         if captures.diskStopped || captures.recordFailed || !captures.failedMeetings.isEmpty { VStack(spacing:0) {
             if captures.diskStopped {
-                Text(UXText.text("errors.diskStopped.line")).font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading).background(LibraryTheme.amberTint)
+                Text(UXText.text("errors.diskStopped.line")).font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading).background(CassiniTheme.warnTint)
             }
             if captures.recordFailed {
                 line(UXText.text("errors.recordFailed.line"),captions:captures.attemptRefusals) { Task { try? await captures.record() } }
@@ -76,10 +76,10 @@ struct CaptureFailureBanner: View {
         return HStack(spacing:12) {
             VStack(alignment:.leading,spacing:2) {
                 Text(message).fixedSize(horizontal:false,vertical:true)
-                ForEach(captions,id:\.self) { Text(UXText.text($0)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true) }
+                ForEach(captions,id:\.self) { Text(UXText.text($0)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true) }
             }
             Spacer(minLength:8)
             Button(UXText.text("common.tryAgain"),action:retry).disabled(captures.starting)
-        }.font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).background(LibraryTheme.amberTint)
+        }.font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).background(CassiniTheme.warnTint)
     }
 }

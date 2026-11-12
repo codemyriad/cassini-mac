@@ -63,7 +63,7 @@ enum PreviewText {
         if let m = file.manifest {
             meta.append(PreviewCopy.text("mac.quicklook.speakerCount", ["n": String(m.speakers.count)]))
             meta.append(formatClock(m.meeting.durationMs))
-            meta.append(SessionDate.text(m))
+            meta.append(contentsOf:LibraryFormat(locale:.autoupdatingCurrent,language:.system).quickLookRecordingDate(file))
         } else {
             meta.append(PreviewCopy.text("mac.legacy.noTranscript"))
         }
@@ -106,22 +106,5 @@ enum PreviewText {
             ]))
         }
         return out
-    }
-}
-
-enum SessionDate {
-    /// D50.3: date words in the UI language; a local label is never shifted to a zone.
-    static func text(_ m: Manifest) -> String {
-        if let local = m.meeting.recordedAtLocal {
-            let f = DateFormatter()
-            f.locale = Locale(identifier: "en_US_POSIX")
-            f.timeZone = TimeZone(identifier: "UTC")
-            f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-            if let d = f.date(from: local) { return LibraryFormat(timeZone: TimeZone(identifier: "UTC")!, locale: .autoupdatingCurrent, language: .system).absoluteDate(d) }
-        }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = iso.date(from: m.meeting.createdAtUtc) ?? { iso.formatOptions = [.withInternetDateTime]; return iso.date(from: m.meeting.createdAtUtc) }()
-        return date.map { LibraryFormat(locale: .autoupdatingCurrent, language: .system).absoluteDate($0) } ?? ""
     }
 }

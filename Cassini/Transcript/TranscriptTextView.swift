@@ -256,7 +256,7 @@ final class TranscriptTextView: NSTextView {
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
-        let accent = NSColor.controlAccentColor
+        let accent = CassiniTheme.nsAccent
         let dark = isDark
         let highContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         let now = CACurrentMediaTime()
@@ -283,12 +283,12 @@ final class TranscriptTextView: NSTextView {
             guard boxes.contains(where: { $0.insetBy(dx: -4, dy: 3).intersects(rect) }) else { continue }
             let fill = activeChipIndices.contains(i)
                 ? accent.withAlphaComponent(dark ? 0.5 : 0.22)
-                : (dark ? NSColor.white.withAlphaComponent(0.06) : NSColor.black.withAlphaComponent(0.035))
+                : CassiniTheme.nsInactiveChipFill(dark: dark)
             for box in boxes {
                 let path = NSBezierPath(roundedRect: box.insetBy(dx: -4, dy: 3), xRadius: 6, yRadius: 6)
                 fill.setFill()
                 path.fill()
-                NSColor.separatorColor.setStroke()
+                CassiniTheme.nsSeparator.setStroke()
                 path.lineWidth = 0.5
                 path.stroke()
             }
@@ -298,8 +298,7 @@ final class TranscriptTextView: NSTextView {
         for r in matchRanges where mayBeVisible(r) {
             let isCurrent = currentMatchRange.map { NSEqualRanges($0, r) } ?? false
             for box in rects(for: r) where box.intersects(rect) {
-                (dark ? NSColor(srgbRed: 1, green: 0.84, blue: 0.04, alpha: isCurrent ? 0.7 : 0.45)
-                      : NSColor(srgbRed: 1, green: 0.8, blue: 0, alpha: isCurrent ? 0.7 : 0.45)).setFill()
+                CassiniTheme.nsLegacyMatchFill(dark: dark, isCurrent: isCurrent).setFill()
                 NSBezierPath(roundedRect: box.insetBy(dx: -1, dy: 4), xRadius: 3, yRadius: 3).fill()
             }
         }

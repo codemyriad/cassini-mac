@@ -65,7 +65,10 @@ public struct MeetingSpeaker: Sendable, Equatable {
     public var provenance: NameProvenance?
     public var colourIndex: Int
     public var label: String? = nil
-    public var displayName: String { name ?? label ?? "Speaker \(colourIndex + 1)" }
+    public var displayName:String { displayName(language:.system) }
+    public func displayName(language:CassiniLanguage,locale:Locale = .current) -> String {
+        name ?? label ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(colourIndex+1)],language:language,locale:locale)
+    }
 }
 public struct MeetingQuote: Codable, Equatable, Sendable {
     public var atMs: Int64
@@ -116,6 +119,22 @@ public struct LibraryMeeting: Sendable {
     /// use this independently trusted local/verified title or filename instead.
     public var exportTitle: String? = nil
     public var start: Date?
+    public var recordingUtcOffsetMinutes: Int? = nil
+    /// An unzoned recording label remains separate from `start`, which is an instant.
+    public var recordedTime: MeetingTime? = nil
+    /// Creation/import time is usable for ordering, never for a meeting-time label.
+    public var sortingFallback: Date? = nil
+    public var meetingTime: MeetingTime? {
+        if let recordedTime, recordedTime.instant == start { return recordedTime }
+        return start.map { MeetingTime(instant:$0) }
+    }
+    public var sortingInstant: Date? {
+        recordedTime?.source == .recordedAtLocal && start == nil ? nil : (start ?? sortingFallback)
+    }
+    public var timeSortKey: String? {
+        if let recordedTime, recordedTime.instant == start { return recordedTime.orderingKey }
+        return (start ?? sortingFallback).map { MeetingTime.sortKey(for:$0) }
+    }
     /// Display duration only; D3 substitutes zero for unknown source starts. Never playback alignment.
     public var durationMs: Int64?
     public var speakers: [MeetingSpeaker] { didSet { transcriptTurns = [] } }
@@ -148,6 +167,7 @@ public struct LibraryMeeting: Sendable {
     }
     private var writtenItems: [LibraryTranscriptItem]? = nil
     /// D24: each merged-away speaker id mapped to its final target (empty without merges).
+    public var speakerMergeCount = 0
     public var mergedInto: [String: String] = [:] { didSet { transcriptTurns = [] } }
     /// Prepared snapshots can outlive a metadata merge (including a suspended
     /// preparation). Resolve against the current metadata when rendering them.
@@ -235,7 +255,8 @@ public struct LibraryTranscriptTurn: Equatable, Sendable {
 }
 /// Diagnostic codes only. No raw errors or undrawn UI copy is produced by the core.
 public enum LibraryReadIssue: String, Sendable { case unsafePath, invalidMetadata, invalidCapture, missingAudio, invalidAudio, invalidTranscript, unsupportedVersion, unknownStartOffset }
-public struct LibraryDayGroup: Sendable {
+public struct LibraryDayGroup: Sendable, Identifiable {
+    public let id:String
     public var title: String
     public var meetings: [LibraryMeeting]
 }
@@ -257,15 +278,23 @@ public struct LibraryScan: Sendable {
         } }
         return .init(meetings:meetings.sorted(by:LibraryScanner.ordered),issues:snapshots.flatMap(\.issues))
     }
-    /// R6 order is established by the scanner before grouping by calendar day.
+    /// Preserve scanner order within each calendar day. Creation-only meetings
+    /// form one trailing unknown-date section, even when sorting interleaves them.
     public func groups(format: LibraryFormat) -> [LibraryDayGroup] {
-        var groups: [LibraryDayGroup] = []
+        let unknown="unknown-date"
+        var groups:[String:LibraryDayGroup]=[:]
         for meeting in meetings {
-            let title = meeting.start.map(format.dayGroup) ?? "Date unknown"
-            if groups.last?.title == title { groups[groups.count - 1].meetings.append(meeting) }
-            else { groups.append(.init(title: title, meetings: [meeting])) }
+            let time=meeting.meetingTime
+            let key=time.flatMap(format.dayKey).map {"day:"+$0} ?? unknown
+            if groups[key] != nil {groups[key]!.meetings.append(meeting)}
+            else {
+                let title=key == unknown ? LibraryLocalization.shared.text("library.group.unknownDate",language:format.language,locale:format.locale) : format.dayGroup(time!)
+                groups[key] = .init(id:key,title:title,meetings:[meeting])
+            }
         }
-        return groups
+        var keys=groups.keys.filter {$0 != unknown}.sorted(by:>)
+        if groups[unknown] != nil {keys.append(unknown)}
+        return keys.compactMap {groups[$0]}
     }
 }
 public protocol LibraryWatching: AnyObject, Sendable {

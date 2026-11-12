@@ -1,0 +1,11 @@
+--- a/scripts/release.py
++++ b/scripts/release.py
+@@ -318,7 +318,7 @@
+     with (output/'build.log').open('wb') as log:
+         if test_release:
+             command = [ROOT/'scripts/heavy.sh', sys.executable, ROOT/'scripts/release-resources.py', '15', *command]
+-        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else dict(os.environ,CASSINI_PYTHON=sys.executable))  # no-secret-argv
++        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else dict(os.environ,CASSINI_PYTHON='python3'))  # no-secret-argv
+     if result.returncode:
+         raise RuntimeError('Release build failed; inspect build.log')
+     # Xcode's internal product/executable paths stay stable for developer tools.

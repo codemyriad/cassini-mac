@@ -287,6 +287,13 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
     /// D52.4 through the real host: a browser recording whose audio transport closed falls
     /// back to system/lost, keeps its identity, and a resume joins it with browser/restored.
     func testALostBrowserRecordingResumesOntoItsFallbackAsRestored() async throws {
+        try await lostBrowserRecordingResumes()
+    }
+    func testALostBrowserRecordingResumesAfterALateTimelineLoss() async throws {
+        // Advance the event timeline explicitly, without waiting for host time.
+        try await lostBrowserRecordingResumes(lossAtMs:20_000)
+    }
+    private func lostBrowserRecordingResumes(lossAtMs:Double? = nil) async throws {
         try await run { fixture in
             let origin = Int(Date().timeIntervalSince1970*1000)
             let first = try fixture.client()
@@ -296,6 +303,7 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             let capture = try XCTUnwrap(fixture.broker.activeCaptures.first { $0.snapshot.directory.path == started["path"]?.string })
             XCTAssertEqual(try first.request(["type":"track","id":"a","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"])["type"]?.string,"ack")
             XCTAssertEqual(try first.request(["type":"audio","id":"a","sequence":0,"offsetMs":0,"pcm":Data(repeating:1,count:1600).base64EncodedString()])["type"]?.string,"ack")
+            if let lossAtMs { try capture.browserLost(atMs:lossAtMs,transportAlive:true) }
             let closed = fixture.closures.next("the transport loss was observed")
             first.end()
             await fulfillment(of:[closed],timeout:5)
@@ -307,22 +315,28 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             // none/lost (the fallback has not started yet) is not a target.
             fixture.broker.expectResume(capture,callGeneration:"call-A")
             XCTAssertEqual(try fixture.client().request(resume("lost-call",origin:origin))["type"]?.string,"error")
+            let loss = try XCTUnwrap(capture.snapshot.manifest.events?.last { $0.type == "othersSource" })
+            XCTAssertEqual(loss.source,"none"); XCTAssertEqual(loss.reason,"lost")
+            // Synthetic PCM must follow the committed loss even if pipe exit and
+            // rejected IPC round trips take longer than the old fixed1000ms.
+            let fallbackAt = try XCTUnwrap(loss.atMs) + 1000
             // Fall back to computer sound, as the policy does at once.
             try await capture.requestSystemFallback()
             let stage = StagedNativeWriter()
             try stage.addTrack(id:"system",label:"System",kind:"system",sampleRate:8000,channels:1)
-            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:1000)
+            try stage.appendNative(id:"system",pcm:Data(repeating:2,count:1600),offsetMs:fallbackAt)
             try await capture.activateNative(stage,side:.others,allowed:{ true })
             let fallback = capture.snapshot.manifest.events?.last { $0.type == "othersSource" }
             XCTAssertEqual(fallback?.source,"system"); XCTAssertEqual(fallback?.reason,"lost")
+            XCTAssertEqual(fallback?.atMs,fallbackAt)
             fixture.broker.expectResume(capture,callGeneration:"call-A")
             let client = try fixture.client()
             let resumed = try client.request(resume("lost-call",origin:origin))
             XCTAssertEqual(resumed["resumed"]?.bool,true); XCTAssertEqual(resumed["path"]?.string,capture.snapshot.directory.path)
             let declared = try client.request(["type":"track","id":"r1","kind":"remote","label":"Guest","sampleRate":8000,"channels":1,"sourceTrackId":"guest"]); XCTAssertEqual(declared["type"]?.string,"ack","\(declared)")
-            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":5000,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
+            XCTAssertEqual(try client.request(["type":"audio","id":"r1","sequence":0,"offsetMs":fallbackAt+4000,"pcm":Data(repeating:1,count:16000).base64EncodedString()])["type"]?.string,"ack")
             XCTAssertTrue(capture.snapshot.restoreReady)
-            try await capture.restoreBrowser(atMs:6000)
+            try await capture.restoreBrowser(atMs:fallbackAt+5000)
             let seam = capture.snapshot.manifest.events?.last { $0.type == "othersSource" }
             XCTAssertEqual(seam?.source,"browser"); XCTAssertEqual(seam?.reason,"restored")
             XCTAssertEqual(folders(fixture),1,"No new folder")

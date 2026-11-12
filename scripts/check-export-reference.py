@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-PIN = '867f68c56292ada9464b8516dc2797003d5af9eb'
+PIN = '32f37a6200c88bdd4d23c1f44497f1761f3401da'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('reference',type=Path)
 parser.add_argument('cases',type=Path)

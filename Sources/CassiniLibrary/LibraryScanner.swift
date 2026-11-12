@@ -83,8 +83,8 @@ public struct LibraryScanner: Sendable {
         return (id, received)
     }
     static func ordered(_ a: LibraryMeeting, _ b: LibraryMeeting) -> Bool {
-        if let x = a.start, let y = b.start { return x == y ? identityOrdered(a, b) : x > y }
-        if a.start != nil || b.start != nil { return a.start != nil }
+        if let x = a.timeSortKey, let y = b.timeSortKey { return x == y ? identityOrdered(a,b) : x > y }
+        if a.timeSortKey != nil || b.timeSortKey != nil { return a.timeSortKey != nil }
         let x = (a.title ?? "").folding(options: .caseInsensitive, locale: Locale(identifier: "en_GB"))
         let y = (b.title ?? "").folding(options: .caseInsensitive, locale: Locale(identifier: "en_GB"))
         if x != y { return x < y }
@@ -136,7 +136,9 @@ public struct LibraryScanner: Sendable {
                     // R6 permits these display fallbacks even when a payload is
                     // damaged; they do not authenticate its words or notes.
                     titleCandidates += [file.manifest?.meeting.title, file.tags?["TITLE"]]
-                    meeting.start = file.manifest.flatMap { recordingDate($0.meeting.createdAtUtc) }
+                    meeting.start = file.meetingTime?.instant
+                    meeting.recordedTime = file.meetingTime
+                    meeting.sortingFallback = file.manifest.flatMap { MeetingTime.parseInstant($0.meeting.createdAtUtc) }
                     if case .success(let digest)? = file.audioDigest {
                         meeting.durationMs = Int64(digest.durationMs); meeting.audioFiles = [url]
                     } else { meeting.issues.append(.invalidAudio) }
@@ -149,12 +151,13 @@ public struct LibraryScanner: Sendable {
                 file?.state == .plainAudio ? file?.tags?["TITLE"] : nil,
                 (receivedMetadata.originalName as NSString).deletingPathExtension]
                 .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
-            if meeting.start == nil { meeting.start = Date(timeIntervalSince1970: Double(receivedMetadata.importedAtMs) / 1000) }
+            if meeting.sortingFallback == nil { meeting.sortingFallback = Date(timeIntervalSince1970: Double(receivedMetadata.importedAtMs) / 1000) }
         } else {
             let capture = capture(folder: folder, id: id, seen: &seen)
             meeting.issues += capture.issues; meeting.captureSource = capture.source; meeting.captureEvents = capture.events; meeting.captureFinalized = capture.finalized
             titleCandidates.append(capture.title)
             meeting.start = capture.start; meeting.audioFiles = capture.files; meeting.audioTracks = capture.tracks; meeting.durationMs = capture.endMs
+            meeting.recordingUtcOffsetMinutes = capture.utcOffsetMinutes
             switch activity {
             case .preparing?: return nil
             case .recording?: meeting.state.lifecycle = .recording
@@ -223,6 +226,7 @@ public struct LibraryScanner: Sendable {
         // Known ids (GNOME parity): meeting.json speakers, the received file's speakers, and the words'.
         let known = Set((metadata?.speakers ?? []).map(\.id)).union(embeddedNames.keys).union(sorted.map(\.speaker))
         let merges = (metadata?.speakerMerges ?? []).map { SpeakerMerges.Entry(from: $0.from, into: $0.into) }
+        meeting.speakerMergeCount = merges.count
         meeting.mergedInto = SpeakerMerges.resolve(merges, known: known)
         let resolved = SpeakerMerges.apply(sorted, meeting.mergedInto)
         meeting.writtenTranscriptItems = sorted
@@ -254,6 +258,7 @@ public struct LibraryScanner: Sendable {
     }
     private struct Capture {
         var source: String?; var title: String?; var start: Date?; var endMs: Int64?; var files: [URL] = []
+        var utcOffsetMinutes: Int?
         var tracks: [LibraryAudioTrack] = []
         var events: [CaptureEvent] = []
         var unfinalized = false; var finalized = false; var interrupted = false; var issues: [LibraryReadIssue] = []
@@ -265,6 +270,7 @@ public struct LibraryScanner: Sendable {
         var events: [CaptureEvent] = []
         /// D69.2: the only problem is D69 writer loss; shown as a normal recording.
         var writerOnly = false
+        var utcOffsetMinutes: Int? = nil
         enum CodingKeys: CodingKey { case version, id, title, createdAt, state, problemKind, tracks }
         struct Track: Decodable {
             let sourceID: String?; let sourceKind: String?; let sourceTrackID: String?
@@ -308,6 +314,7 @@ public struct LibraryScanner: Sendable {
             manifest.source = raw["source"]?.string
             manifest.events = CaptureEvent.read(raw["events"])
             manifest.writerOnly = WriterLoss.isWriterOnly(raw)
+            if let offset = raw["startedAtUtcOffsetMinutes"]?.int, (-720...840).contains(offset) { manifest.utcOffsetMinutes = offset }
             if let tracks = raw["tracks"]?.array {
                 for index in manifest.tracks.indices { manifest.tracks[index].startOffsetMs = DisplayOffset(tracks[index]["startOffsetMs"]) }
             }
@@ -323,6 +330,7 @@ public struct LibraryScanner: Sendable {
             guard manifest.version == 1, manifest.id == id, manifest.tracks.count <= 64,
                   ["recording", "completed", "interrupted"].contains(manifest.state) else { throw MetadataError.invalid }
             result.source = manifest.source; result.events = manifest.events; result.title = manifest.title; result.start = manifest.createdAt.flatMap(recordingDate)
+            result.utcOffsetMinutes = manifest.utcOffsetMinutes
             result.unfinalized = manifest.state == "recording"; result.finalized = manifest.state != "recording"
             // D69.2: writer-only loss is not an interruption to show; the file still says D69's.
             result.interrupted = (manifest.state == "interrupted" && !manifest.writerOnly) || manifest.problemKind == "gap" || manifest.tracks.contains(where:\.flagsGap)

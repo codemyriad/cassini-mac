@@ -31,8 +31,8 @@ struct RecordingDetailsSheet: View {
         VStack(alignment:.leading,spacing:16) {
             VStack(alignment:.leading,spacing:4) {
                 Text(UXText.text("details.title")).font(.system(size:20,weight:.bold)).accessibilityAddTraits(.isHeader)
-                if let subtitle = report?.subtitle { Text(text(subtitle)).foregroundStyle(LibraryTheme.dim) }
-                if report?.updates == true { Text(UXText.text("details.updates")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim) }
+                if let subtitle = report?.subtitle { Text(text(subtitle)).foregroundStyle(CassiniTheme.ink2) }
+                if report?.updates == true { Text(UXText.text("details.updates")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2) }
             }
             // Many sources must never push How it ended or Done off screen: the
             // report scrolls within a bounded height, sized to its content when it fits.
@@ -43,25 +43,25 @@ struct RecordingDetailsSheet: View {
                         if let report, !report.sourcesEmpty {
                             ForEach(Array(report.sources.enumerated()),id:\.offset) { index,row in
                                 VStack(alignment:.leading,spacing:2) {
-                                    Text(text(row.line)).foregroundStyle(row.problem ? Color.orange : Color.primary)
+                                    Text(text(row.line)).foregroundStyle(row.problem ? CassiniTheme.warningNotice : CassiniTheme.primaryInk)
                                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-source-\(index)")
                                     ForEach(Array(row.gapLines.enumerated()),id:\.offset) { gap,line in
-                                        Text(text(line)).font(.system(size:11.5)).foregroundStyle(.orange)
+                                        Text(text(line)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.warningNotice)
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
                                     }
                                     // D69.2: computer-side loss of at least 1 s, a quiet line, never a warning.
                                     if let busy = row.computerBusy {
-                                        Text(text(busy)).font(.system(size:11.5)).foregroundStyle(.secondary)
+                                        Text(text(busy)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-computer-busy-\(index)")
                                     }
                                     // R13 (D67.1): a role line after the gap lines, never a warning.
                                     if let silent = row.silent {
-                                        Text(text(silent)).font(.system(size:11.5)).foregroundStyle(.secondary)
+                                        Text(text(silent)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-silent-\(index)")
                                     }
                                     // D58.3: the conditional permission hint, with its System Settings action.
                                     if let hint = row.permissionHint {
-                                        Text(text(hint)).font(.system(size:11.5)).foregroundStyle(.secondary)
+                                        Text(text(hint)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
                                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-permission-hint-\(index)")
                                         Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
                                             .controlSize(.small).accessibilityIdentifier("recording-details-permission-settings-\(index)")
@@ -70,20 +70,20 @@ struct RecordingDetailsSheet: View {
                             }
                             // D58: sides that were requested but never opened, after the rows.
                             ForEach(Array(report.refusals.enumerated()),id:\.offset) { index,line in
-                                Text(text(line)).foregroundStyle(Color.orange)
+                                Text(text(line)).foregroundStyle(CassiniTheme.warningNotice)
                                     .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-refusal-\(index)")
                             }
                         } else {
-                            Text(UXText.text("details.sources.empty")).foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("recording-details-sources-empty")
+                            Text(UXText.text("details.sources.empty")).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-details-sources-empty")
                         }
                         ForEach(Array((report?.notes ?? []).enumerated()),id:\.offset) { _,note in
-                            Text(text(note)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                            Text(text(note)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                         }
                     }
                     VStack(alignment:.leading,spacing:6) {
                         Text(UXText.text("details.end.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
                         if let report {
-                            Text(text(report.ended)).foregroundStyle(report.endKnown ? Color.primary : LibraryTheme.dim).accessibilityIdentifier("recording-details-end")
+                            Text(text(report.ended)).foregroundStyle(report.endKnown ? CassiniTheme.primaryInk : CassiniTheme.ink2).accessibilityIdentifier("recording-details-end")
                         }
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)

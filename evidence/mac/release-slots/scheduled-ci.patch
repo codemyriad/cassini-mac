@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -56,7 +56,7 @@
+ def eligible_ci(runs,sha):
+     # API pages are newest-first. PR merge-ref results (even this repo's main)
+     # and fork runs must neither authorize nor block a main release.
+-    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch','schedule')
++    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch')
+               and (r.get('head_repository') or {}).get('full_name')==REPO),None)
+     return bool(run and run['head_sha']==sha and run['head_branch']=='main'
+                 and run['status']=='completed' and run['conclusion']=='success')

@@ -1,0 +1,113 @@
+{
+  "uxPin": "febfcc0bbd7db4b06096e87f5490d6773ab9224e",
+  "main": "f506b17",
+  "affectedTests": 395,
+  "ciContracts": 65,
+  "longInputWords": 122760,
+  "longInputThreadCpuMs": 160.704,
+  "mutationProductionSHA256": {
+    "Sources/CassiniLibrary/SpeakerEdits.swift": "57b6e75294a3c5c094cd5a6bfa030756c12a665b83497e20aae8d88f92514922",
+    "Sources/CassiniPlayback/SpeakerSample.swift": "643159bdc6ab4cafdee734f6496cc30245d2f80fe0c065c6064dc2f25e66f5b5"
+  },
+  "mutations": [
+    {
+      "name": "name-bound",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "invalidNamesNeverWrite",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test invalidNamesNeverWrite(_:) recorded an issue with 1 argument value \u2192 \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" at SpeakerEditsTests.swift:35:9: Expectation failed: !(SpeakerEdits.validName(value \u2192 \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\") \u2192 true)"
+    },
+    {
+      "name": "explicit-clear",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "explicitClearSuppressesAReceivedEmbeddedName",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test explicitClearSuppressesAReceivedEmbeddedName() recorded an issue at SpeakerEditsTests.swift:86:9: Expectation failed: (cleared.name==nil && cleared.label==nil \u2192 false) && (cleared.provenance == .unnamed \u2192 <not evaluated>)"
+    },
+    {
+      "name": "fresh-queue-state",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "freshQueueStateAndOutsideRootsRefuseEdits",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test freshQueueStateAndOutsideRootsRefuseEdits() recorded an issue at SpeakerEditsTests.swift:115:9: Expectation failed: an error was expected but none was thrown"
+    },
+    {
+      "name": "visible-ids",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "mergeChainsUndoAndStaleIDsUseFreshMetadata",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test mergeChainsUndoAndStaleIDsUseFreshMetadata() recorded an issue at SpeakerEditsTests.swift:93:9: Expectation failed: an error was expected but none was thrown"
+    },
+    {
+      "name": "merge-history",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "mergeChainsUndoAndStaleIDsUseFreshMetadata",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test mergeChainsUndoAndStaleIDsUseFreshMetadata() recorded an issue at SpeakerEditsTests.swift:93:9: Expectation failed: an error was expected but none was thrown"
+    },
+    {
+      "name": "undo-order",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "mergeChainsUndoAndStaleIDsUseFreshMetadata",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test mergeChainsUndoAndStaleIDsUseFreshMetadata() recorded an issue at SpeakerEditsTests.swift:101:9: Expectation failed: (undone.mergedInto==[\"a\":\"b\"] \u2192 false) && (undone.speakerMergeCount==1 \u2192 <not evaluated>)"
+    },
+    {
+      "name": "longest-cap",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "unionTalkTimeAndLongestCappedSample",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test unionTalkTimeAndLongestCappedSample() recorded an issue at SpeakerEditsTests.swift:164:9: Expectation failed: (SpeakerEdits.sample(longer,speaker:\"a\") \u2192 1000 ..< 20000) == (1000..<11_000 \u2192 1000 ..< 11000)"
+    },
+    {
+      "name": "transport-cap",
+      "source": "Sources/CassiniPlayback/SpeakerSample.swift",
+      "test": "sampleStopsAtTheActualBoundaryAndRestoresPaused",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test sampleStopsAtTheActualBoundaryAndRestoresPaused() recorded an issue at SpeakerSampleTests.swift:20:9: Expectation failed: (fake.boundary?.0==11_000 && audio.isPlaying \u2192 false) && (sample.active \u2192 <not evaluated>)"
+    },
+    {
+      "name": "restore-position",
+      "source": "Sources/CassiniPlayback/SpeakerSample.swift",
+      "test": "sampleStopsAtTheActualBoundaryAndRestoresPaused",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test sampleStopsAtTheActualBoundaryAndRestoresPaused() recorded an issue at SpeakerSampleTests.swift:22:9: Expectation failed: (!sample.active && !audio.isPlaying \u2192 true) && (audio.positionMs==23_000 \u2192 false)"
+    },
+    {
+      "name": "audible-sample",
+      "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+      "test": "zeroDurationWordsCannotAnchorAnAudibleSample",
+      "result": "behavioral assertion failure",
+      "example": "\u2718 Test zeroDurationWordsCannotAnchorAnAudibleSample() recorded an issue at SpeakerEditsTests.swift:154:9: Expectation failed: (SpeakerEdits.sample(words,speaker:\"a\") \u2192 0 ..< 10000) == (100_000..<100_100 \u2192 100000 ..< 100100)"
+    }
+  ],
+  "sourceSHA256": {
+    "Sources/CassiniLibrary/SpeakerEdits.swift": "57b6e75294a3c5c094cd5a6bfa030756c12a665b83497e20aae8d88f92514922",
+    "Sources/CassiniLibrary/Meeting.swift": "f9ac9d28dfd38e234f16a4c5cbe2535a8033286e12b078941f2189031853a4c8",
+    "Sources/CassiniLibrary/LibraryScanner.swift": "b759fd0caffe45849c531cbda5322d6e733e45faecbe572551f20416be0c61b5",
+    "Sources/CassiniLibrary/SpeakerRowPresentation.swift": "c75e8b86133e7ec33700cd03048a4980fcf15b778ff277e5a5c423051c5ff385",
+    "Sources/CassiniPlayback/SpeakerSample.swift": "643159bdc6ab4cafdee734f6496cc30245d2f80fe0c065c6064dc2f25e66f5b5",
+    "Cassini/Meeting/MeetingRenameCoordinator.swift": "25404cb2f547bcc00a451218cbc421f6e08dc5126a4122d1ed2b856b35406e14",
+    "Cassini/Meeting/MeetingNavigation.swift": "d4c9c29f86badde9ea5e4a43d5eb054f80de8fd5cf822e5fa9b399c407bf01f3",
+    "Cassini/Meeting/MeetingView.swift": "a7a5119a06346baf54a8579b4b4bed6e40dd39b48fe615c7aba7396e7686ee93",
+    "Cassini/Meeting/ListeningBar.swift": "74cde0bfbc4a7fa7397f3b10f94ebb2bc3a3ce7fd8e6aa67124f7e9225f45c9f",
+    "Cassini/Meeting/SpeakerEditorView.swift": "9f031bd355b77282790c60ee90f1b3c548bd634296e767546d643c5383366566",
+    "Cassini/Library/LibraryView.swift": "e57165fb97c0f0ba5f2133bc01375d0c01e1000d0ab5550b87346b4e190b2669",
+    "Tests/CassiniLibraryTests/SpeakerEditsTests.swift": "37d12afd56992dc0da7e289ec8105886c1e11a110fa761b77493c991c37d7afb",
+    "Tests/CassiniPlaybackTests/SpeakerSampleTests.swift": "6169a128480cf0e47fb7c4f3be9139cc24bc597ad9275874157b7e880a8a966d",
+    "Tests/CassiniExportTests/D70SpeakerMergesExportTests.swift": "8a73100d2cdd03cc663c7858a963561b4d0e9db00cc66927d1c4c748b0ed51e4",
+    "Tests/CassiniSearchTests/SearchTests.swift": "47745e86c2f70740ffe91632dd442ff514e22155987459be641d1321429bd15a",
+    "UITests/LibraryBoards.swift": "633a0ac9bba99017c49735413dc9c36a76f05d7f2615b2a0c05dcf4b08cf3edd"
+  },
+  "native": {
+    "compiled": "Debug arm64 app and Screenshots bundle; Xcode 16.4, generated fixtures/project",
+    "ui": "rename/cancel/clear assertions passed before native Menu role query correction; final full flow pending local capacity"
+  },
+  "exactHeadCI": "pending",
+  "longInputTimingIsDiagnosticOnly": true,
+  "noCpuGateFocusedTests": 11,
+  "affectedXCTest": 21,
+  "nativeBuildAfterMain": "Debug arm64 app and Screenshots test bundle passed",
+  "nativeUIAfterMain": "No new shared-Aqua run; static screenshot asserts read-only disabled control, editable naming flow opens/dismisses header editor. Prior complete naming/clear/merge/undo/reopen passed. Four-job exact-head CI pending.",
+  "mainMerged": "bac7cd4"
+}

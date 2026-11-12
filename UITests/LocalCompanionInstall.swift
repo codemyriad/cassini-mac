@@ -18,7 +18,8 @@ final class LocalCompanionInstall: XCTestCase {
         chrome.launchArguments = ["--user-data-dir=" + (try value("profile")), "--no-first-run", "--no-default-browser-check",
             "--disable-background-networking", "--force-renderer-accessibility",
             "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost", "about:blank"]
-        let app = XCUIApplication(url:URL(fileURLWithPath:try value("app")))
+        let appURL = URL(fileURLWithPath:try value("app"))
+        let app = XCUIApplication(url:appURL)
         configure(app)
         defer {
             for (name,application) in [("cassini",app),("chromium",chrome)] {
@@ -33,7 +34,7 @@ final class LocalCompanionInstall: XCTestCase {
         }
         chrome.launch()
         app.launch()
-        app.typeKey(",",modifierFlags:.command)
+        openSettings(app,at:appURL)
         let settings = app.windows["cassini-settings-window"]
         XCTAssertTrue(settings.waitForExistence(timeout:10),app.debugDescription)
         settings.toolbars.buttons["Browser companion"].click()
@@ -96,7 +97,8 @@ final class LocalCompanionInstall: XCTestCase {
 
         // The next app is a private copy of this signed product with only its
         // bundled manifest/build version advanced. Shared CI products stay sealed.
-        let next = XCUIApplication(url:URL(fileURLWithPath:try value("nextApp")))
+        let nextURL = URL(fileURLWithPath:try value("nextApp"))
+        let next = XCUIApplication(url:nextURL)
         configure(next)
         defer { if next.state != .notRunning { next.terminate() } }
         let expectedVersion = try value("newVersion")
@@ -110,7 +112,7 @@ final class LocalCompanionInstall: XCTestCase {
         next.terminate(); next.launch()
         // A second actual launch must finish its preparation without rewriting
         // the equal-version copy. Observe the product's real Copy folder state.
-        next.typeKey(",",modifierFlags:.command)
+        openSettings(next,at:nextURL)
         let nextSettings = next.windows["cassini-settings-window"]
         XCTAssertTrue(nextSettings.waitForExistence(timeout:10))
         nextSettings.toolbars.buttons["Browser companion"].click()
@@ -126,6 +128,17 @@ final class LocalCompanionInstall: XCTestCase {
             "profileInjection":false,"storeDNSDisabled":true,"loadedID":extensionID,"realNativeHandshake":true,
             "newerAppFolderReplaced":true,"repeatLaunchDidNotRewrite":true,"newVersion":expectedVersion,"audioCaptured":false]
         try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys,.prettyPrinted]).write(to:output)
+    }
+    @MainActor private func openSettings(_ app: XCUIApplication, at url: URL) {
+        let path = url.resolvingSymlinksInPath().path
+        app.activate()
+        wait("Cassini is foreground before its Settings shortcut") {
+            NSWorkspace.shared.frontmostApplication?.bundleURL?.resolvingSymlinksInPath().path == path
+        }
+        XCTAssertTrue(app.menuBars.menuBarItems["Cassini talk"].waitForExistence(timeout: 10), app.debugDescription)
+        // App-directed XCTest keys can stall before dispatch on hosted VMs.
+        // Preserve Cmd-comma through the guide's existing trusted HID helper.
+        key(0x2B,flags:.maskCommand)
     }
     @MainActor private func configure(_ app: XCUIApplication) {
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"

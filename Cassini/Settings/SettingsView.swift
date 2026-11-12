@@ -27,7 +27,7 @@ struct CassiniSettingsView: View {
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
         }.frame(width:700,height:500)
-            .preferredColorScheme(LibraryLaunchContext.current.screenshot ? .light : nil)
+            .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (LibraryLaunchContext.current.screenshot ? .light : nil))
             .font(.system(size:13)).accessibilityLabel(UXText.text("settings.pages.a11y"))
             .background(WindowAccessor { window in
                 guard let window else { return }
@@ -54,7 +54,7 @@ private struct SettingsUpdatesView: View {
                 Button(UXText.text("app.checkForUpdates")) { updates.checkForUpdates() }
                     .disabled(!updates.canCheckForUpdates).accessibilityIdentifier("settings-check-updates")
             }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
-                .background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
+                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
         }
     }
 }
@@ -83,7 +83,7 @@ private struct SettingsRecordingView: View {
                 HStack(alignment:.top,spacing:18) {
                     VStack(alignment:.leading,spacing:6) {
                         Text(UXText.text("settings.recording.autoRecord.title"))
-                        Text(UXText.text("settings.recording.autoRecord.subtitle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                        Text(UXText.text("settings.recording.autoRecord.subtitle")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                     }
                     Spacer()
                     Toggle(UXText.text("settings.recording.autoRecord.title"),isOn:Binding(get:{ CaptureCollection.shared.autoRecord },set:{ enabled in
@@ -93,7 +93,7 @@ private struct SettingsRecordingView: View {
                 Divider()
                 Toggle(UXText.text("settings.general.menuBar"),isOn:$showMenuBar)
                     .toggleStyle(.switch).accessibilityIdentifier("settings-show-menu-bar")
-            }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
+            }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
         }.sheet(isPresented:$navigation.capturingShortcut) {
             VStack(alignment:.leading,spacing:18) {
                 Text(UXText.text("settings.recording.shortcut.title")).font(.system(size:17,weight:.bold))
@@ -102,8 +102,8 @@ private struct SettingsRecordingView: View {
                     if code == noErr { navigation.capturingShortcut = false }
                     else { NSApp.presentError(NSError(domain:NSOSStatusErrorDomain,code:Int(code))) }
                 } cancel:{ navigation.capturingShortcut = false }
-                    .frame(height:60).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:8))
-                    .overlay { Text(shortcut.choice.glyph).font(.system(size:20,design:.monospaced)).foregroundStyle(LibraryTheme.dim).allowsHitTesting(false) }
+                    .frame(height:60).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:8))
+                    .overlay { Text(shortcut.choice.glyph).font(.system(size:20,design:.monospaced)).foregroundStyle(CassiniTheme.ink2).allowsHitTesting(false) }
                     .accessibilityLabel(UXText.text("settings.recording.shortcut.title"))
                 HStack { Spacer(); Button(UXText.text("common.cancel")) { navigation.capturingShortcut = false }.keyboardShortcut(.cancelAction) }
             }.padding(26).frame(width:440)
@@ -119,7 +119,7 @@ private struct SettingsLibraryView: View {
         SettingsPage {
             VStack(alignment:.leading,spacing:14) {
                 Text(UXText.text("settings.library.folder.title")).fontWeight(.bold)
-                Text(UXText.text("settings.library.folder.description")).foregroundStyle(LibraryTheme.dim).lineSpacing(4)
+                Text(UXText.text("settings.library.folder.description")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4)
                 Text(location.displayPath).fontWeight(.semibold).textSelection(.enabled).accessibilityIdentifier("settings-library-path")
                 HStack {
                     Button(UXText.text("settings.library.show")) {
@@ -133,18 +133,18 @@ private struct SettingsLibraryView: View {
                         .disabled(!bulkExporter.canExportAll).accessibilityIdentifier("settings-export-all-zip")
                     if move.busy { ProgressView().controlSize(.small); Text(UXText.text("settings.library.move.moving")) }
                 }
-                if let problem = location.problem { Text(problem).foregroundStyle(LibraryTheme.amber) }
+                if let problem = location.problem { Text(problem).foregroundStyle(CassiniTheme.warnInk) }
                 if !move.busy, move.waitingCount > 0 {
-                    Text(UXText.text("settings.library.move.waiting",["n":String(move.waitingCount)])).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                    Text(UXText.text("settings.library.move.waiting",["n":String(move.waitingCount)])).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                 }
                 ForEach(move.failures) { group in
                     VStack(alignment:.leading,spacing:8) {
-                        Text(UXText.text("settings.library.move.failed",["n":String(group.names.count),"folder":LibraryLocationModel.display(group.root)])).foregroundStyle(LibraryTheme.amber).fixedSize(horizontal:false,vertical:true)
+                        Text(UXText.text("settings.library.move.failed",["n":String(group.names.count),"folder":LibraryLocationModel.display(group.root)])).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true)
                         Button(UXText.text("common.tryAgain")) { move.retry(root:group.root) }.disabled(move.busy).accessibilityIdentifier("settings-retry-move")
                     }
                 }
             }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
-                .background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
+                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
         }
     }
 }
@@ -152,13 +152,13 @@ private struct SettingsBrowserView: View {
     var body: some View {
         SettingsPage {
             VStack(alignment:.leading,spacing:16) {
-                Text(UXText.text("settings.browser.description")).foregroundStyle(LibraryTheme.dim).lineSpacing(4)
+                Text(UXText.text("settings.browser.description")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4)
                 BrowserConnectionStateView(identifier:"settings-browser-status")
                 if CompanionSetup.storeListingPublic {
                     Button(UXText.text("companion.local.add")) { CompanionSetup.shared.showLocalGuide(from:.settings) }
                         .buttonStyle(.link).disabled(!CompanionSetup.shared.canAdd)
                 }
-            }.padding(18).background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
+            }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
         }
     }
 }
@@ -173,12 +173,12 @@ private struct SettingsTranscriptionView: View {
     var body: some View {
         SettingsPage {
             HStack(alignment:.top,spacing:10) {
-                Image(systemName:"checkmark.shield").font(.system(size:19)).foregroundStyle(.green).accessibilityHidden(true)
-                Text(UXText.text("settings.transcription.privacy")).foregroundStyle(LibraryTheme.dim).lineSpacing(5).fixedSize(horizontal:false,vertical:true)
+                Image(systemName:"checkmark.shield").font(.system(size:19)).foregroundStyle(CassiniTheme.success).accessibilityHidden(true)
+                Text(UXText.text("settings.transcription.privacy")).foregroundStyle(CassiniTheme.ink2).lineSpacing(5).fixedSize(horizontal:false,vertical:true)
             }
             VStack(alignment:.leading,spacing:10) {
                 Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.bold)
-                Text(UXText.text("settings.transcription.speech.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                Text(UXText.text("settings.transcription.speech.description")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                 ParakeetRecommendationView(afterFirst:false)
                 ParakeetDefaultNotice()
                 HStack(alignment:.top,spacing:12) {
@@ -187,16 +187,16 @@ private struct SettingsTranscriptionView: View {
                     VStack(alignment:.leading,spacing:6) {
                         HStack(spacing:8) {
                             Text(UXText.text("models.whistle.name")).fontWeight(.semibold)
-                            Text(weightSize).font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
+                            Text(weightSize).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
                         }
-                        Text(UXText.text("models.whistle.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
-                        if !models.usesParakeet { Text(UXText.text("models.status.inUse")).font(.system(size:11,weight:.semibold)).foregroundStyle(.green) }
+                        Text(UXText.text("models.whistle.description")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
+                        if !models.usesParakeet { Text(UXText.text("models.status.inUse")).font(.system(size:11,weight:.semibold)).foregroundStyle(CassiniTheme.success) }
                     }
                     Spacer(minLength:4)
-                    Text(UXText.text("models.included")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).padding(.top,2)
+                    Text(UXText.text("models.included")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).padding(.top,2)
                 }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
-                    .background(models.usesParakeet ? Color(nsColor:.textBackgroundColor) : Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:8))
-                    .overlay(RoundedRectangle(cornerRadius:8).stroke(LibraryTheme.dim.opacity(0.2)))
+                    .background(models.usesParakeet ? CassiniTheme.surface : CassiniTheme.activeModelWash,in:RoundedRectangle(cornerRadius:8))
+                    .overlay(RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.modelCardStroke))
                     .accessibilityElement(children:.contain).accessibilityIdentifier("settings-whistle-row")
                 HStack(alignment:.top,spacing:12) {
                     SpeechRadio(selected:models.usesParakeet,label:UXText.text("models.parakeetUltra.name")) { models.chooseParakeet(true) }
@@ -207,16 +207,16 @@ private struct SettingsTranscriptionView: View {
                             Text(UXText.text("models.parakeetUltra.name")).fontWeight(.semibold)
                             if !models.downloaded {
                                 Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:SpeechModelController.downloadBytes)]))
-                                    .font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
+                                    .font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
                             }
                         }
-                        Text(UXText.text("models.parakeetUltra.description")).font(.system(size:12)).foregroundStyle(LibraryTheme.dim)
+                        Text(UXText.text("models.parakeetUltra.description")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                         if let progress = models.progress {
                             ProgressView(value:progress).accessibilityLabel(UXText.text("models.downloading.a11y",["model":UXText.text("models.parakeetUltra.name")]))
-                            Text(UXText.text("models.status.downloading",["percent":String(Int(progress * 100))])).font(.system(size:11)).foregroundStyle(LibraryTheme.dim)
+                            Text(UXText.text("models.status.downloading",["percent":String(Int(progress * 100))])).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
                         } else if models.downloaded {
                             Text(UXText.text(models.usesParakeet ? "models.status.inUse" : "models.status.downloaded"))
-                                .font(.system(size:11,weight:.semibold)).foregroundStyle(models.usesParakeet ? .green : LibraryTheme.dim)
+                                .font(.system(size:11,weight:.semibold)).foregroundStyle(models.usesParakeet ? CassiniTheme.success : CassiniTheme.ink2)
                         }
                     }
                     Spacer(minLength:4)
@@ -229,11 +229,11 @@ private struct SettingsTranscriptionView: View {
                             .disabled(models.busy).accessibilityIdentifier("settings-download-parakeet")
                     }
                 }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
-                    .background(models.usesParakeet ? Color.accentColor.opacity(0.07) : Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
-                    .overlay(RoundedRectangle(cornerRadius:8).stroke(LibraryTheme.dim.opacity(0.2)))
+                    .background(models.usesParakeet ? CassiniTheme.activeModelWash : CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+                    .overlay(RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.modelCardStroke))
                     .accessibilityElement(children:.contain).accessibilityIdentifier("settings-parakeet-row")
                 if let message = models.message {
-                    Text(message).font(.system(size:12)).foregroundStyle(models.failedDownload ? LibraryTheme.amber : LibraryTheme.dim)
+                    Text(message).font(.system(size:12)).foregroundStyle(models.failedDownload ? CassiniTheme.warnInk : CassiniTheme.ink2)
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("settings-model-message")
                 }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
@@ -242,7 +242,7 @@ private struct SettingsTranscriptionView: View {
                 Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
                 HStack(alignment:.top,spacing:10) {
                     Text("•").accessibilityHidden(true)
-                    Text(UXText.text("settings.transcription.network.download")).foregroundStyle(LibraryTheme.dim).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                    Text(UXText.text("settings.transcription.network.download")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
                 }
             }
         }.task { await models.refresh() }
@@ -250,7 +250,7 @@ private struct SettingsTranscriptionView: View {
 }
 private struct SettingsPage<Content: View>: View {
     @ViewBuilder let content: Content
-    var body: some View { ScrollView { VStack(alignment:.leading,spacing:24) { content }.padding(32).frame(maxWidth:.infinity,alignment:.leading) }.background(Color(nsColor:.windowBackgroundColor)) }
+    var body: some View { ScrollView { VStack(alignment:.leading,spacing:24) { content }.padding(32).frame(maxWidth:.infinity,alignment:.leading) }.background(CassiniTheme.windowGround) }
 }
 private struct ShortcutCaptureView: NSViewRepresentable {
     let receive: (RecordingHotKey) -> Void

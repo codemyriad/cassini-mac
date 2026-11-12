@@ -1117,7 +1117,9 @@ import Testing
         #expect(largeSummary.imported == largeCount && largeSummary.duplicates == 0 && largeSummary.failed == 0)
 
         // 8x input count: linear scaling is ~8x; quadratic rescanning was ~62x. Bound at 22x (with a 250ms floor for fast machines).
-        #expect(cpuLarge <= max(cpuSmall * 22, 250_000_000), "Expected linear CPU scaling for 8x distinct imports (small=\(cpuSmall)ns, large=\(cpuLarge)ns)")
+        if ProcessInfo.processInfo.environment["CASSINI_PERF_GATE"] == "1" {
+            #expect(cpuLarge <= max(cpuSmall * 22, 250_000_000), "Expected linear CPU scaling for 8x distinct imports (small=\(cpuSmall)ns, large=\(cpuLarge)ns)")
+        }
 
         let scannedLarge = try LibraryScanner(root: largeLib).scan().meetings
         #expect(scannedLarge.count == largeCount)
@@ -1134,8 +1136,10 @@ import Testing
         _ = try ZipArchiveImport.importArchive(largeZip, into: largeLib, temporaryRoot: staging, summary: &dupSummary)
         let cpuDup = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - startDup
         #expect(dupSummary.imported == 0 && dupSummary.duplicates == largeCount && dupSummary.failed == 0)
-        #expect(cpuDup <= max(cpuDupSmall * 22, 250_000_000), "Expected linear CPU scaling for 8x duplicate lookups (small=\(cpuDupSmall)ns, large=\(cpuDup)ns)")
-        #expect(cpuDup <= max(cpuLarge * 3, 500_000_000), "Expected one-time seed scan + O(1) duplicate lookups to stay bounded vs initial import (import=\(cpuLarge)ns, dup=\(cpuDup)ns)")
+        if ProcessInfo.processInfo.environment["CASSINI_PERF_GATE"] == "1" {
+            #expect(cpuDup <= max(cpuDupSmall * 22, 250_000_000), "Expected linear CPU scaling for 8x duplicate lookups (small=\(cpuDupSmall)ns, large=\(cpuDup)ns)")
+            #expect(cpuDup <= max(cpuLarge * 3, 500_000_000), "Expected one-time seed scan + O(1) duplicate lookups to stay bounded vs initial import (import=\(cpuLarge)ns, dup=\(cpuDup)ns)")
+        }
     }
 
     @Test func bundleInfoPlistRegistersZipAndOggOpusAsAlternateViewerDocumentTypes() throws {

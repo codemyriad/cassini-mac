@@ -19,7 +19,7 @@ struct SidebarView: View {
                                 Spacer(minLength: 0)
                                 if session.speakingNow.contains(speaker.id), !session.hiddenSpeakers.contains(speaker.id) {
                                     Image(systemName: "speaker.wave.2.fill")
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(CassiniTheme.accentInk)
                                         .accessibilityLabel("Speaking now")
                                 }
                             }
@@ -34,7 +34,7 @@ struct SidebarView: View {
             if !session.fileName.isEmpty {
                 Label(session.fileName, systemImage: "doc")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CassiniTheme.secondaryInk)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)

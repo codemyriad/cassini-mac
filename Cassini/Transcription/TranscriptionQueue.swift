@@ -74,7 +74,7 @@ import Darwin
         guard automatic, !closing, !paused else { return }
         known.formIntersection(Set(meetings.map { $0.folder.path }).union(pending.map { $0.folder.path }).union(active.map { [$0.path] } ?? []))
         let candidates = meetings.filter(\.canQueueAutomatically)
-            .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
+            .sorted { ($0.timeSortKey ?? "") < ($1.timeSortKey ?? "") }
         for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
     }
     func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {

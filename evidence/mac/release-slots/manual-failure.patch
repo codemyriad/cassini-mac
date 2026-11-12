@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -361,7 +361,7 @@
+         report(f'[Mac] nightly {version} beta.{build} published from main {head[:8]}')
+         shutil.rmtree(job) # Only this invocation's successful job output.
+     except Exception as error:
+-        identity=stage+':'+type(error).__name__+':'+slot+':'+str(manual or state.get('request',0))
++        identity=stage+':'+type(error).__name__+':'+slot+':'+str(state.get('request',0))
+         state.update(phase='failed')
+         if state.get('failure')!=identity:
+             cause=str(error).replace('\n',' ')[:180] if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__
