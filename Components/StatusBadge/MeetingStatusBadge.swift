@@ -27,7 +27,14 @@ enum StatusBadgeKind: String, CaseIterable {
         case .recording: return CassiniTokens.recordTintEntry
         case .attention, .interrupted: return CassiniTokens.warnTintEntry
         case .received: return nil
-        default: return CassiniTokens.neutralTintEntry
+        default: return CassiniTokens.inkEntry
+        }
+    }
+    /// L-46: neutral pills are ink at 10% over their actual host surface.
+    var fillOpacity: Double {
+        switch self {
+        case .importing, .saving, .transcribing: return 0.1
+        default: return 1
         }
     }
 }
@@ -67,7 +74,7 @@ struct MeetingStatusBadge: View {
         .frame(height: Metrics.height)
         .fixedSize(horizontal: true, vertical: true)
         .background {
-            if let fill = kind.fill { Capsule().fill(color(fill)) }
+            if let fill = kind.fill { Capsule().fill(color(fill).opacity(kind.fillOpacity)) }
         }
         .overlay {
             if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }

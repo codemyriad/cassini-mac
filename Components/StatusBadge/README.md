@@ -9,3 +9,5 @@ Geometry is 18 pt high, 11.5 pt semibold monospaced digits, 8 pt horizontal padd
 Busy glyphs rotate once per second, at most 30 updates per second. Reduce Motion freezes the glyph; callers can also pass `isAnimating: false` when inactive or offscreen. The label is the single accessibility element; decorative glyphs are hidden. The standalone snapshots freeze animation and do not establish app-level accessibility or live-animation behaviour.
 
 Native before/after light/dark proof, source receipts, static-glyph symmetry and outline-token checks, and four production mutation checks are in [evidence/mac/status-badge](../../evidence/mac/status-badge/README.md). No LibraryView, catalog, model, project or shared token file is changed here.
+
+L-46 follow-up: Importing, Saving and Transcribing fill with token `ink` at 10% over the host surface. Foreground ink stays opaque; Recording, warnings and Received retain their existing treatment. See [native before/after proof and mutation replay](../../evidence/mac/status-badge-neutral-wash/README.md).

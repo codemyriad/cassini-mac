@@ -1,0 +1,11 @@
+--- a/Components/StatusBadge/MeetingStatusBadge.swift
++++ b/Components/StatusBadge/MeetingStatusBadge.swift
+@@ -33,7 +33,7 @@
+     /// L-46: neutral pills are ink at 10% over their actual host surface.
+     var fillOpacity: Double {
+         switch self {
+-        case .importing, .saving, .transcribing: return 0.1
++        case .importing, .saving, .transcribing: return 1
+         default: return 1
+         }
+     }

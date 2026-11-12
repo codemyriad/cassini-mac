@@ -1,0 +1,14 @@
+{
+  "baselineCommit": "2c21d2c4d78a963500cae2f1a3e638005b26c134",
+  "baselineSHA256": "c6eff1f2551bdabf93a35b97e54152d16a5d9f51084079d8aa85e7252e095ee8",
+  "architecture": "arm64",
+  "sources": {
+    "Cassini/Theme/CassiniTokens.swift": "ecc1821865892a5c85a05f49ae523be893601c5ab0a2f2fc2f2be16a6d6a9651",
+    "Components/MeetingCard/MeetingCard.swift": "6cdaf71d38915902d94664a28278c2320ad8bc3c971ea17605ea23f910937ef0",
+    "Components/StatusBadge/MeetingStatusBadge.swift": "732e28a197ede340140d2e43589a456c30ecf1c4be05fef5743ba8299bc5ab54",
+    "Spikes/StatusBadgeNeutralWash/Proof.swift": "f5ea3ccf4b30193ed9bc1469bde2bce24c3fc88f0436901399b407998e11e93f"
+  },
+  "rendererSHA256": "738dd75860576965cf2e9864da7adc3a900ae8f443c9ab9a812cb3c531362164",
+  "caseCount": 42,
+  "checksSHA256": "844b9a9b83d4f98d4a17433dedb0095c40b77fdb054298b03a6b13af2782cad2"
+}

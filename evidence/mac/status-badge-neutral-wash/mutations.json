@@ -1,0 +1,18 @@
+{
+  "opaque-neutral-tint": {
+    "exitCode": 1,
+    "expectedFailure": "Neutral fill must use ink"
+  },
+  "opaque-fill": {
+    "exitCode": 1,
+    "expectedFailure": "Neutral fill must have 10% alpha"
+  },
+  "double-opacity": {
+    "exitCode": 1,
+    "expectedFailure": "Neutral fill must have 10% alpha"
+  },
+  "wash-foreground": {
+    "exitCode": 1,
+    "expectedFailure": "Neutral text and glyph must remain opaque"
+  }
+}

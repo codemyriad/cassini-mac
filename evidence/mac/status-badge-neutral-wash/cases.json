@@ -1,0 +1,18 @@
+[
+  {
+    "name": "opaque-neutral-tint",
+    "expectedFailure": "Neutral fill must use ink"
+  },
+  {
+    "name": "opaque-fill",
+    "expectedFailure": "Neutral fill must have 10% alpha"
+  },
+  {
+    "name": "double-opacity",
+    "expectedFailure": "Neutral fill must have 10% alpha"
+  },
+  {
+    "name": "wash-foreground",
+    "expectedFailure": "Neutral text and glyph must remain opaque"
+  }
+]

@@ -1,0 +1,11 @@
+--- a/Components/StatusBadge/MeetingStatusBadge.swift
++++ b/Components/StatusBadge/MeetingStatusBadge.swift
+@@ -27,7 +27,7 @@
+         case .recording: return CassiniTokens.recordTintEntry
+         case .attention, .interrupted: return CassiniTokens.warnTintEntry
+         case .received: return nil
+-        default: return CassiniTokens.inkEntry
++        default: return CassiniTokens.neutralTintEntry
+         }
+     }
+     /// L-46: neutral pills are ink at 10% over their actual host surface.

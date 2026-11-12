@@ -1,7 +1,7 @@
 --- a/Components/StatusBadge/MeetingStatusBadge.swift
 +++ b/Components/StatusBadge/MeetingStatusBadge.swift
 @@ -70,7 +70,7 @@
-             if let fill = kind.fill { Capsule().fill(color(fill)) }
+             if let fill = kind.fill { Capsule().fill(color(fill).opacity(kind.fillOpacity)) }
          }
          .overlay {
 -            if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }

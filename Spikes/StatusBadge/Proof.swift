@@ -73,8 +73,8 @@ private struct BadgeBoard: View {
     }
     @MainActor private static func run() throws {
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-        let expectedRoles: [(String, String?)] = [("record-ink", "record-tint"), ("ink-2", "neutral-tint"),
-            ("ink-2", "neutral-tint"), ("ink-2", "neutral-tint"), ("warn-ink", "warn-tint"),
+        let expectedRoles: [(String, String?)] = [("record-ink", "record-tint"), ("ink-2", "ink"),
+            ("ink-2", "ink"), ("ink-2", "ink"), ("warn-ink", "warn-tint"),
             ("warn-ink", "warn-tint"), ("ink-2", nil)]
         let expectedGlyphs: [StatusBadgeKind.Glyph] = [.dot, .spinner, .spinner, .spinner, .alert, .alert, .incoming]
         var results: [[String: Any]] = []
@@ -97,8 +97,10 @@ private struct BadgeBoard: View {
                         if let fill = kind.fill {
                             let rgb = dark ? fill.darkRGB : fill.lightRGB
                             let expected = [Int((rgb >> 16) & 255), Int((rgb >> 8) & 255), Int(rgb & 255)]
-                            try require(rgba[interior + 3] == 255, "Tint is not opaque")
-                            try require((0..<3).allSatisfy { abs(Int(rgba[interior + $0]) - expected[$0]) <= 1 }, "Tint differs from CassiniTokens for \(kind)")
+                            let neutral = [.importing, .saving, .transcribing].contains(kind)
+                            let alpha = neutral ? 0.1 : 1.0
+                            try require(abs(Int(rgba[interior + 3])-Int((255*alpha).rounded())) <= 1, "Wrong fill alpha for \(kind)")
+                            try require((0..<3).allSatisfy { abs(Int(rgba[interior + $0]) - Int((Double(expected[$0])*alpha).rounded())) <= 1 }, "Tint differs from CassiniTokens for \(kind)")
                         } else {
                             try require(rgba[interior + 3] == 0, "Received must remain transparent inside its ring")
                             let ring = ((ordinary.height / 2) * ordinary.width + 1) * 4

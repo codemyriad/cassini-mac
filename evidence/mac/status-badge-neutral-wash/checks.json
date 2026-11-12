@@ -1,0 +1,254 @@
+[
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "recording"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "recording"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "recording"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "importing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "importing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "importing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "saving"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "saving"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "saving"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "transcribing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "transcribing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "transcribing"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "attention"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "attention"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "attention"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "interrupted"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "interrupted"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "interrupted"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Ground",
+    "kind" : "received"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Resting card",
+    "kind" : "received"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : false,
+    "host" : "Selected card",
+    "kind" : "received"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "recording"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "recording"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "recording"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "importing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "importing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "importing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "saving"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "saving"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "saving"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "transcribing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "transcribing"
+  },
+  {
+    "check" : "ink 10% compositing; opaque foreground",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "transcribing"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "attention"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "attention"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "attention"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "interrupted"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "interrupted"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "interrupted"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Ground",
+    "kind" : "received"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Resting card",
+    "kind" : "received"
+  },
+  {
+    "check" : "matches previous component within 1\/255 raster rounding",
+    "dark" : true,
+    "host" : "Selected card",
+    "kind" : "received"
+  }
+]

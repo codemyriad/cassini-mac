@@ -366,6 +366,16 @@ jobs:
         sudo mdutil -a -i off
         mdutil -a -s
     - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Standalone status badge L-46 native proof
+      run: python3 scripts/render-status-badge-wash.py --output "$RUNNER_TEMP/status-badge-wash"
+    - uses: actions/upload-artifact@v5
+      if: always()
+      with:
+        name: status-badge-wash-${{ github.sha }}
+        path: ${{ runner.temp }}/status-badge-wash
+        retention-days: 14
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
@@ -511,6 +521,16 @@ jobs:
     if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.changes.outputs.full_ci == 'true' }}
     steps:
     - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Standalone status badge L-46 native proof
+      run: python3 scripts/render-status-badge-wash.py --output "$RUNNER_TEMP/status-badge-wash"
+    - uses: actions/upload-artifact@v5
+      if: always()
+      with:
+        name: status-badge-wash-${{ github.sha }}
+        path: ${{ runner.temp }}/status-badge-wash
+        retention-days: 14
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
