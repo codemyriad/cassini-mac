@@ -126,13 +126,13 @@ jobs:
     name: Library boards
   # D66: 52 UI tests took 14.9 min, then native A–E/profiling took another
   # ~9 min. Together they exhausted the 25 min job during cleanup despite every
-  # assertion passing (42395485443). Measure on a separate hosted display, with
+  # assertion passing (42395485443). Measure on a separate qualified display, with
   # the same products, inputs and budgets; leave each job time to upload evidence.
   spectrogram:
     name: Native spectrogram and profiling
     needs: [build, release]
     if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
-    runs-on: macos-15
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 15
     steps:
     - uses: actions/checkout@v5
@@ -140,35 +140,39 @@ jobs:
     # after restoring the SDKs. Apply the same disposable-runner precondition
     # as browser audio CI before extraction queues more indexing work.
     - name: Disable Spotlight indexing on the disposable native runner
+      if: runner.environment == 'github-hosted'
       run: |
         test "$RUNNER_ENVIRONMENT" = github-hosted
         sudo mdutil -a -i off
         mdutil -a -s
     - uses: ./.github/actions/ci-products
       with:
-        debug: 'true'
         release: 'true'
-    - run: test "$RUNNER_ENVIRONMENT" = github-hosted
-    - run: brew install displayplacer
+    - name: Require qualified GUI session
+      run: python3 scripts/gui_session.py
+    - run: command -v displayplacer >/dev/null || brew install displayplacer
     - uses: actions/setup-python@v5
+      if: runner.environment == 'github-hosted'
       with:
         python-version: '3.12'
-    - name: Prepare hosted display
+    - name: Prepare qualified display
       run: python3 scripts/hosted-display.py
     - name: Pure hosted budget policy boundaries (D36.2)
       run: |
         swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
         "$RUNNER_TEMP/spectrogram-budget"
-    - name: Production spectrogram A–E, native views and Time Profiler without devices
+    - name: Production spectrogram A–E budgets and native views without devices
       timeout-minutes: 12
       run: |
         python3 scripts/test-spectrogram-harness.py
+        swiftc Spikes/Spectrogram/Host.swift Spikes/Spectrogram/CheckHost.swift -o build/check-spectrogram-host
+        build/check-spectrogram-host
         xcrun swiftc -O -parse-as-library Spikes/Spectrogram/PixelOracle.swift Spikes/Spectrogram/CheckPixelOracle.swift -o build/check-spectrogram-pixels
         build/check-spectrogram-pixels
         xcrun swiftc -O -parse-as-library Tests/CassiniRecordingTests/SpectrogramFixtureClock.swift Spikes/Spectrogram/CheckSampleClock.swift -o build/check-spectrogram-clock
         build/check-spectrogram-clock
         python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app --scheduling-output build/check-spectrogram-scheduling
-        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --scheduling-checker build/check-spectrogram-scheduling --output build/ux-boards/spectrogram
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --phase budgets --scheduling-checker build/check-spectrogram-scheduling --output build/ux-boards/spectrogram
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
@@ -176,3 +180,43 @@ jobs:
         retention-days: 14
         name: ux-spectrogram
         path: build/ux-boards/spectrogram
+  # macOS27's logging archive makes Time Profiler exit2 even with valid CPU
+  # samples. Keep the required instrumentation on the supported disposable OS;
+  # no performance budget runs on the shared hosted VM.
+  spectrogram_diagnostics:
+    name: Native spectrogram diagnostics
+    needs: [build, release]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+    - name: Clean interrupted profiling DerivedData
+      run: rm -rf -- "$RUNNER_TEMP/cassini-native-profiling-derived-data"
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      with:
+        debug: 'true'
+        release: 'true'
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: command -v displayplacer >/dev/null || brew install displayplacer
+    - name: Prepare hosted diagnostic display
+      run: python3 scripts/hosted-display.py
+    - name: Required real motion, Time Profiler and allocation proofs without devices
+      timeout-minutes: 12
+      env:
+        CASSINI_SPECTRO_DERIVED_DATA: ${{ runner.temp }}/cassini-native-profiling-derived-data
+      run: |
+        python3 scripts/build-spectrogram-probe.py build/Build/Products/Release build/Build/Products/Release/cassini-spectrogram-probe.app --scheduling-output build/check-spectrogram-scheduling
+        python3 scripts/test-spectrogram-app.py build/Build/Products/Release/cassini-spectrogram-probe.app --phase diagnostics --output build/ux-boards/spectrogram-diagnostics
+    - uses: actions/upload-artifact@v5
+      continue-on-error: true
+      if: always()
+      with:
+        retention-days: 14
+        name: ux-spectrogram-diagnostics
+        path: build/ux-boards/spectrogram-diagnostics
+    - name: Clean profiling DerivedData after artifact upload
+      if: always()
+      run: rm -rf -- "$RUNNER_TEMP/cassini-native-profiling-derived-data"

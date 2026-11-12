@@ -34,12 +34,15 @@ jobs:
       # Freeze the source fingerprint before generated trees exist; cache post-save
       # otherwise evaluates hashFiles again and can time out walking build output.
       - id: swiftpm_key
-        run: echo "hash=${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'Spikes/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}" >> "$GITHUB_OUTPUT"
+        run: echo "hash=${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**', 'Tests/**', 'BrowserSetup/**', 'Spikes/**', 'Whistle/pins.json', 'Opus/pins.json', 'Parakeet/pins.json', 'Parakeet/UPSTREAM.json', 'scripts/fetch-vad.py', 'scripts/fetch-opus.py') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: .build
-          key: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-${{ steps.swiftpm_key.outputs.hash }}
-          restore-keys: swiftpm-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-
+          # Swift 6.1 can leave transitive clients with an obsolete nested-struct
+          # layout after an incremental rebuild (see evidence/mac/flaky/swiftpm-layout).
+          # Reuse compiled objects only for identical inputs. The new namespace
+          # also excludes already-saved products built from cross-source restores.
+          key: swiftpm-coherent-v1-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-${{ steps.swiftpm_key.outputs.hash }}
       - name: Compile all native Swift executables and test bundles once
         run: swift build --build-tests --arch ${{ matrix.arch }}
       - name: Verify SwiftPM products at identical and different checkout paths

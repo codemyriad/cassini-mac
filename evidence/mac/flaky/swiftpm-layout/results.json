@@ -1,0 +1,38 @@
+{
+  "base": "fc2ad769445f92c0b484eb760a3556dc60f746ac",
+  "compiler": "Xcode 16.4 / Swift 6.1",
+  "ciContracts": 58,
+  "cases": {
+    "before": {
+      "crossSourceCacheRestored": true,
+      "nativeClientExit": -10,
+      "expectedTracks": 8
+    },
+    "after": {
+      "crossSourceCacheRestored": false,
+      "nativeClientExit": 0,
+      "expectedTracks": 8
+    },
+    "mutation-fallback": {
+      "crossSourceCacheRestored": true,
+      "nativeClientExit": -10,
+      "expectedTracks": 8
+    },
+    "restored": {
+      "crossSourceCacheRestored": false,
+      "nativeClientExit": 0,
+      "expectedTracks": 8
+    }
+  },
+  "sourceSHA256": {
+    ".github/workflows/ci-build.yml": "ddda793c21c3c7c90d8d963235dd075e111078e2da387f63fc0a66182556ab7a",
+    "scripts/test-ci-contract.py": "a33d5c3a15a5afdf6424ed57092a46e42289b93242b3095eb2aa194c0103f611"
+  },
+  "mergedMain": "eb60a0b",
+  "afterMain": {
+    "crossSourceCacheRestored": false,
+    "nativeClientExit": 0,
+    "expectedTracks": 8
+  },
+  "reviewFix": "Cache inputs include every Package.swift custom target path root; removing BrowserSetup or Spikes is rejected."
+}

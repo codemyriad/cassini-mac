@@ -84,25 +84,38 @@ class Selection(unittest.TestCase):
 
 class NativeSpectrogramScheduling(unittest.TestCase):
     """The measured 15 min boards + 9 min native probe must not share a 25 min job."""
-    def test_native_measurements_have_their_own_bounded_hosted_job(self):
+    def test_native_measurements_have_their_own_bounded_gui_job(self):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
-        boards, native = jobs['boards'], jobs['spectrogram']
+        boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
         self.assertIn('timeout-minutes: 25',boards)
         self.assertNotIn('test-spectrogram-app.py',boards)
         self.assertNotIn("release: 'true'",boards)
         self.assertNotIn('needs: [boards]',native)
-        for requirement in ['runs-on: macos-15','needs: [build, release]',
+        for requirement in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-15' }}",'needs: [build, release]',
                             'inputs.products_ready','!cancelled()',
-                            "debug: 'true'","release: 'true'",'github-hosted',
+                            "release: 'true'",'github-hosted',
                             'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
                             'if: always()','name: ux-spectrogram']:
             self.assertIn(requirement,native)
+        self.assertNotIn("debug: 'true'",native)
+        self.assertIn('--phase budgets',native)
+        self.assertNotIn('--phase diagnostics',native)
+        for requirement in ['runs-on: macos-15','needs: [build, release]',"debug: 'true'","release: 'true'",'--phase diagnostics','name: ux-spectrogram-diagnostics','if: always()']:
+            self.assertIn(requirement,diagnostics)
+        self.assertNotIn('CM_MAC_GUI_RUNNER',diagnostics)
+        self.assertNotIn('--phase budgets',diagnostics)
+        self.assertNotIn('needs: [spectrogram]',diagnostics)
+        # Routing is useless if the entry point or CPU instrumentation still
+        # rejects the newly qualified host. Normal app measurement stays unchanged.
+        for source in ['Spikes/Spectrogram/main.swift','Spikes/Spectrogram/Probe.swift','Cassini/Recording/RecordingSpectrogram.swift']:
+            self.assertIn('SpectrogramFixtureHost.current',(ROOT/source).read_text(),source)
+        self.assertIn("Spikes/Spectrogram/Host.swift",(ROOT/'scripts/build-spectrogram-probe.py').read_text())
         # Keep every production proof exactly once, including the motion XCTest
         # driver supplied by Debug products and the same-build optimized objects.
         for script in ['CheckBudget.swift','test-spectrogram-harness.py',
                        'CheckSampleClock.swift','build-spectrogram-probe.py','test-spectrogram-app.py']:
-            self.assertEqual(body.count(script),1)
+            self.assertEqual(body.count(script),2 if script in ['build-spectrogram-probe.py','test-spectrogram-app.py'] else 1)
             self.assertIn(script,native)
 
 
@@ -253,7 +266,7 @@ class RentedRunnerRouting(unittest.TestCase):
             for route in re.findall(r'^    runs-on: (.+)$',path.read_text(),re.M):
                 if 'vars.CM_MAC' in route:
                     routes.append((path.name,route))
-        self.assertEqual(len(routes),8)
+        self.assertEqual(len(routes),9)
         events=['push','schedule','workflow_dispatch','pull_request',
                 'pull_request_target','workflow_run','issue_comment','workflow_call',
                 'release','repository_dispatch','deployment_status','check_run','unknown']
@@ -341,8 +354,17 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('CM_MAC_RUNNER',gui,name)
 
         boards=(ROOT/'.github/workflows/ux-boards.yml').read_text()
-        self.assertNotIn('CM_MAC_GUI_RUNNER',boards)
-        self.assertIn('runs-on: macos-15',boards)
+        board_job=boards.split('  boards:',1)[1].split('  spectrogram:',1)[0]
+        self.assertNotIn('CM_MAC_GUI_RUNNER',board_job)
+        self.assertIn('runs-on: macos-15',board_job)
+        native,diagnostics=boards.split('  spectrogram:',1)[1].split('  spectrogram_diagnostics:',1)
+        self.assertIn('vars.CM_MAC_GUI_RUNNER',native)
+        self.assertIn('python3 scripts/gui_session.py',native)
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- uses: actions/setup-python'))
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- name: Disable Spotlight'))
+        self.assertIn('command -v displayplacer',native)
+        self.assertIn('Clean interrupted profiling DerivedData',diagnostics)
+        self.assertIn('Clean profiling DerivedData after artifact upload',diagnostics)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
@@ -399,12 +421,31 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('sudo xcode-select',body)
         keys=[line for line in producer.splitlines() if any(marker in line for marker in
             ['key: swiftpm-','restore-keys: swiftpm-','key: pinned-fetches-','restore-keys: pinned-fetches-'])]
-        self.assertEqual(len(keys),4)
+        self.assertEqual(len(keys),3)
         for line in keys:self.assertIn('steps.xcode.outputs.fingerprint',line)
         for line in keys:
             if 'swiftpm-' in line:self.assertIn('steps.xcode.outputs.workspace',line)
             else:self.assertNotIn('steps.xcode.outputs.workspace',line)
         self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
+
+
+class CompiledCacheCoherence(unittest.TestCase):
+    def test_changed_inputs_cannot_restore_partial_compiled_objects(self):
+        body=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        cache=body.split('path: .build\n',1)[1].split('      - name:',1)[0]
+        self.assertNotIn('restore-keys:',cache,"Cross-input restoration can retain an incompatible native client")
+        key=re.search(r'(?m)^\s+key: (.+)$',cache).group(1)
+        self.assertIn('steps.swiftpm_key.outputs.hash',key)
+        self.assertIn('matrix.arch',key)
+        self.assertIn('steps.xcode.outputs.fingerprint',key)
+        self.assertIn('steps.xcode.outputs.workspace',key)
+        self.assertNotIn('key: swiftpm-${{ matrix.arch }}',cache,"Invalidate already-saved incoherent objects")
+        inputs=body.split('- id: swiftpm_key',1)[1].split('- uses:',1)[0]
+        package=(ROOT/'Package.swift').read_text()
+        custom_roots={p.split('/',1)[0]+'/**' for p in re.findall(r'path:\s*"([^"]+)"',package)}
+        self.assertTrue(custom_roots,"Exercise the package's custom target roots")
+        for pattern in ('Package.swift','Package.resolved','Sources/**','Tests/**',*sorted(custom_roots)):
+            self.assertIn(pattern,inputs)
 
 
 class ProductArchitecture(unittest.TestCase):
