@@ -146,6 +146,17 @@ class RenderLocalUX(unittest.TestCase):
         self.render(extra=('--listening', 'playing', '--speaker', 'Speaker 1'))
         self.assertEqual(self.arguments[self.arguments.index('-CassiniListeningPreview') + 1], 'playing')
         self.assertEqual(self.arguments[self.arguments.index('-CassiniListeningSpeaker') + 1], 'Speaker 1')
+        self.assertEqual(self.arguments[self.arguments.index('-AppleInterfaceStyle') + 1], 'Light')
+        self.assertNotIn('-CassiniScreenshotScheme', self.arguments)
+
+    def test_dark_scheme_flag_and_environment_reach_fixture(self):
+        self.render(extra=('--scheme', 'dark'))
+        self.assertEqual(self.arguments[self.arguments.index('-AppleInterfaceStyle') + 1], 'Dark')
+        self.assertEqual(self.arguments[self.arguments.index('-CassiniScreenshotScheme') + 1], 'dark')
+        with patch.dict(os.environ, {'CASSINI_SCREENSHOT_SCHEME': 'dark'}):
+            self.render()
+        self.assertEqual(self.arguments[self.arguments.index('-AppleInterfaceStyle') + 1], 'Dark')
+        self.assertEqual(self.arguments[self.arguments.index('-CassiniScreenshotScheme') + 1], 'dark')
 
     def test_launch_errors_keep_both_diagnostic_streams(self):
         for mode, message in (('timeout', 'Launch timeout detail'), ('exit', 'LaunchServices detail')):

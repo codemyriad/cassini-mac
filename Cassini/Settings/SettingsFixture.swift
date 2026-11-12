@@ -18,7 +18,7 @@ enum SettingsFixture {
         guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), name.hasPrefix("settings-"),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               prepared.insert(ObjectIdentifier(window)).inserted else { return }
-        window.appearance = NSAppearance(named:.aqua)
+        window.appearance = NSAppearance(named:LibraryLaunchContext.screenshotDark ? .darkAqua : .aqua)
         window.setContentSize(NSSize(width:700,height:500)); window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }

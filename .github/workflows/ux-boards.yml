@@ -16,10 +16,10 @@ jobs:
     if: ${{ !inputs.products_ready && needs.build.result == 'success' }}
     uses: ./.github/workflows/ci-build-release.yml
   boards:
-    needs: [build, release]
-    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+    needs: [build]
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -47,6 +47,42 @@ jobs:
           -destination 'platform=macOS' -parallel-testing-enabled NO -only-testing:CassiniWindowScreenshots/LibraryBoards \
           -resultBundlePath build/UXBoards.xcresult \
           2>&1 | tee build/ux-boards.log
+    - name: Render dark Library boards
+      timeout-minutes: 9
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+        TEST_RUNNER_CASSINI_SCREENSHOT_SCHEME: dark
+      run: |
+        set -o pipefail
+        dark_start=$SECONDS
+        xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+          -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryAndFirstRunFitAtBoardSize \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMoveToTrashMenusAndFirstRun \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingDetailsFromTheMoreMenu \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingDetailsScrollsManySources \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingTrashAndSearchKeyboardGuard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testCompanionSetupBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testWhatIsRecordedBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRenameFromFileAndWindowTitle \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testListeningBarOffersPlayAgainAfterItsLastTurn \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscriptTimePlaysAndSpeakerNameStartsListening \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsTranscriptionModelChoices \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testParakeetRecommendationCapabilityAndPersistedDismissal \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsRecordingPreferenceAndTabs \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testLibrary \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRun \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSearchBoardFiltersAndOpeningTheHit \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testReceivedBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportBoardAndKeyboardChoices \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
+          -resultBundlePath build/UXBoardsDark.xcresult \
+          2>&1 | tee build/ux-boards-dark.log
+        echo "Dark Library boards: 22 tests (27 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |
@@ -76,7 +112,13 @@ jobs:
       if: always()
       run: |
         xcrun xcresulttool export attachments --path build/UXBoards.xcresult --output-path build/ux-attachments
-        python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
+        if [ -d build/UXBoardsDark.xcresult ]; then
+          xcrun xcresulttool export attachments --path build/UXBoardsDark.xcresult --output-path build/ux-attachments-dark
+          python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards --dark build/ux-attachments-dark
+        else
+          python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
+          exit 1
+        fi
     - name: Real app search without playback
       if: always()
       run: python3 scripts/test-search-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/search-app.json
@@ -120,7 +162,9 @@ jobs:
         name: ux-boards-diagnostics
         path: |
           build/UXBoards.xcresult
+          build/UXBoardsDark.xcresult
           build/ux-boards.log
+          build/ux-boards-dark.log
           build/cassini-app.log
           build/display-*
     name: Library boards

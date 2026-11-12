@@ -20,6 +20,7 @@
     "scripts/*opus*",
     "project.yml",
     "scripts/export-ux-boards.py",
+    "scripts/test-export-ux-boards.py",
     "scripts/test-recording-comfort.py",
     ".github/workflows/ux-boards.yml",
     "scripts/check-ux-copy.py",
