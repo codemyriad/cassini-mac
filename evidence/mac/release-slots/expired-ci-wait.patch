@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -335,7 +335,7 @@
+         prior=state.get('pending_ci')
+         same_attempt=isinstance(prior,dict) and prior.get('slot')==slot and prior.get('request')==attempt_request
+         prior_started=parse_utc(prior.get('started_at')) if same_attempt else now_utc
+-        if same_attempt and (prior_started is None or now_utc-min(prior_started,now_utc)>=CI_WAIT_BUDGET):
++        if False:
+             state.pop('pending_ci',None)
+             state.update(slot=slot,request=request_id,phase='skipped')
+             atomic(state_file,state)

@@ -25,6 +25,8 @@ SOURCE=BASE/'source'
 INBOX=HOME/'dev/cassini-coordination/NOTIFICATIONS-MAC-TEST-RELEASES.log'
 BERLIN=ZoneInfo('Europe/Berlin')
 REQUEST='request-mac-test-release.yml'
+CI_WAIT_BUDGET=timedelta(minutes=45)
+CI_START_GRACE=timedelta(minutes=3)
 
 
 def command(args,**kwargs):
@@ -53,18 +55,56 @@ def due_slot(now):
     return max(slot for slot in candidates if slot<=local).isoformat()
 
 
-def eligible_ci(runs,sha):
+def ci_state(runs,sha):
     # API pages are newest-first. PR merge-ref results (even this repo's main)
     # and fork runs must neither authorize nor block a main release.
     run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch','schedule')
               and (r.get('head_repository') or {}).get('full_name')==REPO),None)
-    return bool(run and run['head_sha']==sha and run['head_branch']=='main'
-                and run['status']=='completed' and run['conclusion']=='success')
+    if not run:return 'missing'
+    if run.get('head_sha')!=sha or run.get('head_branch')!='main':return 'red'
+    if run.get('status')!='completed':return 'pending'
+    return 'green' if run.get('conclusion')=='success' else 'red'
+
+
+def eligible_ci(runs,sha):
+    return ci_state(runs,sha)=='green'
+
+
+def main_ci_state(sha):
+    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={sha}&per_page=100'])
+    return ci_state([run for page in pages for run in page['workflow_runs']],sha)
 
 
 def main_is_green(sha):
-    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={sha}&per_page=100'])
-    return eligible_ci([run for page in pages for run in page['workflow_runs']],sha)
+    return main_ci_state(sha)=='green'
+
+
+def parse_utc(value,default=None):
+    if not isinstance(value,str):return default
+    try:parsed=datetime.fromisoformat(value)
+    except ValueError:return default
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def git_ok(*args):
+    try:command(['git','-C',SOURCE,*args]);return True
+    except RuntimeError:return False
+
+
+def candidate_publishable(candidate,state):
+    local=state.get('last_success')
+    if local:
+        if not isinstance(local,str) or not re.fullmatch(r'[0-9a-f]{40}',local):
+            raise ValueError('Invalid successful source commit')
+        if local==candidate or not git_ok('merge-base','--is-ancestor',local,candidate):
+            return False
+    releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
+    previous=latest_nightly(releases)
+    stable=stable_notes_source(releases)
+    base=source_commit(previous) if previous else stable_notes_base(releases,candidate)
+    if candidate==base or candidate==stable:
+        return False
+    return not base or git_ok('merge-base','--is-ancestor',base,candidate)
 
 
 def fetch_main():
@@ -289,6 +329,19 @@ def tick(now):
                      and r['event']=='workflow_dispatch' and r['id']>state.get('request',0)),None)
         if state.get('slot')==slot and manual is None:return
         stage='main source/CI admission'
+        now_utc=now.astimezone(timezone.utc)
+        request_id=manual or state.get('request',0)
+        attempt_request=manual or 0
+        prior=state.get('pending_ci')
+        same_attempt=isinstance(prior,dict) and prior.get('slot')==slot and prior.get('request')==attempt_request
+        prior_started=parse_utc(prior.get('started_at')) if same_attempt else now_utc
+        if same_attempt and (prior_started is None or now_utc-min(prior_started,now_utc)>=CI_WAIT_BUDGET):
+            state.pop('pending_ci',None)
+            state.update(slot=slot,request=request_id,phase='skipped')
+            atomic(state_file,state)
+            report('[Mac] daily test release skipped: main CI did not finish green within 45m')
+            return
+        started_at=min(prior_started,now_utc)
         if command(['git','-C',SOURCE,'remote','get-url','origin']).strip()!=ORIGIN:
             raise ValueError('Unexpected release source origin')
         def pipeline_source():
@@ -300,11 +353,45 @@ def tick(now):
         if pipeline_source()!=before:
             state.pop('slot',None);state['request']=0;atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
-        if not main_is_green(head):
-            pending=dict(slot=slot,request=manual or state.get('request',0),head=head)
-            if state.get('pending_ci')!=pending:
+        head_started_at=min(parse_utc(prior.get('head_started_at'),now_utc),now_utc) if (same_attempt and prior.get('head')==head) else now_utc
+        raw_candidates=prior.get('candidates') if (same_attempt and isinstance(prior.get('candidates'),list)) else []
+        seen=[];seen_shas={head}
+        for item in raw_candidates:
+            if not isinstance(item,dict):continue
+            sha=item.get('sha')
+            if isinstance(sha,str) and re.fullmatch(r'[0-9a-f]{40}',sha) and sha not in seen_shas:
+                seen_shas.add(sha)
+                seen.append(dict(sha=sha,seen_at=min(parse_utc(item.get('seen_at'),started_at),now_utc).isoformat()))
+        status=main_ci_state(head)
+        kept=[]
+        if status in ('pending','missing'):
+            for item in seen:
+                candidate=item['sha']
+                candidate_since=min(parse_utc(item['seen_at'],started_at),now_utc)
+                if (not git_ok('merge-base','--is-ancestor',candidate,head)
+                        or not git_ok('diff','--quiet',candidate,head,'--','scripts/daily-test-release.py','scripts/user_release_notes.py')):
+                    continue
+                candidate_status=main_ci_state(candidate)
+                if candidate_status=='green' and candidate_publishable(candidate,state):
+                    command(['git','-C',SOURCE,'checkout','--detach','--force',candidate])
+                    head=candidate
+                    status='green'
+                    break
+                if candidate_status=='pending' or (candidate_status=='missing' and now_utc-candidate_since<CI_START_GRACE):
+                    kept.append(item)
+        if status!='green':
+            if status=='red' or (status=='missing' and now_utc-head_started_at>=CI_START_GRACE):
+                state.pop('pending_ci',None)
+                state.update(slot=slot,request=request_id,phase='skipped')
+                atomic(state_file,state)
+                report('[Mac] daily test release skipped: latest main CI is not green')
+                return
+            if not same_attempt or prior.get('head')!=head:
                 report('[Mac] daily test release waiting: latest main CI is not green')
-            state['pending_ci']=pending;atomic(state_file,state)
+            candidates=([dict(sha=head,seen_at=head_started_at.isoformat())]+kept)[:8]
+            state['pending_ci']=dict(slot=slot,request=attempt_request,head=head,started_at=started_at.isoformat(),
+                                     head_started_at=head_started_at.isoformat(),candidates=candidates)
+            atomic(state_file,state)
             return
         state.pop('pending_ci',None)
         atomic(state_file,state)

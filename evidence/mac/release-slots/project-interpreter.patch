@@ -1,6 +1,6 @@
 --- a/project.yml
 +++ b/project.yml
-@@ -108,10 +108,10 @@
+@@ -111,10 +111,10 @@
            - $(SRCROOT)/scripts/bundle-companion-page.py
          outputFiles:
            - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html

@@ -1,8 +1,8 @@
 --- a/scripts/daily-test-release.py
 +++ b/scripts/daily-test-release.py
-@@ -233,6 +233,7 @@
-
-
+@@ -273,6 +273,7 @@
+ 
+ 
  def prune_failed_builds():
 +    return
      """Never touch active, unmarked, symlinked jobs or shared build caches."""

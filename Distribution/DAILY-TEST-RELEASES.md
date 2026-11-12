@@ -12,10 +12,13 @@ credentials. A loaded agent must finish and be unloaded before reinstalling.
 
 The agent checks for due09:00/14:00/20:00 Europe/Berlin slots, including DST and
 missed wakes, and for successful `Request Mac test release` workflow_dispatch
-requests on main. Minute pulses discover requests; each slot/request is consumed
-once after main passes CI admission. Red or running CI leaves both pending;
-the next minute pulse checks again without signing. Waiting notifications are
-deduplicated per slot, manual request and main SHA, then cleared on green admission. A green unchanged main
+requests on main. Minute pulses discover requests; in-progress CI leaves the slot/request pending
+for up to 45 minutes across minute pulses (with a 3-minute start grace when a
+fresh main commit has not registered its workflow run yet), and admits the newest
+unpublished green ancestor seen during that wait if main fast-forwards into
+another in-progress run. Completed red CI or an expired wait consumes the
+slot/request as a skip without signing. Waiting notifications are deduplicated
+per slot, manual request and main SHA, then cleared on admission or skip. A green unchanged main
 consumes the slot as a skip; failed admitted builds wait for the next slot. Manual workflow status records a request,
 not the result of signing. Results/skips and one-line failures go to
 `~/dev/cassini-coordination/NOTIFICATIONS-MAC-TEST-RELEASES.log`; private state,

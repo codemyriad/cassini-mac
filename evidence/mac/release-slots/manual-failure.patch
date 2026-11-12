@@ -1,6 +1,6 @@
 --- a/scripts/daily-test-release.py
 +++ b/scripts/daily-test-release.py
-@@ -361,7 +361,7 @@
+@@ -448,7 +448,7 @@
          report(f'[Mac] nightly {version} beta.{build} published from main {head[:8]}')
          shutil.rmtree(job) # Only this invocation's successful job output.
      except Exception as error:
