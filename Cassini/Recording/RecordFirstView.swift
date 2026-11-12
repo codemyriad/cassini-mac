@@ -96,13 +96,13 @@ struct RecordFirstView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
-            if let line = RecordingController.shared.diskLine { Text(line).foregroundStyle(.orange) }
+            if let line = RecordingController.shared.diskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
             VStack(alignment: .leading, spacing: 10) {
                 Text(UXText.text("recordFirst.responsibility")).lineSpacing(5)
-                Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip).toggleStyle(.checkbox).font(.system(size: 11.5)).foregroundStyle(.secondary)
-            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip).toggleStyle(.checkbox).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.secondaryInk)
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(CassiniTheme.subtleWash, in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 16) {
-                Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(.secondary)
+                Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.secondaryInk)
                 source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.description", caption: microphoneAllowed ? "recordFirst.allowed" : "recordFirst.mic.caption")
                 Divider()
                 if CaptureCollection.shared.hasCalls {
@@ -114,11 +114,11 @@ struct RecordFirstView: View {
             HStack(spacing: 10) {
                 Spacer()
                 Button(UXText.text("common.notNow")) { RecordCoordinator.shared.showingFirst = false }
-                    .buttonStyle(.plain).padding(.horizontal, 18).frame(height: 36).background(LibraryTheme.chip, in: RoundedRectangle(cornerRadius: 6))
+                    .buttonStyle(.plain).padding(.horizontal, 18).frame(height: 36).background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 6))
                     .keyboardShortcut(.cancelAction)
                 Button { RecordCoordinator.shared.confirm() } label: {
-                    HStack(spacing: 8) { Circle().fill(.white).frame(width: 9, height: 9); Text(UXText.text("recordFirst.start")).fontWeight(.semibold) }
-                        .padding(.horizontal, 18).frame(height: 36).foregroundStyle(.white).background(LibraryTheme.red, in: RoundedRectangle(cornerRadius: 6))
+                    HStack(spacing: 8) { Circle().fill(CassiniTheme.onRecord).frame(width: 9, height: 9); Text(UXText.text("recordFirst.start")).fontWeight(.semibold) }
+                        .padding(.horizontal, 18).frame(height: 36).foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record, in: RoundedRectangle(cornerRadius: 6))
                 }.buttonStyle(.plain).keyboardShortcut(.defaultAction).accessibilityIdentifier("record-first-start")
             }.padding(.top, 8)
         }.font(.system(size: 13)).padding(28).frame(width: 520)
@@ -135,11 +135,11 @@ struct RecordFirstView: View {
     }
     private func source(icon: String, title: String, description: String, caption: String?) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon).frame(width: 36, height: 36).background(Color.secondary.opacity(0.07), in: Circle()).accessibilityHidden(true)
+            Image(systemName: icon).frame(width: 36, height: 36).background(CassiniTheme.subtleWash, in: Circle()).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(UXText.text(title)).fontWeight(.semibold)
-                Text(UXText.text(description)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
-                if let caption { Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineSpacing(4).fixedSize(horizontal:false,vertical:true) }
+                Text(UXText.text(description)).foregroundStyle(CassiniTheme.secondaryInk).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                if let caption { Text(UXText.text(caption)).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineSpacing(4).fixedSize(horizontal:false,vertical:true) }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -231,27 +231,26 @@ private final class RecordingPillControlView: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 16 + 14,height:34) }
     func update(_ value: RecordingPillControls) {
         onOpen = value.open; onStop = value.stop
-        let red: NSColor = value.dark ? NSColor(red:1,green:69/255,blue:58/255,alpha:1) : NSColor(red:215/255,green:0,blue:21/255,alpha:1)
+        let ink = CassiniTheme.nsLivePillInk(dark: value.dark)
+        let stopFill = CassiniTheme.nsLivePillStopFill(dark: value.dark)
         let font = NSFont.monospacedDigitSystemFont(ofSize:13,weight:.semibold)
-        openButton.attributedTitle = NSAttributedString(string:value.time,attributes:[.font:font,.foregroundColor:red])
+        openButton.attributedTitle = NSAttributedString(string:value.time,attributes:[.font:font,.foregroundColor:ink])
         openButton.image = NSImage(size:NSSize(width:17,height:10),flipped:false) { _ in
-            red.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0.5,width:9,height:9)).fill(); return true
+            ink.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0.5,width:9,height:9)).fill(); return true
         }
         openButton.imagePosition = .imageLeft; openButton.imageHugsTitle = true
         openButton.spokenLabel = value.label
         let stopTitle = UXText.text("common.stop"), stopFont = NSFont.systemFont(ofSize:11,weight:.semibold)
-        stopButton.attributedTitle = NSAttributedString(string:stopTitle,attributes:[.font:stopFont,.foregroundColor:NSColor.white])
+        stopButton.attributedTitle = NSAttributedString(string:stopTitle,attributes:[.font:stopFont,.foregroundColor:CassiniTheme.nsOnRecord])
         stopButton.spokenLabel = UXText.text("recording.pill.stop.a11y")
-        stopButton.layer?.backgroundColor = red.cgColor
-        layer?.backgroundColor = (value.dark
-            ? NSColor(srgbRed:67/255,green:33/255,blue:31/255,alpha:1)
-            : NSColor(srgbRed:253/255,green:228/255,blue:230/255,alpha:1)).cgColor
+        stopButton.layer?.backgroundColor = stopFill.cgColor
+        layer?.backgroundColor = CassiniTheme.nsLivePillWash(dark: value.dark).cgColor
         openWidth.constant = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + 21
         stopWidth.constant = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + 20
         toolTip = value.noSleep ? UXText.text("recording.pill.noSleep") : nil
         spectrogram.configure(value.controller,dark:value.dark,silent:value.silent)
-        me.update(value.microphone,color:red,silent:value.silent)
-        others.update(value.output,color:red,silent:false)
+        me.update(value.microphone,color:ink,silent:value.silent)
+        others.update(value.output,color:ink,silent:false)
         invalidateIntrinsicContentSize()
     }
     @objc private func openRecording() { onOpen?() }

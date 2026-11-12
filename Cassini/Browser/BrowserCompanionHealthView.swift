@@ -60,7 +60,7 @@ struct BrowserCompanionHealthView: View {
                     .accessibilityIdentifier("companion-reload-tab-\(peer.id)-\(tab.key.tabID)")
             }
             if let error = captures.reloadErrors[tab.key] {
-                Text(error).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                Text(error).foregroundStyle(CassiniTheme.secondaryInk).fixedSize(horizontal:false,vertical:true)
                     .accessibilityIdentifier("companion-reload-error")
             }
         }

@@ -13,7 +13,7 @@ struct TranscriptView: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.drawsBackground = true
-        scroll.backgroundColor = .textBackgroundColor
+        scroll.backgroundColor = CassiniTheme.nsPaneGround
         scroll.autohidesScrollers = true
 
         let textView = TranscriptTextView(usingTextLayoutManager: true)
@@ -187,8 +187,8 @@ struct TranscriptView: NSViewRepresentable {
             let wanted = timeline.upcomingWords(active.flatMap { layout.turnWords[$0] ?? [] },at:lastMs)
             guard wanted != upcomingWords else { return }
             var edits: [(NSRange,NSColor)] = []
-            for i in upcomingWords.subtracting(wanted) { if let r = layout.wordRanges[i] { edits.append((r,.labelColor)) } }
-            for i in wanted.subtracting(upcomingWords) { if let r = layout.wordRanges[i] { edits.append((r,.secondaryLabelColor)) } }
+            for i in upcomingWords.subtracting(wanted) { if let r = layout.wordRanges[i] { edits.append((r,CassiniTheme.nsInk)) } }
+            for i in wanted.subtracting(upcomingWords) { if let r = layout.wordRanges[i] { edits.append((r,CassiniTheme.nsUpcomingWordInk)) } }
             upcomingWords = wanted
             guard !edits.isEmpty else { return }
             storage.beginEditing()

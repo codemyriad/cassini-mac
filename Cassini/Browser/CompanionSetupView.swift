@@ -202,7 +202,7 @@ struct CompanionSetupView: View {
         VStack(alignment:.leading,spacing:20) {
             VStack(alignment:.leading,spacing:6) {
                 Text(UXText.text("companion.title")).font(.system(size:20,weight:.bold)).accessibilityAddTraits(.isHeader)
-                Text(UXText.text("companion.body")).foregroundStyle(LibraryTheme.dim).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                Text(UXText.text("companion.body")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
             }
             VStack(spacing:0) {
                 step(1,done:added,title:"companion.addStep.title",caption:addCaption) {
@@ -215,8 +215,8 @@ struct CompanionSetupView: View {
                             .buttonStyle(.borderedProminent).disabled(setup.working).accessibilityIdentifier("companion-connect")
                     }
                 }
-            }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
-                .overlay { RoundedRectangle(cornerRadius:8).stroke(Color.secondary.opacity(0.25)) }
+            }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+                .overlay { RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke) }
             BrowserCompanionHealthView(presenter:setup.presenter ?? .library)
             if CompanionSetup.storeListingPublic {
                 Button(UXText.text("companion.local.add")) { setup.showLocalGuide(from:setup.presenter ?? .library) }.buttonStyle(.link).disabled(!setup.canAdd)
@@ -224,7 +224,7 @@ struct CompanionSetupView: View {
             HStack(alignment:.top,spacing:10) {
                 Image(systemName:"lock").frame(width:14).accessibilityHidden(true)
                 Text(UXText.text("companion.privacy")).fixedSize(horizontal:false,vertical:true)
-            }.font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+            }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             HStack(spacing:10) {
                 Spacer()
                 Button(UXText.text("common.notNow")) { setup.close() }.keyboardShortcut(.cancelAction)
@@ -245,17 +245,17 @@ struct CompanionSetupView: View {
     private func step<Content:View>(_ number: Int, done: Bool, title: String, caption: String, @ViewBuilder action: () -> Content) -> some View {
         HStack(spacing:14) {
             ZStack {
-                if done { Circle().fill(Color(red:31/255,green:122/255,blue:63/255)); Image(systemName:"checkmark").fontWeight(.bold).foregroundStyle(.white) }
+                if done { Circle().fill(CassiniTheme.stepDoneFill); Image(systemName:"checkmark").fontWeight(.bold).foregroundStyle(CassiniTheme.onSuccess) }
                 else {
-                    Circle().stroke(Color.accentColor,lineWidth:2)
+                    Circle().stroke(CassiniTheme.accent,lineWidth:2)
                     if number == 2 && added && setup.working { ProgressView().controlSize(.small) }
-                    else { Text(String(number)).fontWeight(.bold).foregroundStyle(Color.accentColor) }
+                    else { Text(String(number)).fontWeight(.bold).foregroundStyle(CassiniTheme.accentInk) }
                 }
             }.frame(width:28,height:28)
                 .accessibilityElement(children:.ignore).accessibilityLabel(UXText.text(done ? "companion.step.a11y.done" : number == 2 && added && setup.working ? "companion.step.a11y.working" : "companion.step.a11y.pending",["n":String(number)]))
             VStack(alignment:.leading,spacing:3) {
                 Text(UXText.text(title)).fontWeight(.semibold)
-                if !caption.isEmpty { Text(caption).font(.system(size:11.5)).foregroundStyle(number == 2 && setup.failed && !done ? LibraryTheme.amber : LibraryTheme.dim).fixedSize(horizontal:false,vertical:true) }
+                if !caption.isEmpty { Text(caption).font(.system(size:11.5)).foregroundStyle(number == 2 && setup.failed && !done ? CassiniTheme.warnInk : CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true) }
             }
             Spacer(minLength:4)
             action().controlSize(.large)

@@ -20,24 +20,24 @@ struct CassiniApp: App {
         #else
         let suppressWindow = false
         #endif
-        Window(UXText.text("app.name"), id: "library") { LibraryView() }
+        Window(UXText.text("app.name"), id: "library") { LibraryView().tint(CassiniTheme.sceneTint) }
             .defaultLaunchBehavior(suppressWindow ? .suppressed : .presented)
             .defaultSize(width: 1120, height: 720)
             .windowToolbarStyle(.unified)
             .commands { AppCommands() }
 
-        Settings { CassiniSettingsView() }
+        Settings { CassiniSettingsView().tint(CassiniTheme.sceneTint) }
             .windowResizability(.contentSize)
 
         MenuBarExtra(isInserted:.constant(captureActive || (captures.autoRecord && showIdleMenuBar))) {
-            CassiniStatusContent()
+            CassiniStatusContent().tint(CassiniTheme.sceneTint)
         } label: {
             CassiniStatusLabel()
         }
             .menuBarExtraStyle(.window)
 
         WindowGroup(UXText.text("app.name"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
-            if let route { LegacyDocumentView(url: route.url) }
+            if let route { LegacyDocumentView(url: route.url).tint(CassiniTheme.sceneTint) }
         }.defaultSize(width: 1280, height: 780)
 
     }

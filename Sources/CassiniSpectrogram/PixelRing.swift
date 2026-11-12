@@ -7,15 +7,48 @@ public enum SpectrogramStripStyle: Sendable {
     public var rows: Int { self == .pill ? 16 : 32 }
     public var slotMs: Double { self == .pill ? 80 : 20 }
 }
+public struct SpectrogramThemeColors: Sendable, Equatable {
+    public let pillInkLight: UInt32
+    public let pillInkDark: UInt32
+    public let rowInkLight: UInt32
+    public let rowInkDark: UInt32
+    public let pillSilentLight: UInt32
+    public let pillSilentDark: UInt32
+    public let rowSilentLight: UInt32
+    public let rowSilentDark: UInt32
+
+    public init(
+        pillInkLight: UInt32, pillInkDark: UInt32,
+        rowInkLight: UInt32, rowInkDark: UInt32,
+        pillSilentLight: UInt32, pillSilentDark: UInt32,
+        rowSilentLight: UInt32, rowSilentDark: UInt32
+    ) {
+        self.pillInkLight = pillInkLight
+        self.pillInkDark = pillInkDark
+        self.rowInkLight = rowInkLight
+        self.rowInkDark = rowInkDark
+        self.pillSilentLight = pillSilentLight
+        self.pillSilentDark = pillSilentDark
+        self.rowSilentLight = rowSilentLight
+        self.rowSilentDark = rowSilentDark
+    }
+}
+
 /// Premultiplied BGRA8 pixels for IOSurface. A lookup table is baked only when
 /// appearance/warning changes; new columns never calculate pow or blend cells.
 public struct SpectrogramPalette: Sendable {
     private let table: [UInt32]
     public let dot: UInt32
-    public init(style: SpectrogramStripStyle, dark: Bool, silent: Bool) {
-        let ink: UInt32 = style == .pill ? (dark ? 0xff6961 : 0xd70015) : (dark ? 0xf5f5f7 : 0x1d1d1f)
+    public init(style: SpectrogramStripStyle, dark: Bool, silent: Bool, colors: SpectrogramThemeColors) {
+        let ink: UInt32 = style == .pill
+            ? (dark ? colors.pillInkDark : colors.pillInkLight)
+            : (dark ? colors.rowInkDark : colors.rowInkLight)
         let maximum = style == .pill ? 0.95 : (dark ? 0.88 : 0.90)
-        let trough: UInt32 = silent ? (style == .pill ? 0xff9f0a : (dark ? 0xff9f0a : 0xc47a00)) : ink
+        let trough: UInt32 = silent
+            ? (style == .pill
+                ? (dark ? colors.pillSilentDark : colors.pillSilentLight)
+                : (dark ? colors.rowSilentDark : colors.rowSilentLight))
+            : ink
         let floorAlpha = silent ? (style == .pill ? (dark ? 0.30 : 0.40) : (dark ? 0.20 : 0.24)) : (style == .pill ? (dark ? 0.13 : 0.12) : 0.06)
         table = (0...255).map { value in
             Self.composite(ink:ink,alpha:maximum*pow(Double(value)/255,1.35),trough:trough,troughAlpha:floorAlpha)
@@ -43,11 +76,13 @@ public struct SpectrogramPixelRing {
     public var capacity: Int { style.columns+2 }
     public private(set) var latestSlot: Int64 = -1
     public private(set) var reducedMotion = false
+    private let colors: SpectrogramThemeColors
     private var palette: SpectrogramPalette
     private var values: [UInt8], states: [UInt8], slots: [Int64]
     private let empty: [UInt32]
-    public init(style: SpectrogramStripStyle, dark: Bool, silent: Bool = false) {
-        self.style = style; palette = .init(style:style,dark:dark,silent:silent)
+    public init(style: SpectrogramStripStyle, dark: Bool, silent: Bool = false, colors: SpectrogramThemeColors) {
+        self.style = style; self.colors = colors
+        palette = .init(style:style,dark:dark,silent:silent,colors:colors)
         values = [UInt8](repeating:0,count:(style.columns+2)*style.rows)
         states = [UInt8](repeating:0,count:style.columns+2)
         slots = [Int64](repeating:-1,count:style.columns+2)
@@ -57,7 +92,7 @@ public struct SpectrogramPixelRing {
     /// separately by the hosted view memory test.
     public var storageBytes: Int { values.count+states.count+slots.count*8+empty.count*4+256*4 }
     public mutating func configure(dark: Bool, silent: Bool, reducedMotion: Bool, paint: (Int,[UInt32]) -> Void) {
-        palette = .init(style:style,dark:dark,silent:silent); self.reducedMotion = reducedMotion
+        palette = .init(style:style,dark:dark,silent:silent,colors:colors); self.reducedMotion = reducedMotion
         for index in 0..<capacity { paint(index,empty) }
         guard latestSlot >= 0 else { return }
         let width = reducedMotion ? style.columns : capacity

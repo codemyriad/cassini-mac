@@ -13,7 +13,7 @@ struct SpeakerEditorView:View {
                 if edit.speakerPreparing {ProgressView().controlSize(.small)}
                 else {
                     Text(UXText.text("speakers.talkTime",["talkTime":LibraryFormat.talkTime(edit.speakerTalkTime,locale:UXText.locale,language:UXText.language)]))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CassiniTheme.secondaryInk)
                 }
                 HStack {
                     Text(UXText.text("speakers.nameLabel"))
@@ -40,7 +40,7 @@ struct SpeakerEditorView:View {
                 }
             }
             if edit.speakerChangeFailed {
-                Text(UXText.text("speakers.changeFailed")).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.secondaryInk).fixedSize(horizontal:false,vertical:true)
                 Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit)
             }
             HStack {

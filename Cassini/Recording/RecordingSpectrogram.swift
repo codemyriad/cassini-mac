@@ -56,8 +56,9 @@ import Darwin
         var mePage: SpectrogramPixelRing, othersPage: SpectrogramPixelRing
         var mePill: SpectrogramPixelRing, othersPill: SpectrogramPixelRing
         init(dark: Bool) {
-            mePage = .init(style:.row,dark:dark); othersPage = .init(style:.row,dark:dark)
-            mePill = .init(style:.pill,dark:dark); othersPill = .init(style:.pill,dark:dark)
+            let colors = CassiniTheme.spectrogramColors
+            mePage = .init(style:.row,dark:dark,colors:colors); othersPage = .init(style:.row,dark:dark,colors:colors)
+            mePill = .init(style:.pill,dark:dark,colors:colors); othersPill = .init(style:.pill,dark:dark,colors:colors)
         }
         var bytes: Int { mePage.storageBytes+othersPage.storageBytes+mePill.storageBytes+othersPill.storageBytes }
     }
