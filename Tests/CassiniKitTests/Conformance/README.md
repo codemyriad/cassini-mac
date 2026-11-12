@@ -1,6 +1,6 @@
 # Conformance vectors
 
-Twenty-five `.opus` files and one index, for answering "does my reader conform"
+Twenty-nine `.opus` files and one index, for answering "does my reader conform"
 with something other than a person's judgement.
 
 ```bash
@@ -8,7 +8,7 @@ python3 run-conformance.py --adapter 'node adapters/adapter-js.mjs'
 ```
 
 ```console
-20 pass, 3 warn, 0 fail, 2 skip, of 25
+24 pass, 3 warn, 0 fail, 2 skip, of 29
 ```
 
 An adapter is any command that takes one file path and prints one observation
@@ -41,6 +41,11 @@ ignore. Vectors 023–025 cover word transcripts without origin labels,
 selection of a second default entry, and ignoring old or unfamiliar labels.
 Vector 026 combines those words with a native display and an unavailable
 withdrawn cleanup entry; supported bodies must remain usable.
+Vectors 027–029 cover when the meeting happened: `recordedAtUtc`, a `DATE`
+that is only the pack stamp, and a `DATE` with an offset, each beside a
+misleading `recordedAtLocal`. A reader that reports `meetingStart` must take
+it from the field [SPEC.md](../../SPEC.md#when-the-meeting-happened) names; one
+that shows no meeting time is only noted.
 
 Vectors 018 and 021 are the pair worth reading first. They carry the same 49
 comments with the same values in the same 68,032-octet packet, and differ only in
@@ -58,11 +63,15 @@ descriptors need not, and that is the whole argument for writing them first.
 ## Where the readers stand today
 
 ```
-tools/cassini-extract.py            18 pass,  6 warn, 0 fail, 2 skip
-tools/cassini-extract.py + digest   20 pass,  6 warn, 0 fail, 0 skip
-tools/cassini-read.js               21 pass,  3 warn, 0 fail, 2 skip
-cassini inspect (PR 276)            18 pass,  7 warn, 1 fail, 0 skip
+tools/cassini-extract.py            21 pass,  6 warn, 0 fail, 2 skip
+tools/cassini-extract.py + digest   23 pass,  6 warn, 0 fail, 0 skip
+tools/cassini-read.js               24 pass,  3 warn, 0 fail, 2 skip
+cassini inspect (PR 276)            18 pass,  7 warn, 1 fail, 0 skip   (vectors 001-026)
 ```
+
+The first three were rerun on 2026-11-09 with vectors 027–029. `cassini inspect`
+from gocassini `main` that day reads all three without a failure and reports no
+meeting time, so each is a warning.
 
 A warning is a vector where the reader reported a different error code than the
 suite names, or missed a SHOULD; the reader cannot be wrong there. A failure is
@@ -80,6 +89,7 @@ Regenerate only the new vectors with:
 
 ```bash
 python3 build/simplified.py
+python3 build/recorded-at.py
 python3 build/make-index.py
 ```
 

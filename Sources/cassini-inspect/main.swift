@@ -61,6 +61,8 @@ do {
     }
     if case .success(let d)? = file.audioDigest { obs["audioOpusSha256"] = d.sha256 }
     if let id = file.formatId { obs["formatId"] = id }
+    if let time = file.meetingTime { obs["meetingStart"] = ["source":time.source.rawValue,"value":time.value] }
+    else { obs["meetingStart"] = NSNull() }
     if let m = file.manifest {
         obs["manifestVersion"] = m.version
         obs["manifestKind"] = m.raw["kind"]?.string

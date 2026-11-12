@@ -229,6 +229,8 @@ public enum CassiniReader {
         }
         check("CASSINI_MEETING_ID", m.meeting.id)
         check("CASSINI_CREATED_AT", m.meeting.createdAtUtc)
+        if let utc = m.meeting.recordedAtUtc { check("CASSINI_RECORDED_AT_UTC",utc) }
+        if let local = m.meeting.recordedAtLocal { check("CASSINI_RECORDED_AT_LOCAL",local) }
         check("CASSINI_SPEAKER_COUNT", String(m.speakers.count))
         check("CASSINI_AUDIO_SAMPLE_RATE", String(m.integrity.sampleRate))
         check("CASSINI_AUDIO_CHANNELS", String(m.integrity.channels))

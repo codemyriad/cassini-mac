@@ -1,0 +1,7 @@
+--- a/Cassini/Library/LibraryView.swift
++++ b/Cassini/Library/LibraryView.swift
+@@ -594,3 +594,3 @@
+     var body: some View {
+-        if updates.readyWhenIdle {
++        if true {
+             Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
