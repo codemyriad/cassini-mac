@@ -381,4 +381,72 @@ final class TranscriptionMeetingTests: XCTestCase {
         let metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: session.directory.appendingPathComponent("meeting.json"))) as! [String:Any]
         XCTAssertTrue(metadata["etaMinutes"] is NSNull)
     }
+    func testUserStopPreservesAudioAndPartialWordsWithoutAutoRestartingAndResumes() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let session = try RecordingSession(parent:root,title:"User stop",source:"chromium")
+        try session.addTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:16000,channels:1)
+        var samples = [Int16](repeating:0,count:16000)
+        for i in 0..<samples.count { samples[i] = Int16(clamping:Int(sin(Double(i) * 0.15) * 12000)) }
+        let pcm = samples.withUnsafeBufferPointer { Data(buffer:$0) }
+        try session.appendNative(id:"remote",pcm:pcm,offsetMs:0); try session.finish()
+        let audioURL = session.directory.appendingPathComponent(session.manifest.tracks[0].file)
+        let audioDigestBefore = SHA256.hash(data:try Data(contentsOf:audioURL))
+        let partialWords: [String:Any] = [
+            "language":"en",
+            "items":[
+                ["speaker":"remote","startMs":0,"endMs":240,"text":"First"],
+                ["speaker":"remote","startMs":260,"endMs":520,"text":"partial"]
+            ]
+        ]
+        let sidecar = session.directory.appendingPathComponent("transcript.json")
+        let partialBytes = try JSONSerialization.data(withJSONObject:partialWords)
+        try partialBytes.write(to:sidecar)
+        let writer = try MeetingMetadataWriter(directory:session.directory,id:session.manifest.id)
+        try writer.transaction { meta in
+            meta["title"] = "Browser call"; meta["titleSource"] = "user"
+            meta["notes"] = [["atMs":15,"text":"Action item"]]
+            meta["speakers"] = [["id":"remote","name":"Alex","provenance":"user","colourIndex":0]]
+            meta["transcript"] = [
+                "status":"running",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+            meta["etaMinutes"] = 4
+        }
+        let stoppedRev = try MeetingTranscriber.stopForUser(directory:session.directory,id:session.manifest.id)
+        XCTAssertNotNil(stoppedRev)
+        let stopped = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(stoppedRev,stopped.metadataRevision)
+        XCTAssertEqual(stopped.state.transcript,.none)
+        XCTAssertTrue(stopped.transcriptPaused)
+        XCTAssertFalse(stopped.canQueueAutomatically,"User-stopped transcription must not auto-restart")
+        XCTAssertTrue(stopped.canWriteDown,"User-stopped transcription must remain resumable")
+        XCTAssertTrue(stopped.canPlaySession,"Stopping transcription must keep recorded audio playable")
+        XCTAssertEqual(SHA256.hash(data:try Data(contentsOf:audioURL)),audioDigestBefore)
+        XCTAssertEqual(stopped.transcriptItems.map(\.text),["First","partial"])
+        XCTAssertNotNil(stopped.quote)
+        XCTAssertNil(stopped.state.etaMinutes)
+        XCTAssertNil(stopped.state.error)
+        XCTAssertEqual(stopped.title,"Browser call")
+        XCTAssertEqual(stopped.notes.first?.text,"Action item")
+        XCTAssertEqual(stopped.speakers.first?.displayName,"Alex")
+        XCTAssertEqual(try Data(contentsOf:sidecar),partialBytes)
+
+        // Resuming queues the job, clears `paused`, and keeps the partial reference/model for resume.
+        try MeetingTranscriber.setStatus(directory:session.directory,id:session.manifest.id,status:"queued")
+        let queued = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(queued.state.transcript,.queued)
+        XCTAssertFalse(queued.transcriptPaused)
+        XCTAssertTrue(queued.transcriptReferenced)
+        XCTAssertEqual(queued.transcriptModel,"whistle")
+        XCTAssertEqual(queued.writtenTranscriptItems.map(\.text),["First","partial"])
+
+        // Once done, a late stopForUser is a no-op and never downgrades a completed transcript.
+        try MeetingTranscriber.setStatus(directory:session.directory,id:session.manifest.id,status:"done")
+        XCTAssertNil(try MeetingTranscriber.stopForUser(directory:session.directory,id:session.manifest.id))
+        let finished = try XCTUnwrap(LibraryScanner(root:root).scan().meetings.first)
+        XCTAssertEqual(finished.state.transcript,.done)
+        XCTAssertFalse(finished.transcriptPaused)
+    }
 }

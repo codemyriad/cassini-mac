@@ -20,6 +20,7 @@ struct LibraryView: View {
     @State private var rename = MeetingRenameCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
+    @State private var transcriptionQueue = TranscriptionQueue.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
@@ -104,12 +105,18 @@ struct LibraryView: View {
                             .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
                     }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
                         .padding(.leading,meetingTitleInset)
-                        .frame(width:max(200,toolbarWidth - (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450)),alignment:.leading)
+                        .frame(width:max(200,toolbarWidth - ((([.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly) || (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none && detail.meeting.transcriptPaused)) ? 620 : (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450))),alignment:.leading)
                         .accessibilityElement(children:.contain)
                 }
                 if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
                     ToolbarItem(placement:.primaryAction) {
-                        LibraryToolbarAction(title:UXText.text("common.writeDown"),label:UXText.text("common.writeDown"),identifier:"meeting-write-down",style:.bordered,enabled:!LibraryMoveCoordinator.shared.busy) { TranscriptionQueue.shared.writeDown(detail) }
+                        let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
+                        LibraryToolbarAction(title:title,label:title,identifier:"meeting-write-down",style:.bordered,enabled:!LibraryMoveCoordinator.shared.busy && !transcriptionQueue.isStopping(detail.meeting.folder)) { TranscriptionQueue.shared.writeDown(detail) }
+                    }
+                } else if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
+                    ToolbarItem(placement:.primaryAction) {
+                        let title = UXText.mac("transcription.stop")
+                        LibraryToolbarAction(title:title,label:title,identifier:"meeting-stop-transcription",style:.bordered,enabled:!LibraryMoveCoordinator.shared.busy && !transcriptionQueue.isStopping(detail.meeting.folder)) { TranscriptionQueue.shared.stop(detail.meeting) }
                     }
                 }
                 ToolbarItem(placement:.primaryAction) {
@@ -437,8 +444,11 @@ struct LibraryView: View {
                         .disabled(LibraryMoveCoordinator.shared.busy || !sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
                         .accessibilityIdentifier("preview-play")
                 if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
-                    Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
-                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("preview-write-down")
+                    Button(meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
+                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(meeting.folder)).accessibilityIdentifier("preview-write-down")
+                } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
+                    Button(UXText.mac("transcription.stop")) { TranscriptionQueue.shared.stop(meeting) }
+                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(meeting.folder)).accessibilityIdentifier("preview-stop-transcription")
                 }
 
                     Button { readTranscript(meeting) } label: {

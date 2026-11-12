@@ -195,6 +195,8 @@ public struct LibraryMeeting: Sendable {
     public var transcriptModel: String? = nil
     /// meeting.json's transcript names a body (D67.2: a failed write-down stores none).
     public var transcriptReferenced = false
+    /// Explicit user Stop paused transcription at status `none`; do not auto-restart it.
+    public var transcriptPaused = false
     public var wordEndsBoundedByAudio = false { didSet { transcriptTurns = [] } }
     /// Original capture source; never infer browser capture from a live badge.
     public var captureSource: String? = nil
@@ -205,7 +207,7 @@ public struct LibraryMeeting: Sendable {
     public var canQueueAutomatically: Bool {
         !metadataReadOnly && state.lifecycle == .saved && !audioFiles.isEmpty &&
         (state.origin == .received || captureFinalized) &&
-        (state.origin == .own && state.transcript == .none || [.queued,.running].contains(state.transcript))
+        (state.origin == .own && state.transcript == .none && !transcriptPaused || [.queued,.running].contains(state.transcript))
     }
     public var isBrowserCapture: Bool { captureSource == "chromium" }
     /// Immutable derived rows prepared by the background scanner. UI reads never render.

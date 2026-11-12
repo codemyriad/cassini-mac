@@ -18,6 +18,7 @@ public enum MeetingTranscriber {
             // D67.2: a failed write-down references no words. Its partial transcript.json stays in the
             // folder, unreferenced, so no reader (or a published copy) shows partial words as stored.
             if status == "failed" { transcript["reference"] = NSNull() }
+            if status != "none" { transcript.removeValue(forKey: "paused") }
             transcript["status"] = status; metadata["transcript"] = transcript
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
@@ -27,9 +28,23 @@ public enum MeetingTranscriber {
         try MeetingMetadataWriter(directory:directory,id:id).transaction { metadata in
             guard var transcript = metadata["transcript"] as? [String:Any],
                   let status = transcript["status"] as? String, ["queued","running"].contains(status) else { return }
+            transcript.removeValue(forKey: "paused")
             transcript["status"] = "queued"; metadata["transcript"] = transcript
             metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
         }
+    }
+    @discardableResult
+    public static func stopForUser(directory: URL, id: UUID) throws -> Int64? {
+        var stoppedRevision: Int64?
+        try MeetingMetadataWriter(directory:directory,id:id).transaction(skippingUnchanged:true) { metadata in
+            guard var transcript = metadata["transcript"] as? [String:Any],
+                  let status = transcript["status"] as? String, ["none","queued","running"].contains(status) else { return }
+            transcript["status"] = "none"; transcript["paused"] = true
+            metadata["transcript"] = transcript
+            metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
+            stoppedRevision = (metadata["revision"] as? NSNumber)?.int64Value ?? 0
+        }
+        return stoppedRevision
     }
     /// One worker owns a meeting lock through both segmentation and recognition.
     /// Capture-owned session/audio files are only opened for reading.
@@ -162,7 +177,7 @@ public enum MeetingTranscriber {
             silentTracks = trackOrder.filter { silent.contains($0) && listed.insert($0).inserted }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
-            let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
+            let resumes = ([.queued,.running].contains(meeting.state.transcript) || meeting.transcriptPaused) && meeting.transcriptModel == model
             let previous = resumes ? meeting.writtenTranscriptItems : [] // D24: never merged ids
             // D67.2 (#139 review): a failed attempt's partial words wait, unreferenced, in
             // transcript.json. Until this attempt has written as many words, a running publish
@@ -193,6 +208,7 @@ public enum MeetingTranscriber {
                     // D47/D56: edit the stored transcript object, so members this app does
                     // not know survive; the reference is this attempt's own sidecar.
                     var transcript = metadata["transcript"] as? [String:Any] ?? [:]
+                    transcript.removeValue(forKey: "paused")
                     transcript["status"] = status; transcript["model"] = model
                     if wroteSidecar { transcript["reference"] = reference }
                     metadata["transcript"] = transcript

@@ -17,8 +17,10 @@ import Darwin
     static let shared = TranscriptionQueue()
     private(set) var active: URL?
     private(set) var activeModel: String?
+    private(set) var stoppingFolders = Set<String>()
     @ObservationIgnored private var pending: [LibraryMeeting] = []
     @ObservationIgnored private var known = Set<String>()
+    @ObservationIgnored private var userStoppedRevisions: [String:Int64] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var preparation: Task<Void,Never>?
     private var preparing: (folder: URL, work: Task<Void,Error>)?
@@ -27,6 +29,32 @@ import Darwin
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var paused = false
     @ObservationIgnored private var trashing = Set<String>()
+    func isStopping(_ folder: URL) -> Bool { stoppingFolders.contains(folder.path) }
+    func stop(_ meeting: LibraryMeeting) {
+        let path = meeting.folder.path, id = meeting.id, folder = meeting.folder
+        guard !closing, !trashing.contains(path), !stoppingFolders.contains(path), !meeting.metadataReadOnly else { return }
+        stoppingFolders.insert(path)
+        pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+        let child = active?.path == path ? task : nil
+        child?.cancel()
+        let metadata = preparing?.folder.path == path ? preparing?.work : nil
+        Task {
+            _ = try? await metadata?.value
+            await child?.value
+            pending.removeAll { $0.folder.path == path }; prepared.remove(path)
+            do {
+                let revision = try await Task.detached(priority:.userInitiated) {
+                    try MeetingTranscriber.stopForUser(directory:folder,id:id)
+                }.value
+                if let revision { userStoppedRevisions[path] = revision }
+            } catch {
+                if !closing, !trashing.contains(path) { NSApp.presentError(error) }
+            }
+            known.remove(path); schedulingFailures.remove(path)
+            stoppingFolders.remove(path)
+            LibraryStore.shared.refresh(affected:folder)
+        }
+    }
     func cancel(meeting folder: URL) async {
         let path = folder.path
         trashing.insert(path)
@@ -40,8 +68,9 @@ import Darwin
     }
     func releaseTrashed(_ folder: URL) {
         trashing.remove(folder.path); known.remove(folder.path); schedulingFailures.remove(folder.path)
+        userStoppedRevisions.removeValue(forKey:folder.path)
     }
-    var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty }
+    var isBusy: Bool { task != nil || preparation != nil || !pending.isEmpty || !stoppingFolders.isEmpty }
     func beginShutdown() {
         guard !closing else { return }; closing = true
         task?.cancel(); preparePending()
@@ -72,15 +101,31 @@ import Darwin
     func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
         guard automatic, !closing, !paused else { return }
-        known.formIntersection(Set(meetings.map { $0.folder.path }).union(pending.map { $0.folder.path }).union(active.map { [$0.path] } ?? []))
+        let unsettled = Set(meetings.filter { [.none,.queued,.running].contains($0.state.transcript) }.map(\.folder.path))
+        known.formIntersection(unsettled.union(pending.map(\.folder.path)).union(active.map { [$0.path] } ?? []))
+        for meeting in meetings where userStoppedRevisions[meeting.folder.path] != nil {
+            if meeting.transcriptPaused || ![.queued,.running].contains(meeting.state.transcript),
+               let stopped = userStoppedRevisions[meeting.folder.path], (meeting.metadataRevision ?? -1) >= stopped {
+                userStoppedRevisions.removeValue(forKey:meeting.folder.path)
+            }
+        }
         let candidates = meetings.filter(\.canQueueAutomatically)
             .sorted { ($0.timeSortKey ?? "") < ($1.timeSortKey ?? "") }
-        for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) { enqueue(meeting) }
+        for meeting in candidates where !schedulingFailures.contains(meeting.folder.path) {
+            if let stopped = userStoppedRevisions[meeting.folder.path], (meeting.metadataRevision ?? -1) <= stopped { continue }
+            enqueue(meeting, automatic: true)
+        }
     }
-    func enqueue(_ meeting: LibraryMeeting, retry: Bool = false) {
-        guard !closing, !paused, !trashing.contains(meeting.folder.path), !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
+    func enqueue(_ meeting: LibraryMeeting, retry: Bool = false, automatic: Bool = false) {
+        guard !closing, !paused, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path),
+              !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
               active?.path != meeting.folder.path, !pending.contains(where: { $0.folder.path == meeting.folder.path }) else { return }
-        if retry { known.remove(meeting.folder.path) }
+        if !automatic {
+            userStoppedRevisions.removeValue(forKey:meeting.folder.path)
+            if retry || meeting.transcriptPaused { known.remove(meeting.folder.path) }
+        } else if retry {
+            known.remove(meeting.folder.path)
+        }
         guard known.insert(meeting.folder.path).inserted else { return }
         schedulingFailures.remove(meeting.folder.path)
         pending.append(meeting); preparePending()
@@ -107,7 +152,7 @@ import Darwin
                         #endif
                         try await work.value
                     }
-                    if !trashing.contains(meeting.folder.path), pending.contains(where:{ $0.folder == meeting.folder }) {
+                    if !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path), pending.contains(where:{ $0.folder == meeting.folder }) {
                         prepared.insert(meeting.folder.path); startNext()
                     }
                 } catch {
@@ -125,6 +170,7 @@ import Darwin
         prepared.remove(meeting.folder.path)
         task = Task {
             var completedSuccessfully = false
+            var retryDeferred = false
             do {
                 struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String; let uiLanguage: String }
                 let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"),uiLanguage:UXText.language.rawValue)) + Data([10])
@@ -159,15 +205,21 @@ import Darwin
                 }
                 guard result.status == 0, result.inputError == nil else { throw TranscriptionFailure.runtime("worker exited") }
                 let response = try JSONDecoder().decode(Response.self, from: result.stdout)
-                if let error = response.error, !error.contains("meeting is already being written down") { throw TranscriptionFailure.runtime(error) }
+                if let error = response.error {
+                    if error.contains("meeting is already being written down") { retryDeferred = true }
+                    else { throw TranscriptionFailure.runtime(error) }
+                }
                 completedSuccessfully = response.error == nil
                 SpeechModelController.shared.transcriptionFinished(engine:activeModel ?? "",succeeded:completedSuccessfully)
             } catch is CancellationError {
                 // Quit pauses work. Preserve the sidecar and its reference for
                 // next-launch recovery instead of turning cancellation into failure.
-                try? await Task.detached(priority:.userInitiated) {
-                    try MeetingTranscriber.pauseForResume(directory:meeting.folder,id:meeting.id)
-                }.value
+                if !stoppingFolders.contains(meeting.folder.path), !trashing.contains(meeting.folder.path) {
+                    try? await Task.detached(priority:.userInitiated) {
+                        try MeetingTranscriber.pauseForResume(directory:meeting.folder,id:meeting.id)
+                    }.value
+                    if !closing { retryDeferred = true }
+                }
             } catch {
                 // Worker crashes and bundle/decoder failures take the same retry path.
                 try? await Task.detached(priority:.userInitiated) {
@@ -176,7 +228,18 @@ import Darwin
             }
             await Task.detached { SegmentedAudio.removeAbandonedScratch() }.value
             let finishedModel = activeModel ?? ""
-            active = nil; activeModel = nil; task = nil; startNext()
+            active = nil; activeModel = nil; task = nil
+            if retryDeferred { known.remove(meeting.folder.path) }
+            startNext()
+            if retryDeferred, !closing, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
+                let folder = meeting.folder
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for:.milliseconds(300))
+                    guard let self, !self.closing, !self.paused,
+                          !self.trashing.contains(folder.path), !self.stoppingFolders.contains(folder.path) else { return }
+                    LibraryStore.shared.refresh(affected:folder)
+                }
+            }
             #if DEBUG
             if SettingsFixture.id != nil { fixtureCompletion?(meeting.folder,finishedModel,completedSuccessfully) }
             #endif
@@ -222,6 +285,7 @@ import Darwin
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             try await verifyConcurrentImportKeepsExportProgressAndCancel(root:root, source:source, exportedMeeting:received)
             try await verifyBannerRemovalPreservesSharedExportReceipts(exportedMeeting:received, scratch:root.deletingLastPathComponent())
+            try await verifyActiveUserStopStaleScanFenceAndResume(root:root, activeSession:session, nextActive:received)
             // A second accepted import is owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
@@ -243,7 +307,7 @@ import Darwin
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown()
@@ -643,6 +707,66 @@ import Darwin
             throw NSError(domain: "ImportLifecycleSelfTest", code: 5, userInfo: [NSLocalizedDescriptionKey: "Auto-dismiss import notice dismissed early upon banner removal"])
         }
         importer.dismissNotice(noticeID)
+    }
+
+    private static func verifyActiveUserStopStaleScanFenceAndResume(root: URL, activeSession: RecordingSession, nextActive: LibraryMeeting) async throws {
+        let queue = TranscriptionQueue.shared
+        guard queue.active == activeSession.directory else { throw POSIXError(.EINVAL) }
+        let sidecar = activeSession.directory.appendingPathComponent("transcript.json")
+        let partial = try JSONSerialization.data(withJSONObject:[
+            "language":"en",
+            "items":[["speaker":"me","startMs":0,"endMs":200,"text":"Partial"]]
+        ])
+        try partial.write(to:sidecar)
+        try MeetingMetadataWriter(directory:activeSession.directory,id:activeSession.manifest.id).transaction { meta in
+            meta["transcript"] = [
+                "status":"running",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+        }
+        let staleRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
+        guard staleRunning.state.transcript == .running else { throw POSIXError(.EINVAL) }
+        queue.stop(staleRunning)
+        for _ in 0..<200 {
+            if !queue.isStopping(activeSession.directory) { break }
+            try await Task.sleep(for:.milliseconds(25))
+        }
+        guard !queue.isStopping(activeSession.directory), queue.active == nextActive.folder else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:7,userInfo:[NSLocalizedDescriptionKey:"Stopping active worker did not settle cleanly and promote next job"])
+        }
+        let stopped = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
+        guard stopped.state.transcript == .none, stopped.transcriptPaused, !stopped.canQueueAutomatically,
+              stopped.transcriptItems.map(\.text) == ["Partial"] else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:8,userInfo:[NSLocalizedDescriptionKey:"Stopped meeting did not preserve partial words in paused state"])
+        }
+        // Neither a stale pre-stop scan nor a fresh automatic scan may restart a user-stopped job.
+        queue.consider([staleRunning],automatic:true)
+        await queue.waitForFixturePreparation()
+        let afterStale = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
+        guard afterStale.state.transcript == .none, afterStale.transcriptPaused else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:9,userInfo:[NSLocalizedDescriptionKey:"Stale running scan re-enqueued user-stopped meeting"])
+        }
+        queue.consider(try LibraryScanner(root:root).scan().meetings,automatic:true)
+        await queue.waitForFixturePreparation()
+        let afterFresh = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
+        guard afterFresh.state.transcript == .none, afterFresh.transcriptPaused else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:10,userInfo:[NSLocalizedDescriptionKey:"Automatic consider re-enqueued user-stopped meeting"])
+        }
+        // Explicit user Resume re-queues the meeting and keeps the partial reference.
+        queue.enqueue(afterFresh)
+        await queue.waitForFixturePreparation()
+        let resumed = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
+        guard resumed.state.transcript == .queued, !resumed.transcriptPaused,
+              resumed.writtenTranscriptItems.map(\.text) == ["Partial"] else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:11,userInfo:[NSLocalizedDescriptionKey:"Explicit resume did not queue meeting with preserved partial words"])
+        }
+        queue.stop(resumed)
+        for _ in 0..<200 {
+            if !queue.isStopping(activeSession.directory) { break }
+            try await Task.sleep(for:.milliseconds(25))
+        }
+        guard !queue.isStopping(activeSession.directory) else { throw POSIXError(.EBUSY) }
     }
 }
 #endif

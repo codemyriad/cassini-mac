@@ -379,6 +379,48 @@
           "text": "Início do áudio do sistema"
         }
       }
+    },
+    {
+      "id": "mac.transcription.stop",
+      "en": "Stop transcription",
+      "l10n": {
+        "it": {
+          "text": "Interrompi trascrizione"
+        },
+        "fr": {
+          "text": "Arrêter la transcription"
+        },
+        "es": {
+          "text": "Detener transcripción"
+        },
+        "pt-BR": {
+          "text": "Parar transcrição"
+        },
+        "pt-PT": {
+          "text": "Parar transcrição"
+        }
+      }
+    },
+    {
+      "id": "mac.transcription.resume",
+      "en": "Resume transcription",
+      "l10n": {
+        "it": {
+          "text": "Riprendi trascrizione"
+        },
+        "fr": {
+          "text": "Reprendre la transcription"
+        },
+        "es": {
+          "text": "Reanudar transcripción"
+        },
+        "pt-BR": {
+          "text": "Retomar transcrição"
+        },
+        "pt-PT": {
+          "text": "Retomar transcrição"
+        }
+      }
     }
   ]
 }
