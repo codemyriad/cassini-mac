@@ -1,0 +1,11 @@
+--- a/Components/MeetingCard/MeetingCard.swift
++++ b/Components/MeetingCard/MeetingCard.swift
+@@ -15,7 +15,7 @@
+
+     enum Metrics {
+         static var radius: CGFloat { 7 }
+-        static var horizontalPadding: CGFloat { 10 }
++        static var horizontalPadding: CGFloat { 14 }
+         static var verticalPadding: CGFloat { 8 }
+         static var border: CGFloat { 1 }
+         static var selectedInset: CGFloat { 0.5 }
