@@ -3,9 +3,9 @@
 set -euo pipefail
 staging="$DERIVED_FILE_DIR/Parakeet"
 if [ -n "${CASSINI_CI_ASSETS:-}" ]; then
-    python3 "$SRCROOT/scripts/ci-products.py" stage-assets Parakeet "$staging"
+    "${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/ci-products.py" stage-assets Parakeet "$staging"
 else
-    python3 "$SRCROOT/scripts/fetch-parakeet-runtime.py" --output "$staging"
+    "${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/fetch-parakeet-runtime.py" --output "$staging"
 fi
 resources="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Parakeet"
 frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
@@ -21,7 +21,7 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then
     for name in libsherpa-onnx-c-api.dylib libonnxruntime.dylib; do codesign --force --sign "$identity" "${options[@]}" "$frameworks/$name"; done
     codesign --force --sign "$identity" "${options[@]}" -i "$PRODUCT_BUNDLE_IDENTIFIER.parakeet-worker" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
 fi
-python3 - "$resources" "$worker" "$frameworks" <<'PY'
+"${CASSINI_PYTHON:-python3}" - "$resources" "$worker" "$frameworks" <<'PY'
 import hashlib,json,sys
 from pathlib import Path
 resources,worker,frameworks=map(Path,sys.argv[1:])

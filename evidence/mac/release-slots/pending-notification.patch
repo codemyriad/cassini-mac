@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -302,7 +302,7 @@
+             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
+         if not main_is_green(head):
+             pending=dict(slot=slot,request=manual or state.get('request',0),head=head)
+-            if state.get('pending_ci')!=pending:
++            if True:
+                 report('[Mac] daily test release waiting: latest main CI is not green')
+             state['pending_ci']=pending;atomic(state_file,state)
+             return

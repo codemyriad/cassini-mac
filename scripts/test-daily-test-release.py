@@ -18,6 +18,7 @@ def load(name,file):
 
 daily=load('daily','daily-test-release.py')
 resources=load('resources','release-resources.py')
+installer=load('installer','install-daily-test-release.py')
 
 class DailyPolicy(unittest.TestCase):
     def test_berlin_slots_follow_dst_and_catch_missed_wake(self):
@@ -40,7 +41,7 @@ class DailyPolicy(unittest.TestCase):
 
     def test_pr_and_fork_runs_cannot_authorize_or_block_main(self):
         good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
-        untrusted=[{**good,'event':event} for event in ['pull_request','pull_request_target','workflow_run','schedule']]
+        untrusted=[{**good,'event':event} for event in ['pull_request','pull_request_target','workflow_run']]
         untrusted += [{**good,'head_repository':repo} for repo in [None,{}, {'full_name':'fork/cassini-mac'}]]
         for run in untrusted:
             self.assertFalse(daily.eligible_ci([run],'a'*40))
@@ -48,6 +49,14 @@ class DailyPolicy(unittest.TestCase):
             self.assertFalse(daily.eligible_ci([run,{**good,'conclusion':'failure'},good],'a'*40))
         self.assertTrue(daily.eligible_ci([{**good,'event':'workflow_dispatch'}],'a'*40))
         self.assertFalse(daily.eligible_ci([{**good,'event':'workflow_dispatch','status':'in_progress'},good],'a'*40))
+
+    def test_newer_trusted_schedule_blocks_an_old_green_push_until_it_passes(self):
+        push=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
+        scheduled={**push,'event':'schedule'}
+        for outcome in [dict(status='in_progress',conclusion=None),dict(conclusion='failure'),dict(conclusion='cancelled')]:
+            self.assertFalse(daily.eligible_ci([{**scheduled,**outcome},push],'a'*40))
+        self.assertTrue(daily.eligible_ci([scheduled,{**push,'conclusion':'failure'}],'a'*40))
+        self.assertFalse(daily.eligible_ci([{**scheduled,'head_repository':{'full_name':'fork/cassini-mac'}}],'a'*40))
 
     def test_main_ci_searches_past_an_entire_page_of_pr_runs(self):
         good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
@@ -102,6 +111,14 @@ class DailyPolicy(unittest.TestCase):
         resources.admit(15,25*1024**3,'System-wide memory free percentage: 40%')
         for space,pressure in [(24*1024**3,'System-wide memory free percentage: 40%'),(30*1024**3,'System-wide memory free percentage: 9%'),(30*1024**3,'unknown')]:
             with self.assertRaises(ValueError):resources.admit(15,space,pressure)
+
+    def test_release_lock_wait_covers_the_shared_ios_archive_slot(self):
+        release=load('release_lock_policy','release.py')
+        with patch.object(release,'run',return_value=b'Swapouts: 7.\n'):
+            environment=release.heavy_environment()
+        self.assertGreaterEqual(int(environment['CASSINI_LOCK_MINUTES']),60)
+        self.assertEqual(environment['CASSINI_RELEASE_SWAPOUTS'],'7')
+        self.assertEqual(environment.get('CASSINI_PYTHON'),release.sys.executable)
 
     def test_production_tag_is_rejected_before_any_publish_command(self):
         with patch.object(daily,'command') as tool:
@@ -160,14 +177,56 @@ class DailyExecution(unittest.TestCase):
             replace.assert_called_once();build.assert_not_called()
             self.assertNotIn('slot',json.loads((base/'state.json').read_text()))
 
-    def test_red_main_and_unchanged_head_never_build_or_repeat_a_slot(self):
-        for green,unchanged in [(False,False),(True,True)]:
-            with tempfile.TemporaryDirectory() as directory:
-                base,calls,build=self.context(directory,green,unchanged)
-                instant=datetime.fromisoformat('2026-11-11T08:00:00+00:00')
-                daily.tick(instant);count=calls.call_count;daily.tick(instant)
-                build.assert_not_called();self.assertEqual(calls.call_count,count)
-                self.assertIn('skipped:',(base/'inbox').read_text())
+    def test_pending_ci_does_not_consume_slot_or_manual_request_and_next_pulse_admits_green(self):
+        for request_id in [None,42]:
+            with self.subTest(request=request_id),tempfile.TemporaryDirectory() as directory:
+                base,calls,build=self.context(directory)
+                original=daily.gh
+                def api(args):
+                    if 'request-mac' in args[-1]:return {'workflow_runs':([] if request_id is None else [dict(id=request_id,conclusion='success',head_branch='main',event='workflow_dispatch')])}
+                    return original(args)
+                instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+                with patch.object(daily,'gh',side_effect=api),patch.object(daily,'main_is_green',side_effect=[False,False,True]):
+                    daily.tick(instant);daily.tick(instant)
+                    state=json.loads((base/'state.json').read_text()) if (base/'state.json').exists() else {}
+                    self.assertNotEqual(state.get('slot'),daily.due_slot(instant))
+                    if request_id:self.assertNotEqual(state.get('request'),request_id)
+                    build.assert_not_called()
+                    self.assertEqual((base/'inbox').read_text().count('latest main CI is not green'),1)
+                    self.assertIn('waiting:',(base/'inbox').read_text())
+                    with self.assertRaises(SystemExit):daily.tick(instant)
+                build.assert_called_once()
+                state=json.loads((base/'state.json').read_text())
+                self.assertEqual(state['slot'],daily.due_slot(instant));self.assertEqual(state['request'],request_id or 0)
+                self.assertNotIn('pending_ci',state)
+
+    def test_green_unchanged_head_consumes_slot_once_without_building(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,calls,build=self.context(directory,unchanged=True)
+            instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+            daily.tick(instant);count=calls.call_count;daily.tick(instant)
+            build.assert_not_called();self.assertEqual(calls.call_count,count)
+
+    def test_pre_admission_failure_notifies_again_for_a_new_manual_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,_,build=self.context(directory)
+            request=[None]
+            def api(args):
+                return {'workflow_runs':([] if request[0] is None else [dict(id=request[0],conclusion='success',head_branch='main',event='workflow_dispatch')])}
+            with patch.object(daily,'gh',side_effect=api),patch.object(daily,'fetch_main',side_effect=ValueError('fixture unavailable')):
+                for value in [None,None,42,42,43]:
+                    request[0]=value
+                    with self.assertRaises(SystemExit):daily.tick(datetime.fromisoformat('2026-11-11T13:00:00+00:00'))
+            self.assertEqual((base/'inbox').read_text().count('failed:'),3)
+            build.assert_not_called()
+
+    def test_pending_notification_identity_includes_head_slot_and_manual_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,_,build=self.context(directory)
+            with patch.object(daily,'main_is_green',return_value=False),patch.object(daily,'fetch_main',side_effect=['a'*40,'b'*40,'b'*40,'b'*40]):
+                for hour in [13,13,13,19]:daily.tick(datetime.fromisoformat('2026-11-11T%02d:00:00+00:00'%hour))
+            self.assertEqual((base/'inbox').read_text().count('waiting:'),3)
+            build.assert_not_called()
 
     def test_local_success_prevents_rebuild_when_remote_release_listing_is_stale(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -213,6 +272,8 @@ class DailyExecution(unittest.TestCase):
             daily.tick(first);self.assertEqual(build.call_count,1)
             with self.assertRaises(SystemExit):daily.tick(datetime.fromisoformat('2026-11-11T13:00:00+00:00'))
             self.assertEqual(build.call_count,2)
+            self.assertEqual(list(base.glob('build-*')),[])
+            self.assertEqual(len(list((base/'failures').glob('build-*'))),2)
             self.assertEqual(len((base/'inbox').read_text().splitlines()),2)
             self.assertTrue(all('--test-release' in call.args[0] for call in build.call_args_list))
 
@@ -262,6 +323,103 @@ class DailyExecution(unittest.TestCase):
                     self.assertIn(output/'user-release-notes.txt',upload);self.assertIn(output/'user-release-notes.html',upload)
 
 
+class InstalledRuntime(unittest.TestCase):
+    def test_default_recovers_stable_opt_entrypoint_from_framework_cellar_binary(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            prefix=Path(directory).resolve()
+            runtime=prefix/'Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/bin/python3.13'
+            runtime.parent.mkdir(parents=True);runtime.write_text('fixture');runtime.chmod(0o700)
+            stable=prefix/'opt/python@3.13/bin/python3.13';stable.parent.mkdir(parents=True)
+            stable.symlink_to(runtime)
+            with patch.object(installer.sys,'executable',str(runtime)),patch.object(installer.shutil,'which',return_value=None),patch.object(installer.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout='')):
+                selected=installer.installed_python()
+            self.assertEqual(selected,stable)
+            self.assertNotIn('Cellar',str(selected))
+
+    def test_default_uses_the_running_installed_interpreter(self):
+        selected=installer.installed_python()
+        actual=subprocess.check_output([str(selected),'-c','import os,sys; print(os.path.realpath(sys.executable))'],text=True).strip()
+        self.assertEqual(actual,str(Path(installer.sys.executable).resolve()))
+
+    def test_installer_pins_selected_runtime_without_a_homebrew_version_assumption(self):
+        from types import SimpleNamespace
+        for version in ['3.9','3.14']:
+            with self.subTest(version=version),tempfile.TemporaryDirectory() as directory:
+                home=Path(directory).resolve();python=home/('runtime '+version)/('python'+version)
+                python.parent.mkdir();python.write_text('fixture');python.chmod(0o700)
+                libexec=python.parent.parent/'libexec/bin';libexec.mkdir(parents=True)
+                base=home/'.local/share/cassini-mac-test-releases';source=base/'source'
+                (source/'scripts').mkdir(parents=True);(source/'scripts/daily-test-release.py').write_text('fixture')
+                (base/'owned-checkout').write_text('cassini-mac-test-releases')
+                def run(args,**kwargs):
+                    return SimpleNamespace(returncode=1 if args[:2]==['launchctl','print'] else 0)
+                with patch.object(installer.sys,'platform','darwin'),patch.object(installer.socket,'gethostname',return_value='drmeyers'),patch.object(installer.Path,'home',return_value=home),patch.object(installer.subprocess,'run',side_effect=run),patch.object(installer.subprocess,'check_output',return_value=daily.ORIGIN):
+                    installer.install(python)
+                import plistlib
+                config=plistlib.loads((home/'Library/LaunchAgents/io.codemyriad.cassini.daily-test-release.plist').read_bytes())
+                self.assertEqual(config['ProgramArguments'],[str(python.resolve()),str(source/'scripts/daily-test-release.py')])
+                self.assertEqual(config['EnvironmentVariables']['PATH'].split(':')[0],str(python.parent))
+                self.assertIn(str(libexec),config['EnvironmentVariables']['PATH'].split(':'))
+                self.assertNotIn('python@3.12',str(config))
+
+    def test_stable_interpreter_symlink_is_not_pinned_to_its_current_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            link=Path(directory)/'python-link';link.symlink_to(Path(installer.sys.executable).resolve())
+            self.assertEqual(installer.installed_python(link),link)
+
+    def test_missing_or_unsupported_interpreter_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing=Path(directory)/'python'
+            with self.assertRaises(ValueError):installer.installed_python(missing)
+            missing.write_text('fixture');missing.chmod(0o700)
+            with patch.object(installer.subprocess,'run',return_value=type('Probe',(),{'returncode':1})()):
+                with self.assertRaises(ValueError):installer.installed_python(missing)
+
+class FailedJobPruning(unittest.TestCase):
+    def test_failed_outputs_are_removed_with_bounded_private_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(daily,'BASE',Path(directory)):
+            base=Path(directory);outside=base/'untouched';outside.write_text('private outside data')
+            for number in range(1,6):
+                job=base/('build-'+str(number)+'-fixture');(job/'DerivedData').mkdir(parents=True)
+                (job/'DerivedData/large-product').write_text('owned output')
+                (job/'release').mkdir();(job/'release/build.log').write_bytes(b'x'*(1024**2)+b'TAIL')
+                (job/'release-driver.log').write_text('driver failure')
+                (job/'release/app-notary.json').symlink_to(outside)
+                daily.atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='failed',build=number,head='a'*40))
+            active=base/'build-active';active.mkdir();daily.atomic(active/'job.json',dict(schema='cassini-mac-test-job@1',phase='building',build=6,head='a'*40))
+            unmarked=base/'build-unmarked';unmarked.mkdir();(unmarked/'product').write_text('not owned')
+            (base/'build-link').symlink_to(unmarked,target_is_directory=True)
+            invalid=base/'build-invalid';invalid.mkdir();(invalid/'job.json').write_text('[]')
+            daily.prune_failed_builds()
+            self.assertTrue(invalid.is_dir())
+            self.assertTrue(active.is_dir());self.assertTrue((unmarked/'product').is_file())
+            self.assertTrue((base/'build-link').is_symlink());self.assertEqual(outside.read_text(),'private outside data')
+            archives=sorted((base/'failures').glob('build-*'))
+            self.assertEqual([p.name for p in archives],['build-3-fixture','build-4-fixture','build-5-fixture'])
+            for archive in archives:
+                self.assertFalse((base/archive.name).exists())
+                self.assertEqual((archive/'release-driver.log.tail').read_text(),'driver failure')
+                tail=archive/'release-build.log.tail';self.assertEqual(tail.stat().st_size,1024**2)
+                self.assertTrue(tail.read_bytes().endswith(b'TAIL'));self.assertEqual(tail.stat().st_mode&0o777,0o600)
+                self.assertFalse((archive/'release-app-notary.json.tail').exists())
+
+    def test_unmarked_archive_collision_never_overwrites_or_deletes_data(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(daily,'BASE',Path(directory)):
+            base=Path(directory);job=base/'build-1-fixture';job.mkdir()
+            daily.atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='failed',build=1,head='a'*40))
+            unowned=base/'failures'/job.name;unowned.mkdir(parents=True);(unowned/'sentinel').write_text('keep')
+            with self.assertRaises(ValueError):daily.prune_failed_builds()
+            self.assertTrue(job.is_dir());self.assertEqual((unowned/'sentinel').read_text(),'keep')
+
+    def test_symlinked_archive_refuses_cleanup_without_deleting_job(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(daily,'BASE',Path(directory)):
+            base=Path(directory);job=base/'build-1-fixture';job.mkdir()
+            daily.atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='failed',build=1,head='a'*40))
+            outside=base/'outside';outside.mkdir();(base/'failures').symlink_to(outside,target_is_directory=True)
+            with self.assertRaises(ValueError):daily.prune_failed_builds()
+            self.assertTrue(job.is_dir())
+
 class OwnedBuildCleanup(unittest.TestCase):
     def test_timeout_stops_only_its_new_process_group(self):
         import subprocess
@@ -271,9 +429,23 @@ class OwnedBuildCleanup(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'own process group stopped'):
                 daily.signed_build(['fixture'],{},None)
             self.assertTrue(spawn.call_args.kwargs['start_new_session'])
+            budget=2*3600 + 2*(600+2800+360) + 600 + 3600 + 900
+            self.assertGreaterEqual(process.wait.call_args_list[0].kwargs['timeout'],budget)
             stop.assert_called_once_with(4123,daily.signal.SIGTERM)
 
 class TestModeBuilder(unittest.TestCase):
+    def test_stable_release_passes_its_interpreter_to_xcode(self):
+        from types import SimpleNamespace
+        class Reached(BaseException):pass
+        release=load('stable_builder','release.py')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);notes=root/'notes.html';notes.write_text('User changes')
+            args=SimpleNamespace(test_release=False,version='1.0',build=2,release_notes=notes,
+                base_url=release.BASE_URL,notary_config=root/'unused',output=root/'output')
+            with patch.object(release,'ROOT',root),patch.object(release,'notary_credentials',return_value=[]),patch.object(release,'unlock_signing_keychain',return_value=(root/'keychain','identity')),patch.object(release,'verify_update_key',return_value=root/'key'),patch.object(release,'dmg_tools'),patch.object(release,'run',return_value=b'/unused'),patch.object(release.subprocess,'run',side_effect=Reached) as compile_app:
+                with self.assertRaises(Reached):release.release(args)
+            self.assertEqual(compile_app.call_args.kwargs['env']['CASSINI_PYTHON'],release.sys.executable)
+
     def test_signed_test_mode_never_reads_update_seed_or_generates_public_feed(self):
         from contextlib import ExitStack
         from types import SimpleNamespace
@@ -287,7 +459,7 @@ class TestModeBuilder(unittest.TestCase):
             stack.enter_context(patch.object(release,'notary_credentials',return_value=[]))
             stack.enter_context(patch.object(release,'unlock_signing_keychain',return_value=(root/'keychain','public-identity')))
             stack.enter_context(patch.object(release,'dmg_tools',return_value=Path('/unused/python')))
-            stack.enter_context(patch.object(release,'heavy_environment',return_value={}))
+            stack.enter_context(patch.object(release,'heavy_environment',return_value={'CASSINI_PYTHON':release.sys.executable}))
             no_seed=stack.enter_context(patch.object(release,'verify_update_key'))
             no_feed=stack.enter_context(patch.object(release,'write_signed_appcast'))
             no_site=stack.enter_context(patch.object(release,'publication_plan'))
@@ -295,6 +467,7 @@ class TestModeBuilder(unittest.TestCase):
             stack.enter_context(patch.object(release,'notarize'))
             def compile_app(argv,**kwargs):
                 self.assertTrue(argv[0].endswith('heavy.sh'))
+                self.assertEqual(kwargs['env']['CASSINI_PYTHON'],release.sys.executable)
                 settings=dict(arg.split('=',1) for arg in argv if '=' in arg)
                 self.assertEqual(settings['CASSINI_UPDATES_ENABLED'],'NO')
                 self.assertEqual(settings['CASSINI_UPDATE_FEED'],'')
@@ -305,8 +478,13 @@ class TestModeBuilder(unittest.TestCase):
             def tool(argv,**kwargs):
                 text=list(map(str,argv))
                 self.assertFalse(any('sparkle-ed25519.key' in arg or 'sign_update' in arg for arg in text))
+                if len(text)>1 and Path(text[1]).name in ['fetch-sparkle.py','verify.py','check-signing-identifiers.py','check-developer-id.py']:
+                    self.assertEqual(text[0],release.sys.executable)
                 if text[0]=='ditto' and '-c' not in text:shutil.copytree(text[1],text[2])
-                if text[0].endswith('heavy.sh'):Path(text[-1]).write_bytes(b'test-dmg')
+                if text[0].endswith('heavy.sh'):
+                    self.assertGreaterEqual(kwargs['timeout'],60*60+600)
+                    self.assertEqual(kwargs['env']['CASSINI_PYTHON'],release.sys.executable)
+                    Path(text[-1]).write_bytes(b'test-dmg')
                 if text[0]=='git':return ('a'*40+'\n').encode()
                 return b'/unused/sparkle'
             stack.enter_context(patch.object(release,'run',side_effect=tool))
@@ -316,5 +494,46 @@ class TestModeBuilder(unittest.TestCase):
             self.assertEqual(report['channel'],'nightly');self.assertIs(report['updatesEnabled'],False)
             self.assertTrue(report['notarized']);self.assertEqual(report['build'],2)
             self.assertFalse((output/'appcast.xml').exists());self.assertFalse((output/'publication.json').exists())
+
+class BuildPhaseRuntime(unittest.TestCase):
+    def test_shell_build_phases_work_with_a_versioned_runtime_and_broken_bare_python(self):
+        import os,shlex,sys
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);repo=root/'source';scripts=repo/'scripts';scripts.mkdir(parents=True)
+            log=root/'selected.log';selected=root/'runtime 3.14/python3.14';selected.parent.mkdir()
+            selected.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> '+shlex.quote(str(log))+'\nexec '+shlex.quote(sys.executable)+' "$@"\n');selected.chmod(0o700)
+            broken=root/'broken';broken.mkdir();(broken/'python3').write_text('#!/bin/sh\nexit 97\n');(broken/'python3').chmod(0o700)
+            files=['libopus.0.dylib','LICENSE','pins.json','whistle.cact','NOTICE','silero_vad.onnx','Silero-LICENSE','ONNXRuntime-LICENSE','ONNXRuntime-ThirdPartyNotices.txt','libneedle3.dylib','libonnxruntime.1.23.2.dylib','UPSTREAM.json','Sherpa-LICENSE','model-manifest.json','libsherpa-onnx-c-api.dylib','libonnxruntime.dylib']
+            fixture='from pathlib import Path\nimport sys\np=Path(sys.argv[-1]);p.mkdir(parents=True,exist_ok=True)\nfor name in '+repr(files)+': (p/name).write_text("fixture")\n'
+            for name in ['ci-products.py','fetch-opus.py','fetch-whistle.py','fetch-vad.py','fetch-parakeet-runtime.py']:(scripts/name).write_text(fixture)
+            products=root/'products';products.mkdir()
+            for name in ['cassini-whistle-worker','cassini-parakeet-worker']:(products/name).write_text('worker')
+            env=dict(os.environ,PATH=str(broken)+':/usr/bin:/bin',CASSINI_PYTHON=str(selected),SRCROOT=str(repo),DERIVED_FILE_DIR=str(root/'derived'),TARGET_BUILD_DIR=str(products),BUILT_PRODUCTS_DIR=str(products),UNLOCALIZED_RESOURCES_FOLDER_PATH='App/Resources',FRAMEWORKS_FOLDER_PATH='App/Frameworks',EXECUTABLE_FOLDER_PATH='App',CONFIGURATION='Release',CODE_SIGNING_ALLOWED='NO')
+            for assets in ['', 'fixture-assets']:
+                env['CASSINI_CI_ASSETS']=assets
+                for name in ['opus','whistle','parakeet']:
+                    result=subprocess.run(['/bin/bash',str(ROOT/'scripts'/('bundle-'+name+'.sh'))],env=env,capture_output=True,text=True)
+                    self.assertEqual(result.returncode,0,result.stderr)
+                for name in ['Opus','Whistle','Parakeet']:
+                    manifest=json.loads((products/'App/Resources'/name/'bundle-sha256.json').read_text())
+                    self.assertTrue(manifest)
+            # Execute both project-authored Python phases with the same hostile PATH.
+            for name in ['bundle-companion-page.py','bundle-browser-companion.py']:
+                (scripts/name).write_text('from pathlib import Path\nimport sys\nPath(sys.argv[1]).write_text("selected runtime")\n')
+            commands=[line.strip()[len('script: '):].strip("'") for line in (ROOT/'project.yml').read_text().splitlines() if 'script:' in line and any(name in line for name in ['bundle-companion-page.py','bundle-browser-companion.py'])]
+            self.assertEqual(len(commands),2)
+            for command in commands:
+                result=subprocess.run(['/bin/bash','-c',command],env=env,capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual((products/'App/Resources/Cassini.html').read_text(),'selected runtime')
+            self.assertEqual((products/'App/Resources/BrowserCompanion').read_text(),'selected runtime')
+            self.assertGreaterEqual(len(log.read_text().splitlines()),15)
+
+    def test_companion_verifier_uses_its_running_interpreter(self):
+        companion=load('bundle_companion','bundle-browser-companion.py')
+        class Reached(BaseException):pass
+        with patch.object(companion.subprocess,'run',side_effect=Reached) as verify:
+            with self.assertRaises(Reached):companion.reviewed_files()
+        self.assertEqual(verify.call_args.args[0][0],companion.sys.executable)
 
 if __name__=='__main__':unittest.main()
