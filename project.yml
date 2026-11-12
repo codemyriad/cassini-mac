@@ -37,6 +37,15 @@ targets:
           - "Info.plist"
           - "Cassini.entitlements"
           - "Resources"
+      - path: Components/StatusBadge
+        excludes:
+          - "README.md"
+      - path: Components/BadgeLabels
+        excludes:
+          - "README.md"
+          - "Contract"
+      - path: Components/BadgeLabels/Contract/strings.json
+        buildPhase: resources
       - path: Cassini/Assets.xcassets
         buildPhase: resources
       - path: COPYING
