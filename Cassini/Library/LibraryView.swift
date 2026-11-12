@@ -16,6 +16,7 @@ struct LibraryView: View {
     @State private var meetingTitleInset: CGFloat = 44
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
     @State private var companionSetup = CompanionSetup.shared
     @State private var rename = MeetingRenameCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
@@ -73,7 +74,12 @@ struct LibraryView: View {
                         LiveRecordingPill(started:started,microphone:RecordingOverview.levels["microphone",default:0],output:RecordingOverview.levels["output",default:0])
                     } else if store.context.screenshot {
                         LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
-                    } else { ProgressView().controlSize(.small) }
+                    } else {
+                        HStack(spacing:6) {
+                            ProgressView().controlSize(.small)
+                            Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
+                        }.accessibilityElement(children:.contain).accessibilityIdentifier("recording-toolbar-saving")
+                    }
                 }
                 ToolbarItem(placement:.principal) {
                     Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold)).lineLimit(1)
@@ -86,6 +92,8 @@ struct LibraryView: View {
                 ToolbarItem(placement:.navigation) {
                     if RecordingOverview.active {
                         LibraryToolbarAction(title:UXText.text("common.stop"),label:UXText.text("common.stop"),identifier:"meeting-stop",style:.stop) { RecordingOverview.stop() }
+                    } else if RecordingOverview.saving {
+                        LibraryToolbarAction(title:UXText.text("states.badge.saving"),label:UXText.text("states.badge.saving"),identifier:"meeting-saving",style:.saving,enabled:false) { }
                     } else {
                         LibraryToolbarAction(title:UXText.text("common.record"),label:UXText.text("common.record"),identifier:"toolbar-record",style:.record,enabled:RecordingOverview.canStart) {
                             sessionPlayback.stop(); RecordCoordinator.shared.request(parent:store.context.root)
@@ -338,6 +346,7 @@ struct LibraryView: View {
                 LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
             } else if RecordingOverview.saving {
                 HStack { ProgressView().controlSize(.small); Text(UXText.text("states.badge.saving")) }.frame(height: 34)
+                    .accessibilityElement(children:.contain).accessibilityIdentifier("toolbar-saving")
             } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
                 // Read-only header placeholder until UX5 owns transport/levels.
                 HStack(spacing: 8) {
@@ -511,14 +520,20 @@ struct LibraryView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(CassiniTheme.paneGround)
     }
     private func recordButton(big: Bool) -> some View {
-        Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
+        let saving = big && RecordingOverview.saving
+        let title = UXText.text(saving ? "states.badge.saving" : "common.record")
+        return Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
             HStack(spacing: big ? 10 : 8) {
-                Circle().fill(big ? CassiniTheme.onRecord : CassiniTheme.recordInk).frame(width: big ? 12 : 10, height: big ? 12 : 10)
-                Text(UXText.text("common.record")).fontWeight(.semibold)
+                if saving {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Circle().fill(big ? CassiniTheme.onRecord : CassiniTheme.recordInk).frame(width: big ? 12 : 10, height: big ? 12 : 10)
+                }
+                Text(title).fontWeight(.semibold)
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
-                .foregroundStyle(big ? CassiniTheme.onRecord : CassiniTheme.ink)
-                .background(big ? CassiniTheme.record : CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
-        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(UXText.text("common.record")).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+                .foregroundStyle(saving ? CassiniTheme.ink2 : big ? CassiniTheme.onRecord : CassiniTheme.ink)
+                .background(saving ? CassiniTheme.chipFill : big ? CassiniTheme.record : CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
+        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }
@@ -532,8 +547,8 @@ struct LibraryView: View {
 
 /// Native groups expose one action each, avoiding SwiftUI toolbar wrappers that
 /// duplicate their child button's role and identifier in the accessibility tree.
-private struct LibraryToolbarAction: NSViewRepresentable {
-    enum Style: Equatable { case back, record, stop, capsule, bordered, more }
+struct LibraryToolbarAction: NSViewRepresentable {
+    enum Style: Equatable { case back, record, stop, saving, capsule, bordered, more }
     let title: String, label: String, identifier: String
     let style: Style
     var enabled = true
@@ -569,12 +584,19 @@ private struct LibraryToolbarAction: NSViewRepresentable {
         @objc private func invoke(_ sender: Any?) { DispatchQueue.main.async { [handler] in handler() } }
     }
 }
-private final class LibraryToolbarActionView: NSView {
+final class LibraryToolbarActionView: NSView {
     private final class ActionButton: NSButton {
         var spokenLabel = ""
         override func accessibilityLabel() -> String? { spokenLabel }
     }
     private let button = ActionButton()
+    private let spinner: NSProgressIndicator = {
+        let indicator = NSProgressIndicator()
+        indicator.style = .spinning; indicator.controlSize = .small
+        indicator.isDisplayedWhenStopped = false; indicator.isHidden = true
+        indicator.setAccessibilityElement(false)
+        return indicator
+    }()
     private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
     private var size = NSSize(width:28,height:34)
     override init(frame: NSRect) {
@@ -582,11 +604,14 @@ private final class LibraryToolbarActionView: NSView {
         setAccessibilityElement(true); setAccessibilityRole(.group)
         button.target = self; button.action = #selector(invoke(_:))
         button.setButtonType(.momentaryPushIn); button.wantsLayer = true; button.layer?.cornerRadius = 6
-        addSubview(button); setAccessibilityChildren([button])
+        addSubview(button); addSubview(spinner); setAccessibilityChildren([button])
     }
     required init?(coder: NSCoder) { nil }
     override var intrinsicContentSize: NSSize { size }
-    override func layout() { super.layout(); button.frame = bounds }
+    override func layout() {
+        super.layout(); button.frame = bounds
+        spinner.frame = NSRect(x:10,y:(bounds.height - 16) / 2,width:16,height:16)
+    }
     func update(_ value: LibraryToolbarAction) {
         action = value.action; makeMenu = value.menu
         // SwiftUI otherwise borrows the only child's identifier/label for its
@@ -598,12 +623,14 @@ private final class LibraryToolbarActionView: NSView {
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.imagePosition = .imageLeft
-        let tint: NSColor = value.style == .stop ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk
+        let tint: NSColor = value.style == .stop ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
-        let fill: NSColor = value.style == .stop ? CassiniTheme.nsRecord : [.record,.capsule].contains(value.style) ? CassiniTheme.nsChipFill : .clear
+        let fill: NSColor = value.style == .stop ? CassiniTheme.nsRecord : [.record,.saving,.capsule].contains(value.style) ? CassiniTheme.nsChipFill : .clear
         button.layer?.backgroundColor = fill.cgColor
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
         size = NSSize(width:text + 28,height:34)
+        if value.style == .saving { spinner.isHidden = false; spinner.startAnimation(nil) }
+        else { spinner.stopAnimation(nil); spinner.isHidden = true }
         switch value.style {
         case .back, .more:
             button.image = NSImage(systemSymbolName:value.style == .back ? "chevron.left" : "ellipsis",accessibilityDescription:nil)
@@ -614,6 +641,9 @@ private final class LibraryToolbarActionView: NSView {
                 CassiniTheme.nsRecordInk.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
             button.imageHugsTitle = true; size.width += 18
+        case .saving:
+            button.image = NSImage(size:NSSize(width:22,height:16))
+            button.imageHugsTitle = true; size.width += 22
         default: break
         }
         needsLayout = true; invalidateIntrinsicContentSize()

@@ -27,21 +27,31 @@ import SwiftUI
 }
 
 struct IdleStatusLabel: View {
+    @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
     var body: some View {
+        let _ = (recorder.isSaving, captures.isSaving)
         Image(nsImage:CassiniMenuGlyph.image)
             .accessibilityLabel(UXText.text("app.name"))
             .accessibilityIdentifier("idle-menu-bar")
-            .help(UXText.text("hidden.status.watching"))
+            .help(IdleStatusMenu.statusTitle)
     }
 }
 
 struct IdleStatusMenu: View {
+    @MainActor static var statusTitle: String {
+        UXText.text(RecordingOverview.saving ? "states.badge.saving" : "hidden.status.watching")
+    }
     @State private var hovered: String?
+    @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openSettings) private var openSettings
     var body: some View {
+        let _ = (recorder.isSaving, captures.isSaving)
         VStack(alignment:.leading,spacing:10) {
-            Text(UXText.text("hidden.status.watching")).foregroundStyle(CassiniTheme.secondaryInk)
+            Text(Self.statusTitle).foregroundStyle(CassiniTheme.secondaryInk)
+                .accessibilityIdentifier("idle-menu-status")
             Divider()
             action("hidden.openCassini",id:"open") {
                 dismiss(); LibrarySearchModel.shared.close(); MeetingNavigation.shared.back()
