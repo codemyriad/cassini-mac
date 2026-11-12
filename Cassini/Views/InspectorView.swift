@@ -153,10 +153,10 @@ struct IntegrityBadge: View {
 
     private var color: Color {
         switch state {
-        case .ok?: return .green
-        case .staleAudio?: return .orange
-        case .invalidCassiniMetadata?, nil: return .red
-        default: return .secondary
+        case .ok?: return CassiniTheme.success
+        case .staleAudio?: return CassiniTheme.warningNotice
+        case .invalidCassiniMetadata?, nil: return CassiniTheme.error
+        default: return CassiniTheme.secondaryColor
         }
     }
 

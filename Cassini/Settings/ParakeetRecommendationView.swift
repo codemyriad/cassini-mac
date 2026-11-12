@@ -14,7 +14,7 @@ struct ParakeetRecommendationView: View {
                     VStack(alignment:.leading,spacing:5) {
                         Text(UXText.text("models.parakeetSuggestion.title")).font(.system(size:12,weight:.semibold))
                         Text(UXText.text("models.parakeetSuggestion.body",["size":LibraryFormat.size(bytes:SpeechModelController.downloadBytes)]))
-                            .font(.system(size:12)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true)
+                            .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                     }
                     Spacer(minLength:0)
                     VStack(alignment:.trailing,spacing:6) {
@@ -23,7 +23,7 @@ struct ParakeetRecommendationView: View {
                         Button(UXText.text("common.notNow")) { models.dismissSuggestion() }
                             .buttonStyle(.link).accessibilityIdentifier(afterFirst ? "library-parakeet-not-now" : "settings-parakeet-not-now")
                     }
-                }.padding(14).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:8))
+                }.padding(14).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:8))
                     .accessibilityElement(children:.contain)
                     .accessibilityIdentifier(afterFirst ? "library-parakeet-suggestion" : "settings-parakeet-suggestion")
             }
@@ -47,7 +47,7 @@ struct ParakeetDefaultNotice: View {
         VStack(alignment:.leading,spacing:0) {
             if visible {
                 Text(UXText.text("models.parakeetUltra.nowDefault"))
-                    .font(.system(size:12)).foregroundStyle(LibraryTheme.dim)
+                    .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                     .frame(maxWidth:.infinity,alignment:.leading)
                     .padding(.vertical,8).accessibilityIdentifier("parakeet-now-default")
             }

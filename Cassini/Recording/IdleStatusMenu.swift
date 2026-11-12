@@ -41,7 +41,7 @@ struct IdleStatusMenu: View {
     @Environment(\.openSettings) private var openSettings
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
-            Text(UXText.text("hidden.status.watching")).foregroundStyle(.secondary)
+            Text(UXText.text("hidden.status.watching")).foregroundStyle(CassiniTheme.secondaryInk)
             Divider()
             action("hidden.openCassini",id:"open") {
                 dismiss(); LibrarySearchModel.shared.close(); MeetingNavigation.shared.back()
@@ -60,8 +60,8 @@ struct IdleStatusMenu: View {
         Button(action:perform) {
             Text(UXText.text(title)).frame(maxWidth:.infinity,alignment:.leading)
                 .padding(.horizontal,6).frame(height:24).contentShape(Rectangle())
-        }.foregroundStyle(hovered == id ? Color.white : Color.primary)
-            .background(hovered == id ? Color.accentColor : Color.clear,in:RoundedRectangle(cornerRadius:4))
+        }.foregroundStyle(hovered == id ? CassiniTheme.onAccent : CassiniTheme.primaryInk)
+            .background(hovered == id ? CassiniTheme.accent : Color.clear,in:RoundedRectangle(cornerRadius:4))
             .onHover { hovered = $0 ? id : nil }.accessibilityIdentifier("idle-menu-" + id)
     }
 }

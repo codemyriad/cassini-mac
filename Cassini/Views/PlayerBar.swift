@@ -11,7 +11,7 @@ struct PlayerBar: View {
             if let error = player.playbackError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CassiniTheme.secondaryInk)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -40,9 +40,9 @@ struct PlayerBar: View {
                 } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(CassiniTheme.onAccent)
                         .frame(width: 40, height: 40)
-                        .background(Color.accentColor, in: Circle())
+                        .background(CassiniTheme.accentStrong, in: Circle())
                         .contentShape(Circle())
                 }
                 .help(UXText.text(player.isPlaying ? "player.pause" : "common.play"))
@@ -62,7 +62,7 @@ struct PlayerBar: View {
 
             Text(formatClock(player.currentMs))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CassiniTheme.secondaryInk)
                 .frame(minWidth: 34, alignment: .trailing)
 
             Slider(
@@ -77,7 +77,7 @@ struct PlayerBar: View {
 
             Text("-" + formatClock(max(0, player.durationMs - player.currentMs)))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CassiniTheme.secondaryInk)
                 .frame(minWidth: 42, alignment: .leading)
 
             Button {

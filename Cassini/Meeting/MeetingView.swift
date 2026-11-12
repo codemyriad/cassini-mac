@@ -40,7 +40,7 @@ struct MeetingView: View {
         }?.id
     }
     private func colour(_ index: Int) -> Color {
-        [Color.accentColor, Color(red: 179/255, green: 71/255, blue: 0), Color(red: 125/255, green: 60/255, blue: 152/255)][index % 3]
+        CassiniTheme.speakerColour(index)
     }
     private func turnLabel(_ turn: MeetingPresentation.Turn) -> String {
         var parts: [String] = [name(turn.speaker), LibraryFormat.position(turn.startMs)]
@@ -57,7 +57,7 @@ struct MeetingView: View {
         }.id(turn.id)
             .overlay(alignment:.leading) {
                 if !model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index).isEmpty {
-                    Rectangle().fill(Color.accentColor).frame(width:3).padding(.leading,-8).accessibilityHidden(true)
+                    Rectangle().fill(CassiniTheme.accent).frame(width:3).padding(.leading,-8).accessibilityHidden(true)
                 }
             }
             .focusable()
@@ -92,7 +92,7 @@ struct MeetingView: View {
                     if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
                 }.fixedSize() }
                 Button { model.playFrom(Int(turn.startMs)) } label: {
-                    Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(.secondary).monospacedDigit()
+                    Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).monospacedDigit()
                 }.buttonStyle(.borderless).disabled(!model.canPlay)
                     .help(UXText.text("player.playFromHere"))
                     .accessibilityLabel(UXText.text("player.playFromHere") + ", " + LibraryFormat.position(turn.startMs))
@@ -103,7 +103,7 @@ struct MeetingView: View {
                         model.playFrom(Int(turn.startMs)); return .handled
                     }
                 if let over = over(turn) {
-                    Text(over).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    Text(over).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.secondaryInk)
                         .help(UXText.text("meeting.turn.over.tooltip"))
                 }
             }.frame(width: 120, alignment: .leading)
@@ -118,7 +118,7 @@ struct MeetingView: View {
     /// The speakers column, kept out of `body` for the Xcode 16.4 type checker.
     private var speakersPane: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(UXText.text("common.speakers")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(.secondary)
+            Text(UXText.text("common.speakers")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.secondaryInk)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
@@ -138,7 +138,7 @@ struct MeetingView: View {
             Spacer(minLength: 0)
         }.padding(.horizontal, 19).padding(.top, 14)
             .frame(width: 260).frame(maxHeight: .infinity)
-            .background(LibraryTheme.sidebar)
+            .background(CassiniTheme.sidebarGround)
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
     }
     var body: some View {
@@ -199,7 +199,7 @@ struct MeetingView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
         .font(.system(size: 13))
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(CassiniTheme.paneGround)
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
         .focusedSceneValue(\.listeningMeeting,model)
     }
@@ -221,8 +221,8 @@ struct MeetingView: View {
         )
     }
     private var autoTag: some View {
-        Text(UXText.text("common.autoTag")).font(.system(size: 10.5)).foregroundStyle(.secondary).padding(.horizontal, 4)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+        Text(UXText.text("common.autoTag")).font(.system(size: 10.5)).foregroundStyle(CassiniTheme.secondaryInk).padding(.horizontal, 4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(CassiniTheme.secondaryTagStroke))
             .help(UXText.text("common.autoTag.tooltip"))
     }
     private var issueLine: String? {
@@ -232,42 +232,42 @@ struct MeetingView: View {
     }
     private var companionCard: some View {
         HStack(alignment: .top, spacing: 15) {
-            Image(systemName: "macwindow").foregroundStyle(Color.accentColor).font(.system(size: 18)).padding(.top, 3).accessibilityHidden(true)
+            Image(systemName: "macwindow").foregroundStyle(CassiniTheme.accentInk).font(.system(size: 18)).padding(.top, 3).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 Text(UXText.text("meeting.companionCard.title")).fontWeight(.semibold)
                 Text(UXText.text("meeting.companionCard.body")).lineSpacing(4)
                 HStack(spacing: 16) {
                     Button(UXText.text("meeting.companionCard.setUp")) {
                         CompanionSetup.shared.presenter = .library
-                    }.buttonStyle(.plain).fontWeight(.semibold).foregroundStyle(.white)
-                        .padding(.horizontal, 14).frame(height: 32).background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
-                    Button(UXText.text("common.notNow")) { suggestionDismissed = true }.buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                    }.buttonStyle(.plain).fontWeight(.semibold).foregroundStyle(CassiniTheme.onAccent)
+                        .padding(.horizontal, 14).frame(height: 32).background(CassiniTheme.accentStrong, in: RoundedRectangle(cornerRadius: 6))
+                    Button(UXText.text("common.notNow")) { suggestionDismissed = true }.buttonStyle(.plain).foregroundStyle(CassiniTheme.accentInk)
                 }.padding(.top, 6)
             }
             Spacer(minLength: 0)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 7))
+            .background(CassiniTheme.accentTint, in: RoundedRectangle(cornerRadius: 7))
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.companionCard.a11y")).accessibilityIdentifier("meeting-companion-card")
     }
     private var playerBar: some View {
         HStack(spacing: 16) {
             Button { model.skip(-10) } label: { Image(systemName: "gobackward.10").frame(width: 24, height: 36) }.help(UXText.text("player.back10")).accessibilityLabel(UXText.text("player.back10"))
             Button { model.toggle() } label: {
-                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(.white).frame(width: 44, height: 44)
-                    .background(Color.accentColor, in: Circle())
+                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(CassiniTheme.onAccent).frame(width: 44, height: 44)
+                    .background(CassiniTheme.accentStrong, in: Circle())
             }.accessibilityLabel(UXText.text(model.isPlaying ? "player.pause" : "common.play")).accessibilityIdentifier("meeting-play")
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
-            Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
+            Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
                                   readout:model.timelineReadout,names:meeting.speakerDisplayNames,
                                   timeline:model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
-            Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(.secondary).font(.system(size: 11.5))
+            Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5))
             Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])) { model.cycleRate() }
-                .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
+                .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(CassiniTheme.ratePillFill, in: RoundedRectangle(cornerRadius: 5))
                 .accessibilityIdentifier("meeting-speed")
                 .accessibilityLabel(UXText.text("player.speed.a11y",["rate":UXText.text("format.playbackRate",["rate":model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])]))
-        }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(Color(nsColor: .windowBackgroundColor))
+        }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(CassiniTheme.windowGround)
             .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
     }
 }
@@ -281,7 +281,7 @@ struct NoSpeechTranscriptLine: View {
     var body: some View {
         VStack(alignment:.leading,spacing:6) {
             HStack(alignment:.firstTextBaseline,spacing:12) {
-                Text(UXText.text("transcript.noSpeech")).foregroundStyle(.secondary)
+                Text(UXText.text("transcript.noSpeech")).foregroundStyle(CassiniTheme.secondaryInk)
                     .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
                     .accessibilityIdentifier("transcript-no-speech")
                 if let action {
@@ -292,7 +292,7 @@ struct NoSpeechTranscriptLine: View {
             }
             if permissionHint {
                 HStack(alignment:.firstTextBaseline,spacing:12) {
-                    Text(UXText.text("details.sources.silent.othersPermissionHint")).font(.callout).foregroundStyle(.secondary)
+                    Text(UXText.text("details.sources.silent.othersPermissionHint")).font(.callout).foregroundStyle(CassiniTheme.secondaryInk)
                         .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
                         .accessibilityIdentifier("transcript-no-speech-permission-hint")
                     Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
@@ -327,8 +327,8 @@ struct InlineMeetingLine: View {
             Image(systemName: info ? "info.circle" : "exclamationmark.triangle")
             Text(UXText.text(id)).fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
             if let actionID, let action { Button(UXText.text(actionID), action: action).buttonStyle(.bordered) }
-        }.padding(12).foregroundStyle(info ? Color.accentColor : Color(red: 122/255, green: 77/255, blue: 0))
-            .background(info ? Color.accentColor.opacity(0.11) : Color(red: 1, green: 240/255, blue: 199/255), in: RoundedRectangle(cornerRadius: 7))
+        }.padding(12).foregroundStyle(info ? CassiniTheme.accentInk : CassiniTheme.inlineWarnInk)
+            .background(info ? CassiniTheme.accentTint : CassiniTheme.inlineWarnTint, in: RoundedRectangle(cornerRadius: 7))
     }
 }
 
@@ -349,18 +349,18 @@ struct SpeakerSidebarRow: View {
                     if canEdit {
                         Button(action:onName) {
                             HStack(spacing:6) {
-                                Text(speaker.displayName).fontWeight(.semibold).foregroundStyle(.primary).lineLimit(1)
+                                Text(speaker.displayName).fontWeight(.semibold).foregroundStyle(CassiniTheme.primaryInk).lineLimit(1)
                                 Spacer(minLength:2)
-                                Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                                Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).fixedSize()
                             }.contentShape(Rectangle())
                         }.buttonStyle(.plain)
                             .accessibilityLabel(row.accessibilityLabel)
                             .accessibilityValue(row.share)
                             .accessibilityIdentifier("speaker-name-" + speaker.id)
                     } else {
-                        Text(speaker.displayName).fontWeight(.semibold).foregroundStyle(.primary).lineLimit(1)
+                        Text(speaker.displayName).fontWeight(.semibold).foregroundStyle(CassiniTheme.primaryInk).lineLimit(1)
                         Spacer(minLength:2)
-                        Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                        Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).fixedSize()
                     }
                     Button(action:onToggleListen) {
                         Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
@@ -376,7 +376,7 @@ struct SpeakerSidebarRow: View {
                             Text(provenance).truncationMode(.tail)
                             Text(suffix).truncationMode(.head).layoutPriority(1)
                         } else { Text(caption).truncationMode(.head) }
-                    }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                    }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1)
                         .frame(maxWidth:.infinity,alignment:.leading)
                         .help(caption)
                         .accessibilityElement(children:.combine)
@@ -390,9 +390,9 @@ struct SpeakerSidebarRow: View {
                 }
             }
         }.padding(.vertical,4).padding(.horizontal,5)
-            .background(listening ? Color.accentColor.opacity(0.08) : .clear)
+            .background(listening ? CassiniTheme.listeningRowWash : .clear)
             .overlay(alignment:.leading) {
-                if listening { Rectangle().fill(Color.accentColor).frame(width:3).accessibilityHidden(true) }
+                if listening { Rectangle().fill(CassiniTheme.accent).frame(width:3).accessibilityHidden(true) }
             }
             .accessibilityElement(children:.contain).accessibilityLabel(row.accessibilityLabel)
             .accessibilityIdentifier("speaker-row-" + speaker.id)
@@ -419,7 +419,7 @@ extension SpeakerSidebarRow {
         func snapshot<Content: View>(_ content: Content, appearanceName: NSAppearance.Name) -> (rep: NSBitmapImageRep, size: CGSize)? {
             guard let appearance = NSAppearance(named:appearanceName) else { return nil }
             let wrapped = ZStack(alignment:.topLeading) {
-                Color(nsColor:.textBackgroundColor)
+                CassiniTheme.paneGround
                 content.font(.system(size:13)).frame(width:222,alignment:.leading)
             }.environment(\.colorScheme,appearanceName == .darkAqua ? .dark : .light)
             let host = NSHostingView(rootView:wrapped)
@@ -465,15 +465,15 @@ extension SpeakerSidebarRow {
             }
             return Double(maxX) / sx
         }
-        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:.blue,listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
-        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:.blue,listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
+        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.accent,listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
+        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.accent,listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
         let dimmedMutant = HStack(alignment:.top,spacing:10) {
-            Circle().fill(Color.blue).frame(width:10,height:10).padding(.top,5)
+            Circle().fill(CassiniTheme.accent).frame(width:10,height:10).padding(.top,5)
             Button {} label: {
                 HStack(spacing:6) {
                     Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
                     Spacer(minLength:2)
-                    Text(presentation.share).font(.system(size:11.5)).foregroundStyle(.secondary)
+                    Text(presentation.share).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
                 }
             }.buttonStyle(.plain).disabled(true)
         }.padding(.vertical,4).padding(.horizontal,5)

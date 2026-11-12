@@ -54,6 +54,9 @@ jobs:
         "$RUNNER_TEMP/pr-shots-venv/bin/python3" -m pip install --disable-pip-version-check Pillow==11.3.0
         env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/pr-shots.py --self-test
         env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/test-pr-shots.py
+        python3 -I scripts/generate-brand-tokens.py --check
+        python3 -I scripts/check-brand-tokens.py
+        python3 -I scripts/test-brand-tokens.py
         python3 scripts/test-ci-contract.py
         python3 scripts/test-gui-session.py
         python3 scripts/test-spectrogram-sampler.py

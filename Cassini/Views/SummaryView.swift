@@ -53,9 +53,9 @@ struct SummaryView: View {
                     .toggleStyle(.checkbox)
                     .labelsHidden()
             } else if let n = item.ordinal {
-                Text("\(n).").foregroundStyle(.secondary).monospacedDigit()
+                Text("\(n).").foregroundStyle(CassiniTheme.secondaryInk).monospacedDigit()
             } else {
-                Text("•").foregroundStyle(.secondary)
+                Text("•").foregroundStyle(CassiniTheme.secondaryInk)
             }
             Text(item.text).font(.body)
                 .fixedSize(horizontal: false, vertical: true)
@@ -142,7 +142,7 @@ struct SummaryView: View {
             let ms = ((h * 60 + min) * 60 + sec) * 1000
             if let range = Range(m.range, in: a) {
                 a[range].link = URL(string: "cassini://seek/\(ms)")
-                a[range].foregroundColor = .accentColor
+                a[range].foregroundColor = CassiniTheme.accentInk
             }
         }
         return a

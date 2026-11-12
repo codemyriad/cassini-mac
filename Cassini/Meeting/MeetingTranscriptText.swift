@@ -65,19 +65,24 @@ struct MeetingTranscriptText: NSViewRepresentable {
     func attributedText() -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 5
         let text = NSMutableAttributedString(string: "")
-        let current = NSColor(srgbRed: 253/255, green: 230/255, blue: 138/255, alpha: 1)
+        let current = CassiniTheme.nsHighlight
         func word(_ item: LibraryTranscriptItem, size: CGFloat, chip: NSColor? = nil, listening: Bool = false) -> NSAttributedString {
             var attributes: [NSAttributedString.Key:Any] = [
                 .font: NSFont.systemFont(ofSize: size), .paragraphStyle: paragraph,
-                .foregroundColor: item.startMs > positionMs ? NSColor.secondaryLabelColor : NSColor.labelColor,
+                .foregroundColor: item.startMs > positionMs ? CassiniTheme.nsUpcomingWordInk : CassiniTheme.nsInk,
                 .cassiniSeek: Int(item.startMs), .cursor: NSCursor.pointingHand
             ]
             if let chip { attributes[.backgroundColor] = chip }
             if listening {
                 attributes[.cassiniListenCurrent] = true
-                attributes[.backgroundColor] = NSColor.controlAccentColor.withAlphaComponent(chip == nil ? 0.08 : 0.18)
+                attributes[.backgroundColor] = CassiniTheme.nsAccent.withAlphaComponent(chip == nil ? 0.08 : 0.18)
             }
-            if item.startMs <= positionMs && positionMs < item.endMs { attributes[.backgroundColor] = current }
+            if item.startMs <= positionMs && positionMs < item.endMs {
+                attributes[.backgroundColor] = current
+                if let highlightInk = CassiniTheme.nsHighlightInk {
+                    attributes[.foregroundColor] = highlightInk
+                }
+            }
             return NSAttributedString(string: item.text, attributes: attributes)
         }
         /// GNOME's chip: smaller text on a light tint (the accent while it plays), the name in bold.
@@ -87,9 +92,9 @@ struct MeetingTranscriptText: NSViewRepresentable {
             let start = aside.items.map(\.startMs).min() ?? 0, end = aside.items.map(\.endMs).max() ?? 0
             let playing = !aside.items.isEmpty && start <= positionMs && positionMs < end + 300
             let listening = !aside.listeningWords.isEmpty
-            let tint = listening ? NSColor.controlAccentColor.withAlphaComponent(0.18) : playing ? NSColor.controlAccentColor.withAlphaComponent(0.25) : NSColor.labelColor.withAlphaComponent(0.07)
+            let tint = listening ? CassiniTheme.nsAccent.withAlphaComponent(0.18) : playing ? CassiniTheme.nsAccent.withAlphaComponent(0.25) : CassiniTheme.nsInk.withAlphaComponent(0.07)
             var plain: [NSAttributedString.Key:Any] = [.font: NSFont.systemFont(ofSize: 11.5), .paragraphStyle: paragraph,
-                                                        .foregroundColor: NSColor.labelColor, .backgroundColor: tint]
+                                                        .foregroundColor: CassiniTheme.nsInk, .backgroundColor: tint]
             if let first = aside.items.first { plain[.cassiniSeek] = Int(first.startMs); plain[.cursor] = NSCursor.pointingHand }
             if listening { plain[.cassiniListenCurrent] = true }
             var bold = plain; bold[.font] = NSFont.boldSystemFont(ofSize: 11.5)
@@ -122,7 +127,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
                 var attributes: [NSAttributedString.Key:Any] = [:]
                 if listeningWords.contains(index-1), listeningWords.contains(index) {
                     attributes[.cassiniListenCurrent] = true
-                    attributes[.backgroundColor] = NSColor.controlAccentColor.withAlphaComponent(0.08)
+                    attributes[.backgroundColor] = CassiniTheme.nsAccent.withAlphaComponent(0.08)
                 }
                 text.append(NSAttributedString(string:" ",attributes:attributes))
             }
