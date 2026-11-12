@@ -200,14 +200,14 @@ class DailyExecution(unittest.TestCase):
 
     def test_incomplete_assets_never_publish_and_complete_upload_is_always_prerelease(self):
         import hashlib
-        for complete in [False,True]:
+        for complete,user_text in [(False,'A clearer Library.'),(True,'A clearer Library.'),(True,'A'*500)]:
             with tempfile.TemporaryDirectory() as directory:
                 output=Path(directory);name='Cassini-talk-0.1.0-test.2.dmg';data=b'notarized fixture'
                 (output/name).write_bytes(data);digest=hashlib.sha256(data).hexdigest()
                 (output/'test-release.json').write_text(json.dumps(dict(channel='nightly',commit='a'*40,version='0.1.0',build=2,notarized=True,updatesEnabled=False,dmg=name,bytes=len(data),sha256=digest)))
                 (output/'SHA256SUMS').write_text(digest+'  '+name+'\n')
-                user=daily.ReleaseNotes('A clearer Library.','CI D95 #123 Internal.swift developer PR title')
-                (output/'user-release-notes.txt').write_text(user.user+'\n')
+                user=daily.ReleaseNotes(user_text,'CI D95 #123 Internal.swift developer PR title')
+                (output/'user-release-notes.txt').write_text(user.user)
                 (output/'user-release-notes.html').write_text(user.html())
                 assets=[dict(name=p.name,size=p.stat().st_size) for p in output.iterdir()]
                 if not complete:assets=assets[:1]
@@ -219,7 +219,8 @@ class DailyExecution(unittest.TestCase):
                     self.assertEqual(len(edits),int(complete))
                     if edits:self.assertIn('--prerelease',edits[0]);self.assertIn('--latest=false',edits[0])
                     self.assertFalse(any('--clobber' in c.args[0] for c in tool.call_args_list))
-                    self.assertEqual((output/'user-release-notes.txt').read_text(),user.user+'\n')
+                    self.assertEqual((output/'user-release-notes.txt').read_text(),user.user)
+                    self.assertLessEqual(len((output/'user-release-notes.txt').read_text().encode('utf-16-le'))//2,500)
                     for token in ['CI','D95','#123','Internal.swift','developer PR title']:
                         self.assertNotIn(token,(output/'user-release-notes.html').read_text())
                     self.assertIn(user.developer,(output/'nightly-notes.md').read_text().split('<details>',1)[1])

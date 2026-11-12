@@ -180,7 +180,7 @@ def publish(tag,version,build,sha,output,release_notes):
         while chunk:=stream.read(1024*1024):digest.update(chunk)
     if digest.hexdigest()!=release['sha256'] or dmg.stat().st_size!=release['bytes'] or (output/'SHA256SUMS').read_text()!=release['sha256']+'  '+dmg.name+'\n':
         raise ValueError('Test DMG differs from its notarized report')
-    user_text=output/'user-release-notes.txt';user_text.write_text(release_notes.user+'\n')
+    user_text=output/'user-release-notes.txt';user_text.write_text(release_notes.user)
     user_html=output/'user-release-notes.html';user_html.write_text(release_notes.html())
     note=output/'nightly-notes.md';note.write_text(release_notes.github())
     # A failed upload leaves a draft. Never edit, delete or overwrite another tag.
