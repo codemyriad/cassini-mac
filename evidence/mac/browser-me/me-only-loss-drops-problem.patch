@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -757,5 +757,5 @@
+             }
+         }
+-        if !nativeMe && me && !others && !browserAlive {
++        if nativeMe && me && !others && !browserAlive {
+             finalProblem = finalProblem ?? "Some announced audio was not fully captured."
+             if finalKind != "io" { finalKind = "capture" }

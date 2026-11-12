@@ -261,8 +261,8 @@ final class ControlServiceTests: XCTestCase {
         let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let closing = Admission(), gone = expectation(description:"Control really disconnected")
         gone.assertForOverFulfill = false
-        let broker = BrowserAudioBroker(make:{ title,mic in
-            try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic)
+        let broker = BrowserAudioBroker(make:{ title,mic,captureLocal in
+            try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic,captureLocal:captureLocal)
         },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         let service = BrowserControlService(changed:{ peers in
             if closing.read(), peers.isEmpty { gone.fulfill() }
@@ -344,7 +344,7 @@ final class ControlServiceTests: XCTestCase {
         let client = try PipeEndpoint(root:root,role:.control,browser:"Chrome")
         try hello(client,heartbeat:true); try send(status(false),client)
         let start = try receive(client)
-        XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["captureLocal"]?.bool,true)
+        XCTAssertEqual(start["action"]?.string,"start"); XCTAssertEqual(start["captureLocal"]?.bool,false)
         XCTAssertEqual(start["microphone"]?.bool,false); XCTAssertEqual(notifications.value,0)
         try send(["type":"result","requestId":try XCTUnwrap(start["requestId"]?.string),"ok":true,"status":status(true)],client)
         wait(for:[announced],timeout:3)

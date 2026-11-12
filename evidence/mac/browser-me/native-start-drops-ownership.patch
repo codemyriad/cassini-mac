@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
++++ b/Sources/CassiniBrowserControl/BrowserAudioBroker.swift
+@@ -244,5 +244,5 @@
+         }
+         let capture: OwnedBrowserCapture
+-        do { capture = try make(title,info.microphone,info.captureLocal) }
++        do { capture = try make(title,info.microphone,false) }
+         catch {
+             info.inputGate?.cancel(); admission?.retire(info.captureID)

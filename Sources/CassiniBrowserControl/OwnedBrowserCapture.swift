@@ -36,8 +36,13 @@ public struct OwnedCaptureSnapshot: Sendable {
 /// budget and a native span writer; browser requests use this owner's I/O queue.
 /// No file I/O occurs under a store-wide lock or in snapshot/UI getters.
 public final class OwnedBrowserCapture: @unchecked Sendable {
-    /// Separated calls own Me in the browser, including throughout transport gaps.
+    /// Negotiated per session: modern sender-Me stays browser-owned across gaps;
+    /// an older companion keeps native Me. Never infer this from browser alone.
     public let nativeMe: Bool
+    public var needsBrowserMeLossStop: Bool {
+        let value = snapshot
+        return !nativeMe && value.phase == .recording && value.me && !value.others && !value.browserAlive
+    }
     public let pcmObservers: RecordedPCMObservers
     private struct BrowserSource {
         let id: String, label: String, kind: String
@@ -115,14 +120,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var lastPublished = DispatchTime.now().uptimeNanoseconds
 
     /// Creates/checkpoints the folder: call from a background task, not UI code.
-    public init(parent: URL, title: String, microphone: Bool, browser: Bool = true, id: UUID = UUID(), managedBrowser: Bool = false,
+    public init(parent: URL, title: String, microphone: Bool, browser: Bool = true, captureLocal: Bool = true, id: UUID = UUID(), managedBrowser: Bool = false,
                 changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void = { _ in }) throws {
         recording = try RecordingSession(parent:parent,title:title,source:browser ? "chromium" : "macos",id:id)
         pcmObservers = recording.pcmObservers
-        nativeMe = !browser
+        nativeMe = !browser || !captureLocal
         me = microphone; self.changed = changed
         // Only native recordings reserve a microphone slot before their first PCM.
-        if microphone && !browser { reservedNative.insert(.me) }
+        if microphone && nativeMe { reservedNative.insert(.me) }
         browserAlive = browser; transportAlive = browser; self.managedBrowser = managedBrowser && browser
         // D52.3b/D49: a Record with no call records the others as a system-sound
         // stand-in (system/missing), which a later call may take over once. Like any
@@ -750,6 +755,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 finalProblem = finalProblem ?? "Some announced audio was not fully captured."
                 if finalKind != "io" { finalKind = ledger.ioFailed ? "io" : "capture" }
             }
+        }
+        if !nativeMe && me && !others && !browserAlive {
+            finalProblem = finalProblem ?? "Some announced audio was not fully captured."
+            if finalKind != "io" { finalKind = "capture" }
         }
         do { try self.recording.finish(problem:finalProblem,kind:finalKind,reason:intent?.0 ?? reason,atMs:intent?.1 ?? atMs) }
         catch { self.closeError = error }

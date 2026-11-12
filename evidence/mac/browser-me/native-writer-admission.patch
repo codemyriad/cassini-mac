@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
 +++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
-@@ -617,5 +617,5 @@
+@@ -622,5 +622,5 @@
      fileprivate func nativeTrack(side: CaptureSide, label: String, rate: Int, channels: Int) throws -> String? {
          try sync {
 -            guard phase == .recording, side == .me ? (me && nativeMe) : others && !browserAlive else { return nil }

@@ -127,7 +127,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
 
     @MainActor func testSharedWriterCasesOnTheNoFallbackProfile() async throws {
         let cases = try XCTUnwrap(try vectors()["cases"]?.array)
-        XCTAssertEqual(cases.count,17)
+        XCTAssertEqual(cases.count,15)
         var replayed = 0
         for vector in cases where vector["profile"]?.string == nil || vector["profile"]?.string == "noFallback" {
             let name = try XCTUnwrap(vector["name"]?.string)
@@ -146,7 +146,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
                 XCTAssertEqual(got["banner"]?["refusals"]?.array?.count,1,name)
             }
         }
-        XCTAssertEqual(replayed,13)
+        XCTAssertEqual(replayed,12)
     }
     /// Selection times are compared to the second the app applied them at (it adds its own latency).
     private func normalized(_ value: JSON, key: String) -> JSON {

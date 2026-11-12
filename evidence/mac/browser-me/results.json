@@ -3,9 +3,9 @@
     {
       "name": "capture-local-command",
       "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
-      "test": "ControlRegistryTests",
+      "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture",
       "result": "behavioral assertion failure",
-      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/ControlRegistryTests.swift:233: error: -[CassiniBrowserControlTests.ControlRegistryTests testExplicitRecordNamespacesTwoProfilesAndPreservesMicrophoneChoice] : XCTAssertEqual failed: (\"Optional(false)\") is not equal to (\"Optional(true)\")"
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:35: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture] : XCTAssertEqual failed: (\"Optional(false)\") is not equal to (\"Optional(true)\")"
     },
     {
       "name": "start-native-microphone",
@@ -26,7 +26,7 @@
       "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
       "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM",
       "result": "behavioral assertion failure",
-      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:127: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertTrue failed"
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:121: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertTrue failed"
     },
     {
       "name": "local-side-selection",
@@ -47,43 +47,50 @@
       "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
       "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM",
       "result": "behavioral assertion failure",
-      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:130: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertEqual failed: (\"0.5\") is not equal to (\"0.0\") - Opposite stereo DC is silence in two complete channel windows"
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:124: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertEqual failed: (\"0.5\") is not equal to (\"0.0\") - Opposite stereo DC is silence in two complete channel windows"
+    },
+    {
+      "name": "unnegotiated-local-command",
+      "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+      "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:35: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture] : XCTAssertEqual failed: (\"Optional(true)\") is not equal to (\"Optional(false)\")"
+    },
+    {
+      "name": "native-start-drops-ownership",
+      "source": "Sources/CassiniBrowserControl/BrowserAudioBroker.swift",
+      "test": "SenderMeNegotiationTests/testNativeStartFlagSelectsImmutableOwnerModeAndLegacyMicrophone",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:47: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testNativeStartFlagSelectsImmutableOwnerModeAndLegacyMicrophone] : XCTAssertEqual failed: (\"true\") is not equal to (\"false\")"
+    },
+    {
+      "name": "admission-drops-ownership",
+      "source": "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift",
+      "test": "SenderMeNegotiationTests/testVerifiedAdmissionPreservesBothNativeStartOwnershipModes",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:16: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testVerifiedAdmissionPreservesBothNativeStartOwnershipModes] : XCTAssertEqual failed: (\"false\") is not equal to (\"true\")"
+    },
+    {
+      "name": "me-only-loss-keeps-recording",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:94: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM] : XCTAssertFalse failed"
+    },
+    {
+      "name": "me-only-loss-drops-problem",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:99: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM] : XCTAssertEqual failed: (\"Optional(\"empty\")\") is not equal to (\"Optional(\"capture\")\")"
     }
   ],
   "restored": true,
   "sourceSHA256": {
-    "Sources/CassiniBrowserControl/ControlRegistry.swift": "c97904e6c2769f11f6392c917cd69b4fe828e1cfa491b28147dca973dd437252",
+    "Sources/CassiniBrowserControl/ControlRegistry.swift": "7ae22405811e164293dec5e36ee0b79bc57ae5724d0dafbdd3ad05638d5928ae",
     "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift": "6acdce2d4a7bce4228be44c00ba08b881263a79fd777f016c18122f15024f2de",
-    "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "7824aa326321e24e94d7ed8ff69f9b5314c23de78bf9722b8ff8a4928e6f6619",
-    "Sources/CassiniRecording/RecordingSession.swift": "53975c9dbc3635dab1f3f95a1aca824352ddf6434ba30e58ff53ee6db8ce26fe",
-    "Sources/CassiniRecording/RecordingSink.swift": "34f8912c47697f2309e94f782776292bc7da10afdbe13021871668c34e2409b7",
-    "Cassini/Browser/CaptureCollection.swift": "72cc9e3045b297a2f7d580ffa8e0e3c1c82371af873bf9d2b9b8ecc452d5846a",
-    "Cassini/Browser/CaptureSelfTest.swift": "1a2c7fd44efe8bbdd9c34bf0226020c5c040dc559f7886754e910ab2b95c468d",
-    "Cassini/Browser/CaptureFixture.swift": "9afa69cc2d4c7fd97f0b006d0c7a184a06881c52f74fbdf2d7d826b8abb61eb8",
-    "scripts/test-browser-capture-app.py": "a3e2862fe2a4a426c3422dd50563c02c1fa6e0f09bc11e632127b00a7ab9f75d",
-    "scripts/test-live-folder.mjs": "ce5a7ed66751d61f7779b9a07c95fb79f1c1d7a03ff7634b88cd0250e7e212b3",
-    "Cassini/Browser/BrowserReturnSelfTest.swift": "c5332698fa7c33aaff1f6719796ca6258863ad51d9b70fb7959cebd768a236a4",
-    "scripts/test-browser-return.mjs": "3bcc23d4c7cc97cb27d0435b9ed74a2e03b68f8e71c8edace85c0af967bb4125"
-  },
-  "base": "443988076c5dd6d2cdcd6e10580003e20230d1c8",
-  "mergedMain": "f506b17",
-  "browserXCTest": 395,
-  "browserSwiftTesting": 5,
-  "restoredFocusedXCTest": 36,
-  "recordingBrokerXCTest": 44,
-  "recordingSwiftTesting": 51,
-  "ciContracts": 57,
-  "protocolCrossCheck": "0702affb7540f69429bfca65ae69f02a908b78c0",
-  "protocolPageCaptureTests": 21,
-  "gnomeComparison": "97a42f7",
-  "protocolPinChanged": false,
-  "nativeAppQuickLookBuild": "passed after main merge and Me-only restoration",
-  "nativeAppSelfTestRuntime": "pending CI",
-  "ciFollowup": {
-    "observedRun": 43122163530,
-    "meterFailure": "Browser sound recovery at CaptureSelfTest.swift:396 read the throttled UI snapshot instead of the latest cached owner meter",
-    "meterFix": "refreshLevels reads owner.snapshot; framed sound ACKs are followed by direct silence assertions, without another packet",
-    "browserReturnFix": "require local PCM before navigation and a fresh local span afterward; zero hardware microphone starts/tracks",
-    "nativeAppSelfTestRuntime": "pending new CI; no runtime success claimed"
+    "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "42058145b744a322f4dd7062314b4af38e3a32dd7f3b37785a3666deafdd9790",
+    "Sources/CassiniBrowserControl/BrowserAudioBroker.swift": "7e1d40916ed42200a88a1284f5746841dfa39d56b57157d96b35b56649254f6c",
+    "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift": "1e86bb19b64b8d56891cc638f7f8b8160a878da47e305e7d0e71aba2a9567c8a"
   }
 }

@@ -1,76 +1,44 @@
 # Browser-owned Me (#259)
 
-Separated calls send captureLocal:true on Start and resumeCapture. An owner's
-immutable nativeMe flag is false for browser starts. Both lifecycle admission
-and the native span writer reject hardware Me for that owner. Native Record and
-D74 mixed routes retain native Me. Browser local PCM follows Me's selection,
-ledger expectations, trimmed span boundaries and observer lane; loss ends its
-span and clears the meter, leaving a privacy gap until browser audio returns.
+Modern separated calls advertise sender-me-v1 and receive captureLocal:true on
+Start and resumeCapture. Missing or different capability strings receive false.
+The initial native Start's missing/false captureLocal retains OS Me for older
+companions; true makes Me browser-owned. Malformed flags are refused before
+files or inputs are created. Verified admission retains this choice and resume
+keeps the original owner's immutable mode (the native resume omits the flag).
+Native Record and D74 mixed routes still own native Me.
 
-Me-only browser restoration keeps Others off and requests neither native input;
-source selection and live transport restoration have a direct regression test.
-The real app fixture also exercises this reload path. Main66f0ddd is integrated
-with an ordinary merge.
+Both lifecycle admission and the native span writer reject hardware Me for a
+browser-owned session. Browser local PCM follows Me's selection, ledger,
+trimmed spans, per-source AC meters and analysis lane. Loss ends its span and
+clears its meter; Me+Others leaves a gap until returned browser PCM is admitted.
+Me-only browser loss instead saves a capture problem, including before any PCM;
+the app retains that diagnostic meeting rather than discarding an empty folder.
 
-Browser Me reuses the native sink's independently centred 100 ms AC windows.
-The stereo DC test admits 800 frames per channel and requires a completed-window
-timestamp before asserting zero; silence cannot pass with an empty meter.
-Muted browser PCM remains silence. Per-source local meters never feed Others.
+Protocol pin: merged156b40c314e7acf4e75d53c2fbc77fdae8deacc4, companion0.2.27,
+hook2. The canonical vendor tool updates both shared snapshot and installed
+extension; verify.py validates the Git-tree proof and every installed file.
+Historical producer traces remain frozen. The pinned source implements and tests
+screen-share exclusion, sender/clone deduplication and mute/unmute privacy.
 
-Validation: 395 browser-control XCTest cases and five Swift Testing cases pass;
-36 restored focused XCTest cases pass. An additional recording/broker slice
-passes44 XCTest and51 Swift Testing cases;57 CI contracts and snapshot integrity
-pass. The final native app/Quick Look build passes; native self-test runtime
-remains pending CI. Seven committed production mutations
-fail executed XCTest assertions: command captureLocal, startup authorization,
-selection authorization, native writer admission, local side selection, local
-ledger expectation, and DC-sensitive local metering. No mutation is accepted
-for a timeout, crash or compile failure. replay.py applies each committed patch
-and restores exact source bytes in finally. Run under ~/bin/heavy-run with
-Xcode 16.4, SDKROOT, verified CASSINI_OPUS_ASSETS and external BROWSER_ME_EVIDENCE.
+GNOME comparison: merged6de7a0440d71947e6e21e0bbdb5b8e78dc8b4ad3.
+Both apps negotiate sender-me-v1, preserve missing/false legacy native Me, keep
+modern ownership immutable on resume, retain Me+Others reload gaps and save a
+problem on Me-only loss. GNOME's latest local meter is one value; Mac takes the
+maximum of fresh per-source local levels. Mac's independently centered 100 ms
+AC windows reject stereo DC only after an actual complete-window timestamp.
 
-GNOME comparison: feat/browser-local-me-capture at97a42f7 gates browser local
-sources on Me, trims selected PCM, clears levels on loss/deselection/end and
-uses a continuous AC meter. Its native_me compatibility escape also accepts
-message.captureLocal:false. Mac's separated owner has no such escape. GNOME's
-last-fed local meter is a single value; Mac keeps per-source levels and takes
-the maximum of fresh local sources. Both accept a reload gap instead of opening
-hardware Me. Current GNOME main still uses the old native-Me default; the
-comparison is specifically against the coordinator's feature branch.
+Validation and public receipts: results.json. replay.py applies every committed
+production patch, requires executed XCTest behavioral assertion failures (never
+a timeout, crash or compile failure), restores exact source bytes in finally,
+and requires the restored focused suite to pass. Run under ~/bin/heavy-run with
+Xcode16.4, SDKROOT, verified CASSINI_OPUS_ASSETS and an external
+BROWSER_ME_EVIDENCE directory. BROWSER_ME_BUILD may reuse a private scratch path.
+No simultaneous build may read the sources while mutation replay runs.
 
-Protocol cross-check:0702aff page-capture tests (including display-share audio
-and cloned tracks) all21 pass in an external detached checkout. No protocol pin
-or vendored file is changed here. The native app fixture now submits synthetic
-local PCM over the bundled framed host and asserts no hardware authorization;
-its live-folder OS fixture uses660 Hz while the WebRTC local sender uses440 Hz.
-No real recording, microphone or playback device is used.
-
-Waits for the protocol pin:
-- call-signals-vectors.json nativeStartCorrelation commands0/2 in
-  late-automatic-after-manual-same-call and numeric-zero-is-not-string-zero
-  still say captureLocal:false. VerifiedAdmissionTests exercises their native
-  replies/identity; ControlRegistry/ControlService and D58ResumeOutcome tests
-  assert the new true command field independently.
-- Shared live-folder test2's old driver/oracle expects native microphone spans
-  and two captured browser sources;0702aff expects local Me and three sources,
-  fresh local spans after restore, their FFT proof and clock facts (O4–O6).
-- Refusal writer cases start-rejected-falls-back-to-computer-sound,
-  start-rejected-without-code-falls-back and start-rejected-and-system-refused
-  still carry native-Me expectations in the fallback profile. Mac uses the
-  noFallback profile, whose cases are unchanged; all its refusal tests pass.
-
-These are recorded dependencies; the old shared oracle is not disabled or
-rewritten. The complete change remains a draft, Part of #259, until protocol
-merge/pin adoption and exact-head CI/review.
-
-CI follow-up: the first real app run reached the sound-recovery assertion but
-waited for a later UI publication. Levels now read the owner's current cached
-snapshot; after real sound-window ACKs the app fixture asserts recovery
-directly, with no later packet required. The real browser-return proof now
-waits for both local/remote PCM before navigation and fresh local/remote spans
-afterward, then requires zero native microphone starts/tracks. The old native-
-microphone assertion caused the observed return-proof failure and is removed.
-Native app build passes; updated native runtime remains pending CI. The seven
-headless mutation source hashes are unchanged. Mainf506b17 is merged normally.
-The pinned old live-folder oracle still waits for a microphone span and remains
-a protocol-pin dependency; no oracle is edited or disabled.
+The native app self-test uses framed production hosts with synthetic local PCM,
+requires zero OS microphone authorization and proves empty Me-only problem
+retention. Real Chromium return and shared live-folder tests require fresh local
+spans after reload and use a different 660 Hz native fixture tone from the 440 Hz
+browser sender to detect a wrong route. Native runtime is run by isolated CI;
+no local browser, real recording, microphone or playback device is opened.

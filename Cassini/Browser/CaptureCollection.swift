@@ -81,14 +81,14 @@ private final class CaptureFiles: @unchecked Sendable {
             RecordingDiskWatch.inspect(destination,rate:0)?.shouldStop == false
         }) == true
     }
-    func create(title: String, microphone: Bool, browser: Bool = true, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void) throws -> OwnedBrowserCapture {
+    func create(title: String, microphone: Bool, browser: Bool = true, captureLocal: Bool = true, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void) throws -> OwnedBrowserCapture {
         guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
         return try LibraryRouting.withRecordingAccess(file:locationFile,defaultRoot:defaultRoot) { destination,access in
             guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
             let id = UUID()
             CaptureActivityStore.shared.set(id,.preparing)
             do {
-                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,managedBrowser:browser,changed:{ [access] snapshot in
+                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,captureLocal:captureLocal,id:id,managedBrowser:browser,changed:{ [access] snapshot in
                     withExtendedLifetime(access) { changed(snapshot) }
                 })
                 do { try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded() }
@@ -150,8 +150,8 @@ private final class CaptureFiles: @unchecked Sendable {
         return ProcessInfo.processInfo.systemUptime
     })
     @ObservationIgnored private lazy var files = CaptureFiles(file:LibraryLaunchContext.locationFile,root:RecordingFixture.root ?? LibraryLocation.standardRoot)
-    @ObservationIgnored private lazy var broker = BrowserAudioBroker(make:{ [weak self,files] title,mic in
-        try files.create(title:title,microphone:mic) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
+    @ObservationIgnored private lazy var broker = BrowserAudioBroker(make:{ [weak self,files] title,mic,captureLocal in
+        try files.create(title:title,microphone:mic,captureLocal:captureLocal) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
     },created:{ [weak self] owner,info in Task { @MainActor in await self?.created(owner,info:info) } },stopNative:{ [weak self] owner,reply in
         Task { @MainActor in
             guard let self, let value = self.captures[owner.snapshot.manifest.id] else { reply(nil); return }
@@ -500,6 +500,10 @@ private final class CaptureFiles: @unchecked Sendable {
             settle(snapshot)
             return
         }
+        if captures[id]?.owner.needsBrowserMeLossStop == true, captures[id]?.savingSinceMs == nil {
+            stop(id,reason:.pageGone,userInitiated:false)
+            return
+        }
         if snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }) {
             attemptHasAudio = true; recordFailed = false
             let phase: CaptureActivity = snapshot.phase == .saving || captures[id]?.savingSinceMs != nil ? .saving : .recording
@@ -516,7 +520,8 @@ private final class CaptureFiles: @unchecked Sendable {
     private func settle(_ snapshot: OwnedCaptureSnapshot) {
         let id = snapshot.manifest.id
         guard snapshot.phase == .saved, captures[id] != nil || CaptureActivityStore.shared.snapshot()[id] != nil else { return }
-        if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing {
+        let keepBrowserMeProblem = captures[id]?.owner.nativeMe == false && snapshot.me && !snapshot.others && snapshot.manifest.problem != nil
+        if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing, !keepBrowserMeProblem {
                 guard settling[id] == nil else { return }
                 let signalOwned = captures[id]?.signalReservation != nil
                 let admissionCancelled = captures[id]?.admissionCancelled == true

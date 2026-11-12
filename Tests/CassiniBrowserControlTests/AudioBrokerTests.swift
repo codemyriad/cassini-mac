@@ -93,7 +93,7 @@ final class AudioFixture {
         let library = root.appendingPathComponent("Library"), inputs = NativeFixtureInputs()
         let microphones = microphones
         let closures = closures
-        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in created(owner,info); inputs.started(owner,info:info); if info.microphone { microphones.recorded(owner.snapshot.directory.path) } },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
+        broker = BrowserAudioBroker(make:{ title,mic,captureLocal in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic,captureLocal:captureLocal) },created:{ owner,info in inputs.started(owner,info:info); if info.microphone && owner.nativeMe { microphones.recorded(owner.snapshot.directory.path) }; created(owner,info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
                                     transportClosed:{ closures.fire() },ownership:ownership)
         service = BrowserControlService(changed:changed,completed:{ _,_ in },audio:broker,canStart:canStart,clock:controlClock,ownership:ownership)
         try service.start(root:ipc)
@@ -206,7 +206,7 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(try second.request(["type":"stop"])["type"]?.string,"stopped")
             let one = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(a["path"]?.string)))
             let two = try RecordingLoader.load(directory:URL(fileURLWithPath:XCTUnwrap(b["path"]?.string)))
-            XCTAssertEqual(one.tracks.count,2); XCTAssertEqual(one.tracks.filter { $0.kind == "local" }.count,1)
+            XCTAssertEqual(one.tracks.count,2); XCTAssertEqual(one.tracks.filter { $0.kind == "microphone" }.count,1)
             XCTAssertEqual(two.tracks.count,1); XCTAssertEqual(two.tracks[0].frames,16000)
             XCTAssertEqual(one.state,"completed"); XCTAssertEqual(two.state,"completed")
             XCTAssertTrue(fixture.broker.activeCaptures.isEmpty)

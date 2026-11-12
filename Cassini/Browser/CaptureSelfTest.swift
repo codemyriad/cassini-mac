@@ -112,9 +112,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
         self.root = root; self.title = title; callGeneration = "call-" + UUID().uuidString.lowercased()
         control = try CaptureProbeProcess("cassini-control-host",root:root)
     }
-    /// Extension 0.2.12's capabilities (D51), without heartbeat-v1 (the probe stays silent for
+    /// Modern sender-Me capabilities, without heartbeat-v1 (the probe stays silent for
     /// longer than the app's heartbeat allows) and resume-capture-v1 (no stage answers a resume).
-    static let capabilities = ["independent-sessions-v1","call-evidence-v1","page-state-v1","multi-stream-v1"]
+    static let capabilities = ["independent-sessions-v1","sender-me-v1","call-evidence-v1","page-state-v1","multi-stream-v1"]
     func ready(active: Bool = true, interrupted: Bool = false) async throws {
         let capabilities = Self.capabilities + (verified ? ["call-signals-v1","verified-auto-admission-v1"] : [])
         try await control.send(["type":"hello","version":1,"capabilities":capabilities])
@@ -170,7 +170,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try CaptureSelfTest.require(command["captureLocal"]?.bool == true,"Separated Start captures the selected browser sender")
             try CaptureSelfTest.require(command["keepOnNavigation"]?.bool == true,"Start must retain the original audio transport")
             try CaptureSelfTest.require(command["callGeneration"]?.string == callGeneration,"Start names the probe's call")
-            var start: [String:Any] = ["type":"start","version":1,"independent":true,"captureId":token,"timelineOriginMs":audioOriginMs,"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
+            var start: [String:Any] = ["type":"start","version":1,"independent":true,"captureLocal":command["captureLocal"]?.bool ?? false,"captureId":token,"timelineOriginMs":audioOriginMs,"microphone":command["microphone"]?.bool ?? true,"title":title,"callGeneration":callGeneration]
             if verified { start["requestId"] = request; start["documentGeneration"] = sourceDocument }
             let started = try await audio.request(start)
             guard started["type"]?.string == "started" else { throw CocoaError(.fileWriteUnknown) }
@@ -537,14 +537,26 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await browserPending.ready(); _ = try await browserPending.performNext()
             for await (problem,admitted) in finished { try require(!problem && admitted,"Accepted browser transport admits independently of hardware permission") }
             try require(authorizationAttempts == 0 && CaptureFixture.microphoneStarts == microphoneStarts,"Automatic admission never requests native Me")
-            CaptureFixture.microphoneAuthorizationFixture = nil; CaptureFixture.createdFinished = nil
+            CaptureFixture.createdFinished = nil
             try await collection.setAutoRecord(false)
             let pendingID = try collection.captures.keys.first.unwrap()
-            collection.stop(pendingID); _ = try await browserPending.performNext()
-            await collection.stopAndWait()
+            let pendingCapture = try collection.captures[pendingID].unwrap()
+            let pendingFolder = pendingCapture.snapshot.directory
+            let systemBeforeLoss = CaptureFixture.systemStarts
+            try await collection.select(pendingID,me:true,others:false)
+            try await browserPending.page("navigating",active:false)
+            let lostMeStop = try await browserPending.performNext()
+            try require(lostMeStop["action"]?.string == "stop","Me-only browser loss automatically saves")
+            try await wait { collection.captures.isEmpty && !collection.isSaving }
+            let lostMeManifest = try RecordingLoader.load(directory:pendingFolder)
+            try require(lostMeManifest.problem != nil && lostMeManifest.problemKind == "capture","Me-only loss keeps its capture problem")
+            try require(lostMeManifest.tracks.isEmpty && FileManager.default.fileExists(atPath:pendingFolder.path),"A no-PCM browser loss retains its diagnostic meeting instead of discarding it")
+            try require(authorizationAttempts == 0 && CaptureFixture.microphoneStarts == microphoneStarts && CaptureFixture.systemStarts == systemBeforeLoss,"Me-only loss never opens a native fallback")
+            CaptureFixture.microphoneAuthorizationFixture = nil
             try await browserPending.meetings(false)
             try await wait { collection.captures.isEmpty && !collection.isSaving && !collection.hasCalls }
             report["separatedAdmissionNeedsNoHardwarePermission"] = true
+            report["meOnlyLossBeforePCMRetainsProblem"] = true
             stage = "partial failure: discover both calls"
             one.nextStartFails = true
             try await one.meetings(true); try await two.meetings(true)
@@ -681,20 +693,9 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(returning.owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.reason == "restored","Return publishes the atomic restored event")
             report["originalTransportRestoresSameFolder"] = true
             try await collection.select(returningID,me:true,others:false)
-            try await modern.page("navigating",active:false)
-            try await wait { !returning.owner.snapshot.browserAlive }
-            // The return follows the second navigation's real stamp even on a slow runner, and
-            // the select below starts only after the positive inventory has arrived: a later
-            // count change would otherwise cancel its source change mid-authorization.
-            try await modern.returnedSource(atMs:Int((max(loss+4.2,ProcessInfo.processInfo.systemUptime)-returning.originUptime)*1000))
-            try await modern.page("present",active:true)
-            try await wait {
-                let meeting = collection.peers.first { $0.id == returning.key?.peer }?.meetings.first
-                return meeting?.pageState == .present && meeting?.sourceCount == 1
-            }
-            collection.pollLifetimeForTesting(at:loss+4.1)
-            try require(!returning.owner.snapshot.others && !returning.owner.snapshot.usingSystem,"The others stays off after return")
-            report["othersOffStaysOff"] = true
+            try await modern.emit()
+            try require(!returning.owner.snapshot.others && !returning.owner.snapshot.usingSystem,"The others stays off while browser Me is selected")
+            report["othersOffDoesNotStartSystem"] = true
             try await collection.select(returningID,me:true,others:true)
             let systemTracks = returning.owner.snapshot.manifest.tracks.filter { $0.kind == "system" }.count
             try await modern.page("closed",active:false)

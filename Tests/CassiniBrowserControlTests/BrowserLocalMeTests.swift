@@ -34,7 +34,7 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
     })
     func testLocalSelectionMuteMeterAndAnalysisAreIndependentOfOthers() async throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Synthetic call",microphone:true,managedBrowser:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Synthetic call",microphone:true,captureLocal:true,managedBrowser:true)
         owner.enableSourceOutcomes()
         let probe = BrowserMePCMProbe(); owner.pcmObservers.set(probe)
         try owner.browserTrack(id:"me",label:"Me",kind:"local",sampleRate:8000,channels:1,sourceTrackId:"sender")
@@ -65,7 +65,7 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
     }
     @MainActor func testNoNativeMicrophoneOnStartSelectFallbackOrReload() async throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Privacy",microphone:true,managedBrowser:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Privacy",microphone:true,captureLocal:true,managedBrowser:true)
         owner.enableSourceOutcomes()
         let mic = PrivacyInput(), system = PrivacyInput()
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:mach_absolute_time(),microphone:{ mic },system:{ system },failure:{ _ in },openBound:{})
@@ -93,9 +93,9 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(owner.snapshot.manifest.tracks.filter { $0.kind == "local" && $0.frames > 0 }.count,2)
         try await inputs.stop(); try await owner.finish()
     }
-    @MainActor func testMeOnlyReloadRestoresBrowserPCMWithoutSelectingOthersOrOpeningDevices() async throws {
+    @MainActor func testMeOnlyLossRequestsSaveWithoutOpeningFallbackDevices() async throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"Only Me",microphone:true,managedBrowser:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Only Me",microphone:true,captureLocal:true,managedBrowser:true)
         owner.enableSourceOutcomes()
         let mic = PrivacyInput(), system = PrivacyInput()
         let inputs = CaptureInputLifecycle(capture:owner,originHostTime:mach_absolute_time(),microphone:{ mic },system:{ system },failure:{ _ in })
@@ -104,22 +104,16 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
         try owner.browserAudio(id:"old",sequence:0,offsetMs:0,pcm:tone)
         try owner.browserLost(atMs:100,transportAlive:true)
         try await inputs.fallback()
-        try owner.browserTrack(id:"new",label:"Me",kind:"local",sampleRate:8000,channels:1)
-        try owner.browserAudio(id:"new",sequence:0,offsetMs:400,pcm:tone)
-        XCTAssertTrue(owner.snapshot.restoreReady)
-        try await inputs.restoreBrowser(atMs:550)
-        try owner.browserAudio(id:"new",sequence:1,offsetMs:600,pcm:tone)
-        let last = try XCTUnwrap(owner.snapshot.manifest.tracks.last)
-        XCTAssertEqual(last.kind,"local"); XCTAssertEqual(last.startOffsetMs,600); XCTAssertEqual(last.frames,800)
-        XCTAssertTrue(owner.snapshot.browserAlive); XCTAssertFalse(owner.snapshot.others)
+        XCTAssertTrue(owner.needsBrowserMeLossStop)
+        XCTAssertFalse(owner.snapshot.others)
         XCTAssertEqual(mic.authorizations,0); XCTAssertEqual(system.authorizations,0)
         XCTAssertEqual(mic.starts,0); XCTAssertEqual(system.starts,0)
-        XCTAssertEqual(owner.snapshot.manifest.events?.last { $0.type == "othersSource" }?.source,"none")
-        try await inputs.stop(); try await owner.finish()
+        try await inputs.stop(); try await owner.finish(reason:.pageGone,atMs:100)
+        XCTAssertEqual(owner.snapshot.manifest.problemKind,"capture")
     }
     func testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM() async throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
-        let owner = try OwnedBrowserCapture(parent:root,title:"DC privacy",microphone:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"DC privacy",microphone:true,captureLocal:true)
         let native = owner.nativeWriter(side:.me)
         try native.addTrack(id:"hardware",label:"OS mic",kind:"microphone",sampleRate:8000,channels:1)
         try native.appendNative(id:"hardware",pcm:tone,offsetMs:0)
@@ -140,5 +134,16 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(owner.nativeMe); XCTAssertEqual(mic.authorizations,1); XCTAssertEqual(mic.starts,1)
         XCTAssertThrowsError(try owner.browserTrack(id:"local",label:"Me",kind:"local",sampleRate:8000,channels:1))
         try await inputs.stop(); try await owner.finish()
+    }
+    @MainActor func testLegacyBrowserStillAuthorizesNativeMeAndDoesNotAcceptSenderPCM() async throws {
+        let root=try root();defer { try? FileManager.default.removeItem(at:root) }
+        let owner=try OwnedBrowserCapture(parent:root,title:"Legacy browser",microphone:true,captureLocal:false)
+        let mic=PrivacyInput(),system=PrivacyInput()
+        let inputs=CaptureInputLifecycle(capture:owner,originHostTime:mach_absolute_time(),microphone:{mic},system:{system},failure:{_ in})
+        try await inputs.start()
+        XCTAssertTrue(owner.nativeMe)
+        XCTAssertEqual(mic.authorizations,1);XCTAssertEqual(mic.starts,1)
+        XCTAssertThrowsError(try owner.browserTrack(id:"unexpected-local",label:"Me",kind:"local",sampleRate:8000,channels:1))
+        try await inputs.stop();try await owner.finish()
     }
 }

@@ -2,7 +2,7 @@
   {
     "name": "capture-local-command",
     "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
-    "test": "ControlRegistryTests"
+    "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture"
   },
   {
     "name": "start-native-microphone",
@@ -33,5 +33,30 @@
     "name": "local-ac-meter",
     "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
     "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM"
+  },
+  {
+    "name": "unnegotiated-local-command",
+    "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+    "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture"
+  },
+  {
+    "name": "native-start-drops-ownership",
+    "source": "Sources/CassiniBrowserControl/BrowserAudioBroker.swift",
+    "test": "SenderMeNegotiationTests/testNativeStartFlagSelectsImmutableOwnerModeAndLegacyMicrophone"
+  },
+  {
+    "name": "admission-drops-ownership",
+    "source": "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift",
+    "test": "SenderMeNegotiationTests/testVerifiedAdmissionPreservesBothNativeStartOwnershipModes"
+  },
+  {
+    "name": "me-only-loss-keeps-recording",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
+  },
+  {
+    "name": "me-only-loss-drops-problem",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
   }
 ]

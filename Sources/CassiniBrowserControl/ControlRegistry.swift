@@ -55,6 +55,7 @@ public struct BrowserControlPeerSnapshot: Sendable {
     public var verifiedConfigured = false
     public var automaticUnverified: Bool { reconciled && (!supportsVerified || !verifiedConfigured) }
     public var supportsCallSignals = false
+    public var supportsSenderMe = false
     public var supportsPageState = false
     public var supportsMultiStream = false
     public var supportsResume = false
@@ -151,6 +152,7 @@ public struct BrowserControlRegistry: Sendable {
         var activeProofs: [Int:BrowserActiveProof] = [:]
         var signalProfile: String?
         var callSignals: BrowserCallSignalSnapshot?
+        var supportsSenderMe = false
         var supportsPageState = false
         var supportsMultiStream = false, supportsResume = false, supportsTabReadiness = false
         var diagnostics = BrowserCompanionDiagnostics()
@@ -386,7 +388,7 @@ public struct BrowserControlRegistry: Sendable {
     }
     public var snapshots: [BrowserControlPeerSnapshot] {
         peers.values.filter { !$0.superseded && signalPeerCurrent($0) }.sorted { $0.peer.id.uuidString < $1.peer.id.uuidString }.map {
-            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsVerified:$0.supportsVerified,verifiedConfigured:$0.verifiedConfigured,supportsCallSignals:$0.supportsCallSignals,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
+            .init(id:$0.peer.id,browser:$0.peer.browser,browserInstance:$0.peer.browserInstance,reconciled:$0.reconciled,independent:$0.independent,meetings:recordableProjection($0),captures:$0.captures,interrupted:$0.interrupted,callSignals:$0.signalsConfigured ? $0.callSignals : nil,signalConnectionOrder:$0.connectionOrder,supportsVerified:$0.supportsVerified,verifiedConfigured:$0.verifiedConfigured,supportsCallSignals:$0.supportsCallSignals,supportsSenderMe:$0.supportsSenderMe,supportsPageState:$0.supportsPageState,supportsMultiStream:$0.supportsMultiStream,supportsResume:$0.supportsResume,supportsTabReadiness:$0.supportsTabReadiness,diagnostics:$0.diagnostics,browserHealth:$0.browserHealth,healthRevision:$0.healthRevision)
         }
     }
     /// D52.5: a call (tabId, callGeneration) that has a recording on system/lost after its
@@ -604,6 +606,7 @@ public struct BrowserControlRegistry: Sendable {
                 peer.supportsVerified = values.contains { $0.string == "verified-auto-admission-v1" }
                 peer.independent = values.contains { $0.string == "independent-sessions-v1" }
                 peer.callEvidence = values.contains { $0.string == "call-evidence-v1" }
+                peer.supportsSenderMe = values.contains { $0.string == "sender-me-v1" }
                 peer.supportsPageState = values.contains { $0.string == "page-state-v1" }
                 peer.supportsMultiStream = values.contains { $0.string == "multi-stream-v1" }
                 peer.supportsResume = values.contains { $0.string == "resume-capture-v1" }
@@ -820,7 +823,7 @@ public struct BrowserControlRegistry: Sendable {
         if let expectedGeneration, Data(expectedGeneration.utf8) != Data(generation.utf8) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
         guard !captureID.isEmpty, captureID.utf8.count <= 128, (0...253402300799000).contains(timelineOriginMs), lostAtMs.isFinite, lostAtMs >= 0 else { throw BrowserControlStateError.malformed }
-        var request = try Self.command(key,action:.start,independent:true,microphone:false,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
+        var request = try Self.command(key,action:.start,independent:true,microphone:false,captureLocal:peer.supportsSenderMe,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
                                        resume:(captureID,timelineOriginMs,lostAtMs))
         request.resume = true
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
@@ -856,7 +859,7 @@ public struct BrowserControlRegistry: Sendable {
         guard !holdsStart(meeting,peer:peer) else { throw BrowserControlStateError.busy }
         if automatic, let identity = call(meeting,peer:peer), stoppedCalls.contains(identity) { throw BrowserControlStateError.busy }
         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
-        var request = try Self.command(key,action:.start,independent:true,microphone:microphone,keepOnNavigation:peer.supportsPageState,
+        var request = try Self.command(key,action:.start,independent:true,microphone:microphone,captureLocal:peer.supportsSenderMe,keepOnNavigation:peer.supportsPageState,
                                        callGeneration:peer.supportsMultiStream ? meeting.callGeneration : nil)
         if automatic && requireVerifiedAdmission { request.automaticCall = automaticBinding(key) }
         guard peer.pending.count < 128 else { throw BrowserControlStateError.limit }
@@ -976,7 +979,7 @@ public struct BrowserControlRegistry: Sendable {
     private mutating func appendOutcome(_ outcome: BrowserControlOutcome) {
         outcomes.append(outcome); if outcomes.count > 128 { outcomes.removeFirst(outcomes.count-128) }
     }
-    private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false,
+    private static func command(_ key: BrowserMeetingKey, action: BrowserControlAction, independent: Bool, microphone: Bool, captureLocal: Bool = false, reason: CaptureEndReason? = nil, keepOnNavigation: Bool = false,
                                 callGeneration: String? = nil, captureID: String? = nil, resume: (String,Int,Double)? = nil) throws -> BrowserControlRequest {
         guard (0...9007199254740991).contains(key.tabID), captureID.map(validIdentity) ?? true else { throw BrowserControlStateError.malformed }
         let id = UUID().uuidString.lowercased()
@@ -984,7 +987,7 @@ public struct BrowserControlRegistry: Sendable {
         if independent { fields.append(("independent",.bool(true))) }
         if action == .stop, let reason { fields.append(("reason",.string(reason.rawValue))) }
         if action == .start, keepOnNavigation { fields.append(("keepOnNavigation",.bool(true))) }
-        if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(true)),("microphone",.bool(microphone))] }
+        if action == .start { fields += [("mode",.string("tracks")),("captureLocal",.bool(captureLocal)),("microphone",.bool(microphone))] }
         // D52 M6: a Start names the call it was chosen for; a Stop names its capture.
         if action == .start, let callGeneration { fields.append(("callGeneration",.string(callGeneration))) }
         if action == .stop, let captureID { fields.append(("captureId",.string(captureID))) }

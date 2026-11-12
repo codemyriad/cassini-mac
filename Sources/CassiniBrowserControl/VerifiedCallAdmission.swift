@@ -114,7 +114,7 @@ public final class BrowserAutomaticAdmissionStore: @unchecked Sendable {
             guard let entry = entries[id], matches(entry) else { throw BrowserIPCError.unavailable }
             try entry.gate?.validate()
             entries[id]?.capture = info.captureID
-            return .init(captureID:info.captureID,timelineOriginMs:info.timelineOriginMs,microphone:info.microphone,
+            return .init(captureID:info.captureID,timelineOriginMs:info.timelineOriginMs,microphone:info.microphone,captureLocal:info.captureLocal,
                          callGeneration:info.callGeneration,documentGeneration:info.documentGeneration,inputGate:entry.gate,automaticCall:entry.call,requestID:info.requestID)
         }
     }

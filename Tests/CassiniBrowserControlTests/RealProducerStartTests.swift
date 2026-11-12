@@ -57,7 +57,7 @@ final class RealProducerStartTests: XCTestCase {
         let state = ProducerBoundaryState(), applied = expectation(description:name+" packets applied")
         applied.expectedFulfillmentCount = wire.count
         let admission = BrowserAutomaticAdmissionStore(clock:{ Double(state.now())/1000 })
-        let broker = BrowserAudioBroker(make:{ _,_ in XCTFail("No real recording/input may be created"); throw BrowserIPCError.unavailable },
+        let broker = BrowserAudioBroker(make:{ _,_,_ in XCTFail("No real recording/input may be created"); throw BrowserIPCError.unavailable },
             created:{ _,_ in XCTFail("No audio capture may attach") },stopNative:{ _,reply in reply(nil) },admission:admission)
         let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker,canStart:{ true },clock:{ state.now() },
             received:{ _ in applied.fulfill() },requireMultiStream:true,requireVerifiedAdmission:true,admission:admission,signalAction:{ state.signal($0) })

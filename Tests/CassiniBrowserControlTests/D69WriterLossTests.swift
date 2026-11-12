@@ -71,7 +71,7 @@ final class D69WriterLossTests: XCTestCase {
             defer { try? FileManager.default.removeItem(at:root) }
             let owner = try OwnedBrowserCapture(parent:root.appendingPathComponent("Library"),title:"Synthetic call",microphone:true,browser:false)
             let sink = owner.nativeSink(side:.me,originHostTime:1,failure:{ _ in })
-            let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in
+            let broker = BrowserAudioBroker(make:{ _,_,_ in owner },created:{ _,_ in },stopNative:{ _,reply in
                 do { try sink.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
             })
             let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)

@@ -46,7 +46,7 @@ final class OwnedTerminalEventTests: XCTestCase {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Generated",microphone:false,browser:false)
         let count = TerminalDrainCount()
-        let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in count.increment(); reply(nil) })
+        let broker = BrowserAudioBroker(make:{ _,_,_ in owner },created:{ _,_ in },stopNative:{ _,reply in count.increment(); reply(nil) })
         try broker.ownNative(owner)
         XCTAssertTrue(owner.requestEnd(.disk,atMs:3000))
         async let first: Void = broker.finish(owner,reason:.user,atMs:100)
@@ -59,7 +59,7 @@ final class OwnedTerminalEventTests: XCTestCase {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Generated",microphone:false,browser:false)
         owner.setTimelineOrigin(ProcessInfo.processInfo.systemUptime-5)
-        let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
+        let broker = BrowserAudioBroker(make:{ _,_,_ in owner },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         try broker.ownNative(owner)
         _ = await broker.finishAll(reason:.appQuit)
         let end = try XCTUnwrap(owner.snapshot.manifest.events?.last)
@@ -71,7 +71,7 @@ final class OwnedTerminalEventTests: XCTestCase {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
         let owner = try OwnedBrowserCapture(parent:root,title:"Generated",microphone:false,browser:false)
         let count = TerminalDrainCount()
-        let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in count.increment(); reply(nil) })
+        let broker = BrowserAudioBroker(make:{ _,_,_ in owner },created:{ _,_ in },stopNative:{ _,reply in count.increment(); reply(nil) })
         try broker.ownNative(owner)
         do { try await broker.finish(owner,reason:.disk,atMs:.nan); XCTFail("Invalid time must be rejected") }
         catch { }

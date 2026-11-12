@@ -21,7 +21,7 @@ def run(name,test,mutant=False):
   return assertions[0]
  assert r.returncode==0,(name,'failed baseline/restoration')
  return 'passed'
-focused='BrowserLocalMeTests|ControlRegistryTests|D52UnselectedSourceTests|D58ResumeOutcomeTests'
+focused='BrowserLocalMeTests|SenderMeNegotiationTests|ControlRegistryTests|D52UnselectedSourceTests|D58ResumeOutcomeTests'
 run('baseline',focused);receipts=[]
 for case in cases:
  patch=area/(case['name']+'.patch')
