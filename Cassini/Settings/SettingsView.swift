@@ -39,6 +39,7 @@ struct CassiniSettingsView: View {
             .sheet(isPresented:Binding(get:{ companion.presenter == .settings },set:{ if !$0 { companion.close() } })) {
                 CompanionSetupView()
             }
+            .overlay(alignment:.bottom) { TransferStatusBanner() }
     }
 }
 private struct SettingsUpdatesView: View {
@@ -113,6 +114,7 @@ private struct SettingsLibraryView: View {
     @State private var location = LibraryLocationModel.shared
     @State private var move = LibraryMoveCoordinator.shared
     @State private var recorder = RecordingController.shared
+    @State private var bulkExporter = BulkZipExportCoordinator.shared
     var body: some View {
         SettingsPage {
             VStack(alignment:.leading,spacing:14) {
@@ -127,6 +129,8 @@ private struct SettingsLibraryView: View {
                     }
                     Button(UXText.text("settings.library.move")) { move.choose(parent:NSApp.keyWindow) }
                         .disabled(!move.canChoose).accessibilityIdentifier("settings-move-library")
+                    Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
+                        .disabled(!bulkExporter.canExportAll).accessibilityIdentifier("settings-export-all-zip")
                     if move.busy { ProgressView().controlSize(.small); Text(UXText.text("settings.library.move.moving")) }
                 }
                 if let problem = location.problem { Text(problem).foregroundStyle(LibraryTheme.amber) }

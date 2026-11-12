@@ -1,0 +1,10 @@
+--- a/.github/workflows/ci-build.yml
++++ b/.github/workflows/ci-build.yml
+@@ -43,6 +43,7 @@
+           # Reuse compiled objects only for identical inputs. The new namespace
+           # also excludes already-saved products built from cross-source restores.
+           key: swiftpm-coherent-v1-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-${{ steps.swiftpm_key.outputs.hash }}
++          restore-keys: swiftpm-coherent-v1-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-
+       - name: Compile all native Swift executables and test bundles once
+         run: swift build --build-tests --arch ${{ matrix.arch }}
+       - name: Verify SwiftPM products at identical and different checkout paths

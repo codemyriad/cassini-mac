@@ -5,7 +5,10 @@
     "project.yml",
     "scripts/hosted-display.py",
     "scripts/check-window-screenshots.py",
-    ".github/workflows/ux-shot.yml"
+    ".github/workflows/ux-shot.yml",
+    "scripts/gui_session.py",
+    "scripts/test-gui-session.py",
+    "scripts/gui-runner/**"
   ],
   "boards": [
     "Cassini/**",
@@ -21,6 +24,7 @@
     ".github/workflows/ux-boards.yml",
     "scripts/check-ux-copy.py",
     "scripts/hosted-display.py",
+    "scripts/gui_session.py",
     "scripts/test-search-app.py",
     "scripts/test-meeting-preparation-app.py",
     "scripts/test-listening-app.py",

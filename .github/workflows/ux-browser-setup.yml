@@ -27,7 +27,7 @@ jobs:
           arch: arm64
         - runner: macos-15-intel
           arch: x86_64
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_MAC_RUNNER || matrix.runner }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || matrix.runner }}
     timeout-minutes: 20
     env:
       CASSINI_CI_ARCH: ${{ matrix.arch }}
