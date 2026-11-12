@@ -20,6 +20,8 @@
     "sharedExtensionAndBrowserMeterTests": 449,
     "testOnlyProtocolPin": "6ac2be2180a92f1376fbac9764ff09a9fe618204",
     "upstreamReview": "cassini-browser-protocol#99 merged",
-    "productionExtensionChanged": false
+    "productionExtensionChanged": false,
+    "realCompanionUpgradeTests": 1,
+    "companionUpgradeExpectedPin": "6ac2be2180a92f1376fbac9764ff09a9fe618204"
   }
 }

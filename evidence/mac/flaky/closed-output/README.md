@@ -45,3 +45,8 @@ exchange; real result/ACK events now settle it and late stdin errors fail
 explicitly. Upstream baseline/production-mutation/restoration receipts ship
 with the verified snapshot. No production extension file changes and no
 unmerged browser-local-Me feature are included.
+
+CI caught the real companion-upgrade fixture's one old expected pin. Its
+expected installed PROTOCOL_COMMIT now names6ac2be2; the actual0.2.2-to0.2.26
+upgrade and unchanged reinstall test passes. Frozen historical producer traces
+remain at their original b2b561b provenance. No installer assertion is relaxed.
