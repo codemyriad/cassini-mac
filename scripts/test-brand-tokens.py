@@ -94,6 +94,25 @@ class BrandTokenSyncTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Hex literal hard-coded outside CassiniTokens Entry table'):
             checker.verify(base)
 
+    def test_companion_html_rejects_hardcoded_hex_and_renders_tokens(self) -> None:
+        base = self.make_tree()
+        html = base / 'Cassini/Resources/Cassini.html'
+        html.write_text('<style>body { background: #fff; }</style>\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'Cassini.html must read'):
+            checker.verify(base)
+        page_spec = importlib.util.spec_from_file_location('companion_page', ROOT / 'scripts/bundle-companion-page.py')
+        assert page_spec and page_spec.loader
+        page = importlib.util.module_from_spec(page_spec)
+        page_spec.loader.exec_module(page)
+        out = base / 'rendered.html'
+        page.bundle(out)
+        rendered = out.read_text(encoding='utf-8')
+        self.assertIn('background: #F5F4EF; color: #1A1611;', rendered)
+        self.assertIn('border: 3px solid #007999;', rendered)
+        self.assertIn('background: #070B11; color: #E5E5D9;', rendered)
+        self.assertIn('border-color: #83CDDF;', rendered)
+        self.assertNotIn('{{', rendered)
+
 
 if __name__ == '__main__':
     unittest.main()

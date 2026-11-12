@@ -108,6 +108,7 @@ targets:
         inputFiles:
           - $(SRCROOT)/Cassini/Resources/Cassini.html
           - $(SRCROOT)/Cassini/Resources/UX/strings.json
+          - $(SRCROOT)/Cassini/Resources/Brand/tokens.json
           - $(SRCROOT)/scripts/bundle-companion-page.py
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html

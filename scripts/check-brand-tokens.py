@@ -123,6 +123,13 @@ def verify(root: Path = ROOT) -> int:
     if stray_hex:
         raise ValueError(f'Hex literal hard-coded outside CassiniTokens Entry table: {stray_hex}')
 
+    html_path = root / 'Cassini/Resources/Cassini.html'
+    if html_path.is_file():
+        html_text = html_path.read_text(encoding='utf-8')
+        html_hex = re.findall(r'#[0-9A-Fa-f]{3,8}\b', html_text)
+        if html_hex:
+            raise ValueError(f'Cassini.html must read {{token.*}} placeholders, found hard-coded hex: {html_hex}')
+
     return len(active_tokens)
 
 
