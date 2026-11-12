@@ -3,7 +3,7 @@
 @@ -100,5 +100,5 @@
      private var browserReturnAt: Double = 0
      private var freshestReturn: Double? { browserSources.values.filter { $0.kind != "local" && $0.returning }.compactMap(\.lastPacketAt).max() }
--    private var readyForBrowser: Bool { managedBrowser && others && !browserAlive && transportAlive && browserSources.values.contains { $0.kind != "local" && $0.returning } }
-+    private var readyForBrowser: Bool { managedBrowser && others && !browserAlive && transportAlive && browserSources.values.contains { $0.returning } }
+-    private var readyForBrowser: Bool { managedBrowser && !browserAlive && transportAlive && browserSources.values.contains { $0.kind != "local" && $0.returning } }
++    private var readyForBrowser: Bool { managedBrowser && !browserAlive && transportAlive && browserSources.values.contains { $0.returning } }
      private var fallbackReason: String?
      private var browserLossCause: BrowserCaptureLossCause?

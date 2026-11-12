@@ -90,11 +90,6 @@
     "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections"
   },
   {
-    "name": "deselected-others-ready",
-    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
-    "test": "InputLifecycleTests/testAnOffOthersSideNeverRestoresOnBrowserReturn"
-  },
-  {
     "name": "sender-satisfies-others-writer",
     "source": "Sources/CassiniRecording/RecordingSession.swift",
     "test": "BrowserLocalMeTests/testOthersRestoreWriterRejectsLocalOnlySource"
@@ -108,5 +103,15 @@
     "name": "pause-others-before-refusal",
     "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
     "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable"
+  },
+  {
+    "name": "hide-return-when-others-off",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "InputLifecycleTests/testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain"
+  },
+  {
+    "name": "premature-local-selection-span",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testSelectingBothDuringReturnCreatesOnlyTheRestoredLocalSpan"
   }
 ]

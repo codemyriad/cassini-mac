@@ -135,9 +135,9 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         }
     }
     /// `outcomes`: the peer negotiated source-outcomes-v1 (the capture keeps a source ledger).
-    @MainActor private func returnFixture(outcomes: Bool = false) async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
+    @MainActor private func returnFixture(outcomes: Bool = false, captureLocal: Bool = true) async throws -> (URL,OwnedBrowserCapture,GeneratedInput,GeneratedInput,CaptureInputLifecycle) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let owner = try OwnedBrowserCapture(parent:root,title:"Return",microphone:true,managedBrowser:true)
+        let owner = try OwnedBrowserCapture(parent:root,title:"Return",microphone:true,captureLocal:captureLocal,managedBrowser:true)
         if outcomes { owner.enableSourceOutcomes() }
         try owner.browserTrack(id:"before",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
         try owner.browserAudio(id:"before",sequence:0,offsetMs:0,pcm:Data(repeating:1,count:1600))
@@ -577,13 +577,35 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" })
     }
 
+    @MainActor func testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain() async throws {
+        for denied in [false,true] {
+            let (root,owner,mic,system,inputs) = try await returnFixture(captureLocal:false)
+            defer { try? FileManager.default.removeItem(at:root) }
+            XCTAssertTrue(owner.nativeMe)
+            try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
+            try await inputs.select(me:true,others:false,atMs:3000)
+            try offerReturn(owner,atMs:4000)
+            XCTAssertTrue(owner.snapshot.restoreReady)
+            XCTAssertFalse(owner.snapshot.others); XCTAssertFalse(owner.snapshot.browserAlive)
+            let starts = system.starts, authorizations = system.authorized
+            system.denied = denied
+            let refused = try await inputs.select(me:true,others:true,atMs:5000)
+            XCTAssertTrue(refused.isEmpty,"Returned browser audio needs no System Audio permission")
+            XCTAssertTrue(owner.snapshot.browserAlive); XCTAssertTrue(owner.snapshot.others)
+            XCTAssertEqual(system.starts,starts); XCTAssertEqual(system.authorized,authorizations)
+            XCTAssertEqual(mic.stops,0)
+            XCTAssertEqual(owner.snapshot.manifest.events?.last { $0.type == "othersSource" }?.source,"browser")
+            XCTAssertEqual(owner.snapshot.manifest.events?.last { $0.type == "othersSource" }?.reason,"user")
+            try await inputs.stop(); try await owner.finish()
+        }
+    }
     @MainActor func testAnOffOthersSideNeverRestoresOnBrowserReturn() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
         defer { try? FileManager.default.removeItem(at:root) }
         try await inputs.select(me:true,others:false,atMs:500)
         try owner.browserLost(atMs:1000,transportAlive:true)
         try offerReturn(owner,atMs:4000)
-        XCTAssertFalse(owner.snapshot.restoreReady,"Others remain off despite returned remote PCM")
+        XCTAssertTrue(owner.snapshot.restoreReady,"Returned PCM stays available for an explicit Both selection")
         do { try await inputs.restoreBrowser(atMs:4000); XCTFail("An unselected side cannot restore") } catch {}
         XCTAssertFalse(owner.snapshot.others)
         XCTAssertTrue(owner.needsBrowserMeLossStop,"The app saves this terminal Me-only loss")

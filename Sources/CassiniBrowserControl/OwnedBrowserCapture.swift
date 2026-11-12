@@ -99,7 +99,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var transportAlive = true, fallbackRequested = false
     private var browserReturnAt: Double = 0
     private var freshestReturn: Double? { browserSources.values.filter { $0.kind != "local" && $0.returning }.compactMap(\.lastPacketAt).max() }
-    private var readyForBrowser: Bool { managedBrowser && others && !browserAlive && transportAlive && browserSources.values.contains { $0.kind != "local" && $0.returning } }
+    private var readyForBrowser: Bool { managedBrowser && !browserAlive && transportAlive && browserSources.values.contains { $0.kind != "local" && $0.returning } }
     private var fallbackReason: String?
     private var browserLossCause: BrowserCaptureLossCause?
     private var browserLostUptime: TimeInterval?
@@ -464,11 +464,17 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 ends += self.nativeSpans.filter { $0.value.side == .others && $0.value.registered }.map(\.key)
             }
             ends += self.browserSources.values.filter { $0.kind == "local" && !newMe }.compactMap(\.span)
-            let browserAvailable = self.browserAlive || self.readyForBrowser
+            let revivingBrowser = resuming && !self.browserAlive && self.readyForBrowser
+            let browserAvailable = self.browserAlive || revivingBrowser
             var starts: [RecordingSource] = []
             var spans: [Data:String] = [:]
-            if browserAvailable {
-                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where ((self.browserAlive && source.current) || source.returning) && (source.kind == "local" ? resumingMe : resuming) {
+            if self.browserAlive {
+                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.current && (source.kind == "local" ? resumingMe : resuming) {
+                    let span = UUID().uuidString.lowercased(); spans[id] = span
+                    starts.append(source.start(span,boundaryMs:time))
+                }
+            } else if revivingBrowser {
+                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.returning && (source.kind == "local" ? newMe : newOthers) {
                     let span = UUID().uuidString.lowercased(); spans[id] = span
                     starts.append(source.start(span,boundaryMs:time))
                 }
@@ -486,15 +492,19 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 let selected = self.browserSources[id]?.kind == "local" ? newMe : newOthers
                 if !selected { self.browserSources[id]?.span = nil; self.browserSources[id]?.meter = .init(); self.browserPeaks.removeValue(forKey:id) }
                 else if let span = spans[id] { self.browserSources[id]?.span = span }
+                if revivingBrowser {
+                    self.browserSources[id]?.returning = false
+                    self.browserSources[id]?.current = spans[id] != nil
+                }
             }
             self.ledger?.select { $0 == "local" ? (newMe && !self.nativeMe) : newOthers }
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me ? newMe : newOthers }
             self.reservedNative = reservations
             self.me = newMe; self.others = newOthers
-            if resuming && browserAvailable { self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil; self.fallbackRequested = false }
+            if revivingBrowser { self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil; self.fallbackRequested = false }
             if resuming { self.resumeAt = time }
             if resuming && !self.browserAlive { self.systemReason = self.fallbackReason ?? "user" }
-            if resumingMe { self.meResumeAt = time }
+            if resumingMe || (revivingBrowser && !self.nativeMe && newMe) { self.meResumeAt = time }
             self.publish()
         }
     }

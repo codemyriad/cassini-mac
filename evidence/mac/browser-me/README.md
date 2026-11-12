@@ -14,7 +14,11 @@ Selected local PCM (including mute zeros) keeps Me-only alive through MV3
 control restarts and split status-before-inventory reconnects. Explicit page
 loss still saves a problem. Others restoration requires non-local PCM: a local
 sender arriving first neither pauses fallback nor satisfies the writer's
-othersSource browser transition. A disconnected Me-only choice is rejected
+othersSource browser transition. Return readiness remains available with Others
+off, so an existing native-Me session can choose Both without System Audio
+permission. A selection allocates returning spans only when it also revives the
+browser route; enabling Me during pending restoration cannot orphan a local
+span. A disconnected Me-only choice is rejected
 before pausing Others and never offers macOS microphone settings.
 
 Both lifecycle admission and the native span writer reject hardware Me for a

@@ -150,6 +150,33 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
             try await inputs.stop(); try await owner.finish()
         }
     }
+    @MainActor func testSelectingBothDuringReturnCreatesOnlyTheRestoredLocalSpan() async throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Selection during return",microphone:false,captureLocal:true,managedBrowser:true)
+        owner.enableSourceOutcomes()
+        let mic = PrivacyInput(), system = PrivacyInput()
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:mach_absolute_time(),microphone:{mic},system:{system},failure:{_ in})
+        try await inputs.start()
+        try owner.browserLost(atMs:100,transportAlive:true); try await inputs.fallback()
+        try owner.browserTrack(id:"local",label:"Me",kind:"local",sampleRate:8000,channels:1,sourceTrackId:"sender")
+        try owner.browserAudio(id:"local",sequence:0,offsetMs:300,pcm:tone)
+        try owner.browserTrack(id:"remote",label:"Others",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        try owner.browserAudio(id:"remote",sequence:0,offsetMs:300,pcm:tone)
+        XCTAssertTrue(owner.snapshot.restoreReady)
+        try await inputs.select(me:true,others:true,atMs:400)
+        XCTAssertFalse(owner.snapshot.browserAlive)
+        XCTAssertTrue(owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.isEmpty,"A pending return must not allocate a Me span")
+        try await inputs.restoreBrowser(atMs:500)
+        try owner.browserAudio(id:"local",sequence:1,offsetMs:600,pcm:tone)
+        try owner.browserAudio(id:"remote",sequence:1,offsetMs:600,pcm:tone)
+        var local = owner.snapshot.manifest.tracks.filter { $0.kind == "local" }
+        XCTAssertEqual(local.count,1); XCTAssertEqual(local.first?.frames,800)
+        try await inputs.select(me:false,others:true,atMs:700)
+        local = owner.snapshot.manifest.tracks.filter { $0.kind == "local" }
+        XCTAssertEqual(local.count,1); XCTAssertTrue(local.allSatisfy { $0.ended == true })
+        XCTAssertEqual(owner.snapshot.manifest.captureOutcome?.sources.first { $0.sourceTrackId == "sender" }?.trackIds.count,1)
+        try await inputs.stop(); try await owner.finish()
+    }
     func testOthersRestoreWriterRejectsLocalOnlySource() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let session = try RecordingSession(parent:root,title:"Others contract",source:"chromium")
