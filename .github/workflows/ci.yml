@@ -534,11 +534,22 @@ jobs:
     needs:
     - changes
     - build
-    - build_release
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && (needs.changes.outputs.full_ci == 'true' || needs.changes.outputs.ui_shots == 'true') && needs.changes.outputs.boards != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && (needs.changes.outputs.full_ci == 'true' || needs.changes.outputs.ui_shots == 'true') && needs.changes.outputs.boards != 'false' }}
     uses: ./.github/workflows/ux-boards.yml
     with:
       products_ready: true
+      mode: boards
+  spectrogram:
+    name: UX spectrogram
+    needs:
+    - changes
+    - build
+    - build_release
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.boards != 'false' }}
+    uses: ./.github/workflows/ux-boards.yml
+    with:
+      products_ready: true
+      mode: spectrogram
   whistle:
     name: Whistle bundle
     needs:

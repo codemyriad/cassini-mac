@@ -6,18 +6,31 @@ name: UX Library boards
         type: boolean
         default: false
         description: Caller already produced same-run build artifacts
-  workflow_dispatch: null
+      mode:
+        type: string
+        default: all
+        description: Slice to execute (all, boards, or spectrogram)
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: all
+        options:
+        - all
+        - boards
+        - spectrogram
+        description: Slice to execute
 jobs:
   build:
     if: ${{ !inputs.products_ready }}
     uses: ./.github/workflows/ci-build.yml
   release:
     needs: [build]
-    if: ${{ !inputs.products_ready && needs.build.result == 'success' }}
+    if: ${{ !inputs.products_ready && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'spectrogram') && needs.build.result == 'success' }}
     uses: ./.github/workflows/ci-build-release.yml
   boards:
     needs: [build]
-    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success') }}
+    if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'boards') && (inputs.products_ready || needs.build.result == 'success') }}
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -175,7 +188,7 @@ jobs:
   spectrogram:
     name: Native spectrogram and profiling
     needs: [build, release]
-    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+    if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'spectrogram') && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 15
     steps:
@@ -230,7 +243,7 @@ jobs:
   spectrogram_diagnostics:
     name: Native spectrogram diagnostics
     needs: [build, release]
-    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
+    if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'spectrogram') && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
     runs-on: macos-15
     timeout-minutes: 15
     steps:
