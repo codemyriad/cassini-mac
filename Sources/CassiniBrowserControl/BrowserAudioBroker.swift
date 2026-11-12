@@ -251,7 +251,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         lock.lock(); captures[capture.snapshot.manifest.id] = capture; identities[capture.snapshot.manifest.id] = identity; lock.unlock()
         // The recording holds its call before anyone hears of it (No second recording).
         if let generation = info.callGeneration { ownership?.update { $0.started(capture.snapshot.manifest.id,callGeneration:generation) } }
-        DispatchQueue.global().async { [created] in if capture.snapshot.phase == .recording { created(capture,info) } }
+        DispatchQueue.global(qos:.userInitiated).async { [created] in if capture.snapshot.phase == .recording { created(capture,info) } }
         return (capture,info)
     }
     public func finish(_ capture: OwnedBrowserCapture, problem: String? = nil, reason: CaptureEndReason? = nil, atMs: Double? = nil) async throws {
@@ -263,8 +263,8 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
         guard lock.withLock({ captures[capture.snapshot.manifest.id] === capture }) else { return }
         let nativeProblem = await withCheckedContinuation { continuation in
             let barrier = StopReply { continuation.resume(returning:$0) }
-            DispatchQueue.global().async { [stopNative] in stopNative(capture) { barrier.complete($0) } }
-            DispatchQueue.global().asyncAfter(deadline:.now() + 30) { barrier.complete("Native inputs did not finish stopping; the recording may be incomplete.") }
+            DispatchQueue.global(qos:.userInitiated).async { [stopNative] in stopNative(capture) { barrier.complete($0) } }
+            DispatchQueue.global(qos:.userInitiated).asyncAfter(deadline:.now() + 30) { barrier.complete("Native inputs did not finish stopping; the recording may be incomplete.") }
         }
         let id = capture.snapshot.manifest.id
         let attempts = lock.withLock { recordAttempts[id, default:0] }
