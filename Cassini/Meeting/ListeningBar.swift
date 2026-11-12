@@ -25,8 +25,8 @@ struct ListeningBar: View {
                     Text(presentation.label).foregroundStyle(CassiniTheme.secondaryInk).monospacedDigit().fixedSize()
                         .accessibilityIdentifier("listen-turn")
                     if geometry.size.width >= 720 {
-                        (Text(presentation.previousExcerpt).foregroundColor(CassiniTheme.secondaryInk)
-                         + Text(presentation.previousExcerpt.isEmpty ? "" : " | ").foregroundColor(CassiniTheme.secondaryInk)
+                        (Text(presentation.previousExcerpt).foregroundColor(CassiniTheme.secondaryColor)
+                         + Text(presentation.previousExcerpt.isEmpty ? "" : " | ").foregroundColor(CassiniTheme.secondaryColor)
                          + Text(presentation.currentExcerpt))
                             .lineLimit(1).truncationMode(.tail).help([presentation.previousExcerpt,presentation.currentExcerpt].filter { !$0.isEmpty }.joined(separator:" | "))
                             .frame(maxWidth:.infinity,alignment:.leading).accessibilityIdentifier("listen-excerpt")

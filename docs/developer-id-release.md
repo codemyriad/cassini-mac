@@ -113,3 +113,29 @@ recording/quit safety. D39 bundled-companion setup replaces the old store-listin
 release hold. The site pages outside `download/mac/` and the user README are coordinator-owned.
 
 Versioned release-note sources are in `Distribution/release-notes/`. Pass the file matching the version being built. They describe that release’s changes and include local styling for both Sparkle and a browser; the exact final HTML is signed separately before the appcast is signed.
+
+## Test-release scheduler: DerivedData on an external volume
+
+By default the scheduler (`scripts/daily-test-release.py`) builds inside its private folder on the internal disk
+and refuses to start with less than 25 GiB free there. On a Mac whose internal disk is shared with other work,
+install it with both options to keep each build's DerivedData on an external volume instead:
+
+```sh
+python3 scripts/install-daily-test-release.py \
+  --derived-root /Volumes/DrMeyers2/cassini-mac-test-releases --aqua "$HOME/bin/guirun"
+```
+
+- A LaunchAgent has no access to removable volumes, so the scheduler does not touch that folder. It starts
+  `scripts/external-derived-build.py` through the `--aqua` program, which runs a command in the logged-in session.
+- The helper refuses a path outside `/Volumes/<volume>`, a volume that is not mounted (it never writes to a stale
+  mount point), a symlinked folder, or less than 25 GiB free there. It makes one private folder per build and
+  removes it afterwards, whatever the outcome.
+- Products, logs and notary files stay in the scheduler's folder on the internal disk, which then needs 13 GiB free
+  (10 GiB host reserve plus 3 GiB) instead of 25. `release.py` passes each phase's disks to
+  `release-resources.py`: 25 GiB where DerivedData goes, 13 GiB where the products go.
+- When the build ends, in any way, the helper stops every process left in the build's own process group before it
+  removes the folder.
+- Setting only one of the two options fails the job before a build number is used.
+
+To change an installed agent, wait for its current job, `launchctl bootout gui/$(id -u)/io.codemyriad.cassini.daily-test-release`,
+then run the installer again.

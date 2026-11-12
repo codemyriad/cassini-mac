@@ -193,4 +193,36 @@ struct SpeakerEditsTests {
         #expect(marta.asides.count==1)
         #expect(turns[marta.asides[0].turn].speaker=="giulia")
     }
+    @Test func colourIndexRemainsFixedAcrossNamingClearingAndMerges() throws {
+        let (root,m)=try fixture();defer {try? FileManager.default.removeItem(at:root)}
+        let scanner=LibraryScanner(root:root)
+        #expect(m.speakers.map(\.colourIndex)==[0,1,2])
+        #expect(m.speaker(for:"c")?.provenance == .unnamed)
+
+        // Naming speaker c reveals slot 2 without shifting a or b.
+        try SpeakerEdits.apply(.name(speaker:"c",value:"Clara"),to:m,roots:[root],scanner:scanner)
+        let named=try #require(scanner.meeting(at:m.folder))
+        #expect(named.speakers.map {($0.id,$0.colourIndex)}.map {"\($0.0):\($0.1)"} == ["a:0","b:1","c:2"])
+        #expect(named.speaker(for:"c")?.provenance == .user)
+
+        // Merging earlier speaker a (slot 0) into c (slot 2) moves a's earliest turn onto c in
+        // chronological display order, yet c keeps slot 2 and b keeps slot 1 (HARMONY 10.11 / L-41).
+        try SpeakerEdits.apply(.merge(from:"a",into:"c"),to:named,roots:[root],scanner:scanner)
+        let merged=try #require(scanner.meeting(at:m.folder))
+        #expect(merged.speakers.map(\.id) == ["c","b"])
+        #expect(merged.speaker(for:"c")?.colourIndex == 2)
+        #expect(merged.speaker(for:"b")?.colourIndex == 1)
+        #expect(merged.speaker(for:"a")?.colourIndex == 2)
+
+        // Clearing c's name restores unnamed provenance while keeping colourIndex == 2 in metadata.
+        try SpeakerEdits.apply(.name(speaker:"c",value:""),to:merged,roots:[root],scanner:scanner)
+        let cleared=try #require(scanner.meeting(at:m.folder))
+        #expect(cleared.speaker(for:"c")?.provenance == .unnamed)
+        #expect(cleared.speaker(for:"c")?.colourIndex == 2)
+
+        // Undo merge restores a (slot 0), b (slot 1), c (slot 2).
+        try SpeakerEdits.apply(.undoMerge,to:cleared,roots:[root],scanner:scanner)
+        let undone=try #require(scanner.meeting(at:m.folder))
+        #expect(undone.speakers.map {($0.id,$0.colourIndex)}.map {"\($0.0):\($0.1)"} == ["a:0","b:1","c:2"])
+    }
 }

@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -249,7 +249,7 @@
+         # Six hours covers two 60m lock waits, two notarizations (600s
+         # submit + 2800s wait + 360s staple/validate each), 600s DMG,
+         # 3600s compilation and 900s setup/signing margin: 19820s.
+-        return process.wait(timeout=21600)
++        return process.wait(timeout=10800)
+     except subprocess.TimeoutExpired:
+         # Stop only this invocation's process group, including its heavy-lock
+         # wrapper. Never leave a compiler holding the shared lock after timeout.

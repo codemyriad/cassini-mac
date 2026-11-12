@@ -17,7 +17,12 @@ struct SpeakerEditorView:View {
                 }
                 HStack {
                     Text(UXText.text("speakers.nameLabel"))
-                    TextField(UXText.text("speakers.nameLabel"),text:$edit.name).textFieldStyle(.roundedBorder)
+                    TextField("", text: $edit.name, prompt: Text(UXText.text("speakers.nameLabel")).foregroundStyle(CassiniTheme.ink3))
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(CassiniTheme.field, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(CassiniTheme.fieldLine, lineWidth: 1))
                         .disabled(edit.working).accessibilityIdentifier("speaker-name-field")
                         .onSubmit {if edit.canApply {edit.apply()}}
                 }
@@ -40,9 +45,12 @@ struct SpeakerEditorView:View {
                 }
             }
             if edit.speakerChangeFailed {
-                Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.error).fixedSize(horizontal:false,vertical:true)
-                    .accessibilityIdentifier("speaker-change-error")
-                Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit)
+                HStack(spacing:10) {
+                    Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.error).fixedSize(horizontal:false,vertical:true)
+                        .accessibilityIdentifier("speaker-change-error")
+                    Spacer(minLength:0)
+                    Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit)
+                }.padding(12).background(CassiniTheme.errorTint,in:RoundedRectangle(cornerRadius:7))
             }
             HStack {
                 Spacer()

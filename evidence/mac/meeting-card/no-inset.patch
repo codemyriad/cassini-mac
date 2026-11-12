@@ -1,0 +1,11 @@
+--- a/Components/MeetingCard/MeetingCard.swift
++++ b/Components/MeetingCard/MeetingCard.swift
+@@ -40,7 +40,7 @@
+             }
+             .overlay {
+                 shape.strokeBorder(Color(nsColor: paint.border),
+-                    lineWidth: Metrics.border + (isSelected ? Metrics.selectedInset : 0))
++                    lineWidth: Metrics.border + (0))
+             }
+             .accessibilityAddTraits(isSelected ? .isSelected : [])
+     }

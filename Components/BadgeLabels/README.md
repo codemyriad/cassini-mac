@@ -1,0 +1,13 @@
+# Standalone W2.2 catalog badge
+
+The contract snapshot is pinned to merged cassini-ux11: **793209cb3425bece7143178458fddd94b691e12d**. `Contract/UPSTREAM.json` records original source paths and SHA-256 for the whole catalog, statev3, formatv5, normative badge contract and all22 Library expectations. `scripts/check-badge-labels-pin.py` verifies all26 files; a Linux CI job also tests catalog/vector/expected-file drift rejection. Do not edit vendored bytes or pin an authoring branch.
+
+`BadgeLabelPresenter(data:language:locale:)` prepares the pinned catalog using CassiniLibrary's actual `LibraryLocalization`. It rejects missing required keys or the selected language's missing translations instead of silently using English. Prepare it once outside View bodies; the host owns resource loading. UI language and regional number/timer locale remain independent.
+
+Pass `.meeting(BadgeMeetingFields)` or `.importingEntry` to `presentation(for:)`. Meeting fields are already-validated projection data, **not a metadata parser**; persisted-file validation remains with the existing reader. Precedence, canWriteDown and live-timer rules remain the shared contract's. The timer uses actual `LibraryFormat.liveBadge`. No clock is started here: the caller supplies liveMs. Importing is an independent transient entry, not another persisted lifecycle or a priority against a recording. Nil means no badge. Model needsAttention maps to the renderer's visual attention kind.
+
+`CatalogStatusBadge(presentation:isAnimating:)` renders through the W2.1 `MeetingStatusBadge` now merged in main. It owns no Library/Meeting state, keyboard selection, I/O or placement. The pinned catalog supplies every label, including compact positive ETA, Interrupted and Importing. Provisional zero-ETA/no-ETA text stays unchanged. No label is assembled from English fragments.
+
+This is the coordinator-authorized standalone component slice. Its snapshot lives beside the component; the live app catalog, model and Golden tests are not advanced by this PR. agy-mac will include these component sources in the app target, bundle the merged snapshot, connect validated inputs and wire Library/header placement. Global catalog/state-v3 adoption must happen together with that model/renderer integration. Until then app-target CI does not compile these new files; the standalone native proof does. No user-facing release-note fragment for an unused component.
+
+See [proof and reproduction](../../evidence/mac/badge-labels/README.md). The app's localization/format helper sources and the merged renderer are compiled unmodified in that proof; a fixture-only Bundle.module shim is never called because catalog Data is passed explicitly. There is no duplicate palette, formatter or renderer.

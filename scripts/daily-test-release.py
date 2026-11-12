@@ -25,6 +25,8 @@ SOURCE=BASE/'source'
 INBOX=HOME/'dev/cassini-coordination/NOTIFICATIONS-MAC-TEST-RELEASES.log'
 BERLIN=ZoneInfo('Europe/Berlin')
 REQUEST='request-mac-test-release.yml'
+CI_WAIT_BUDGET=timedelta(minutes=45)
+CI_START_GRACE=timedelta(minutes=3)
 
 
 def command(args,**kwargs):
@@ -53,18 +55,56 @@ def due_slot(now):
     return max(slot for slot in candidates if slot<=local).isoformat()
 
 
-def eligible_ci(runs,sha):
+def ci_state(runs,sha):
     # API pages are newest-first. PR merge-ref results (even this repo's main)
     # and fork runs must neither authorize nor block a main release.
-    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch')
+    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch','schedule')
               and (r.get('head_repository') or {}).get('full_name')==REPO),None)
-    return bool(run and run['head_sha']==sha and run['head_branch']=='main'
-                and run['status']=='completed' and run['conclusion']=='success')
+    if not run:return 'missing'
+    if run.get('head_sha')!=sha or run.get('head_branch')!='main':return 'red'
+    if run.get('status')!='completed':return 'pending'
+    return 'green' if run.get('conclusion')=='success' else 'red'
+
+
+def eligible_ci(runs,sha):
+    return ci_state(runs,sha)=='green'
+
+
+def main_ci_state(sha):
+    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={sha}&per_page=100'])
+    return ci_state([run for page in pages for run in page['workflow_runs']],sha)
 
 
 def main_is_green(sha):
-    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={sha}&per_page=100'])
-    return eligible_ci([run for page in pages for run in page['workflow_runs']],sha)
+    return main_ci_state(sha)=='green'
+
+
+def parse_utc(value,default=None):
+    if not isinstance(value,str):return default
+    try:parsed=datetime.fromisoformat(value)
+    except ValueError:return default
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def git_ok(*args):
+    try:command(['git','-C',SOURCE,*args]);return True
+    except RuntimeError:return False
+
+
+def candidate_publishable(candidate,state):
+    local=state.get('last_success')
+    if local:
+        if not isinstance(local,str) or not re.fullmatch(r'[0-9a-f]{40}',local):
+            raise ValueError('Invalid successful source commit')
+        if local==candidate or not git_ok('merge-base','--is-ancestor',local,candidate):
+            return False
+    releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
+    previous=latest_nightly(releases)
+    stable=stable_notes_source(releases)
+    base=source_commit(previous) if previous else stable_notes_base(releases,candidate)
+    if candidate==base or candidate==stable:
+        return False
+    return not base or git_ok('merge-base','--is-ancestor',base,candidate)
 
 
 def fetch_main():
@@ -203,10 +243,40 @@ def publish(tag,version,build,sha,output,release_notes):
     command(['gh','release','edit',tag,'-R',REPO,'--draft=false','--prerelease','--latest=false'])
 
 
+# With DerivedData on the external volume the internal disk holds only the job's products, logs and notary files:
+# the 13 GiB (10 GiB host reserve + 3 GiB) that release.py's own checks then ask of the products' disk.
+EXTERNAL_INTERNAL_RESERVE=13*1024**3
+
+
+def external_build():
+    """(runner, root) when the agent's environment sends DerivedData to an external volume, else None.
+
+    CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT names a folder inside /Volumes/<volume>, and
+    CASSINI_MAC_TEST_RELEASE_AQUA the program that runs a command in the logged-in session (on drmeyers,
+    ~/bin/guirun). A LaunchAgent cannot open a removable volume, so this process only passes the path on; the
+    helper checks the mount, the free space and symlinks where it can see them. One variable without the other,
+    or a runner that is not an installed program, fails the job before a build number is used.
+    """
+    root=os.environ.get('CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT','')
+    runner=os.environ.get('CASSINI_MAC_TEST_RELEASE_AQUA','')
+    if not root and not runner:return None
+    if not root or not runner:
+        raise ValueError('External DerivedData needs both its root and the logged-in session runner')
+    parts=Path(root).parts
+    if not Path(root).is_absolute() or len(parts)<4 or parts[1]!='Volumes' or '..' in parts:
+        raise ValueError('External build root must be a folder inside /Volumes/<volume>')
+    if not Path(runner).is_absolute() or not Path(runner).is_file() or not os.access(runner,os.X_OK):
+        raise ValueError('Logged-in session runner is not an installed program')
+    return runner,root
+
+
 def signed_build(args,env,log):
     process=subprocess.Popen(args,cwd=SOURCE,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
     try:
-        return process.wait(timeout=10800)
+        # Six hours covers two 60m lock waits, two notarizations (600s
+        # submit + 2800s wait + 360s staple/validate each), 600s DMG,
+        # 3600s compilation and 900s setup/signing margin: 19820s.
+        return process.wait(timeout=21600)
     except subprocess.TimeoutExpired:
         # Stop only this invocation's process group, including its heavy-lock
         # wrapper. Never leave a compiler holding the shared lock after timeout.
@@ -215,6 +285,56 @@ def signed_build(args,env,log):
         except subprocess.TimeoutExpired:
             os.killpg(process.pid,signal.SIGKILL);process.wait()
         raise RuntimeError('Test build timed out; own process group stopped') from None
+
+
+def failed_job(path):
+    marker=path/'job.json'
+    if path.is_symlink() or not path.is_dir() or marker.is_symlink() or not marker.is_file():return None
+    try:meta=json.loads(marker.read_text())
+    except (OSError,ValueError):return None
+    if not isinstance(meta,dict):return None
+    if (meta.get('schema')!='cassini-mac-test-job@1' or meta.get('phase')!='failed'
+            or type(meta.get('build')) is not int or meta['build']<1
+            or not isinstance(meta.get('head'),str) or not re.fullmatch(r'[0-9a-f]{40}',meta['head'])):return None
+    return meta
+
+
+def prune_failed_builds():
+    """Never touch active, unmarked, symlinked jobs or shared build caches."""
+    failed=[path for path in BASE.glob('build-*') if failed_job(path)]
+    if not failed:return
+    archive=BASE/'failures'
+    if archive.is_symlink():raise ValueError('Diagnostic archive must not follow a symlink')
+    archive.mkdir(exist_ok=True);os.chmod(archive,0o700)
+    for job in failed:
+        metadata=failed_job(job)
+        if metadata is None:continue
+        destination=archive/job.name
+        if destination.is_symlink():raise ValueError('Diagnostic job must not follow a symlink')
+        existing=failed_job(destination) if destination.exists() else None
+        if destination.exists() and (existing is None or existing['build']!=metadata['build'] or existing['head']!=metadata['head']):
+            raise ValueError('Refusing an unowned diagnostic directory')
+        destination.mkdir(exist_ok=True);os.chmod(destination,0o700)
+        atomic(destination/'job.json',metadata)
+        # At most five 1MiB tails per job. Never recurse into products/DerivedData.
+        for name in ['release-driver.log','release/build.log','release/app-notary.json','release/dmg-notary.json','release/test-release.json']:
+            source=job/name
+            if source.is_symlink() or not source.is_file() or not source.resolve().is_relative_to(job.resolve()):continue
+            with source.open('rb') as stream:
+                stream.seek(max(0,source.stat().st_size-1024**2));tail=stream.read(1024**2)
+            target=destination/(name.replace('/','-')+'.tail')
+            # Atomic replacement cannot follow an existing file symlink.
+            temporary=None
+            try:
+                with tempfile.NamedTemporaryFile(dir=destination,prefix='.tail-',delete=False) as stream:
+                    temporary=Path(stream.name);stream.write(tail);stream.flush();os.fsync(stream.fileno())
+                temporary.replace(target)
+            finally:
+                if temporary is not None and temporary.exists():temporary.unlink()
+        shutil.rmtree(job)
+    retained=[path for path in archive.glob('build-*') if failed_job(path)]
+    for path in sorted(retained,key=lambda p:failed_job(p)['build'],reverse=True)[3:]:
+        shutil.rmtree(path)
 
 
 def tick(now):
@@ -228,14 +348,27 @@ def tick(now):
     state=json.loads(state_file.read_text()) if state_file.exists() else {}
     slot=due_slot(now)
     stage='request check'
+    job=None
+    manual=None
     try:
         request=gh([f'repos/{REPO}/actions/workflows/{REQUEST}/runs?branch=main&event=workflow_dispatch&status=completed&per_page=1'])['workflow_runs']
         manual=next((r['id'] for r in request if r['conclusion']=='success' and r['head_branch']=='main'
                      and r['event']=='workflow_dispatch' and r['id']>state.get('request',0)),None)
         if state.get('slot')==slot and manual is None:return
-        state.update(slot=slot,request=manual or state.get('request',0),phase='admission')
-        atomic(state_file,state)
         stage='main source/CI admission'
+        now_utc=now.astimezone(timezone.utc)
+        request_id=manual or state.get('request',0)
+        attempt_request=manual or 0
+        prior=state.get('pending_ci')
+        same_attempt=isinstance(prior,dict) and prior.get('slot')==slot and prior.get('request')==attempt_request
+        prior_started=parse_utc(prior.get('started_at')) if same_attempt else now_utc
+        if same_attempt and (prior_started is None or now_utc-min(prior_started,now_utc)>=CI_WAIT_BUDGET):
+            state.pop('pending_ci',None)
+            state.update(slot=slot,request=request_id,phase='skipped')
+            atomic(state_file,state)
+            report('[Mac] daily test release skipped: main CI did not finish green within 45m')
+            return
+        started_at=min(prior_started,now_utc)
         if command(['git','-C',SOURCE,'remote','get-url','origin']).strip()!=ORIGIN:
             raise ValueError('Unexpected release source origin')
         def pipeline_source():
@@ -247,8 +380,53 @@ def tick(now):
         if pipeline_source()!=before:
             state.pop('slot',None);state['request']=0;atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
-        if not main_is_green(head):
-            report('[Mac] daily test release skipped: latest main CI is not green');return
+        head_started_at=min(parse_utc(prior.get('head_started_at'),now_utc),now_utc) if (same_attempt and prior.get('head')==head) else now_utc
+        raw_candidates=prior.get('candidates') if (same_attempt and isinstance(prior.get('candidates'),list)) else []
+        seen=[];seen_shas={head}
+        for item in raw_candidates:
+            if not isinstance(item,dict):continue
+            sha=item.get('sha')
+            if isinstance(sha,str) and re.fullmatch(r'[0-9a-f]{40}',sha) and sha not in seen_shas:
+                seen_shas.add(sha)
+                seen.append(dict(sha=sha,seen_at=min(parse_utc(item.get('seen_at'),started_at),now_utc).isoformat()))
+        status=main_ci_state(head)
+        kept=[]
+        if status in ('pending','missing'):
+            for item in seen:
+                candidate=item['sha']
+                candidate_since=min(parse_utc(item['seen_at'],started_at),now_utc)
+                if (not git_ok('merge-base','--is-ancestor',candidate,head)
+                        or not git_ok('diff','--quiet',candidate,head,'--','scripts/daily-test-release.py','scripts/user_release_notes.py')):
+                    continue
+                candidate_status=main_ci_state(candidate)
+                if candidate_status=='green' and candidate_publishable(candidate,state):
+                    command(['git','-C',SOURCE,'checkout','--detach','--force',candidate])
+                    head=candidate
+                    status='green'
+                    break
+                if candidate_status=='pending' or (candidate_status=='missing' and now_utc-candidate_since<CI_START_GRACE):
+                    kept.append(item)
+        if status!='green':
+            if status=='red' or (status=='missing' and now_utc-head_started_at>=CI_START_GRACE):
+                state.pop('pending_ci',None)
+                state.update(slot=slot,request=request_id,phase='skipped')
+                atomic(state_file,state)
+                report('[Mac] daily test release skipped: latest main CI is not green')
+                return
+            if not same_attempt or prior.get('head')!=head:
+                report('[Mac] daily test release waiting: latest main CI is not green')
+            candidates=([dict(sha=head,seen_at=head_started_at.isoformat())]+kept)[:8]
+            state['pending_ci']=dict(slot=slot,request=attempt_request,head=head,started_at=started_at.isoformat(),
+                                     head_started_at=head_started_at.isoformat(),candidates=candidates)
+            atomic(state_file,state)
+            return
+        state.pop('pending_ci',None)
+        atomic(state_file,state)
+        stage='failed output cleanup'
+        prune_failed_builds()
+        stage='release history'
+        state.update(slot=slot,request=manual or state.get('request',0),phase='admission')
+        atomic(state_file,state)
         releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
         previous=latest_nightly(releases)
         stable=stable_notes_source(releases)
@@ -270,21 +448,33 @@ def tick(now):
         version=nightly_version(version,releases)
         initial=int(re.search(r'CURRENT_PROJECT_VERSION: "([0-9]+)"',project).group(1))
         stage='disk reserve'
-        if shutil.disk_usage(BASE).free < 25*1024**3:
+        external=external_build()
+        if external is None and shutil.disk_usage(BASE).free < 25*1024**3:
             raise ValueError('At least25GiB free required before a signed test build')
+        if external is not None and shutil.disk_usage(BASE).free < EXTERNAL_INTERNAL_RESERVE:
+            raise ValueError('At least13GiB free required for the products of a signed test build')
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
         stage='release notes'
         body=notes(base,head,published_refs=[stable] if stable else [])
         stage='signing/notarization'
-        # The dedicated job directory is retained on failure and removed only
-        # after successful publication; other agents' caches are never touched.
+        # Mark ownership before building. Failed products are pruned only after
+        # the child has exited; bounded private diagnostics survive separately.
         job=Path(tempfile.mkdtemp(prefix=f'build-{build}-',dir=BASE));output=job/'release';derived=job/'DerivedData'
+        atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='building',build=build,head=head))
         env=dict(os.environ)
         state['job']=str(job);atomic(state_file,state)
         with (job/'release-driver.log').open('w') as log:
-            code=signed_build([sys.executable,str(SOURCE/'scripts/release.py'),'--test-release','--version',version,
-                '--build',str(build),'--derived-data',str(derived),'--output',str(output)],env,log)
+            release=[sys.executable,str(SOURCE/'scripts/release.py'),'--test-release','--version',version,
+                '--build',str(build),'--output',str(output)]
+            if external is None:
+                release+=['--derived-data',str(derived)]
+            else:
+                # DerivedData goes to the external volume, which only the logged-in session can reach: its runner
+                # starts the helper, and the helper makes, checks and removes the folder. Products stay in `job`.
+                runner,root=external
+                release=[runner,sys.executable,str(SOURCE/'scripts/external-derived-build.py'),root,*release]
+            code=signed_build(release,env,log)
         if code:raise RuntimeError('Signed test build failed; retained private job diagnostics')
         stage='GitHub nightly publication'
         publish(f'v{version}-beta.{build}',version,build,head,output,body)
@@ -296,12 +486,20 @@ def tick(now):
         report(f'[Mac] nightly {version} beta.{build} published from main {head[:8]}')
         shutil.rmtree(job) # Only this invocation's successful job output.
     except Exception as error:
-        identity=stage+':'+type(error).__name__+':'+slot+':'+str(state.get('request',0))
+        identity=stage+':'+type(error).__name__+':'+slot+':'+str(manual or state.get('request',0))
         state.update(phase='failed')
         if state.get('failure')!=identity:
             cause=str(error).replace('\n',' ')[:180] if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__
             report('[Mac] daily test release failed: '+stage+': '+cause)
         state['failure']=identity;atomic(state_file,state)
+        if job is not None and not job.is_symlink() and job.is_dir():
+            try:
+                atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='failed',build=build,head=head,stage=stage))
+                prune_failed_builds()
+                state.pop('job',None);state['diagnostics']=str(BASE/'failures'/job.name)
+                atomic(state_file,state)
+            except (OSError,ValueError):
+                report('[Mac] failed-job cleanup incomplete; inspect private job and diagnostics')
         raise SystemExit(1)
 
 

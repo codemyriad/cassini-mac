@@ -1,0 +1,11 @@
+--- a/Components/BadgeLabels/BadgeLabelPresenter.swift
++++ b/Components/BadgeLabels/BadgeLabelPresenter.swift
+@@ -83,7 +83,7 @@
+                 return badge("transcribing", "transcribing", "neutral", "spinner", ["n": String(eta)])
+             }
+             if fields.error?.action != nil { return badge("needsAttention", "needsAttention", "amber", "alert") }
+-            if fields.interruptedAtMs != nil { return badge("interrupted", "interrupted", "amber", "alert") }
++            if fields.interruptedAtMs != nil { return badge("interrupted", "needsAttention", "amber", "alert") }
+             if fields.origin == .received { return badge("received", "received", "outline", "incoming") }
+             return nil
+         }

@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -266,7 +266,7 @@
+     try:meta=json.loads(marker.read_text())
+     except (OSError,ValueError):return None
+     if not isinstance(meta,dict):return None
+-    if (meta.get('schema')!='cassini-mac-test-job@1' or meta.get('phase')!='failed'
++    if (meta.get('schema')!='cassini-mac-test-job@1'
+             or type(meta.get('build')) is not int or meta['build']<1
+             or not isinstance(meta.get('head'),str) or not re.fullmatch(r'[0-9a-f]{40}',meta['head'])):return None
+     return meta

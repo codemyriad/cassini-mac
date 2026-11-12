@@ -143,7 +143,7 @@ struct MeetingView: View {
             Spacer(minLength: 0)
         }.padding(.horizontal, 19).padding(.top, 14)
             .frame(width: 260).frame(maxHeight: .infinity)
-            .background(CassiniTheme.sidebarGround)
+            .background(NativeSidebarMaterial())
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
     }
     var body: some View {

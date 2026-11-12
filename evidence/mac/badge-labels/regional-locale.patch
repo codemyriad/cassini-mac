@@ -1,0 +1,11 @@
+--- a/Components/BadgeLabels/BadgeLabelPresenter.swift
++++ b/Components/BadgeLabels/BadgeLabelPresenter.swift
+@@ -57,7 +57,7 @@
+                 throw InvalidCatalog.missingTranslation(id)
+             }
+         }
+-        self.catalog = catalog; self.language = language; self.locale = locale
++        self.catalog = catalog; self.language = language; self.locale = Locale(identifier:"en_GB")
+     }
+
+     func presentation(for input: BadgeLabelInput) -> CatalogBadgePresentation? {

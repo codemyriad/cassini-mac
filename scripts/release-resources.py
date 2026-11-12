@@ -17,6 +17,30 @@ def admit(extra_gib,free_bytes,pressure):
         raise ValueError('Memory pressure prevents test release')
 
 
+def storage(arguments):
+    """Splits `[--reserve GIB PATH]... COMMAND...` or the older `GIB COMMAND...` (on this checkout's disk) into the
+    reserves, each (extra GiB, path), and the command."""
+    reserves=[]
+    while arguments[:1]==['--reserve']:
+        if len(arguments)<3:raise ValueError('--reserve takes a size in GiB and a path')
+        reserves.append((int(arguments[1]),Path(arguments[2])));arguments=arguments[3:]
+    if not reserves:
+        reserves=[(int(arguments[0]),Path(__file__).resolve().parent.parent)];arguments=arguments[1:]
+    if not arguments:raise ValueError('No command to run')
+    return reserves,arguments
+
+
+def existing(path):
+    """The nearest folder that exists: a build folder that is still to be made is measured on its parent's disk."""
+    path=Path(path)
+    while not path.exists() and path!=path.parent:path=path.parent
+    return path
+
+
+def admit_all(reserves,pressure,free=lambda path:shutil.disk_usage(path).free):
+    for extra,path in reserves:admit(extra,free(existing(path)),pressure)
+
+
 if __name__=='__main__':
     if os.environ.get('CASSINI_HEAVY_LOCK_HELD')!='1':
         raise SystemExit('Release resources must be checked under the shared lock')
@@ -26,5 +50,8 @@ if __name__=='__main__':
     current=re.search(r'^Swapouts:\s+(\d+)',stats,re.M)
     if before is not None and (not current or int(current.group(1))>int(before)):
         raise SystemExit('Swap grew before test release; wait for memory recovery')
-    admit(int(sys.argv[1]),shutil.disk_usage(Path(__file__).resolve().parent.parent).free,pressure)
-    os.execvp(sys.argv[2],sys.argv[2:])
+    try:
+        reserves,program=storage(sys.argv[1:])
+        admit_all(reserves,pressure)
+    except ValueError as error:raise SystemExit(str(error))
+    os.execvp(program[0],program)

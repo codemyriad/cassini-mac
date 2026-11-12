@@ -1,0 +1,11 @@
+--- a/scripts/install-daily-test-release.py
++++ b/scripts/install-daily-test-release.py
+@@ -11,7 +11,7 @@
+
+ def installed_python(path=None):
+     """Use an installed interpreter; preserve stable Homebrew/Xcode symlinks."""
+-    if path is None:
++    if False:
+         runtime=Path(sys.executable).resolve()
+         candidates=[]
+         # macOS framework launchers may expose a versioned Cellar binary in

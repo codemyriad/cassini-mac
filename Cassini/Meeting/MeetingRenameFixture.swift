@@ -58,8 +58,8 @@ enum MeetingRenameFixture {
                 guard var value = try JSONSerialization.jsonObject(with:Data(contentsOf:metadata)) as? [String:Any] else { return nil }
                 value["speakers"] = [
                     ["id":"marta","name":"Marta","provenance":"user","colourIndex":0],
-                    ["id":"dario","name":"Dario","provenance":"recognised","colourIndex":1],
-                    ["id":"giulia","name":"Giulia","provenance":"user","colourIndex":2],
+                    ["id":"giulia","name":"Giulia","provenance":"user","colourIndex":1],
+                    ["id":"dario","name":"Dario","provenance":"recognised","colourIndex":2],
                     ["id":"elena","name":"Elena","provenance":"user","colourIndex":3],
                     ["id":"lucas","name":"Lucas","provenance":"user","colourIndex":4],
                     ["id":"nadia","name":"Nadia","provenance":"user","colourIndex":5],

@@ -1,0 +1,36 @@
+{
+  "tests": 44,
+  "mutations": {
+    "selected-python": "behavioral assertion failure",
+    "child-python": "behavioral assertion failure",
+    "scheduled-ci": "behavioral assertion failure",
+    "skip-prune": "behavioral assertion failure",
+    "active-job": "behavioral assertion failure",
+    "short-lock": "behavioral assertion failure",
+    "consume-early": "behavioral assertion failure",
+    "dmg-timeout": "behavioral assertion failure",
+    "overall-timeout": "behavioral assertion failure",
+    "pending-notification": "behavioral assertion failure",
+    "manual-failure": "behavioral assertion failure",
+    "stable-entrypoint": "behavioral assertion failure",
+    "xcode-interpreter": "behavioral assertion failure",
+    "stable-xcode-interpreter": "behavioral assertion failure",
+    "opus-interpreter": "behavioral assertion failure",
+    "whistle-interpreter": "behavioral assertion failure",
+    "parakeet-interpreter": "behavioral assertion failure",
+    "project-interpreter": "behavioral assertion failure",
+    "companion-interpreter": "behavioral assertion failure",
+    "expired-ci-wait": "behavioral assertion failure"
+  },
+  "restored": true,
+  "sourceSHA256": {
+    "scripts/install-daily-test-release.py": "48b838c01a03af11da52b6b51878782f7aa34d7a183dee4a40dbb7cdfacfe8e9",
+    "scripts/release.py": "aa5caa7bc95efceb0d0caf889aaf57901d88c79248edb6bb301949f05aafb6e8",
+    "scripts/daily-test-release.py": "2abd3610d3130df56a95e797733e3b338a78e7391e86b61a14616950538ee408",
+    "scripts/bundle-opus.sh": "27587b0e4c4080460881c54eee17c33f8bbb7fcf8c8dfe880440c851cb573e20",
+    "scripts/bundle-whistle.sh": "b3e569b1159f09184fe99e9d17f53317f898f5bb5344845844861e7b701acb43",
+    "scripts/bundle-parakeet.sh": "e78217e93e61ac2b6539835a8d3e8aaa41665d587c2e1a8306972acc5b7c74d8",
+    "project.yml": "59198bba159f0307b6306f8a5f31450baa8b93e2e3b8ca9df3fbfa946b8a2f25",
+    "scripts/bundle-browser-companion.py": "7b2272cd269c1aa8ef3427d6075798b85e151c22c5c3a634bb656c4041b173b2"
+  }
+}

@@ -35,7 +35,7 @@ struct LibrarySearchView: View {
                         ForEach(model.hits) { hit in if let meeting = model.meeting(hit) { row(hit,meeting:meeting) } }
                     }
                 }.padding(.horizontal,-5)
-            }.padding(.horizontal,14).frame(width:460).background(CassiniTheme.sidebarGround)
+            }.padding(.horizontal,14).frame(width:460).background(NativeSidebarMaterial())
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("search.results.a11y"))
             Divider()
             if let hit = model.selected, let meeting = model.meeting(hit) { context(hit,meeting:meeting) }
@@ -139,12 +139,13 @@ private struct SearchChip: ViewModifier {
     func body(content: Content) -> some View {
         content.font(.system(size:11.5,weight:active ? .semibold : .regular)).padding(.horizontal,11).frame(height:28)
             .foregroundStyle(active ? CassiniTheme.onAccent : CassiniTheme.ink)
-            .background(active ? CassiniTheme.accentStrong : CassiniTheme.surface,in:Capsule())
+            .background(active ? CassiniTheme.accentStrong : CassiniTheme.chipFill,in:Capsule())
             .overlay(Capsule().stroke(active ? Color.clear : CassiniTheme.cardStroke))
     }
 }
 
 /// Native field, including its accessibility, clear control and text editing.
+/// Draws `field` fill and `field-line` border (HARMONY 10.8, 10.14) with full-opacity `ink-3` placeholder.
 struct LibrarySearchField: NSViewRepresentable {
     @Binding var text: String
     var large = false
@@ -156,7 +157,11 @@ struct LibrarySearchField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> FocusableSearchField {
         let field = FocusableSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
+        field.isBezeled = false; field.isBordered = false; field.drawsBackground = false
+        field.isEditable = true; field.isSelectable = true
+        field.focusRingType = .default
         field.font = NSFont.systemFont(ofSize:13)
+        field.textColor = CassiniTheme.nsInk
         field.onClick = onClick
         field.placeholderAttributedString = NSAttributedString(
             string: UXText.text("search.field.placeholder"),
@@ -170,16 +175,48 @@ struct LibrarySearchField: NSViewRepresentable {
     func updateNSView(_ view: FocusableSearchField, context: Context) {
         context.coordinator.parent = self
         view.onClick = onClick
-        if view.stringValue != text { view.stringValue = text }
+        if view.stringValue != text { view.stringValue = text; view.needsDisplay = true }
         if focusRequest != context.coordinator.focused {
             context.coordinator.focused = focusRequest
             if focusRequest > 0 { view.requestFocus() }
         }
     }
+    final class BrandedSearchFieldCell: NSSearchFieldCell {
+        override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+            let base = super.searchTextRect(forBounds: rect)
+            let h: CGFloat = 16
+            return NSRect(x: base.minX + 4, y: floor((rect.height - h) / 2), width: max(0, base.width - 8), height: h)
+        }
+        override func searchButtonRect(forBounds rect: NSRect) -> NSRect {
+            super.searchButtonRect(forBounds: rect).offsetBy(dx: 4, dy: 0)
+        }
+        override func cancelButtonRect(forBounds rect: NSRect) -> NSRect {
+            guard !stringValue.isEmpty else { return .zero }
+            return super.cancelButtonRect(forBounds: rect).offsetBy(dx: -4, dy: 0)
+        }
+        override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+            let radius: CGFloat = controlSize == .large ? 7 : 6
+            let path = NSBezierPath(roundedRect: cellFrame.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
+            CassiniTheme.nsField.setFill()
+            path.fill()
+            CassiniTheme.nsFieldLine.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+            drawInterior(withFrame: cellFrame, in: controlView)
+        }
+    }
     // SwiftUI may update the field before attaching it to a window. Retain the
     // request until attachment rather than losing Cmd-F's keyboard focus.
     final class FocusableSearchField: NSSearchField {
+        override class var cellClass: AnyClass? {
+            get { BrandedSearchFieldCell.self }
+            set {}
+        }
         var onClick: (() -> Void)?
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            needsDisplay = true
+        }
         override func mouseDown(with event: NSEvent) {
             // Open the sidebar before AppKit installs a field editor for the toolbar.
             // Replacing an active field editor can drop keys from a single typing burst.

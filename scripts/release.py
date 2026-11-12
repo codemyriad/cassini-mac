@@ -275,11 +275,27 @@ def build_dmg(python, application, output):
     run([python, ROOT/'scripts/build-dmg.py', application, output], timeout=600)
 
 
+def same_disk(first,second):
+    def device(path):
+        path=Path(path)
+        while not path.exists() and path!=path.parent:path=path.parent
+        return os.stat(path).st_dev
+    return device(first)==device(second)
+
+
+def build_reserves(derived,output):
+    """What release-resources.py checks before a test build compiles. DerivedData takes the 15 GiB; when it is on
+    another disk than the products, that disk is checked for it and the products' disk only for the 3 GiB the
+    app, its notary zip and the disk image need (the same figure the disk-image phase asks for)."""
+    if same_disk(derived,output):return ['--reserve','15',derived]
+    return ['--reserve','15',derived,'--reserve','3',output]
+
+
 def heavy_environment():
     stats=run(['vm_stat'],timeout=30).decode()
     swap=re.search(r'^Swapouts:\s+(\d+)',stats,re.M)
     if not swap:raise ValueError('Cannot inspect swap before a heavy release phase')
-    return dict(os.environ,CASSINI_LOCK_MINUTES='5',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
+    return dict(os.environ,CASSINI_PYTHON=sys.executable,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
 
 
 def release(args):
@@ -303,10 +319,10 @@ def release(args):
         run(['xcrun', 'swift', ROOT/'scripts/check-update-key.swift', key, ROOT/'Distribution/sparkle-public-key.txt'], timeout=60)
     keychain, identity = unlock_signing_keychain()
     output.mkdir(parents=True)
-    tools = Path(run(['python3', ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
+    tools = Path(run([sys.executable, ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
     image_tools = dmg_tools()
     run(['xcodegen', 'generate'], cwd=ROOT, timeout=120)
-    run(['python3', ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
+    run([sys.executable, ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
     derived = getattr(args,'derived_data',None) or ROOT/'.build/developer-id'
     command = ['xcodebuild', 'build', '-project', 'Cassini.xcodeproj', '-scheme', 'Cassini', '-configuration', 'Release',
         '-derivedDataPath', derived, '-jobs', '2', 'ARCHS=arm64 x86_64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGNING_ALLOWED=YES',
@@ -317,8 +333,8 @@ def release(args):
     # one direct call: xcodebuild's argv carries no secret (the identity is a public hash).
     with (output/'build.log').open('wb') as log:
         if test_release:
-            command = [ROOT/'scripts/heavy.sh', sys.executable, ROOT/'scripts/release-resources.py', '15', *command]
-        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else None)  # no-secret-argv
+            command = [ROOT/'scripts/heavy.sh', sys.executable, ROOT/'scripts/release-resources.py', *build_reserves(derived,output), *command]
+        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else dict(os.environ,CASSINI_PYTHON=sys.executable))  # no-secret-argv
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
     # Xcode's internal product/executable paths stay stable for developer tools.
@@ -331,8 +347,8 @@ def release(args):
         info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
         if info.get('CassiniUpdatesEnabled') not in ('NO',False) or info.get('SUFeedURL'):
             raise ValueError('Test application unexpectedly enables public updates')
-    run(['python3', ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
-    run(['python3', ROOT/'scripts/check-developer-id.py', app])
+    run([sys.executable, ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
+    run([sys.executable, ROOT/'scripts/check-developer-id.py', app])
     run(['codesign', '--verify', '--deep', '--strict', app])
     # No post-build re-signing: worker manifests already bind signed bytes.
     submission = output/'Cassini-talk-notary.zip'
@@ -343,7 +359,7 @@ def release(args):
     run(['xcrun', 'stapler', 'validate', app], timeout=180)
     dmg = output/('Cassini-talk-'+args.version+('-test.'+str(args.build) if test_release else '')+'.dmg')
     if test_release:
-        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','3',image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=900,env=heavy_environment())
+        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','--reserve','3',output,image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=4500,env=heavy_environment())
     else:
         build_dmg(image_tools, app, dmg)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)

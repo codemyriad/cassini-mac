@@ -1,0 +1,11 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -58,7 +58,7 @@
+ def ci_state(runs,sha):
+     # API pages are newest-first. PR merge-ref results (even this repo's main)
+     # and fork runs must neither authorize nor block a main release.
+-    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch','schedule')
++    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch')
+               and (r.get('head_repository') or {}).get('full_name')==REPO),None)
+     if not run:return 'missing'
+     if run.get('head_sha')!=sha or run.get('head_branch')!='main':return 'red'

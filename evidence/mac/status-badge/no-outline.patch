@@ -1,0 +1,11 @@
+--- a/Components/StatusBadge/MeetingStatusBadge.swift
++++ b/Components/StatusBadge/MeetingStatusBadge.swift
+@@ -70,7 +70,7 @@
+             if let fill = kind.fill { Capsule().fill(color(fill)) }
+         }
+         .overlay {
+-            if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }
++            if false { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }
+         }
+         .accessibilityElement(children: .ignore)
+         .accessibilityLabel(Text(label))

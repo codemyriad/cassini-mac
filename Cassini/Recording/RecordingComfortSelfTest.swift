@@ -4,6 +4,7 @@ import AppKit
 import CassiniLibrary
 import CassiniRecording
 import Observation
+import SwiftUI
 
 /// Real app/controller/metadata/power/registration proof with RAM inputs only.
 /// This complements XCTest; it does not claim to test Finder keystroke delivery.
@@ -191,11 +192,120 @@ import Observation
             await RecordingPageModel.flushAll()
             guard editor.elapsedMs == 100 else { throw POSIXError(.EINVAL) }
             try session.finish()
+            try await verifyImmediateStopSavingFeedback(parent:root.appendingPathComponent("browser-stop-probe"))
             let visible = NSApp.windows.filter { $0.isVisible && !(String(describing:type(of:$0)) == "NSStatusBarWindow" && $0.level == .statusBar) }
             guard visible.isEmpty else { throw NSError(domain:"SavingProbeVisibleWindow",code:1,userInfo:[NSLocalizedDescriptionKey:visible.map { $0.title + " class=" + String(describing:type(of:$0)) + " level=" + String($0.level.rawValue) }.joined(separator:", ")]) }
-            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
+            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"immediateStopSavingFeedback":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch { FileHandle.standardError.write(Data("Saving clock probe failed: \(error)\n".utf8)); exit(1) }
+    }
+    private struct SavingSurfaceHarness: View {
+        @State private var recorder = RecordingController.shared
+        @State private var captures = CaptureCollection.shared
+        let onLaidOut: (String) -> Void
+        var body: some View {
+            let _ = (recorder.isRecording, recorder.isSaving, captures.isRecording, captures.isSaving)
+            VStack(alignment:.leading,spacing:8) {
+                if RecordingOverview.active {
+                    LibraryToolbarAction(title:UXText.text("common.stop"),label:UXText.text("common.stop"),identifier:"meeting-stop",style:.stop,fixtureOnLaidOut:onLaidOut) { RecordingOverview.stop() }
+                } else if RecordingOverview.saving {
+                    LibraryToolbarAction(title:UXText.text("states.badge.saving"),label:UXText.text("states.badge.saving"),identifier:"meeting-saving",style:.saving,enabled:false,fixtureOnLaidOut:onLaidOut) { }
+                } else {
+                    LibraryToolbarAction(title:UXText.text("common.record"),label:UXText.text("common.record"),identifier:"toolbar-record",style:.record,enabled:RecordingOverview.canStart,fixtureOnLaidOut:onLaidOut) { }
+                }
+                IdleStatusMenu()
+            }
+        }
+    }
+    private static func findButton(in view: NSView, identifier: String) -> NSButton? {
+        if let button = view as? NSButton, button.accessibilityIdentifier() == identifier { return button }
+        for child in view.subviews {
+            if let found = findButton(in:child,identifier:identifier) { return found }
+        }
+        return nil
+    }
+    private static func verifyImmediateStopSavingFeedback(parent: URL) async throws {
+        let collection = CaptureCollection.shared
+        let probe = try collection.beginBrowserStopProbeForTesting(parent:parent)
+        let (laidOutStream, laidOutCont) = AsyncStream<String>.makeStream()
+        defer { laidOutCont.finish() }
+        let host = NSHostingView(rootView:SavingSurfaceHarness(onLaidOut:{ identifier in
+            laidOutCont.yield(identifier)
+        }))
+        host.frame = NSRect(x:0,y:0,width:360,height:260)
+        host.layoutSubtreeIfNeeded()
+        var laidOutIter = laidOutStream.makeAsyncIterator()
+        func waitForLaidOutButton(identifier: String, absent: [String], code: Int, description: String) async throws -> NSButton {
+            func matchingInstalledButton() -> NSButton? {
+                host.layoutSubtreeIfNeeded()
+                guard let button = findButton(in:host,identifier:identifier),
+                      button.superview != nil, button.frame.width > 0,
+                      absent.allSatisfy({ findButton(in:host,identifier:$0) == nil }) else { return nil }
+                return button
+            }
+            if let ready = matchingInstalledButton() { return ready }
+            let (cancelledStream, cancelledCont) = AsyncStream<Void>.makeStream()
+            let timeoutTask = Task { @MainActor in
+                defer { cancelledCont.yield(()); cancelledCont.finish() }
+                do { try await Task.sleep(for:.seconds(10)) } catch { return }
+                laidOutCont.finish()
+            }
+            while await laidOutIter.next() != nil {
+                if let ready = matchingInstalledButton() {
+                    timeoutTask.cancel()
+                    await timeoutTask.value
+                    var cancelledIter = cancelledStream.makeAsyncIterator()
+                    _ = await cancelledIter.next()
+                    return ready
+                }
+            }
+            timeoutTask.cancel()
+            await timeoutTask.value
+            throw NSError(domain:"SavingProbeImmediateFeedback",code:code,userInfo:[NSLocalizedDescriptionKey:description])
+        }
+        let stopButton: NSButton
+        do {
+            stopButton = try await waitForLaidOutButton(identifier:"meeting-stop",absent:["meeting-saving","toolbar-record"],code:1,description:"Timed out waiting for active Stop button layout")
+        } catch {
+            try? await probe.finish()
+            throw error
+        }
+        guard RecordingOverview.active, !RecordingOverview.saving,
+              RecordingOverview.recordCommandTitle == UXText.text("common.stop"),
+              IdleStatusMenu.statusTitle == UXText.text("hidden.status.watching"),
+              stopButton.isEnabled else {
+            try? await probe.finish()
+            throw NSError(domain:"SavingProbeImmediateFeedback",code:1,userInfo:[NSLocalizedDescriptionKey:"Expected active Stop state before stopping"])
+        }
+        collection.stop(probe.id)
+        // Synchronously on Stop, before browser PCM flush finishes:
+        guard !RecordingOverview.active, RecordingOverview.saving, !RecordingOverview.canStart,
+              RecordingOverview.recordCommandTitle == UXText.text("states.badge.saving"),
+              IdleStatusMenu.statusTitle == UXText.text("states.badge.saving") else {
+            try? await probe.finish()
+            throw NSError(domain:"SavingProbeImmediateFeedback",code:2,userInfo:[NSLocalizedDescriptionKey:"Expected immediate synchronous Saving state on Stop"])
+        }
+        let savingButton: NSButton
+        do {
+            savingButton = try await waitForLaidOutButton(identifier:"meeting-saving",absent:["meeting-stop","toolbar-record"],code:3,description:"Timed out waiting for Saving… toolbar control layout")
+        } catch {
+            try? await probe.finish()
+            throw error
+        }
+        guard collection.captures[probe.id]?.owner.snapshot.phase == .recording,
+              !savingButton.isEnabled,
+              savingButton.accessibilityLabel() == UXText.text("states.badge.saving") else {
+            try? await probe.finish()
+            throw NSError(domain:"SavingProbeImmediateFeedback",code:3,userInfo:[NSLocalizedDescriptionKey:"Expected disabled Saving… toolbar control while browser flush is pending"])
+        }
+        try await probe.finish()
+        let recordButton = try await waitForLaidOutButton(identifier:"toolbar-record",absent:["meeting-stop","meeting-saving"],code:4,description:"Timed out waiting for Record toolbar control layout")
+        guard !RecordingOverview.active, !RecordingOverview.saving,
+              RecordingOverview.recordCommandTitle == UXText.text("common.record"),
+              IdleStatusMenu.statusTitle == UXText.text("hidden.status.watching"),
+              recordButton.accessibilityLabel() == UXText.text("common.record") else {
+            throw NSError(domain:"SavingProbeImmediateFeedback",code:4,userInfo:[NSLocalizedDescriptionKey:"Expected Record toolbar control to recover once Saving settles"])
+        }
     }
 }
 private extension Optional {

@@ -1,0 +1,15 @@
+--- a/project.yml
++++ b/project.yml
+@@ -111,10 +111,10 @@
+           - $(SRCROOT)/scripts/bundle-companion-page.py
+         outputFiles:
+           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cassini.html
+-        script: '"${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/bundle-companion-page.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cassini.html"'
++        script: 'python3 "$SRCROOT/scripts/bundle-companion-page.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cassini.html"'
+       - name: Bundle reviewed browser companion
+         basedOnDependencyAnalysis: false
+-        script: '"${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/bundle-browser-companion.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion"'
++        script: 'python3 "$SRCROOT/scripts/bundle-browser-companion.py" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BrowserCompanion"'
+       - name: Bundle pinned Opus encoder
+         script: bash "$SRCROOT/scripts/bundle-opus.sh"
+         basedOnDependencyAnalysis: false

@@ -4,10 +4,10 @@ set -euo pipefail
 # Xcode build step. No downloading happens in Cassini or the worker at runtime.
 staging="$DERIVED_FILE_DIR/Whistle"
 if [ -n "${CASSINI_CI_ASSETS:-}" ]; then
-    python3 "$SRCROOT/scripts/ci-products.py" stage-assets Whistle "$staging"
+    "${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/ci-products.py" stage-assets Whistle "$staging"
 else
-    python3 "$SRCROOT/scripts/fetch-whistle.py" --output "$staging"
-    python3 "$SRCROOT/scripts/fetch-vad.py" --output "$staging"
+    "${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/fetch-whistle.py" --output "$staging"
+    "${CASSINI_PYTHON:-python3}" "$SRCROOT/scripts/fetch-vad.py" --output "$staging"
 fi
 destination="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Whistle"
 frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
@@ -40,7 +40,7 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ]; then
     codesign --force --sign "$identity" "${options[@]}" "${timestamp[@]}" -i "$PRODUCT_BUNDLE_IDENTIFIER.whistle-worker" --entitlements "$SRCROOT/Whistle/worker.entitlements" "$worker"
 fi
 # Record what is actually shipped, including signatures, separately from source pins.
-python3 - "$destination" "$worker" "$library" "$vadlibrary" <<'PY'
+"${CASSINI_PYTHON:-python3}" - "$destination" "$worker" "$library" "$vadlibrary" <<'PY'
 import hashlib,json,sys
 from pathlib import Path
 folder, worker, library, vadlibrary = map(Path, sys.argv[1:])

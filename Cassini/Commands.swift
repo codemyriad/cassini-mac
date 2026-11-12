@@ -31,7 +31,7 @@ struct AppCommands: Commands {
             Button(RecordingOverview.recordCommandTitle) {
                 if RecordingConfirmation.active { RecordingConfirmation.stop() }
                 else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryStore.shared.context.root) }
-            }.keyboardShortcut("r", modifiers: .command).disabled(RecordingOverview.saving)
+            }.keyboardShortcut("r", modifiers: .command).disabled(!RecordingConfirmation.active && !RecordingOverview.canStart)
         }
         CommandGroup(after: .newItem) {
             Button(UXText.text("meeting.renameEllipsis")) {

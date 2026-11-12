@@ -290,7 +290,7 @@ def render_swift(root: Path = ROOT) -> str:
         '              let upstreamData = try? Data(contentsOf: upstreamURL) else {',
         '            return ["brandTokensSynced": false, "brandTokensRejectsDrift": false]',
         '        }',
-        '        let synced = verifySync(tokensData: tokensData, upstreamData: upstreamData)',
+        '        let synced = entries.count == 53 && verifySync(tokensData: tokensData, upstreamData: upstreamData)',
         '        var driftedLight = entries',
         '        driftedLight[0] = Entry(id: driftedLight[0].id, swiftName: driftedLight[0].swiftName, light: driftedLight[0].dark, dark: driftedLight[0].dark)',
         '        var driftedDark = entries',

@@ -1,0 +1,20 @@
+--- a/scripts/daily-test-release.py
++++ b/scripts/daily-test-release.py
+@@ -328,6 +328,8 @@
+         manual=next((r['id'] for r in request if r['conclusion']=='success' and r['head_branch']=='main'
+                      and r['event']=='workflow_dispatch' and r['id']>state.get('request',0)),None)
+         if state.get('slot')==slot and manual is None:return
++        state.update(slot=slot,request=manual or state.get('request',0),phase='admission')
++        atomic(state_file,state)
+         stage='main source/CI admission'
+         now_utc=now.astimezone(timezone.utc)
+         request_id=manual or state.get('request',0)
+@@ -398,8 +400,6 @@
+         stage='failed output cleanup'
+         prune_failed_builds()
+         stage='release history'
+-        state.update(slot=slot,request=manual or state.get('request',0),phase='admission')
+-        atomic(state_file,state)
+         releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
+         previous=latest_nightly(releases)
+         stable=stable_notes_source(releases)

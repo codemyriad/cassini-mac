@@ -1,0 +1,38 @@
+{
+  "positive-eta": {
+    "exitCode": 1,
+    "expectedFailure": "State vector mismatch"
+  },
+  "importing-kind": {
+    "exitCode": 1,
+    "expectedFailure": "Import entry mismatch"
+  },
+  "queued-state": {
+    "exitCode": 1,
+    "expectedFailure": "State vector mismatch"
+  },
+  "recording-precedence": {
+    "exitCode": 1,
+    "expectedFailure": "State vector mismatch"
+  },
+  "interrupted-label": {
+    "exitCode": 1,
+    "expectedFailure": "State vector mismatch"
+  },
+  "missing-translation": {
+    "exitCode": 1,
+    "expectedFailure": "Missing translation silently fell back to English"
+  },
+  "regional-locale": {
+    "exitCode": 1,
+    "expectedFailure": "Localized plural/count mismatch"
+  },
+  "visual-kind": {
+    "exitCode": 1,
+    "expectedFailure": "Catalog view lost badge kind or label"
+  },
+  "nil-badge": {
+    "exitCode": 1,
+    "expectedFailure": "Nil presentation rendered a badge"
+  }
+}

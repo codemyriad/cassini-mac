@@ -1,0 +1,34 @@
+{
+  "selected-accent": {
+    "exitCode": 1,
+    "expectedFailure": "Wrong card fill"
+  },
+  "no-shadow": {
+    "exitCode": 1,
+    "expectedFailure": "Wrong card shadow state"
+  },
+  "no-inset": {
+    "exitCode": 1,
+    "expectedFailure": "Selected inset stroke is missing"
+  },
+  "inherited-ink": {
+    "exitCode": 1,
+    "expectedFailure": "Card inherited selection ink"
+  },
+  "wrong-border": {
+    "exitCode": 1,
+    "expectedFailure": "Wrong card border"
+  },
+  "square-corners": {
+    "exitCode": 1,
+    "expectedFailure": "Card corner is not rounded"
+  },
+  "horizontal-padding": {
+    "exitCode": 1,
+    "expectedFailure": "Wrong horizontal content inset"
+  },
+  "card-gap": {
+    "exitCode": 1,
+    "expectedFailure": "Unexpected card stack geometry"
+  }
+}

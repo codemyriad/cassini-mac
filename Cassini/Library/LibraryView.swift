@@ -16,10 +16,12 @@ struct LibraryView: View {
     @State private var meetingTitleInset: CGFloat = 44
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
     @State private var companionSetup = CompanionSetup.shared
     @State private var rename = MeetingRenameCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
+    @State private var transcriptionQueue = TranscriptionQueue.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
@@ -73,7 +75,12 @@ struct LibraryView: View {
                         LiveRecordingPill(started:started,microphone:RecordingOverview.levels["microphone",default:0],output:RecordingOverview.levels["output",default:0])
                     } else if store.context.screenshot {
                         LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
-                    } else { ProgressView().controlSize(.small) }
+                    } else {
+                        HStack(spacing:6) {
+                            ProgressView().controlSize(.small)
+                            Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
+                        }.accessibilityElement(children:.contain).accessibilityIdentifier("recording-toolbar-saving")
+                    }
                 }
                 ToolbarItem(placement:.principal) {
                     Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold)).lineLimit(1)
@@ -86,6 +93,8 @@ struct LibraryView: View {
                 ToolbarItem(placement:.navigation) {
                     if RecordingOverview.active {
                         LibraryToolbarAction(title:UXText.text("common.stop"),label:UXText.text("common.stop"),identifier:"meeting-stop",style:.stop) { RecordingOverview.stop() }
+                    } else if RecordingOverview.saving {
+                        LibraryToolbarAction(title:UXText.text("states.badge.saving"),label:UXText.text("states.badge.saving"),identifier:"meeting-saving",style:.saving,enabled:false) { }
                     } else {
                         LibraryToolbarAction(title:UXText.text("common.record"),label:UXText.text("common.record"),identifier:"toolbar-record",style:.record,enabled:RecordingOverview.canStart) {
                             sessionPlayback.stop(); RecordCoordinator.shared.request(parent:store.context.root)
@@ -93,23 +102,11 @@ struct LibraryView: View {
                     }
                 }
                 ToolbarItem(placement:.navigation) {
-                    VStack(alignment:.leading,spacing:1) {
-                        Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold))
-                            .lineLimit(1).accessibilityIdentifier("meeting-title")
-                            .onTapGesture { rename.show(detail.meeting,presentation:.title) }
-                            .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
-                            .help(UXText.text("meeting.renameEllipsis"))
-                            .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-                        Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
-                            .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
-                    }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
-                        .padding(.leading,meetingTitleInset)
-                        .frame(width:max(200,toolbarWidth - (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450)),alignment:.leading)
-                        .accessibilityElement(children:.contain)
+                    meetingTitleHeader(detail)
                 }
-                if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
+                if let spec = meetingTranscriptionToolbarSpec(detail) {
                     ToolbarItem(placement:.primaryAction) {
-                        LibraryToolbarAction(title:UXText.text("common.writeDown"),label:UXText.text("common.writeDown"),identifier:"meeting-write-down",style:.bordered,enabled:!LibraryMoveCoordinator.shared.busy) { TranscriptionQueue.shared.writeDown(detail) }
+                        LibraryToolbarAction(title:spec.title,label:spec.title,identifier:spec.identifier,style:.bordered,enabled:spec.enabled,action:spec.action)
                     }
                 }
                 ToolbarItem(placement:.primaryAction) {
@@ -311,7 +308,7 @@ struct LibraryView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .background(CassiniTheme.sidebarGround)
+            .background(NativeSidebarMaterial())
             .frame(minWidth: 400, maxWidth: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
             Divider()
@@ -338,6 +335,7 @@ struct LibraryView: View {
                 LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
             } else if RecordingOverview.saving {
                 HStack { ProgressView().controlSize(.small); Text(UXText.text("states.badge.saving")) }.frame(height: 34)
+                    .accessibilityElement(children:.contain).accessibilityIdentifier("toolbar-saving")
             } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
                 // Read-only header placeholder until UX5 owns transport/levels.
                 HStack(spacing: 8) {
@@ -436,10 +434,7 @@ struct LibraryView: View {
                         .opacity(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing) ? 0.45 : 1)
                         .disabled(LibraryMoveCoordinator.shared.busy || !sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
                         .accessibilityIdentifier("preview-play")
-                if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
-                    Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
-                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("preview-write-down")
-                }
+                previewTranscriptionButton(meeting)
 
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
@@ -516,14 +511,20 @@ struct LibraryView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(CassiniTheme.paneGround)
     }
     private func recordButton(big: Bool) -> some View {
-        Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
+        let saving = big && RecordingOverview.saving
+        let title = UXText.text(saving ? "states.badge.saving" : "common.record")
+        return Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
             HStack(spacing: big ? 10 : 8) {
-                Circle().fill(CassiniTheme.onRecord).frame(width: big ? 12 : 10, height: big ? 12 : 10)
-                Text(UXText.text("common.record")).fontWeight(.semibold)
+                if saving {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Circle().fill(CassiniTheme.onRecord).frame(width: big ? 12 : 10, height: big ? 12 : 10)
+                }
+                Text(title).fontWeight(.semibold)
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
-                .foregroundStyle(CassiniTheme.onRecord)
-                .background(CassiniTheme.record, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
-        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(UXText.text("common.record")).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+                .foregroundStyle(saving ? CassiniTheme.ink2 : CassiniTheme.onRecord)
+                .background(saving ? CassiniTheme.chipFill : CassiniTheme.record, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
+        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
         if meeting.state.origin == .own { if !sessionPlayback.isPlaying { PlayerController.pauseActive() }; sessionPlayback.toggle(meeting); return }
@@ -533,16 +534,70 @@ struct LibraryView: View {
     private func readTranscript(_ meeting: LibraryMeeting) {
         sessionPlayback.stop(); navigation.open(meeting)
     }
+    private struct TranscriptionToolbarSpec {
+        let title: String
+        let identifier: String
+        let enabled: Bool
+        let action: () -> Void
+    }
+    private func meetingTitleReservedWidth(_ meeting: LibraryMeeting) -> CGFloat {
+        if ([.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly) ||
+           (meeting.canWriteDown && meeting.state.transcript == .none && meeting.transcriptPaused) {
+            return 620
+        }
+        return meeting.canWriteDown && meeting.state.transcript == .none ? 570 : 450
+    }
+    private func meetingTitleHeader(_ detail: MeetingDetailModel) -> some View {
+        VStack(alignment:.leading,spacing:1) {
+            Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold))
+                .lineLimit(1).accessibilityIdentifier("meeting-title")
+                .onTapGesture { rename.show(detail.meeting,presentation:.title) }
+                .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
+                .help(UXText.text("meeting.renameEllipsis"))
+                .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
+            Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
+                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
+        }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
+            .padding(.leading,meetingTitleInset)
+            .frame(width:max(200,toolbarWidth - meetingTitleReservedWidth(detail.meeting)),alignment:.leading)
+            .accessibilityElement(children:.contain)
+    }
+    private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
+        let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(detail.meeting.folder)
+        if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
+            let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
+            return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
+        }
+        if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
+            let title = UXText.mac("transcription.stop")
+            return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
+        }
+        return nil
+    }
+    @ViewBuilder
+    private func previewTranscriptionButton(_ meeting: LibraryMeeting) -> some View {
+        let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(meeting.folder)
+        if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
+            Button(meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
+                .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
+        } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
+            Button(UXText.mac("transcription.stop")) { TranscriptionQueue.shared.stop(meeting) }
+                .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
+        }
+    }
 }
 
 /// Native groups expose one action each, avoiding SwiftUI toolbar wrappers that
 /// duplicate their child button's role and identifier in the accessibility tree.
-private struct LibraryToolbarAction: NSViewRepresentable {
-    enum Style: Equatable { case back, record, stop, capsule, bordered, more }
+struct LibraryToolbarAction: NSViewRepresentable {
+    enum Style: Equatable { case back, record, stop, saving, capsule, bordered, more }
     let title: String, label: String, identifier: String
     let style: Style
     var enabled = true
     var menu: (() -> NSMenu)? = nil
+    #if DEBUG
+    var fixtureOnLaidOut: ((String) -> Void)? = nil
+    #endif
     let action: () -> Void
     func makeNSView(context: Context) -> LibraryToolbarActionView { LibraryToolbarActionView() }
     func updateNSView(_ view: LibraryToolbarActionView, context: Context) { view.update(self) }
@@ -574,35 +629,62 @@ private struct LibraryToolbarAction: NSViewRepresentable {
         @objc private func invoke(_ sender: Any?) { DispatchQueue.main.async { [handler] in handler() } }
     }
 }
-private final class LibraryToolbarActionView: NSView {
+final class LibraryToolbarActionView: NSView {
     private final class ActionButton: NSButton {
         var spokenLabel = ""
         override func accessibilityLabel() -> String? { spokenLabel }
     }
     private let button = ActionButton()
+    private let spinner: NSProgressIndicator = {
+        let indicator = NSProgressIndicator()
+        indicator.style = .spinning; indicator.controlSize = .small
+        indicator.isDisplayedWhenStopped = false; indicator.isHidden = true
+        indicator.setAccessibilityElement(false)
+        return indicator
+    }()
     private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
     private var currentStyle: LibraryToolbarAction.Style = .bordered
+    #if DEBUG
+    private var fixtureOnLaidOut: ((String) -> Void)?
+    #endif
     private var size = NSSize(width:28,height:34)
     override init(frame: NSRect) {
         super.init(frame:frame)
         setAccessibilityElement(true); setAccessibilityRole(.group)
         button.target = self; button.action = #selector(invoke(_:))
         button.setButtonType(.momentaryPushIn); button.wantsLayer = true; button.layer?.cornerRadius = 6
-        addSubview(button); setAccessibilityChildren([button])
+        addSubview(button); addSubview(spinner); setAccessibilityChildren([button])
     }
     required init?(coder: NSCoder) { nil }
     override var intrinsicContentSize: NSSize { size }
-    override func layout() { super.layout(); button.frame = bounds }
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        #if DEBUG
+        scheduleFixtureLayoutNotification()
+        #endif
+    }
     override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyLayerFill() }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyLayerFill() }
     private func applyLayerFill() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let fill: NSColor = [.stop,.record].contains(currentStyle) ? CassiniTheme.nsRecord : currentStyle == .capsule ? CassiniTheme.nsChipFill : .clear
+            let fill: NSColor = [.stop,.record].contains(currentStyle) ? CassiniTheme.nsRecord : [.saving,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
             button.layer?.backgroundColor = fill.cgColor
         }
     }
+    override func layout() {
+        super.layout(); button.frame = bounds
+        spinner.frame = NSRect(x:10,y:(bounds.height - 16) / 2,width:16,height:16)
+        #if DEBUG
+        if superview != nil, button.frame.width > 0 {
+            fixtureOnLaidOut?(button.accessibilityIdentifier())
+        }
+        #endif
+    }
     func update(_ value: LibraryToolbarAction) {
         action = value.action; makeMenu = value.menu; currentStyle = value.style
+        #if DEBUG
+        fixtureOnLaidOut = value.fixtureOnLaidOut
+        #endif
         // SwiftUI otherwise borrows the only child's identifier/label for its
         // representable proxy. Keep the container distinct from the action.
         setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
@@ -612,11 +694,13 @@ private final class LibraryToolbarActionView: NSView {
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.imagePosition = .imageLeft
-        let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk
+        let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
         applyLayerFill()
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
         size = NSSize(width:text + 28,height:34)
+        if value.style == .saving { spinner.isHidden = false; spinner.startAnimation(nil) }
+        else { spinner.stopAnimation(nil); spinner.isHidden = true }
         switch value.style {
         case .back, .more:
             button.image = NSImage(systemSymbolName:value.style == .back ? "chevron.left" : "ellipsis",accessibilityDescription:nil)
@@ -627,10 +711,31 @@ private final class LibraryToolbarActionView: NSView {
                 CassiniTheme.nsOnRecord.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
             button.imageHugsTitle = true; size.width += 18
+        case .saving:
+            button.image = NSImage(size:NSSize(width:22,height:16))
+            button.imageHugsTitle = true; size.width += 22
         default: break
         }
         needsLayout = true; invalidateIntrinsicContentSize()
+        #if DEBUG
+        scheduleFixtureLayoutNotification()
+        #endif
     }
+    #if DEBUG
+    private func scheduleFixtureLayoutNotification() {
+        guard fixtureOnLaidOut != nil else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let callback = self.fixtureOnLaidOut, self.superview != nil else { return }
+            var root: NSView = self
+            while let parent = root.superview { root = parent }
+            if self.needsLayout || self.button.frame.width == 0 {
+                root.layoutSubtreeIfNeeded()
+            } else {
+                callback(self.button.accessibilityIdentifier())
+            }
+        }
+    }
+    #endif
     @objc private func invoke(_ sender: Any?) {
         if let makeMenu { makeMenu().popUp(positioning:nil,at:NSPoint(x:0,y:0),in:self) }
         else { action?() }

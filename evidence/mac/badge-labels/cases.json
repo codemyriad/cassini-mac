@@ -1,0 +1,47 @@
+[
+  {
+    "name": "positive-eta",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "State vector mismatch"
+  },
+  {
+    "name": "importing-kind",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "Import entry mismatch"
+  },
+  {
+    "name": "queued-state",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "State vector mismatch"
+  },
+  {
+    "name": "recording-precedence",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "State vector mismatch"
+  },
+  {
+    "name": "interrupted-label",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "State vector mismatch"
+  },
+  {
+    "name": "missing-translation",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "Missing translation silently fell back to English"
+  },
+  {
+    "name": "regional-locale",
+    "source": "Components/BadgeLabels/BadgeLabelPresenter.swift",
+    "expectedFailure": "Localized plural/count mismatch"
+  },
+  {
+    "name": "visual-kind",
+    "source": "Components/BadgeLabels/CatalogStatusBadge.swift",
+    "expectedFailure": "Catalog view lost badge kind or label"
+  },
+  {
+    "name": "nil-badge",
+    "source": "Components/BadgeLabels/CatalogStatusBadge.swift",
+    "expectedFailure": "Nil presentation rendered a badge"
+  }
+]

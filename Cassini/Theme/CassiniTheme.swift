@@ -4,7 +4,24 @@ import CassiniLibrary
 import CassiniSpectrogram
 import SwiftUI
 
-/// Semantic colour roles for the macOS app, backed by `CassiniTokens` (`brand/tokens.json` Wave 1).
+/// Native macOS sidebar material (`HARMONY 10.14`: Mac keeps the native sidebar material;
+/// `sidebar` / `sidebar-mac` are reference values for mocks and tests, never a sidebar fill).
+struct NativeSidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = .sidebar
+        nsView.blendingMode = .behindWindow
+        nsView.state = .followsWindowActiveState
+    }
+}
+
+/// Semantic colour roles for the macOS app, backed by `CassiniTokens` (`brand/tokens.json` `b4dec41`).
 enum CassiniTheme {
     /// All decided roles from `brand/tokens.json` are applied in W1 look preview.
     static let unappliedDecidedTokens: Set<String> = []
@@ -13,24 +30,37 @@ enum CassiniTheme {
         NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light }
     }
 
-    // Scene tint (L-06, L-18)
+    // Scene tint (L-06, L-18, L-39)
     static let sceneTint: Color? = CassiniTokens.accent
 
-    // Grounds & surfaces (L-16, L-17, L-18, L-19, C18)
+    // Grounds, surfaces & text fields (L-16, L-17, L-18, L-19, L-42; HARMONY 10.9, 10.14)
     static let paneGround = CassiniTokens.ground
     static let nsPaneGround: NSColor = CassiniTokens.ns.ground
     static let windowGround = CassiniTokens.ground
-    static let sidebarGround = CassiniTokens.sunken
     static let surface = CassiniTokens.surface
     static let raised = CassiniTokens.raised
-    static let cardRest = CassiniTokens.cardRest
-    static let nsChipFill: NSColor = CassiniTokens.ns.neutralTint
-    static let chipFill = CassiniTokens.neutralTint
-    static let controlFill = CassiniTokens.surface
     static let subtleWash = CassiniTokens.sunken
-    static let ratePillFill = CassiniTokens.neutralTint
+    static let cardRest = CassiniTokens.cardRest
+    static let controlFill = CassiniTokens.surface
+    static let field = CassiniTokens.field
+    static let nsField: NSColor = CassiniTokens.ns.field
+    static let fieldLine = CassiniTokens.fieldLine
+    static let nsFieldLine: NSColor = CassiniTokens.ns.fieldLine
+    /// Mock/test reference values only (HARMONY 10.14: live Mac sidebars use `NativeSidebarMaterial`).
+    static let sidebarReference = CassiniTokens.sidebar
+    static let sidebarMacReference = CassiniTokens.sidebarMac
 
-    // Lines & borders (L-16, L-18)
+    // Neutral pills & secondary buttons: `ink` at 10% over whatever is behind (L-46, L-54; HARMONY 10.15)
+    static let neutralPillFill = CassiniTokens.ink.opacity(0.10)
+    static let nsNeutralPillFill = adaptiveNS(
+        light: CassiniTokens.inkEntry.resolvedNSColor(dark: false).withAlphaComponent(0.10),
+        dark: CassiniTokens.inkEntry.resolvedNSColor(dark: true).withAlphaComponent(0.10)
+    )
+    static let nsChipFill: NSColor = nsNeutralPillFill
+    static let chipFill = neutralPillFill
+    static let ratePillFill = neutralPillFill
+
+    // Lines & borders (L-16, L-18, L-42)
     static let cardStroke = CassiniTokens.line
     static let modelCardStroke = CassiniTokens.line
     static let tagStroke = CassiniTokens.line
@@ -38,7 +68,7 @@ enum CassiniTheme {
     static let lineSoft = CassiniTokens.lineSoft
     static let nsSeparator: NSColor = CassiniTokens.ns.line
 
-    // Inks & placeholders (L-16, L-18, L-36; HARMONY 10.8)
+    // Inks & placeholders (L-16, L-18, L-36, L-42; HARMONY 10.8)
     static let ink = CassiniTokens.ink
     static let nsInk: NSColor = CassiniTokens.ns.ink
     static let primaryInk = CassiniTokens.ink
@@ -50,10 +80,10 @@ enum CassiniTheme {
     static let nsInk3: NSColor = CassiniTokens.ns.ink3
     static let nsUpcomingWordInk: NSColor = CassiniTokens.ns.ink3
     static func nsInactiveChipFill(dark: Bool) -> NSColor {
-        CassiniTokens.neutralTintEntry.resolvedNSColor(dark: dark)
+        CassiniTokens.inkEntry.resolvedNSColor(dark: dark).withAlphaComponent(0.10)
     }
 
-    // Accents (L-06, L-17, L-18)
+    // Accents (L-06, L-17, L-18, L-39)
     static let accent = CassiniTokens.accent
     static let nsAccent: NSColor = CassiniTokens.ns.accent
     static let accentStrong = CassiniTokens.accentStrong
@@ -105,7 +135,7 @@ enum CassiniTheme {
         rowSilentDark: CassiniTokens.warnInkEntry.darkRGB
     )
 
-    // Status, destructive/success fills & inverse roles (L-16, L-26, L-37, L-38; HARMONY 10.4–10.7)
+    // Status, destructive/success fills & inverse roles (L-16, L-26, L-37, L-38, L-40, L-46; HARMONY 10.4–10.7, 10.15)
     static let warnInk = CassiniTokens.warnInk
     static let warnTint = CassiniTokens.warnTint
     static let inlineWarnInk = CassiniTokens.warnInk
@@ -125,8 +155,8 @@ enum CassiniTheme {
         switch tint {
         case "red": return recordTint
         case "amber": return warnTint
-        case "accent": return neutralTint
-        default: return neutralTint
+        case "accent": return neutralPillFill
+        default: return neutralPillFill
         }
     }
     static let success = CassiniTokens.success
@@ -146,7 +176,7 @@ enum CassiniTheme {
     static let shadow = CassiniTokens.shadow
     static let toastUsesInverse = true
 
-    // Speaker & avatar roles (L-14; HARMONY 10.10–10.12; provisional colourIndex mapping pending Alex)
+    // Speaker & avatar roles (L-14, L-41; HARMONY 10.10–10.12, decided)
     static func speakerSlot(colourIndex: Int, unnamed: Bool) -> Int {
         guard !unnamed else { return 0 }
         return ((colourIndex % 6) + 6) % 6 + 1
@@ -157,6 +187,11 @@ enum CassiniTheme {
         let unnamed = speaker.provenance == .unnamed
             || (speaker.provenance == nil && speaker.name == nil && speaker.label == nil)
         return speakerSlot(colourIndex: speaker.colourIndex, unnamed: unnamed)
+    }
+
+    /// Saved-voice avatar/ink slot (HARMONY 10.12, L-41): assigned once in 0-based save order, invariant under sorting.
+    static func savedVoiceSlot(saveOrder: Int) -> Int {
+        ((saveOrder % 6) + 6) % 6 + 1
     }
 
     private static let speakerInks: [Color] = [
@@ -221,5 +256,13 @@ enum CassiniTheme {
 
     static func nsSpeakerInk(colourIndex: Int, unnamed: Bool = false) -> NSColor {
         nsSpeakerInks[speakerSlot(colourIndex: colourIndex, unnamed: unnamed)]
+    }
+
+    static func savedVoiceInk(saveOrder: Int) -> Color {
+        speakerInks[savedVoiceSlot(saveOrder: saveOrder)]
+    }
+
+    static func savedVoiceWash(saveOrder: Int) -> Color {
+        speakerWashes[savedVoiceSlot(saveOrder: saveOrder)]
     }
 }
