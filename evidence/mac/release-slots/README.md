@@ -19,7 +19,7 @@ failure. Keep three private archives of up to five 1MiB diagnostic tails each.
 Active/unmarked/symlinked jobs, unowned archive collisions, and shared caches are
 preserved. The release lock waits up to 60 minutes to share drmeyers with iOS.
 
-Replay 19 actual production regressions (42 baseline/restored policy tests):
+Replay 20 actual production regressions (44 baseline/restored policy tests):
 
 ```
 MAC_SLOT_EVIDENCE=/absolute/path/outside/checkout python3 evidence/mac/release-slots/replay.py

@@ -93,5 +93,10 @@
     "name": "companion-interpreter",
     "source": "scripts/bundle-browser-companion.py",
     "test": "BuildPhaseRuntime.test_companion_verifier_uses_its_running_interpreter"
+  },
+  {
+    "name": "expired-ci-wait",
+    "source": "scripts/daily-test-release.py",
+    "test": "DailyExecution.test_expired_wait_rejects_late_green_head"
   }
 ]

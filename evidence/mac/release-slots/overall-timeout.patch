@@ -1,6 +1,6 @@
 --- a/scripts/daily-test-release.py
 +++ b/scripts/daily-test-release.py
-@@ -250,7 +250,7 @@
+@@ -249,7 +249,7 @@
          # Six hours covers two 60m lock waits, two notarizations (600s
          # submit + 2800s wait + 360s staple/validate each), 600s DMG,
          # 3600s compilation and 900s setup/signing margin: 19820s.

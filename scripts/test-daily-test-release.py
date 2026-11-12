@@ -258,6 +258,78 @@ class DailyExecution(unittest.TestCase):
             self.assertEqual(lines,['[Mac] daily test release waiting: latest main CI is not green',
                                     '[Mac] daily test release skipped: main CI did not finish green within 45m'])
 
+    def test_expired_wait_rejects_late_green_head(self):
+        for request_id in [None,42]:
+            for late_minutes in [45,120]:
+                with self.subTest(request=request_id,late_minutes=late_minutes),tempfile.TemporaryDirectory() as directory:
+                    base,calls,build=self.context(directory)
+                    original=daily.gh
+                    def api(args):
+                        if 'request-mac' in args[-1]:return {'workflow_runs':([] if request_id is None else [dict(id=request_id,conclusion='success',head_branch='main',event='workflow_dispatch')])}
+                        return original(args)
+                    instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00') # 14:00 Berlin
+                    with patch.object(daily,'gh',side_effect=api),patch.object(daily,'main_ci_state',side_effect=['pending','pending','green','green']):
+                        daily.tick(instant) # 14:00 Berlin: pending
+                        daily.tick(instant+timedelta(minutes=44)) # 14:44 Berlin: pending
+                        try:daily.tick(instant+timedelta(minutes=late_minutes)) # 14:45 or 16:00 Berlin: green, expired
+                        except SystemExit:pass
+                        count=calls.call_count
+                        daily.tick(instant+timedelta(minutes=late_minutes+1))
+                    build.assert_not_called();self.assertEqual(calls.call_count,count)
+                    state=json.loads((base/'state.json').read_text())
+                    self.assertEqual(state['slot'],daily.due_slot(instant))
+                    self.assertEqual(state['request'],request_id or 0)
+                    self.assertEqual(state['phase'],'skipped')
+                    self.assertNotIn('pending_ci',state)
+                    self.assertEqual((base/'inbox').read_text().splitlines(),
+                                     ['[Mac] daily test release waiting: latest main CI is not green',
+                                      '[Mac] daily test release skipped: main CI did not finish green within 45m'])
+
+    def test_expired_wait_rejects_late_green_ancestor(self):
+        for request_id in [None,42]:
+            for late_minutes in [45,120]:
+                with self.subTest(request=request_id,late_minutes=late_minutes),tempfile.TemporaryDirectory() as directory:
+                    base,calls,build=self.context(directory);source=base/'source'
+                    def git(*args):
+                        return subprocess.check_output(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false',*args],cwd=source,text=True).strip()
+                    git('init','-q','-b','main');heads=[]
+                    for index in range(3):
+                        (source/'change').write_text(str(index));git('add','.');git('commit','-qm',f'c{index}')
+                        heads.append(git('rev-parse','HEAD'))
+                    original_calls=calls.side_effect
+                    def real_git(args,**kwargs):
+                        if args[0]=='git' and any(op in args for op in ('merge-base','diff','checkout')):
+                            result=subprocess.run(list(map(str,args)),capture_output=True,text=True)
+                            if result.returncode:raise RuntimeError('Command failed: git')
+                            return result.stdout
+                        return original_calls(args,**kwargs)
+                    calls.side_effect=real_git
+                    daily.atomic(base/'state.json',{'last_success':heads[0],'build':4})
+                    original_gh=daily.gh
+                    def api(args):
+                        if 'request-mac' in args[-1]:return {'workflow_runs':([] if request_id is None else [dict(id=request_id,conclusion='success',head_branch='main',event='workflow_dispatch')])}
+                        return original_gh(args)
+                    statuses={heads[0]:'green',heads[1]:'pending',heads[2]:'pending'}
+                    instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00') # 14:00 Berlin
+                    with patch.object(daily,'gh',side_effect=api),patch.object(daily,'fetch_main',side_effect=[heads[1],heads[2],heads[2]]),patch.object(daily,'main_ci_state',side_effect=lambda sha:statuses[sha]):
+                        daily.tick(instant) # 14:00 Berlin: heads[1] pending
+                        daily.tick(instant+timedelta(minutes=44)) # 14:44 Berlin: heads[2] pending, heads[1] pending
+                        statuses[heads[1]]='green'
+                        try:daily.tick(instant+timedelta(minutes=late_minutes)) # 14:45 or 16:00 Berlin: ancestor heads[1] green, expired
+                        except SystemExit:pass
+                        count=calls.call_count
+                        daily.tick(instant+timedelta(minutes=late_minutes+1))
+                    build.assert_not_called();self.assertEqual(calls.call_count,count)
+                    state=json.loads((base/'state.json').read_text())
+                    self.assertEqual(state['slot'],daily.due_slot(instant))
+                    self.assertEqual(state['request'],request_id or 0)
+                    self.assertEqual(state['phase'],'skipped')
+                    self.assertNotIn('pending_ci',state)
+                    self.assertEqual((base/'inbox').read_text().splitlines(),
+                                     ['[Mac] daily test release waiting: latest main CI is not green',
+                                      '[Mac] daily test release waiting: latest main CI is not green',
+                                      '[Mac] daily test release skipped: main CI did not finish green within 45m'])
+
     def test_missing_ci_run_allows_brief_webhook_grace_then_skips(self):
         with tempfile.TemporaryDirectory() as directory:
             base,_,build=self.context(directory)

@@ -1,6 +1,6 @@
 --- a/scripts/daily-test-release.py
 +++ b/scripts/daily-test-release.py
-@@ -267,7 +267,7 @@
+@@ -266,7 +266,7 @@
      try:meta=json.loads(marker.read_text())
      except (OSError,ValueError):return None
      if not isinstance(meta,dict):return None

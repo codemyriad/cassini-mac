@@ -79,12 +79,11 @@ def main_is_green(sha):
     return main_ci_state(sha)=='green'
 
 
-def parse_utc(value,default):
+def parse_utc(value,default=None):
     if not isinstance(value,str):return default
     try:parsed=datetime.fromisoformat(value)
     except ValueError:return default
-    normalized=parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    return min(normalized,default)
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def git_ok(*args):
@@ -330,6 +329,19 @@ def tick(now):
                      and r['event']=='workflow_dispatch' and r['id']>state.get('request',0)),None)
         if state.get('slot')==slot and manual is None:return
         stage='main source/CI admission'
+        now_utc=now.astimezone(timezone.utc)
+        request_id=manual or state.get('request',0)
+        attempt_request=manual or 0
+        prior=state.get('pending_ci')
+        same_attempt=isinstance(prior,dict) and prior.get('slot')==slot and prior.get('request')==attempt_request
+        prior_started=parse_utc(prior.get('started_at')) if same_attempt else now_utc
+        if same_attempt and (prior_started is None or now_utc-min(prior_started,now_utc)>=CI_WAIT_BUDGET):
+            state.pop('pending_ci',None)
+            state.update(slot=slot,request=request_id,phase='skipped')
+            atomic(state_file,state)
+            report('[Mac] daily test release skipped: main CI did not finish green within 45m')
+            return
+        started_at=min(prior_started,now_utc)
         if command(['git','-C',SOURCE,'remote','get-url','origin']).strip()!=ORIGIN:
             raise ValueError('Unexpected release source origin')
         def pipeline_source():
@@ -341,12 +353,7 @@ def tick(now):
         if pipeline_source()!=before:
             state.pop('slot',None);state['request']=0;atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
-        now_utc=now.astimezone(timezone.utc)
-        request_id=manual or state.get('request',0)
-        prior=state.get('pending_ci')
-        same_attempt=isinstance(prior,dict) and prior.get('slot')==slot and prior.get('request')==request_id
-        started_at=parse_utc(prior.get('started_at'),now_utc) if same_attempt else now_utc
-        head_started_at=parse_utc(prior.get('head_started_at'),now_utc) if (same_attempt and prior.get('head')==head) else now_utc
+        head_started_at=min(parse_utc(prior.get('head_started_at'),now_utc),now_utc) if (same_attempt and prior.get('head')==head) else now_utc
         raw_candidates=prior.get('candidates') if (same_attempt and isinstance(prior.get('candidates'),list)) else []
         seen=[];seen_shas={head}
         for item in raw_candidates:
@@ -354,13 +361,13 @@ def tick(now):
             sha=item.get('sha')
             if isinstance(sha,str) and re.fullmatch(r'[0-9a-f]{40}',sha) and sha not in seen_shas:
                 seen_shas.add(sha)
-                seen.append(dict(sha=sha,seen_at=parse_utc(item.get('seen_at'),started_at).isoformat()))
+                seen.append(dict(sha=sha,seen_at=min(parse_utc(item.get('seen_at'),started_at),now_utc).isoformat()))
         status=main_ci_state(head)
         kept=[]
         if status in ('pending','missing'):
             for item in seen:
                 candidate=item['sha']
-                candidate_since=parse_utc(item['seen_at'],started_at)
+                candidate_since=min(parse_utc(item['seen_at'],started_at),now_utc)
                 if (not git_ok('merge-base','--is-ancestor',candidate,head)
                         or not git_ok('diff','--quiet',candidate,head,'--','scripts/daily-test-release.py','scripts/user_release_notes.py')):
                     continue
@@ -373,19 +380,16 @@ def tick(now):
                 if candidate_status=='pending' or (candidate_status=='missing' and now_utc-candidate_since<CI_START_GRACE):
                     kept.append(item)
         if status!='green':
-            timed_out=now_utc-started_at>=CI_WAIT_BUDGET
-            missing_expired=status=='missing' and now_utc-head_started_at>=CI_START_GRACE
-            if status=='red' or timed_out or missing_expired:
+            if status=='red' or (status=='missing' and now_utc-head_started_at>=CI_START_GRACE):
                 state.pop('pending_ci',None)
                 state.update(slot=slot,request=request_id,phase='skipped')
                 atomic(state_file,state)
-                reason='main CI did not finish green within 45m' if (timed_out and status!='red') else 'latest main CI is not green'
-                report('[Mac] daily test release skipped: '+reason)
+                report('[Mac] daily test release skipped: latest main CI is not green')
                 return
             if not same_attempt or prior.get('head')!=head:
                 report('[Mac] daily test release waiting: latest main CI is not green')
             candidates=([dict(sha=head,seen_at=head_started_at.isoformat())]+kept)[:8]
-            state['pending_ci']=dict(slot=slot,request=request_id,head=head,started_at=started_at.isoformat(),
+            state['pending_ci']=dict(slot=slot,request=attempt_request,head=head,started_at=started_at.isoformat(),
                                      head_started_at=head_started_at.isoformat(),candidates=candidates)
             atomic(state_file,state)
             return
