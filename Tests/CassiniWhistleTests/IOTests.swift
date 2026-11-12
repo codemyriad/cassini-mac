@@ -99,12 +99,24 @@ private final class ManualWatchdog: @unchecked Sendable {
         #expect(try reader.next() == Data("ok".utf8))
         #expect(throws: WhistleIO.Failure.self) { try reader.next() }
     }
-    @Test func brokenPipeBecomesAnErrorWithoutASignal() throws {
-        let pipe = Pipe(); try pipe.fileHandleForReading.close()
+    @Test(arguments:[false,true]) func shutDownOutputBecomesAnErrorWithoutASignal(_ inheritedReader:Bool) throws {
+        // A pipe reader closed here can still be inherited by a concurrently
+        // starting child until exec. A socket's explicit write shutdown belongs
+        // to the endpoint, so inherited descriptors cannot permit this write.
+        var descriptors=[Int32](repeating:-1,count:2)
+        try #require(socketpair(AF_UNIX,SOCK_STREAM,0,&descriptors)==0)
+        defer { for fd in descriptors { close(fd) } }
+        let extraReader=inheritedReader ? dup(descriptors[0]) : -1
+        if inheritedReader { try #require(extraReader>=0) }
+        defer { if extraReader>=0 { close(extraReader) } }
+        try #require(shutdown(descriptors[1],SHUT_WR)==0)
         do {
-            try WhistleIO.write(Data("response".utf8), to: pipe.fileHandleForWriting.fileDescriptor)
-            Issue.record("Broken pipe unexpectedly accepted output")
-        } catch WhistleIO.Failure.system(_, let code) { #expect(code == EPIPE) }
+            try WhistleIO.write(Data("response".utf8),to:descriptors[1])
+            Issue.record("Shut-down output unexpectedly accepted bytes")
+        } catch WhistleIO.Failure.system(let operation,let code) {
+            #expect(operation=="write" && code==EPIPE)
+        }
+        #expect(fcntl(descriptors[1],F_GETNOSIGPIPE,0)==1)
     }
     // Native byte producers keep pipe-pressure coverage independent of the Apple
     // /usr/bin/python3 shim, which starts xcodebuild per child on hosted Intel.

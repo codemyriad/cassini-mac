@@ -11,6 +11,10 @@ import CassiniRecording
         if RecordingFixture.enabled, let id = LibraryLaunchContext.argument("-CassiniCaptureID") {
             return UserDefaults(suiteName: "io.codemyriad.cassini.capture-fixture." + id)!
         }
+        if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+           let id = LibraryLaunchContext.argument("-CassiniDefaultsID") ?? LibraryLaunchContext.argument("-CassiniRenderID") {
+            return UserDefaults(suiteName: "io.codemyriad.cassini.defaults-fixture." + id)!
+        }
         #endif
         return .standard
     }

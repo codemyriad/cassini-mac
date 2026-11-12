@@ -19,7 +19,9 @@ struct LibraryLaunchContext {
     var timeZone = TimeZone.current
     var activity: [UUID: CaptureActivity] = [:]
     var screenshot = false
+    var screenshotDark = false
     var scansLibrary = true
+    static var screenshotDark: Bool { argument("-CassiniScreenshotScheme") == "dark" }
     static var current: Self {
         var context = Self()
         #if DEBUG
@@ -34,7 +36,7 @@ struct LibraryLaunchContext {
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
             context.root = URL(fileURLWithPath: path).appendingPathComponent("root")
-            context.now = date; context.timeZone = TimeZone(identifier: "Europe/Rome")!; context.screenshot = true
+            context.now = date; context.timeZone = TimeZone(identifier: "Europe/Rome")!; context.screenshot = true; context.screenshotDark = screenshotDark
             if let bytes = try? Data(contentsOf: URL(fileURLWithPath: path).appendingPathComponent("activity.json")),
                let phases = try? JSONDecoder().decode([String: String].self, from: bytes) {
                 for (id, phase) in phases { if let id = UUID(uuidString: id) { context.activity[id] = phase == "saving" ? .saving : .recording } }
@@ -42,8 +44,8 @@ struct LibraryLaunchContext {
         }
         #endif
         #if DEBUG
-        if let root = RecordingFixture.root { context.root = root; context.screenshot = false; context.now = nil }
-        if let root = MeetingRenameFixture.root { context.root = root; context.screenshot = false; context.now = nil; context.activity = [:] }
+        if let root = RecordingFixture.root { context.root = root; context.screenshot = false; context.screenshotDark = false; context.now = nil }
+        if let root = MeetingRenameFixture.root { context.root = root; context.screenshot = false; context.screenshotDark = false; context.now = nil; context.activity = [:] }
         #endif
         if context.scansLibrary {
             do {

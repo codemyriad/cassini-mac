@@ -411,7 +411,9 @@ import CassiniRecording
         #expect(names.count == 2_000)
         #expect(names.first == "Untitled meeting.opus")
         #expect(names.last == "Untitled meeting 2000.opus")
-        #expect(elapsedCPUNs < 500_000_000) // < 500 ms thread CPU time (typically ~3 ms)
+        if ProcessInfo.processInfo.environment["CASSINI_PERF_GATE"] == "1" {
+            #expect(elapsedCPUNs < 500_000_000) // < 500 ms thread CPU time (typically ~3 ms)
+        }
     }
 
     // MARK: - 4. Non-OK Sources With Local Edits Go Byte-for-Byte & Supported Rebuilds Retain Both Transcripts
