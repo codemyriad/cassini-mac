@@ -1019,6 +1019,33 @@ import Darwin
         guard queue.active == restoreBlocker.folder else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:23,userInfo:[NSLocalizedDescriptionKey:"Expected restoreBlocker active"])
         }
+
+        // Also prove the scan-before-pop path: an automatic pending retry is pruned cleanly
+        // when a library scan sees external completion before `startNext()` pops it.
+        let scanPruned = try RecordingSession(parent:root,title:"Shared library scan prune",source:"chromium")
+        try scanPruned.addTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:16000,channels:1)
+        try scanPruned.appendNative(id:"remote",pcm:Data(repeating:0,count:3200),offsetMs:0); try scanPruned.finish()
+        try MeetingMetadataWriter(directory:scanPruned.directory,id:scanPruned.manifest.id).transaction { meta in
+            meta["transcript"] = ["status":"running","model":"whistle","reference":NSNull()]
+        }
+        let scanPrunedRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == scanPruned.manifest.id }))
+        queue.consider([scanPrunedRunning], automatic:true)
+        await queue.waitForFixturePreparation()
+        guard queue.containsPendingForTesting(scanPrunedRunning.folder) else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:25,userInfo:[NSLocalizedDescriptionKey:"Expected scanPrunedRunning in pending"])
+        }
+        try completedSidecar.write(to:scanPrunedRunning.folder.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:scanPrunedRunning.folder,id:scanPruned.manifest.id).transaction { meta in
+            meta["transcript"] = [
+                "status":"done",
+                "model":"whistle",
+                "reference":["kind":"sidecar","file":"transcript.json","format":"cassini.words.v1"]
+            ]
+        }
+        queue.consider(try LibraryScanner(root:root).scan().meetings, automatic:true)
+        guard !queue.containsPendingForTesting(scanPrunedRunning.folder) else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:26,userInfo:[NSLocalizedDescriptionKey:"Completed automatic pending retry was not pruned by scan"])
+        }
     }
 
     private static func verifyStopCoordinatesWithMoveAndTrashUnderMetadataLock(root: URL) async throws {
