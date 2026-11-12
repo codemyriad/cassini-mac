@@ -97,7 +97,7 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testRecordingDetailsFromTheMoreMenu() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
+        let more = window.buttons["meeting-more-actions"]
         XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription)
         more.click()
         let item = window.menuItems["recording-details"]
@@ -124,7 +124,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
         let read = window.buttons["preview-read-transcript"]
         XCTAssertTrue(read.waitForExistence(timeout:10),app.debugDescription); read.click()
-        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
+        let more = window.buttons["meeting-more-actions"]
         XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription); more.click()
         let item = window.menuItems["recording-details"]
         XCTAssertTrue(item.waitForExistence(timeout:5),app.debugDescription); item.click()
@@ -154,7 +154,7 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testMeetingTrashAndSearchKeyboardGuard() throws {
         let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let more = window.descendants(matching:.any).matching(identifier:"meeting-more-actions").firstMatch
+        let more = window.buttons["meeting-more-actions"]
         XCTAssertTrue(more.waitForExistence(timeout:20),app.debugDescription)
         more.click()
         XCTAssertTrue(window.menuItems["move-to-trash"].exists)
