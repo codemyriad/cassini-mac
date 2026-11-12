@@ -1,0 +1,10 @@
+{
+  "no-outline": {
+    "exitCode": 1,
+    "expectedFailure": "Received outline is missing"
+  },
+  "inherited-ink": {
+    "exitCode": 1,
+    "expectedFailure": "Inherited selection foreground changed"
+  }
+}

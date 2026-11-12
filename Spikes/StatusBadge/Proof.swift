@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import SwiftUI
+import Darwin
 
 private let labels: [String] = ["Recording 12:48", "Importing…", "Saving…",
     "Transcribing, about 4 minutes left", "Needs attention", "Interrupted at 00:41:12", "Received"]
@@ -63,11 +64,19 @@ private struct BadgeBoard: View {
         }
         return bytes
     }
-    @MainActor static func main() throws {
+    @MainActor static func main() {
+        do { try run() }
+        catch {
+            FileHandle.standardError.write(Data("Badge proof failed: \(error)\n".utf8))
+            exit(1)
+        }
+    }
+    @MainActor private static func run() throws {
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let expectedRoles: [(String, String?)] = [("record-ink", "record-tint"), ("ink-2", "neutral-tint"),
             ("ink-2", "neutral-tint"), ("ink-2", "neutral-tint"), ("warn-ink", "warn-tint"),
             ("warn-ink", "warn-tint"), ("ink-2", nil)]
+        let expectedGlyphs: [StatusBadgeKind.Glyph] = [.dot, .spinner, .spinner, .spinner, .alert, .alert, .incoming]
         var results: [[String: Any]] = []
         for dark in [false, true] {
             let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
@@ -77,6 +86,7 @@ private struct BadgeBoard: View {
                     for (index, kind) in StatusBadgeKind.allCases.enumerated() {
                         try require(kind.ink.id == expectedRoles[index].0 && kind.fill?.id == expectedRoles[index].1,
                                     "Wrong canvas roles for \(kind)")
+                        try require(kind.glyph == expectedGlyphs[index], "Wrong canvas glyph for \(kind)")
                         let badge = MeetingStatusBadge(kind: kind, label: labels[index], isAnimating: false)
                         let ordinary = try image(badge.foregroundStyle(Color(nsColor: CassiniTokens.inkEntry.resolvedNSColor(dark: dark))), dark: dark)
                         let selected = try image(badge.foregroundStyle(Color(nsColor: CassiniTokens.onAccentEntry.resolvedNSColor(dark: dark))), dark: dark)
@@ -105,7 +115,7 @@ private struct BadgeBoard: View {
                         }
                         try require(hasGlyph, "Glyph missing or not in its own ink for \(kind)")
                         results.append(["kind": kind.rawValue, "dark": dark, "heightPixels": ordinary.height,
-                            "fill": kind.fill?.id ?? "none", "ink": kind.ink.id, "selectionPixelsUnchanged": true])
+                            "fill": kind.fill?.id ?? "none", "ink": kind.ink.id, "glyph": String(describing: kind.glyph), "selectionPixelsUnchanged": true])
                     }
                     for after in [false, true] {
                         let cg = try image(BadgeBoard(after: after, dark: dark), dark: dark)
@@ -118,6 +128,6 @@ private struct BadgeBoard: View {
         }
         try JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys])
             .write(to: output.appendingPathComponent("checks.json"))
-        print("All14 badge/scheme cases pass: roles,18pt height, token tint, transparent Received, selection-invariant pixels")
+        print("All 14 badge/scheme cases pass: roles, 18pt height, token tint, transparent Received, selection-invariant pixels")
     }
 }

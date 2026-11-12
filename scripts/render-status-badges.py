@@ -8,6 +8,7 @@ output folder. After #270 merges, --tokens-ref origin/main is sufficient.
 import argparse
 import hashlib
 import json
+import platform
 from pathlib import Path
 import subprocess
 
@@ -49,11 +50,15 @@ component = root / 'Components/StatusBadge/MeetingStatusBadge.swift'
 proof = root / 'Spikes/StatusBadge/Proof.swift'
 sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()
 binary = output / 'status-badge-proof'
-subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-sdk', sdk, '-target', 'arm64-apple-macosx15.0',
+architecture = platform.machine()
+if architecture not in ('arm64', 'x86_64'):
+    parser.error('Native proof supports Apple Silicon and Intel Macs')
+subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-sdk', sdk, '-target', architecture + '-apple-macosx15.0',
                 str(inputs / 'CassiniTokens.swift'), str(inputs / 'LegacyBadge.swift'), str(component), str(proof),
                 '-o', str(binary)], cwd=root, check=True)
 subprocess.run([str(binary), str(output)], cwd=root, check=True, timeout=60)
-receipt = {'tokensCommit': token_ref, 'tokensSHA256': hashlib.sha256(tokens.encode()).hexdigest(),
+receipt = {'architecture': architecture, 'proofSHA256': hashlib.sha256(proof.read_bytes()).hexdigest(),
+           'rendererSHA256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'tokensCommit': token_ref, 'tokensSHA256': hashlib.sha256(tokens.encode()).hexdigest(),
            'baselineCommit': baseline_ref, 'baselineSourceSHA256': hashlib.sha256(baseline.encode()).hexdigest(),
            'componentSHA256': hashlib.sha256(component.read_bytes()).hexdigest(),
            'checks': json.loads((output / 'checks.json').read_text())}

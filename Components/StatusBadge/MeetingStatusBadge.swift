@@ -46,6 +46,10 @@ struct MeetingStatusBadge: View {
         static let font = 11.5
         static let horizontalPadding = 8.0
         static let gap = 4.0
+        static let dotSize = 6.0
+        static let spinnerSize = 10.0
+        static let symbolSize = 11.0
+        static let outlineWidth = 1.0
     }
 
     private func color(_ entry: CassiniTokens.Entry) -> Color {
@@ -66,7 +70,7 @@ struct MeetingStatusBadge: View {
             if let fill = kind.fill { Capsule().fill(color(fill)) }
         }
         .overlay {
-            if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: 1) }
+            if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(label))
@@ -75,19 +79,19 @@ struct MeetingStatusBadge: View {
     @ViewBuilder private var glyph: some View {
         switch kind.glyph {
         case .dot:
-            Circle().fill(color(kind.ink)).frame(width: 6, height: 6)
+            Circle().fill(color(kind.ink)).frame(width: Metrics.dotSize, height: Metrics.dotSize)
         case .spinner:
             if isAnimating && !reduceMotion {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                     let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
                     BadgeGlyph(glyph: .spinner, ink: color(kind.ink))
                         .rotationEffect(.degrees(phase * 360))
-                }.frame(width: 10, height: 10)
+                }.frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
             } else {
-                BadgeGlyph(glyph: .spinner, ink: color(kind.ink)).frame(width: 10, height: 10)
+                BadgeGlyph(glyph: .spinner, ink: color(kind.ink)).frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
             }
         case .alert, .incoming:
-            BadgeGlyph(glyph: kind.glyph, ink: color(kind.ink)).frame(width: 11, height: 11)
+            BadgeGlyph(glyph: kind.glyph, ink: color(kind.ink)).frame(width: Metrics.symbolSize, height: Metrics.symbolSize)
         }
     }
 }
