@@ -209,40 +209,16 @@ struct MeetingView: View {
         let row = SpeakerRowPresentation(speaker:speaker,turns:turns,percent:shares[speaker.id,default:0],
                                          language:UXText.language,locale:UXText.locale)
         let listening = model.listen.speaker.map { meeting.mergedInto[$0] ?? $0 } == speaker.id
-        return HStack(alignment:.top,spacing:10) {
-            Circle().fill(colour(speaker.colourIndex)).frame(width:10,height:10).padding(.top,5).accessibilityHidden(true)
-            Button {MeetingRenameCoordinator.shared.showSpeaker(meeting,id:speaker.id)} label: {
-                VStack(alignment:.leading,spacing:3) {
-                    HStack(spacing:6) {
-                        Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
-                        Spacer(minLength:2)
-                        Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
-                    }
-                    if let caption=row.caption {
-                        HStack(spacing:0) {
-                            if let provenance=row.provenance,let suffix=row.captionSuffix {
-                                Text(provenance).truncationMode(.tail)
-                                Text(suffix).truncationMode(.head).layoutPriority(1)
-                            } else {Text(caption).truncationMode(.head)}
-                        }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                            .help(caption)
-                    }
-                }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(meeting))
-                .accessibilityLabel(row.accessibilityLabel).accessibilityValue(row.share).accessibilityIdentifier("speaker-name-"+speaker.id)
-            Button {model.toggleSpeakerListening(speaker.id)} label: {
-                Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
-            }.buttonStyle(.borderless).disabled(!model.canPlay || (!listening && turns.isEmpty))
-                .help(UXText.text(listening ? "common.stop" : "speakers.listen"))
-                .accessibilityLabel(listening ? UXText.text("common.stop") : row.playAccessibilityLabel)
-                .accessibilityIdentifier("speaker-listen-"+speaker.id)
-        }.padding(.vertical,4).padding(.horizontal,5)
-            .background(listening ? Color.accentColor.opacity(0.08) : .clear)
-            .overlay(alignment:.leading) {
-                if listening { Rectangle().fill(Color.accentColor).frame(width:3).accessibilityHidden(true) }
-            }
-            .accessibilityElement(children:.contain).accessibilityLabel(row.accessibilityLabel)
-            .accessibilityIdentifier("speaker-row-" + speaker.id)
+        return SpeakerSidebarRow(
+            speaker:speaker,
+            row:row,
+            colour:colour(speaker.colourIndex),
+            listening:listening,
+            canEdit:MeetingRenameCoordinator.shared.canEditSpeakers(meeting),
+            canPlay:model.canPlay && (listening || !turns.isEmpty),
+            onName:{ MeetingRenameCoordinator.shared.showSpeaker(meeting,id:speaker.id) },
+            onToggleListen:{ model.toggleSpeakerListening(speaker.id) }
+        )
     }
     private var autoTag: some View {
         Text(UXText.text("common.autoTag")).font(.system(size: 10.5)).foregroundStyle(.secondary).padding(.horizontal, 4)
@@ -355,3 +331,177 @@ struct InlineMeetingLine: View {
             .background(info ? Color.accentColor.opacity(0.11) : Color(red: 1, green: 240/255, blue: 199/255), in: RoundedRectangle(cornerRadius: 7))
     }
 }
+
+struct SpeakerSidebarRow: View {
+    let speaker: MeetingSpeaker
+    let row: SpeakerRowPresentation
+    let colour: Color
+    let listening: Bool
+    let canEdit: Bool
+    let canPlay: Bool
+    let onName: () -> Void
+    let onToggleListen: () -> Void
+    var body: some View {
+        HStack(alignment:.top,spacing:10) {
+            Circle().fill(colour).frame(width:10,height:10).padding(.top,5).accessibilityHidden(true)
+            VStack(alignment:.leading,spacing:3) {
+                HStack(spacing:6) {
+                    if canEdit {
+                        Button(action:onName) {
+                            HStack(spacing:6) {
+                                Text(speaker.displayName).fontWeight(.semibold).foregroundStyle(.primary).lineLimit(1)
+                                Spacer(minLength:2)
+                                Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel(row.accessibilityLabel)
+                            .accessibilityValue(row.share)
+                            .accessibilityIdentifier("speaker-name-" + speaker.id)
+                    } else {
+                        Text(speaker.displayName).fontWeight(.semibold).foregroundStyle(.primary).lineLimit(1)
+                        Spacer(minLength:2)
+                        Text(row.share).font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                    }
+                    Button(action:onToggleListen) {
+                        Image(systemName:listening ? "stop.fill" : "play.fill").frame(width:24,height:24)
+                    }.buttonStyle(.borderless)
+                        .disabled(!canPlay)
+                        .help(UXText.text(listening ? "common.stop" : "speakers.listen"))
+                        .accessibilityLabel(listening ? UXText.text("common.stop") : row.playAccessibilityLabel)
+                        .accessibilityIdentifier("speaker-listen-" + speaker.id)
+                }
+                if let caption = row.caption {
+                    let captionRow = HStack(spacing:0) {
+                        if let provenance = row.provenance, let suffix = row.captionSuffix {
+                            Text(provenance).truncationMode(.tail)
+                            Text(suffix).truncationMode(.head).layoutPriority(1)
+                        } else { Text(caption).truncationMode(.head) }
+                    }.font(.system(size:11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                        .frame(maxWidth:.infinity,alignment:.leading)
+                        .help(caption)
+                        .accessibilityElement(children:.combine)
+                        .accessibilityLabel(caption)
+                        .accessibilityIdentifier("speaker-caption-" + speaker.id)
+                    if canEdit {
+                        captionRow.contentShape(Rectangle()).onTapGesture(perform:onName)
+                    } else {
+                        captionRow
+                    }
+                }
+            }
+        }.padding(.vertical,4).padding(.horizontal,5)
+            .background(listening ? Color.accentColor.opacity(0.08) : .clear)
+            .overlay(alignment:.leading) {
+                if listening { Rectangle().fill(Color.accentColor).frame(width:3).accessibilityHidden(true) }
+            }
+            .accessibilityElement(children:.contain).accessibilityLabel(row.accessibilityLabel)
+            .accessibilityIdentifier("speaker-row-" + speaker.id)
+    }
+}
+
+#if DEBUG
+extension SpeakerSidebarRow {
+    @MainActor static func nativeSelfTest(baseSpeaker: MeetingSpeaker) -> [String:Bool] {
+        var speaker = baseSpeaker
+        speaker.id = "marta"; speaker.name = "Marta"; speaker.provenance = .user; speaker.colourIndex = 0; speaker.label = nil
+        let turns = SpeakerTurn.grouping([
+            .init(speaker:"marta",startMs:175_000,endMs:180_000,text:"First."),
+            .init(speaker:"giulia",startMs:181_000,endMs:185_000,text:"Reply."),
+            .init(speaker:"marta",startMs:200_000,endMs:205_000,text:"Second.")
+        ]).filter { $0.speaker == "marta" }
+        let presentation = SpeakerRowPresentation(
+            speaker:speaker,
+            turns:turns,
+            percent:43,
+            language:.en,
+            locale:Locale(identifier:"en_GB")
+        )
+        func snapshot<Content: View>(_ content: Content, appearanceName: NSAppearance.Name) -> (rep: NSBitmapImageRep, size: CGSize)? {
+            guard let appearance = NSAppearance(named:appearanceName) else { return nil }
+            let wrapped = ZStack(alignment:.topLeading) {
+                Color(nsColor:.textBackgroundColor)
+                content.font(.system(size:13)).frame(width:222,alignment:.leading)
+            }.environment(\.colorScheme,appearanceName == .darkAqua ? .dark : .light)
+            let host = NSHostingView(rootView:wrapped)
+            host.appearance = appearance
+            var result: (NSBitmapImageRep, CGSize)?
+            appearance.performAsCurrentDrawingAppearance {
+                let fitting = host.fittingSize
+                let size = CGSize(width:222,height:max(44,ceil(fitting.height)))
+                host.frame = NSRect(origin:.zero,size:size)
+                host.layoutSubtreeIfNeeded()
+                guard let rep = host.bitmapImageRepForCachingDisplay(in:host.bounds) else { return }
+                host.cacheDisplay(in:host.bounds,to:rep)
+                result = (rep,size)
+            }
+            return result
+        }
+        func luminance(_ rep: NSBitmapImageRep, x: Int, y: Int) -> Double {
+            guard let c = rep.colorAt(x:x,y:y)?.usingColorSpace(.sRGB) else { return 0.5 }
+            return 0.2126 * Double(c.redComponent) + 0.7152 * Double(c.greenComponent) + 0.0722 * Double(c.blueComponent)
+        }
+        func nameInkExtremum(_ snap: (rep: NSBitmapImageRep, size: CGSize), dark: Bool) -> Double {
+            let sx = Double(snap.rep.pixelsWide) / Double(snap.size.width)
+            let x0 = max(0,Int(24 * sx)), x1 = min(snap.rep.pixelsWide - 1,Int(90 * sx))
+            let y0 = 0, y1 = max(1,snap.rep.pixelsHigh / 2)
+            var best = dark ? 0.0 : 1.0
+            for y in y0..<y1 {
+                for x in x0...x1 {
+                    let lum = luminance(snap.rep,x:x,y:y)
+                    best = dark ? max(best,lum) : min(best,lum)
+                }
+            }
+            return best
+        }
+        func captionRightEdgePt(_ snap: (rep: NSBitmapImageRep, size: CGSize)) -> Double {
+            let sx = Double(snap.rep.pixelsWide) / Double(snap.size.width)
+            let bg = luminance(snap.rep,x:snap.rep.pixelsWide - 1,y:snap.rep.pixelsHigh - 1)
+            let y0 = snap.rep.pixelsHigh / 2, y1 = snap.rep.pixelsHigh
+            var maxX = 0
+            for y in y0..<y1 {
+                for x in 0..<snap.rep.pixelsWide where abs(luminance(snap.rep,x:x,y:y) - bg) > 0.06 {
+                    if x > maxX { maxX = x }
+                }
+            }
+            return Double(maxX) / sx
+        }
+        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:.blue,listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
+        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:.blue,listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
+        let dimmedMutant = HStack(alignment:.top,spacing:10) {
+            Circle().fill(Color.blue).frame(width:10,height:10).padding(.top,5)
+            Button {} label: {
+                HStack(spacing:6) {
+                    Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
+                    Spacer(minLength:2)
+                    Text(presentation.share).font(.system(size:11.5)).foregroundStyle(.secondary)
+                }
+            }.buttonStyle(.plain).disabled(true)
+        }.padding(.vertical,4).padding(.horizontal,5)
+        guard let roLight = snapshot(readOnlyView,appearanceName:.aqua),
+              let edLight = snapshot(editableView,appearanceName:.aqua),
+              let dimLight = snapshot(dimmedMutant,appearanceName:.aqua),
+              let roDark = snapshot(readOnlyView,appearanceName:.darkAqua),
+              let edDark = snapshot(editableView,appearanceName:.darkAqua),
+              let dimDark = snapshot(dimmedMutant,appearanceName:.darkAqua) else {
+            return ["speakerRowReadOnlyKeepsPrimaryInk":false,"speakerRowCaptionUsesFullRowWidth":false]
+        }
+        let roLightInk = nameInkExtremum(roLight,dark:false)
+        let edLightInk = nameInkExtremum(edLight,dark:false)
+        let dimLightInk = nameInkExtremum(dimLight,dark:false)
+        let roDarkInk = nameInkExtremum(roDark,dark:true)
+        let edDarkInk = nameInkExtremum(edDark,dark:true)
+        let dimDarkInk = nameInkExtremum(dimDark,dark:true)
+        let keepsPrimaryInk =
+            abs(roLightInk - edLightInk) < 0.03 && roLightInk < 0.25 && dimLightInk > roLightInk + 0.10 &&
+            abs(roDarkInk - edDarkInk) < 0.03 && roDarkInk > 0.75 && dimDarkInk < roDarkInk - 0.10
+        // With Play on the name/share line, the 222pt sidebar leaves 5..217pt for the row and the
+        // caption reaches past 188pt; if Play sat outside VStack (stealing 24 + 10 = 34pt), the
+        // caption could never pass 183pt.
+        let fullCaptionWidth = captionRightEdgePt(roLight) >= 188.0 && captionRightEdgePt(edLight) >= 188.0
+        return [
+            "speakerRowReadOnlyKeepsPrimaryInk":keepsPrimaryInk,
+            "speakerRowCaptionUsesFullRowWidth":fullCaptionWidth
+        ]
+    }
+}
+#endif

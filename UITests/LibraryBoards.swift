@@ -222,6 +222,9 @@ final class LibraryBoards: XCTestCase {
         let named=NSPredicate {_,_ in !field.exists && marta.exists && marta.label.contains("Ada")}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:named,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertTrue(window.buttons["speaker-listen-marta"].exists,"The independent row Play target remains available")
+        let editableCaption=window.descendants(matching:.any).matching(identifier:"speaker-caption-marta").firstMatch
+        XCTAssertTrue(editableCaption.exists)
+        XCTAssertGreaterThanOrEqual(editableCaption.frame.width,185,"Play stays on the name/share line so editable captions keep full row width")
         marta.click();XCTAssertTrue(field.waitForExistence(timeout:10))
         field.click();app.typeKey("a",modifierFlags:.command);field.typeText(String(repeating:"x",count:65))
         XCTAssertFalse(save.isEnabled,"Overlong names cannot be saved")
@@ -1146,18 +1149,21 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(nameSpeakers.isEnabled, "The static screenshot fixture is read-only")
         XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
-        for value in ["00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }
-        for (speaker,share) in [("marta","43%"),("giulia","36%"),("guest","21%")] {
-            let name=window.buttons["speaker-name-"+speaker]
-            XCTAssertTrue(name.exists,speaker)
-            XCTAssertEqual(name.value as? String,share,"The visible share remains accessible on the naming control")
+        for value in ["Marta", "Giulia Rossi", "Speaker 3", "43%", "36%", "21%", "00:03:12", "00:47:05"] {
+            XCTAssertTrue(text(value, in: window), value)
         }
         // D70 combines provenance and turn timing, and the narrow visual text
-        // may truncate. Check each real speaker row's complete accessible label.
+        // may truncate. Read-only speaker rows stay plain content (not dimmed
+        // disabled buttons) while keeping Play on the name/share line so the
+        // caption keeps the full row width.
         for (speaker,provenance) in [("marta","Named by you"),("giulia","Recognised from saved voices"),("guest","Not named yet")] {
+            XCTAssertFalse(window.buttons["speaker-name-" + speaker].exists,"Read-only speaker rows must not render as disabled buttons")
             let row = window.descendants(matching:.any).matching(identifier:"speaker-row-" + speaker).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout:5),speaker)
             XCTAssertTrue(row.label.contains(provenance),row.label)
+            let caption = window.descendants(matching:.any).matching(identifier:"speaker-caption-" + speaker).firstMatch
+            XCTAssertTrue(caption.exists,speaker)
+            XCTAssertGreaterThanOrEqual(caption.frame.width,185,"Caption keeps full row width without an outer Play column")
         }
         XCTAssertFalse(window.buttons["Inspector"].exists)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
