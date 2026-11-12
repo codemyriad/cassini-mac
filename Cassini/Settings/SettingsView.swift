@@ -27,7 +27,7 @@ struct CassiniSettingsView: View {
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
         }.frame(width:700,height:500)
-            .preferredColorScheme(LibraryLaunchContext.current.screenshot ? .light : nil)
+            .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (LibraryLaunchContext.current.screenshot ? .light : nil))
             .font(.system(size:13)).accessibilityLabel(UXText.text("settings.pages.a11y"))
             .background(WindowAccessor { window in
                 guard let window else { return }

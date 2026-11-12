@@ -5,7 +5,7 @@ import SwiftUI
 struct MeetingView: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
-    @AppStorage("CassiniCompanionSuggestionDismissed") private var suggestionDismissed = false
+    @AppStorage("CassiniCompanionSuggestionDismissed", store: RecordingPreferences.defaults) private var suggestionDismissed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
