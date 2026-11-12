@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Hosted-only production native-view A–E spectrogram measurements, no devices."""
+"""Qualified-GUI production native-view A–E spectrogram measurements, no devices."""
 import argparse
 from contextlib import contextmanager
 import ctypes
@@ -13,6 +13,7 @@ import threading
 import signal
 from pathlib import Path
 import subprocess
+from gui_session import check
 
 
 def relay_motion_ack(line: str, request: Path) -> bool:
@@ -138,6 +139,7 @@ def record_motion(app: Path, output: Path):
     motion_log = (output/'motion-xctest.log').open('w')
     motion_driver = subprocess.Popen(['xcodebuild', 'test-without-building', '-xctestrun', str(spec),
         '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
+                '-derivedDataPath', os.environ.get('CASSINI_SPECTRO_DERIVED_DATA',str(output/'DerivedData')),
         '-only-testing:CassiniWindowScreenshots/SpectrogramMotion',
         '-resultBundlePath', str(output/'Motion.xcresult')],
         env=motion_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -195,14 +197,14 @@ def check_scheduling(checker: Path, output: Path):
 
 
 def measure(app: Path, output: Path, scheduling_checker: Path):
-    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
-        raise SystemExit('This view/display-link probe requires a disposable GitHub-hosted Mac')
+    host = check()
     output.mkdir(parents=True, exist_ok=True)
     scheduling = check_scheduling(scheduling_checker,output)
     reports = []
     problems = []
     for case in 'ABCDE':
-        subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
+        if host == 'hosted':
+            subprocess.run(['defaults', 'write', 'com.apple.universalaccess', 'reduceMotion', '-bool', 'false'], check=True)
         env = dict(os.environ, CASSINI_SPECTRO='0' if case == 'E' else '1')
         command = probe_command(app, case, output)
         with (output/f'{case}.stderr.txt').open('w') as stderr, (output/f'{case}.top.txt').open('w') as top_log:
@@ -235,6 +237,9 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
         reports.append(report)
         if report['reducedMotion']:
             problems.append(f'{case}: system remained in Reduced Motion during normal-motion pacing measurement')
+        print(f"{case}: frame CPU samples={report['frameCPUSamples']}, "
+              f"p95={report['p95FrameCPUMs']:.3f} ms (B/D limit 17.5), "
+              f"max={report['maxFrameCPUMs']:.3f} ms (B/D limit 100)",flush=True)
         for name, passed in report['gates'].items():
             if not passed:
                 problems.append(f'{case}: {name} budget failed')
@@ -245,6 +250,25 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
         print(f"{case}: CPU {report['cpuCorePercent']:.4f}%, analysis {report['analysisCorePercent']:.4f}%, "
               f"draw {report['drawingCorePercent']:.4f}%, CPU p95/max {report['p95FrameCPUMs']}/{report['maxFrameCPUMs']:.3f} ms; "
               f"wall diagnostic {report['p95FrameMs']}/{report['maxFrameMs']:.3f} ms", flush=True)
+    baseline = next((r['cpuCorePercent'] for r in reports if r['case'] == 'E'), None)
+    for report in reports:
+        report['cpuDeltaFromE'] = None if baseline is None else report['cpuCorePercent']-baseline
+    summary = {'measurements': reports, 'problems': problems, 'controlledScheduling':scheduling,
+               'scope': 'Uninstrumented A–E production analyser/native renderer and sink/owner with generated RAM input. Required Motion/Settings, Time Profiler and Allocations run in the separate hosted diagnostics phase. '
+                        'View payload includes actual IOSurface allocation and bounded raw rings, excludes framework/object overhead. '
+                        'Actual device capture, WindowServer CPU, Allocations and visual review remain separate QA evidence.'}
+    (output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+    if problems:
+        raise SystemExit('\n'.join(problems))
+
+
+def diagnose(app: Path, output: Path):
+    # Unified-log collection is unsupported on the rented macOS27 account.
+    # Keep these required proofs on the disposable hosted image.
+    if check() != 'hosted':
+        raise ValueError('Instrumentation diagnostics require a disposable hosted Mac')
+    output.mkdir(parents=True,exist_ok=True)
+    problems=[]
     try:
         if not record_motion(app, output):
             problems.append('actual System Settings motion transition failed in isolated diagnostic')
@@ -268,37 +292,48 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
             problems.append('Separate Time Profiler proof failed; see profile.json/profile.stderr.txt')
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         problems.append('Separate Time Profiler proof failed: '+str(error))
-    baseline = next((r['cpuCorePercent'] for r in reports if r['case'] == 'E'), None)
-    for report in reports:
-        report['cpuDeltaFromE'] = None if baseline is None else report['cpuCorePercent']-baseline
-    summary = {'measurements': reports, 'problems': problems, 'controlledScheduling':scheduling,
-               'scope': 'Uninstrumented A–E production analyser/native renderer and sink/owner with generated RAM input. Motion/Settings, Time Profiler and Allocations each use separate diagnostic processes after every timing interval. '
-                        'View payload includes actual IOSurface allocation and bounded raw rings, excludes framework/object overhead. '
-                        'Actual device capture, WindowServer CPU, Allocations and visual review remain separate QA evidence.'}
-    (output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+    (output/'diagnostics-summary.json').write_text(json.dumps({'problems':problems,'scope':'Separate real motion, live allocation and Time Profiler proofs; no performance budget is measured here.'},indent=2)+'\n')
     if problems:
         raise SystemExit('\n'.join(problems))
 
 
-def run(app: Path, output: Path, scheduling_checker: Path):
-    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
-        raise SystemExit('Requires a disposable GitHub-hosted Mac; no local desktop test')
-    # Hosted images enable Reduce Motion. Measure continuous display-link pacing
-    # using the real system preference, never an injected renderer override.
-    setting = ['com.apple.universalaccess', 'reduceMotion']
-    old = subprocess.run(['defaults', 'read', *setting], capture_output=True, text=True)
+def run(app: Path, output: Path, scheduling_checker: Path = None, phase: str = 'all'):
+    host=check()
+    if phase not in ('budgets','diagnostics','all'):
+        raise ValueError('Unknown spectrogram phase')
+    if phase in ('budgets','all') and scheduling_checker is None:
+        raise ValueError('Performance budgets require the scheduling checker')
+    if host == 'gui' and phase != 'budgets':
+        raise ValueError('Instrumentation diagnostics require a disposable hosted Mac')
+    def selected():
+        errors=[]
+        # Even when a budget fails, legacy all-mode still collects diagnostics.
+        if phase in ('budgets','all'):
+            try: measure(app,output,scheduling_checker)
+            except SystemExit as error: errors.append(str(error))
+        if phase in ('diagnostics','all'):
+            try: diagnose(app,output)
+            except SystemExit as error: errors.append(str(error))
+        if errors: raise SystemExit('\n'.join(errors))
+    if host == 'gui':
+        print('Dedicated Aqua: every probe requires normal motion; no direct preference writes',flush=True)
+        selected()
+        return
+    setting=['com.apple.universalaccess','reduceMotion']
+    old=subprocess.run(['defaults','read',*setting],capture_output=True,text=True)
     try:
-        subprocess.run(['defaults', 'write', *setting, '-bool', 'false'], check=True)
-        measure(app, output, scheduling_checker)
+        subprocess.run(['defaults','write',*setting,'-bool','false'],check=True)
+        selected()
     finally:
-        command = ['defaults', 'write', *setting, '-bool', 'true' if old.stdout.strip() == '1' else 'false'] if old.returncode == 0 else ['defaults', 'delete', *setting]
-        subprocess.run(command, check=False, capture_output=True)
+        command=['defaults','write',*setting,'-bool','true' if old.stdout.strip()=='1' else 'false'] if old.returncode==0 else ['defaults','delete',*setting]
+        subprocess.run(command,check=False,capture_output=True)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('app', type=Path)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--scheduling-checker',type=Path,required=True)
+    parser.add_argument('--scheduling-checker',type=Path)
+    parser.add_argument('--phase',choices=['budgets','diagnostics','all'],default='all')
     args = parser.parse_args()
-    run(args.app, args.output, args.scheduling_checker)
+    run(args.app, args.output, args.scheduling_checker,args.phase)
