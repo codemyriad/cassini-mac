@@ -290,7 +290,7 @@ def release(args):
     if args.build < 1:
         raise ValueError('Expected a numeric version and positive increasing build number')
     if not test_release and (not args.release_notes or not args.release_notes.is_file() or args.release_notes.stat().st_size == 0):
-        raise ValueError('Release notes must name an existing HTML file')
+        raise ValueError('Release notes must name an existing curated user HTML file')
     # Refuse to overwrite or mix artifacts from earlier builds/submissions.
     output = args.output.resolve()
     if output.exists():
@@ -381,7 +381,7 @@ if __name__ == '__main__':
     parser.add_argument('--version', required=True)
     parser.add_argument('--build', type=int, required=True)
     parser.add_argument('--base-url', default=BASE_URL, help='HTTPS directory for downloads, feed and optional notes')
-    parser.add_argument('--release-notes', type=Path, help='HTML release notes, copied into notes/<version>.html')
+    parser.add_argument('--release-notes', type=Path, help='Curated user HTML release notes, copied into notes/<version>.html; never a developer changelog')
     parser.add_argument('--notary-config', type=Path, default=SECRETS/'notary.json')
     parser.add_argument('--output', type=Path, required=True)
     # Any exception, a timeout or Ctrl-C included, ends in one sanitized line: argv may hold a password.

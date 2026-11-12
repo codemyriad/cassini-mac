@@ -17,9 +17,10 @@ Build admission requires current main with its latest own-repository
 push/workflow_dispatch CI green. Paginated PR/fork results cannot authorize or
 block it. The admitted SHA stays pinned through signing and publication. Unchanged main
 skips. Build numbers are reserved atomically and include failed attempts/drafts.
-Each release has an immutable `vVERSION-beta.N` tag, a nightly title, and merged
-PR titles since the prior nightly. Titles are single-line literal code spans
-with control characters removed; embedded Markdown/HTML/mentions stay text. Failed uploads remain drafts; nothing is
+Each release has an immutable `vVERSION-beta.N` tag, a nightly title, and [user-facing notes](../docs/release-notes.md) from unpublished fragments.
+User text is under500 UTF-16 units and also uploaded as plain text and HTML.
+Developer PR titles are folded below it only on GitHub; they are literal code
+spans with control characters removed. Failed uploads remain drafts; nothing is
 clobbered, deleted or sent to cassini.talk/Sparkle. Test apps disable public
 updates and contain no public feed URL.
 

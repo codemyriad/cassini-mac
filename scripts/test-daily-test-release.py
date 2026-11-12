@@ -63,7 +63,7 @@ class DailyPolicy(unittest.TestCase):
         self.assertEqual(daily.release_title(title),literal)
         pr=dict(merged_at='now',base={'ref':'main'},merge_commit_sha='a'*40,number=7,title=title)
         with patch.object(daily,'command',return_value='a'*40+'\n'),patch.object(daily,'gh',return_value=[pr,pr]):
-            body=daily.notes(None,'a'*40)
+            body=daily.developer_notes(None,'a'*40)
         self.assertEqual(body,'Source: `'+('a'*40)+'`\n\n- '+literal+' ([#7](https://github.com/'+daily.REPO+'/pull/7))\n')
         self.assertEqual(daily.release_title(' \n\u202e\x1b'),'` Untitled pull request `')
 
@@ -86,7 +86,7 @@ class DailyPolicy(unittest.TestCase):
 
     def test_production_tag_is_rejected_before_any_publish_command(self):
         with patch.object(daily,'command') as tool:
-            with self.assertRaises(ValueError):daily.publish('v0.1.0','0.1.0',2,'a'*40,Path('/absent'),'notes')
+            with self.assertRaises(ValueError):daily.publish('v0.1.0','0.1.0',2,'a'*40,Path('/absent'),None)
             tool.assert_not_called()
 
     def test_atomic_counter_keeps_private_complete_state(self):
@@ -157,7 +157,7 @@ class DailyExecution(unittest.TestCase):
     def test_post_publish_cleanup_failure_does_not_rebuild_the_same_head(self):
         with tempfile.TemporaryDirectory() as directory:
             base,_,build=self.context(directory);build.return_value=0
-            with patch.object(daily,'notes',return_value='notes'),patch.object(daily,'publish') as publish,patch.object(daily.shutil,'copy2',side_effect=OSError):
+            with patch.object(daily,'notes',return_value=daily.ReleaseNotes('A clearer Library.','developer notes')),patch.object(daily,'publish') as publish,patch.object(daily.shutil,'copy2',side_effect=OSError):
                 with self.assertRaises(SystemExit):daily.tick(datetime.fromisoformat('2026-11-11T08:00:00+00:00'))
                 daily.tick(datetime.fromisoformat('2026-11-11T13:00:00+00:00'))
             self.assertEqual(build.call_count,1);publish.assert_called_once()
@@ -173,12 +173,15 @@ class DailyExecution(unittest.TestCase):
                 (output/name).write_bytes(data);digest=hashlib.sha256(data).hexdigest()
                 (output/'test-release.json').write_text(json.dumps(dict(channel='nightly',commit='a'*40,version='0.1.0',build=2,notarized=True,updatesEnabled=False,dmg=name,bytes=len(data),sha256=digest)))
                 (output/'SHA256SUMS').write_text(digest+'  '+name+'\n')
+                user=daily.ReleaseNotes('A clearer Library.','developer notes #123')
+                (output/'user-release-notes.txt').write_text(user.user+'\n')
+                (output/'user-release-notes.html').write_text(user.html())
                 assets=[dict(name=p.name,size=p.stat().st_size) for p in output.iterdir()]
                 if not complete:assets=assets[:1]
                 with patch.object(daily,'command') as tool,patch.object(daily,'gh',return_value=dict(draft=True,prerelease=True,assets=assets)):
-                    if complete:daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,'notes')
+                    if complete:daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,user)
                     else:
-                        with self.assertRaises(ValueError):daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,'notes')
+                        with self.assertRaises(ValueError):daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,user)
                     edits=[c.args[0] for c in tool.call_args_list if c.args[0][1:3]==['release','edit']]
                     self.assertEqual(len(edits),int(complete))
                     if edits:self.assertIn('--prerelease',edits[0]);self.assertIn('--latest=false',edits[0])

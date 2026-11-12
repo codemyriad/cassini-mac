@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unicodedata
 from zoneinfo import ZoneInfo
+from user_release_notes import ReleaseNotes, parse_fragment, render
 
 REPO='codemyriad/cassini-mac'
 ORIGIN='https://github.com/'+REPO
@@ -99,7 +100,7 @@ def release_title(value):
     return fence+' '+(text or 'Untitled pull request')+' '+fence
 
 
-def notes(base,head):
+def developer_notes(base,head):
     commits=command(['git','-C',SOURCE,'log','--reverse','--first-parent','--format=%H',
                      (base+'..'+head) if base else head]).splitlines()
     entries=[];seen=set()
@@ -112,7 +113,37 @@ def notes(base,head):
     return '\n'.join([f'Source: `{head}`','',*(entries or ['No merged PR titles in this main update.'])])+'\n'
 
 
-def publish(tag,version,build,sha,output,body):
+def fragment_blobs(ref):
+    result={}
+    for entry in command(['git','-C',SOURCE,'ls-tree','-rz',ref,'--','release-notes.d']).split('\0'):
+        if not entry:continue
+        metadata,path=entry.split('\t',1)
+        if path=='release-notes.d/README.md':continue
+        mode,kind,blob=metadata.split()
+        if mode!='100644' or kind!='blob' or path.count('/')!=1:
+            raise ValueError('Release fragments must be ordinary files in release-notes.d')
+        result[path]=blob
+    return result
+
+
+def notes(base,head,include_developer=True):
+    previous=fragment_blobs(base) if base else {}
+    fragments=[parse_fragment(Path(path).name,command(['git','-C',SOURCE,'show',head+':'+path]))
+               for path,blob in fragment_blobs(head).items() if previous.get(path)!=blob]
+    return ReleaseNotes(render(fragments),developer_notes(base,head) if include_developer else '')
+
+
+def stable_notes_base(releases,head):
+    stable=[r for r in releases if not r['draft'] and not r['prerelease']
+            and re.fullmatch(r'v[0-9]+(?:\.[0-9]+){1,2}',r['tag_name'])]
+    if not stable:return None
+    tag=max(stable,key=lambda r:r['published_at'])['tag_name']
+    sha=command(['git','-C',SOURCE,'rev-parse','refs/tags/'+tag+'^{commit}']).strip()
+    # A separately published hotfix must not wedge main's release notes.
+    return command(['git','-C',SOURCE,'merge-base',sha,head]).strip()
+
+
+def publish(tag,version,build,sha,output,release_notes):
     if tag!=f'v{version}-beta.{build}':raise ValueError('Only immutable test tags may be published')
     release=json.loads((output/'test-release.json').read_text())
     if (release['channel']!='nightly' or release['commit']!=sha or release['version']!=version or release['build']!=build
@@ -126,13 +157,15 @@ def publish(tag,version,build,sha,output,body):
         while chunk:=stream.read(1024*1024):digest.update(chunk)
     if digest.hexdigest()!=release['sha256'] or dmg.stat().st_size!=release['bytes'] or (output/'SHA256SUMS').read_text()!=release['sha256']+'  '+dmg.name+'\n':
         raise ValueError('Test DMG differs from its notarized report')
-    note=output/'nightly-notes.md';note.write_text(body)
+    user_text=output/'user-release-notes.txt';user_text.write_text(release_notes.user+'\n')
+    user_html=output/'user-release-notes.html';user_html.write_text(release_notes.html())
+    note=output/'nightly-notes.md';note.write_text(release_notes.github())
     # A failed upload leaves a draft. Never edit, delete or overwrite another tag.
     command(['gh','release','create',tag,'-R',REPO,'--target',sha,'--title',f'nightly — {version} beta.{build}',
              '--notes-file',note,'--draft','--prerelease','--latest=false'])
-    command(['gh','release','upload',tag,'-R',REPO,dmg,output/'test-release.json',output/'SHA256SUMS'],timeout=1200)
+    command(['gh','release','upload',tag,'-R',REPO,dmg,output/'test-release.json',output/'SHA256SUMS',user_text,user_html],timeout=1200)
     remote=gh([f'repos/{REPO}/releases/tags/{tag}'])
-    expected={p.name:p.stat().st_size for p in [dmg,output/'test-release.json',output/'SHA256SUMS']}
+    expected={p.name:p.stat().st_size for p in [dmg,output/'test-release.json',output/'SHA256SUMS',user_text,user_html]}
     if not remote['draft'] or not remote['prerelease'] or {a['name']:a['size'] for a in remote['assets']}!=expected:
         raise ValueError('Draft test assets are incomplete')
     command(['gh','release','edit',tag,'-R',REPO,'--draft=false','--prerelease','--latest=false'])
@@ -185,10 +218,16 @@ def tick(now):
             report('[Mac] daily test release skipped: latest main CI is not green');return
         releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
         previous=latest_nightly(releases)
-        base=source_commit(previous) if previous else None
+        base=source_commit(previous) if previous else stable_notes_base(releases,head)
         if base==head or state.get('last_success')==head:
             report('[Mac] daily test release skipped: main unchanged');return
         if base:command(['git','-C',SOURCE,'merge-base','--is-ancestor',base,head])
+        if state.get('last_success') and state['last_success']!=head:
+            local=state['last_success']
+            if not re.fullmatch(r'[0-9a-f]{40}',local):raise ValueError('Invalid successful source commit')
+            command(['git','-C',SOURCE,'merge-base','--is-ancestor',local,head])
+            if base:command(['git','-C',SOURCE,'merge-base','--is-ancestor',base,local])
+            base=local
         project=(SOURCE/'project.yml').read_text()
         version=re.search(r'MARKETING_VERSION: "([0-9]+(?:\.[0-9]+){1,2})"',project).group(1)
         initial=int(re.search(r'CURRENT_PROJECT_VERSION: "([0-9]+)"',project).group(1))
@@ -197,6 +236,7 @@ def tick(now):
             raise ValueError('At least25GiB free required before a signed test build')
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
+        stage='release notes'
         body=notes(base,head)
         stage='signing/notarization'
         # The dedicated job directory is retained on failure and removed only

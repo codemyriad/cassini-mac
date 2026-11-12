@@ -57,6 +57,7 @@ jobs:
         python3 scripts/test-ci-contract.py
         python3 scripts/test-gui-session.py
         python3 scripts/test-daily-test-release.py
+        python3 scripts/test-user-release-notes.py
         python3 scripts/test-render-local-ux.py
         python3 scripts/test-export-ux-boards.py
         python3 scripts/ci-test-xcode.py
