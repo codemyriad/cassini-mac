@@ -1,0 +1,5 @@
+--- a/Sources/CassiniLibrary/SpeakerEdits.swift
++++ b/Sources/CassiniLibrary/SpeakerEdits.swift
+@@ -18 +18 @@
+-        return name.unicodeScalars.count <= 64 && !name.unicodeScalars.contains {
++        return name.unicodeScalars.count <= 650 && !name.unicodeScalars.contains {

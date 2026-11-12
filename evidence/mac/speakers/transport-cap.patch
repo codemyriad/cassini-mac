@@ -1,0 +1,5 @@
+--- a/Sources/CassiniPlayback/SpeakerSample.swift
++++ b/Sources/CassiniPlayback/SpeakerSample.swift
+@@ -18 +18 @@
+-        let accepted=playback.play(meeting,fromMs:Double(range.lowerBound),untilMs:Double(min(range.upperBound,range.lowerBound+10_000))) { [weak self] in self?.cancel() }
++        let accepted=playback.play(meeting,fromMs:Double(range.lowerBound),untilMs:Double(min(range.upperBound,range.lowerBound+20_000))) { [weak self] in self?.cancel() }

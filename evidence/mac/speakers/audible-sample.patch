@@ -1,0 +1,5 @@
+--- a/Sources/CassiniLibrary/SpeakerEdits.swift
++++ b/Sources/CassiniLibrary/SpeakerEdits.swift
+@@ -64 +64 @@
+-        let turns=SpeakerTurn.grouping(meeting.transcriptItems.filter {$0.endMs>$0.startMs}).filter {$0.speaker==speaker && $0.endMs>$0.startMs}
++        let turns=SpeakerTurn.grouping(meeting.transcriptItems).filter {$0.speaker==speaker && $0.endMs>$0.startMs}
