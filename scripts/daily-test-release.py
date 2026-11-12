@@ -219,12 +219,14 @@ def tick(now):
         stage='main source/CI admission'
         if command(['git','-C',SOURCE,'remote','get-url','origin']).strip()!=ORIGIN:
             raise ValueError('Unexpected release source origin')
-        before=Path(__file__).read_bytes()
+        def pipeline_source():
+            return tuple(path.read_bytes() for path in [Path(__file__),Path(__file__).with_name('user_release_notes.py')])
+        before=pipeline_source()
         command(['git','-C',SOURCE,'fetch','origin','main'],timeout=180)
         head=command(['git','-C',SOURCE,'rev-parse','FETCH_HEAD']).strip()
         command(['git','-C',SOURCE,'checkout','--detach','--force',head])
         # Never continue executing an older pipeline after fetching its update.
-        if Path(__file__).read_bytes()!=before:
+        if pipeline_source()!=before:
             state.pop('slot',None);state['request']=0;atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
         if not main_is_green(head):

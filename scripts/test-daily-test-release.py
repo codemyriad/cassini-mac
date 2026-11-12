@@ -112,6 +112,7 @@ class DailyExecution(unittest.TestCase):
         stack=ExitStack();self.addCleanup(stack.close)
         base=Path(directory);source=base/'source';(source/'scripts').mkdir(parents=True)
         script=source/'scripts/daily-test-release.py';script.write_text('trusted pipeline')
+        (source/'scripts/user_release_notes.py').write_text('trusted renderer')
         (source/'project.yml').write_text('MARKETING_VERSION: "0.1.0"\nCURRENT_PROJECT_VERSION: "1"\n')
         for name,value in [('BASE',base),('SOURCE',source),('INBOX',base/'inbox'),('__file__',str(script))]:stack.enter_context(patch.object(daily,name,value))
         stack.enter_context(patch.object(daily.sys,'platform','darwin'))
@@ -135,6 +136,20 @@ class DailyExecution(unittest.TestCase):
         calls=stack.enter_context(patch.object(daily,'command',side_effect=tool))
         build=stack.enter_context(patch.object(daily,'signed_build',return_value=1))
         return base,calls,build
+
+    def test_renderer_update_reexecutes_before_using_cached_notes_or_signing(self):
+        class Replaced(BaseException):pass
+        with tempfile.TemporaryDirectory() as directory:
+            base,calls,build=self.context(directory)
+            original=calls.side_effect
+            def changed(args,**kwargs):
+                if 'checkout' in args:(base/'source/scripts/user_release_notes.py').write_text('new renderer')
+                return original(args,**kwargs)
+            calls.side_effect=changed
+            with patch.object(daily.os,'execv',side_effect=Replaced) as replace:
+                with self.assertRaises(Replaced):daily.tick(datetime.fromisoformat('2026-11-11T08:00:00+00:00'))
+            replace.assert_called_once();build.assert_not_called()
+            self.assertNotIn('slot',json.loads((base/'state.json').read_text()))
 
     def test_red_main_and_unchanged_head_never_build_or_repeat_a_slot(self):
         for green,unchanged in [(False,False),(True,True)]:
