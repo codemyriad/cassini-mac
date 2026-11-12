@@ -233,7 +233,7 @@ struct LibraryView: View {
             LegacyOpening.openDocuments(files)
             return true
         }
-        .preferredColorScheme(store.context.screenshot ? .light : nil)
+        .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
     }
     private func trashButton(_ meeting: LibraryMeeting) -> some View {
         Button(UXText.text("common.moveToTrash")) {

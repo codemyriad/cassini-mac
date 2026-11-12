@@ -9,15 +9,20 @@ enum ScreenshotFixture {
     static func launchIfRequested() -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-CassiniScreenshot") else { return false }
+        let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
               ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription"].contains(name),
+              ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
               ISO8601DateFormatter().date(from: clock) != nil else {
             NSLog("Invalid or non-hosted screenshot invocation")
             NSApp.terminate(nil)
             return true
+        }
+        if scheme == "dark" {
+            NSApp.appearance = NSAppearance(named: .darkAqua)
         }
         // LibraryLaunchContext consumes the validated frozen clock for Library
         // boards; the legacy document capture has no wall-clock labels.
@@ -104,6 +109,7 @@ enum ScreenshotFixture {
         prepare(window, sheet: name == "sheet", boardSize: LibraryLaunchContext.argument("-CassiniScreenshotSize") == "1120x720")
     }
     private static func prepare(_ window: NSWindow, sheet: Bool, boardSize: Bool) {
+        if LibraryLaunchContext.screenshotDark { window.appearance = NSAppearance(named: .darkAqua) }
         window.setAccessibilityIdentifier("cassini-screenshot-window")
         window.toolbarStyle = .unified
         guard let screen = window.screen ?? NSScreen.main else { NSApp.terminate(nil); return }
