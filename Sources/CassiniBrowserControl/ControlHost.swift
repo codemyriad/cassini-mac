@@ -124,7 +124,7 @@ private enum NativeHostBridge {
             guard let connection = endpoint else { throw BrowserIPCError.unavailable }
             try FrameIO.prepare(STDIN_FILENO); try FrameIO.prepare(STDOUT_FILENO)
             readers.enter()
-            DispatchQueue.global(qos:.userInitiated).async {
+            let reader = Thread {
                 defer { readers.leave(); state.readerFinished() }
                 do {
                     while !state.cancellation.isCancelled, let data = try connection.receive() {
@@ -138,6 +138,9 @@ private enum NativeHostBridge {
                     }
                 } catch { if !state.cancellation.isCancelled { state.fail(error) } }
             }
+            reader.name = "io.codemyriad.cassini.host-read"
+            reader.qualityOfService = .userInitiated
+            reader.start()
             do {
                 if let initial { if role == .audio { state.submittedRequest() }; try connection.send(initial) }
                 while !state.cancellation.isCancelled, let data = try FrameIO.read(STDIN_FILENO,cancel:state.cancellation) {

@@ -100,7 +100,9 @@ public final class BrowserPipeConnection: @unchecked Sendable {
     }
     func start() {
         lock.lock(); guard !started else { lock.unlock(); return }; started = true; lock.unlock()
-        DispatchQueue.global(qos:.userInitiated).async { [self] in
+        // Dedicated OS thread per peer so long-lived nonblocking FIFO poll loops never occupy
+        // libdispatch's constrained .userInitiated workqueue or starve Swift's cooperative pool.
+        let reader = Thread { [self] in
             var dummy = requestDummy
             defer { if let dummy { Darwin.close(dummy) }; Darwin.close(input); Darwin.close(lease); readerDone.leave(); close() }
             do {
@@ -113,6 +115,9 @@ public final class BrowserPipeConnection: @unchecked Sendable {
                 }
             } catch { /* The owner observes one disconnect; no invented stop packet. */ }
         }
+        reader.name = "io.codemyriad.cassini.pipe-read." + peer.id.uuidString
+        reader.qualityOfService = .userInitiated
+        reader.start()
     }
     public func close() {
         lock.lock(); defer { lock.unlock() }

@@ -368,6 +368,43 @@ final class AudioBrokerTests: XCTestCase, @unchecked Sendable {
         } catch { await fixture.finish(); throw error }
         await fixture.finish()
     }
+    func testManyConcurrentControlPeersDoNotStarveAudioStopFinalization() async throws {
+        let fixture = try AudioFixture(stop:{ _,reply in
+            Task { @MainActor in reply(nil) }
+        })
+        var controls: [PipeEndpoint] = []
+        defer { for control in controls { control.stop() } }
+        do {
+            // Exceed the constrained .userInitiated workqueue width (e.g. 10 cores on M4) with
+            // active control peers before exercising a synchronous audio Stop round-trip.
+            let targetPeers = max(16, ProcessInfo.processInfo.activeProcessorCount * 2)
+            for index in 0..<targetPeers {
+                let endpoint = try PipeEndpoint(root:fixture.ipc,role:.control,browser:"Chrome")
+                controls.append(endpoint)
+                try endpoint.send(JSONSerialization.data(withJSONObject:[
+                    "type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1"]
+                ]))
+                try endpoint.send(JSONSerialization.data(withJSONObject:[
+                    "type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Idle \(index)","sessions":[]
+                ]))
+            }
+            let client = try fixture.client()
+            let started = try client.request(start("many-peers-stop",mic:true))
+            let path = try XCTUnwrap(started["path"]?.string)
+            await fulfillment(of:[fixture.microphones.expect(path:path)],timeout:5)
+            _ = try client.request(track()); _ = try client.request(audio())
+            let stopped = try client.request(["type":"stop","reason":"pageGone"])
+            XCTAssertEqual(stopped["type"]?.string,"stopped")
+            XCTAssertEqual(stopped["path"]?.string,path)
+            let manifest = try RecordingLoader.load(directory:URL(fileURLWithPath:path))
+            XCTAssertEqual(manifest.events?.last?.reason,"pageGone")
+        } catch {
+            for control in controls { control.stop() }; controls.removeAll()
+            await fixture.finish(); throw error
+        }
+        for control in controls { control.stop() }; controls.removeAll()
+        await fixture.finish()
+    }
 }
 private final class StopCount: @unchecked Sendable {
     private let lock = NSLock()

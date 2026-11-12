@@ -179,7 +179,7 @@ import CassiniLibrary
             for _ in 0..<200 { if LibraryStore.shared.loaded { break }; try? await Task.sleep(for:.milliseconds(25)) }
             await LibrarySearchModel.shared.reindexAfterMove(LibraryStore.shared.meetings)
             TranscriptionQueue.shared.resumeAfterMove(); LibraryImportCoordinator.shared.resumeAfterMove()
-            TranscriptionQueue.shared.consider(LibraryStore.shared.meetings,automatic:!LibraryStore.shared.context.screenshot)
+            TranscriptionQueue.shared.consider(LibraryStore.shared.meetings,automatic:!LibraryStore.shared.context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
             withExtendedLifetime(destination) {}
             busy = false; CaptureCollection.shared.setLibraryMoveBlocked(false)
             task = nil; maybeRetryDeferred()
