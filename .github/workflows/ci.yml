@@ -36,6 +36,7 @@ jobs:
       run: |
         python3 scripts/test-ci-contract.py
         python3 scripts/test-gui-session.py
+        python3 scripts/test-spectrogram-sampler.py
         python3 scripts/test-render-local-ux.py
         python3 scripts/ci-test-xcode.py
         python3 scripts/verify-model-vendor.py

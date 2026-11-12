@@ -250,5 +250,11 @@
     "nativeAppQuickLook": "pass",
     "localBookmarkCase": "ScopedBookmarksAgent creation error; excluded only from the restored headless partition, as in CI; dedicated login-session CI test remains required",
     "bulkZipDATE": "plain promotion asserts exact UTC and DATE/CASSINI_RECORDED_AT_UTC mirrors"
+  },
+  "latestMainMerged": "9143e4d",
+  "profilingSampler": {
+    "tests": 3,
+    "productionMutation": "SIGTERM instead of SIGKILL fails actual exit-signal assertion",
+    "ciContracts": 58
   }
 }

@@ -280,3 +280,13 @@ The unrestricted local run exposed the known ScopedBookmarksAgent creation
 error in the single bookmark case; restored headless validation uses CI's
 existing exclusion. Its dedicated login-session CI job remains enabled and
 required; no test is removed or made optional in CI.
+
+## Profiling diagnostic cleanup
+
+Exact-head Kit/conformance, native recording sink, screenshots, browser setup
+and both Whistle worker jobs passed. Profiling job130893380920 failed waiting
+for its owned top child after SIGTERM, before it could report the probe result.
+After an ordinary merge of main9143e4d, diagnostic cleanup kills and reaps that
+child. Three actual child-process tests and a production signal mutation pass
+the proof under `../flaky/sampler-stop`; all58 CI contracts pass. Probe failure
+and measurement gates remain unchanged. Full new exact-head CI is required.
