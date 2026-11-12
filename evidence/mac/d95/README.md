@@ -290,3 +290,15 @@ After an ordinary merge of main9143e4d, diagnostic cleanup kills and reaps that
 child. Three actual child-process tests and a production signal mutation pass
 the proof under `../flaky/sampler-stop`; all58 CI contracts pass. Probe failure
 and measurement gates remain unchanged. Full new exact-head CI is required.
+
+## Overnight CI integration
+
+Mainbac7cd4 is merged normally, including the four-job PR workflow and #251
+Meeting title alignment. The conflict retains D95's meetingTime subtitle and
+the event-driven native title inset. Parser/exporter source is unchanged.
+43 XCTest and457 Swift Testing cases,65 CI contracts, native app/Quick Look
+build,67 independent reference cases/32 schema exports and both conformance
+profiles pass. The existing login-only bookmark case remains in its CI job.
+Readiness requires the complete new run, including build, Kit/conformance,
+workers/conformance and login-session smoke; nightly/UI-label jobs follow main's
+policy. No skipped optional job is treated as a mandatory pass.

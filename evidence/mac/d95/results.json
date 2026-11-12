@@ -2,7 +2,7 @@
   "formatPin": "32f37a6200c88bdd4d23c1f44497f1761f3401da",
   "mainMerged": "eb60a0b",
   "headlessTests": 457,
-  "ciContracts": 58,
+  "ciContracts": 65,
   "restoredFocusedTests": 46,
   "fullConformance": {
     "pass": 29,
@@ -17,7 +17,7 @@
     "skip": 2
   },
   "sourceSHA256": {
-    "Cassini/Library/LibraryView.swift": "bae257ae2db5893da8ee15e35015bd521f5d59917608a96fcce79901bd4ec7d5",
+    "Cassini/Library/LibraryView.swift": "90546de09b0614ee982250424ab537f8f40c56139a8149d9281c6c21bd7467f4",
     "Cassini/Settings/UpdateDeferralSelfTest.swift": "10d8a679ac3dc3fcb6ab4296c86491057d8f5ec13c09d2031ce9dbb16f7189b8",
     "QuickLook/PreviewViewController.swift": "60d854754e9a09665b8f13a7d071d3a7fdcdbb0829bd2fe217e64b77d92b8df0",
     "Sources/CassiniExport/MeetingFileExporter.swift": "36ed0bc68c92329d97cb4ae27d7558810179a8c8a1e192916369812a9fd343fa",
@@ -40,7 +40,7 @@
     "Tests/CassiniSearchTests/MeetingTimeTests.swift": "60850d71cd4184f04614fc23eb74f895248fa085cd6ba0488e9e00c92b74171b",
     "Tests/CassiniSearchTests/SearchTests.swift": "9deba70b2d46bded06f7ba38fd48df2764809d272b2decfdc5499064111f841a",
     "evidence/mac/d95/check-reference-when.py": "1464687d224ccf21b2f18ea99ac3339414693e7789c5251aac4e2358b6c70198",
-    "Tests/CassiniExportTests/BulkZipExportTests.swift": "9bae952feb77567494e240fbe9e86dac195576e9f21646da5ea32e5f362a4f39"
+    "Tests/CassiniExportTests/BulkZipExportTests.swift": "48bf19ded4b2c1209be206ebb77bb11c6334ae7cc388d0429a8d68e6ec8034fb"
   },
   "mutations": {
     "utc-priority": {
@@ -251,10 +251,18 @@
     "localBookmarkCase": "ScopedBookmarksAgent creation error; excluded only from the restored headless partition, as in CI; dedicated login-session CI test remains required",
     "bulkZipDATE": "plain promotion asserts exact UTC and DATE/CASSINI_RECORDED_AT_UTC mirrors"
   },
-  "latestMainMerged": "9143e4d",
+  "latestMainMerged": "bac7cd4",
   "profilingSampler": {
     "tests": 3,
     "productionMutation": "SIGTERM instead of SIGKILL fails actual exit-signal assertion",
     "ciContracts": 58
+  },
+  "currentMainValidation": {
+    "swiftTesting": 457,
+    "XCTest": 43,
+    "native": "Debug arm64 app and Quick Look passed",
+    "referenceCases": 67,
+    "schemaCheckedExports": 32,
+    "ci": "pending latest head; four macOS PR jobs required"
   }
 }
