@@ -98,4 +98,17 @@ extension RecordingTimeReaderTests {
         meeting.recordedAtUtc=nil;meeting.recordedAtLocal=value
         #expect(MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc)==nil)
     }
+    @Test(arguments:[
+        ("2026-11-09 09:31:48.123456789Z","2026-11-09T09:31:48.123456789Z"),
+        (" \t2026-11-09 09:31:48.000123456789z\r\n","2026-11-09T09:31:48.000123456789Z"),
+    ])
+    func referenceReaderRecordedAtUtcFormsResolveWithoutFallback(_ pair:(String,String)) throws {
+        var meeting=try #require(file("028-date-is-created-at").manifest?.meeting)
+        meeting.recordedAtUtc=pair.0;meeting.recordedAtLocal=nil
+        #expect(MeetingTime.normalizedUTC(pair.0)==pair.1)
+        let resolved=MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc)
+        #expect(resolved?.source == .recordedAtUtc)
+        #expect(resolved?.value==pair.0.trimmingCharacters(in:.whitespacesAndNewlines))
+        #expect(resolved?.orderingKey==MeetingTime.resolve(meeting:{ var m=meeting; m.recordedAtUtc=pair.1; return m }(),dateTag:meeting.createdAtUtc)?.orderingKey)
+    }
 }

@@ -75,8 +75,8 @@ public enum MeetingFileExporter {
             // its other transcripts under the same revision), once its namespace is one this app
             // can carry (D65) and its timestamps and mirror tags need no repair.
             let candidateDate = file.tags?["DATE"]
-            let candidateCreated = createdAtUtc(meeting,original:file.manifest,dateTag:candidateDate,exportTime:exportTime)
             let candidateUtc = exportedRecordedUtc(meeting,original:file,dateTag:candidateDate)
+            let candidateCreated = createdAtUtc(meeting,original:file.manifest,dateTag:candidateDate,recordedUtc:candidateUtc,exportTime:exportTime)
             let candidateLocal = exportedRecordedLocal(meeting,original:file.manifest)
             let candidateMirror = MeetingTime.dateTag(recordedAtUtc:candidateUtc,createdAtUtc:candidateCreated.value,legacy:candidateDate)
             if !LibraryScanner.isMeetingFolder(meeting.folder),
@@ -255,8 +255,8 @@ public enum MeetingFileExporter {
                                  damaged: Bool, stored: JSON?, words: [LibraryTranscriptItem], exportTime: () -> Date) throws -> JSON {
         // D65: the file's creation time and DATE, decided before any revision is (#133 review): a
         // revision always covers them. Only an export-time fallback stays out of the comparison.
-        let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag,exportTime:exportTime)
         let recordedUtc = exportedRecordedUtc(meeting,original:file,dateTag:dateTag)
+        let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag,recordedUtc:recordedUtc,exportTime:exportTime)
         let recordedLocal = exportedRecordedLocal(meeting,original:file?.manifest)
         let mirrorDate = MeetingTime.dateTag(recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)
         let revisionDate = created.exportTime ? "" : mirrorDate
@@ -284,6 +284,7 @@ public enum MeetingFileExporter {
         if !LibraryScanner.isMeetingFolder(meeting.folder) {
             notes = originalNotes
             if let foreign, let baseRevision, !(carriedOnly && timestampsUnchanged) {
+                guard !created.exportTime else { throw MeetingExportError.invalidSource }
                 guard baseRevision < CodemyriadNamespace.maxRevision else { throw MeetingExportError.newerFormat }
                 namespace = try foreign.setting("revision",to:.number(String(baseRevision + 1)))
             }
@@ -424,6 +425,7 @@ public enum MeetingFileExporter {
     /// recording whose start is lost (no session.json) falls back to the export time.
     /// `exportTime`: the fallback for a recording whose start is lost (the only time known).
     private static func createdAtUtc(_ meeting: LibraryMeeting, original: Manifest?, dateTag: String?,
+                                     recordedUtc: String? = nil,
                                      exportTime: () -> Date) -> (value: String, exportTime: Bool) {
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         if meeting.state.origin == .received {
@@ -432,6 +434,7 @@ public enum MeetingFileExporter {
             if let tag = dateTag, LibraryNames.dateTagInstant(tag) != nil,
                let utc=utcForLegacyDATE(tag) { return (utc,false) }
             if let imported = meeting.received?.importedAtMs { return (iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)),false) }
+            if let recordedUtc { return (recordedUtc,false) }
         } else if let start = meeting.start { return (iso.string(from:start),false) }
         return (iso.string(from:exportTime()),true)
     }

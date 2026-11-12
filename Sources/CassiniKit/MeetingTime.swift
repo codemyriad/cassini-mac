@@ -19,7 +19,7 @@ public struct MeetingTime: Sendable, Equatable {
     }
     public static func resolve(meeting:Meeting?,dateTag:String?) -> Self? {
         if let value=meeting?.recordedAtUtc,normalizedUTC(value) != nil,let parsed=parsed(value) {
-            return .init(source:.recordedAtUtc,value:value,instant:parsed.date)
+            return .init(source:.recordedAtUtc,value:trimmed(value),instant:parsed.date)
         }
         if let tag=dateTag,let date=parsed(tag),date.key != meeting.flatMap({parsed($0.createdAtUtc)?.key}) {
             return .init(source:.date,value:trimmed(tag),instant:date.date)
@@ -40,12 +40,10 @@ public struct MeetingTime: Sendable, Equatable {
         let normalized=String(value.prefix(10))+"T"+value.dropFirst(11).uppercased()
         return stamp(normalized) == nil ? nil : normalized
     }
-    /// Read valid RFC3339 casing; producers write the returned canonical T/Z form.
-    /// UTC fields do not borrow legacy DATE's whitespace/space-separator leniency.
+    /// Read valid RFC3339 UTC forms, including the reference reader's space separator and
+    /// surrounding whitespace; producers write the returned canonical T/Z form.
     public static func normalizedUTC(_ value:String) -> String? {
-        guard value==trimmed(value),value.utf8.count>=20,
-              value.utf8.dropFirst(10).first != 32,
-              let normalized=normalizedRFC3339(value),normalized.hasSuffix("Z") else {return nil}
+        guard let normalized=normalizedRFC3339(value),normalized.hasSuffix("Z") else {return nil}
         return normalized
     }
     public static func parseInstant(_ value:String) -> Date? {parsed(value)?.date}

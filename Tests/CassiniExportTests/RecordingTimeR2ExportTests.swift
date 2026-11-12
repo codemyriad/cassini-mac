@@ -265,4 +265,127 @@ struct RecordingTimeR2ExportTests {
         }
     }
 
+    @Test func externalRepairWithInvalidCreationAndNoUsableDATEIsConsistentAcrossExportTimes() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true); defer { try? FileManager.default.removeItem(at:root) }
+        let repo = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = repo.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/027-recorded-at-utc.opus")
+        let bytes = try Data(contentsOf:source), base = try CassiniReader.read(bytes)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
+        let t1 = try #require(iso.date(from:"2026-11-12T10:00:00.125Z"))
+        let t2 = try #require(iso.date(from:"2026-11-13T15:30:45.875Z"))
+        let utcZone = try #require(TimeZone(secondsFromGMT:0))
+
+        func makeNamespaced(name: String, created: String, recorded: String?, dateTag: String?) throws -> URL {
+            var manifest = try #require(base.manifest?.raw), meeting = try #require(manifest["meeting"])
+            meeting = try meeting
+                .setting("createdAtUtc",to:.string(created))
+                .setting("recordedAtUtc",to:recorded.map(JSON.string))
+                .setting("recordedAtLocal",to:nil)
+            let namespace = try JSONParser.parse(Data("""
+            {"schema":1,"sessionId":"8B7D3C2E-5f1a-4c9e-9a6b-1d2e3f4a5b6c","origin":"Recording","namePrefix":"2026-11-09--10.31-","namePrefixSource":"recorded","revision":7,\
+            "meeting":{"version":1,"title":"Sync","titleSource":"user","speakers":[],"transcript":{"status":"none","reference":null},"etaMinutes":null,"error":null,"quoteOverride":null,"received":null,"recordingDetails":null},\
+            "automaticTitle":"Sync"}
+            """.utf8))
+            manifest = try manifest
+                .setting("meeting",to:meeting)
+                .setting("x",to:.object([("codemyriad.io",namespace)]))
+            var tags = try TagSet.parse(PortableMeetingTags.make(manifest:manifest,transcripts:PortableMeetingTags.transcripts(own:nil,carried:base)))
+            tags.comments.removeAll { $0.name.uppercased() == "DATE" }
+            if let dateTag { tags.comments.append(.init(name:"DATE",value:dateTag)) }
+            let output = root.appendingPathComponent(name + ".opus")
+            _ = try OpusStreamFile.rewrite(bytes,tags:PortableMeetingTags.packet(comments:tags.comments),to:output)
+            return output
+        }
+
+        // 1. Stable repair timestamp available (`recordedAtUtc` or RFC3339 DATE outside S-12 offset range):
+        //    two exports with distinct injected export times produce identical content under revision 8.
+        let stableCases: [(String, String?, String?, String)] = [
+            ("recorded-no-date","2026-11-09T09:31:48.250Z",nil,"2026-11-09T09:31:48.250Z"),
+            ("recorded-bad-date","2026-11-09T09:31:48.250Z","not-a-date","2026-11-09T09:31:48.250Z"),
+            ("wide-offset-date",nil,"2026-03-04T09:15:00+15:30","2026-03-03T17:45:00Z"),
+        ]
+        for (index,spec) in stableCases.enumerated() {
+            let input = try makeNamespaced(name:"stable-\(index)",created:"not-a-date",recorded:spec.1,dateTag:spec.2)
+            let external = MeetingPresentation.external(try CassiniReader.read(contentsOf:input),url:input)
+            let first = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t1 },afterRead:nil)
+            let second = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t2 },afterRead:nil)
+            let data1 = try Data(contentsOf:first.url), data2 = try Data(contentsOf:second.url)
+            let file1 = try CassiniReader.read(data1), file2 = try CassiniReader.read(data2)
+            #expect(file1.manifest?.raw == file2.manifest?.raw)
+            #expect(file1.tags?.vendor == file2.tags?.vendor && file1.tags?.comments == file2.tags?.comments)
+            #expect(file1.audioDigest == file2.audioDigest)
+            #expect(file1.manifest?.meeting.createdAtUtc == spec.3)
+            #expect(file1.manifest?.meeting.recordedAtUtc == spec.3)
+            #expect(file1.tags?["DATE"] == spec.3 && file1.tags?["CASSINI_CREATED_AT"] == spec.3)
+            #expect(file1.manifest?.raw["x"]?["codemyriad.io"]?["revision"] == JSON.number("8"))
+            let reopened = MeetingPresentation.external(file1,url:first.url)
+            let third = try MeetingFileExporter.cassini(reopened,assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t2 },afterRead:nil)
+            #expect(try Data(contentsOf:third.url) == data1)
+        }
+
+        // 2. No stable timestamp available anywhere in the external document (`createdAtUtc`, `recordedAtUtc`,
+        //    and `DATE` all missing/invalid): direct-open repair refuses at both export times instead of
+        //    emitting two different timestamps under the same sessionId and revision 8.
+        let refusedCases: [(String, String?, String?)] = [
+            ("none-missing",nil,nil),
+            ("none-bad","2026-02-30T09:00:00Z","not-a-date"),
+        ]
+        for (index,spec) in refusedCases.enumerated() {
+            let input = try makeNamespaced(name:spec.0,created:"not-a-date",recorded:spec.1,dateTag:spec.2)
+            let external = MeetingPresentation.external(try CassiniReader.read(contentsOf:input),url:input)
+            #expect(throws:MeetingExportError.invalidSource) {
+                _ = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t1 },afterRead:nil)
+            }
+            #expect(throws:MeetingExportError.invalidSource) {
+                _ = try MeetingFileExporter.cassini(external,assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t2 },afterRead:nil)
+            }
+            // Importing first supplies a persisted import timestamp, so Library exports at t1 and t2 match.
+            let libRoot = root.appendingPathComponent("TimelessLib-\(index)")
+            _ = try LibraryImport.copy(input,into:libRoot)
+            let scanned = { try #require(LibraryScanner(root:libRoot).scan().meetings.first) }
+            let lib1 = try MeetingFileExporter.cassini(try scanned(),assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t1 },afterRead:nil)
+            let lib2 = try MeetingFileExporter.cassini(try scanned(),assets:nil,temporaryRoot:root,timeZone:utcZone,shouldCancel:{ false },exportTime:{ t2 },afterRead:nil)
+            let libFile1 = try CassiniReader.read(contentsOf:lib1.url), libFile2 = try CassiniReader.read(contentsOf:lib2.url)
+            #expect(libFile1.manifest?.raw == libFile2.manifest?.raw)
+            #expect(libFile1.tags?.vendor == libFile2.tags?.vendor && libFile1.tags?.comments == libFile2.tags?.comments)
+            #expect(libFile1.audioDigest == libFile2.audioDigest)
+            #expect(libFile1.manifest?.raw["x"]?["codemyriad.io"]?["revision"] == JSON.number("8"))
+        }
+    }
+
+    @Test(arguments:[
+        ("2026-11-09 09:31:48.123456789Z","2026-11-09T09:31:48.123456789Z"),
+        (" \t2026-11-09 09:31:48.000123456789z\r\n","2026-11-09T09:31:48.000123456789Z"),
+    ])
+    func referenceReaderRecordedAtUtcFormsSurviveReadExportAndReimportWithArtifactOnlyDATE(_ pair:(String,String)) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true); defer { try? FileManager.default.removeItem(at:root) }
+        let created = "2026-11-09T10:47:02Z"
+        // DATE equals createdAtUtc and recordedAtLocal is nil, so no fallback can mask loss of recordedAtUtc.
+        let input = try document(root:root,utc:pair.0,created:created,date:created)
+        let file = try CassiniReader.read(contentsOf:input)
+        #expect(file.state == .ok)
+        #expect(file.meetingTime?.source == .recordedAtUtc)
+        #expect(file.meetingTime?.value == pair.0.trimmingCharacters(in:.whitespacesAndNewlines))
+
+        let external = MeetingPresentation.external(file,url:input)
+        let imported = try LibraryImport.copy(input,into:root.appendingPathComponent("Library"))
+        #expect(imported.meetingTime?.source == .recordedAtUtc)
+        #expect(imported.meetingTime?.value == pair.0.trimmingCharacters(in:.whitespacesAndNewlines))
+
+        for (index,meeting) in [external,imported].enumerated() {
+            let artifact = try MeetingFileExporter.cassini(meeting,assets:nil,temporaryRoot:root)
+            let exported = try CassiniReader.read(contentsOf:artifact.url)
+            #expect(exported.state == .ok)
+            #expect(exported.manifest?.meeting.recordedAtUtc == pair.1)
+            #expect(exported.manifest?.meeting.createdAtUtc == created)
+            #expect(exported.tags?["CASSINI_RECORDED_AT_UTC"] == pair.1)
+            #expect(exported.tags?["DATE"] == pair.1)
+            #expect(exported.meetingTime?.source == .recordedAtUtc && exported.meetingTime?.value == pair.1)
+            let reimported = try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Reimport-\(index)"))
+            #expect(reimported.meetingTime?.source == .recordedAtUtc && reimported.meetingTime?.value == pair.1)
+        }
+    }
+
 }
