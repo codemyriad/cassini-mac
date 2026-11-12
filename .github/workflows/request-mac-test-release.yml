@@ -1,0 +1,12 @@
+name: Request Mac test release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  request:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'Request recorded. The drmeyers scheduler admits current green main and publishes an immutable nightly beta; this job never signs.'
