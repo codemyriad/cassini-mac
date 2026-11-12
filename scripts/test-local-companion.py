@@ -46,6 +46,9 @@ def main():
     source = args.app.resolve()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    key_policy = output.parent/'local-companion-key-policy'
+    subprocess.run(['clang',ROOT/'Spikes/BrowserGuide/CheckKeys.c','-framework','ApplicationServices','-o',key_policy],check=True)
+    subprocess.run([key_policy],check=True)
     keys = output.parent/'local-companion-keys'
     subprocess.run(['clang',ROOT/'Spikes/BrowserGuide/keys.c','-framework','ApplicationServices','-o',keys],check=True)
     subprocess.run(['codesign','--force','--sign','-','--identifier','io.codemyriad.cassini.tests.keyboard',keys],check=True)

@@ -111,6 +111,7 @@ import Observation
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTranscriptText.nativeSelfTest() { report[key] = value }
+        for (key,value) in MeetingTitleAlignment.nativeSelfTest() { report[key] = value }
         var asideMeeting = fixture
         asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
             .init(speaker:"guest",startMs:750,endMs:1100,text:"Yes."),.init(speaker:"claire",startMs:1000,endMs:1800,text:"Thanks.")]

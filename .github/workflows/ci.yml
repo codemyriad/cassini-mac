@@ -13,14 +13,18 @@ name: CI
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
-# D66 mac-P1-1: a newer push to a pull request cancels that PR's older run. Every push, nightly
-# and manual run has a group of its own (its run id), so none is ever cancelled or replaced while
-# pending, and every main commit keeps its own push run (D20).
+# D66 mac-P1-1: a newer push to a pull request cancels that PR's older code-push run, while
+# labeled runs use their own non-cancelling group so synchronize/opened + labeled on the same head
+# never leave CANCELLED check runs (UNSTABLE rollup). Every push, nightly and manual run has a
+# group of its own (its run id), so none is ever cancelled or replaced while pending (D20).
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' && format('pr-{0}-label-{1}', github.event.pull_request.number, github.run_id) || format('pr-{0}', github.event.pull_request.number)) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+env:
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 jobs:
   changes:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(fromJSON('["ui-shots","full-ci"]'), github.event.label.name) }}
     runs-on: ubuntu-latest
     outputs:
       shot: ${{ steps.paths.outputs.shot }}
@@ -37,16 +41,24 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
     - id: paths
       env:
         PR_BASE: ${{ github.event.pull_request.base.sha }}
         EVENT_NAME: ${{ github.event_name }}
         PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
       run: |
+        python3 -m venv "$RUNNER_TEMP/pr-shots-venv"
+        "$RUNNER_TEMP/pr-shots-venv/bin/python3" -m pip install --disable-pip-version-check Pillow==11.3.0
+        env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/pr-shots.py --self-test
+        env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/test-pr-shots.py
         python3 scripts/test-ci-contract.py
         python3 scripts/test-gui-session.py
         python3 scripts/test-daily-test-release.py
         python3 scripts/test-render-local-ux.py
+        python3 scripts/test-export-ux-boards.py
         python3 scripts/ci-test-xcode.py
         python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
@@ -207,8 +219,8 @@ jobs:
   # Normal PRs and main pushes consolidate the three headless arm64 worker/control suites plus
   # headless board/spectrogram oracle checks into one self-hosted M4-first job, and the four
   # disposable-hosted login-session smoke checks into one hosted macos-15 job (<= 4 macOS jobs
-  # per PR push; 5 on main push with build_release). Nightly, workflow_dispatch, and full-ci
-  # labeled PRs run the full standalone/Intel/GUI workflows below instead.
+  # per PR push; 6 on main push with build_release and UX Library boards baseline). Nightly,
+  # workflow_dispatch, and full-ci labeled PRs run the full standalone/Intel/GUI workflows below.
   ux_workers:
     name: UX workers and conformance
     needs: [changes, build]
@@ -534,11 +546,79 @@ jobs:
     needs:
     - changes
     - build
-    - build_release
-    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && (needs.changes.outputs.full_ci == 'true' || needs.changes.outputs.ui_shots == 'true') && needs.changes.outputs.boards != 'false' }}
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && (needs.changes.outputs.full_ci == 'true' || needs.changes.outputs.ui_shots == 'true') && needs.changes.outputs.boards != 'false' }}
     uses: ./.github/workflows/ux-boards.yml
     with:
       products_ready: true
+      mode: boards
+  shots_diff:
+    name: UI screenshot diff
+    needs:
+    - boards
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.boards.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/download-artifact@v5
+      with:
+        name: ux-boards
+        path: build/ux-boards
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Compare UI screenshots against main baseline
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        HEAD_RUN_ID: ${{ github.run_id }}
+      run: |
+        if gh api --help 2>&1 | grep -q -- '--allow-escape-sequences'; then
+          mkdir -p "$RUNNER_TEMP/gh-bin"
+          real_gh=$(command -v gh)
+          python3 -c 'import os, pathlib, sys; p = pathlib.Path(sys.argv[1]); p.write_text("#!/usr/bin/env python3\nimport os, sys\nargs = sys.argv[1:]\nif len(args) >= 2 and args[0] == \"api\" and \"/actions/jobs/\" in args[1]:\n    args = [\"api\", \"--allow-escape-sequences\", *args[1:]]\nos.execv(" + repr(sys.argv[2]) + ", [\"gh\", *args])\n"); p.chmod(0o755)' "$RUNNER_TEMP/gh-bin/gh" "$real_gh"
+          export PATH="$RUNNER_TEMP/gh-bin:$PATH"
+        fi
+        python3 -m venv "$RUNNER_TEMP/pr-shots-venv"
+        "$RUNNER_TEMP/pr-shots-venv/bin/python3" -m pip install --disable-pip-version-check Pillow==11.3.0
+        head_image=$(python3 -c 'import json; d = json.load(open("build/ux-boards/shots.json")); print(d.get("runner", {}).get("image_version") or "unknown")')
+        rm -rf build/pr-shots
+        "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/pr-shots.py diff \
+          --layout mac \
+          --repo "$GITHUB_REPOSITORY" \
+          --pr "$PR_NUMBER" \
+          --base-sha "$BASE_SHA" \
+          --head-sha "$HEAD_SHA" \
+          --head-run "$HEAD_RUN_ID" \
+          --head-runner macos-15 \
+          --head-image "$head_image" \
+          --after-dir build/ux-boards \
+          --base-workflow ci.yml \
+          --base-artifact ux-boards \
+          --tolerance 6 \
+          --out build/pr-shots
+        python3 -I scripts/report-pr-shots-baseline.py build/pr-shots/changes.json
+    - uses: actions/upload-artifact@v5
+      with:
+        retention-days: 14
+        name: pr-shots
+        path: build/pr-shots
+  spectrogram:
+    name: UX spectrogram
+    needs:
+    - changes
+    - build
+    - build_release
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && needs.build_release.result == 'success' && needs.changes.outputs.full_ci == 'true' && needs.changes.outputs.boards != 'false' }}
+    uses: ./.github/workflows/ux-boards.yml
+    with:
+      products_ready: true
+      mode: spectrogram
   whistle:
     name: Whistle bundle
     needs:

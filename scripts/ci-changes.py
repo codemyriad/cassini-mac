@@ -24,18 +24,18 @@ def parse_labels(raw):
 
 def execution_tier(event, labels=()):
     if event == 'pull_request':
-        label_set = set(labels)
+        label_set = {label.casefold() for label in labels}
         full_ci = 'full-ci' in label_set
         ui_shots = 'ui-shots' in label_set
-        return {'full_ci': full_ci, 'ui_shots': ui_shots, 'release_build': full_ci or ui_shots}
+        return {'full_ci': full_ci, 'ui_shots': ui_shots, 'release_build': full_ci}
     if event == 'push':
-        return {'full_ci': False, 'ui_shots': False, 'release_build': True}
+        return {'full_ci': False, 'ui_shots': True, 'release_build': True}
     return {'full_ci': True, 'ui_shots': False, 'release_build': True}
 
 
 def select(event, base, paths, changed=None, labels=()):
     everything = dict.fromkeys(paths, True)
-    label_set = set(labels)
+    label_set = {label.casefold() for label in labels}
     if event != 'pull_request' or not base or 'full-ci' in label_set:
         return everything
     try:
