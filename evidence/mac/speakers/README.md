@@ -91,3 +91,14 @@ geometry is 250 rather than expected 280 (tracked separately by #251), and the
 record/retry test never leaves its failure state on this local fixture. No
 assertion bound or timeout was loosened, and neither failure is counted as a pass.
 Logs and xcresult receipt: `~/coordination/evidence/mac-speakers/review-ui*`.
+
+Current-main integration: ordinary mergef506b17 includes coherent compiled
+caches, D96 and rented GUI routing.395 affected Swift Testing +21 XCTest cases,
+58 CI contracts and the native app/Screenshots bundle build pass. Both mutated
+production source hashes remain unchanged, so the ten assertion proofs still
+apply. Native UI after this integration awaits CI: the local Aqua account is
+running another CI job and was not interrupted. Earlier full naming/clear/merge/
+undo/reopen and listening flows passed; earlier geometry/retry preconditions
+are not counted as passes. Completed old CI logs show artifact download
+failures (404/HTML response) and stale-client SIGSEGV, before the merged cache
+fix. No unchanged run was retried to hide those failures.

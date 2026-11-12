@@ -1,8 +1,8 @@
 {
   "uxPin": "febfcc0bbd7db4b06096e87f5490d6773ab9224e",
-  "main": "89c568bca3528417a74888720f0379103273138d",
-  "affectedTests": 365,
-  "ciContracts": 56,
+  "main": "f506b17",
+  "affectedTests": 395,
+  "ciContracts": 58,
   "longInputWords": 122760,
   "longInputThreadCpuMs": 160.704,
   "mutationProductionSHA256": {
@@ -105,5 +105,8 @@
   },
   "exactHeadCI": "pending",
   "longInputTimingIsDiagnosticOnly": true,
-  "noCpuGateFocusedTests": 11
+  "noCpuGateFocusedTests": 11,
+  "affectedXCTest": 21,
+  "nativeBuildAfterMain": "App and Screenshots test bundle passed",
+  "nativeUIAfterMain": "pending CI; local Aqua account busy with runner job"
 }
