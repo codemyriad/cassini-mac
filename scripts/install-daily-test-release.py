@@ -45,7 +45,7 @@ def installed_python(path=None):
     return python
 
 
-def install(python=None):
+def install(python=None,derived_root=None,aqua=None):
     if sys.platform!='darwin' or socket.gethostname().split('.')[0].lower()!='drmeyers':
         raise SystemExit('Install the test-release scheduler only on drmeyers')
     python=installed_python(python)
@@ -73,9 +73,15 @@ def install(python=None):
     libexec=python.parent.parent/'libexec/bin'
     if libexec.is_dir():runtime_paths.append(libexec)
     agent=Path.home()/'Library/LaunchAgents'/(label+'.plist');agent.parent.mkdir(parents=True,exist_ok=True)
+    environment={'PATH':':'.join(map(str,runtime_paths))+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'}
+    if derived_root or aqua:
+        # DerivedData on an external volume, built through the logged-in session (scripts/daily-test-release.py
+        # `external_build`). The scheduler checks both values again at every build.
+        if not derived_root or not aqua:raise SystemExit('--derived-root and --aqua go together')
+        environment.update(CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT=str(derived_root),CASSINI_MAC_TEST_RELEASE_AQUA=str(aqua))
     agent.write_bytes(plistlib.dumps(dict(Label=label,ProgramArguments=[str(python),str(script)],
         RunAtLoad=True,StartInterval=60,
-        EnvironmentVariables={'PATH':':'.join(map(str,runtime_paths))+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
+        EnvironmentVariables=environment,
         StandardOutPath=str(base/'scheduler.log'),StandardErrorPath=str(base/'scheduler-error.log'))))
     # Minute pulses discover manual requests and catch up a missed Berlin slot;
     # state deduplicates each09:00/14:00/20:00 attempt. No sleep/retry loop.
@@ -87,4 +93,7 @@ if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--python',type=Path,help='Installed Python 3.9+; defaults to the interpreter running this installer')
-    install(parser.parse_args().python)
+    parser.add_argument('--derived-root',type=Path,help='Folder inside /Volumes/<volume> for each build\'s DerivedData')
+    parser.add_argument('--aqua',type=Path,help='Program that runs a command in the logged-in session (drmeyers: ~/bin/guirun); required with --derived-root')
+    arguments=parser.parse_args()
+    install(arguments.python,arguments.derived_root,arguments.aqua)
