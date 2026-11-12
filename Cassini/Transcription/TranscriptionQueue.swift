@@ -421,7 +421,7 @@ import Darwin
             guard try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == received.id })?.state.transcript == .queued else { throw POSIXError(.EINVAL) }
             try await verifyConcurrentImportKeepsExportProgressAndCancel(root:root, source:source, exportedMeeting:received)
             try await verifyBannerRemovalPreservesSharedExportReceipts(exportedMeeting:received, scratch:root.deletingLastPathComponent())
-            try await verifyActiveUserStopStaleScanFenceAndResume(root:root, activeSession:session, nextActive:received)
+            try await verifyActiveUserStopStaleScanFenceAndResume(root:root, activeSession:session, activeMeeting:meeting, nextActive:received)
             try await verifyLockContentionCompletionWhileRetryPending(root:root, blockerID:received.id)
             try await verifyStopCoordinatesWithMoveAndTrashUnderMetadataLock(root:root)
             // A second accepted import and an accepted Stop are owned by the same shutdown path.
@@ -841,9 +841,11 @@ import Darwin
         importer.dismissNotice(noticeID)
     }
 
-    private static func verifyActiveUserStopStaleScanFenceAndResume(root: URL, activeSession: RecordingSession, nextActive: LibraryMeeting) async throws {
+    private static func verifyActiveUserStopStaleScanFenceAndResume(root: URL, activeSession: RecordingSession, activeMeeting: LibraryMeeting, nextActive: LibraryMeeting) async throws {
         let queue = TranscriptionQueue.shared
-        guard queue.active == activeSession.directory else { throw POSIXError(.EINVAL) }
+        guard queue.active == activeMeeting.folder else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:20,userInfo:[NSLocalizedDescriptionKey:"Expected active folder \(activeMeeting.folder.path), got \(queue.active?.path ?? "nil")"])
+        }
         let sidecar = activeSession.directory.appendingPathComponent("transcript.json")
         let partial = try JSONSerialization.data(withJSONObject:[
             "language":"en",
@@ -858,9 +860,11 @@ import Darwin
             ]
         }
         let staleRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
-        guard staleRunning.state.transcript == .running else { throw POSIXError(.EINVAL) }
+        guard staleRunning.state.transcript == .running else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:21,userInfo:[NSLocalizedDescriptionKey:"Expected staleRunning transcript status .running, got \(staleRunning.state.transcript)"])
+        }
         await queue.stop(staleRunning)?.value
-        guard !queue.isStopping(activeSession.directory), queue.active == nextActive.folder else {
+        guard !queue.isStopping(staleRunning.folder), queue.active == nextActive.folder else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:7,userInfo:[NSLocalizedDescriptionKey:"Stopping active worker did not settle cleanly and promote next job"])
         }
         let stopped = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
@@ -890,7 +894,7 @@ import Darwin
             throw NSError(domain:"ImportLifecycleSelfTest",code:11,userInfo:[NSLocalizedDescriptionKey:"Explicit resume did not queue meeting with preserved partial words"])
         }
         await queue.stop(resumed)?.value
-        guard !queue.isStopping(activeSession.directory) else { throw POSIXError(.EBUSY) }
+        guard !queue.isStopping(resumed.folder) else { throw POSIXError(.EBUSY) }
     }
 
     private static func awaitWithTimeout<T: Sendable>(
@@ -932,7 +936,8 @@ import Darwin
         try MeetingMetadataWriter(directory:contended.directory,id:contended.manifest.id).transaction { meta in
             meta["transcript"] = ["status":"running","model":"whistle","reference":NSNull()]
         }
-        let lockPath = contended.directory.appendingPathComponent(".transcription.lock").path
+        let contendedRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == contended.manifest.id }))
+        let lockPath = contendedRunning.folder.appendingPathComponent(".transcription.lock").path
         var lockFD = open(lockPath, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard lockFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
         defer {
@@ -947,8 +952,7 @@ import Darwin
             outcomeCont.finish()
         }
 
-        let contendedRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == contended.manifest.id }))
-        let targetPath = contended.directory.path
+        let targetPath = contendedRunning.folder.path
         queue.consider([contendedRunning], automatic:true)
         try await awaitWithTimeout(stream:outcomeStream, continuation:outcomeCont, label:"initial lock contention") { folder, outcome in
             folder.path == targetPath && outcome == .lockContended
@@ -958,11 +962,13 @@ import Darwin
         let stoppedBlocker = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == blockerID }))
         queue.enqueue(stoppedBlocker)
         await queue.waitForFixturePreparation()
-        guard queue.active == stoppedBlocker.folder else { throw POSIXError(.EINVAL) }
+        guard queue.active == stoppedBlocker.folder else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:22,userInfo:[NSLocalizedDescriptionKey:"Expected stoppedBlocker active"])
+        }
 
         queue.consider([contendedRunning], automatic:true)
         await queue.waitForFixturePreparation()
-        guard queue.containsPendingForTesting(contended.directory) else {
+        guard queue.containsPendingForTesting(contendedRunning.folder) else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:13,userInfo:[NSLocalizedDescriptionKey:"Expected contended meeting retry to wait in pending behind active job"])
         }
 
@@ -974,8 +980,8 @@ import Darwin
                 ["speaker":"remote","startMs":260,"endMs":540,"text":"elsewhere"]
             ]
         ])
-        try completedSidecar.write(to:contended.directory.appendingPathComponent("transcript.json"))
-        try MeetingMetadataWriter(directory:contended.directory,id:contended.manifest.id).transaction { meta in
+        try completedSidecar.write(to:contendedRunning.folder.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory:contendedRunning.folder,id:contended.manifest.id).transaction { meta in
             meta["transcript"] = [
                 "status":"done",
                 "model":"whistle",
@@ -995,7 +1001,7 @@ import Darwin
         }
 
         // Also prove generic failure handling never overwrites a completed attempt.
-        let failDisposition = try MeetingTranscriber.failAttemptIfOwnedAndUnsettled(directory:contended.directory,id:contended.manifest.id)
+        let failDisposition = try MeetingTranscriber.failAttemptIfOwnedAndUnsettled(directory:contendedRunning.folder,id:contended.manifest.id)
         guard failDisposition == .alreadySettled else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:14,userInfo:[NSLocalizedDescriptionKey:"Failure handler did not treat completed meeting as alreadySettled"])
         }
@@ -1010,7 +1016,9 @@ import Darwin
         let restoreBlocker = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == blockerID }))
         queue.enqueue(restoreBlocker)
         await queue.waitForFixturePreparation()
-        guard queue.active == restoreBlocker.folder else { throw POSIXError(.EINVAL) }
+        guard queue.active == restoreBlocker.folder else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:23,userInfo:[NSLocalizedDescriptionKey:"Expected restoreBlocker active"])
+        }
     }
 
     private static func verifyStopCoordinatesWithMoveAndTrashUnderMetadataLock(root: URL) async throws {
@@ -1024,7 +1032,7 @@ import Darwin
             }
             let meeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == session.manifest.id }))
 
-            var metadataLockFD = open(session.directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+            var metadataLockFD = open(meeting.folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
             guard metadataLockFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
             defer {
                 if metadataLockFD >= 0 { flock(metadataLockFD, LOCK_UN); close(metadataLockFD) }
@@ -1044,7 +1052,7 @@ import Darwin
 
             // Discard the returned Task, matching UI callers.
             _ = queue.stop(meeting)
-            let expectedPath = session.directory.path
+            let expectedPath = meeting.folder.path
             try await awaitWithTimeout(stream:willWriteStream, continuation:willWriteCont, label:"stopForUser entered for \(kind)") { $0.path == expectedPath }
 
             var barrierCompleted = false
@@ -1052,7 +1060,7 @@ import Darwin
                 if kind == "move" {
                     await queue.pauseForMove()
                 } else {
-                    await queue.cancel(meeting:session.directory)
+                    await queue.cancel(meeting:meeting.folder)
                 }
                 barrierCompleted = true
             }
@@ -1062,7 +1070,7 @@ import Darwin
             }
             flock(metadataLockFD, LOCK_UN); close(metadataLockFD); metadataLockFD = -1
             await barrierTask.value
-            guard barrierCompleted, !queue.isStopping(session.directory) else { throw POSIXError(.EBUSY) }
+            guard barrierCompleted, !queue.isStopping(meeting.folder) else { throw POSIXError(.EBUSY) }
 
             let committed = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == session.manifest.id }))
             guard committed.state.transcript == .none, committed.transcriptPaused, !committed.canQueueAutomatically else {
@@ -1071,7 +1079,7 @@ import Darwin
             if kind == "move" {
                 queue.resumeAfterMove()
             } else {
-                queue.releaseTrashed(session.directory)
+                queue.releaseTrashed(meeting.folder)
             }
         }
     }
@@ -1100,7 +1108,7 @@ import Darwin
         }
         let quitStoppedMeeting = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quitStopped.manifest.id }))
 
-        var stopLockFD = open(quitStopped.directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        var stopLockFD = open(quitStoppedMeeting.folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         guard stopLockFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO) }
         defer {
             if stopLockFD >= 0 { flock(stopLockFD, LOCK_UN); close(stopLockFD) }
@@ -1120,10 +1128,10 @@ import Darwin
 
         // UI-identical call: discard the returned Stop task while holding the metadata lock.
         _ = queue.stop(quitStoppedMeeting)
-        let quitTargetPath = quitStopped.directory.path
+        let quitTargetPath = quitStoppedMeeting.folder.path
         try await awaitWithTimeout(stream:willWriteStream, continuation:willWriteCont, label:"stopForUser entered before Quit") { $0.path == quitTargetPath }
 
-        try await holdingDirectoryLock(waiting.directory) {
+        try await holdingDirectoryLock(waitingMeeting.folder) {
             queue.enqueue(waitingMeeting)
             importer.open(anotherSource)
             await Task.yield()
@@ -1141,7 +1149,9 @@ import Darwin
             throw NSError(domain:"ImportLifecycleSelfTest",code:18,userInfo:[NSLocalizedDescriptionKey:"waitForShutdown returned before accepted Stop committed"])
         }
         let stillQueuedWhileLocked = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == quitStopped.manifest.id }))
-        guard stillQueuedWhileLocked.state.transcript == .queued else { throw POSIXError(.EINVAL) }
+        guard stillQueuedWhileLocked.state.transcript == .queued else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:24,userInfo:[NSLocalizedDescriptionKey:"Expected quitStopped to remain .queued while lock held"])
+        }
 
         flock(stopLockFD, LOCK_UN); close(stopLockFD); stopLockFD = -1
         await shutdownTask.value
