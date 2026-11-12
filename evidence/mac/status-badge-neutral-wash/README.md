@@ -30,3 +30,9 @@ Run from the checkout with output outside it, under the shared heavy-run queue:
 Run mutation scripts sequentially in a disposable worktree: each applies the committed patches to the real component, compiles and renders it, requires a specific native assertion failure (not timeout/compiler failure), and restores exact bytes in `finally`. Four new mutations cover wrong fill token, opaque fill, double opacity, and accidental foreground fading. `mutations.json` records actual failures. The pre-existing four glyph/outline patches are refreshed only for changed context and also pass their mutation replay.
 
 CI runs the 42-case proof and publishes images/receipts in the existing hosted login-session job (or native-sink job for full CI); no additional Mac job. A full checkout preserves the frozen baseline for comparison.
+
+## Merged contract adoption
+
+After UX #14 merged, the standalone W2.2 snapshot advances as a whole to `48616a77f421adf85367637bb21cc42e52329571`. All 26 files were compared directly with that merged commit: only STATUS-BADGES.md changes. The catalog, states v3, format v5 and Library expected output are identical. The active app pin remains unchanged. The renderer screenshots above remain current because adopting this prose correction changes no rendering input.
+
+`merged-contract-checks.json` records the native label proof (18 state vectors, one import entry, 41 Library rows, three ETA vectors, 70 localized cases, 18 native badges and two nil-view checks) and nine executed production mutation failures with restored proof passing. Replay with `scripts/render-badge-labels.py` and `evidence/mac/badge-labels/replay.py` under heavy-run. The strict label pixel comparison now includes width and diagnostic case/channel deltas; its tolerance is not relaxed. Pin integrity and drift-rejection tests pass.

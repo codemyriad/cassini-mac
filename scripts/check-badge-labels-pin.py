@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 FOLDER=ROOT/'Components/BadgeLabels/Contract'
-COMMIT='793209cb3425bece7143178458fddd94b691e12d'
+COMMIT='48616a77f421adf85367637bb21cc42e52329571'
 
 def verify():
     pin=json.loads((FOLDER/'UPSTREAM.json').read_text())

@@ -186,7 +186,8 @@ private struct Board: View {
                 let actual=try image(CatalogStatusBadge(presentation:p,isAnimating:false),dark)
                 let visual=StatusBadgeKind(rawValue:example.name=="no ETA" || example.name=="under minute" ? "transcribing" : example.name)!
                 let expected=try image(MeetingStatusBadge(kind:visual,label:p.text,isAnimating:false),dark)
-                try require(actual.height==36 && pixels(actual)==pixels(expected),"Catalog view lost badge kind or label")
+                let differences=zip(pixels(actual),pixels(expected)).filter { $0 != $1 }
+                try require(actual.height==36 && actual.width==expected.width && differences.isEmpty,"Catalog view lost badge kind or label: \(example.name), dark=\(dark), differing channels=\(differences.count), max=\(differences.map { abs(Int($0.0)-Int($0.1)) }.max() ?? 0)")
             }
             let anchor=Rectangle().fill(Color(nsColor:CassiniTokens.groundEntry.resolvedNSColor(dark:dark))).frame(width:100,height:30)
             let absent=try image(ZStack { anchor;CatalogStatusBadge(presentation:nil,isAnimating:false) },dark)

@@ -1,0 +1,54 @@
+{
+  "mergedContractCommit": "48616a77f421adf85367637bb21cc42e52329571",
+  "snapshotFilesVerifiedAgainstGitShow": 26,
+  "onlyChangedSnapshotFile": "STATUS-BADGES.md",
+  "checks": {
+    "etaVectors": 3,
+    "importEntries": 1,
+    "libraryRows": 41,
+    "localizedCases": 70,
+    "meetingVectors": 18,
+    "missingTranslationRejected": true,
+    "nilViewCases": 2,
+    "renderedCases": 18
+  },
+  "productionMutations": {
+    "positive-eta": {
+      "exitCode": 1,
+      "expectedFailure": "State vector mismatch"
+    },
+    "importing-kind": {
+      "exitCode": 1,
+      "expectedFailure": "Import entry mismatch"
+    },
+    "queued-state": {
+      "exitCode": 1,
+      "expectedFailure": "State vector mismatch"
+    },
+    "recording-precedence": {
+      "exitCode": 1,
+      "expectedFailure": "State vector mismatch"
+    },
+    "interrupted-label": {
+      "exitCode": 1,
+      "expectedFailure": "State vector mismatch"
+    },
+    "missing-translation": {
+      "exitCode": 1,
+      "expectedFailure": "Missing translation silently fell back to English"
+    },
+    "regional-locale": {
+      "exitCode": 1,
+      "expectedFailure": "Localized plural/count mismatch"
+    },
+    "visual-kind": {
+      "exitCode": 1,
+      "expectedFailure": "Catalog view lost badge kind or label"
+    },
+    "nil-badge": {
+      "exitCode": 1,
+      "expectedFailure": "Nil presentation rendered a badge"
+    }
+  },
+  "proofSHA256": "a97814ab9e175b87693bfb0760f00bd2d8f3c93757ba9fb0c642b66448ef20e3"
+}
