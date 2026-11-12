@@ -6,9 +6,12 @@ helpers use the selected interpreter rather than bare `python3`. Installer
 fixtures cover 3.9/3.14 paths, including spaces; the full suite ran on actual
 Python 3.9 and 3.12. No new runtime or package pin is installed.
 
-Trusted scheduled CI participates in the newest exact-main gate. Pending/red
-CI consumes neither the slot nor a manual request. A later timer pulse in the
-same slot admits green main. An admitted failed build still reserves its number
+Trusted scheduled CI participates in the newest exact-main gate. In-progress
+CI leaves the slot and any manual request pending for up to 45 minutes across
+minute pulses (with a 3-minute start grace for webhook run creation) and admits
+the newest unpublished green ancestor if main fast-forwards into another
+in-progress run, whereas completed red CI or an expired wait consumes the
+slot/request as a skip. An admitted failed build still reserves its number
 and does not retry within that slot.
 
 Failed products are deleted only after child exit and a schema-marked owned
@@ -16,7 +19,7 @@ failure. Keep three private archives of up to five 1MiB diagnostic tails each.
 Active/unmarked/symlinked jobs, unowned archive collisions, and shared caches are
 preserved. The release lock waits up to 60 minutes to share drmeyers with iOS.
 
-Replay 19 actual production regressions (37 baseline/restored policy tests):
+Replay 19 actual production regressions (42 baseline/restored policy tests):
 
 ```
 MAC_SLOT_EVIDENCE=/absolute/path/outside/checkout python3 evidence/mac/release-slots/replay.py

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Fast policy tests: no signing, network, real state or app execution."""
-from datetime import datetime,timezone
+from datetime import datetime,timedelta,timezone
 import importlib.util
 import json
 import subprocess
@@ -66,6 +66,17 @@ class DailyPolicy(unittest.TestCase):
             self.assertIn('--paginate',api.call_args.args[0]);self.assertIn('--slurp',api.call_args.args[0])
         with patch.object(daily,'gh',return_value=pages[:1]):
             self.assertFalse(daily.main_is_green('a'*40))
+
+    def test_ci_state_distinguishes_green_pending_red_and_missing(self):
+        good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
+        self.assertEqual(daily.ci_state([good],'a'*40),'green')
+        self.assertEqual(daily.ci_state([],'a'*40),'missing')
+        for status in ['queued','in_progress','waiting','requested']:
+            self.assertEqual(daily.ci_state([{**good,'status':status,'conclusion':None},good],'a'*40),'pending')
+        for conclusion in ['failure','cancelled','timed_out','startup_failure','action_required','skipped']:
+            self.assertEqual(daily.ci_state([{**good,'conclusion':conclusion},good],'a'*40),'red')
+        self.assertEqual(daily.ci_state([{**good,'head_sha':'b'*40},good],'a'*40),'red')
+        self.assertEqual(daily.ci_state([{**good,'head_branch':'feature'},good],'a'*40),'red')
 
     def test_release_notes_render_untrusted_titles_as_one_literal_span(self):
         title='Fix StateFlow<Settings> & [link](https://invalid.example) @someone **bold** `one` ```three```\n> heading\x1b\u202e 😀'
@@ -186,7 +197,7 @@ class DailyExecution(unittest.TestCase):
                     if 'request-mac' in args[-1]:return {'workflow_runs':([] if request_id is None else [dict(id=request_id,conclusion='success',head_branch='main',event='workflow_dispatch')])}
                     return original(args)
                 instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
-                with patch.object(daily,'gh',side_effect=api),patch.object(daily,'main_is_green',side_effect=[False,False,True]):
+                with patch.object(daily,'gh',side_effect=api),patch.object(daily,'main_ci_state',side_effect=['pending','pending','green']):
                     daily.tick(instant);daily.tick(instant)
                     state=json.loads((base/'state.json').read_text()) if (base/'state.json').exists() else {}
                     self.assertNotEqual(state.get('slot'),daily.due_slot(instant))
@@ -199,6 +210,120 @@ class DailyExecution(unittest.TestCase):
                 state=json.loads((base/'state.json').read_text())
                 self.assertEqual(state['slot'],daily.due_slot(instant));self.assertEqual(state['request'],request_id or 0)
                 self.assertNotIn('pending_ci',state)
+
+    def test_red_ci_immediately_consumes_slot_and_manual_request_without_building(self):
+        for request_id in [None,42]:
+            with self.subTest(request=request_id),tempfile.TemporaryDirectory() as directory:
+                base,calls,build=self.context(directory,green=False)
+                original=daily.gh
+                def api(args):
+                    if 'request-mac' in args[-1]:return {'workflow_runs':([] if request_id is None else [dict(id=request_id,conclusion='success',head_branch='main',event='workflow_dispatch')])}
+                    return original(args)
+                instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+                with patch.object(daily,'gh',side_effect=api):
+                    daily.tick(instant);count=calls.call_count;daily.tick(instant+timedelta(minutes=1))
+                build.assert_not_called();self.assertEqual(calls.call_count,count)
+                state=json.loads((base/'state.json').read_text())
+                self.assertEqual(state['slot'],daily.due_slot(instant));self.assertEqual(state['request'],request_id or 0)
+                self.assertEqual(state['phase'],'skipped');self.assertNotIn('pending_ci',state)
+                self.assertEqual((base/'inbox').read_text(),'[Mac] daily test release skipped: latest main CI is not green\n')
+        with tempfile.TemporaryDirectory() as directory:
+            base,_,build=self.context(directory)
+            instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+            with patch.object(daily,'main_ci_state',side_effect=['pending','red']):
+                daily.tick(instant);daily.tick(instant+timedelta(minutes=5))
+            build.assert_not_called()
+            state=json.loads((base/'state.json').read_text())
+            self.assertEqual(state['slot'],daily.due_slot(instant));self.assertNotIn('pending_ci',state)
+            self.assertIn('skipped: latest main CI is not green',(base/'inbox').read_text())
+
+    def test_in_progress_ci_waits_up_to_45_minutes_then_consumes_slot_as_skip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,calls,build=self.context(directory)
+            instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+            with patch.object(daily,'main_ci_state',return_value='pending'):
+                for minute in [0,20,44]:
+                    daily.tick(instant+timedelta(minutes=minute))
+                    state=json.loads((base/'state.json').read_text())
+                    self.assertNotEqual(state.get('slot'),daily.due_slot(instant))
+                    self.assertIn('pending_ci',state)
+                daily.tick(instant+timedelta(minutes=45))
+                count=calls.call_count
+                daily.tick(instant+timedelta(minutes=46))
+            build.assert_not_called();self.assertEqual(calls.call_count,count)
+            state=json.loads((base/'state.json').read_text())
+            self.assertEqual(state['slot'],daily.due_slot(instant));self.assertEqual(state['phase'],'skipped')
+            self.assertNotIn('pending_ci',state)
+            lines=(base/'inbox').read_text().splitlines()
+            self.assertEqual(lines,['[Mac] daily test release waiting: latest main CI is not green',
+                                    '[Mac] daily test release skipped: main CI did not finish green within 45m'])
+
+    def test_missing_ci_run_allows_brief_webhook_grace_then_skips(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,_,build=self.context(directory)
+            instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+            with patch.object(daily,'main_ci_state',side_effect=['missing','pending','green']):
+                daily.tick(instant);daily.tick(instant+timedelta(minutes=1))
+                with self.assertRaises(SystemExit):daily.tick(instant+timedelta(minutes=2))
+            build.assert_called_once()
+        with tempfile.TemporaryDirectory() as directory:
+            base,_,build=self.context(directory)
+            instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+            with patch.object(daily,'main_ci_state',return_value='missing'):
+                for minute in [0,1,2]:daily.tick(instant+timedelta(minutes=minute))
+                self.assertNotEqual(json.loads((base/'state.json').read_text()).get('slot'),daily.due_slot(instant))
+                daily.tick(instant+timedelta(minutes=3))
+            build.assert_not_called()
+            self.assertEqual(json.loads((base/'state.json').read_text())['slot'],daily.due_slot(instant))
+            self.assertIn('skipped: latest main CI is not green',(base/'inbox').read_text())
+
+    def test_fast_forwarding_main_during_wait_admits_newest_unpublished_green_ancestor_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base,calls,build=self.context(directory);source=base/'source'
+            def git(*args):
+                return subprocess.check_output(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false',*args],cwd=source,text=True).strip()
+            git('init','-q','-b','main');heads=[]
+            for index in range(4):
+                (source/'change').write_text(str(index));git('add','.');git('commit','-qm',f'c{index}')
+                heads.append(git('rev-parse','HEAD'))
+            (source/'scripts/daily-test-release.py').write_text('updated pipeline');git('add','.');git('commit','-qm','pipeline')
+            pipeline_head=git('rev-parse','HEAD')
+            git('checkout','-qfb','rewrite',heads[0])
+            (source/'change').write_text('rewritten');git('add','.');git('commit','-qm','rewritten')
+            rewritten=git('rev-parse','HEAD')
+            git('checkout','-qf',heads[3])
+            original=calls.side_effect
+            def real_git(args,**kwargs):
+                if args[0]=='git' and any(op in args for op in ('merge-base','diff','checkout')):
+                    if 'checkout' in args and args[-1]==pipeline_head:return ''
+                    result=subprocess.run(list(map(str,args)),capture_output=True,text=True)
+                    if result.returncode:raise RuntimeError('Command failed: git')
+                    return result.stdout
+                return original(args,**kwargs)
+            calls.side_effect=real_git
+            daily.atomic(base/'state.json',{'last_success':heads[0],'build':4})
+            statuses={heads[0]:'green',heads[1]:'pending',heads[2]:'pending',heads[3]:'pending',pipeline_head:'pending',rewritten:'green'}
+            instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+            with patch.object(daily,'fetch_main',side_effect=[rewritten,heads[0],heads[1],pipeline_head,heads[2],heads[3]]),patch.object(daily,'main_ci_state',side_effect=lambda sha:statuses[sha]),patch.object(daily,'notes',return_value=daily.ReleaseNotes('A clearer Library.','dev')):
+                statuses[rewritten]='pending';statuses[heads[0]]='pending'
+                daily.tick(instant) # rewritten pending
+                statuses[rewritten]='green'
+                daily.tick(instant+timedelta(minutes=1)) # heads[0] pending; rewritten green but non-ancestor -> ignored
+                self.assertEqual(build.call_count,0)
+                statuses[heads[0]]='green'
+                daily.tick(instant+timedelta(minutes=2)) # heads[1] pending; heads[0] green but already published -> keep waiting
+                self.assertEqual(build.call_count,0)
+                self.assertNotIn('main unchanged',(base/'inbox').read_text() if (base/'inbox').exists() else '')
+                statuses[heads[1]]='green'
+                daily.tick(instant+timedelta(minutes=3)) # pipeline_head pending; heads[1] green but pipeline script differs -> do not downgrade
+                self.assertEqual(build.call_count,0)
+                statuses[heads[1]]='pending'
+                daily.tick(instant+timedelta(minutes=4)) # heads[2] pending; heads[1] pending
+                statuses[heads[1]]='green';statuses[heads[2]]='green'
+                with self.assertRaises(SystemExit):daily.tick(instant+timedelta(minutes=5)) # heads[3] pending; admits newest green ancestor heads[2]
+            build.assert_called_once()
+            self.assertEqual(json.loads((base/'state.json').read_text())['head'],heads[2])
+            self.assertEqual(git('rev-parse','HEAD'),heads[2])
 
     def test_green_unchanged_head_consumes_slot_once_without_building(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -223,7 +348,7 @@ class DailyExecution(unittest.TestCase):
     def test_pending_notification_identity_includes_head_slot_and_manual_request(self):
         with tempfile.TemporaryDirectory() as directory:
             base,_,build=self.context(directory)
-            with patch.object(daily,'main_is_green',return_value=False),patch.object(daily,'fetch_main',side_effect=['a'*40,'b'*40,'b'*40,'b'*40]):
+            with patch.object(daily,'main_ci_state',return_value='pending'),patch.object(daily,'fetch_main',side_effect=['a'*40,'b'*40,'b'*40,'b'*40]):
                 for hour in [13,13,13,19]:daily.tick(datetime.fromisoformat('2026-11-11T%02d:00:00+00:00'%hour))
             self.assertEqual((base/'inbox').read_text().count('waiting:'),3)
             build.assert_not_called()
@@ -255,7 +380,7 @@ class DailyExecution(unittest.TestCase):
                 calls.side_effect=command
                 daily.atomic(base/'state.json',{'last_success':heads[local_index],'build':9})
                 remote={'target_commitish':heads[remote_index]}
-                with patch.object(daily,'fetch_main',return_value=heads[2]),patch.object(daily,'main_is_green',return_value=True),patch.object(daily,'latest_nightly',return_value=remote),patch.object(daily,'notes',side_effect=NotesReached) as notes:
+                with patch.object(daily,'fetch_main',return_value=heads[2]),patch.object(daily,'main_ci_state',return_value='green'),patch.object(daily,'latest_nightly',return_value=remote),patch.object(daily,'notes',side_effect=NotesReached) as notes:
                     reached=False
                     try:daily.tick(datetime.fromisoformat('2026-11-11T08:00:00+00:00'))
                     except NotesReached:reached=True

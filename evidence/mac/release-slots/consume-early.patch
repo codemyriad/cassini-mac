@@ -1,6 +1,6 @@
 --- a/scripts/daily-test-release.py
 +++ b/scripts/daily-test-release.py
-@@ -288,6 +288,8 @@
+@@ -329,6 +329,8 @@
          manual=next((r['id'] for r in request if r['conclusion']=='success' and r['head_branch']=='main'
                       and r['event']=='workflow_dispatch' and r['id']>state.get('request',0)),None)
          if state.get('slot')==slot and manual is None:return
@@ -9,7 +9,7 @@
          stage='main source/CI admission'
          if command(['git','-C',SOURCE,'remote','get-url','origin']).strip()!=ORIGIN:
              raise ValueError('Unexpected release source origin')
-@@ -311,8 +313,6 @@
+@@ -394,8 +396,6 @@
          stage='failed output cleanup'
          prune_failed_builds()
          stage='release history'

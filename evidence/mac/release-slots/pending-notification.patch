@@ -1,11 +1,11 @@
 --- a/scripts/daily-test-release.py
 +++ b/scripts/daily-test-release.py
-@@ -302,7 +302,7 @@
-             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
-         if not main_is_green(head):
-             pending=dict(slot=slot,request=manual or state.get('request',0),head=head)
--            if state.get('pending_ci')!=pending:
+@@ -382,7 +382,7 @@
+                 reason='main CI did not finish green within 45m' if (timed_out and status!='red') else 'latest main CI is not green'
+                 report('[Mac] daily test release skipped: '+reason)
+                 return
+-            if not same_attempt or prior.get('head')!=head:
 +            if True:
                  report('[Mac] daily test release waiting: latest main CI is not green')
-             state['pending_ci']=pending;atomic(state_file,state)
-             return
+             candidates=([dict(sha=head,seen_at=head_started_at.isoformat())]+kept)[:8]
+             state['pending_ci']=dict(slot=slot,request=request_id,head=head,started_at=started_at.isoformat(),
