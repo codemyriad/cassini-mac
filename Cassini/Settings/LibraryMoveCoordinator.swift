@@ -105,7 +105,8 @@ import CassiniLibrary
         guard observing else { return }
         withObservationTracking {
             _ = CaptureCollection.shared.activity
-            _ = RecordingController.shared.isRecording; _ = RecordingController.shared.isSaving; _ = TranscriptionQueue.shared.active
+            _ = RecordingController.shared.isRecording; _ = RecordingController.shared.isSaving
+            _ = TranscriptionQueue.shared.active; _ = TranscriptionQueue.shared.stoppingFolders
         } onChange: { [weak self] in Task { @MainActor in self?.observeJobs(); self?.maybeRetryDeferred() } }
     }
     private func heldFolders() -> Set<String> {
@@ -117,6 +118,7 @@ import CassiniLibrary
             for id in CaptureActivityStore.shared.snapshot().keys { held.insert(root.appendingPathComponent("Recording-" + id.uuidString.lowercased()).path) }
         }
         if let directory = TranscriptionQueue.shared.active { held.insert(LibraryLocation.canonical(directory).path) }
+        for path in TranscriptionQueue.shared.stoppingFolders { held.insert(LibraryLocation.canonical(URL(fileURLWithPath:path)).path) }
         return held
     }
     private func run(destination: FileAccessLease?, selection: Selection) {

@@ -8,6 +8,31 @@ import CassiniRecording
 import CassiniWhistle
 
 public enum MeetingTranscriber {
+    public enum AttemptPrecheck: Sendable, Equatable {
+        case eligible
+        case alreadySettled
+        case lockContended
+    }
+    private static func withNonBlockingTranscriptionLock<T>(directory inputDirectory: URL, body: (URL) throws -> T) throws -> AttemptPrecheckResult<T> {
+        var folderInfo = stat()
+        guard lstat(inputDirectory.path, &folderInfo) == 0, folderInfo.st_mode & S_IFMT == S_IFDIR,
+              let canonical = realpath(inputDirectory.path, nil) else { return .missing }
+        let directory = URL(fileURLWithPath: String(cString: canonical), isDirectory: true); free(canonical)
+        let lockFD = open(directory.appendingPathComponent(".transcription.lock").path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard lockFD >= 0 else { return .missing }
+        defer { close(lockFD) }
+        if flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
+            if errno == EWOULDBLOCK || errno == EAGAIN { return .contended }
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { flock(lockFD, LOCK_UN) }
+        return .acquired(try body(directory))
+    }
+    private enum AttemptPrecheckResult<T> {
+        case acquired(T)
+        case contended
+        case missing
+    }
     public static func setStatus(directory: URL, id: UUID, status: String) throws {
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
             var transcript = metadata["transcript"] as! [String:Any]
@@ -18,18 +43,109 @@ public enum MeetingTranscriber {
             // D67.2: a failed write-down references no words. Its partial transcript.json stays in the
             // folder, unreferenced, so no reader (or a published copy) shows partial words as stored.
             if status == "failed" { transcript["reference"] = NSNull() }
+            if status != "none" { transcript.removeValue(forKey: "paused") }
             transcript["status"] = status; metadata["transcript"] = transcript
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
         }
     }
-    public static func pauseForResume(directory: URL, id: UUID) throws {
-        try MeetingMetadataWriter(directory:directory,id:id).transaction { metadata in
+    /// Prepares a pending queue entry without clobbering a transcript completed or paused elsewhere.
+    public static func queueIfEligible(directory: URL, id: UUID, automatic: Bool, explicitRetry: Bool) throws -> Bool {
+        var eligible = false
+        try MeetingMetadataWriter(directory: directory, id: id).transaction(skippingUnchanged: true) { metadata in
             guard var transcript = metadata["transcript"] as? [String:Any],
-                  let status = transcript["status"] as? String, ["queued","running"].contains(status) else { return }
-            transcript["status"] = "queued"; metadata["transcript"] = transcript
-            metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
+                  let status = transcript["status"] as? String else { return }
+            let isPaused = transcript["paused"] as? Bool == true
+            if status == "queued" || status == "running" {
+                eligible = !(automatic && isPaused)
+                return
+            }
+            if status == "done" {
+                guard explicitRetry, !automatic else { return }
+            } else if status == "failed" {
+                guard explicitRetry, !automatic else { return }
+                transcript["reference"] = NSNull()
+            } else if status == "none" {
+                if automatic && isPaused { return }
+            } else {
+                return
+            }
+            transcript.removeValue(forKey: "paused")
+            transcript["status"] = "queued"
+            metadata["transcript"] = transcript
+            metadata["etaMinutes"] = NSNull()
+            metadata["error"] = NSNull()
+            eligible = true
         }
+        return eligible
+    }
+    /// Revalidates eligibility under `.transcription.lock` before spawning a worker.
+    public static func precheckAttempt(directory inputDirectory: URL) throws -> AttemptPrecheck {
+        switch try withNonBlockingTranscriptionLock(directory: inputDirectory, body: { directory -> Bool in
+            let scanner = LibraryScanner(root: directory.deletingLastPathComponent())
+            guard let meeting = try scanner.scan().meetings.first(where: { $0.folder.path == directory.path }),
+                  !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
+                  !meeting.transcriptPaused,
+                  [.none,.queued,.running,.failed].contains(meeting.state.transcript) else { return false }
+            return true
+        }) {
+        case .acquired(let ok): return ok ? .eligible : .alreadySettled
+        case .contended: return .lockContended
+        case .missing: return .alreadySettled
+        }
+    }
+    /// Marks a failed worker attempt only if no other process owns the lock or already settled the transcript.
+    @discardableResult
+    public static func failAttemptIfOwnedAndUnsettled(directory inputDirectory: URL, id: UUID) throws -> AttemptPrecheck {
+        switch try withNonBlockingTranscriptionLock(directory: inputDirectory, body: { directory -> Bool in
+            var markedFailed = false
+            try failAttemptUnderHeldLock(directory: directory, id: id, markedFailed: &markedFailed)
+            return markedFailed
+        }) {
+        case .acquired(let marked): return marked ? .eligible : .alreadySettled
+        case .contended: return .lockContended
+        case .missing: return .alreadySettled
+        }
+    }
+    private static func failAttemptUnderHeldLock(directory: URL, id: UUID, markedFailed: inout Bool) throws {
+        try MeetingMetadataWriter(directory: directory, id: id).transaction(skippingUnchanged: true) { metadata in
+            guard var transcript = metadata["transcript"] as? [String:Any],
+                  let status = transcript["status"] as? String,
+                  ["none","queued","running"].contains(status),
+                  transcript["paused"] as? Bool != true else { return }
+            transcript["reference"] = NSNull()
+            transcript["status"] = "failed"
+            metadata["transcript"] = transcript
+            metadata["etaMinutes"] = NSNull()
+            metadata["error"] = ["id":"transcribe-failed", "action":"Try again"]
+            markedFailed = true
+        }
+    }
+    public static func pauseForResume(directory: URL, id: UUID) throws {
+        _ = try withNonBlockingTranscriptionLock(directory: directory) { canonical in
+            try MeetingMetadataWriter(directory: canonical, id: id).transaction(skippingUnchanged: true) { metadata in
+                guard var transcript = metadata["transcript"] as? [String:Any],
+                      let status = transcript["status"] as? String,
+                      ["queued","running"].contains(status),
+                      transcript["paused"] as? Bool != true else { return }
+                transcript.removeValue(forKey: "paused")
+                transcript["status"] = "queued"; metadata["transcript"] = transcript
+                metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
+            }
+        }
+    }
+    @discardableResult
+    public static func stopForUser(directory: URL, id: UUID) throws -> Int64? {
+        var stoppedRevision: Int64?
+        try MeetingMetadataWriter(directory:directory,id:id).transaction(skippingUnchanged:true) { metadata in
+            guard var transcript = metadata["transcript"] as? [String:Any],
+                  let status = transcript["status"] as? String, ["none","queued","running"].contains(status) else { return }
+            transcript["status"] = "none"; transcript["paused"] = true
+            metadata["transcript"] = transcript
+            metadata["etaMinutes"] = NSNull(); metadata["error"] = NSNull()
+            stoppedRevision = (metadata["revision"] as? NSNumber)?.int64Value ?? 0
+        }
+        return stoppedRevision
     }
     /// One worker owns a meeting lock through both segmentation and recognition.
     /// Capture-owned session/audio files are only opened for reading.
@@ -68,8 +184,9 @@ public enum MeetingTranscriber {
         guard flock(lockFD, LOCK_EX | LOCK_NB) == 0 else { throw TranscriptionFailure.runtime("meeting is already being written down") }
         let scanner = LibraryScanner(root: directory.deletingLastPathComponent())
         guard let meeting = try scanner.scan().meetings.first(where: { $0.folder.path == directory.path }),
-              !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty,
-              [.none,.queued,.running,.failed].contains(meeting.state.transcript) else { throw TranscriptionFailure.invalidMeeting }
+              !meeting.metadataReadOnly, meeting.state.lifecycle == .saved, !meeting.audioFiles.isEmpty else { throw TranscriptionFailure.invalidMeeting }
+        if meeting.state.transcript == .done || meeting.transcriptPaused { return }
+        guard [.none,.queued,.running,.failed].contains(meeting.state.transcript) else { throw TranscriptionFailure.invalidMeeting }
         let writer = try MeetingMetadataWriter(directory: directory, id: meeting.id)
         do {
             let attemptStarted = ProcessInfo.processInfo.systemUptime
@@ -162,7 +279,7 @@ public enum MeetingTranscriber {
             silentTracks = trackOrder.filter { silent.contains($0) && listed.insert($0).inserted }
             // A new model must regenerate partial output rather than attribute
             // another/unknown recognizer's words to the selected model.
-            let resumes = [.queued,.running].contains(meeting.state.transcript) && meeting.transcriptModel == model
+            let resumes = ([.queued,.running].contains(meeting.state.transcript) || meeting.transcriptPaused) && meeting.transcriptModel == model
             let previous = resumes ? meeting.writtenTranscriptItems : [] // D24: never merged ids
             // D67.2 (#139 review): a failed attempt's partial words wait, unreferenced, in
             // transcript.json. Until this attempt has written as many words, a running publish
@@ -193,6 +310,7 @@ public enum MeetingTranscriber {
                     // D47/D56: edit the stored transcript object, so members this app does
                     // not know survive; the reference is this attempt's own sidecar.
                     var transcript = metadata["transcript"] as? [String:Any] ?? [:]
+                    transcript.removeValue(forKey: "paused")
                     transcript["status"] = status; transcript["model"] = model
                     if wroteSidecar { transcript["reference"] = reference }
                     metadata["transcript"] = transcript
@@ -338,7 +456,11 @@ public enum MeetingTranscriber {
             // D52.4 R71 provenance (additive, not displayed): every firing person's tracks, in track order.
             fallbackDecisions = RecognitionFallback.decide(decisions.sorted { $0.index < $1.index }.map(\.track)).entries.map(\.json)
             try publish(status: "done")
-        } catch { try? setStatus(directory: directory, id: meeting.id, status: "failed"); throw error }
+        } catch {
+            var markedFailed = false
+            try? failAttemptUnderHeldLock(directory: directory, id: meeting.id, markedFailed: &markedFailed)
+            throw error
+        }
     }
     /// D56/D57 (GNOME R76): a track is silent with fewer than 32 non-zero frames. Frames are
     /// floor(rate × 32 / 1000) native samples, non-overlapping from the file's first sample, and a

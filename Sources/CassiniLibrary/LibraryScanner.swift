@@ -122,6 +122,7 @@ public struct LibraryScanner: Sendable {
         meeting.state.transcript = metadata?.transcript.status ?? .none
         meeting.transcriptModel = metadata?.transcript.model
         meeting.transcriptReferenced = metadata?.transcript.reference != nil
+        meeting.transcriptPaused = metadata?.transcript.paused == true && meeting.state.transcript == .none
         meeting.state.etaMinutes = metadata?.etaMinutes
         meeting.state.error = metadata?.error
         var titleCandidates: [String?] = [metadata?.title]
@@ -245,7 +246,7 @@ public struct LibraryScanner: Sendable {
             let name = override != nil ? override?.name : embedded
             return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
-        if [.done, .queued, .running].contains(meeting.state.transcript), !words.isEmpty {
+        if [.done, .queued, .running].contains(meeting.state.transcript) || meeting.transcriptPaused, !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)
         }
         meeting.prepareTranscriptTurns()

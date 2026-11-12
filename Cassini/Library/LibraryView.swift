@@ -21,6 +21,7 @@ struct LibraryView: View {
     @State private var rename = MeetingRenameCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
+    @State private var transcriptionQueue = TranscriptionQueue.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
@@ -101,23 +102,11 @@ struct LibraryView: View {
                     }
                 }
                 ToolbarItem(placement:.navigation) {
-                    VStack(alignment:.leading,spacing:1) {
-                        Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold))
-                            .lineLimit(1).accessibilityIdentifier("meeting-title")
-                            .onTapGesture { rename.show(detail.meeting,presentation:.title) }
-                            .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
-                            .help(UXText.text("meeting.renameEllipsis"))
-                            .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-                        Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
-                            .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
-                    }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
-                        .padding(.leading,meetingTitleInset)
-                        .frame(width:max(200,toolbarWidth - (detail.meeting.canWriteDown && detail.meeting.state.transcript == .none ? 570 : 450)),alignment:.leading)
-                        .accessibilityElement(children:.contain)
+                    meetingTitleHeader(detail)
                 }
-                if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
+                if let spec = meetingTranscriptionToolbarSpec(detail) {
                     ToolbarItem(placement:.primaryAction) {
-                        LibraryToolbarAction(title:UXText.text("common.writeDown"),label:UXText.text("common.writeDown"),identifier:"meeting-write-down",style:.bordered,enabled:!LibraryMoveCoordinator.shared.busy) { TranscriptionQueue.shared.writeDown(detail) }
+                        LibraryToolbarAction(title:spec.title,label:spec.title,identifier:spec.identifier,style:.bordered,enabled:spec.enabled,action:spec.action)
                     }
                 }
                 ToolbarItem(placement:.primaryAction) {
@@ -445,10 +434,7 @@ struct LibraryView: View {
                         .opacity(!sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing) ? 0.45 : 1)
                         .disabled(LibraryMoveCoordinator.shared.busy || !sessionPlayback.isPlaying && (!(meeting.canPlaySession || meeting.state.origin == .received && !meeting.audioFiles.isEmpty) || sessionPlayback.isPreparing))
                         .accessibilityIdentifier("preview-play")
-                if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
-                    Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
-                        .buttonStyle(.bordered).disabled(LibraryMoveCoordinator.shared.busy).accessibilityIdentifier("preview-write-down")
-                }
+                previewTranscriptionButton(meeting)
 
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
@@ -542,6 +528,57 @@ struct LibraryView: View {
     }
     private func readTranscript(_ meeting: LibraryMeeting) {
         sessionPlayback.stop(); navigation.open(meeting)
+    }
+    private struct TranscriptionToolbarSpec {
+        let title: String
+        let identifier: String
+        let enabled: Bool
+        let action: () -> Void
+    }
+    private func meetingTitleReservedWidth(_ meeting: LibraryMeeting) -> CGFloat {
+        if ([.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly) ||
+           (meeting.canWriteDown && meeting.state.transcript == .none && meeting.transcriptPaused) {
+            return 620
+        }
+        return meeting.canWriteDown && meeting.state.transcript == .none ? 570 : 450
+    }
+    private func meetingTitleHeader(_ detail: MeetingDetailModel) -> some View {
+        VStack(alignment:.leading,spacing:1) {
+            Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold))
+                .lineLimit(1).accessibilityIdentifier("meeting-title")
+                .onTapGesture { rename.show(detail.meeting,presentation:.title) }
+                .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
+                .help(UXText.text("meeting.renameEllipsis"))
+                .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
+            Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
+                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
+        }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
+            .padding(.leading,meetingTitleInset)
+            .frame(width:max(200,toolbarWidth - meetingTitleReservedWidth(detail.meeting)),alignment:.leading)
+            .accessibilityElement(children:.contain)
+    }
+    private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
+        let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(detail.meeting.folder)
+        if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
+            let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
+            return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
+        }
+        if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
+            let title = UXText.mac("transcription.stop")
+            return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
+        }
+        return nil
+    }
+    @ViewBuilder
+    private func previewTranscriptionButton(_ meeting: LibraryMeeting) -> some View {
+        let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(meeting.folder)
+        if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
+            Button(meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
+                .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
+        } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
+            Button(UXText.mac("transcription.stop")) { TranscriptionQueue.shared.stop(meeting) }
+                .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
+        }
     }
 }
 
