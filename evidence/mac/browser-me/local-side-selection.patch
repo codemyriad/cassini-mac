@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
 +++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
-@@ -239,5 +239,5 @@
+@@ -244,5 +244,5 @@
                  source.returning = true
              }
 -            let selectedSide = source.kind == "local" ? me : others

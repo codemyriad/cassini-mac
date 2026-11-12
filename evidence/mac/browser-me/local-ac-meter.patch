@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
 +++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
-@@ -274,5 +274,5 @@
+@@ -279,5 +279,5 @@
                          }
                      }
 -                    if source.kind == "local" {

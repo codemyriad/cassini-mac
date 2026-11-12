@@ -577,20 +577,17 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" })
     }
 
-    @MainActor func testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain() async throws {
+    @MainActor func testAnOffOthersSideNeverRestoresOnBrowserReturn() async throws {
         let (root,owner,mic,system,inputs) = try await returnFixture()
         defer { try? FileManager.default.removeItem(at:root) }
-        try owner.browserLost(atMs:1000,transportAlive:true); try await inputs.fallback()
-        try await inputs.select(me:true,others:false,atMs:3000)
+        try await inputs.select(me:true,others:false,atMs:500)
+        try owner.browserLost(atMs:1000,transportAlive:true)
         try offerReturn(owner,atMs:4000)
-        try await inputs.restoreBrowser(atMs:4000)
-        XCTAssertFalse(owner.snapshot.others,"Restoring browser Me must leave Others off")
+        XCTAssertFalse(owner.snapshot.restoreReady,"Others remain off despite returned remote PCM")
+        do { try await inputs.restoreBrowser(atMs:4000); XCTFail("An unselected side cannot restore") } catch {}
         XCTAssertFalse(owner.snapshot.others)
-        XCTAssertEqual(owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.source,"none")
-        try await inputs.select(me:true,others:true,atMs:5000)
-        XCTAssertTrue(owner.snapshot.browserAlive); XCTAssertTrue(owner.snapshot.others)
-        XCTAssertEqual(system.starts,1); XCTAssertEqual(mic.stops,0)
-        XCTAssertEqual(owner.snapshot.manifest.events?.last(where:{ $0.type == "othersSource" })?.reason,"user")
+        XCTAssertTrue(owner.needsBrowserMeLossStop,"The app saves this terminal Me-only loss")
+        XCTAssertEqual(system.starts,0); XCTAssertEqual(mic.stops,0)
         try await inputs.stop(); try await owner.finish()
     }
     @MainActor func testRejectedFallbackDoesNotPublishSystemOrStopMicAndUserCanRetry() async throws {

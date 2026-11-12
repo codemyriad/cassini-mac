@@ -437,9 +437,32 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(selected.isEmpty && first.owner.snapshot.me && !first.owner.snapshot.others,"Browser Me stays selectable when hardware input is unavailable")
             try require((first.owner.snapshot.manifest.refusals?.count ?? 0) == refusalsBefore && CaptureFixture.microphoneStarts == 0,"No hardware attempt or Me refusal on browser selection")
             try await one.emit()
-            // Me-only selection is valid while the page is present. Browser
-            // loss is terminal for this mode (proved separately below); the
-            // Me+Others reload path is exercised by the modern profile.
+            stage = "Me-only PCM survives management restart and split reconnect"
+            do {
+                // The audio host stays owned while the MV3 control host goes
+                // away. Each real PCM ACK drives the next chunk, with no sleeps.
+                let stream = Task { @MainActor in
+                    while !Task.isCancelled { try await one.emitLocal(); try await two.emit() }
+                }
+                defer { stream.cancel() }
+                let oldPeer = try (collection.captures[first.snapshot.manifest.id]?.key?.peer).unwrap()
+                await one.control.end()
+                try await wait { collection.peers.allSatisfy { $0.id != oldPeer } }
+                collection.pollLifetimeForTesting(at:first.owner.snapshot.meLevelTimestamp+0.25)
+                try require(first.owner.snapshot.browserAlive && collection.captures[first.snapshot.manifest.id]?.savingSinceMs == nil,"Live Me PCM survives the control disconnect")
+                one.control = try CaptureProbeProcess("cassini-control-host",root:pipe)
+                try await one.control.send(["type":"hello","version":1,"capabilities":CaptureProbeProfile.capabilities])
+                try await one.control.send(one.status())
+                try await wait {
+                    collection.peers.contains { $0.reconciled && $0.meetings.isEmpty && $0.captures.contains { $0.captureID == one.captureID } }
+                }
+                collection.pollLifetimeForTesting(at:first.owner.snapshot.meLevelTimestamp+0.25)
+                try require(first.owner.snapshot.browserAlive && collection.captures[first.snapshot.manifest.id]?.savingSinceMs == nil,"Live Me PCM survives status before the meeting inventory")
+                try await one.meetings(true)
+                try await wait { collection.captures[first.snapshot.manifest.id]?.key?.peer != oldPeer && collection.hasCalls }
+                stream.cancel(); _ = try? await stream.value
+            }
+            report["meOnlyPCMSurvivesControlRestart"] = true
             try await collection.select(first.snapshot.manifest.id,me:true,others:true)
             try await one.emit()
             report["browserSelectionIgnoresHardwareFailure"] = true
@@ -682,6 +705,16 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { returning.owner.snapshot.usingSystem }
             try require(returning.owner.snapshot.phase == .recording && collection.captures[returningID] != nil,"Rapid return retains the original recording and long grace")
             report["rapidReloadInvalidatesCachedSources"] = true
+            let microphonePermissionBefore = CaptureFixture.microphoneAllowed
+            CaptureFixture.microphoneAllowed = false
+            let systemStartsBeforeInvalidChoice = CaptureFixture.systemStarts
+            var unavailableMeOnly = false
+            do { _ = try await collection.select(returningID,me:true,others:false) }
+            catch { unavailableMeOnly = true }
+            try require(unavailableMeOnly && returning.owner.snapshot.others && WhatIsRecordedView.failurePermissionSide(wantsMe:true,owner:returning.owner) == nil,"Disconnected browser Me refuses selection without offering OS microphone settings")
+            try require(CaptureFixture.systemStarts == systemStartsBeforeInvalidChoice,"An unavailable Me-only selection leaves Others input running")
+            CaptureFixture.microphoneAllowed = microphonePermissionBefore
+            report["browserMeFailureDoesNotOfferMicrophoneSettings"] = true
             try await modern.returnedSource(atMs:Int((loss+2.2-returning.originUptime)*1000))
             try await modern.page("present",active:true)
             try await wait { collection.peers.first { $0.id == returning.key?.peer }?.meetings.first?.pageState == .present }

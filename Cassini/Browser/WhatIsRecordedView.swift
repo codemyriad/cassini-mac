@@ -69,6 +69,9 @@ struct WhatIsRecordedView: View {
             .accessibilityIdentifier("what-is-recorded-dialog")
             .onExitCommand { if !working { dismiss() } }
     }
+    static func failurePermissionSide(wantsMe: Bool, owner: OwnedBrowserCapture?) -> CaptureSide? {
+        wantsMe && owner?.nativeMe == true && !CaptureSettings.microphoneAllowed ? .me : nil
+    }
     private func apply(_ choice: CaptureChoice) {
         guard !working else { return }; working = true
         Task {
@@ -81,7 +84,7 @@ struct WhatIsRecordedView: View {
                 } else { permissionSide = nil; permissionRefusal = nil; failedChoice = nil }
             } catch {
                 failedChoice = choice; permissionRefusal = nil
-                permissionSide = choice != .others && !CaptureSettings.microphoneAllowed ? .me : nil
+                permissionSide = Self.failurePermissionSide(wantsMe:choice != .others,owner:model.owned?.owner)
             }
         }
     }

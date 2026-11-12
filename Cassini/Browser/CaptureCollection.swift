@@ -782,7 +782,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // Fresh PCM on the original owned transport is stronger than
                 // a brief gap in management discovery. It never overrides an
                 // explicit navigating/closed report or a dead audio transport.
-                let fresh = source.browserAlive && source.transportAlive && now-source.levelTimestamp <= 1
+                let fresh = source.hasFreshBrowserPCM(nativeMe:value.owner.nativeMe,at:now)
                 let reportedPage = page?.0 ?? (fresh ? .present : nil)
                 // A reconnect's status can precede its first meeting inventory.
                 // Present alone does not confirm that the call has zero sources.
@@ -841,7 +841,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // That deferred loss began when the policy first saw the page missing.
                 let lossStamp = !navigation && observedPage == .present ? captures[id]?.callPolicy.missingSince ?? page?.1 : page?.1
                 if navigation { captures[id]?.lastNavigationAt = page?.1 }
-                let returned = action == .restore || (!value.owner.nativeMe && source.me && !source.others && ready && source.transportAlive && observedPage == .present)
+                let returned = action == .restore
                 guard lost || fallback || returned else { continue }
                 captures[id]?.changingSource = true
                 let atMs = max(0,now-value.originUptime)*1000

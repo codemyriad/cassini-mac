@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
++++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
+@@ -155,5 +155,5 @@
+             let before = self.capture.snapshot
+             // Reject an unavailable browser-only choice before pausing Others.
+-            guard self.capture.nativeMe || !me || others || before.browserAlive else { throw BrowserIPCError.unavailable }
++            guard true else { throw BrowserIPCError.unavailable }
+             var prepared: [CaptureSide:Input] = [:]
+             var paused: Set<CaptureSide> = []

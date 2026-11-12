@@ -66,6 +66,7 @@ for name in [
     'returnCancelsPendingSystemPermission',
     'othersOffDoesNotStartSystem',
     'meOnlyLossBeforePCMRetainsProblem',
+    'meOnlyPCMSurvivesControlRestart','browserMeFailureDoesNotOfferMicrophoneSettings',
     'closedTabStopsWithoutSystemFallback',
     'browserSelectionIgnoresHardwareFailure',
     'firstBrowserPacketMakesRecordingVisible',

@@ -19,6 +19,11 @@ public struct OwnedCaptureSnapshot: Sendable {
     public var usingSystem: Bool { manifest.tracks.contains { $0.kind == "system" && $0.ended != true && $0.frames > 0 } }
     /// Live admission is authoritative here. A fractional first-buffer stamp
     /// can lie ahead of a rounded UI elapsed time until the next notification.
+    /// A control-worker gap does not lose a still-streaming selected browser side.
+    public func hasFreshBrowserPCM(nativeMe: Bool, at now: TimeInterval) -> Bool {
+        let lastPCM = !nativeMe && me ? max(levelTimestamp,meLevelTimestamp) : levelTimestamp
+        return browserAlive && transportAlive && lastPCM > 0 && now-lastPCM <= 1
+    }
     public var isSystemFallback: Bool { phase == .recording && fallbackReason != nil && usingSystem }
     public let fallbackReason: String?
     public let browserLostUptime: TimeInterval?
@@ -93,8 +98,8 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
     private var managedBrowser: Bool
     private var transportAlive = true, fallbackRequested = false
     private var browserReturnAt: Double = 0
-    private var freshestReturn: Double? { browserSources.values.filter { $0.returning }.compactMap(\.lastPacketAt).max() }
-    private var readyForBrowser: Bool { managedBrowser && !browserAlive && transportAlive && browserSources.values.contains { $0.returning } }
+    private var freshestReturn: Double? { browserSources.values.filter { $0.kind != "local" && $0.returning }.compactMap(\.lastPacketAt).max() }
+    private var readyForBrowser: Bool { managedBrowser && others && !browserAlive && transportAlive && browserSources.values.contains { $0.kind != "local" && $0.returning } }
     private var fallbackReason: String?
     private var browserLossCause: BrowserCaptureLossCause?
     private var browserLostUptime: TimeInterval?
@@ -442,6 +447,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard self.phase == .recording, newMe || newOthers else { throw RecordingError.invalid("Choose at least one recording side.") }
             guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid selection time.") }
+            guard self.nativeMe || !newMe || newOthers || self.browserAlive else { throw BrowserIPCError.unavailable }
             let reservingNative = reservingNative.filter { $0 != .me || self.nativeMe }
             if newMe == self.me && newOthers == self.others {
                 guard self.recording.manifest.tracks.count + self.pendingNative + reservingNative.subtracting(self.reservedNative).count <= 64 else { throw RecordingError.limit("Too many recording tracks.") }
@@ -559,7 +565,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
         try await operation {
             guard allowed() else { throw CancellationError() }
             guard atMs.isFinite, atMs >= 0, self.phase == .recording,
-                  (self.others || (!self.nativeMe && self.me)), !self.browserAlive, self.readyForBrowser,
+                  self.others, !self.browserAlive, self.readyForBrowser,
                   self.freshestReturn.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
             let time = self.eventTime(atMs)
             var spans: [Data:String] = [:], starts: [RecordingSource] = []

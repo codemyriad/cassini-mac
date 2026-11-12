@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
 +++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
-@@ -374,5 +374,5 @@
+@@ -379,5 +379,5 @@
              guard phase == .recording, ledger != nil else { throw BrowserProtocolError("state","Capture already saved.") }
              guard !sources.isEmpty else { throw BrowserProtocolError("source","Invalid discovered audio sources.") }
 -            do { try ledger!.discover(sources) { $0 == "local" ? (!nativeMe && me) : others } }

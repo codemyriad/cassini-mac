@@ -63,5 +63,50 @@
     "name": "page-gone-before-loss",
     "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
     "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
+  },
+  {
+    "name": "resume-ignores-owner-mode",
+    "source": "Sources/CassiniBrowserControl/ControlService.swift",
+    "test": "R94CommittedResumeTests/testInitialStandInPreservesZero"
+  },
+  {
+    "name": "resume-ignores-requested-mode",
+    "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+    "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture"
+  },
+  {
+    "name": "sender-pcm-not-live",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testFreshSelectedSenderPCMCountsDuringControlGapsEvenWhenMuted"
+  },
+  {
+    "name": "sender-makes-others-ready",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections"
+  },
+  {
+    "name": "sender-advances-others-return",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections"
+  },
+  {
+    "name": "deselected-others-ready",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "InputLifecycleTests/testAnOffOthersSideNeverRestoresOnBrowserReturn"
+  },
+  {
+    "name": "sender-satisfies-others-writer",
+    "source": "Sources/CassiniRecording/RecordingSession.swift",
+    "test": "BrowserLocalMeTests/testOthersRestoreWriterRejectsLocalOnlySource"
+  },
+  {
+    "name": "disconnected-me-only-selection",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable"
+  },
+  {
+    "name": "pause-others-before-refusal",
+    "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+    "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable"
   }
 ]

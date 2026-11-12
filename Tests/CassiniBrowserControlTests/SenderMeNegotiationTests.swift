@@ -19,7 +19,7 @@ final class SenderMeNegotiationTests: XCTestCase, @unchecked Sendable {
 
     func testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture() throws {
         for capability in [nil,"sender-me-v1-extra","sender-me-v1"] {
-            for resume in [false,true] {
+            for (resume,requestedLocal) in [(false,false),(true,false),(true,true)] {
                 var state=BrowserControlRegistry();let peer=UUID()
                 try state.connect(.init(id:peer,role:.control,browser:"Chromium"))
                 var capabilities=["independent-sessions-v1","multi-stream-v1","resume-capture-v1"]
@@ -30,9 +30,9 @@ final class SenderMeNegotiationTests: XCTestCase, @unchecked Sendable {
                     ["type":"status","sessions":[],"recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready"]
                 ] { try state.receive(JSONSerialization.data(withJSONObject:packet),from:peer) }
                 let key=BrowserMeetingKey(peer:peer,tabID:2)
-                let request=try resume ? state.resume(key,captureID:"kept",timelineOriginMs:1000,lostAtMs:0).0 : state.start(key,microphone:true)
+                let request=try resume ? state.resume(key,captureID:"kept",timelineOriginMs:1000,lostAtMs:0,captureLocal:requestedLocal).0 : state.start(key,microphone:true)
                 let command=try JSONParser.parse(request.data)
-                XCTAssertEqual(command["captureLocal"]?.bool,capability == "sender-me-v1")
+                XCTAssertEqual(command["captureLocal"]?.bool,capability == "sender-me-v1" && (!resume || requestedLocal))
                 XCTAssertEqual(state.snapshots.first?.supportsSenderMe,capability == "sender-me-v1")
             }
         }

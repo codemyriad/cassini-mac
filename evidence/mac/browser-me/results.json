@@ -26,7 +26,7 @@
       "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
       "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM",
       "result": "behavioral assertion failure",
-      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:121: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertTrue failed"
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:206: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertTrue failed"
     },
     {
       "name": "local-side-selection",
@@ -47,7 +47,7 @@
       "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
       "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM",
       "result": "behavioral assertion failure",
-      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:124: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertEqual failed: (\"0.5\") is not equal to (\"0.0\") - Opposite stereo DC is silence in two complete channel windows"
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:209: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM] : XCTAssertEqual failed: (\"0.5\") is not equal to (\"0.0\") - Opposite stereo DC is silence in two complete channel windows"
     },
     {
       "name": "unnegotiated-local-command",
@@ -90,14 +90,79 @@
       "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM",
       "result": "behavioral assertion failure",
       "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:103: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM] : XCTAssertEqual failed: (\"Optional(\"empty\")\") is not equal to (\"Optional(\"capture\")\")"
+    },
+    {
+      "name": "resume-ignores-owner-mode",
+      "source": "Sources/CassiniBrowserControl/ControlService.swift",
+      "test": "R94CommittedResumeTests/testInitialStandInPreservesZero",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/R94CommittedResumeTests.swift:137: error: -[CassiniBrowserControlTests.R94CommittedResumeTests testInitialStandInPreservesZero] : XCTAssertEqual failed: (\"Optional(true)\") is not equal to (\"Optional(false)\") - A newer companion must retain this owner's original Me mode"
+    },
+    {
+      "name": "resume-ignores-requested-mode",
+      "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+      "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:35: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture] : XCTAssertEqual failed: (\"Optional(true)\") is not equal to (\"Optional(false)\")"
+    },
+    {
+      "name": "sender-pcm-not-live",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "BrowserLocalMeTests/testFreshSelectedSenderPCMCountsDuringControlGapsEvenWhenMuted",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:109: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testFreshSelectedSenderPCMCountsDuringControlGapsEvenWhenMuted] : XCTAssertTrue failed"
+    },
+    {
+      "name": "sender-makes-others-ready",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:131: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections] : XCTAssertFalse failed"
+    },
+    {
+      "name": "sender-advances-others-return",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:132: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections] : XCTAssertNil failed: \"300.0\""
+    },
+    {
+      "name": "deselected-others-ready",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "InputLifecycleTests/testAnOffOthersSideNeverRestoresOnBrowserReturn",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/InputLifecycleTests.swift:586: error: -[CassiniBrowserControlTests.InputLifecycleTests testAnOffOthersSideNeverRestoresOnBrowserReturn] : XCTAssertFalse failed - Others remain off despite returned remote PCM"
+    },
+    {
+      "name": "sender-satisfies-others-writer",
+      "source": "Sources/CassiniRecording/RecordingSession.swift",
+      "test": "BrowserLocalMeTests/testOthersRestoreWriterRejectsLocalOnlySource",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:159: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testOthersRestoreWriterRejectsLocalOnlySource] : XCTAssertThrowsError failed: did not throw an error"
+    },
+    {
+      "name": "disconnected-me-only-selection",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:173: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testMeOnlySelectionIsRefusedWhilePageIsUnavailable] : XCTAssertTrue failed - A disconnected browser cannot supply Me-only"
+    },
+    {
+      "name": "pause-others-before-refusal",
+      "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+      "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/BrowserLocalMeTests.swift:178: error: -[CassiniBrowserControlTests.BrowserLocalMeTests testMeOnlySelectionIsRefusedWhilePageIsUnavailable] : XCTAssertEqual failed: (\"1\") is not equal to (\"0\") - Rejected selection must not interrupt Others"
     }
   ],
   "restored": true,
   "sourceSHA256": {
-    "Sources/CassiniBrowserControl/ControlRegistry.swift": "7ae22405811e164293dec5e36ee0b79bc57ae5724d0dafbdd3ad05638d5928ae",
-    "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift": "6acdce2d4a7bce4228be44c00ba08b881263a79fd777f016c18122f15024f2de",
-    "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "6644c8a373f0228ba02a44bb53c5bf6d32b89a871346db5360dd72a6d5aa068a",
+    "Sources/CassiniBrowserControl/ControlRegistry.swift": "e79292ad88954b31ca9d3e2092c9a5e41fd2c7fd07d2142c29ea505e323bf1a0",
+    "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift": "9dfbac2363b7203eedf7f994ffb853a1f0d03fda7d087f1c8f10446fe51c94aa",
+    "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "e84f64912e79c0162cc036e1a13ee0a98379e6d31627b843e550fd884a944ea1",
     "Sources/CassiniBrowserControl/BrowserAudioBroker.swift": "7e1d40916ed42200a88a1284f5746841dfa39d56b57157d96b35b56649254f6c",
-    "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift": "1e86bb19b64b8d56891cc638f7f8b8160a878da47e305e7d0e71aba2a9567c8a"
+    "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift": "1e86bb19b64b8d56891cc638f7f8b8160a878da47e305e7d0e71aba2a9567c8a",
+    "Sources/CassiniBrowserControl/ControlService.swift": "93c018e03d075de06d199168228eba55d19ff821e44dd0c77805728269f4dc6b",
+    "Sources/CassiniRecording/RecordingSession.swift": "e5dce19c8572e8353b96e6ed98126522e19053ce77007b7de527b4ca7e26d24f"
   }
 }

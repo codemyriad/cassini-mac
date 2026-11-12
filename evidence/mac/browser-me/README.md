@@ -6,7 +6,16 @@ The initial native Start's missing/false captureLocal retains OS Me for older
 companions; true makes Me browser-owned. Malformed flags are refused before
 files or inputs are created. Verified admission retains this choice and resume
 keeps the original owner's immutable mode (the native resume omits the flag).
-Native Record and D74 mixed routes still own native Me.
+Native Record and D74 mixed routes still own native Me. Resume negotiates the
+capability AND this immutable owner mode: D49 stand-ins and legacy sessions
+never start a browser local sender after a companion upgrade.
+
+Selected local PCM (including mute zeros) keeps Me-only alive through MV3
+control restarts and split status-before-inventory reconnects. Explicit page
+loss still saves a problem. Others restoration requires non-local PCM: a local
+sender arriving first neither pauses fallback nor satisfies the writer's
+othersSource browser transition. A disconnected Me-only choice is rejected
+before pausing Others and never offers macOS microphone settings.
 
 Both lifecycle admission and the native span writer reject hardware Me for a
 browser-owned session. Browser local PCM follows Me's selection, ledger,

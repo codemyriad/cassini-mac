@@ -153,6 +153,8 @@ private final class SourceChangeToken: @unchecked Sendable {
         try await enqueue {
             guard !self.closed, self.capture.snapshot.phase == .recording else { throw BrowserIPCError.closed }
             let before = self.capture.snapshot
+            // Reject an unavailable browser-only choice before pausing Others.
+            guard self.capture.nativeMe || !me || others || before.browserAlive else { throw BrowserIPCError.unavailable }
             var prepared: [CaptureSide:Input] = [:]
             var paused: Set<CaptureSide> = []
             let previousFailures = self.failedSides
@@ -293,7 +295,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         try await enqueue {
             try token.check()
             guard !self.closed, self.capture.snapshot.phase == .recording,
-                  (self.capture.snapshot.others || (!self.capture.nativeMe && self.capture.snapshot.me)), self.capture.snapshot.restoreReady,
+                  self.capture.snapshot.others, self.capture.snapshot.restoreReady,
                   self.capture.snapshot.browserReturnPCMAt.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
             let input = self.inputs[.others]
             do {

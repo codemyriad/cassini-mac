@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
 +++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
-@@ -490,5 +490,5 @@
+@@ -492,5 +492,5 @@
            }
          }
 -        if capture.nativeMe && capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
