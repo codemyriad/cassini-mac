@@ -129,8 +129,8 @@ private final class CaptureFiles: @unchecked Sendable {
     @ObservationIgnored private var shuttingDown = false
     @ObservationIgnored private var pendingAuto: Set<BrowserMeetingKey> = []
     @ObservationIgnored private var announced: Set<UUID> = []
-    @ObservationIgnored private var stopping: [UUID:Task<Void,Never>] = [:]
-    @ObservationIgnored private var settling: [UUID:Task<Void,Never>] = [:]
+    private var stopping: [UUID:Task<Void,Never>] = [:]
+    private var settling: [UUID:Task<Void,Never>] = [:]
     @ObservationIgnored private let diskWatch = CaptureDiskWatch()
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var recordGeneration = 0
@@ -901,6 +901,27 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func applyDiskBudgetForTesting(_ budget: DiskBudget) {
         guard CaptureFixture.enabled else { return }; applyDiskBudget(Array(captures.keys),budget)
+    }
+    func beginBrowserStopProbeForTesting(parent: URL) throws -> (id: UUID, finish: @MainActor () async throws -> Void) {
+        guard CommandLine.arguments.contains("--recording-saving-self-test") else { throw POSIXError(.EINVAL) }
+        try FileManager.default.createDirectory(at:parent,withIntermediateDirectories:true)
+        let id = UUID()
+        let owner = try OwnedBrowserCapture(parent:parent,title:"Browser saving probe",microphone:false,browser:true,id:id,managedBrowser:true,changed:{ [weak self] snapshot in
+            DispatchQueue.main.async { self?.changed(snapshot) }
+        })
+        try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded()
+        let now = ProcessInfo.processInfo.systemUptime
+        let input = CaptureInputLifecycle(capture:owner,originHostTime:AVAudioTime.hostTime(forSeconds:now),microphone:{ CaptureFixtureInput(.me) },system:{ CaptureFixtureInput(.others) },failure:{ _ in })
+        captures[id] = .init(owner:owner,input:input,captureID:"saving-probe-"+id.uuidString,originUptime:now,spectrogram:nil,snapshot:owner.snapshot,key:.init(peer:UUID(),tabID:1),peerKnown:true)
+        activity[id] = .recording
+        CaptureActivityStore.shared.set(id,.recording)
+        return (id, { [weak self] in
+            try await owner.finish()
+            if let self {
+                self.settle(owner.snapshot)
+                await self.stopAndWait()
+            }
+        })
     }
     #endif
     func settingsWereOpened(_ side: CaptureSide) { settingsRetry.insert(side) }
