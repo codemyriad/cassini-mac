@@ -180,6 +180,71 @@ final class BrowserLocalMeTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(owner.snapshot.manifest.captureOutcome?.sources.first { $0.sourceTrackId == "sender" }?.trackIds.count,1)
         try await inputs.stop(); try await owner.finish()
     }
+    func testRevivingOthersWhileMeOffDoesNotAdoptBufferedOldLocalPCM() async throws {
+        let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Old local packet",microphone:true,captureLocal:true,managedBrowser:true)
+        owner.enableSourceOutcomes()
+        try await owner.select(me:true,others:false,atMs:50)
+        try owner.browserLost(atMs:100,transportAlive:true)
+        try owner.browserTrack(id:"local",label:"Me",kind:"local",sampleRate:8000,channels:1,sourceTrackId:"sender")
+        try owner.browserTrack(id:"remote",label:"Others",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+        try owner.browserAudio(id:"remote",sequence:0,offsetMs:200,pcm:tone)
+        try await owner.select(me:false,others:true,atMs:300)
+        // This whole chunk precedes the committed route revival. It is not
+        // evidence that this local source returned on the current document.
+        try owner.browserAudio(id:"local",sequence:0,offsetMs:150,pcm:tone)
+        try await owner.select(me:true,others:true,atMs:500)
+        XCTAssertTrue(owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.isEmpty)
+        try await owner.finish()
+    }
+    func testReturnedDeselectedMeKeepsItsNextSelectionBoundary() async throws {
+        for reviveBySelection in [false,true] {
+        for localBeforeReturn in [false,true] {
+        for ending in ["pcm","trackEnd","stop"] {
+            let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
+            let context = "selection=\(reviveBySelection), early=\(localBeforeReturn), end=\(ending)"
+            let owner = try OwnedBrowserCapture(parent:root,title:"Deselected return",microphone:reviveBySelection,captureLocal:true,managedBrowser:true)
+            owner.enableSourceOutcomes()
+            if reviveBySelection { try await owner.select(me:true,others:false,atMs:50) }
+            try owner.browserLost(atMs:100,transportAlive:true)
+            try owner.browserTrack(id:"local",label:"Me",kind:"local",sampleRate:8000,channels:1,sourceTrackId:"sender")
+            try owner.browserTrack(id:"remote",label:"Others",kind:"remote",sampleRate:8000,channels:1,sourceTrackId:"guest")
+            if localBeforeReturn { try owner.browserAudio(id:"local",sequence:0,offsetMs:150,pcm:tone) }
+            try owner.browserAudio(id:"remote",sequence:0,offsetMs:200,pcm:tone)
+            if reviveBySelection { try await owner.select(me:false,others:true,atMs:300) }
+            else { try await owner.restoreBrowser(atMs:300,notBeforeMs:120) }
+            try owner.browserAudio(id:"remote",sequence:1,offsetMs:350,pcm:tone)
+            if !localBeforeReturn { try owner.browserAudio(id:"local",sequence:0,offsetMs:350,pcm:tone) }
+            XCTAssertTrue(owner.snapshot.browserAlive,context)
+            XCTAssertFalse(owner.snapshot.me,context)
+            let selectedAt = 500.0
+            try await owner.select(me:true,others:true,atMs:selectedAt)
+            var local = owner.snapshot.manifest.tracks.filter { $0.kind == "local" }
+            XCTAssertEqual(local.count,1,context)
+            XCTAssertEqual(local.first?.startOffsetMs,selectedAt,context)
+            XCTAssertEqual(owner.snapshot.manifest.captureOutcome?.sources.first { $0.sourceTrackId == "sender" }?.trackIds.count,1,context)
+            switch ending {
+            case "pcm":
+                try owner.browserAudio(id:"local",sequence:1,offsetMs:selectedAt+300,pcm:tone)
+                local = owner.snapshot.manifest.tracks.filter { $0.kind == "local" }
+                XCTAssertEqual(local.first?.startOffsetMs,selectedAt,context)
+                XCTAssertEqual(local.first?.gaps,[GapRange(atMs:selectedAt,durationMs:300,frames:2400,kind:"prefix")],context)
+            case "trackEnd": try owner.trackEnd(id:"local",reason:"ended",droppedFrames:0)
+            default: break
+            }
+            try await owner.finish(reason:.user,atMs:1000)
+            let saved = try RecordingLoader.load(directory:owner.snapshot.directory)
+            local = saved.tracks.filter { $0.kind == "local" }
+            XCTAssertEqual(local.count,1,context)
+            XCTAssertEqual(local.first?.startOffsetMs,selectedAt,context)
+            XCTAssertTrue(local.allSatisfy { $0.ended == true },context)
+            let outcome = saved.captureOutcome?.sources.first { $0.sourceTrackId == "sender" }
+            XCTAssertEqual(outcome?.trackIds,local.map(\.id),context)
+            XCTAssertEqual(outcome?.expected,true,context)
+        }
+        }
+        }
+    }
     func testOthersRestoreWriterRejectsLocalOnlySource() throws {
         let root = try root(); defer { try? FileManager.default.removeItem(at:root) }
         let session = try RecordingSession(parent:root,title:"Others contract",source:"chromium")

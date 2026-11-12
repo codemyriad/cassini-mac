@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
 +++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
-@@ -775,5 +775,5 @@
+@@ -783,5 +783,5 @@
          // Verified admission can report pageGone before the app's queued loss
          // transition reaches this owner, particularly before the first PCM.
 -        if !nativeMe && me && !others && (!browserAlive || (intent?.0 ?? reason) == .pageGone) {

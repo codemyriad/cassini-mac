@@ -18,7 +18,12 @@ othersSource browser transition. Return readiness remains available with Others
 off, so an existing native-Me session can choose Both without System Audio
 permission. A selection allocates returning spans only when it also revives the
 browser route; enabling Me during pending restoration cannot orphan a local
-span. A disconnected Me-only choice is rejected
+span. A source's current-document evidence is retained independently of its
+selected span: returned local sources remain current while Me is off, and late
+unselected PCM can establish that evidence after restoration. The next Me-on
+selection binds its span at the actual selection boundary, including prefix
+padding and a bound track when no later PCM arrives. A disconnected Me-only
+choice is rejected
 before pausing Others and never offers macOS microphone settings.
 
 Both lifecycle admission and the native span writer reject hardware Me for a

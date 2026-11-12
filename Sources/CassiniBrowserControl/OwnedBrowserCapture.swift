@@ -245,13 +245,17 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             }
             let selectedSide = source.kind == "local" ? me : others
             let boundary = source.kind == "local" ? meResumeAt : resumeAt
-            if managedBrowser, browserAlive, selectedSide, source.span == nil,
+            if managedBrowser, browserAlive,
                normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > boundary {
-                let span = UUID().uuidString.lowercased()
-                let start = source.start(span)
-                try commitBound([(span,source.key,true)],starting:[start])
-                source.span = span; source.current = true
-                browserSources[Data(id.utf8)] = source
+                // Current-document evidence is independent of the side's selection.
+                source.current = true
+                if selectedSide, source.span == nil {
+                    let span = UUID().uuidString.lowercased()
+                    let start = source.start(span)
+                    try commitBound([(span,source.key,true)],starting:[start])
+                    source.span = span
+                    browserSources[Data(id.utf8)] = source
+                }
             }
             if browserAlive && selectedSide, let span = source.span {
                 // A packet buffered before the user turned a side back on must
@@ -468,13 +472,14 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             let browserAvailable = self.browserAlive || revivingBrowser
             var starts: [RecordingSource] = []
             var spans: [Data:String] = [:]
+            let returned = Set(self.browserSources.compactMap { $0.value.returning ? $0.key : nil })
             if self.browserAlive {
                 for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.current && (source.kind == "local" ? resumingMe : resuming) {
                     let span = UUID().uuidString.lowercased(); spans[id] = span
                     starts.append(source.start(span,boundaryMs:time))
                 }
             } else if revivingBrowser {
-                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.returning && (source.kind == "local" ? newMe : newOthers) {
+                for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where returned.contains(id) && (source.kind == "local" ? newMe : newOthers) {
                     let span = UUID().uuidString.lowercased(); spans[id] = span
                     starts.append(source.start(span,boundaryMs:time))
                 }
@@ -494,7 +499,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 else if let span = spans[id] { self.browserSources[id]?.span = span }
                 if revivingBrowser {
                     self.browserSources[id]?.returning = false
-                    self.browserSources[id]?.current = spans[id] != nil
+                    self.browserSources[id]?.current = returned.contains(id)
                 }
             }
             self.ledger?.select { $0 == "local" ? (newMe && !self.nativeMe) : newOthers }
@@ -504,7 +509,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             if revivingBrowser { self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil; self.fallbackRequested = false }
             if resuming { self.resumeAt = time }
             if resuming && !self.browserAlive { self.systemReason = self.fallbackReason ?? "user" }
-            if resumingMe || (revivingBrowser && !self.nativeMe && newMe) { self.meResumeAt = time }
+            if resumingMe || (revivingBrowser && !self.nativeMe) { self.meResumeAt = time }
             self.publish()
         }
     }
@@ -579,7 +584,10 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                   self.freshestReturn.map({ $0 >= (notBeforeMs ?? 0) }) == true else { throw BrowserIPCError.closed }
             let time = self.eventTime(atMs)
             var spans: [Data:String] = [:], starts: [RecordingSource] = []
-            for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where source.returning && (source.lastPacketAt ?? -1) >= (notBeforeMs ?? 0) && (source.kind == "local" ? self.me : self.others) {
+            let returned = Set(self.browserSources.compactMap { id, source in
+                source.returning && (source.lastPacketAt ?? -1) >= (notBeforeMs ?? 0) ? id : nil
+            })
+            for (id,source) in self.browserSources.sorted(by:{ $0.key.lexicographicallyPrecedes($1.key) }) where returned.contains(id) && (source.kind == "local" ? self.me : self.others) {
                 let span = UUID().uuidString.lowercased(); spans[id] = span
                 starts.append(source.start(span))
             }
@@ -594,7 +602,7 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
             try self.commitBound(bound,starting:starts,ending:ending,events:self.others ? [.init(atMs:time,type:"othersSource",source:"browser",reason:reason)] : [])
             for id in Array(self.browserSources.keys) {
                 self.browserSources[id]?.span = spans[id]; self.browserSources[id]?.returning = false
-                self.browserSources[id]?.current = spans[id] != nil
+                self.browserSources[id]?.current = returned.contains(id)
             }
             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me }; self.reservedNative.remove(.others)
             self.browserAlive = true; self.browserLossCause = nil; self.fallbackReason = nil; self.browserLostUptime = nil

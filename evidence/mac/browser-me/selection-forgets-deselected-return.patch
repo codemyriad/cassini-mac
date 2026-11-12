@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -500,5 +500,5 @@
+                 if revivingBrowser {
+                     self.browserSources[id]?.returning = false
+-                    self.browserSources[id]?.current = returned.contains(id)
++                    self.browserSources[id]?.current = spans[id] != nil
+                 }
+             }

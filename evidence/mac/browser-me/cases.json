@@ -113,5 +113,25 @@
     "name": "premature-local-selection-span",
     "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
     "test": "BrowserLocalMeTests/testSelectingBothDuringReturnCreatesOnlyTheRestoredLocalSpan"
+  },
+  {
+    "name": "selection-forgets-deselected-return",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testReturnedDeselectedMeKeepsItsNextSelectionBoundary"
+  },
+  {
+    "name": "restore-forgets-deselected-return",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testReturnedDeselectedMeKeepsItsNextSelectionBoundary"
+  },
+  {
+    "name": "deselected-pcm-not-current",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testReturnedDeselectedMeKeepsItsNextSelectionBoundary"
+  },
+  {
+    "name": "revive-forgets-off-me-boundary",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testRevivingOthersWhileMeOffDoesNotAdoptBufferedOldLocalPCM"
   }
 ]

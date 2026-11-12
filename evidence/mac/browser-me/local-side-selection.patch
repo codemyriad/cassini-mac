@@ -6,4 +6,4 @@
 -            let selectedSide = source.kind == "local" ? me : others
 +            let selectedSide = others
              let boundary = source.kind == "local" ? meResumeAt : resumeAt
-             if managedBrowser, browserAlive, selectedSide, source.span == nil,
+             if managedBrowser, browserAlive,

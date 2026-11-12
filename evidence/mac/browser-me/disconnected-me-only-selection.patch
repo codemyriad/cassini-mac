@@ -1,6 +1,6 @@
 --- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
 +++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
-@@ -448,5 +448,5 @@
+@@ -452,5 +452,5 @@
              guard self.phase == .recording, newMe || newOthers else { throw RecordingError.invalid("Choose at least one recording side.") }
              guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid selection time.") }
 -            guard self.nativeMe || !newMe || newOthers || self.browserAlive else { throw BrowserIPCError.unavailable }
