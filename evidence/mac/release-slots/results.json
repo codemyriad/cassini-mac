@@ -1,0 +1,18 @@
+{
+  "tests": 31,
+  "mutations": {
+    "selected-python": "behavioral assertion failure",
+    "child-python": "behavioral assertion failure",
+    "scheduled-ci": "behavioral assertion failure",
+    "skip-prune": "behavioral assertion failure",
+    "active-job": "behavioral assertion failure",
+    "short-lock": "behavioral assertion failure",
+    "consume-early": "behavioral assertion failure"
+  },
+  "restored": true,
+  "sourceSHA256": {
+    "scripts/install-daily-test-release.py": "5d7023a657977a44a3b2d6d22f5889d469dc31eca7eccc423b3083abe69100a2",
+    "scripts/release.py": "5140454ed3c5ebd9c0fa9e19b97135a94087c535d60f829ab26c14f511307241",
+    "scripts/daily-test-release.py": "422f0cfb255384917a7514636579d8cccf78d96f6ca409d6bd383045fb37314c"
+  }
+}

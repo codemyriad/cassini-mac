@@ -279,7 +279,7 @@ def heavy_environment():
     stats=run(['vm_stat'],timeout=30).decode()
     swap=re.search(r'^Swapouts:\s+(\d+)',stats,re.M)
     if not swap:raise ValueError('Cannot inspect swap before a heavy release phase')
-    return dict(os.environ,CASSINI_LOCK_MINUTES='5',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
+    return dict(os.environ,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
 
 
 def release(args):
@@ -303,10 +303,10 @@ def release(args):
         run(['xcrun', 'swift', ROOT/'scripts/check-update-key.swift', key, ROOT/'Distribution/sparkle-public-key.txt'], timeout=60)
     keychain, identity = unlock_signing_keychain()
     output.mkdir(parents=True)
-    tools = Path(run(['python3', ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
+    tools = Path(run([sys.executable, ROOT/'scripts/fetch-sparkle.py', '--output', ROOT/'.build/Sparkle']).decode().strip())/'bin'
     image_tools = dmg_tools()
     run(['xcodegen', 'generate'], cwd=ROOT, timeout=120)
-    run(['python3', ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
+    run([sys.executable, ROOT/'browser-protocol/verify.py', '--pinned', ROOT/'BrowserExtension'], timeout=60)
     derived = getattr(args,'derived_data',None) or ROOT/'.build/developer-id'
     command = ['xcodebuild', 'build', '-project', 'Cassini.xcodeproj', '-scheme', 'Cassini', '-configuration', 'Release',
         '-derivedDataPath', derived, '-jobs', '2', 'ARCHS=arm64 x86_64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGNING_ALLOWED=YES',
@@ -331,8 +331,8 @@ def release(args):
         info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
         if info.get('CassiniUpdatesEnabled') not in ('NO',False) or info.get('SUFeedURL'):
             raise ValueError('Test application unexpectedly enables public updates')
-    run(['python3', ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
-    run(['python3', ROOT/'scripts/check-developer-id.py', app])
+    run([sys.executable, ROOT/'scripts/check-signing-identifiers.py', app, '--require-hardened-runtime'])
+    run([sys.executable, ROOT/'scripts/check-developer-id.py', app])
     run(['codesign', '--verify', '--deep', '--strict', app])
     # No post-build re-signing: worker manifests already bind signed bytes.
     submission = output/'Cassini-talk-notary.zip'

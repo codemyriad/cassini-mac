@@ -1,0 +1,37 @@
+[
+  {
+    "name": "selected-python",
+    "source": "scripts/install-daily-test-release.py",
+    "test": "InstalledRuntime.test_installer_pins_selected_runtime_without_a_homebrew_version_assumption"
+  },
+  {
+    "name": "child-python",
+    "source": "scripts/release.py",
+    "test": "TestModeBuilder.test_signed_test_mode_never_reads_update_seed_or_generates_public_feed"
+  },
+  {
+    "name": "scheduled-ci",
+    "source": "scripts/daily-test-release.py",
+    "test": "DailyPolicy.test_newer_trusted_schedule_blocks_an_old_green_push_until_it_passes"
+  },
+  {
+    "name": "skip-prune",
+    "source": "scripts/daily-test-release.py",
+    "test": "FailedJobPruning.test_failed_outputs_are_removed_with_bounded_private_diagnostics"
+  },
+  {
+    "name": "active-job",
+    "source": "scripts/daily-test-release.py",
+    "test": "FailedJobPruning.test_failed_outputs_are_removed_with_bounded_private_diagnostics"
+  },
+  {
+    "name": "short-lock",
+    "source": "scripts/release.py",
+    "test": "DailyPolicy.test_release_lock_wait_covers_the_shared_ios_archive_slot"
+  },
+  {
+    "name": "consume-early",
+    "source": "scripts/daily-test-release.py",
+    "test": "DailyExecution.test_pending_ci_does_not_consume_slot_or_manual_request_and_next_pulse_admits_green"
+  }
+]

@@ -1,0 +1,11 @@
+--- a/scripts/install-daily-test-release.py
++++ b/scripts/install-daily-test-release.py
+@@ -45,7 +45,7 @@
+     script=source/'scripts/daily-test-release.py'
+     if not script.is_file():raise SystemExit('Merge the pipeline PR into main before installing')
+     agent=Path.home()/'Library/LaunchAgents'/(label+'.plist');agent.parent.mkdir(parents=True,exist_ok=True)
+-    agent.write_bytes(plistlib.dumps(dict(Label=label,ProgramArguments=[str(python),str(script)],
++    agent.write_bytes(plistlib.dumps(dict(Label=label,ProgramArguments=[sys.executable,str(script)],
+         RunAtLoad=True,StartInterval=60,
+         EnvironmentVariables={'PATH':str(python.parent)+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
+         StandardOutPath=str(base/'scheduler.log'),StandardErrorPath=str(base/'scheduler-error.log'))))

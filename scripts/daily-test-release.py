@@ -56,7 +56,7 @@ def due_slot(now):
 def eligible_ci(runs,sha):
     # API pages are newest-first. PR merge-ref results (even this repo's main)
     # and fork runs must neither authorize nor block a main release.
-    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch')
+    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch','schedule')
               and (r.get('head_repository') or {}).get('full_name')==REPO),None)
     return bool(run and run['head_sha']==sha and run['head_branch']=='main'
                 and run['status']=='completed' and run['conclusion']=='success')
@@ -217,6 +217,56 @@ def signed_build(args,env,log):
         raise RuntimeError('Test build timed out; own process group stopped') from None
 
 
+def failed_job(path):
+    marker=path/'job.json'
+    if path.is_symlink() or not path.is_dir() or marker.is_symlink() or not marker.is_file():return None
+    try:meta=json.loads(marker.read_text())
+    except (OSError,ValueError):return None
+    if not isinstance(meta,dict):return None
+    if (meta.get('schema')!='cassini-mac-test-job@1' or meta.get('phase')!='failed'
+            or type(meta.get('build')) is not int or meta['build']<1
+            or not isinstance(meta.get('head'),str) or not re.fullmatch(r'[0-9a-f]{40}',meta['head'])):return None
+    return meta
+
+
+def prune_failed_builds():
+    """Never touch active, unmarked, symlinked jobs or shared build caches."""
+    failed=[path for path in BASE.glob('build-*') if failed_job(path)]
+    if not failed:return
+    archive=BASE/'failures'
+    if archive.is_symlink():raise ValueError('Diagnostic archive must not follow a symlink')
+    archive.mkdir(exist_ok=True);os.chmod(archive,0o700)
+    for job in failed:
+        metadata=failed_job(job)
+        if metadata is None:continue
+        destination=archive/job.name
+        if destination.is_symlink():raise ValueError('Diagnostic job must not follow a symlink')
+        existing=failed_job(destination) if destination.exists() else None
+        if destination.exists() and (existing is None or existing['build']!=metadata['build'] or existing['head']!=metadata['head']):
+            raise ValueError('Refusing an unowned diagnostic directory')
+        destination.mkdir(exist_ok=True);os.chmod(destination,0o700)
+        atomic(destination/'job.json',metadata)
+        # At most five 1MiB tails per job. Never recurse into products/DerivedData.
+        for name in ['release-driver.log','release/build.log','release/app-notary.json','release/dmg-notary.json','release/test-release.json']:
+            source=job/name
+            if source.is_symlink() or not source.is_file() or not source.resolve().is_relative_to(job.resolve()):continue
+            with source.open('rb') as stream:
+                stream.seek(max(0,source.stat().st_size-1024**2));tail=stream.read(1024**2)
+            target=destination/(name.replace('/','-')+'.tail')
+            # Atomic replacement cannot follow an existing file symlink.
+            temporary=None
+            try:
+                with tempfile.NamedTemporaryFile(dir=destination,prefix='.tail-',delete=False) as stream:
+                    temporary=Path(stream.name);stream.write(tail);stream.flush();os.fsync(stream.fileno())
+                temporary.replace(target)
+            finally:
+                if temporary is not None and temporary.exists():temporary.unlink()
+        shutil.rmtree(job)
+    retained=[path for path in archive.glob('build-*') if failed_job(path)]
+    for path in sorted(retained,key=lambda p:failed_job(p)['build'],reverse=True)[3:]:
+        shutil.rmtree(path)
+
+
 def tick(now):
     if sys.platform!='darwin' or socket.gethostname().split('.')[0].lower()!='drmeyers':
         raise ValueError('Test signing runs only on drmeyers')
@@ -228,13 +278,12 @@ def tick(now):
     state=json.loads(state_file.read_text()) if state_file.exists() else {}
     slot=due_slot(now)
     stage='request check'
+    job=None
     try:
         request=gh([f'repos/{REPO}/actions/workflows/{REQUEST}/runs?branch=main&event=workflow_dispatch&status=completed&per_page=1'])['workflow_runs']
         manual=next((r['id'] for r in request if r['conclusion']=='success' and r['head_branch']=='main'
                      and r['event']=='workflow_dispatch' and r['id']>state.get('request',0)),None)
         if state.get('slot')==slot and manual is None:return
-        state.update(slot=slot,request=manual or state.get('request',0),phase='admission')
-        atomic(state_file,state)
         stage='main source/CI admission'
         if command(['git','-C',SOURCE,'remote','get-url','origin']).strip()!=ORIGIN:
             raise ValueError('Unexpected release source origin')
@@ -249,6 +298,11 @@ def tick(now):
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
         if not main_is_green(head):
             report('[Mac] daily test release skipped: latest main CI is not green');return
+        stage='failed output cleanup'
+        prune_failed_builds()
+        stage='release history'
+        state.update(slot=slot,request=manual or state.get('request',0),phase='admission')
+        atomic(state_file,state)
         releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
         previous=latest_nightly(releases)
         stable=stable_notes_source(releases)
@@ -277,9 +331,10 @@ def tick(now):
         stage='release notes'
         body=notes(base,head,published_refs=[stable] if stable else [])
         stage='signing/notarization'
-        # The dedicated job directory is retained on failure and removed only
-        # after successful publication; other agents' caches are never touched.
+        # Mark ownership before building. Failed products are pruned only after
+        # the child has exited; bounded private diagnostics survive separately.
         job=Path(tempfile.mkdtemp(prefix=f'build-{build}-',dir=BASE));output=job/'release';derived=job/'DerivedData'
+        atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='building',build=build,head=head))
         env=dict(os.environ)
         state['job']=str(job);atomic(state_file,state)
         with (job/'release-driver.log').open('w') as log:
@@ -302,6 +357,14 @@ def tick(now):
             cause=str(error).replace('\n',' ')[:180] if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__
             report('[Mac] daily test release failed: '+stage+': '+cause)
         state['failure']=identity;atomic(state_file,state)
+        if job is not None and not job.is_symlink() and job.is_dir():
+            try:
+                atomic(job/'job.json',dict(schema='cassini-mac-test-job@1',phase='failed',build=build,head=head,stage=stage))
+                prune_failed_builds()
+                state.pop('job',None);state['diagnostics']=str(BASE/'failures'/job.name)
+                atomic(state_file,state)
+            except (OSError,ValueError):
+                report('[Mac] failed-job cleanup incomplete; inspect private job and diagnostics')
         raise SystemExit(1)
 
 
