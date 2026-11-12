@@ -35,3 +35,13 @@ D87: #17 checked by descriptor state and real behavioral mutation, no timing
 success path; #15 checks the exact operation/error; #18 based directly on current
 main fc2ad76, no draft dependencies; #19 exact-head CI pending. Other classes
 are unaffected by this test-only fixture change.
+
+Current-main integration f506b17 includes coherent compiled caches.49 Whistle/
+model tests and449 shared extension/browser meter tests pass. This worker
+fixture area also adopts the exact native-relay test blob reviewed and merged
+in protocol#99, released as test-only backport6ac2be2 onto the existing b2b561b
+production tree. The old10s total-child budget could kill a healthy70-source
+exchange; real result/ACK events now settle it and late stdin errors fail
+explicitly. Upstream baseline/production-mutation/restoration receipts ship
+with the verified snapshot. No production extension file changes and no
+unmerged browser-local-Me feature are included.

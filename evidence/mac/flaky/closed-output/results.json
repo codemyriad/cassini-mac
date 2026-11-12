@@ -13,5 +13,13 @@
   "sourceSHA256": {
     "Tests/CassiniWhistleTests/IOTests.swift": "068363e87659ebe16be87b0bab113c528e5cc8aab5159057287d5d0fc7e0cf17",
     "Sources/CassiniWhistle/WhistleIO.swift": "d9b7d12ca178ee09a29bc8c169bb507a99fd11192f44f7cceec6b46ad11c75eb"
+  },
+  "mainIntegration": {
+    "main": "f506b17",
+    "restoredWhistleModelTests": 49,
+    "sharedExtensionAndBrowserMeterTests": 449,
+    "testOnlyProtocolPin": "6ac2be2180a92f1376fbac9764ff09a9fe618204",
+    "upstreamReview": "cassini-browser-protocol#99 merged",
+    "productionExtensionChanged": false
   }
 }
