@@ -553,6 +553,9 @@ struct LibraryToolbarAction: NSViewRepresentable {
     let style: Style
     var enabled = true
     var menu: (() -> NSMenu)? = nil
+    #if DEBUG
+    var fixtureOnLaidOut: ((String) -> Void)? = nil
+    #endif
     let action: () -> Void
     func makeNSView(context: Context) -> LibraryToolbarActionView { LibraryToolbarActionView() }
     func updateNSView(_ view: LibraryToolbarActionView, context: Context) { view.update(self) }
@@ -598,6 +601,9 @@ final class LibraryToolbarActionView: NSView {
         return indicator
     }()
     private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
+    #if DEBUG
+    private var fixtureOnLaidOut: ((String) -> Void)?
+    #endif
     private var size = NSSize(width:28,height:34)
     override init(frame: NSRect) {
         super.init(frame:frame)
@@ -608,12 +614,26 @@ final class LibraryToolbarActionView: NSView {
     }
     required init?(coder: NSCoder) { nil }
     override var intrinsicContentSize: NSSize { size }
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        #if DEBUG
+        scheduleFixtureLayoutNotification()
+        #endif
+    }
     override func layout() {
         super.layout(); button.frame = bounds
         spinner.frame = NSRect(x:10,y:(bounds.height - 16) / 2,width:16,height:16)
+        #if DEBUG
+        if superview != nil, button.frame.width > 0 {
+            fixtureOnLaidOut?(button.accessibilityIdentifier())
+        }
+        #endif
     }
     func update(_ value: LibraryToolbarAction) {
         action = value.action; makeMenu = value.menu
+        #if DEBUG
+        fixtureOnLaidOut = value.fixtureOnLaidOut
+        #endif
         // SwiftUI otherwise borrows the only child's identifier/label for its
         // representable proxy. Keep the container distinct from the action.
         setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
@@ -647,7 +667,25 @@ final class LibraryToolbarActionView: NSView {
         default: break
         }
         needsLayout = true; invalidateIntrinsicContentSize()
+        #if DEBUG
+        scheduleFixtureLayoutNotification()
+        #endif
     }
+    #if DEBUG
+    private func scheduleFixtureLayoutNotification() {
+        guard fixtureOnLaidOut != nil else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let callback = self.fixtureOnLaidOut, self.superview != nil else { return }
+            var root: NSView = self
+            while let parent = root.superview { root = parent }
+            if self.needsLayout || self.button.frame.width == 0 {
+                root.layoutSubtreeIfNeeded()
+            } else {
+                callback(self.button.accessibilityIdentifier())
+            }
+        }
+    }
+    #endif
     @objc private func invoke(_ sender: Any?) {
         if let makeMenu { makeMenu().popUp(positioning:nil,at:NSPoint(x:0,y:0),in:self) }
         else { action?() }
