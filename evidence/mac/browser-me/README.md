@@ -27,8 +27,8 @@ Verified admission can deliver pageGone before the queued browser-loss callback,
 so finalization also honors that immutable terminal intent. Normal empty user
 cancellations retain their existing discard behavior.
 
-Protocol pin: merged156b40c314e7acf4e75d53c2fbc77fdae8deacc4, companion0.2.27,
-hook2. The canonical vendor tool updates both shared snapshot and installed
+Protocol pin: merged572397ff7a0ba45f35ad60bbfea7f0c5fd442792, companion0.2.28,
+hook3 (microphone lineage through WebAudio for Teams automatic recording). The canonical vendor tool updates both shared snapshot and installed
 extension; verify.py validates the Git-tree proof and every installed file.
 Historical producer traces remain frozen. The pinned source implements and tests
 screen-share exclusion, sender/clone deduplication and mute/unmute privacy.
