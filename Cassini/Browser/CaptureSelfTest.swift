@@ -393,7 +393,10 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try require(RecordingMenuPayload(recorder:.shared,runtime:.shared).levels.first?.silent == true,"Menu uses the same owned silent-microphone state")
             CaptureFixture.silentMicrophone = false
             try await one.emitLocal(); try await two.emitLocal()
-            try await wait { !RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent }
+            // Framed ACKs prove complete sound windows arrived. Read the cached
+            // meter now; a later notification/packet must not be needed to recover.
+            collection.setMicrophoneUptimeForTesting(ownedIDs, at:20)
+            try require(!RecordingOverview.microphoneSilent && !originalEditor.microphoneSilent,"Completed browser sound windows clear silence without another packet")
             collection.setMicrophoneUptimeForTesting(ownedIDs, at:nil)
             CaptureFixture.microphoneDC = 0
             report["micDCDoesNotMaskSilence"] = true

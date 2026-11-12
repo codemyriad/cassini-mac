@@ -57,14 +57,16 @@
     "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "7824aa326321e24e94d7ed8ff69f9b5314c23de78bf9722b8ff8a4928e6f6619",
     "Sources/CassiniRecording/RecordingSession.swift": "53975c9dbc3635dab1f3f95a1aca824352ddf6434ba30e58ff53ee6db8ce26fe",
     "Sources/CassiniRecording/RecordingSink.swift": "34f8912c47697f2309e94f782776292bc7da10afdbe13021871668c34e2409b7",
-    "Cassini/Browser/CaptureCollection.swift": "8a2dbcab25cbc26cbdad3f2f44b912f2c677c6e3607147a46e8cd8e29c38efda",
-    "Cassini/Browser/CaptureSelfTest.swift": "863b5cfad6ee7220736ea3d06e025d875de0121a426bad01543a7d232468598a",
+    "Cassini/Browser/CaptureCollection.swift": "72cc9e3045b297a2f7d580ffa8e0e3c1c82371af873bf9d2b9b8ecc452d5846a",
+    "Cassini/Browser/CaptureSelfTest.swift": "1a2c7fd44efe8bbdd9c34bf0226020c5c040dc559f7886754e910ab2b95c468d",
     "Cassini/Browser/CaptureFixture.swift": "9afa69cc2d4c7fd97f0b006d0c7a184a06881c52f74fbdf2d7d826b8abb61eb8",
     "scripts/test-browser-capture-app.py": "a3e2862fe2a4a426c3422dd50563c02c1fa6e0f09bc11e632127b00a7ab9f75d",
-    "scripts/test-live-folder.mjs": "ce5a7ed66751d61f7779b9a07c95fb79f1c1d7a03ff7634b88cd0250e7e212b3"
+    "scripts/test-live-folder.mjs": "ce5a7ed66751d61f7779b9a07c95fb79f1c1d7a03ff7634b88cd0250e7e212b3",
+    "Cassini/Browser/BrowserReturnSelfTest.swift": "c5332698fa7c33aaff1f6719796ca6258863ad51d9b70fb7959cebd768a236a4",
+    "scripts/test-browser-return.mjs": "3bcc23d4c7cc97cb27d0435b9ed74a2e03b68f8e71c8edace85c0af967bb4125"
   },
   "base": "443988076c5dd6d2cdcd6e10580003e20230d1c8",
-  "mergedMain": "66f0ddd",
+  "mergedMain": "f506b17",
   "browserXCTest": 395,
   "browserSwiftTesting": 5,
   "restoredFocusedXCTest": 36,
@@ -76,5 +78,12 @@
   "gnomeComparison": "97a42f7",
   "protocolPinChanged": false,
   "nativeAppQuickLookBuild": "passed after main merge and Me-only restoration",
-  "nativeAppSelfTestRuntime": "pending CI"
+  "nativeAppSelfTestRuntime": "pending CI",
+  "ciFollowup": {
+    "observedRun": 43122163530,
+    "meterFailure": "Browser sound recovery at CaptureSelfTest.swift:396 read the throttled UI snapshot instead of the latest cached owner meter",
+    "meterFix": "refreshLevels reads owner.snapshot; framed sound ACKs are followed by direct silence assertions, without another packet",
+    "browserReturnFix": "require local PCM before navigation and a fresh local span afterward; zero hardware microphone starts/tracks",
+    "nativeAppSelfTestRuntime": "pending new CI; no runtime success claimed"
+  }
 }

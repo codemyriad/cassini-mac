@@ -44,12 +44,14 @@ import CassiniRecording
             try await wait("Real browser did not discover the call") { collection.connected && collection.hasCalls && CompanionSetup.shared.prepared }
             try await collection.record()
             try await wait("Real browser capture did not deliver PCM") {
-                collection.captures.count == 1 && collection.captures.values.first?.peerKnown == true &&
-                collection.captures.values.first?.owner.snapshot.manifest.tracks.contains { $0.kind == "remote" && $0.frames > 0 } == true
+                guard collection.captures.count == 1, let value = collection.captures.values.first, value.peerKnown else { return false }
+                let tracks = value.owner.snapshot.manifest.tracks
+                return tracks.contains { $0.kind == "remote" && $0.frames > 0 } && tracks.contains { $0.kind == "local" && $0.frames > 0 }
             }
             guard let capture = collection.first else { throw CocoaError(.fileReadUnknown) }
             let id = capture.snapshot.manifest.id, folder = capture.owner.snapshot.directory
             let before = Set(capture.owner.snapshot.manifest.tracks.filter { $0.kind == "remote" }.map(\.id))
+            let localBefore = Set(capture.owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.map(\.id))
             try report(["phase":"recording","id":id.uuidString])
             // D66 mac-P0-1: keep track of transport loss across the fallback
             // and restore events. The driver holds the returning call until fallback.
@@ -66,23 +68,25 @@ import CassiniRecording
                 transportDied = transportDied || !source.transportAlive
                 return source.browserAlive && source.transportAlive && !source.usingSystem &&
                     source.manifest.events?.contains { $0.type == "othersSource" && $0.source == "browser" && $0.reason == "restored" } == true &&
-                    source.manifest.tracks.contains { $0.kind == "remote" && !before.contains($0.id) && $0.frames > 0 }
+                    source.manifest.tracks.contains { $0.kind == "remote" && !before.contains($0.id) && $0.frames > 0 } &&
+                    source.manifest.tracks.contains { $0.kind == "local" && !localBefore.contains($0.id) && $0.frames > 0 }
             }
             guard collection.captures[id]?.captureID == capture.captureID,
                   capture.owner.snapshot.directory == folder,
-                  CaptureFixture.microphoneStarts == 1, CaptureFixture.systemStarts == 1 else { throw CocoaError(.fileReadCorruptFile) }
+                  CaptureFixture.microphoneStarts == 0, CaptureFixture.systemStarts == 1 else { throw CocoaError(.fileReadCorruptFile) }
             let restored = ProcessInfo.processInfo.systemUptime
             try report(["phase":"restored","id":id.uuidString])
             try await wait("Closed Chromium tab did not stop") { collection.captures.isEmpty }
             let manifest = try await Task.detached { try RecordingLoader.load(directory:folder) }.value
             guard manifest.id == id, manifest.events?.last?.type == "end", manifest.events?.last?.reason == "tabClosed",
-                  manifest.tracks.filter({ $0.kind == "microphone" && $0.frames > 0 }).count == 1,
+                  !manifest.tracks.contains(where:{ $0.kind == "microphone" }),
+                  manifest.tracks.filter({ $0.kind == "local" && $0.frames > 0 }).count >= 2,
                   manifest.tracks.filter({ $0.kind == "system" && $0.frames > 0 }).count == 1,
                   manifest.tracks.filter({ $0.kind == "remote" && $0.frames > 0 }).count >= 2 else { throw CocoaError(.fileReadCorruptFile) }
             try report(["phase":"complete","sameFolder":true,"originalTransport":!transportDied,"realPageLifecycle":true,
                         // From the recording report (the test then reloads the page) to the fallback, and on to the restore.
                         "secondsToFallback":((fellBack-navigated)*100).rounded()/100,"secondsToRestore":((restored-fellBack)*100).rounded()/100,
-                        "systemFallback":true,"freshBrowserSpan":true,"microphoneUninterrupted":true,"endReason":"tabClosed",
+                        "systemFallback":true,"freshBrowserSpan":true,"browserMeRestored":true,"endReason":"tabClosed",
                         "nativeInputsGenerated":true,"audioDevicesOpened":false])
             CompanionSetup.shared.stop(); await collection.shutdown()
             if let root = RecordingFixture.root { try? FileManager.default.removeItem(at:root.deletingLastPathComponent()) }

@@ -864,12 +864,14 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func refreshLevels(_ id: UUID, _ value: LiveCapture) {
         let status = value.input.status()
+        // Read the latest cached meter even when no later packet publishes a UI snapshot.
+        let source = value.owner.snapshot
         captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
-        if value.snapshot.browserAlive && value.snapshot.others {
-            captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
+        if source.browserAlive && source.others {
+            captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - source.levelTimestamp <= 1 ? source.browserLevel : 0
         }
         if !value.owner.nativeMe {
-            captures[id]?.levels[.me] = value.snapshot.me && value.snapshot.browserAlive && ProcessInfo.processInfo.systemUptime - value.snapshot.meLevelTimestamp <= 1 ? value.snapshot.browserMeLevel : 0
+            captures[id]?.levels[.me] = source.me && source.browserAlive && ProcessInfo.processInfo.systemUptime - source.meLevelTimestamp <= 1 ? source.browserMeLevel : 0
         }
         if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
     }

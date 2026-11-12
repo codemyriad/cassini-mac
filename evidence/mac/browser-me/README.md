@@ -62,3 +62,15 @@ Waits for the protocol pin:
 These are recorded dependencies; the old shared oracle is not disabled or
 rewritten. The complete change remains a draft, Part of #259, until protocol
 merge/pin adoption and exact-head CI/review.
+
+CI follow-up: the first real app run reached the sound-recovery assertion but
+waited for a later UI publication. Levels now read the owner's current cached
+snapshot; after real sound-window ACKs the app fixture asserts recovery
+directly, with no later packet required. The real browser-return proof now
+waits for both local/remote PCM before navigation and fresh local/remote spans
+afterward, then requires zero native microphone starts/tracks. The old native-
+microphone assertion caused the observed return-proof failure and is removed.
+Native app build passes; updated native runtime remains pending CI. The seven
+headless mutation source hashes are unchanged. Mainf506b17 is merged normally.
+The pinned old live-folder oracle still waits for a microphone span and remains
+a protocol-pin dependency; no oracle is edited or disabled.

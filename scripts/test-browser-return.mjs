@@ -187,7 +187,7 @@ try {
  await wait(() => exited,'App did not finish cleanly');
  assert.equal(exitCode,0,stderr);
  const report=phases.get('complete');
- for(const key of ['sameFolder','realPageLifecycle','systemFallback','freshBrowserSpan','microphoneUninterrupted','nativeInputsGenerated']) assert.equal(report[key],true,key);
+ for(const key of ['sameFolder','realPageLifecycle','systemFallback','freshBrowserSpan','browserMeRestored','nativeInputsGenerated']) assert.equal(report[key],true,key);
  // D66 mac-P0-1: whether the original transport survived the navigation, or died and was resumed
  // (D52.4): reported, not asserted, so how often it dies becomes visible without failing a run
  // that recovered as designed.
