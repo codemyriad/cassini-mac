@@ -571,6 +571,7 @@ private final class LibraryToolbarActionView: NSView {
     }
     private let button = ActionButton()
     private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
+    private var currentStyle: LibraryToolbarAction.Style = .bordered
     private var size = NSSize(width:28,height:34)
     override init(frame: NSRect) {
         super.init(frame:frame)
@@ -582,20 +583,28 @@ private final class LibraryToolbarActionView: NSView {
     required init?(coder: NSCoder) { nil }
     override var intrinsicContentSize: NSSize { size }
     override func layout() { super.layout(); button.frame = bounds }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyLayerFill() }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyLayerFill() }
+    private func applyLayerFill() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let fill: NSColor = currentStyle == .stop ? CassiniTheme.nsRecord : [.record,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
+            button.layer?.backgroundColor = fill.cgColor
+        }
+    }
     func update(_ value: LibraryToolbarAction) {
-        action = value.action; makeMenu = value.menu
+        action = value.action; makeMenu = value.menu; currentStyle = value.style
         // SwiftUI otherwise borrows the only child's identifier/label for its
         // representable proxy. Keep the container distinct from the action.
         setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
         button.spokenLabel = value.label; button.setAccessibilityIdentifier(value.identifier)
         button.toolTip = value.label; button.isEnabled = value.enabled
-        let font = NSFont.systemFont(ofSize:13,weight:.semibold), red = NSColor(CassiniTheme.record), recordDot = NSColor(CassiniTheme.recordInk)
+        let font = NSFont.systemFont(ofSize:13,weight:.semibold)
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.imagePosition = .imageLeft
         let tint: NSColor = value.style == .stop ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
-        button.layer?.backgroundColor = value.style == .stop ? red.cgColor : [.record,.capsule].contains(value.style) ? NSColor(CassiniTheme.chipFill).cgColor : NSColor.clear.cgColor
+        applyLayerFill()
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
         size = NSSize(width:text + 28,height:34)
         switch value.style {
@@ -605,7 +614,7 @@ private final class LibraryToolbarActionView: NSView {
             size.width = 28
         case .record:
             button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
-                recordDot.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
+                CassiniTheme.nsRecordInk.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
             button.imageHugsTitle = true; size.width += 18
         default: break

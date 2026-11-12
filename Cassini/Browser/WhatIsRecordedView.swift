@@ -28,7 +28,7 @@ struct WhatIsRecordedView: View {
                     Button { apply(item) } label: {
                         HStack(spacing:14) {
                             ZStack {
-                                Circle().stroke(item == choice ? CassiniTheme.accent : CassiniTheme.secondaryInk,lineWidth:1).frame(width:17,height:17)
+                                Circle().stroke(item == choice ? CassiniTheme.accent : CassiniTheme.secondaryColor,lineWidth:1).frame(width:17,height:17)
                                 if item == choice { Circle().fill(CassiniTheme.accent).frame(width:10,height:10) }
                             }.accessibilityHidden(true)
                             VStack(alignment:.leading,spacing:2) {

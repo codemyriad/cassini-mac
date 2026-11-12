@@ -157,7 +157,7 @@ struct RecordingLevelMeter: View {
     let label: String
     var body: some View {
         GeometryReader { geometry in
-            Capsule().fill(silent ? CassiniTheme.warnInk.opacity(0.2) : CassiniTheme.secondaryInk.opacity(0.18))
+            Capsule().fill(silent ? CassiniTheme.warnInk.opacity(0.2) : CassiniTheme.secondaryColor.opacity(0.18))
                 .overlay(alignment:.leading) { Capsule().fill(silent ? CassiniTheme.warningNotice : CassiniTheme.primaryInk).frame(width:geometry.size.width * Double(max(0,min(1,level)))) }
         }.accessibilityRepresentation { ProgressView(value:Double(max(0,min(1,level)))).accessibilityLabel(label) }
     }

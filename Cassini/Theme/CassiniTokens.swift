@@ -305,7 +305,8 @@ enum CassiniTheme {
         light: NSColor(red: 106/255, green: 106/255, blue: 112/255, alpha: 1),
         dark: .secondaryLabelColor
     )
-    static let secondaryInk = Color.secondary
+    static let secondaryInk = HierarchicalShapeStyle.secondary
+    static let secondaryColor = Color.secondary
     static let nsInk2: NSColor = .secondaryLabelColor
     static let nsInk3: NSColor = .tertiaryLabelColor
     static let nsUpcomingWordInk: NSColor = .secondaryLabelColor
@@ -342,6 +343,7 @@ enum CassiniTheme {
         dark: .systemRed
     )
     static let record = Color(nsColor: nsRecord)
+    static let nsRecordInk = nsRecord
     static let recordInk = record
     static let recordTint = record.opacity(0.10)
     static let onRecord = Color.white
