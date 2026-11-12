@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
++++ b/Sources/CassiniBrowserControl/CaptureInputLifecycle.swift
+@@ -492,5 +492,5 @@
+           }
+         }
+-        if capture.nativeMe && capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
++        if capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
+           let signal = FirstBufferSignal()
+           do {

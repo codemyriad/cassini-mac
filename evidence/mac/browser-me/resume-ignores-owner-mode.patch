@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/ControlService.swift
++++ b/Sources/CassiniBrowserControl/ControlService.swift
+@@ -117,5 +117,5 @@
+                     guard let reference, canStart() else { throw BrowserIPCError.unavailable }
+                     try reference.dispatch {
+-                        let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,lostAtMs:reference.lostAtMs,expectedGeneration:expectedGeneration,captureLocal:!owner.nativeMe)
++                        let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,lostAtMs:reference.lostAtMs,expectedGeneration:expectedGeneration,captureLocal:true)
+                         armed(generation,request.id); send([request])
+                     }

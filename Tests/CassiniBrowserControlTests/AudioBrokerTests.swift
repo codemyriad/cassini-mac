@@ -13,6 +13,12 @@ final class NativeFixtureInputs: @unchecked Sendable {
     private var sinks: [UUID:RecordingSink] = [:]
     func started(_ capture: OwnedBrowserCapture, info: BrowserAudioStart) {
         guard info.microphone else { return }
+        if !capture.nativeMe {
+            // Synthetic browser sender, through the same owner API as framed PCM.
+            XCTAssertNoThrow(try capture.browserTrack(id:"fixture-local",label:"Me",kind:"local",sampleRate:8000,channels:1,sourceTrackId:"fixture-local"))
+            XCTAssertNoThrow(try capture.browserAudio(id:"fixture-local",sequence:0,offsetMs:0,pcm:Data(repeating:0x12,count:16000)))
+            return
+        }
         let origin = AVAudioTime.hostTime(forSeconds:ProcessInfo.processInfo.systemUptime)
         let sink = capture.nativeSink(side:.me,originHostTime:origin,failure:{ _ in })
         lock.withLock { sinks[capture.snapshot.manifest.id] = sink }
@@ -87,7 +93,7 @@ final class AudioFixture {
         let library = root.appendingPathComponent("Library"), inputs = NativeFixtureInputs()
         let microphones = microphones
         let closures = closures
-        broker = BrowserAudioBroker(make:{ title,mic in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic) },created:{ owner,info in created(owner,info); inputs.started(owner,info:info); if info.microphone { microphones.recorded(owner.snapshot.directory.path) } },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
+        broker = BrowserAudioBroker(make:{ title,mic,captureLocal in beforeCreate?(); return try OwnedBrowserCapture(parent:library,title:title,microphone:mic,captureLocal:captureLocal) },created:{ owner,info in inputs.started(owner,info:info); if info.microphone && owner.nativeMe { microphones.recorded(owner.snapshot.directory.path) }; created(owner,info) },stopNative:stop ?? { owner,reply in inputs.stop(owner,reply:reply) },clock:clock,
                                     transportClosed:{ closures.fire() },ownership:ownership)
         service = BrowserControlService(changed:changed,completed:{ _,_ in },audio:broker,canStart:canStart,clock:controlClock,ownership:ownership)
         try service.start(root:ipc)

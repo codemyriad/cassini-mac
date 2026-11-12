@@ -1,0 +1,137 @@
+[
+  {
+    "name": "capture-local-command",
+    "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+    "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture"
+  },
+  {
+    "name": "start-native-microphone",
+    "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+    "test": "BrowserLocalMeTests/testNoNativeMicrophoneOnStartSelectFallbackOrReload"
+  },
+  {
+    "name": "select-native-microphone",
+    "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+    "test": "BrowserLocalMeTests/testNoNativeMicrophoneOnStartSelectFallbackOrReload"
+  },
+  {
+    "name": "native-writer-admission",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM"
+  },
+  {
+    "name": "local-side-selection",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testLocalSelectionMuteMeterAndAnalysisAreIndependentOfOthers"
+  },
+  {
+    "name": "local-discovery",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "D52UnselectedSourceTests/testASelectedPageMicrophoneIsExpectedIndependentlyOfOthers"
+  },
+  {
+    "name": "local-ac-meter",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testBrowserMeMeterRejectsDCUsingCompleteWindowsAndNeverAcceptsNativePCM"
+  },
+  {
+    "name": "unnegotiated-local-command",
+    "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+    "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture"
+  },
+  {
+    "name": "native-start-drops-ownership",
+    "source": "Sources/CassiniBrowserControl/BrowserAudioBroker.swift",
+    "test": "SenderMeNegotiationTests/testNativeStartFlagSelectsImmutableOwnerModeAndLegacyMicrophone"
+  },
+  {
+    "name": "admission-drops-ownership",
+    "source": "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift",
+    "test": "SenderMeNegotiationTests/testVerifiedAdmissionPreservesBothNativeStartOwnershipModes"
+  },
+  {
+    "name": "me-only-loss-keeps-recording",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
+  },
+  {
+    "name": "me-only-loss-drops-problem",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
+  },
+  {
+    "name": "page-gone-before-loss",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
+  },
+  {
+    "name": "resume-ignores-owner-mode",
+    "source": "Sources/CassiniBrowserControl/ControlService.swift",
+    "test": "R94CommittedResumeTests/testInitialStandInPreservesZero"
+  },
+  {
+    "name": "resume-ignores-requested-mode",
+    "source": "Sources/CassiniBrowserControl/ControlRegistry.swift",
+    "test": "SenderMeNegotiationTests/testOnlyHelloSenderMeCapabilityEnablesStartAndResumeLocalCapture"
+  },
+  {
+    "name": "sender-pcm-not-live",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testFreshSelectedSenderPCMCountsDuringControlGapsEvenWhenMuted"
+  },
+  {
+    "name": "sender-makes-others-ready",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections"
+  },
+  {
+    "name": "sender-advances-others-return",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testSenderBeforeOthersKeepsFallbackUntilOthersPCMForBothSelections"
+  },
+  {
+    "name": "sender-satisfies-others-writer",
+    "source": "Sources/CassiniRecording/RecordingSession.swift",
+    "test": "BrowserLocalMeTests/testOthersRestoreWriterRejectsLocalOnlySource"
+  },
+  {
+    "name": "disconnected-me-only-selection",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable"
+  },
+  {
+    "name": "pause-others-before-refusal",
+    "source": "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift",
+    "test": "BrowserLocalMeTests/testMeOnlySelectionIsRefusedWhilePageIsUnavailable"
+  },
+  {
+    "name": "hide-return-when-others-off",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "InputLifecycleTests/testOthersOffStaysOffOnReturnAndAnExplicitOnUsesTheBrowserWithoutStartingSystemAgain"
+  },
+  {
+    "name": "premature-local-selection-span",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testSelectingBothDuringReturnCreatesOnlyTheRestoredLocalSpan"
+  },
+  {
+    "name": "selection-forgets-deselected-return",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testReturnedDeselectedMeKeepsItsNextSelectionBoundary"
+  },
+  {
+    "name": "restore-forgets-deselected-return",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testReturnedDeselectedMeKeepsItsNextSelectionBoundary"
+  },
+  {
+    "name": "deselected-pcm-not-current",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testReturnedDeselectedMeKeepsItsNextSelectionBoundary"
+  },
+  {
+    "name": "revive-forgets-off-me-boundary",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "BrowserLocalMeTests/testRevivingOthersWhileMeOffDoesNotAdoptBufferedOldLocalPCM"
+  }
+]

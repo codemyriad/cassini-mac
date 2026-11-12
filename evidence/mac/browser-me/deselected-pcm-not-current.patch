@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -249,5 +249,5 @@
+                normalized + Double(pcm.count/(source.channels*2))/Double(source.rate)*1000 > boundary {
+                 // Current-document evidence is independent of the side's selection.
+-                source.current = true
++                if selectedSide { source.current = true }
+                 if selectedSide, source.span == nil {
+                     let span = UUID().uuidString.lowercased()

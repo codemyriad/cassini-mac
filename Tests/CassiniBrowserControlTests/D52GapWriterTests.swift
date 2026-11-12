@@ -58,9 +58,18 @@ final class D52GapWriterTests: XCTestCase {
                 try owner.trackEnd(id:step["id"]!.string!,reason:"ended",droppedFrames:UInt64(step["droppedFrames"]!.int!))
             case "nativeTrack":
                 let id = step["id"]!.string!, kind = step["kind"]!.string!
+                if browser && kind == "microphone" {
+                    // Same Me frames and oracle facts, via the selected WebRTC sender.
+                    try owner.browserTrack(id:id,label:id,kind:"local",sampleRate:step["rate"]?.int ?? 48000,channels:1,sourceTrackId:id)
+                    continue
+                }
                 let sink = owner.nativeSink(side:kind == "microphone" ? .me : .others,originHostTime:origin) { _ in }
                 natives[id] = .init(sink:sink,id:id,kind:kind,rate:Double(step["rate"]?.int ?? 48000))
             case "input":
+                if browser && natives[step["id"]!.string!] == nil {
+                    try audio(step["id"]!.string!,step["hostMs"]!.double!,step["frames"]!.int!)
+                    continue
+                }
                 let native = try XCTUnwrap(natives[step["id"]!.string!],name)
                 let frames = AVAudioFrameCount(step["frames"]!.int!)
                 let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:native.rate,channels:1))

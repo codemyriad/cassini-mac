@@ -261,8 +261,8 @@ final class ControlServiceTests: XCTestCase {
         let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let closing = Admission(), gone = expectation(description:"Control really disconnected")
         gone.assertForOverFulfill = false
-        let broker = BrowserAudioBroker(make:{ title,mic in
-            try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic)
+        let broker = BrowserAudioBroker(make:{ title,mic,captureLocal in
+            try OwnedBrowserCapture(parent:root.appendingPathComponent("records"),title:title,microphone:mic,captureLocal:captureLocal)
         },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         let service = BrowserControlService(changed:{ peers in
             if closing.read(), peers.isEmpty { gone.fulfill() }

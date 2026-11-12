@@ -4,7 +4,7 @@
 // The folder is judged by browser-protocol/conformance/live-folder/check.py, run by the driver.
 //
 // The app adapter: the app runs --live-folder-self-test (Cassini/Browser/LiveFolderSelfTest.swift)
-// and answers one JSON command per line. Its native sides are the guarded RAM fixture (a 440 Hz
+// and answers one JSON command per line. Its native sides are the guarded RAM fixture (a distinct 660 Hz OS
 // microphone tone, no devices). The driver's launchers register the app's production hosts
 // (scenarios/native-launcher.mjs: the audio host's pid recorded, the control host observed on its
 // pipe), and the app never runs companion setup, so nothing rewrites those registrations.
@@ -27,7 +27,7 @@ const { livePids, writeNativeHost } = await import(path.join(protocol, 'scenario
 
 const source = path.resolve(process.argv[2]), out = path.resolve(process.argv[3]);
 const EXTENSION = 'pcafdaahfhjiolfpfnlhmljfgoabbaij', ORIGIN = `chrome-extension://${EXTENSION}/`;
-const MIC_HZ = 440;  // CaptureFixture's generated microphone
+const MIC_HZ = 440;  // Browser sender tone; the OS fixture uses 660 Hz to expose a wrong route.
 const base = await mkdtemp(path.join(root, 'build/live-folder-'));
 const app = path.join(base, 'Installed Cassini.app');
 const profile = path.join(os.userInfo().homedir, 'Library/Application Support/Google/Chrome for Testing');

@@ -116,7 +116,7 @@ public final class BrowserControlService: @unchecked Sendable {
                 do {
                     guard let reference, canStart() else { throw BrowserIPCError.unavailable }
                     try reference.dispatch {
-                        let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,lostAtMs:reference.lostAtMs,expectedGeneration:expectedGeneration)
+                        let (request,generation) = try registry.resume(key,captureID:captureID,timelineOriginMs:timelineOriginMs,lostAtMs:reference.lostAtMs,expectedGeneration:expectedGeneration,captureLocal:!owner.nativeMe)
                         armed(generation,request.id); send([request])
                     }
                     publish()

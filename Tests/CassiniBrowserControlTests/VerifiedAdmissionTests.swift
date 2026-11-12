@@ -215,10 +215,10 @@ final class VerifiedAdmissionTests: XCTestCase {
                 store.cancelAllPending(automaticOnly:true)
                 let manual = BrowserControlRequest(id:manualID,key:key,action:.start,data:Data())
                 try store.issue(manual,browser:nil,generation:"call-A",document:"hook-A",microphone:false,verifiedConfigured:true,deadline:nil)
-                let broker = BrowserAudioBroker(make:{ title,mic in
+                let broker = BrowserAudioBroker(make:{ title,mic,captureLocal in
                     XCTAssertEqual(title,manualID,"Retired or numeric IDs must not create outputs")
                     XCTAssertFalse(mic)
-                    return try OwnedBrowserCapture(parent:library,title:title,microphone:mic)
+                    return try OwnedBrowserCapture(parent:library,title:title,microphone:mic,captureLocal:captureLocal)
                 },created:{ _,info in
                     XCTAssertNil(info.automaticCall); XCTAssertNil(info.inputGate)
                     XCTAssertEqual(info.requestID,.string(manualID))
@@ -327,7 +327,7 @@ final class VerifiedAdmissionTests: XCTestCase {
             try FileManager.default.createDirectory(at:library,withIntermediateDirectories:false)
             let store = BrowserAutomaticAdmissionStore(), ready = expectation(description:"Manual peer ready: "+mode)
             let once = VerifiedOnce(ready)
-            let broker = BrowserAudioBroker(make:{ title,mic in
+            let broker = BrowserAudioBroker(make:{ title,mic,captureLocal in
                 XCTAssertFalse(mic)
                 return try OwnedBrowserCapture(parent:library,title:title,microphone:false)
             },created:{ _,info in XCTAssertNil(info.automaticCall); XCTAssertNil(info.inputGate) },stopNative:{ _,reply in reply(nil) },admission:store)
@@ -480,7 +480,7 @@ final class VerifiedAdmissionTests: XCTestCase {
         let applied = expectation(description:"verified active frame reconciled")
         let firstFrame = VerifiedOnce(applied)
         let cancelled = expectation(description:"expired admission classified as cancellation")
-        let broker = BrowserAudioBroker(make:{ _,_ in XCTFail("Expired input must not reserve a recording"); throw BrowserIPCError.unavailable },
+        let broker = BrowserAudioBroker(make:{ _,_,_ in XCTFail("Expired input must not reserve a recording"); throw BrowserIPCError.unavailable },
             created:{ _,_ in XCTFail("No capture may attach") },stopNative:{ _,reply in reply(nil) },admission:store)
         let service = BrowserControlService(changed:{ _ in },completed:{ outcome,automatic in
             if outcome.admissionWithdrawn { XCTAssertTrue(automatic); cancelled.fulfill() }

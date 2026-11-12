@@ -13,7 +13,7 @@ def run(name,command,expected_failure=False):
  assert (r.returncode!=0)==expected_failure,(name,r.returncode)
  return text
 try:
- test.write_bytes(subprocess.check_output(['git','show','b2b561bf1dbf51bbd990cb1c78a1d3e0a07c753f:extension/tests/multistream-relay.test.cjs'],cwd=root))
+ test.write_bytes(subprocess.check_output(['git','show','475b8b792ff0515b35935ef4c5496dd1180a329f:extension/tests/multistream-relay.test.cjs'],cwd=root))
  assert 'Manual lifetime deadline expired during a live native response' in run('before',command,True)
 finally:test.write_bytes(fixed)
 run('after',command)
@@ -24,6 +24,6 @@ try:
  output=run('mutation',['node','--test',str(test)],True)
  assert 'ERR_ASSERTION' in output and 'dom' in output and 'timed out' not in output
 finally:source.write_bytes(original)
-files=([str(root/'tests/event-value.test.mjs')] if (root/'tests/event-value.test.mjs').exists() else [])+[str(f.relative_to(root)) for f in sorted((root/'extension/tests').glob('*.test.cjs'))]
+files=['tests/event-value.test.mjs']+[str(f.relative_to(root)) for f in sorted((root/'extension/tests').glob('*.test.cjs'))]
 run('restored',['node','--test',*files])
 print('Baseline failure, corrected exchange, real production mutation and restored full suite verified')

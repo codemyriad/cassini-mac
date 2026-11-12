@@ -18,15 +18,16 @@ public struct BrowserAudioStart: Sendable {
     public let captureID: String
     public let timelineOriginMs: Int
     public let microphone: Bool
+    public let captureLocal: Bool
     /// The call the Start names (D52.5: its identity), recorded before the app hears of it.
     public let callGeneration: String?
     public let documentGeneration: String?
     public let inputGate: BrowserSignalInputGate?
     public let automaticCall: BrowserVerifiedCall?
     public let requestID: JSON?
-    public init(captureID: String, timelineOriginMs: Int, microphone: Bool, callGeneration: String? = nil,
+    public init(captureID: String, timelineOriginMs: Int, microphone: Bool, captureLocal: Bool = false, callGeneration: String? = nil,
                 documentGeneration: String? = nil, inputGate: BrowserSignalInputGate? = nil, automaticCall: BrowserVerifiedCall? = nil, requestID: JSON? = nil) {
-        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone; self.callGeneration = callGeneration
+        self.captureID = captureID; self.timelineOriginMs = timelineOriginMs; self.microphone = microphone; self.captureLocal = captureLocal; self.callGeneration = callGeneration
         self.documentGeneration = documentGeneration; self.inputGate = inputGate; self.automaticCall = automaticCall; self.requestID = requestID
     }
 }
@@ -53,7 +54,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     private let creating = DispatchGroup()
     private var admissionClosed = false
     private let admission: BrowserAutomaticAdmissionStore?
-    private let make: @Sendable (String,Bool) throws -> OwnedBrowserCapture
+    private let make: @Sendable (String,Bool,Bool) throws -> OwnedBrowserCapture
     private let created: @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void
     private let stopNative: BrowserNativeStop
     private let persistRecord: @Sendable (RecordingManifest,URL) throws -> Void
@@ -69,7 +70,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
     public static let pcmStaleAfter = AudioTransportWatchdog.staleAfter
     fileprivate let clock: @Sendable () -> UInt64
     private var watchdog: DispatchSourceTimer?
-    public init(make: @escaping @Sendable (String,Bool) throws -> OwnedBrowserCapture,
+    public init(make: @escaping @Sendable (String,Bool,Bool) throws -> OwnedBrowserCapture,
                 created: @escaping @Sendable (OwnedBrowserCapture,BrowserAudioStart) -> Void,
                 stopNative: @escaping BrowserNativeStop,
                 persistRecord: @escaping @Sendable (RecordingManifest,URL) throws -> Void = { try CaptureRecordWriter.write($0,directory:$1) },
@@ -242,7 +243,7 @@ public final class BrowserAudioBroker: BrowserAudioHandler, @unchecked Sendable 
             throw error
         }
         let capture: OwnedBrowserCapture
-        do { capture = try make(title,info.microphone) }
+        do { capture = try make(title,info.microphone,info.captureLocal) }
         catch {
             info.inputGate?.cancel(); admission?.retire(info.captureID)
             lock.lock(); if reservations[identity] == peer { reservations.removeValue(forKey:identity) }; lock.unlock(); throw error
@@ -448,6 +449,8 @@ private final class AudioPeer: @unchecked Sendable {
                     let origin = try integer(json["timelineOriginMs"])
                     guard origin <= 253402300799000 else { throw BrowserProtocolError("source","Invalid capture origin.") }
                     guard let list = json["features"]?.array, list.count <= 8 else { throw BrowserProtocolError("version","Invalid recording features.") }
+                    // Resume keeps the original owner's immutable Me mode. The
+                    // companion intentionally omits captureLocal on this packet.
                     var features: [String] = []
                     for item in list {
                         guard let feature = item.string, feature.unicodeScalars.count <= 64, !features.contains(feature) else { throw BrowserProtocolError("version","Invalid recording features.") }
@@ -478,6 +481,11 @@ private final class AudioPeer: @unchecked Sendable {
                 if let value = json["microphone"], !value.isNull {
                     guard let value = value.bool else { throw BrowserProtocolError("source","Invalid microphone choice.") }; mic = value
                 }
+                var captureLocal = false
+                if let value = json["captureLocal"] {
+                    guard let flag = value.bool else { throw BrowserProtocolError("source","Invalid local capture choice.") }
+                    captureLocal = flag
+                }
                 var features: [String] = []
                 if let value = json["features"], !value.isNull {
                     guard let list = value.array, list.count <= 8 else { throw BrowserProtocolError("version","Invalid recording features.") }
@@ -495,7 +503,7 @@ private final class AudioPeer: @unchecked Sendable {
                     else if let text = request.string, !text.isEmpty, text.unicodeScalars.count <= 128 { }
                     else { throw BrowserProtocolError("source","Invalid Start request.") }
                 }
-                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,callGeneration:generation,documentGeneration:json["documentGeneration"]?.string,requestID:json["requestId"]),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
+                let (capture,accepted) = try broker.begin(.init(captureID:id,timelineOriginMs:origin,microphone:mic,captureLocal:captureLocal,callGeneration:generation,documentGeneration:json["documentGeneration"]?.string,requestID:json["requestId"]),title:try string(json,"title",optional:true) ?? "Browser recording",peer:connection.peer.id,browser:connection.peer.browserInstance)
                 originUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970*1000 - Double(origin))/1000
                 owner = capture; inputGate = accepted.inputGate; captureID = id; timelineOriginMs = origin; watch(id)
                 var fields: [(String,JSON)] = [("type",.string("started")),("path",.string(capture.snapshot.directory.path))]

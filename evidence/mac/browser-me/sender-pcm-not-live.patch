@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -22,5 +22,5 @@
+     /// A control-worker gap does not lose a still-streaming selected browser side.
+     public func hasFreshBrowserPCM(nativeMe: Bool, at now: TimeInterval) -> Bool {
+-        let lastPCM = !nativeMe && me ? max(levelTimestamp,meLevelTimestamp) : levelTimestamp
++        let lastPCM = levelTimestamp
+         return browserAlive && transportAlive && lastPCM > 0 && now-lastPCM <= 1
+     }

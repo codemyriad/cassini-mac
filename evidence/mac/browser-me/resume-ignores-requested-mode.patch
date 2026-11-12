@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -824,5 +824,5 @@
+         guard !peer.captures.contains(where:{ $0.key == key }), !peer.pending.values.contains(where:{ $0.request.key == key }) else { throw BrowserControlStateError.busy }
+         guard !captureID.isEmpty, captureID.utf8.count <= 128, (0...253402300799000).contains(timelineOriginMs), lostAtMs.isFinite, lostAtMs >= 0 else { throw BrowserControlStateError.malformed }
+-        var request = try Self.command(key,action:.start,independent:true,microphone:false,captureLocal:captureLocal && peer.supportsSenderMe,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
++        var request = try Self.command(key,action:.start,independent:true,microphone:false,captureLocal:peer.supportsSenderMe,keepOnNavigation:peer.supportsPageState,callGeneration:generation,
+                                        resume:(captureID,timelineOriginMs,lostAtMs))
+         request.resume = true

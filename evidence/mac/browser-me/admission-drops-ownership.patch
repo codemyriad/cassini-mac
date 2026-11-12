@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/VerifiedCallAdmission.swift
++++ b/Sources/CassiniBrowserControl/VerifiedCallAdmission.swift
+@@ -115,5 +115,5 @@
+             try entry.gate?.validate()
+             entries[id]?.capture = info.captureID
+-            return .init(captureID:info.captureID,timelineOriginMs:info.timelineOriginMs,microphone:info.microphone,captureLocal:info.captureLocal,
++            return .init(captureID:info.captureID,timelineOriginMs:info.timelineOriginMs,microphone:info.microphone,captureLocal:false,
+                          callGeneration:info.callGeneration,documentGeneration:info.documentGeneration,inputGate:entry.gate,automaticCall:entry.call,requestID:info.requestID)
+         }

@@ -17,7 +17,7 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
         let writer = owner.nativeWriter(side:.others)
         try writer.addTrack(id:"system",label:"This computer",kind:"system",sampleRate:8000,channels:1)
         try writer.appendNative(id:"system",pcm:Data(repeating:1,count:1600),offsetMs:0)
-        let broker = BrowserAudioBroker(make:{ _,_ in throw BrowserIPCError.unavailable },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
+        let broker = BrowserAudioBroker(make:{ _,_,_ in throw BrowserIPCError.unavailable },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         try broker.ownNative(owner); try await broker.finish(owner)
         try MeetingMetadataWriter(directory:folder,id:id).transaction { $0["title"] = "Edited meeting" }
         let route = try XCTUnwrap((try meeting(folder)["recordingDetails"] as? [String:Any])?["othersRoute"] as? [String:String])
@@ -104,7 +104,7 @@ final class D52CaptureRecordTests: XCTestCase, @unchecked Sendable {
     }
     private func native(_ persist: Persist) throws -> (URL,BrowserAudioBroker,OwnedBrowserCapture) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniRecord-"+UUID().uuidString)
-        let broker = BrowserAudioBroker(make:{ _,_ in throw BrowserIPCError.unavailable },created:{ _,_ in },stopNative:{ _,reply in reply(nil) },
+        let broker = BrowserAudioBroker(make:{ _,_,_ in throw BrowserIPCError.unavailable },created:{ _,_ in },stopNative:{ _,reply in reply(nil) },
                                         persistRecord:{ try persist.run($0,$1) })
         let owner = try OwnedBrowserCapture(parent:root,title:"Native",microphone:true,browser:false)
         let writer = owner.nativeWriter(side:.me)

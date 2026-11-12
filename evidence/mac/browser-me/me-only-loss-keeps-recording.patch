@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -47,5 +47,5 @@
+     public var needsBrowserMeLossStop: Bool {
+         let value = snapshot
+-        return !nativeMe && value.phase == .recording && value.me && !value.others && !value.browserAlive
++        return !nativeMe && value.phase == .recording && value.me && !value.others && value.browserAlive
+     }
+     public let pcmObservers: RecordedPCMObservers

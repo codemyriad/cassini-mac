@@ -1,6 +1,26 @@
-tree a36814d406add17b28fcc651be20fb02deab366c
-parent b2b561bf1dbf51bbd990cb1c78a1d3e0a07c753f
-author Silvio Tomatis <396425+silviot@users.noreply.github.com> 1794426618 +0100
-committer Silvio Tomatis <396425+silviot@users.noreply.github.com> 1794426618 +0100
+tree 3404c6228efc9d351f2df592277221283ac727ee
+parent 156b40c314e7acf4e75d53c2fbc77fdae8deacc4
+parent e3cb34350ed651721a670c6bf075efe043faa880
+author Silvio Tomatis <silviot@gmail.com> 1794501066 +0100
+committer GitHub <noreply@github.com> 1794501066 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq9enKCRC1aQ7uu5UhlAAAgvAQAEcYtFwb0/AMgCBCOuCiD+wu
+ 3hbbFMTEa+myS9ZXHkmteBH9GKmtGn+A8w17atBxfRK09QH7+zL3s2oZkMo3D4Wr
+ zpTNZ0BPtwhLTTPuzmHZpuEBMD+V8yx14YcFedhjvaYz/h0/C+KdUykyIUtKFlmS
+ XRb3IiMg+jNI2BvXQxCrPdB6rkLQ3mWUSICWJFXNUcjbAYPKkgjSkt5ck77FvUYe
+ Ug4By50Iojhfks4hbXKTzw3TT0rV3of9s8qzI2kotBWJ3AUr16CORiH3WCKH4B5q
+ np0Ea18hVtzmOpX8UCmlIT4i1gUgefyEFkcrHOl4CVTXbxtenA+V7x8ywIKiNNvo
+ B82BGzeV546rqIZXBEk7JnjMJzWUa0m6GjP/fn+QgDDpTytGoBcLUtG7thhEq/s4
+ oN05HNEazhTPEwtbR085mnb0IzBE/Z8WUeyUW94E1fpUWpdhbH4ByqLhe1U0T8XZ
+ nwrycVQLi9fnHieZe+1wehpyDDV4ONvcZgEkzIcKkoYPL4npDx0lyKg7SJqQZx6R
+ ql/PDl9bLjrlDR+iDIOGJu8DniN3i54CBnj2vi3a1UvVpAD0YQm5C+D6qNmvhDxV
+ za+leSc8u9fs410JP5+63hEnxDZdTTP1geCO5Wi2ESbOS5VnLwSpnG8oNEbfglqx
+ 4EnS3GR7aorL/ChvVzzu
+ =9GHY
+ -----END PGP SIGNATURE-----
+ 
 
-test: backport merged #99 relay event fixture to Mac contract pin
+Merge pull request #102 from codemyriad/fix/auto-record-webaudio-lineage
+
+Start automatic recording when the page processes the microphone through WebAudio (Teams)

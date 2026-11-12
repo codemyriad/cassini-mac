@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -510,5 +510,5 @@
+             if resuming { self.resumeAt = time }
+             if resuming && !self.browserAlive { self.systemReason = self.fallbackReason ?? "user" }
+-            if resumingMe || (revivingBrowser && !self.nativeMe) { self.meResumeAt = time }
++            if resumingMe || (revivingBrowser && !self.nativeMe && newMe) { self.meResumeAt = time }
+             self.publish()
+         }

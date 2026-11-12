@@ -41,8 +41,9 @@ final class D69WriterLossTests: XCTestCase {
                 }
                 let owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
                 if writerLoss {
-                    let mic = owner.nativeWriter(side:.me)
-                    try mic.addTrack(id:"mic",label:"Microphone",kind:"microphone",sampleRate:8000,channels:1)
+                    try owner.browserLost(atMs:0)
+                    let mic = owner.nativeWriter(side:.others)
+                    try mic.addTrack(id:"mic",label:"Microphone",kind:"system",sampleRate:8000,channels:1)
                     try mic.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:0)
                     try mic.padNative(id:"mic",frames:8000,channels:1,rate:8000,offsetMs:1000,kind:"writer")
                     try mic.appendNative(id:"mic",pcm:Data(repeating:1,count:16000),offsetMs:Double(2000+nativeGapMs),gapKind:"input")
@@ -54,8 +55,8 @@ final class D69WriterLossTests: XCTestCase {
                 if writerLoss {
                     let details = RecordingDetailsReport(.load(folder:owner.snapshot.directory,lifecycle:.saved,title:"Synthetic call",transcriptDone:false))
                     let busy = details.sources.compactMap(\.computerBusy)
-                    XCTAssertEqual(busy.count,1,"the native microphone is shown beside the negotiated browser source")
-                    XCTAssertEqual(busy.first?.values["source"],.catalog("common.yourMicrophone"))
+                    XCTAssertEqual(busy.count,1,"native system audio is shown beside the negotiated browser source")
+                    XCTAssertEqual(busy.first?.values["source"],.catalog("recordFirst.sound.title"))
                     XCTAssertEqual(busy.first?.values["duration"],.duration(1000))
                 }
             } catch { await fixture.finish(); throw error }
@@ -68,9 +69,9 @@ final class D69WriterLossTests: XCTestCase {
         for gapMs in [0,500,1250] {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("D69Stopped-"+UUID().uuidString)
             defer { try? FileManager.default.removeItem(at:root) }
-            let owner = try OwnedBrowserCapture(parent:root.appendingPathComponent("Library"),title:"Synthetic call",microphone:true)
+            let owner = try OwnedBrowserCapture(parent:root.appendingPathComponent("Library"),title:"Synthetic call",microphone:true,browser:false)
             let sink = owner.nativeSink(side:.me,originHostTime:1,failure:{ _ in })
-            let broker = BrowserAudioBroker(make:{ _,_ in owner },created:{ _,_ in },stopNative:{ _,reply in
+            let broker = BrowserAudioBroker(make:{ _,_,_ in owner },created:{ _,_ in },stopNative:{ _,reply in
                 do { try sink.finish(problem:nil); reply(nil) } catch { reply(error.localizedDescription) }
             })
             let service = BrowserControlService(changed:{ _ in },completed:{ _,_ in },audio:broker)

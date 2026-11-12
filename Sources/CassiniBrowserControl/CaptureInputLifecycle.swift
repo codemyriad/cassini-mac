@@ -153,6 +153,8 @@ private final class SourceChangeToken: @unchecked Sendable {
         try await enqueue {
             guard !self.closed, self.capture.snapshot.phase == .recording else { throw BrowserIPCError.closed }
             let before = self.capture.snapshot
+            // Reject an unavailable browser-only choice before pausing Others.
+            guard self.capture.nativeMe || !me || others || before.browserAlive else { throw BrowserIPCError.unavailable }
             var prepared: [CaptureSide:Input] = [:]
             var paused: Set<CaptureSide> = []
             let previousFailures = self.failedSides
@@ -164,7 +166,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                         try await self.prepare(.others,driver:self.system(),source:selectionToken,refusingAt:atMs)
                     }
                 }
-                if me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
+                if self.capture.nativeMe && me && (self.inputs[.me] == nil || self.failedSides.contains(.me)) {
                     prepared[.me] = try await self.turnOn(.me,turningOn:!before.me,into:refusedNow) {
                         try await self.prepare(.me,driver:self.microphone(),refusingAt:atMs)
                     }
@@ -489,7 +491,7 @@ private final class SourceChangeToken: @unchecked Sendable {
               if closed { return }; noteFailure(.others,error,opened:signal.hasFired)
           }
         }
-        if capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
+        if capture.nativeMe && capture.snapshot.me && inputs[.me] == nil && !failedSides.contains(.me) {
           let signal = FirstBufferSignal()
           do {
             guard !closed, admission() else { throw CancellationError() }

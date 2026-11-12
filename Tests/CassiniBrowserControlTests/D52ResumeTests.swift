@@ -44,6 +44,7 @@ final class D52ResumeTests: XCTestCase, @unchecked Sendable {
             let client = try fixture.client()
             let started = try client.request(resume(id))
             XCTAssertEqual(started["type"]?.string,"started"); XCTAssertEqual(started["resumed"]?.bool,true)
+            XCTAssertTrue(capture.nativeMe,"D49 resume retains its original OS Me ownership")
             XCTAssertEqual(started["captureId"]?.string,id); XCTAssertEqual(started["timelineOriginMs"]?.int,origin)
             XCTAssertEqual(started["callGeneration"]?.string,"call-A")
             XCTAssertEqual(Set(started["features"]?.array?.compactMap(\.string) ?? []),["source-outcomes-v1","resume-capture-v1"])

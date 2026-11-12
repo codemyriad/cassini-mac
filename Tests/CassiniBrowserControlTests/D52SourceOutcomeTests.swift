@@ -205,7 +205,7 @@ final class D52SourceOutcomeTests: XCTestCase, @unchecked Sendable {
             try await microphoneRecording(fixture,limitStarted)
             let full = try saved(try limited.request(["type":"stop","captureId":"mic-limit"]))
             XCTAssertEqual(full.tracks.count,64)
-            XCTAssertGreaterThan(try XCTUnwrap(full.tracks.first { $0.kind == "microphone" }).frames,0,"the microphone kept its slot")
+            XCTAssertGreaterThan(try XCTUnwrap(full.tracks.first { $0.kind == "microphone" }).frames,0,"the legacy native microphone kept its slot")
 
             // A suspension over 60 s refuses only that chunk; the span stays open and a new span resumes.
             let gap = try fixture.client()
@@ -354,17 +354,16 @@ final class D52UnselectedSourceTests: XCTestCase {
         XCTAssertNil(selected.captureExpected,"Selection makes the source expected permanently")
         XCTAssertEqual(late.snapshot.manifest.problemKind,"capture")
     }
-    /// A page microphone is recorded natively as Me, so it is never expected from the browser.
-    func testAPageMicrophoneIsNotExpectedEvenWithTheOthersOn() async throws {
+    /// A selected page microphone is now expected from the browser, even if no PCM arrives.
+    func testASelectedPageMicrophoneIsExpectedIndependentlyOfOthers() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D52Local-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
         let capture = try owner(root)
         try capture.discover([.init(sourceTrackId:"page-mic",kind:"local",label:"Microphone")])
         try await capture.finish()
         let row = try XCTUnwrap(capture.snapshot.manifest.captureOutcome?.sources.first)
-        XCTAssertEqual(row.captureExpected,false); XCTAssertEqual(row.captureOutcome,.neverAudio)
-        // No audio at all saves as "empty"; the page microphone never makes it a capture problem.
-        XCTAssertNotEqual(capture.snapshot.manifest.problemKind,"capture")
+        XCTAssertNil(row.captureExpected); XCTAssertEqual(row.captureOutcome,.neverAudio)
+        XCTAssertEqual(capture.snapshot.manifest.problemKind,"capture")
     }
     /// A span declared while The others is off is still bound to its source, as unexpected.
     func testADeselectedSpanIsBoundButNotExpected() async throws {

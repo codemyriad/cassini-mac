@@ -6,7 +6,7 @@ import CassiniRecording
 /// Shared test 2 (D68): the app side of the protocol live-folder driver's app adapter
 /// (scripts/test-live-folder.mjs). Hosted only. Chromium owns the real call, extension and
 /// native hosts (registered by the driver's launchers, so companion setup never runs and never
-/// rewrites them); native sides use the guarded RAM fixture (a 440 Hz microphone tone).
+/// rewrites them); native sides use the guarded RAM fixture (a distinct 660 Hz OS microphone tone).
 ///
 /// One JSON command per stdin line, `{"id":n,"command":…}`, answered by one stdout line
 /// `{"id":n,"ok":true,"value":…}` or `{"id":n,"ok":false,"error":…}`. The first stdout line is

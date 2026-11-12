@@ -81,14 +81,14 @@ private final class CaptureFiles: @unchecked Sendable {
             RecordingDiskWatch.inspect(destination,rate:0)?.shouldStop == false
         }) == true
     }
-    func create(title: String, microphone: Bool, browser: Bool = true, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void) throws -> OwnedBrowserCapture {
+    func create(title: String, microphone: Bool, browser: Bool = true, captureLocal: Bool = true, changed: @escaping @Sendable (OwnedCaptureSnapshot) -> Void) throws -> OwnedBrowserCapture {
         guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
         return try LibraryRouting.withRecordingAccess(file:locationFile,defaultRoot:defaultRoot) { destination,access in
             guard lock.withLock({ !closed && !moving }) else { throw BrowserIPCError.closed }
             let id = UUID()
             CaptureActivityStore.shared.set(id,.preparing)
             do {
-                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,id:id,managedBrowser:browser,changed:{ [access] snapshot in
+                let owner = try OwnedBrowserCapture(parent:destination,title:title,microphone:microphone,browser:browser,captureLocal:captureLocal,id:id,managedBrowser:browser,changed:{ [access] snapshot in
                     withExtendedLifetime(access) { changed(snapshot) }
                 })
                 do { try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded() }
@@ -150,8 +150,8 @@ private final class CaptureFiles: @unchecked Sendable {
         return ProcessInfo.processInfo.systemUptime
     })
     @ObservationIgnored private lazy var files = CaptureFiles(file:LibraryLaunchContext.locationFile,root:RecordingFixture.root ?? LibraryLocation.standardRoot)
-    @ObservationIgnored private lazy var broker = BrowserAudioBroker(make:{ [weak self,files] title,mic in
-        try files.create(title:title,microphone:mic) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
+    @ObservationIgnored private lazy var broker = BrowserAudioBroker(make:{ [weak self,files] title,mic,captureLocal in
+        try files.create(title:title,microphone:mic,captureLocal:captureLocal) { [weak self] snapshot in DispatchQueue.main.async { self?.changed(snapshot) } }
     },created:{ [weak self] owner,info in Task { @MainActor in await self?.created(owner,info:info) } },stopNative:{ [weak self] owner,reply in
         Task { @MainActor in
             guard let self, let value = self.captures[owner.snapshot.manifest.id] else { reply(nil); return }
@@ -319,9 +319,8 @@ private final class CaptureFiles: @unchecked Sendable {
         let generation = autoGeneration
         autoRecord = enabled; RecordingPreferences.defaults.set(enabled,forKey:"CassiniAutoRecord")
         if !enabled { service.setAutoRecord(false,microphone:true); return }
-        // Microphone consent precedes automatic capture admission. Optional
-        // notification consent is requested only after working inputs start.
-        await authorizeMicrophone()
+        // Input authorization belongs to the selected route; separated calls
+        // never request hardware microphone consent.
         guard !shuttingDown, generation == autoGeneration else { return }
         service.setAutoRecord(true,microphone:true)
     }
@@ -501,6 +500,10 @@ private final class CaptureFiles: @unchecked Sendable {
             settle(snapshot)
             return
         }
+        if captures[id]?.owner.needsBrowserMeLossStop == true, captures[id]?.savingSinceMs == nil {
+            stop(id,reason:.pageGone,userInitiated:false)
+            return
+        }
         if snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }) {
             attemptHasAudio = true; recordFailed = false
             let phase: CaptureActivity = snapshot.phase == .saving || captures[id]?.savingSinceMs != nil ? .saving : .recording
@@ -517,7 +520,9 @@ private final class CaptureFiles: @unchecked Sendable {
     private func settle(_ snapshot: OwnedCaptureSnapshot) {
         let id = snapshot.manifest.id
         guard snapshot.phase == .saved, captures[id] != nil || CaptureActivityStore.shared.snapshot()[id] != nil else { return }
-        if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing {
+        let browserMeWasLost = !snapshot.browserAlive || snapshot.manifest.events?.last?.reason == CaptureEndReason.pageGone.rawValue
+        let keepBrowserMeProblem = captures[id]?.owner.nativeMe == false && snapshot.me && !snapshot.others && browserMeWasLost && snapshot.manifest.problem != nil
+        if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing, !keepBrowserMeProblem {
                 guard settling[id] == nil else { return }
                 let signalOwned = captures[id]?.signalReservation != nil
                 let admissionCancelled = captures[id]?.admissionCancelled == true
@@ -777,7 +782,7 @@ private final class CaptureFiles: @unchecked Sendable {
                 // Fresh PCM on the original owned transport is stronger than
                 // a brief gap in management discovery. It never overrides an
                 // explicit navigating/closed report or a dead audio transport.
-                let fresh = source.browserAlive && source.transportAlive && now-source.levelTimestamp <= 1
+                let fresh = source.hasFreshBrowserPCM(nativeMe:value.owner.nativeMe,at:now)
                 let reportedPage = page?.0 ?? (fresh ? .present : nil)
                 // A reconnect's status can precede its first meeting inventory.
                 // Present alone does not confirm that the call has zero sources.
@@ -865,9 +870,14 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     private func refreshLevels(_ id: UUID, _ value: LiveCapture) {
         let status = value.input.status()
+        // Read the latest cached meter even when no later packet publishes a UI snapshot.
+        let source = value.owner.snapshot
         captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
-        if value.snapshot.browserAlive && value.snapshot.others {
-            captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - value.snapshot.levelTimestamp <= 1 ? value.snapshot.browserLevel : 0
+        if source.browserAlive && source.others {
+            captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - source.levelTimestamp <= 1 ? source.browserLevel : 0
+        }
+        if !value.owner.nativeMe {
+            captures[id]?.levels[.me] = source.me && source.browserAlive && ProcessInfo.processInfo.systemUptime - source.meLevelTimestamp <= 1 ? source.browserMeLevel : 0
         }
         if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
     }
@@ -939,11 +949,5 @@ private final class CaptureFiles: @unchecked Sendable {
         #endif
         return side == .me ? MeetingMicrophoneInput() : MeetingSystemInput()
     }
-    private func authorizeMicrophone() async {
-        #if DEBUG
-        if CaptureFixture.enabled { try? await CaptureFixtureInput(.me).authorize(); return }
-        if RecordingFixture.enabled { return }
-        #endif
-        try? await NativeRecordingInputs().authorize()
-    }
+
 }

@@ -127,7 +127,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
 
     @MainActor func testSharedWriterCasesOnTheNoFallbackProfile() async throws {
         let cases = try XCTUnwrap(try vectors()["cases"]?.array)
-        XCTAssertEqual(cases.count,17)
+        XCTAssertEqual(cases.count,15)
         var replayed = 0
         for vector in cases where vector["profile"]?.string == nil || vector["profile"]?.string == "noFallback" {
             let name = try XCTUnwrap(vector["name"]?.string)
@@ -146,7 +146,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
                 XCTAssertEqual(got["banner"]?["refusals"]?.array?.count,1,name)
             }
         }
-        XCTAssertEqual(replayed,13)
+        XCTAssertEqual(replayed,12)
     }
     /// Selection times are compared to the second the app applied them at (it adds its own latency).
     private func normalized(_ value: JSON, key: String) -> JSON {
@@ -596,7 +596,8 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         let (root,owner,inputs) = try lostBrowser(script) { message in XCTFail("no failure: \(message)") }
         defer { try? FileManager.default.removeItem(at:root) }
         try await inputs.start()
-        await waitUntil(inputs) { inputs.openedSides.contains(.me) }
+        XCTAssertFalse(inputs.openedSides.contains(.me))
+        XCTAssertNil(script.drivers[.me],"A separated browser never requests a microphone driver")
         try owner.browserLost(atMs:1000,transportAlive:false)
         try await inputs.fallback()
         XCTAssertFalse(inputs.openedSides.contains(.others)); XCTAssertNil(inputs.refusedSides[.others])
@@ -618,7 +619,8 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         let (root,owner,inputs) = try lostBrowser(script) { message in XCTFail("a pre-buffer error is not a recording failure: \(message)") }
         defer { try? FileManager.default.removeItem(at:root) }
         try await inputs.start()
-        await waitUntil(inputs) { inputs.openedSides.contains(.me) }
+        XCTAssertFalse(inputs.openedSides.contains(.me))
+        XCTAssertNil(script.drivers[.me],"A separated browser never requests a microphone driver")
         try owner.browserLost(atMs:1000,transportAlive:false)
         try await inputs.fallback()
         try XCTUnwrap(script.drivers[.others]).failure?("The audio configuration changed.")
@@ -629,7 +631,7 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         let manifest = owner.snapshot.manifest
         XCTAssertNil(manifest.problemKind)
         XCTAssertEqual(manifest.refusals?.map(\.side),["others"])
-        XCTAssertTrue(manifest.tracks.contains { $0.kind == "microphone" && $0.frames > 0 })
+        XCTAssertTrue(manifest.tracks.contains { $0.kind == "remote" && $0.frames > 0 })
     }
     /// D58.1: a fallback whose system audio macOS denies is recorded as permissionDenied, the one
     /// case that shows the permission line and Open System Settings.
@@ -639,7 +641,8 @@ final class D58RefusalWriterTests: XCTestCase, @unchecked Sendable {
         let (root,owner,inputs) = try lostBrowser(script) { _ in }
         defer { try? FileManager.default.removeItem(at:root) }
         try await inputs.start()
-        await waitUntil(inputs) { inputs.openedSides.contains(.me) }
+        XCTAssertFalse(inputs.openedSides.contains(.me))
+        XCTAssertNil(script.drivers[.me],"A separated browser never requests a microphone driver")
         try owner.browserLost(atMs:1000,transportAlive:false)
         do { try await inputs.fallback(); XCTFail("a denied fallback throws") } catch {}
         XCTAssertTrue(inputs.failedSides.contains(.others)); XCTAssertTrue(inputs.othersDenied)

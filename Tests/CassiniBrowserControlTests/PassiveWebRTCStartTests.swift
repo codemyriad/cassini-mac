@@ -44,7 +44,7 @@ final class PassiveWebRTCStartTests: XCTestCase {
         applied.expectedFulfillmentCount = wire.filter { $0["type"] as? String == "status" }.count
         // This broker can never create a recording, open a device or run an audio
         // input. The real control service still emits its actual wire commands.
-        let broker = BrowserAudioBroker(make:{ _,_ in XCTFail("No recording may be created"); throw BrowserIPCError.unavailable },
+        let broker = BrowserAudioBroker(make:{ _,_,_ in XCTFail("No recording may be created"); throw BrowserIPCError.unavailable },
             created:{ _,_ in XCTFail("No audio capture may attach") },stopNative:{ _,reply in reply(nil) })
         let service = BrowserControlService(changed:{ state.update($0) },completed:{ _,_ in },audio:broker,
             canStart:{ true },clock:{ state.now() },received:{ if $0 == "status" { applied.fulfill() }; if $0 == "callSignals" { signalsApplied.fulfill() } },requireMultiStream:true,requireVerifiedAdmission:true,signalAction:{ state.signal($0) })

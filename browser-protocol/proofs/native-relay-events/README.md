@@ -31,12 +31,3 @@ Logs are retained on the coordinator at ~/coordination/evidence/mac-flaky/:
 protocol-relay-before-deadline.log, protocol-relay-after-deadline.log,
 protocol-relay-mutation.log and protocol-relay-all.log. Every success depends
 on actual protocol events, never the passage of time.
-
-This release backport applies the exact test-fixture blob from merged #99 onto
-Mac's existing b2b561b pin. The production extension files are unchanged. Its
-replay uses b2b561b as the baseline and runs every unit test present at that pin;
-the newer main-only event-value test file is absent here.
-
-Backport validation: all 447 Node unit tests present at this pin pass after
-restoration. The committed provenance mutation fails an executed assertion,
-and the controlled lifetime probe reproduces the old failure.

@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -646,5 +646,5 @@
+     fileprivate func nativeTrack(side: CaptureSide, label: String, rate: Int, channels: Int) throws -> String? {
+         try sync {
+-            guard phase == .recording, side == .me ? (me && nativeMe) : others && !browserAlive else { return nil }
++            guard phase == .recording, side == .me ? me : others && !browserAlive else { return nil }
+             guard (8000...192000).contains(rate), (1...2).contains(channels) else { throw RecordingError.invalid("Unsupported native source format.") }
+             guard reservedNative.contains(side) || recording.manifest.tracks.count + pendingNative < 64 else { throw RecordingError.limit("Too many recording tracks.") }

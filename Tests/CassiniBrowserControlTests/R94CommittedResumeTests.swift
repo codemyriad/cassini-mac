@@ -11,6 +11,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
     func testHeldCheckpointPublishesExactFractionalSeamAndReconnectUsesItAgain() async throws {
         try await exercise(held:true,atMs:96_027.15)
     }
+    func testModernBrowserOwnerKeepsSenderModeOnResume() async throws { try await exercise(atMs:96_027.15,browserLocalMe:true) }
     func testInitialStandInPreservesZero() async throws { try await exercise(atMs:0) }
     func testFailedCheckpointNeverAuthorizesResume() async throws {
         for phase in [RecordingCheckpointPhase.audioFileSynchronized,.audioDeviceSynchronized,.audioSynchronized,.metadataSynchronized,.metadataPublished] {
@@ -26,7 +27,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
     func testNoneLostAndDeselectedSourcesAreNotResumeTargets() async throws {
         let fixture = try AudioFixture()
         do {
-            let owner = try OwnedBrowserCapture(parent:fixture.root.appendingPathComponent("Library"),title:"Synthetic call",microphone:false)
+            let owner = try OwnedBrowserCapture(parent:fixture.root.appendingPathComponent("Library"),title:"Synthetic call",microphone:false,captureLocal:false)
             try owner.browserLost(atMs:100)
             let none = expectation(description:"none/lost rejected")
             owner.withCommittedResume { XCTAssertNil($0); none.fulfill() }
@@ -63,7 +64,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
     }
 
     private func exercise(held: Bool = false, failing: RecordingCheckpointPhase? = nil,
-                          stop: Bool = false, stopAtDispatch: Bool = false, atMs: Double) async throws {
+                          stop: Bool = false, stopAtDispatch: Bool = false, atMs: Double, browserLocalMe: Bool = false) async throws {
         let peers = R94Peers(), gate = DispatchSemaphore(value:0), dispatchGate = DispatchSemaphore(value:0)
         let entered = XCTestExpectation(description:"checkpoint entered"), dispatchEntered = XCTestExpectation(description:"dispatch eligibility entered")
         let fixture = try AudioFixture(controlClock:{ peers.clock.now },canStart:{
@@ -77,11 +78,11 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
             var key = try XCTUnwrap(peers.key)
             let owner: OwnedBrowserCapture
             if atMs == 0 {
-                owner = try OwnedBrowserCapture(parent:fixture.root.appendingPathComponent("Library"),title:"Synthetic call",microphone:false,browser:false)
+                owner = try OwnedBrowserCapture(parent:fixture.root.appendingPathComponent("Library"),title:"Synthetic call",microphone:true,browser:false)
                 try fixture.broker.ownNative(owner,timelineOriginMs:1_793_500_000_000)
             } else {
                 let audio = try fixture.client()
-                let started = try audio.request(["type":"start","version":1,"independent":true,"captureId":"r94","timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":false,"title":"Synthetic call"])
+                let started = try audio.request(["type":"start","version":1,"independent":true,"captureId":"r94","timelineOriginMs":Int(Date().timeIntervalSince1970*1000),"microphone":false,"captureLocal":browserLocalMe,"title":"Synthetic call"])
                 XCTAssertEqual(started["type"]?.string,"started")
                 owner = try XCTUnwrap(fixture.broker.activeCaptures.first)
                 let closed = fixture.closures.next("audio transport lost")
@@ -133,6 +134,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
                 XCTAssertEqual(command["resumeCapture"]?["timelineOriginMs"]?.int,identity.timelineOriginMs)
                 // A worker/control reconnect must carry the same committed seam,
                 // with a new request id; it cannot substitute reconnection time.
+                XCTAssertEqual(command["captureLocal"]?.bool,!owner.nativeMe,"A newer companion must retain this owner's original Me mode")
                 let previous = command["requestId"]?.string
                 peers.clock.advance(); fixture.service.tickHeartbeats()
                 XCTAssertEqual(try receive(XCTUnwrap(client))["type"]?.string,"ping","No duplicate ask preceded the pipe fence")
@@ -148,6 +150,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
                 let reconnect = try receive(XCTUnwrap(client))
                 XCTAssertEqual(reconnect["resumeCapture"]?["lostAtMs"]?.double,atMs,"\(reconnect)")
                 XCTAssertNotEqual(reconnect["requestId"]?.string,previous)
+                XCTAssertEqual(reconnect["captureLocal"]?.bool,!owner.nativeMe)
                 peers.clock.advance(); fixture.service.tickHeartbeats()
                 XCTAssertEqual(try receive(XCTUnwrap(client))["type"]?.string,"ping")
             }
@@ -158,7 +161,7 @@ final class R94CommittedResumeTests: XCTestCase, @unchecked Sendable {
     private func connect(_ fixture: AudioFixture) throws -> PipeEndpoint {
         let client = try PipeEndpoint(root:fixture.ipc,role:.control,browser:"Chrome")
         for value: [String:Any] in [
-            ["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1","page-state-v1","resume-capture-v1","heartbeat-v1"]],
+            ["type":"hello","version":1,"capabilities":["independent-sessions-v1","multi-stream-v1","page-state-v1","resume-capture-v1","heartbeat-v1","sender-me-v1"]],
             ["type":"meetings","meetings":[["tabId":2,"title":"Synthetic call","url":"https://meet.example/2","sourceCount":1,"heard":true,"callGeneration":"call-A"]]],
             ["type":"status","recording":false,"tabId":NSNull(),"path":NSNull(),"message":"Ready","sessions":[]]] {
             try client.send(JSONSerialization.data(withJSONObject:value))

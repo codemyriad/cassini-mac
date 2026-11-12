@@ -84,12 +84,13 @@ private struct ACLevelChannel {
     }
 }
 /// AC peak over continuous 100 ms windows, independently centred per channel.
-private struct ACLevelWindow {
-    var left = ACLevelChannel(), right = ACLevelChannel(), count = 0
-    mutating func receive(_ value: Float, channel: Int) {
+package struct ACLevelWindow {
+    package init() {}
+    private var left = ACLevelChannel(), right = ACLevelChannel(), count = 0
+    package mutating func receive(_ value: Float, channel: Int) {
         if channel == 0 { left.receive(value) } else { right.receive(value) }
     }
-    mutating func endFrame(channels: Int, window: Int) -> Float? {
+    package mutating func endFrame(channels: Int, window: Int) -> Float? {
         count += 1
         guard count >= window else { return nil }
         let value = max(left.peak(count:count),channels == 2 ? right.peak(count:count) : 0)

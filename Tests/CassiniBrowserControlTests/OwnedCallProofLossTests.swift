@@ -59,7 +59,7 @@ final class OwnedCallProofLossTests: XCTestCase {
                 admission:{ gate.permits },inputGate:gate)
             try await inputs.start()
             try gate.admit { try owner.browserAudio(id:"remote",sequence:0,offsetMs:0,pcm:Data(repeating:1,count:1600)) }
-            XCTAssertTrue(gate.hasOpened); XCTAssertTrue(inputs.hasRunningInputs)
+            XCTAssertTrue(gate.hasOpened); XCTAssertFalse(inputs.hasRunningInputs,"Browser PCM needs no native inputs")
             if transition == "auto-off" { store.cancelAllPending(automaticOnly:true) }
             if transition == "worker-restart" { store.complete("automatic-owner") }
             clock.set(6); store.update(pending:[:],owned:[:],ended:[])
@@ -73,7 +73,7 @@ final class OwnedCallProofLossTests: XCTestCase {
             let off = try await inputs.select(me:false,others:true,atMs:2500)
             let on = try await inputs.select(me:true,others:true,atMs:3000)
             XCTAssertTrue(off.isEmpty); XCTAssertTrue(on.isEmpty)
-            XCTAssertEqual(restartedMic.starts,1,"Me can reopen inside running loss grace")
+            XCTAssertEqual(restartedMic.starts,0,"Separated Me must not open hardware during loss grace")
             XCTAssertTrue(inputs.failedSides.isEmpty)
             XCTAssertEqual(owner.snapshot.phase,.recording)
             clock.set(124.999); XCTAssertNil(store.endReason(start.captureID)); XCTAssertTrue(gate.permits)

@@ -1,0 +1,9 @@
+--- a/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
++++ b/Sources/CassiniBrowserControl/OwnedBrowserCapture.swift
+@@ -603,5 +603,5 @@
+             for id in Array(self.browserSources.keys) {
+                 self.browserSources[id]?.span = spans[id]; self.browserSources[id]?.returning = false
+-                self.browserSources[id]?.current = returned.contains(id)
++                self.browserSources[id]?.current = spans[id] != nil
+             }
+             self.nativeSpans = self.nativeSpans.filter { $0.value.side == .me }; self.reservedNative.remove(.others)
