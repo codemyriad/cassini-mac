@@ -73,18 +73,14 @@ public enum MeetingFileExporter {
             // #116 r4: a trusted file opened from outside the Library that carries our namespace
             // goes out byte-for-byte (nothing of it can change on Mac, and a rebuild could drop
             // its other transcripts under the same revision), once its namespace is one this app
-            // can carry (D65). A malformed v1 local label must instead be dropped.
-            let originalUTC = file.manifest?.raw["meeting"]?["recordedAtUtc"]
-            let canCarryUTC = originalUTC == nil || originalUTC?.string.map(validUTCRecordingInstant) == true
-            let canCarryCreated = file.manifest.map {MeetingTime.normalizedUTC($0.meeting.createdAtUtc) == $0.meeting.createdAtUtc} ?? false
-            let originalLocal = file.manifest?.raw["meeting"]?["recordedAtLocal"]
-            let canCarryLocal = originalLocal == nil || originalLocal?.string.map(validLocalRecordingLabel) == true
-            let canCarryTime = file.manifest.map { m in
-                file.tags?["CASSINI_RECORDED_AT_UTC"] == m.meeting.recordedAtUtc &&
-                file.tags?["CASSINI_RECORDED_AT_LOCAL"] == m.meeting.recordedAtLocal &&
-                file.tags?["DATE"] == MeetingTime.dateTag(recordedAtUtc:m.meeting.recordedAtUtc,createdAtUtc:m.meeting.createdAtUtc,legacy:file.tags?["DATE"])
-            } ?? false
-            if !LibraryScanner.isMeetingFolder(meeting.folder), file.state == .ok, canCarryUTC, canCarryCreated, canCarryLocal, canCarryTime,
+            // can carry (D65) and its timestamps and mirror tags need no repair.
+            let candidateDate = file.tags?["DATE"]
+            let candidateCreated = createdAtUtc(meeting,original:file.manifest,dateTag:candidateDate,exportTime:exportTime)
+            let candidateUtc = exportedRecordedUtc(meeting,original:file,dateTag:candidateDate)
+            let candidateLocal = exportedRecordedLocal(meeting,original:file.manifest)
+            let candidateMirror = MeetingTime.dateTag(recordedAtUtc:candidateUtc,createdAtUtc:candidateCreated.value,legacy:candidateDate)
+            if !LibraryScanner.isMeetingFolder(meeting.folder),
+               timestampsMatchOriginal(file,created:candidateCreated,recordedUtc:candidateUtc,recordedLocal:candidateLocal,mirrorDate:candidateMirror),
                let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
                 _ = try CodemyriadNamespace.validated(namespace)
                 guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
@@ -205,8 +201,53 @@ public enum MeetingFileExporter {
         }
         try emit(limiter.finish())
     }
-    private static func validUTCRecordingInstant(_ value: String) -> Bool {
-        MeetingTime.normalizedUTC(value) == value
+    private static func singleTag(_ tags: TagSet?, _ name: String, equals expected: String?) -> Bool {
+        guard let tags else { return false }
+        let matching = tags.comments.filter { $0.name.uppercased() == name }
+        guard let expected else { return matching.isEmpty }
+        return matching == [Comment(name:name,value:expected)]
+    }
+    private static func timestampsMatchOriginal(_ file: CassiniFile?, created: (value: String, exportTime: Bool),
+                                                recordedUtc: String?, recordedLocal: String?, mirrorDate: String) -> Bool {
+        guard let file, file.state == .ok, let rawMeeting = file.manifest?.raw["meeting"] else { return false }
+        return !created.exportTime
+            && rawMeeting["createdAtUtc"] == .string(created.value)
+            && rawMeeting["recordedAtUtc"] == recordedUtc.map(JSON.string)
+            && rawMeeting["recordedAtLocal"] == recordedLocal.map(JSON.string)
+            && singleTag(file.tags,"CASSINI_CREATED_AT",equals:created.value)
+            && singleTag(file.tags,"CASSINI_RECORDED_AT_UTC",equals:recordedUtc)
+            && singleTag(file.tags,"CASSINI_RECORDED_AT_LOCAL",equals:recordedLocal)
+            && singleTag(file.tags,"DATE",equals:mirrorDate)
+    }
+    private static func exportedRecordedUtc(_ meeting: LibraryMeeting, original file: CassiniFile?, dateTag: String?) -> String? {
+        if meeting.state.origin == .own { return meeting.start.map(MeetingTime.utcString) }
+        if let original = file?.manifest {
+            var utc = original.meeting.recordedAtUtc.flatMap(MeetingTime.normalizedUTC)
+            // Repairing an invalid creation stamp must not make a known DATE
+            // equal the replacement creation stamp and erase the recording time.
+            if utc == nil, MeetingTime.canonicalUTC(original.meeting.createdAtUtc) == nil,
+               let known = file?.meetingTime, known.source == .date {
+                utc = MeetingTime.canonicalUTC(known.value)
+            }
+            return utc
+        }
+        return dateTag.flatMap(utcForLegacyDATE)
+    }
+    private static func exportedRecordedLocal(_ meeting: LibraryMeeting, original: Manifest?) -> String? {
+        if meeting.state.origin == .own, let start = meeting.start,
+           let offset = meeting.recordingUtcOffsetMinutes, let siteZone = TimeZone(secondsFromGMT:offset * 60) {
+            let local = DateFormatter(); local.locale = Locale(identifier:"en_US_POSIX")
+            local.calendar = Calendar(identifier:.gregorian); local.timeZone = siteZone
+            local.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            let second = Date(timeIntervalSince1970:start.timeIntervalSince1970.rounded(.down))
+            return local.string(from:second)
+        }
+        if let recorded = original?.meeting.recordedAtLocal, validLocalRecordingLabel(recorded) {
+            // The original label belongs to the recording site. An offset or fraction
+            // is invalid in v1; discard it rather than inventing a replacement label.
+            return recorded
+        }
+        return nil
     }
     private static func manifest(_ meeting: LibraryMeeting, digest: AudioDigest, original file: CassiniFile?, choice: AudioEncodeChoice?,
                                  dateTag: String?, originalTitle: String?, timeZone: TimeZone,
@@ -215,22 +256,12 @@ public enum MeetingFileExporter {
         // D65: the file's creation time and DATE, decided before any revision is (#133 review): a
         // revision always covers them. Only an export-time fallback stays out of the comparison.
         let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag,exportTime:exportTime)
-        let recordedUtc: String?
-        if meeting.state.origin == .own { recordedUtc = meeting.start.map(MeetingTime.utcString) }
-        else if let original = file?.manifest {
-            var utc = original.meeting.recordedAtUtc.flatMap(MeetingTime.normalizedUTC)
-            // Repairing an invalid creation stamp must not make a known DATE
-            // equal the replacement creation stamp and erase the recording time.
-            if utc == nil, MeetingTime.canonicalUTC(original.meeting.createdAtUtc) == nil,
-               let known=file?.meetingTime,known.source == .date {
-                utc=MeetingTime.canonicalUTC(known.value)
-            }
-            recordedUtc = utc
-        }
-        else { recordedUtc = dateTag.flatMap(utcForLegacyDATE) }
+        let recordedUtc = exportedRecordedUtc(meeting,original:file,dateTag:dateTag)
+        let recordedLocal = exportedRecordedLocal(meeting,original:file?.manifest)
         let mirrorDate = MeetingTime.dateTag(recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)
         let revisionDate = created.exportTime ? "" : mirrorDate
-        let dated = (created.exportTime ? "" : created.value) + "\u{0}" + revisionDate
+        let dated = [created.exportTime ? "" : created.value,revisionDate,recordedUtc ?? "",recordedLocal ?? ""].joined(separator:"\u{0}")
+        let timestampsUnchanged = timestampsMatchOriginal(file,created:created,recordedUtc:recordedUtc,recordedLocal:recordedLocal,mirrorDate:mirrorDate)
         // `damaged`: Mac's own words (a recording's, or a received file's Write down) were read as
         // damaged; a received file's originals go out as they came, whatever Mac read of them.
         let original = file?.manifest
@@ -241,7 +272,7 @@ public enum MeetingFileExporter {
         // the notes decided together under the folder lock; a Library meeting without one gets
         // our own copy (`make`), from the same read of meeting.json, and only from a real one.
         // A copy `merged` declines (an unknown schema or unusable revision), and any file opened
-        // from outside the Library (nothing of it can change on Mac), stay unchanged.
+        // from outside the Library whose timestamps need no repair, stay unchanged.
         let originalNotes = extensions["gocassini.com"]?["notes"]
         let foreign = extensions[CodemyriadNamespace.key]
         // `stored` is meeting.json as this attempt read it (checked against the snapshot), for
@@ -249,12 +280,16 @@ public enum MeetingFileExporter {
         var notes: JSON?, namespace: JSON?, mergedCopy = false, own = false
         // D65: a namespace schema this app doesn't know is refused, never shipped next to
         // content its revision doesn't describe (also for a file opened from outside).
-        if let foreign { _ = try CodemyriadNamespace.validated(foreign) }
+        let baseRevision = try foreign.map(CodemyriadNamespace.validated)
         if !LibraryScanner.isMeetingFolder(meeting.folder) {
             notes = originalNotes
+            if let foreign, let baseRevision, !(carriedOnly && timestampsUnchanged) {
+                guard baseRevision < CodemyriadNamespace.maxRevision else { throw MeetingExportError.newerFormat }
+                namespace = try foreign.setting("revision",to:.number(String(baseRevision + 1)))
+            }
         } else if let foreign {
             let merged = try CodemyriadNamespace.merged(foreign,with:meeting,originalNotes:originalNotes,importedTranscript:importedTranscript,
-                                                        body:transcripts.digest + "\u{0}" + dated,bodyMatchesOriginal:carriedOnly,damaged:damaged)
+                                                        body:transcripts.digest + "\u{0}" + dated,bodyMatchesOriginal:carriedOnly && timestampsUnchanged,damaged:damaged)
             notes = merged.notes; namespace = merged.namespace; mergedCopy = true
         } else {
             let local = CodemyriadNamespace.localNotes(stored)
@@ -292,18 +327,7 @@ public enum MeetingFileExporter {
         var info: JSON = .object([("id",.string(original?.meeting.id ?? "mtg_" + digest.sha256)),("title",.string(title)),
             ("createdAtUtc",.string(created.value)),("durationMs",.number(String(digest.durationMs)))])
         if let recordedUtc { info = try info.setting("recordedAtUtc",to:.string(recordedUtc)) }
-        if meeting.state.origin == .own, let start = meeting.start,
-           let offset = meeting.recordingUtcOffsetMinutes, let siteZone = TimeZone(secondsFromGMT:offset * 60) {
-            let local = DateFormatter(); local.locale = Locale(identifier:"en_US_POSIX")
-            local.calendar = Calendar(identifier:.gregorian); local.timeZone = siteZone
-            local.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-            let second = Date(timeIntervalSince1970:start.timeIntervalSince1970.rounded(.down))
-            info = try info.setting("recordedAtLocal",to:.string(local.string(from:second)))
-        } else if let recorded = original?.meeting.recordedAtLocal, validLocalRecordingLabel(recorded) {
-            // The original label belongs to the recording site. An offset or fraction
-            // is invalid in v1; discard it rather than inventing a replacement label.
-            info = try info.setting("recordedAtLocal",to:.string(recorded))
-        }
+        if let recordedLocal { info = try info.setting("recordedAtLocal",to:.string(recordedLocal)) }
         // Q2: one entry per speaker id the exported words use (none while they aren't exported).
         // MAPPING Q2 with speakerMerges (D24): the ids are the words' own, in first-speaking
         // order, and each label is the name of the speaker it resolves to, so merged ids share it.
