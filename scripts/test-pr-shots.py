@@ -51,13 +51,16 @@ BOARDS_21 = (
     "settings-recording",
     "settings-transcription",
 )
-BOARDS_27 = BOARDS_21 + (
+BOARDS_30 = BOARDS_21 + (
     "recording-details-many",
     "listening-bar-finished",
     "listening-transcript-highlight",
     "settings-parakeet-recommendation-en-GB",
     "settings-parakeet-recommendation-fr-FR",
     "settings-parakeet-recommendation-pt-PT",
+    "library-seven-speakers",
+    "meeting-seven-speakers",
+    "speaker-error",
 )
 
 
@@ -119,7 +122,7 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
         light_src.mkdir(parents=True)
         dark_src.mkdir(parents=True)
         manifest = []
-        for idx, board in enumerate(BOARDS_27):
+        for idx, board in enumerate(BOARDS_30):
             is_settings = board.startswith("settings-")
             l_bytes = (
                 (self.light_700_reencoded if is_settings else self.light_1120_reencoded)
@@ -235,9 +238,9 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
                 os.environ.pop("GITHUB_STEP_SUMMARY", None)
                 with contextlib.redirect_stdout(io.StringIO()):
                     data = self.shots.diff(args)
-            self.assertEqual(len(data["rows"]), 54)
+            self.assertEqual(len(data["rows"]), 60)
             self.assertTrue(all(r["status"] == "unchanged" for r in data["rows"]))
-            self.assertIn("No visual change in 27 screens (light and dark).", (out / "block.md").read_text())
+            self.assertIn("No visual change in 30 screens (light and dark).", (out / "block.md").read_text())
             self.assertEqual(list(out.rglob("*.png")), [])
 
     def test_single_changed_mac_board_emits_both_modes_and_downloadable_summary(self) -> None:
@@ -313,7 +316,7 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
             self.assertEqual(set(validated), expected_pngs)
 
             summary_md = summary_file.read_text(encoding="utf-8")
-            self.assertIn("1 screens changed, 26 unchanged.", summary_md)
+            self.assertIn("1 screens changed, 29 unchanged.", summary_md)
             self.assertIn("Library · light", summary_md)
             self.assertIn("Library · dark", summary_md)
             self.assertIn("https://github.com/codemyriad/cassini-mac/actions/runs/43199999999#artifacts", summary_md)
