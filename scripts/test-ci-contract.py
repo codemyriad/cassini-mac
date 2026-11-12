@@ -1019,9 +1019,9 @@ class Measurements(unittest.TestCase):
 class PullRequestFourJobBudget(unittest.TestCase):
     """Retrospective 2026-11-11 §1: normal PR pushes execute <= 4 macOS jobs (3 M4-first + 1
     hosted login-session smoke), ui-shots labeled PRs add UX Library boards (Debug-only, without
-    build_release or Intel/ux-shot fan-out), main pushes add only build_release (5 macOS jobs),
-    and nightly, workflow_dispatch and full-ci labeled PRs execute the full Intel/screenshot/
-    boards/spectrogram suite with boards decoupled from Release."""
+    build_release or Intel/ux-shot fan-out), main pushes add build_release and UX Library boards
+    baseline (6 macOS jobs), and nightly, workflow_dispatch and full-ci labeled PRs execute the
+    full Intel/screenshot/boards/spectrogram suite with boards decoupled from Release."""
 
     @staticmethod
     def parse_needs(body):
@@ -1270,7 +1270,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertEqual(changes.execution_tier('pull_request', ('ui-shots',)), {'full_ci': False, 'ui_shots': True, 'release_build': False})
         self.assertEqual(changes.execution_tier('pull_request', ('full-ci',)), {'full_ci': True, 'ui_shots': False, 'release_build': True})
         self.assertEqual(changes.execution_tier('pull_request', ('ui-shots', 'full-ci')), {'full_ci': True, 'ui_shots': True, 'release_build': True})
-        self.assertEqual(changes.execution_tier('push'), {'full_ci': False, 'ui_shots': False, 'release_build': True})
+        self.assertEqual(changes.execution_tier('push'), {'full_ci': False, 'ui_shots': True, 'release_build': True})
         for full_event in ['schedule', 'workflow_dispatch', None, 'unknown']:
             self.assertEqual(changes.execution_tier(full_event), {'full_ci': True, 'ui_shots': False, 'release_build': True})
         # Adding full-ci to a documentation-only PR still selects every area; ui-shots selects boards only.
@@ -1290,7 +1290,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
                 ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["ui-shots"]'}, 'false', 'true', 'false'),
                 ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["full-ci"]'}, 'true', 'false', 'true'),
                 ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': 'corrupt-json'}, 'true', 'false', 'true'),
-                ({'EVENT_NAME': 'push', 'PR_BASE': '', 'PR_LABELS': 'null'}, 'false', 'false', 'true'),
+                ({'EVENT_NAME': 'push', 'PR_BASE': '', 'PR_LABELS': 'null'}, 'false', 'true', 'true'),
                 ({'EVENT_NAME': 'schedule', 'PR_BASE': '', 'PR_LABELS': ''}, 'true', 'false', 'true'),
             ]:
                 out.write_text('')
@@ -1313,7 +1313,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
             self.assertEqual(parsed_ui['full_ci'], 'false')
             self.assertEqual(parsed_ui['release_build'], 'false')
 
-    def test_pr_push_runs_at_most_four_macos_jobs_and_main_push_adds_only_release(self):
+    def test_pr_push_runs_at_most_four_macos_jobs_and_main_push_adds_release_and_boards_baseline(self):
         pr_all = self.active_ci_jobs('pull_request', ['Sources/CassiniKit/Reader.swift'])
         self.assertEqual(pr_all, ['build:arm64', 'kit', 'ux_workers', 'ux_app'])
         self.assertLessEqual(len(pr_all), 4)
@@ -1328,8 +1328,25 @@ class PullRequestFourJobBudget(unittest.TestCase):
                     pr_ui_shots = self.active_ci_jobs('pull_request', changed, labels=('ui-shots',), release_failed=release_failed)
                     self.assertEqual(pr_ui_shots, ['build:arm64', 'kit', 'ux_workers', 'ux_app', 'boards'])
 
-        main_push = self.active_ci_jobs('push', ['README.md'])
-        self.assertEqual(main_push, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app'])
+        for release_failed in [False, True]:
+            with self.subTest(main_push_release_failed=release_failed):
+                main_push = self.active_ci_jobs('push', ['README.md'], release_failed=release_failed)
+                self.assertEqual(main_push, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app', 'boards'])
+
+        callee_jobs = dict(
+            re.findall(
+                r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',
+                (ROOT / '.github/workflows/ux-boards.yml').read_text().split('\njobs:\n', 1)[1],
+                re.M | re.S,
+            )
+        )
+        callee_boards = callee_jobs['boards']
+        self.assertIn('runs-on: macos-15\n', callee_boards)
+        self.assertIn('test "$RUNNER_ENVIRONMENT" = github-hosted', callee_boards)
+        self.assertIn('- name: Render Library boards\n', callee_boards)
+        self.assertIn('- name: Render dark Library boards\n', callee_boards)
+        self.assertIn('--dark build/ux-attachments-dark', callee_boards)
+        self.assertIn('name: ux-boards\n', callee_boards)
 
         expected_full = [
             'build:arm64', 'build:x86_64', 'build_release', 'kit',
@@ -1366,6 +1383,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertIn('--layout mac', diff_job)
         self.assertIn('--base-workflow ci.yml', diff_job)
         self.assertIn('--base-artifact ux-boards', diff_job)
+        self.assertIn('python3 -I scripts/report-pr-shots-baseline.py build/pr-shots/changes.json', diff_job)
         self.assertIn('--allow-escape-sequences', diff_job)
         self.assertIn('name: pr-shots\n', diff_job)
         self.assertIn('env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/pr-shots.py --self-test', changes_job)
@@ -1537,7 +1555,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
                 )
         self.assertEqual(
             self.active_ci_jobs('push', ['README.md'], include_ubuntu=True),
-            ['changes', 'build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app'],
+            ['changes', 'build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app', 'boards'],
         )
         expected_nightly = [
             'changes', 'build:arm64', 'build:x86_64', 'build_release', 'kit',

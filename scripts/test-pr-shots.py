@@ -20,6 +20,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
 PR_SHOTS = ROOT / "scripts" / "pr-shots.py"
+REPORT_BASELINE = ROOT / "scripts" / "report-pr-shots-baseline.py"
 EXPORT_BOARDS = ROOT / "scripts" / "export-ux-boards.py"
 EXPECTED_HEADER = (
     "# Vendored from codemyriad/cassini-ux@"
@@ -350,6 +351,153 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
                     text=True,
                 )
                 self.assertNotEqual(res.returncode, 0)
+
+
+class BaselineFallbackReportingContract(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.reporter = load_module(REPORT_BASELINE, "report_pr_shots_baseline")
+
+    @staticmethod
+    def write_changes(
+        path: Path,
+        *,
+        base_sha: str,
+        requested_base_sha: str,
+        no_baseline: bool = False,
+        base_run: str = "43143672241",
+        base_runner: str = "macos-15",
+        head_runner: str = "macos-15",
+        repo: str = "codemyriad/cassini-mac",
+    ) -> Path:
+        payload = {
+            "version": 1,
+            "app": "mac",
+            "repo": repo,
+            "pr": 251,
+            "git_images": False,
+            "no_baseline": no_baseline,
+            "requested_base_sha": requested_base_sha,
+            "base": {"sha": base_sha, "run_id": base_run, "runner": base_runner, "image": "20261102.1"},
+            "head": {"sha": "7" * 40, "run_id": "43167930532", "runner": head_runner, "image": "20261102.1"},
+            "rows": [],
+        }
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def test_exact_baseline_logs_zero_commits_old_without_warning(self) -> None:
+        self.assertTrue(os.access(REPORT_BASELINE, os.X_OK))
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            sha = "a" * 40
+            changes_path = self.write_changes(work / "changes.json", base_sha=sha, requested_base_sha=sha)
+            summary_path = work / "summary.md"
+            summary_path.write_text("<!-- cassini-pr-shots:start -->\n### UI screenshots\n", encoding="utf-8")
+            out = io.StringIO()
+            result = self.reporter.report_baseline(
+                changes_path,
+                summary_path=summary_path,
+                compare_fn=lambda *_a: self.fail("compare_fn must not run when baseline matches requested_base_sha"),
+                out=out,
+            )
+            self.assertEqual(result["status"], "exact")
+            self.assertEqual(result["commits_old"], 0)
+            self.assertIn("0 commits old", out.getvalue())
+            self.assertNotIn("::warning", out.getvalue())
+            summary_text = summary_path.read_text(encoding="utf-8")
+            self.assertTrue(summary_text.startswith("Baseline: exact `main` commit `aaaaaaa`"))
+            self.assertIn("0 commits old", summary_text)
+            self.assertIn("### UI screenshots", summary_text)
+
+    def test_fallback_baseline_reports_commit_age_runner_mismatch_and_warning_callout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            older = "68b50ad" + "0" * 33
+            requested = "f7900d8" + "0" * 33
+            changes_path = self.write_changes(
+                work / "changes.json",
+                base_sha=older,
+                requested_base_sha=requested,
+                base_runner="cm-mac-gui",
+                head_runner="macos-15",
+            )
+            summary_path = work / "summary.md"
+            summary_path.write_text("<!-- cassini-pr-shots:start -->\n### UI screenshots\n", encoding="utf-8")
+            out = io.StringIO()
+            result = self.reporter.report_baseline(
+                changes_path,
+                summary_path=summary_path,
+                compare_fn=lambda repo, b, r: (
+                    28 if (repo, b, r) == ("codemyriad/cassini-mac", older, requested) else None
+                ),
+                out=out,
+            )
+            self.assertEqual(result["status"], "fallback")
+            self.assertEqual(result["commits_old"], 28)
+            log_text = out.getvalue()
+            self.assertIn("Fell back to older main ux-boards baseline 68b50ad (run 43143672241), 28 commits old", log_text)
+            self.assertIn("behind requested PR base f7900d8", log_text)
+            self.assertIn("Baseline runner (cm-mac-gui) also differs from head runner (macos-15).", log_text)
+            self.assertIn("::warning title=Fallback UI screenshot baseline (28 commits old)::", log_text)
+            summary_text = summary_path.read_text(encoding="utf-8")
+            self.assertTrue(summary_text.startswith("> [!WARNING]\n> **Fallback UI screenshot baseline (28 commits old):**"))
+            self.assertIn("`cm-mac-gui`", summary_text)
+            self.assertLess(summary_text.index("Fallback UI screenshot baseline"), summary_text.index("### UI screenshots"))
+
+    def test_single_commit_fallback_uses_singular_unit_and_compare_failure_degrades_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            older = "1" * 40
+            requested = "2" * 40
+            changes_path = self.write_changes(work / "changes.json", base_sha=older, requested_base_sha=requested)
+            out_one = io.StringIO()
+            res_one = self.reporter.report_baseline(
+                changes_path,
+                summary_path=None,
+                compare_fn=lambda *_a: 1,
+                out=out_one,
+            )
+            self.assertEqual(res_one["commits_old"], 1)
+            self.assertIn("1 commit old (behind requested PR base 2222222)", out_one.getvalue())
+
+            summary_err = work / "summary_err.md"
+            fake_bin = work / "bin"
+            fake_bin.mkdir()
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text("#!/bin/sh\necho 'HTTP 502' >&2\nexit 1\n", encoding="utf-8")
+            fake_gh.chmod(0o755)
+            env = {**os.environ, "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"}
+            env.pop("GITHUB_STEP_SUMMARY", None)
+            proc = subprocess.run(
+                [sys.executable, "-I", str(REPORT_BASELINE), "--summary", str(summary_err), str(changes_path)],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("::warning title=Fallback UI screenshot baseline (commit age unknown)::", proc.stdout)
+            self.assertIn("commit age unknown", summary_err.read_text(encoding="utf-8"))
+
+    def test_missing_baseline_and_invalid_metadata_contracts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            sha = "c" * 40
+            missing_path = self.write_changes(
+                work / "missing.json", base_sha=sha, requested_base_sha=sha, no_baseline=True
+            )
+            summary_path = work / "summary.md"
+            out = io.StringIO()
+            res = self.reporter.report_baseline(missing_path, summary_path=summary_path, out=out)
+            self.assertEqual(res["status"], "missing")
+            self.assertIn("::warning title=Missing UI screenshot baseline::", out.getvalue())
+            self.assertIn("**Missing UI screenshot baseline:**", summary_path.read_text(encoding="utf-8"))
+
+            bad_repo = self.write_changes(
+                work / "bad_repo.json", base_sha=sha, requested_base_sha=sha, repo="../evil"
+            )
+            with self.assertRaises(ValueError):
+                self.reporter.report_baseline(bad_repo, out=io.StringIO())
 
 
 if __name__ == "__main__":
